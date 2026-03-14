@@ -25,7 +25,7 @@ This guide covers FQDN policy design patterns, configuration, DNS TTL considerat
 
 ## Step 1: Basic FQDN Policy Design Pattern
 
-Every FQDN policy requires a DNS allow rule — without it, pods cannot resolve names:
+Every FQDN policy requires a DNS allow rule - without it, pods cannot resolve names:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -100,7 +100,7 @@ kubectl exec -n kube-system cilium-xxxxx -- \
 
 ## Step 4: DNS TTL Considerations
 
-Short TTLs can cause gaps in policy enforcement — if a DNS response has TTL=30 but the TCP connection takes 60 seconds to complete, the IP may be removed from the allow list:
+Short TTLs can cause gaps in policy enforcement - if a DNS response has TTL=30 but the TCP connection takes 60 seconds to complete, the IP may be removed from the allow list:
 
 ```bash
 # Check DNS TTL for a domain

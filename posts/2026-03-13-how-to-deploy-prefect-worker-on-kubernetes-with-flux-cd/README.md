@@ -89,7 +89,7 @@ spec:
       config:
         workPool: "production-k8s-pool"
 
-      # Worker image — use the same Python version as your flows
+      # Worker image - use the same Python version as your flows
       image:
         repository: prefecthq/prefect
         tag: "2-python3.11-kubernetes"

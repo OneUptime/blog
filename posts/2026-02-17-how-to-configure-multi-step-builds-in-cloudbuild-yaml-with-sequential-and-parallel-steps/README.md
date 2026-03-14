@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, cloudbuild.yaml, CI/CD, Build Pipeline, Build Optimization
+Tags: GCP, Cloud Build, Cloudbuild.yaml, CI/CD, Build Pipeline, Build Optimization
 
 Description: Learn how to configure multi-step Cloud Build pipelines with both sequential and parallel execution to build efficient CI/CD workflows on GCP.
 

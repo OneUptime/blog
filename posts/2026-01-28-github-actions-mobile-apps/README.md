@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Mobile Apps, CI/CD, iOS, Android
+Tags: GitHub Actions, Mobile Apps, CI/CD, IOS, Android
 
 Description: Learn how to build and test iOS and Android apps with GitHub Actions, manage signing secrets, and optimize workflows for mobile CI.
 

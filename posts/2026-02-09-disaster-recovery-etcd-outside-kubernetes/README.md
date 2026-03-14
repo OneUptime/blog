@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, etcd, Disaster Recovery
+Tags: Kubernetes, Etcd, Disaster Recovery
 
 Description: Implement comprehensive disaster recovery strategies for external etcd clusters that store Kubernetes state with automated backups, restore procedures, and testing workflows.
 

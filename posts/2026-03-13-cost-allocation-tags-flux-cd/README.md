@@ -198,11 +198,11 @@ kubectl get deployments -A -o json | jq '.items[] | select(.metadata.labels."cos
 
 - Enforce labels at the Kustomization level rather than in individual manifests to reduce duplication and ensure consistency across all resources in a path.
 - Include cost allocation label requirements in your pull request template so reviewers can check label compliance before merging.
-- Avoid using node labels for cost allocation in shared clusters — namespace labels combined with resource requests give more accurate attribution than node-based approaches.
+- Avoid using node labels for cost allocation in shared clusters - namespace labels combined with resource requests give more accurate attribution than node-based approaches.
 - Review label compliance monthly; label drift happens gradually as teams add new services without following standards.
 - Use Kyverno in Audit mode initially to discover which existing workloads violate label policies before switching to Enforce mode.
 - Tie cost center labels to your HR system's team codes to enable automated chargeback reports without manual mapping.
 
 ## Conclusion
 
-A consistent cost allocation labeling strategy, enforced through Flux CD and Kyverno, transforms Kubernetes billing from a mysterious shared cost into a clear, attributable expense per team and project. The GitOps approach ensures labels are reviewed, documented, and consistently applied — making your FinOps reporting as reliable as your application deployments.
+A consistent cost allocation labeling strategy, enforced through Flux CD and Kyverno, transforms Kubernetes billing from a mysterious shared cost into a clear, attributable expense per team and project. The GitOps approach ensures labels are reviewed, documented, and consistently applied - making your FinOps reporting as reliable as your application deployments.

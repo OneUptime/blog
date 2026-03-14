@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, auditd, Auditing, Security, Compliance, Tutorial
+Tags: Ubuntu, Auditd, Auditing, Security, Compliance, Tutorial
 
 Description: Complete guide to configuring Linux Audit System (auditd) on Ubuntu for security monitoring and compliance.
 

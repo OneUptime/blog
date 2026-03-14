@@ -27,7 +27,7 @@ This guide shows how to automate deployment windows using Kubernetes CronJobs, h
 
 Document the deployment windows as a comment in the CronJob manifests. A common pattern is business hours Monday through Thursday:
 
-```
+```plaintext
 Allowed deployment windows (UTC):
   Monday–Thursday: 09:00–17:00
   Friday: 09:00–12:00
@@ -36,7 +36,7 @@ Allowed deployment windows (UTC):
 Outside these windows, Flux is suspended.
 ```
 
-Translate this into four CronJob pairs (open/close) — one pair per window boundary.
+Translate this into four CronJob pairs (open/close) - one pair per window boundary.
 
 ## Step 2: Create the Deployment Window CronJobs
 
@@ -298,7 +298,7 @@ echo "Emergency deployment override at $(date -u) by $(whoami)" \
 - Start Flux suspended by default (set `suspend: true` in the manifest) so that on fresh bootstrap or cluster restore, windows are closed until a CronJob explicitly opens them.
 - Send Slack or PagerDuty notifications when windows open and close so the on-call engineer is always aware.
 - Include the window schedule in your team's runbook so developers know when to schedule their PRs for merge.
-- Keep HelmRelease suspension in sync with Kustomization suspension — a suspended Kustomization won't apply new Kustomization objects, but existing HelmReleases will still reconcile unless also suspended.
+- Keep HelmRelease suspension in sync with Kustomization suspension - a suspended Kustomization won't apply new Kustomization objects, but existing HelmReleases will still reconcile unless also suspended.
 - Use `concurrencyPolicy: Forbid` on the CronJobs to prevent overlapping open/close operations.
 
 ## Conclusion

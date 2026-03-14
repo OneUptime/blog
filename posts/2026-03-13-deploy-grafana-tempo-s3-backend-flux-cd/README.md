@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Tempo, Distributed Tracing, S3, Flux CD, GitOps, Kubernetes, OpenTelemetry
+Tags: Flux CD, Kubernetes, GitOps, Grafana Tempo, Distributed Tracing, S3, Observability, OpenTelemetry
 
-Description: Deploy Grafana Tempo, a cost-effective distributed tracing backend, with S3 object storage on Kubernetes using Flux CD. This guide covers trace ingestion via OTLP, S3 block storage, and TraceQL query configuration.
+Description: Deploy Grafana Tempo, a cost-effective distributed tracing backend, with S3 object storage on Kubernetes using Flux CD.
 
 ---
 
@@ -37,7 +37,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # S3 credentials for Tempo block storage — encrypt with SOPS
+  # S3 credentials for Tempo block storage - encrypt with SOPS
   access_key: "AKIAIOSFODNN7EXAMPLE"
   secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 ```

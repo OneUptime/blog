@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Snapshots, Container recovery, Backup, docker commit, docker export, Disaster Recovery
+Tags: Docker, Snapshots, Container recovery, Backup, Docker commit, Docker export, Disaster Recovery
 
 Description: Learn how to create Docker container snapshots using commit, export, and checkpoint commands for reliable recovery workflows.
 

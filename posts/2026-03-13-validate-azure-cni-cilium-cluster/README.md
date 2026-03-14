@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, cni, kubernetes, networking, validation
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Learn how to comprehensively validate a Kubernetes cluster using Azure CNI with Cilium, ensuring all components are correctly installed, configured, and communicating as expected.
 
@@ -58,7 +58,7 @@ Each pod should be registered as a Cilium endpoint with an assigned identity.
 # List all Cilium endpoints in the cluster
 kubectl get ciliumendpoints -A
 
-# Check endpoint status details — look for "ready" policy enforcement state
+# Check endpoint status details - look for "ready" policy enforcement state
 kubectl get ciliumendpoints -A -o jsonpath=\
 '{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.status.state}{"\n"}{end}'
 ```

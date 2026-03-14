@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, gRPC-Web, JavaScript, TypeScript, Browser, Envoy, Proxy
+Tags: GRPC, GRPC-Web, JavaScript, TypeScript, Browser, Envoy, Proxy
 
 Description: A complete guide to configuring gRPC-Web for browser clients, covering proxy setup with Envoy, client generation, authentication handling, and production deployment strategies.
 

@@ -12,7 +12,7 @@ Description: Validate that BGP-advertised pod routes enable direct workload conn
 
 Validating BGP-to-workload connectivity in Calico goes beyond confirming that BGP sessions are established. You need to verify that pod IP routes are correctly propagated to external routers, that NAT is not inadvertently applied (which would break return routing), and that packets arriving at pods carry the correct source IP from external clients.
 
-A common mistake is deploying workloads expecting direct pod IP reachability, only to discover that `natOutgoing: true` on the IP pool is masquerading the source IP on outbound traffic. While this does not prevent inbound connectivity, it means pods cannot see the real client IP — a problem for applications that need to log or rate-limit based on source address.
+A common mistake is deploying workloads expecting direct pod IP reachability, only to discover that `natOutgoing: true` on the IP pool is masquerading the source IP on outbound traffic. While this does not prevent inbound connectivity, it means pods cannot see the real client IP - a problem for applications that need to log or rate-limit based on source address.
 
 This guide covers the complete validation workflow for BGP-to-workload connectivity in Calico.
 

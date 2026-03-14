@@ -2,19 +2,19 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, calico, kubernetes, cni-chaining, networking, migration
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
-Description: Learn how to plan a Cilium-over-Calico CNI chaining configuration, enabling a phased migration from Calico to Cilium while maintaining network continuity. This guide covers the architecture, compatibility considerations, and step-by-step planning for Calico chaining.
+Description: Learn how to plan a Cilium-over-Calico CNI chaining configuration, enabling a phased migration from Calico to Cilium while maintaining network continuity.
 
 ---
 
 ## Introduction
 
-Organizations running Calico often want to adopt Cilium's eBPF dataplane and enhanced observability without a disruptive, all-at-once CNI replacement. CNI chaining allows Cilium to operate alongside Calico — Calico handles IP assignment and basic routing while Cilium provides eBPF-based network policy enforcement and Hubble visibility.
+Organizations running Calico often want to adopt Cilium's eBPF dataplane and enhanced observability without a disruptive, all-at-once CNI replacement. CNI chaining allows Cilium to operate alongside Calico - Calico handles IP assignment and basic routing while Cilium provides eBPF-based network policy enforcement and Hubble visibility.
 
 This approach is most useful as a transitional architecture during migrations. Rather than replacing Calico entirely in a maintenance window, you can chain Cilium on top of Calico, validate that Cilium policies work correctly, and then incrementally remove Calico's policy components before completing the full migration to standalone Cilium.
 
-However, Calico chaining has significant limitations compared to standalone Cilium — understanding these trade-offs is essential before committing to this architecture.
+However, Calico chaining has significant limitations compared to standalone Cilium - understanding these trade-offs is essential before committing to this architecture.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ graph TD
 Calico eBPF and Cilium eBPF cannot coexist. Disable Calico's eBPF dataplane first.
 ```yaml
 # felixconfig-iptables.yaml
-# Disable Calico eBPF mode — required before adding Cilium to the chain
+# Disable Calico eBPF mode - required before adding Cilium to the chain
 apiVersion: projectcalico.org/v3
 kind: FelixConfiguration
 metadata:
@@ -117,7 +117,7 @@ cilium policy get
 - Disable all Calico network policies before enabling Cilium policy enforcement to avoid conflicts
 - Run `cilium monitor --type policy-verdict` to verify Cilium is making policy decisions
 - Plan the full migration to standalone Cilium with a defined timeline
-- Test failover behavior — what happens if Cilium agents crash while Calico is still active?
+- Test failover behavior - what happens if Cilium agents crash while Calico is still active?
 - Document which CNI plugin owns each responsibility during the transition period
 
 ## Conclusion

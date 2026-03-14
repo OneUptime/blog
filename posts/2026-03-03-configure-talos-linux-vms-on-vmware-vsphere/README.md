@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VMware, vSphere, Kubernetes, Enterprise, Virtualization
+Tags: Talos Linux, VMware, VSphere, Kubernetes, Enterprise, Virtualization
 
 Description: Step-by-step guide to deploying Talos Linux on VMware vSphere for enterprise Kubernetes clusters with vCenter integration.
 

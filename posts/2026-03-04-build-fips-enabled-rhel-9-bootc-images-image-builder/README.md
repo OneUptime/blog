@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, FIPS, bootc, Security
+Tags: RHEL, Image Builder, FIPS, Bootc, Security
 
 Description: Build FIPS-enabled RHEL 9 bootc images with Image Builder.
 

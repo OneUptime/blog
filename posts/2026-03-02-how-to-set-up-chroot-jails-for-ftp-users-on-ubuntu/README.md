@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, FTP, Security, vsftpd, ProFTPD
+Tags: Ubuntu, FTP, Security, Vsftpd, ProFTPD
 
 Description: Restrict FTP users to specific directories using chroot jails on Ubuntu with vsftpd and ProFTPD, preventing directory traversal and unauthorized file system access.
 

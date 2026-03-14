@@ -10,7 +10,7 @@ Description: Learn how to migrate ArgoCD notification configurations to Flux Not
 
 ## Introduction
 
-ArgoCD Notifications uses a ConfigMap-based system with triggers, templates, and subscription annotations. Flux Notification Controller uses CRD-based Provider and Alert resources. Both achieve the same goal—alerting teams about deployment events—but the configuration model and filtering capabilities differ.
+ArgoCD Notifications uses a ConfigMap-based system with triggers, templates, and subscription annotations. Flux Notification Controller uses CRD-based Provider and Alert resources. Both achieve the same goal-alerting teams about deployment events-but the configuration model and filtering capabilities differ.
 
 This guide walks through converting common ArgoCD notification configurations to Flux equivalents.
 
@@ -37,7 +37,7 @@ kubectl get applications -n argocd \
 
 ## Step 2: Map ArgoCD Triggers to Flux Alert eventSeverity
 
-```
+```plaintext
 ArgoCD Trigger                    Flux Alert
 ─────────────────────             ─────────────────────────
 on-deployed (success)   ──►       eventSeverity: info
@@ -239,4 +239,4 @@ kubectl describe alert deployment-success -n flux-system
 
 ## Conclusion
 
-Migrating from ArgoCD Notifications to Flux Notification Controller is straightforward: the conceptual mapping between triggers/templates and Alert/Provider is direct. The main operational difference is that Flux's event model is simpler—severity and inclusion patterns replace ArgoCD's Lua-like trigger conditions. For complex custom message templates, Flux is less flexible, but for standard operational alerting, both systems are functionally equivalent.
+Migrating from ArgoCD Notifications to Flux Notification Controller is straightforward: the conceptual mapping between triggers/templates and Alert/Provider is direct. The main operational difference is that Flux's event model is simpler-severity and inclusion patterns replace ArgoCD's Lua-like trigger conditions. For complex custom message templates, Flux is less flexible, but for standard operational alerting, both systems are functionally equivalent.

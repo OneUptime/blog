@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, eBPF Maps
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A technical deep-dive into how Cilium's L3/L4 policy enforcement works at the eBPF level in the Star Wars demo scenario.
 
@@ -74,14 +74,14 @@ At L3/L4, the eBPF program only evaluates the 5-tuple: `(src IP, dst IP, src por
 - `PUT /v1/exhaust-port` is carried in the same TCP stream as `POST /v1/request-landing`
 - The eBPF L3/L4 hook cannot distinguish between them
 
-This is why L7 policy requires a different mechanism — the L7 proxy — which parses the HTTP layer.
+This is why L7 policy requires a different mechanism - the L7 proxy - which parses the HTTP layer.
 
 ```bash
 # Demonstrate L3/L4 limitation
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
-# Still allowed — L3/L4 only sees port 80 TCP, not the HTTP method
+# Still allowed - L3/L4 only sees port 80 TCP, not the HTTP method
 ```
 
 ## Conclusion
 
-Cilium's L3/L4 policy enforcement is technically elegant: a single eBPF lookup against a compiled policy map determines whether a new TCP connection is permitted. The mechanism is fast, scalable, and identity-aware. But it is fundamentally limited to connection-level decisions. Understanding this limitation — that TCP connection permission does not imply HTTP path permission — is what makes the progression to L7 policy in the Star Wars demo both inevitable and instructive.
+Cilium's L3/L4 policy enforcement is technically elegant: a single eBPF lookup against a compiled policy map determines whether a new TCP connection is permitted. The mechanism is fast, scalable, and identity-aware. But it is fundamentally limited to connection-level decisions. Understanding this limitation - that TCP connection permission does not imply HTTP path permission - is what makes the progression to L7 policy in the Star Wars demo both inevitable and instructive.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, xDS, Configuration, Istiod, Performance, Debugging
+Tags: Istio, XDS, Configuration, Istiod, Performance, Debugging
 
 Description: How to diagnose and fix slow xDS configuration pushes from Istiod to Envoy proxies in your Istio service mesh.
 

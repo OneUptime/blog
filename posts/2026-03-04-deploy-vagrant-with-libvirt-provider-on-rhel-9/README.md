@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Vagrant, libvirt, KVM, Virtualization, Linux
+Tags: RHEL, Vagrant, Libvirt, KVM, Virtualization, Linux
 
 Description: Learn how to install and configure Vagrant with the Libvirt provider on RHEL, including KVM setup, box management, networking, shared folders, and multi-machine environments.
 

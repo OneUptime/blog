@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Troubleshooting, Linux
+Tags: RHEL, Firewalld, Troubleshooting, Linux
 
 Description: A systematic approach to debugging firewalld rules that are not working as expected on RHEL, covering common mistakes, zone issues, and diagnostic techniques.
 

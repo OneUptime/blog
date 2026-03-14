@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Authentication, mTLS, Security, Kubernetes, Service Mesh
+Tags: Istio, Authentication, MTLS, Security, Kubernetes, Service Mesh
 
 Description: A hands-on guide to implementing service-to-service authentication in Istio using mutual TLS, peer authentication policies, and authorization rules.
 

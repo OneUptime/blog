@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Image Builder, composer-cli, Automation, CI/CD, Linux
+Tags: RHEL, Ansible, Image Builder, Composer-cli, Automation, CI/CD, Linux
 
 Description: Automate RHEL image builds using Ansible playbooks that drive composer-cli, enabling CI/CD pipelines for custom OS images.
 

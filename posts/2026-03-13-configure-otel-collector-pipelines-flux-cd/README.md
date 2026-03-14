@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, opentelemetry, otel, observability, kubernetes, gitops
+Tags: Flux CD, Kubernetes, GitOps, OpenTelemetry, OTEL Collector, Pipelines, Observability
 
 Description: Learn how to deploy and configure OpenTelemetry Collector pipelines using Flux CD, enabling GitOps-driven observability infrastructure for traces, metrics, and logs.
 
@@ -10,7 +10,7 @@ Description: Learn how to deploy and configure OpenTelemetry Collector pipelines
 
 ## Introduction
 
-The OpenTelemetry Collector is a vendor-agnostic proxy for telemetry data that supports receiving, processing, and exporting traces, metrics, and logs. Configuring Collector pipelines through Flux CD ensures that your observability infrastructure is version-controlled, consistently deployed, and auditable—just like your application code.
+The OpenTelemetry Collector is a vendor-agnostic proxy for telemetry data that supports receiving, processing, and exporting traces, metrics, and logs. Configuring Collector pipelines through Flux CD ensures that your observability infrastructure is version-controlled, consistently deployed, and auditable-just like your application code.
 
 Managing OTel Collector configuration in Git enables teams to review pipeline changes through pull requests, roll back problematic configurations instantly, and maintain environment-specific pipeline definitions without manual kubectl commands. This is especially valuable when multiple teams share observability infrastructure.
 

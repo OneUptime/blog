@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gRPC, Cloud Run, Microservices, Protocol Buffers, Networking, API
+Tags: GCP, GRPC, Cloud Run, Microservices, Protocol Buffers, Networking, API
 
 Description: Learn how to set up gRPC communication between microservices running on Google Cloud Run for high-performance, type-safe service-to-service calls.
 

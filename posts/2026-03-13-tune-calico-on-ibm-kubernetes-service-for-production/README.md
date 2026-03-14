@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Performance, Tuning, IBM Kubernetes Service, IKS
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, IBM Kubernetes Service
 
 Description: Apply production-grade Calico tuning on IBM Kubernetes Service for optimal performance and security.
 
@@ -10,7 +10,7 @@ Description: Apply production-grade Calico tuning on IBM Kubernetes Service for 
 
 ## Introduction
 
-IBM Kubernetes Service includes Calico as its full CNI and network policy solution, giving IKS administrators access to the full Calico tuning API. Unlike managed providers that use Calico in policy-only mode, IKS requires tuning across all Calico components — IPAM, BGP, Felix, and Typha — for production performance.
+IBM Kubernetes Service includes Calico as its full CNI and network policy solution, giving IKS administrators access to the full Calico tuning API. Unlike managed providers that use Calico in policy-only mode, IKS requires tuning across all Calico components - IPAM, BGP, Felix, and Typha - for production performance.
 
 IKS clusters often run in IBM Cloud data centers with high-speed networking, making encapsulation mode selection important. IBM Cloud supports both IPIP and VXLAN encapsulation. For IKS clusters running on bare-metal workers, disabling encapsulation entirely can improve performance significantly.
 

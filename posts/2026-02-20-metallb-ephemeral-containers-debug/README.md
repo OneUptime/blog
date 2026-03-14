@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Ephemeral Containers, Debugging, kubectl
+Tags: Kubernetes, MetalLB, Ephemeral Containers, Debugging, Kubectl
 
 Description: Learn how to use Kubernetes ephemeral containers to debug MetalLB speaker and controller pods without modifying their deployments.
 

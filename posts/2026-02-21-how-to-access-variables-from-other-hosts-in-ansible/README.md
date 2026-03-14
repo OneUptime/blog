@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, hostvars, Cross-Host, DevOps
+Tags: Ansible, Variables, Hostvars, Cross-Host, DevOps
 
 Description: Learn how to access variables and facts from other hosts in Ansible using hostvars, delegation, and fact caching for cross-host configuration.
 

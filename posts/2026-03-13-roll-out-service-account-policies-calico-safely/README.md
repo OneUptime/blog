@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Safe Rollout
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Safe Rollout
 
 Description: A phased rollout strategy for Calico service account-based network policies that prevents outages by migrating workloads to dedicated service accounts first.
 

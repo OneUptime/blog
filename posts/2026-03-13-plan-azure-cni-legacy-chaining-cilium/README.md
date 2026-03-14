@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, azure, azure-cni, cni-chaining, aks, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
-Description: Learn how to plan Cilium deployment in chained mode on top of Azure CNI (legacy) in AKS clusters, enabling advanced network policy enforcement while retaining Azure VNet IP assignment. This guide covers the AKS-specific prerequisites, configuration options, and operational considerations.
+Description: Learn how to plan Cilium deployment in chained mode on top of Azure CNI (legacy) in AKS clusters, enabling advanced network policy enforcement while retaining Azure VNet IP assignment.
 
 ---
 
@@ -56,7 +56,7 @@ graph LR
 
 Key constraints in Azure CNI legacy chaining:
 - Cilium kube-proxy replacement is not supported in chain mode
-- Each pod consumes a VNet IP — IP exhaustion risk at scale
+- Each pod consumes a VNet IP - IP exhaustion risk at scale
 - Azure Network Security Groups may overlap with Cilium policies
 
 ## Step 3: Pre-Flight IP Planning
@@ -104,10 +104,10 @@ cilium connectivity test
 
 ## Best Practices
 
-- Consider Azure CNI Overlay mode for new AKS clusters — it removes the VNet IP exhaustion problem and supports full Cilium standalone mode
+- Consider Azure CNI Overlay mode for new AKS clusters - it removes the VNet IP exhaustion problem and supports full Cilium standalone mode
 - Disable Azure Network Policy Manager (azure-npm) if running Cilium for network policy enforcement
 - Use Cilium's `CiliumClusterwideNetworkPolicy` to implement default-deny at cluster scope
-- Monitor VNet IP utilization dashboards — Azure CNI legacy can exhaust IPs faster than expected
+- Monitor VNet IP utilization dashboards - Azure CNI legacy can exhaust IPs faster than expected
 - Keep Cilium version aligned with the AKS Kubernetes version support matrix
 - Test policy enforcement with `cilium connectivity test --test network-policies` after chain deployment
 

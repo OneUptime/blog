@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, K3s, IoT, Resource Constrained
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, K3s, IoT
 
 Description: Set up Flux CD on resource-constrained edge Kubernetes clusters, optimizing controller resource usage for minimal footprint deployments.
 
@@ -10,7 +10,7 @@ Description: Set up Flux CD on resource-constrained edge Kubernetes clusters, op
 
 ## Introduction
 
-Edge computing pushes workloads closer to where data is generated — factory floors, retail stores, remote monitoring stations, and cell towers. Kubernetes has become the runtime of choice for managing containerized workloads at the edge, but edge nodes have fundamentally different constraints than cloud clusters: limited CPU, limited RAM, intermittent network connectivity, and no elastic scaling.
+Edge computing pushes workloads closer to where data is generated - factory floors, retail stores, remote monitoring stations, and cell towers. Kubernetes has become the runtime of choice for managing containerized workloads at the edge, but edge nodes have fundamentally different constraints than cloud clusters: limited CPU, limited RAM, intermittent network connectivity, and no elastic scaling.
 
 Flux CD is well-suited for edge environments because it is a pull-based system. Instead of requiring direct connectivity from a central management plane to each edge cluster, Flux controllers running on the edge cluster pull their configuration from Git. This works even over intermittent connections and through restrictive firewalls.
 
@@ -218,11 +218,11 @@ spec:
 
 ## Best Practices
 
-- Deploy only the Flux components you use — disable helm-controller and image-reflector-controller on clusters that don't need them.
+- Deploy only the Flux components you use - disable helm-controller and image-reflector-controller on clusters that don't need them.
 - Set reconciliation intervals to 10-15 minutes on edge clusters instead of the default 1-5 minutes.
 - Use OCI artifacts instead of direct Git cloning to minimize bandwidth usage.
 - Store edge-cluster-specific overlays in a dedicated path in your repository.
-- Plan for controllers restarting on power cycles — Flux picks up where it left off automatically.
+- Plan for controllers restarting on power cycles - Flux picks up where it left off automatically.
 - Use node affinity to keep Flux controllers on the most stable node in a multi-node edge cluster.
 
 ## Conclusion

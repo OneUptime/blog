@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Developer CLI, azd, Environment Management, Infrastructure as Code, Azure, DevOps, Multi-Environment
+Tags: Azure Developer CLI, Azd, Environment Management, Infrastructure as Code, Azure, DevOps, Multi-Environment
 
 Description: Learn how to use Azure Developer CLI environment management to provision and manage dev, staging, and production environments with consistent infrastructure templates.
 

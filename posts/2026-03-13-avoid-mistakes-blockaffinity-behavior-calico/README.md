@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, block-affinity, kubernetes, networking, ip-management
+Tags: Calico, IPAM, Block-affinity, Kubernetes, Networking, Ip-management
 
 Description: Understand how Calico block affinity works and avoid common mistakes in configuration and troubleshooting that arise from misunderstanding how IP blocks are assigned and retained per node.
 
@@ -10,7 +10,7 @@ Description: Understand how Calico block affinity works and avoid common mistake
 
 ## Introduction
 
-Calico IPAM allocates IP addresses by assigning fixed-size "blocks" of IP space to nodes. Each block has an "affinity" to a node, meaning that node has priority to allocate IPs from that block. Understanding block affinity — including when blocks are created, retained, and released — is essential for diagnosing IP exhaustion issues and unexpected IP allocation behavior.
+Calico IPAM allocates IP addresses by assigning fixed-size "blocks" of IP space to nodes. Each block has an "affinity" to a node, meaning that node has priority to allocate IPs from that block. Understanding block affinity - including when blocks are created, retained, and released - is essential for diagnosing IP exhaustion issues and unexpected IP allocation behavior.
 
 Common mistakes arise when operators expect blocks to be returned to the pool when nodes scale down (they are not, by default), when they do not account for borrowed blocks, or when they misinterpret `calicoctl ipam show` output. This post clarifies the block affinity model and shows how to manage it correctly.
 
@@ -39,9 +39,9 @@ calicoctl ipam show --show-blocks
 # This happens when a node's own blocks are full
 ```
 
-## Step 2: Mistake — Expecting Blocks to Be Released on Node Deletion
+## Step 2: Mistake - Expecting Blocks to Be Released on Node Deletion
 
-A common mistake is expecting that when a node is deleted, its IP blocks are immediately returned to the pool. They are not — Calico marks blocks as having "no affinity" but does not automatically release them.
+A common mistake is expecting that when a node is deleted, its IP blocks are immediately returned to the pool. They are not - Calico marks blocks as having "no affinity" but does not automatically release them.
 
 ```bash
 # Check for orphaned blocks (blocks with no live node affinity)
@@ -57,7 +57,7 @@ calicoctl ipam release --ip=10.0.1.0 --block
 calicoctl ipam check --remove-extra-nodes
 ```
 
-## Step 3: Mistake — Ignoring Borrowed Blocks
+## Step 3: Mistake - Ignoring Borrowed Blocks
 
 When a node's affine blocks are full, it "borrows" IPs from other nodes' blocks. Borrowed IPs can cause routing inefficiencies and confuse monitoring.
 
@@ -72,7 +72,7 @@ metadata:
 spec:
   cidr: 10.244.0.0/16
   # Increase blockSize from /26 (64 IPs) to /25 (128 IPs) to reduce borrowing
-  # IMPORTANT: blockSize cannot be changed on an existing pool — create a new pool
+  # IMPORTANT: blockSize cannot be changed on an existing pool - create a new pool
   blockSize: 25
   ipipMode: Never
   vxlanMode: CrossSubnet
@@ -88,7 +88,7 @@ calicoctl ipam show --show-blocks | grep -v "0$"
 kubectl get node <node-name> -o jsonpath='{.status.capacity.pods}'
 ```
 
-## Step 4: Mistake — Multiple Blocks per Node Without Understanding Why
+## Step 4: Mistake - Multiple Blocks per Node Without Understanding Why
 
 A node can have multiple affine blocks. This happens when the first block fills up and Calico allocates a second one. Some operators are surprised by this and mistakenly try to consolidate.
 
@@ -97,7 +97,7 @@ A node can have multiple affine blocks. This happens when the first block fills 
 calicoctl ipam show --show-blocks | grep "node-01"
 
 # Multiple blocks on one node is normal and expected behavior
-# Do NOT attempt to manually consolidate blocks — this can cause pod IP loss
+# Do NOT attempt to manually consolidate blocks - this can cause pod IP loss
 
 # The number of blocks a node holds = ceil(max_pods / block_size)
 # For max_pods=110 and blockSize=/26 (64 IPs): ceil(110/64) = 2 blocks
@@ -126,10 +126,10 @@ calicoctl ipam show
 
 - Run `calicoctl ipam check` after every node scaling event to catch orphaned blocks early.
 - Set `blockSize` based on your `max-pods-per-node` kubelet setting: use `blockSize = ceil(log2(max_pods + buffer))`.
-- Monitor borrowed IP counts in your metrics system — consistent borrowing indicates blockSize needs to increase.
+- Monitor borrowed IP counts in your metrics system - consistent borrowing indicates blockSize needs to increase.
 - Never manually delete block affinities without first verifying no pods are using IPs from that block.
 - When decommissioning nodes, always drain and delete them properly through Kubernetes to trigger Calico's cleanup process.
 
 ## Conclusion
 
-Calico block affinity is an efficient IP allocation mechanism, but it requires understanding the lifecycle of blocks — particularly that they persist after node deletion and that borrowing across blocks is normal. By monitoring block utilization, running regular IPAM checks, and sizing blocks correctly for your max-pods setting, you avoid the most common block affinity-related issues.
+Calico block affinity is an efficient IP allocation mechanism, but it requires understanding the lifecycle of blocks - particularly that they persist after node deletion and that borrowing across blocks is normal. By monitoring block utilization, running regular IPAM checks, and sizing blocks correctly for your max-pods setting, you avoid the most common block affinity-related issues.

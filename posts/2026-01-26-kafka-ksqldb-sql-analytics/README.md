@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, ksqlDB, SQL, Stream Processing, Real-Time Analytics
+Tags: Kafka, KsqlDB, SQL, Stream Processing, Real-Time Analytics
 
 Description: Use ksqlDB to analyze Kafka streams with SQL, building real-time dashboards, aggregations, and materialized views without writing code.
 

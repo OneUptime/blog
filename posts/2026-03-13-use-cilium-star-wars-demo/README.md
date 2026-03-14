@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, Tutorial
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A step-by-step guide to running the Cilium Star Wars demo from deployment through L7 policy enforcement.
 
@@ -12,7 +12,7 @@ Description: A step-by-step guide to running the Cilium Star Wars demo from depl
 
 The Cilium Star Wars demo is the fastest way to experience Cilium's network policy capabilities hands-on. In roughly fifteen minutes, you can deploy the demo application, observe unrestricted access, apply progressively restrictive policies, and watch Cilium enforce them in real time. This guide walks you through each step of the demo with the actual commands you need to run.
 
-The demo is designed to be run on a local cluster (minikube or kind) or any Kubernetes environment where Cilium is installed as the CNI. Each stage of the demo builds on the last, so it is best to follow the steps in order rather than jumping ahead. Pay attention to the output of each `curl` command — the difference between a successful landing request and a dropped connection is the entire point.
+The demo is designed to be run on a local cluster (minikube or kind) or any Kubernetes environment where Cilium is installed as the CNI. Each stage of the demo builds on the last, so it is best to follow the steps in order rather than jumping ahead. Pay attention to the output of each `curl` command - the difference between a successful landing request and a dropped connection is the entire point.
 
 This tutorial is intentionally hands-on. Rather than describing what the demo does abstractly, this guide puts you in the pilot's seat.
 

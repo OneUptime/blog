@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, High Availability, vSphere, Automation
+Tags: Ansible, VMware, High Availability, VSphere, Automation
 
 Description: Learn how to configure VMware High Availability clusters using Ansible playbooks for automated failover and uptime guarantees.
 

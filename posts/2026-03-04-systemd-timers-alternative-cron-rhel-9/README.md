@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd Timers, Cron Alternative, Scheduling, Linux
+Tags: RHEL, Systemd Timers, Cron Alternative, Scheduling, Linux
 
 Description: Learn how to use systemd timers on RHEL to schedule recurring tasks with better logging, dependency management, and resource control than traditional cron jobs.
 

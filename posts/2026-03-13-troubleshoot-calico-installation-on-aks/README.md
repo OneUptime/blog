@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aks, azure, kubernetes, installation, troubleshooting
+Tags: Calico, Kubernetes, Networking, Troubleshooting, AKS, Azure
 
 Description: A guide to diagnosing and resolving common issues when installing Calico as the network policy engine on Azure Kubernetes Service (AKS) clusters.
 
@@ -126,7 +126,7 @@ kubectl exec -n policy-test client -- wget -qO- --timeout=5 http://server.policy
 - Use the AKS-specific Calico manifests rather than generic Kubernetes manifests
 - Monitor Calico node pod restarts after installation as an indicator of configuration issues
 - Test network policy enforcement immediately after installation before adding workloads
-- Review AKS release notes when upgrading—Calico compatibility can change
+- Review AKS release notes when upgrading-Calico compatibility can change
 
 ## Conclusion
 

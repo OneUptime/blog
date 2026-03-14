@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Date Formatting, Time Functions, formatdate, Infrastructure as Code
+Tags: Terraform, Date Formatting, Time Functions, Formatdate, Infrastructure as Code
 
 Description: A comprehensive guide to formatting dates and times in Terraform using formatdate, timestamp, and related functions for tags, names, and configuration values.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, SQL Server, GitOps, Databases, StatefulSet
+Tags: Flux CD, Kubernetes, Windows Containers, SQL Server, GitOps, Database
 
 Description: Deploy SQL Server in Windows containers to Kubernetes using Flux CD, with persistent storage, secrets management, and backup configuration.
 
@@ -251,7 +251,7 @@ spec:
       namespace: sql-server-windows
 ```
 
-Note `prune: false` — never let Flux automatically delete a SQL Server StatefulSet.
+Note `prune: false` - never let Flux automatically delete a SQL Server StatefulSet.
 
 ## Step 6: Configure Automated Backups
 
@@ -302,11 +302,11 @@ spec:
 
 - Use `prune: false` on SQL Server Kustomizations to prevent accidental data loss from Flux pruning.
 - Always use `volumeClaimTemplates` in the StatefulSet for persistent data, log, and backup volumes.
-- Use fast SSD storage (Premium or NVMe) for SQL data and log volumes — SQL Server is I/O intensive.
-- Never store SA passwords in ConfigMaps — use Sealed Secrets or External Secrets Operator.
+- Use fast SSD storage (Premium or NVMe) for SQL data and log volumes - SQL Server is I/O intensive.
+- Never store SA passwords in ConfigMaps - use Sealed Secrets or External Secrets Operator.
 - Set `initialDelaySeconds` to at least 180 seconds for SQL Server readiness probes.
 - Implement automated daily backups using a CronJob and copy backups to object storage for durability.
 
 ## Conclusion
 
-SQL Server on Windows containers in Kubernetes, managed by Flux CD, gives you the operational benefits of Kubernetes — declarative configuration, rolling updates, health monitoring — for your Windows SQL Server workloads. The StatefulSet provides stable storage and network identity, while Flux ensures the configuration is always as defined in Git. The most critical consideration is setting `prune: false` to protect your data from accidental deletion, and using Sealed Secrets for the SA password.
+SQL Server on Windows containers in Kubernetes, managed by Flux CD, gives you the operational benefits of Kubernetes - declarative configuration, rolling updates, health monitoring - for your Windows SQL Server workloads. The StatefulSet provides stable storage and network identity, while Flux ensures the configuration is always as defined in Git. The most critical consideration is setting `prune: false` to protect your data from accidental deletion, and using Sealed Secrets for the SA password.

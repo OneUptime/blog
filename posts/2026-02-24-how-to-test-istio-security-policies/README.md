@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Authorization, mTLS, Testing, Kubernetes
+Tags: Istio, Security, Authorization, MTLS, Testing, Kubernetes
 
 Description: Practical techniques for testing Istio security policies including AuthorizationPolicies, PeerAuthentication, and RequestAuthentication in a Kubernetes cluster.
 

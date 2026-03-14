@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Wireshark, Network Monitoring, tcpdump, Linux
+Tags: RHEL, Wireshark, Network Monitoring, Tcpdump, Linux
 
 Description: Learn how to capture and Analyze Network Traffic with tcpdump and Wireshark on RHEL with step-by-step instructions, configuration examples, and best practices.
 

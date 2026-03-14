@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Networking, Bridge, NAT, macvtap, Virtualization, Linux
+Tags: RHEL, KVM, Networking, Bridge, NAT, Macvtap, Virtualization, Linux
 
 Description: Learn how to configure different virtual machine networking modes on RHEL, including bridged, NAT, and macvtap, to match your connectivity requirements.
 

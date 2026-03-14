@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, VPN, strongSwan, IKEv2, IPsec
+Tags: Ubuntu, VPN, StrongSwan, IKEv2, IPsec
 
 Description: Step-by-step guide to deploying an IKEv2 VPN server on Ubuntu using strongSwan, with certificate-based authentication compatible with Windows, macOS, iOS, and Android clients.
 

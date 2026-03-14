@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, systemd, journalctl, System Administration
+Tags: Ubuntu, Logging, Systemd, Journalctl, System Administration
 
 Description: Master journalctl on Ubuntu to efficiently query, filter, and analyze systemd journal logs using time ranges, service names, priority levels, and output formats.
 

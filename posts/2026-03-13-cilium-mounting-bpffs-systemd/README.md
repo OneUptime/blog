@@ -1,8 +1,8 @@
-# Mounting BPF Filesystem with systemd for Cilium: Configure, Troubleshoot, Validate, and Monitor
+# Mounting BPF Filesystem with systemd for Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, systemd, Linux
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to persistently mount the BPF filesystem using systemd for Cilium deployments, ensuring eBPF maps survive node reboots and preventing Cilium initialization failures on fresh nodes.
 

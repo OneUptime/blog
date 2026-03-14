@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, TLS, Security, Networking, stunnel
+Tags: Ubuntu, TLS, Security, Networking, Stunnel
 
 Description: Learn how to install and configure stunnel on Ubuntu to add TLS encryption to protocols that don't natively support it, including Redis, SMTP, and custom TCP services.
 

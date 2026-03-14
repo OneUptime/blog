@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, GRPCRoute, gRPC, Kubernetes
+Tags: Istio, Gateway API, GRPCRoute, GRPC, Kubernetes
 
 Description: A practical guide to configuring GRPCRoute resources with Istio and the Kubernetes Gateway API for routing gRPC traffic based on service names, methods, and headers.
 

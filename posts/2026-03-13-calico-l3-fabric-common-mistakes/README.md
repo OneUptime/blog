@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, L3, BGP, Networking, Troubleshooting, Best Practices, Routing
 
-Description: Common BGP routing mistakes in Calico deployments — from session flapping to AS number conflicts — and how to diagnose and prevent them.
+Description: Common BGP routing mistakes in Calico deployments - from session flapping to AS number conflicts - and how to diagnose and prevent them.
 
 ---
 
 ## Introduction
 
-BGP routing mistakes in Calico tend to have larger blast radii than overlay mistakes — a misconfigured BGP setup can cause routing failures across an entire cluster or disrupt your organization's existing BGP infrastructure. Understanding the common mistakes and their early warning signs is essential for operating L3 BGP mode safely in production.
+BGP routing mistakes in Calico tend to have larger blast radii than overlay mistakes - a misconfigured BGP setup can cause routing failures across an entire cluster or disrupt your organization's existing BGP infrastructure. Understanding the common mistakes and their early warning signs is essential for operating L3 BGP mode safely in production.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ If you choose a BGP AS number (for your Calico cluster) that conflicts with an e
 2. Use a private AS range (64512-65534 for 16-bit, 4200000000-4294967294 for 32-bit)
 3. Document the allocation
 
-## Mistake 2: Single Route Reflector — No High Availability
+## Mistake 2: Single Route Reflector - No High Availability
 
 Deploying only one route reflector means it is a single point of failure for all routing in the cluster. When the route reflector node is drained, upgraded, or fails, all BGP sessions that peer with it are lost.
 
@@ -65,7 +65,7 @@ Disable the mesh AFTER configuring route reflectors and confirming all nodes are
 
 ## Mistake 4: BGP Session Flapping
 
-BGP sessions that repeatedly establish and drop cause route instability — routes appear and disappear, causing intermittent connectivity failures.
+BGP sessions that repeatedly establish and drop cause route instability - routes appear and disappear, causing intermittent connectivity failures.
 
 **Symptom**: Cross-node connectivity is intermittent. `birdcl show protocols all` shows session uptime is short (seconds or minutes).
 
@@ -73,7 +73,7 @@ BGP sessions that repeatedly establish and drop cause route instability — rout
 ```bash
 kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
   -- birdcl show protocols all | grep -A5 "BGP"
-# Look for "session uptime" — should be days/hours, not seconds
+# Look for "session uptime" - should be days/hours, not seconds
 ```
 
 **Common causes**:
@@ -90,7 +90,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
 
 ## Mistake 5: Advertising Pod Routes to External Network Without Firewall ACLs
 
-Advertising pod CIDR routes externally (so external systems can reach pod IPs directly) without updating firewall ACLs creates a security gap — external systems that were previously unable to reach your pods can now do so directly.
+Advertising pod CIDR routes externally (so external systems can reach pod IPs directly) without updating firewall ACLs creates a security gap - external systems that were previously unable to reach your pods can now do so directly.
 
 **Symptom**: Security audit discovers that external systems can reach pod IPs that should be internal-only.
 
@@ -102,8 +102,8 @@ Advertising pod CIDR routes externally (so external systems can reach pod IPs di
 ## Best Practices
 
 - Coordinate AS number allocation with your network team before any BGP deployment
-- Deploy route reflectors before disabling node-to-node mesh — never disable mesh without replacements ready
-- Monitor BGP session uptime as a metric — alert if any session has been up for less than 10 minutes (indicates recent flapping)
+- Deploy route reflectors before disabling node-to-node mesh - never disable mesh without replacements ready
+- Monitor BGP session uptime as a metric - alert if any session has been up for less than 10 minutes (indicates recent flapping)
 - Never advertise pod routes externally without security review and ACL implementation
 
 ## Conclusion

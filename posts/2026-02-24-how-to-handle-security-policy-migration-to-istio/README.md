@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Kubernetes, mTLS, Authorization, Service Mesh
+Tags: Istio, Security, Kubernetes, MTLS, Authorization, Service Mesh
 
 Description: A practical guide to migrating your existing Kubernetes security policies to Istio including mTLS, authorization policies, and network policies.
 

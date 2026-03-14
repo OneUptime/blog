@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, cidr, planning, kubernetes, networking, ipam, testing
+Tags: Calico, CIDR, Planning, Kubernetes, Networking, IPAM, Testing
 
 Description: Validate your Kubernetes node CIDR planning in combination with Calico IPAM to ensure sufficient address space for your cluster size and avoid common IP exhaustion scenarios.
 
@@ -10,7 +10,7 @@ Description: Validate your Kubernetes node CIDR planning in combination with Cal
 
 ## Introduction
 
-Node CIDR planning is the process of allocating IP address ranges for Kubernetes node-level networking — the IPs assigned to the nodes themselves — in coordination with the pod CIDR used by Calico IPAM for pod IP assignment. Poor CIDR planning leads to unexpected IP exhaustion, routing conflicts between node IPs and pod IPs, or insufficient capacity when the cluster scales.
+Node CIDR planning is the process of allocating IP address ranges for Kubernetes node-level networking - the IPs assigned to the nodes themselves - in coordination with the pod CIDR used by Calico IPAM for pod IP assignment. Poor CIDR planning leads to unexpected IP exhaustion, routing conflicts between node IPs and pod IPs, or insufficient capacity when the cluster scales.
 
 The Kubernetes `--cluster-cidr` flag and Calico's IP pool CIDR must be coordinated carefully. The cluster CIDR (used by kube-controller-manager to assign per-node pod CIDRs in some configurations) must be distinct from node IP ranges and service CIDRs. When Calico manages IPAM directly (as it does in most deployments), the coordination is between Calico IP pool CIDRs and the rest of your network addressing.
 
@@ -178,12 +178,12 @@ kubectl delete deployment cidr-scale-test
 
 ## Best Practices
 
-- Plan for at least 3 years of cluster growth when sizing CIDRs — CIDR migrations are high-risk and disruptive
+- Plan for at least 3 years of cluster growth when sizing CIDRs - CIDR migrations are high-risk and disruptive
 - Add at least 50% buffer above the expected maximum pod count to handle burst scaling and block fragmentation
 - Reserve separate, non-overlapping CIDRs for pods, services, and nodes with clear documentation of each range's purpose
 - Verify CIDR plans with network architects who have visibility into existing on-premises routing tables and planned network expansions
 - Set up Prometheus alerts for pod CIDR utilization at 70% and 85% thresholds to give adequate warning before exhaustion
-- Test CIDR calculations with actual Calico block size settings — the usable IPs per block is slightly less than the theoretical maximum
+- Test CIDR calculations with actual Calico block size settings - the usable IPs per block is slightly less than the theoretical maximum
 
 ## Conclusion
 

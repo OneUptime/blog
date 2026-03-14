@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debug, Troubleshooting, Ephemeral Containers
+Tags: Kubernetes, Kubectl, Debug, Troubleshooting, Ephemeral Containers
 
 Description: Learn how to use kubectl debug to troubleshoot running pods, crashed pods, and node issues with ephemeral debug containers.
 

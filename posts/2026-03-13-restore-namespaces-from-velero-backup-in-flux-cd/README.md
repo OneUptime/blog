@@ -10,7 +10,7 @@ Description: Restore Kubernetes namespaces from Velero backups in a Flux CD mana
 
 ## Introduction
 
-Restoring from a Velero backup in a Flux CD managed cluster requires careful coordination. Velero and Flux both manage Kubernetes resources, and a naive restore can conflict with Flux's continuous reconciliation. Understanding the correct restore procedure prevents Flux from immediately overwriting a Velero restore with the GitOps state—or conversely, preventing Velero from restoring resources that Flux manages.
+Restoring from a Velero backup in a Flux CD managed cluster requires careful coordination. Velero and Flux both manage Kubernetes resources, and a naive restore can conflict with Flux's continuous reconciliation. Understanding the correct restore procedure prevents Flux from immediately overwriting a Velero restore with the GitOps state-or conversely, preventing Velero from restoring resources that Flux manages.
 
 The key principle is: Flux manages the desired state from Git, and Velero restores actual resource state from a point-in-time snapshot. These are complementary, not competing, when used correctly. This guide covers the restore workflow for different scenarios: restoring a deleted namespace, restoring to a new cluster, and restoring specific resources.
 

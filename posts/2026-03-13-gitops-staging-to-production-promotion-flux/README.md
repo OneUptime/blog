@@ -12,7 +12,7 @@ Description: Promote application versions from staging to production using a Git
 
 Promotion is the act of moving a validated application version from one environment to the next. In a GitOps workflow, promotion means updating the Git repository to declare that production should run a version that has already been validated in staging. Flux then reconciles production to match.
 
-The key insight is that promotion should be a Git operation, not a script that directly modifies a running cluster. When you promote by updating Git, every promotion is recorded, reviewable, and reversible. You also get a clear paper trail showing which version was in staging, when it was validated, and when it was promoted to production — exactly what change management audits require.
+The key insight is that promotion should be a Git operation, not a script that directly modifies a running cluster. When you promote by updating Git, every promotion is recorded, reviewable, and reversible. You also get a clear paper trail showing which version was in staging, when it was validated, and when it was promoted to production - exactly what change management audits require.
 
 This guide uses Kustomize overlays to separate staging and production configuration, and shows how to implement promotion via a CI workflow that opens a PR updating the production image tag.
 
@@ -25,7 +25,7 @@ This guide uses Kustomize overlays to separate staging and production configurat
 
 ## Step 1: Structure Your Repository with Kustomize Overlays
 
-```
+```plaintext
 fleet-infra/
 ├── apps/
 │   └── my-app/
@@ -224,7 +224,7 @@ flux events --for Kustomization/my-app-production
 
 ## Best Practices
 
-- Never update the production image tag directly — always go through a PR so the promotion has a record and a reviewer.
+- Never update the production image tag directly - always go through a PR so the promotion has a record and a reviewer.
 - Add a mandatory waiting period or explicit staging sign-off step before the promotion bot opens the production PR. Automated promotion that is too eager can promote a version that passed CI but failed real traffic.
 - Use semantic version tags (not `latest`) so every promotion references an immutable, traceable artifact.
 - Include the staging deployment timestamp in the promotion PR description so reviewers can see how long the version has been running in staging.
@@ -232,4 +232,4 @@ flux events --for Kustomization/my-app-production
 
 ## Conclusion
 
-Staging-to-production promotion with Flux CD and Kustomize overlays gives you a repeatable, auditable process for advancing validated versions through your environments. By automating the promotion PR with CI and requiring human approval before merging, you get the speed of automation with the safety of review — and every promotion is permanently recorded in Git history.
+Staging-to-production promotion with Flux CD and Kustomize overlays gives you a repeatable, auditable process for advancing validated versions through your environments. By automating the promotion PR with CI and requiring human approval before merging, you get the speed of automation with the safety of review - and every promotion is permanently recorded in Git history.

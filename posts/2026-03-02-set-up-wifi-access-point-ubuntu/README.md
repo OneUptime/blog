@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, WiFi, Networking, hostapd, Access Point
+Tags: Ubuntu, WiFi, Networking, Hostapd, Access Point
 
 Description: Learn how to configure Ubuntu as a WiFi access point using hostapd and dnsmasq, with NAT routing to share an internet connection wirelessly.
 

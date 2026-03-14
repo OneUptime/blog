@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, runas, Privilege Escalation, DevOps
+Tags: Ansible, Windows, Runas, Privilege Escalation, DevOps
 
 Description: Configure Ansible become with the runas plugin to execute tasks as different Windows users for service management and administration
 

@@ -12,7 +12,7 @@ Description: Recover from accidental namespace deletion in a Flux-managed cluste
 
 Accidental namespace deletion is one of the most common operator mistakes in Kubernetes. A single `kubectl delete namespace production` can take down dozens of Deployments, Services, ConfigMaps, and PersistentVolumeClaims in seconds. Without GitOps, recovery means hunting through backup systems and hoping your documentation is current.
 
-With Flux CD, the situation is dramatically different. Your desired state lives in Git, and Flux's reconciliation loop is designed to converge the cluster toward that state. However, recovery is not always automatic — especially if the deleted namespace contained Flux resources themselves or if `prune: true` complicates the picture.
+With Flux CD, the situation is dramatically different. Your desired state lives in Git, and Flux's reconciliation loop is designed to converge the cluster toward that state. However, recovery is not always automatic - especially if the deleted namespace contained Flux resources themselves or if `prune: true` complicates the picture.
 
 This guide covers the mechanics of namespace-level recovery, explains when Flux will self-heal and when you need to intervene, and gives you concrete commands to restore operations quickly.
 
@@ -46,7 +46,7 @@ Look for Kustomizations showing `False` ready status with errors referencing the
 
 ## Step 2: Recreate the Namespace
 
-Flux's `prune: true` setting means Flux will delete resources it no longer sees in Git — but it does not delete namespaces it does not own. Recreate the namespace manually first.
+Flux's `prune: true` setting means Flux will delete resources it no longer sees in Git - but it does not delete namespaces it does not own. Recreate the namespace manually first.
 
 ```bash
 kubectl create namespace production
@@ -57,7 +57,7 @@ kubectl label namespace production \
   istio-injection=enabled
 ```
 
-If the namespace definition is tracked in Git as a manifest, Flux will reconcile it automatically once the Kustomization is healthy — but creating it manually unblocks the reconciliation immediately.
+If the namespace definition is tracked in Git as a manifest, Flux will reconcile it automatically once the Kustomization is healthy - but creating it manually unblocks the reconciliation immediately.
 
 ## Step 3: Force Flux Reconciliation
 
@@ -142,7 +142,7 @@ curl -f https://my-app.example.com/health
 ## Best Practices
 
 - Add namespace manifests to your Git repository so they are version-controlled and Flux-managed.
-- Use RBAC to restrict who can delete namespaces — require a separate approval step for production namespaces.
+- Use RBAC to restrict who can delete namespaces - require a separate approval step for production namespaces.
 - Configure PersistentVolumes with `reclaimPolicy: Retain` to protect data from accidental deletion.
 - Set up alerts on namespace deletion events using an audit log webhook.
 - Test namespace recovery quarterly as part of your disaster recovery drills.

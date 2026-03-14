@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Performance, Optimization
 
 Description: Techniques for optimizing Calico etcd TLS certificate configuration to reduce connection establishment overhead and improve throughput between Calico components and etcd.
 
@@ -10,7 +10,7 @@ Description: Techniques for optimizing Calico etcd TLS certificate configuration
 
 ## Introduction
 
-TLS certificate configuration affects more than just security — it also impacts the performance of every connection that Calico components establish with etcd. Certificate chain length, key algorithm choice, session resumption configuration, and the frequency of certificate rotation all contribute to the latency and CPU cost of Calico's etcd communication.
+TLS certificate configuration affects more than just security - it also impacts the performance of every connection that Calico components establish with etcd. Certificate chain length, key algorithm choice, session resumption configuration, and the frequency of certificate rotation all contribute to the latency and CPU cost of Calico's etcd communication.
 
 In high-throughput clusters where Felix, the CNI plugin, and the API server make frequent etcd requests, these small per-connection costs can accumulate into measurable performance overhead. Optimizing certificate configuration reduces this overhead without compromising security.
 

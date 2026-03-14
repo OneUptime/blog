@@ -23,7 +23,7 @@ This GitOps approach to cluster lifecycle management provides a complete audit t
 
 ## Step 1: Repository Structure for Multi-Cluster Management
 
-```
+```plaintext
 clusters/
 ├── management/              # Management cluster's own Flux config
 │   └── workloads/           # Kustomizations for each workload cluster
@@ -213,4 +213,4 @@ clusterctl describe cluster production-01 -n default
 
 ## Conclusion
 
-The full Kubernetes cluster lifecycle—creation, upgrade, scaling, and decommissioning—is now managed through Cluster API and Flux CD. Every lifecycle operation is a Git commit, making the process reviewable, auditable, and reproducible. The management cluster becomes the authoritative source of truth for all workload cluster configurations across the fleet.
+The full Kubernetes cluster lifecycle-creation, upgrade, scaling, and decommissioning-is now managed through Cluster API and Flux CD. Every lifecycle operation is a Git commit, making the process reviewable, auditable, and reproducible. The management cluster becomes the authoritative source of truth for all workload cluster configurations across the fleet.

@@ -10,7 +10,7 @@ Description: A comprehensive guide to how Calico handles ingress traffic control
 
 ## Introduction
 
-Ingress traffic — traffic arriving at a pod from any source — is the attack surface that network policy was designed to protect. Calico provides multiple layers of ingress control: Kubernetes NetworkPolicy ingress rules, Calico's extended NetworkPolicy with more expressive selectors, GlobalNetworkPolicy for cluster-wide rules, and HostEndpoint policies for traffic arriving at the node itself.
+Ingress traffic - traffic arriving at a pod from any source - is the attack surface that network policy was designed to protect. Calico provides multiple layers of ingress control: Kubernetes NetworkPolicy ingress rules, Calico's extended NetworkPolicy with more expressive selectors, GlobalNetworkPolicy for cluster-wide rules, and HostEndpoint policies for traffic arriving at the node itself.
 
 Understanding Calico ingress means understanding both which traffic flows are subject to policy enforcement and which Calico resources control each type of flow. This post covers the ingress control model from pod-level to cluster-level.
 
@@ -22,7 +22,7 @@ Understanding Calico ingress means understanding both which traffic flows are su
 
 ## The Default Ingress Posture
 
-Without any NetworkPolicy, Kubernetes allows all ingress to all pods. This means any pod can receive connections from any other pod or from external sources (depending on service type). Calico inherits this default — no policy means all traffic is allowed.
+Without any NetworkPolicy, Kubernetes allows all ingress to all pods. This means any pod can receive connections from any other pod or from external sources (depending on service type). Calico inherits this default - no policy means all traffic is allowed.
 
 The correct production default is a deny-all ingress policy per namespace, with explicit allow rules for legitimate ingress:
 
@@ -118,7 +118,7 @@ For Calico eBPF mode, source IP preservation works regardless of `externalTraffi
 
 - Apply a default-deny-ingress NetworkPolicy to every namespace at namespace creation
 - Use Calico GlobalNetworkPolicy (not Kubernetes NetworkPolicy) for cluster-wide baseline rules
-- Test ingress policy with explicit connectivity tests — a missing allow rule causes silent connection drops
+- Test ingress policy with explicit connectivity tests - a missing allow rule causes silent connection drops
 - Use `order` on GlobalNetworkPolicies to ensure they are evaluated before namespace-level policies
 
 ## Conclusion

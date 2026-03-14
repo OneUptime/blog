@@ -1,4 +1,4 @@
-# How to Deploy TiDB Operator with Flux CD
+# How to Deploy TiDB Operator with Flux CD - 2026-03-13
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,9 +10,9 @@ Description: Deploy the TiDB Operator for distributed HTAP database on Kubernete
 
 ## Introduction
 
-TiDB is an open-source distributed SQL database by PingCAP that supports Hybrid Transactional and Analytical Processing (HTAP). It is MySQL-compatible for OLTP workloads and includes TiFlash — a columnar storage engine — for real-time OLAP queries without ETL. TiDB separates storage (TiKV for row storage, TiFlash for columnar) from compute (TiDB servers), allowing independent scaling of each tier.
+TiDB is an open-source distributed SQL database by PingCAP that supports Hybrid Transactional and Analytical Processing (HTAP). It is MySQL-compatible for OLTP workloads and includes TiFlash - a columnar storage engine - for real-time OLAP queries without ETL. TiDB separates storage (TiKV for row storage, TiFlash for columnar) from compute (TiDB servers), allowing independent scaling of each tier.
 
-The TiDB Operator manages TiDB clusters on Kubernetes through the `TidbCluster` CRD. Deploying through Flux CD gives you GitOps control over each cluster component's replicas, resources, and configuration — critical for a complex multi-tier system like TiDB.
+The TiDB Operator manages TiDB clusters on Kubernetes through the `TidbCluster` CRD. Deploying through Flux CD gives you GitOps control over each cluster component's replicas, resources, and configuration - critical for a complex multi-tier system like TiDB.
 
 ## Prerequisites
 
@@ -250,11 +250,11 @@ mysql -h 127.0.0.1 -P 4000 -u root -e "SELECT * FROM information_schema.cluster_
 ## Best Practices
 
 - Run 3 PD replicas for Raft quorum and 3 TiKV replicas for data replication factor of 3.
-- Run TiDB SQL servers as stateless Deployments — scale them horizontally for more query throughput.
+- Run TiDB SQL servers as stateless Deployments - scale them horizontally for more query throughput.
 - Set `slow-threshold: 300` (300ms) in TiDB config to capture slow queries for optimization.
-- Use TiFlash for aggregation and analytical queries — add `/*+ READ_FROM_STORAGE(TIFLASH[table_name]) */` hints or enable tiflash replicas via DDL.
+- Use TiFlash for aggregation and analytical queries - add `/*+ READ_FROM_STORAGE(TIFLASH[table_name]) */` hints or enable tiflash replicas via DDL.
 - Monitor TiDB with the official Grafana dashboards available in the PingCAP Helm chart (`tidb-cluster.grafana`).
 
 ## Conclusion
 
-The TiDB Operator deployed via Flux CD gives you a GitOps-managed HTAP database that handles both transactional and analytical workloads without separate ETL pipelines. TiDB's MySQL compatibility means existing applications connect with minimal changes. With Flux managing all components — PD, TiDB, TiKV, and TiFlash — your HTAP cluster configuration is version-controlled and automatically reconciled, giving you the operational consistency required for mission-critical data infrastructure.
+The TiDB Operator deployed via Flux CD gives you a GitOps-managed HTAP database that handles both transactional and analytical workloads without separate ETL pipelines. TiDB's MySQL compatibility means existing applications connect with minimal changes. With Flux managing all components - PD, TiDB, TiKV, and TiFlash - your HTAP cluster configuration is version-controlled and automatically reconciled, giving you the operational consistency required for mission-critical data infrastructure.

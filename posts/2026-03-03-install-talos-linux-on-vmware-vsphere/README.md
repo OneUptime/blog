@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VMware, vSphere, Kubernetes, Virtualization
+Tags: Talos Linux, VMware, VSphere, Kubernetes, Virtualization
 
 Description: A step-by-step guide to deploying Talos Linux on VMware vSphere using OVA templates for a production Kubernetes cluster.
 

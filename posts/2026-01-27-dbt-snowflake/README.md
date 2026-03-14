@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Snowflake, Data Engineering, Analytics Engineering, SQL, Data Warehouse, ELT, Data Transformation
+Tags: Dbt, Snowflake, Data Engineering, Analytics Engineering, SQL, Data Warehouse, ELT, Data Transformation
 
 Description: A comprehensive guide to configuring and using dbt with Snowflake, covering profiles.yml setup, clustering, transient tables, zero-copy cloning, and query tags for efficient data transformation.
 

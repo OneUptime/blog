@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, aks, cni, kubernetes, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Learn how to configure Azure CNI with Cilium as the network policy engine on Azure Kubernetes Service, combining Azure's native networking with Cilium's advanced policy capabilities.
 
@@ -64,7 +64,7 @@ az aks get-credentials \
 # Verify nodes are Ready
 kubectl get nodes
 
-# Check Cilium status — all agents should be OK
+# Check Cilium status - all agents should be OK
 cilium status
 
 # Verify Cilium DaemonSet is running on all nodes
@@ -134,7 +134,7 @@ cilium hubble ui
 
 ## Best Practices
 
-- Use Azure CNI Overlay mode to conserve VNet IP space — pods get IPs from a private overlay range
+- Use Azure CNI Overlay mode to conserve VNet IP space - pods get IPs from a private overlay range
 - Enable Hubble from the start to gain visibility into network flows before issues arise
 - Use `CiliumClusterwideNetworkPolicy` for cluster-wide baseline security rules
 - Monitor Cilium agent health using Azure Monitor and the Cilium Prometheus metrics

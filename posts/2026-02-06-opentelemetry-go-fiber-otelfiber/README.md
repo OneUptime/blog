@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Fiber, otelfiber, Web Framework, Tracing
+Tags: OpenTelemetry, Go, Fiber, Otelfiber, Web Framework, Tracing
 
 Description: Learn how to implement OpenTelemetry distributed tracing in Go Fiber applications using otelfiber middleware for comprehensive observability and performance monitoring.
 

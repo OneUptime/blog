@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificate Management, Security, PKI
+Tags: Istio, MTLS, Certificate Management, Security, PKI
 
 Description: Learn how to automate mTLS certificate rotation in Istio by integrating custom Certificate Authorities, configuring certificate lifetimes, and implementing zero-downtime rotation strategies.
 

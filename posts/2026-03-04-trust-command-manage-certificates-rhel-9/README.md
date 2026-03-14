@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, trust Command, Certificates, Security, Linux
+Tags: RHEL, Trust Command, Certificates, Security, Linux
 
 Description: A practical guide to using the p11-kit trust command on RHEL for listing, adding, removing, and modifying certificate trust settings.
 

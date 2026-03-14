@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: LLM, Debugging, AI/ML, Inference, Troubleshooting, vLLM, Ollama
+Tags: LLM, Debugging, AI/ML, Inference, Troubleshooting, VLLM, Ollama
 
 Description: A systematic approach to diagnosing and fixing common LLM inference problems including memory errors, slow generation, and unexpected outputs.
 

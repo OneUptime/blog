@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, sync.Once, Singleton, Initialization, Concurrency
+Tags: Go, Golang, Sync.Once, Singleton, Initialization, Concurrency
 
 Description: Learn how to use sync.Once in Go for thread-safe one-time initialization, implementing singletons, and lazy loading resources.
 

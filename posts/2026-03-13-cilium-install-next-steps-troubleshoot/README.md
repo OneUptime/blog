@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Installation, Troubleshooting, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A troubleshooting guide for common issues that arise during Cilium post-installation steps, including Hubble failures, policy issues, and connectivity test failures.
 
@@ -10,9 +10,9 @@ Description: A troubleshooting guide for common issues that arise during Cilium 
 
 ## Introduction
 
-Post-installation steps for Cilium — enabling Hubble, deploying network policies, configuring encryption — can each introduce new failure modes. Troubleshooting these failures requires understanding what each step changes in the cluster and what can go wrong. This guide covers the most common post-installation troubleshooting scenarios with specific diagnostic commands.
+Post-installation steps for Cilium - enabling Hubble, deploying network policies, configuring encryption - can each introduce new failure modes. Troubleshooting these failures requires understanding what each step changes in the cluster and what can go wrong. This guide covers the most common post-installation troubleshooting scenarios with specific diagnostic commands.
 
-The general troubleshooting principle for post-installation issues is regression isolation: identify which step introduced the problem by reverting or disabling it and testing connectivity. Cilium's modular design makes this practical — Hubble can be disabled without affecting networking, policies can be deleted to test baseline connectivity, and encryption can be disabled to isolate network issues.
+The general troubleshooting principle for post-installation issues is regression isolation: identify which step introduced the problem by reverting or disabling it and testing connectivity. Cilium's modular design makes this practical - Hubble can be disabled without affecting networking, policies can be deleted to test baseline connectivity, and encryption can be disabled to isolate network issues.
 
 ## Prerequisites
 

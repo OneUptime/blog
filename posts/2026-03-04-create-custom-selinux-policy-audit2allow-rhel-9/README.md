@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, audit2allow, Custom Policy, Linux
+Tags: RHEL, SELinux, Audit2allow, Custom Policy, Linux
 
 Description: Generate and install custom SELinux policy modules using audit2allow on RHEL when booleans and file contexts are not enough.
 

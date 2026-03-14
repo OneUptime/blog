@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Pruning, Garbage-Collection, Kubernetes, Migration
+Tags: Flux, Fluxcd, GitOps, Pruning, Garbage-Collection, Kubernetes, Migration
 
 Description: Learn how to safely remove Kubernetes resource manifests from your Git repository without triggering Flux garbage collection and deleting them from the cluster.
 

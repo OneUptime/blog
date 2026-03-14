@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, iptables, Firewall, Networking, Linux, Security, Configuration
+Tags: Docker, Iptables, Firewall, Networking, Linux, Security, Configuration
 
 Description: Learn when and how to disable Docker's automatic iptables management and handle container networking rules manually.
 

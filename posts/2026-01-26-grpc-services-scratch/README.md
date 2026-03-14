@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Microservices, API Development, Protocol Buffers, Backend Development
+Tags: GRPC, Microservices, API Development, Protocol Buffers, Backend Development
 
 Description: A step-by-step guide to building gRPC services from scratch, covering protocol buffers, service definitions, and client-server implementation.
 

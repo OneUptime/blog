@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Monitoring, Linux
+Tags: RHEL, Systemd, System Administration, Monitoring, Linux
 
 Description: Learn how to set Up systemd Watchdog Monitoring for Critical Services on RHEL with step-by-step instructions, configuration examples, and best practices.
 

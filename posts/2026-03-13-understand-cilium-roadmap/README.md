@@ -67,13 +67,13 @@ Cilium roadmap items typically fall into:
 1. **File detailed GitHub issues** describing the use case and impact
 2. **Attend weekly community meetings** and raise the topic
 3. **Submit an RFC** for significant feature proposals
-4. **Contribute code** — roadmap items with contributors advance faster
+4. **Contribute code** - roadmap items with contributors advance faster
 
 ## Tracking Specific Features
 
 Subscribe to a GitHub issue to receive notifications when it progresses:
 
-```
+```plaintext
 https://github.com/cilium/cilium/issues/<issue-number>
 ```
 

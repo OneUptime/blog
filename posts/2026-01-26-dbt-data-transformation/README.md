@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, Data Transformation, SQL, Analytics
+Tags: Dbt, Data Engineering, Data Transformation, SQL, Analytics
 
 Description: A beginner's guide to dbt for data transformation, covering models, tests, documentation, and building a modern analytics workflow.
 

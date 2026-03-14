@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting
 
 Description: Set up a complete eBPF troubleshooting toolkit for Calico, including bpftool, tcpdump for BPF programs, and Felix debug logging configuration.
 

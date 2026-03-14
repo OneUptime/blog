@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Monitoring, Prometheus, Networking, IP Pools
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Set up monitoring for Calico IPAM after pool splits — tracking IP utilization per pool, detecting exhaustion early, and alerting when IPAM consistency checks fail in a multi-pool cluster.
+Description: Set up monitoring for Calico IPAM after pool splits - tracking IP utilization per pool, detecting exhaustion early, and alerting when IPAM consistency checks fail in a multi-pool cluster.
 
 ---
 
 ## Introduction
 
-After splitting a Calico IP pool into zone-specific sub-pools, you need ongoing visibility into how each pool is being used. A pool that approaches exhaustion silently will start causing pod scheduling failures — not Typha issues, but workload disruptions that are equally impactful. IPAM monitoring closes this gap.
+After splitting a Calico IP pool into zone-specific sub-pools, you need ongoing visibility into how each pool is being used. A pool that approaches exhaustion silently will start causing pod scheduling failures - not Typha issues, but workload disruptions that are equally impactful. IPAM monitoring closes this gap.
 
 This post covers using `calicoctl` commands to inspect IPAM state, configuring Prometheus with the Calico IPAM metrics that Calico exposes, and setting up alerts for pool exhaustion and IPAM inconsistency.
 
@@ -33,10 +33,10 @@ The primary tool for IPAM visibility is `calicoctl ipam show`. Use it to see uti
 # Show IP block allocation summary per pool
 calicoctl ipam show --show-blocks
 
-# Show all allocated IP addresses (verbose — use for investigation, not routine monitoring)
+# Show all allocated IP addresses (verbose - use for investigation, not routine monitoring)
 calicoctl ipam show --show-all-ips 2>/dev/null | head -50
 
-# Check overall IPAM consistency — run this regularly
+# Check overall IPAM consistency - run this regularly
 calicoctl ipam check
 ```
 
@@ -60,7 +60,7 @@ echo "=== Calico IPAM Utilization Check: $(date -u) ==="
 
 # Check overall consistency first
 if ! calicoctl ipam check 2>&1 | grep -q "IPAM is consistent"; then
-  echo "[CRITICAL] IPAM is NOT consistent — investigate immediately"
+  echo "[CRITICAL] IPAM is NOT consistent - investigate immediately"
   exit 2
 fi
 echo "[OK] IPAM consistency check passed"

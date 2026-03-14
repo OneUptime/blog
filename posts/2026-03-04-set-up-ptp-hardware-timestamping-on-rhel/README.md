@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PTP, Hardware Timestamping, linuxptp, Networking
+Tags: RHEL, PTP, Hardware Timestamping, Linuxptp, Networking
 
 Description: Enable and verify PTP hardware timestamping on RHEL network interfaces to achieve nanosecond-level time accuracy using NIC hardware clocks.
 

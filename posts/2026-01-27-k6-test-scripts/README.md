@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Performance Testing, k6, Load Testing, JavaScript, API Testing, Stress Testing, Observability, DevOps
+Tags: Performance Testing, K6, Load Testing, JavaScript, API Testing, Stress Testing, Observability, DevOps
 
 Description: A comprehensive guide to writing k6 test scripts for load testing your applications, covering script structure, HTTP requests, checks, groups, custom metrics, and best practices.
 

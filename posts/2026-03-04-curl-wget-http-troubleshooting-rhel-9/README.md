@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, curl, wget, HTTP, Troubleshooting, Linux
+Tags: RHEL, Curl, Wget, HTTP, Troubleshooting, Linux
 
 Description: A practical guide to using curl and wget on RHEL for troubleshooting HTTP and HTTPS services, including connection debugging, TLS inspection, header analysis, and performance measurement.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, NVIDIA, nvidia-smi, GPU Monitoring, Performance
+Tags: Ubuntu, NVIDIA, Nvidia-smi, GPU Monitoring, Performance
 
 Description: A comprehensive guide to using nvidia-smi on Ubuntu to monitor GPU utilization, memory usage, temperature, and processes, including scripting and automation techniques.
 

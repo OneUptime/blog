@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Traffic Director, gRPC, Proxyless, Service Mesh
+Tags: GCP, Traffic Director, GRPC, Proxyless, Service Mesh
 
 Description: A practical guide to deploying proxyless gRPC applications with Traffic Director on Google Cloud for lower latency and reduced resource overhead compared to sidecar proxies.
 

@@ -14,7 +14,7 @@ Chaos engineering is the practice of deliberately injecting failures into your s
 
 Managing LitmusChaos through Flux CD brings the discipline of GitOps to your chaos engineering practice. Every experiment definition, schedule, and configuration change is version-controlled, auditable, and automatically reconciled to your cluster. This eliminates the risk of configuration drift and ensures your chaos testing environment is reproducible across clusters.
 
-In this guide, you will bootstrap LitmusChaos onto a Kubernetes cluster using Flux CD HelmRelease resources, configure the Litmus portal, and run your first ChaosEngine experiment — all driven from a Git repository.
+In this guide, you will bootstrap LitmusChaos onto a Kubernetes cluster using Flux CD HelmRelease resources, configure the Litmus portal, and run your first ChaosEngine experiment - all driven from a Git repository.
 
 ## Prerequisites
 

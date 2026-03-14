@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Filesystem Recovery, e2fsck, Storage, Linux
+Tags: RHEL, Ext4, Filesystem Recovery, E2fsck, Storage, Linux
 
 Description: Learn how to diagnose and repair corrupted ext4 filesystems on RHEL using e2fsck, including handling superblock corruption, journal recovery, and data salvage techniques.
 

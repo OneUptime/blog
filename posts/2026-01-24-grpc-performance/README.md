@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Performance, Microservices, Protocol Buffers, Streaming, Load Balancing, Debugging
+Tags: GRPC, Performance, Microservices, Protocol Buffers, Streaming, Load Balancing, Debugging
 
 Description: A practical guide to identifying and fixing common gRPC performance issues, including connection management, streaming optimization, load balancing, and monitoring strategies.
 

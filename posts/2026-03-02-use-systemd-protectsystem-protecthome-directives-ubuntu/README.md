@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Security, System Administration, Hardening
+Tags: Ubuntu, Systemd, Security, System Administration, Hardening
 
 Description: A detailed guide to systemd's ProtectSystem and ProtectHome directives on Ubuntu, explaining how to use them to restrict service filesystem access and protect sensitive directories.
 

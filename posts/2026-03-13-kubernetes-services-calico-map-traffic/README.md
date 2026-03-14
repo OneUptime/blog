@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Traffic Flows, Networking, kube-proxy, eBPF
+Tags: Calico, Kubernetes, Services, CNI, Traffic Flows, Networking, Kube-proxy, EBPF
 
 Description: A detailed walkthrough of how Kubernetes service traffic flows through Calico's networking components, from ClusterIP DNAT to policy enforcement.
 
@@ -10,7 +10,7 @@ Description: A detailed walkthrough of how Kubernetes service traffic flows thro
 
 ## Introduction
 
-Kubernetes service traffic involves multiple transformation steps before it reaches a backend pod. Understanding these steps — which component performs each transformation, in what order, and what the packet looks like at each stage — is the foundation for correct policy design and effective troubleshooting.
+Kubernetes service traffic involves multiple transformation steps before it reaches a backend pod. Understanding these steps - which component performs each transformation, in what order, and what the packet looks like at each stage - is the foundation for correct policy design and effective troubleshooting.
 
 This post traces the complete packet path for four service traffic scenarios: ClusterIP (kube-proxy mode), ClusterIP (eBPF mode), NodePort external traffic, and headless service direct routing.
 
@@ -37,7 +37,7 @@ sequenceDiagram
     KubeProxy->>ClientPod: Response: src=10.96.1.100 dst=10.0.1.5
 ```
 
-The client pod sees the ClusterIP as the source of the response — the DNAT is transparent. Calico policy on the backend pod sees the actual client pod IP as the source, not the ClusterIP.
+The client pod sees the ClusterIP as the source of the response - the DNAT is transparent. Calico policy on the backend pod sees the actual client pod IP as the source, not the ClusterIP.
 
 ## Scenario 2: ClusterIP Traffic (Calico eBPF mode)
 
@@ -54,7 +54,7 @@ sequenceDiagram
     Backend->>ClientPod: Direct response (no kube-proxy involvement)
 ```
 
-In eBPF mode, the DNAT happens at the sending pod's TC egress hook — earlier in the path than kube-proxy. This eliminates the kube-proxy conntrack entry and reduces NAT overhead.
+In eBPF mode, the DNAT happens at the sending pod's TC egress hook - earlier in the path than kube-proxy. This eliminates the kube-proxy conntrack entry and reduces NAT overhead.
 
 ## Scenario 3: NodePort External Traffic (with DSR)
 

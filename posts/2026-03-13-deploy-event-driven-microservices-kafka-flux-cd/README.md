@@ -12,7 +12,7 @@ Description: Build and deploy event-driven microservices with Kafka using Flux C
 
 Event-driven architecture (EDA) uses asynchronous events as the primary mechanism for inter-service communication, decoupling producers from consumers. With Kafka as the event backbone and Flux CD managing both the infrastructure and the microservices, you get a fully GitOps-managed EDA platform where topology changes, new event types, and service deployments all flow through version-controlled pull requests.
 
-This post demonstrates a practical event-driven microservices setup: an order service that publishes events to Kafka, an inventory service that consumes them and publishes inventory updates, and an analytics service that streams from both topics. All components — Kafka topics, KafkaUsers, and microservice Deployments — are managed by Flux CD.
+This post demonstrates a practical event-driven microservices setup: an order service that publishes events to Kafka, an inventory service that consumes them and publishes inventory updates, and an analytics service that streams from both topics. All components - Kafka topics, KafkaUsers, and microservice Deployments - are managed by Flux CD.
 
 ## Prerequisites
 
@@ -348,4 +348,4 @@ curl -XPOST http://localhost:8080/orders \
 
 ## Conclusion
 
-Event-driven microservices deployed with Kafka and managed by Flux CD give you a decoupled, scalable architecture where every component — topics, users, service deployments — is described in Git. The Kustomization `dependsOn` mechanism ensures services only start after the Kafka infrastructure is ready. Image automation keeps services up-to-date automatically. The result is a fully observable, reproducible event-driven platform where adding a new service or event type is a pull request that your team reviews and Flux applies automatically.
+Event-driven microservices deployed with Kafka and managed by Flux CD give you a decoupled, scalable architecture where every component - topics, users, service deployments - is described in Git. The Kustomization `dependsOn` mechanism ensures services only start after the Kafka infrastructure is ready. Image automation keeps services up-to-date automatically. The result is a fully observable, reproducible event-driven platform where adding a new service or event type is a pull request that your team reviews and Flux applies automatically.

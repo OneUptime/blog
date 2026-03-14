@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, AKS, Azure, Kubernetes, Networking, Network Policy, CNI
+Tags: Calico, Kubernetes, Networking, CNI, Installation, AKS, Azure
 
 Description: A step-by-step guide to installing Calico network policy enforcement on Azure Kubernetes Service, covering both Calico policy-only mode and full CNI installation.
 
@@ -158,7 +158,7 @@ spec:
 - Always create a deny-all policy first, then explicitly allow required traffic
 - Test network policies in a dedicated test namespace before applying to production
 - Use Calico's `GlobalNetworkPolicy` for cluster-wide rules (like allowing DNS)
-- Monitor Calico node status regularly — unhealthy Calico nodes can cause network partitions
+- Monitor Calico node status regularly - unhealthy Calico nodes can cause network partitions
 - Use `calicoctl get networkpolicies -A` to audit all policies across namespaces
 
 ## Conclusion

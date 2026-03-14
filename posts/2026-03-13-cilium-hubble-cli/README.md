@@ -148,4 +148,4 @@ flowchart LR
 
 ## Conclusion
 
-The Hubble CLI transforms Cilium from a black-box networking layer into a fully transparent, observable system. The combination of real-time streaming with rich filtering options — namespace, pod, protocol, verdict, HTTP status — makes it possible to isolate network issues in seconds rather than hours. For production operations, build Hubble CLI queries into your runbooks for common network troubleshooting scenarios, and use `--output json` combined with jq for integration with alerting and incident response workflows.
+The Hubble CLI transforms Cilium from a black-box networking layer into a fully transparent, observable system. The combination of real-time streaming with rich filtering options - namespace, pod, protocol, verdict, HTTP status - makes it possible to isolate network issues in seconds rather than hours. For production operations, build Hubble CLI queries into your runbooks for common network troubleshooting scenarios, and use `--output json` combined with jq for integration with alerting and incident response workflows.

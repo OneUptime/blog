@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Validation
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Validation
 
 Description: Build a validation framework for Calico service account-based network policies that verifies SA coverage and policy correctness before production deployment.
 

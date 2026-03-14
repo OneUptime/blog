@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, Linux, sudo
+Tags: Ansible, Security, Linux, Sudo
 
 Description: Learn how to safely manage the sudoers file and drop-in configurations with Ansible using validation, templates, and the sudoers.d directory pattern.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, noatime, Mount Options, Performance, Linux
+Tags: RHEL, Noatime, Mount Options, Performance, Linux
 
 Description: Learn how to use noatime and nodiratime mount options on RHEL to reduce unnecessary disk writes and improve filesystem performance.
 

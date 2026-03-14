@@ -10,7 +10,7 @@ Description: How to configure the Calico Node resource to manage per-node BGP se
 
 ## Introduction
 
-The Calico Node resource represents a node in the Calico data model and stores per-node configuration including BGP router ID, AS number overrides, and IP addresses used for peering. While most node settings are auto-populated by the `calico-node` DaemonSet during startup, explicit Node resource configuration is required when overriding defaults — such as assigning a specific BGP AS number to a node, configuring additional IP addresses, or setting the IPv4 address used for tunnel endpoints.
+The Calico Node resource represents a node in the Calico data model and stores per-node configuration including BGP router ID, AS number overrides, and IP addresses used for peering. While most node settings are auto-populated by the `calico-node` DaemonSet during startup, explicit Node resource configuration is required when overriding defaults - such as assigning a specific BGP AS number to a node, configuring additional IP addresses, or setting the IPv4 address used for tunnel endpoints.
 
 Understanding the Node resource is essential for advanced BGP configurations, multi-homed nodes, and environments where auto-detection produces incorrect results.
 

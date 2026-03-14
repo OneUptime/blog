@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SQLite, Testing, Database, Unit Testing, Integration Testing, Python, Node.js, Jest, pytest
+Tags: SQLite, Testing, Database, Unit Testing, Integration Testing, Python, Node.js, Jest, Pytest
 
 Description: Learn how to leverage SQLite for fast, reliable testing.
 

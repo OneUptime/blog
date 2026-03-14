@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fstab, Boot, Recovery, Linux
+Tags: RHEL, Fstab, Boot, Recovery, Linux
 
 Description: Learn how to recover a RHEL system that fails to boot due to a corrupt or misconfigured /etc/fstab, using emergency mode, rescue mode, and installation media.
 

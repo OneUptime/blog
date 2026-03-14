@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, System Roles, SSH, sshd
+Tags: RHEL, System Roles, SSH, Sshd
 
 Description: Use the sshd RHEL System Role to standardize SSH configuration across RHEL systems.
 

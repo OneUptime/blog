@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Packer, cloud-init, Automation, Infrastructure as Code
+Tags: Ubuntu, Packer, Cloud-init, Automation, Infrastructure as Code
 
 Description: Combine Packer and cloud-init to fully automate Ubuntu VM template builds, using cloud-init autoinstall for unattended OS installation and Packer provisioners for post-install configuration.
 

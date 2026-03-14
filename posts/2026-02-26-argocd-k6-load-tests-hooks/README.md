@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, k6, Performance Testing
+Tags: ArgoCD, GitOps, Kubernetes, K6, Performance Testing
 
 Description: Learn how to run k6 load tests as ArgoCD PostSync hooks to automatically validate application performance after every deployment with threshold-based pass/fail criteria.
 

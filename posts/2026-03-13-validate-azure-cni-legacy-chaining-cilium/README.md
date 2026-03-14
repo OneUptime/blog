@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, cni, chaining, kubernetes, networking, legacy
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A guide to validating Azure CNI legacy chaining mode with Cilium, where Cilium acts as a chained CNI plugin for network policy enforcement while Azure CNI handles IP allocation.
 
@@ -12,7 +12,7 @@ Description: A guide to validating Azure CNI legacy chaining mode with Cilium, w
 
 Azure CNI legacy chaining is a deployment mode where Azure CNI remains responsible for pod IP assignment and network routing, while Cilium is chained as a secondary CNI plugin to provide eBPF-based network policy enforcement. This approach is used when teams want Cilium's policy capabilities without fully migrating to Cilium's IPAM.
 
-In this chaining architecture, Cilium does not manage IP addresses—it intercepts traffic at the eBPF layer to enforce policies after Azure CNI has already set up the pod network interface. Validating this configuration requires checking both CNI plugins are correctly integrated and that policy enforcement works as expected.
+In this chaining architecture, Cilium does not manage IP addresses-it intercepts traffic at the eBPF layer to enforce policies after Azure CNI has already set up the pod network interface. Validating this configuration requires checking both CNI plugins are correctly integrated and that policy enforcement works as expected.
 
 This guide covers the validation steps specific to legacy chaining mode, including confirming the CNI configuration file, verifying Cilium's chained mode, and testing that policies are enforced while Azure CNI still owns IPAM.
 
@@ -88,7 +88,7 @@ kubectl apply -f test-chain-policy.yaml
 # Check that the policy appears in Cilium's store
 cilium policy get
 
-# Attempt connection from an unlabeled pod — should be denied
+# Attempt connection from an unlabeled pod - should be denied
 kubectl exec unlabeled-pod -- curl -m 3 http://<server-pod-ip>
 ```
 
@@ -106,7 +106,7 @@ kubectl get ippools 2>/dev/null || echo "No Cilium IP pools (expected in chainin
 
 - Ensure the Cilium version supports the Azure CNI chaining mode you are using
 - In chaining mode, use `CiliumNetworkPolicy` rather than standard `NetworkPolicy` for full L7 support
-- Monitor for CNI config conflicts — only one conflist file should be active in `/etc/cni/net.d/`
+- Monitor for CNI config conflicts - only one conflist file should be active in `/etc/cni/net.d/`
 - Test after every node image upgrade since CNI configs can be overwritten
 - Consider migrating to native Cilium IPAM for a simpler, fully-supported architecture long-term
 

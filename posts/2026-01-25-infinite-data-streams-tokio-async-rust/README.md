@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, tokio, Async Streams, Data Processing, Real-Time
+Tags: Rust, Tokio, Async Streams, Data Processing, Real-Time
 
 Description: Learn how to build robust stream processing pipelines in Rust using Tokio async streams, covering backpressure handling, buffering strategies, and real-world patterns for processing unbounded data.
 

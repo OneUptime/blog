@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Testing, kubeval, Validation, CI/CD
+Tags: Flux, Kubernetes, GitOps, Testing, Kubeval, Validation, CI/CD
 
 Description: Learn how to use kubeval to validate Flux Kubernetes manifests against API schemas and catch configuration errors before deployment.
 

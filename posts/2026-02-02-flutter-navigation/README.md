@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flutter, Dart, Mobile, Navigation, iOS, Android
+Tags: Flutter, Dart, Mobile, Navigation, IOS, Android
 
 Description: Learn how to implement navigation in Flutter applications using Navigator, named routes, and the go_router package for building intuitive multi-screen mobile apps.
 

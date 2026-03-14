@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, pg_dump, Cron, Backup
+Tags: RHEL, PostgreSQL, Pg_dump, Cron, Backup
 
 Description: Configure automated PostgreSQL backups using pg_dump and cron on RHEL 9.
 

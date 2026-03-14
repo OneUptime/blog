@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, Linux, GitOps, Mixed Workloads, AKS, Node Pools
+Tags: Flux CD, Kubernetes, Windows Containers, Linux, GitOps, Mixed Workloads, AKS
 
 Description: Configure Flux CD to manage deployments across mixed Linux and Windows node pools, ensuring workloads are correctly scheduled and maintained.
 
@@ -12,7 +12,7 @@ Description: Configure Flux CD to manage deployments across mixed Linux and Wind
 
 Mixed Linux and Windows Kubernetes clusters are increasingly common as organizations modernize their application portfolios. New microservices run on Linux while legacy .NET Framework applications remain on Windows until they can be rewritten. Managing both types of workloads through a single GitOps pipeline reduces operational overhead and ensures consistent deployment practices across the technology stack.
 
-Flux CD handles mixed clusters naturally — it applies whatever manifests are in Git without caring about the underlying OS. The key is ensuring your manifests correctly express OS affinity so Kubernetes schedules workloads on the right type of node. This guide covers organizing your repository for mixed clusters, configuring OS-specific scheduling constraints, and managing the operational differences between Linux and Windows workloads.
+Flux CD handles mixed clusters naturally - it applies whatever manifests are in Git without caring about the underlying OS. The key is ensuring your manifests correctly express OS affinity so Kubernetes schedules workloads on the right type of node. This guide covers organizing your repository for mixed clusters, configuring OS-specific scheduling constraints, and managing the operational differences between Linux and Windows workloads.
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ kubectl get pods -n flux-system -o wide
 
 ## Step 2: Repository Structure for Mixed Workloads
 
-```
+```plaintext
 apps/
   base/
     linux-only/           # Explicitly Linux-targeted workloads
@@ -262,11 +262,11 @@ spec:
 ## Best Practices
 
 - Always explicitly set `nodeSelector: kubernetes.io/os: linux` on Flux controllers in mixed clusters.
-- Patch Windows workloads to explicitly target Windows nodes — rely on node selectors, not defaults.
+- Patch Windows workloads to explicitly target Windows nodes - rely on node selectors, not defaults.
 - Set separate Kustomization timeouts for Windows workloads (longer) and Linux workloads (shorter).
 - Keep Windows and Linux workload manifests in separate directories for clarity and independent management.
 - Match the Windows Server build version in your node selector to your container image's base OS version.
-- Monitor node pool scaling separately — Windows nodes are typically more expensive and should not autoscale unnecessarily.
+- Monitor node pool scaling separately - Windows nodes are typically more expensive and should not autoscale unnecessarily.
 
 ## Conclusion
 

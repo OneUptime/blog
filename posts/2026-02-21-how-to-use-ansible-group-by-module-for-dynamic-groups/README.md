@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, group_by, Dynamic Groups, Inventory, DevOps
+Tags: Ansible, Group_by, Dynamic Groups, Inventory, DevOps
 
 Description: Create dynamic host groups at runtime with the Ansible group_by module based on facts, variables, and host attributes.
 

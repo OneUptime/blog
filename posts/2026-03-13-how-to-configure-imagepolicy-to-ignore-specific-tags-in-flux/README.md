@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Image-Tags
+Tags: Flux, Fluxcd, Image-policy, Kubernetes, GitOps, Image-Tags
 
 Description: Learn how to configure Flux CD ImagePolicy to exclude specific tags like latest, debug, or test from automated image updates.
 

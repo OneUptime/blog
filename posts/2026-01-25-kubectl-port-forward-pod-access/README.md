@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Networking, Development
+Tags: Kubernetes, Kubectl, Debugging, Networking, Development
 
 Description: Learn how to use kubectl port-forward to access pods, services, and deployments directly from your local machine. Includes practical examples for debugging and development.
 

@@ -10,7 +10,7 @@ Description: Validate that external service connectivity is restored for Calico 
 
 ## Introduction
 
-Validating that external service connectivity is restored for Calico pods requires testing multiple connectivity layers — DNS, ICMP, TCP, and HTTPS — from pods on each node in the cluster. Testing from a single pod is insufficient because natOutgoing or iptables state may differ node-by-node.
+Validating that external service connectivity is restored for Calico pods requires testing multiple connectivity layers - DNS, ICMP, TCP, and HTTPS - from pods on each node in the cluster. Testing from a single pod is insufficient because natOutgoing or iptables state may differ node-by-node.
 
 Complete validation also includes confirming the natOutgoing configuration is correct on all IP pools and verifying that Felix has programmed MASQUERADE rules on each node. These configuration checks confirm the fix is durable and will not revert on calico-node restart.
 
@@ -22,7 +22,7 @@ Complete validation also includes confirming the natOutgoing configuration is co
 ## Root Causes
 
 - calico-node not yet reconciled on all nodes
-- Multiple IP pools — only one was fixed
+- Multiple IP pools - only one was fixed
 
 ## Solution
 

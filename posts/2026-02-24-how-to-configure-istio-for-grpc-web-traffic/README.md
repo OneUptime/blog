@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC-Web, Frontend, Envoy, Traffic Management
+Tags: Istio, GRPC-Web, Frontend, Envoy, Traffic Management
 
 Description: How to configure Istio to handle gRPC-Web traffic from browser clients, including the Envoy gRPC-Web filter, gateway configuration, and CORS settings.
 

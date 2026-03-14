@@ -24,13 +24,13 @@ This post covers organizing StorageClasses for different storage backends, manag
 
 Organize storage tiers by performance, cost, and access mode:
 
-```
+```plaintext
 StorageClass Tiers:
-├── premium-ssd          (Rook-Ceph RBD, NVMe) — databases, Kafka
-├── standard-ssd         (cloud provider SSD)   — general workloads
-├── standard-hdd         (cloud provider HDD)   — archive storage
-├── shared-filesystem    (CephFS, NFS)          — RWX workloads
-└── local-ssd            (local-path, OpenEBS)  — caches, scratch
+├── premium-ssd          (Rook-Ceph RBD, NVMe) - databases, Kafka
+├── standard-ssd         (cloud provider SSD)   - general workloads
+├── standard-hdd         (cloud provider HDD)   - archive storage
+├── shared-filesystem    (CephFS, NFS)          - RWX workloads
+└── local-ssd            (local-path, OpenEBS)  - caches, scratch
 ```
 
 ## Step 2: Create StorageClasses for Multiple Backends
@@ -240,10 +240,10 @@ kubectl get pv $(kubectl get pvc test-pvc -o jsonpath='{.spec.volumeName}')
 
 - Use `volumeBindingMode: WaitForFirstConsumer` for block storage to ensure volumes are provisioned in the same zone as the pod.
 - Use `reclaimPolicy: Retain` for production database StorageClasses to prevent accidental data loss on PVC deletion.
-- Never have two StorageClasses with `is-default-class: "true"` simultaneously — this causes unpredictable PVC provisioning behavior.
+- Never have two StorageClasses with `is-default-class: "true"` simultaneously - this causes unpredictable PVC provisioning behavior.
 - Include the CSI driver version in StorageClass comments so you know which driver version the parameters were tested against.
 - Document allowed access modes (`ReadWriteOnce`, `ReadWriteMany`) in StorageClass metadata labels for discoverability.
 
 ## Conclusion
 
-StorageClasses managed through Flux CD ensure your storage catalog is consistently defined and version-controlled across clusters. Changes to storage tiers — adding a new high-performance class, adjusting IOPS parameters, or changing the default class — are Git commits reviewed by your team. Kustomize overlays enable environment-specific customization without duplicating the base StorageClass definitions, keeping your storage configuration DRY and maintainable.
+StorageClasses managed through Flux CD ensure your storage catalog is consistently defined and version-controlled across clusters. Changes to storage tiers - adding a new high-performance class, adjusting IOPS parameters, or changing the default class - are Git commits reviewed by your team. Kustomize overlays enable environment-specific customization without duplicating the base StorageClass definitions, keeping your storage configuration DRY and maintainable.

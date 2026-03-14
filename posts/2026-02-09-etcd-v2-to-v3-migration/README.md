@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, etcd, Storage
+Tags: Kubernetes, Etcd, Storage
 
 Description: Learn how to safely migrate Kubernetes etcd from the deprecated v2 storage backend to v3 with backup strategies, data migration, and validation procedures.
 

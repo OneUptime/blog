@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance Testing, Scenarios, DevOps
+Tags: K6, Load Testing, Performance Testing, Scenarios, DevOps
 
 Description: Learn how to use k6 scenarios to model realistic user traffic patterns with multiple virtual user behaviors running simultaneously.
 

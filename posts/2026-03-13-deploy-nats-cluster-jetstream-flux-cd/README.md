@@ -273,7 +273,7 @@ kubectl exec -n nats deploy/nats-box -- \
 - Run 3 NATS cluster nodes with `replicas: 3` for Raft quorum in JetStream.
 - Set `--dupe-window 2m` on streams to prevent duplicate message delivery when producers retry.
 - Use `--ack explicit` on consumers to ensure messages are only acknowledged after successful processing.
-- Enable TLS for all production NATS deployments — the nats-server supports mTLS for server and client authentication.
+- Enable TLS for all production NATS deployments - the nats-server supports mTLS for server and client authentication.
 - Monitor JetStream stream storage usage and consumer lag with the Prometheus metrics endpoint.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, SemVer, Pre-Release, image-automation, ImagePolicy, GitOps, Kubernetes
+Tags: Flux, SemVer, Pre-Release, Image-automation, ImagePolicy, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to handle SemVer image tags that include pre-release suffixes like alpha, beta, and rc.
 

@@ -10,9 +10,9 @@ Description: Suspend Flux CD reconciliation during change freeze periods to prev
 
 ## Introduction
 
-Change freeze windows are periods during which no new changes are allowed to reach production. Common triggers include major product launches, holiday periods, end-of-quarter financial close, or active incident investigations. During a freeze, you want the assurance that no automated process — including Flux CD — will modify the cluster.
+Change freeze windows are periods during which no new changes are allowed to reach production. Common triggers include major product launches, holiday periods, end-of-quarter financial close, or active incident investigations. During a freeze, you want the assurance that no automated process - including Flux CD - will modify the cluster.
 
-Flux CD provides a `suspend` field on every reconciliation resource. When set to `true`, Flux stops reconciling that resource entirely. The Git repository remains unchanged and the full audit trail is preserved — you are only pausing the actor that applies changes, not the record of what was committed.
+Flux CD provides a `suspend` field on every reconciliation resource. When set to `true`, Flux stops reconciling that resource entirely. The Git repository remains unchanged and the full audit trail is preserved - you are only pausing the actor that applies changes, not the record of what was committed.
 
 This guide shows how to suspend and resume Flux resources manually, how to automate freeze windows with Kubernetes CronJobs, and how to add CI checks that block PRs from merging to the Flux-watched branch during a declared freeze.
 
@@ -45,7 +45,7 @@ spec:
     name: flux-system
 ```
 
-Importantly, `suspend: true` does not roll back existing resources — it simply stops applying new changes.
+Importantly, `suspend: true` does not roll back existing resources - it simply stops applying new changes.
 
 ## Step 2: Manually Suspend All Production Reconcilers
 
@@ -245,7 +245,7 @@ flux get kustomizations --watch
 
 ## Best Practices
 
-- Always suspend image update automation alongside Kustomizations — leaving it running allows new image commits to land on `main` during the freeze even if reconciliation is paused.
+- Always suspend image update automation alongside Kustomizations - leaving it running allows new image commits to land on `main` during the freeze even if reconciliation is paused.
 - Store the freeze flag file in Git so the freeze declaration is itself auditable and reversible via PR.
 - Notify your team through Slack or PagerDuty when a freeze is activated and again when it is lifted.
 - Document an exception process for emergency hotfixes that must deploy during a freeze (see the hotfix workflow post for details).

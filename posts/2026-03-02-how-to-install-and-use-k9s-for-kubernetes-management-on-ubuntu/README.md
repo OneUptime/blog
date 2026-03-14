@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kubernetes, k9s, DevOps, CLI Tools
+Tags: Ubuntu, Kubernetes, K9s, DevOps, CLI Tools
 
 Description: Install k9s on Ubuntu and learn how to navigate Kubernetes clusters, manage pods, view logs, execute into containers, and monitor resources from the terminal.
 

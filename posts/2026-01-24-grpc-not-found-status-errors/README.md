@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Error Handling, Debugging, Microservices, Protocol Buffers
+Tags: GRPC, Error Handling, Debugging, Microservices, Protocol Buffers
 
 Description: A comprehensive guide to diagnosing and fixing NOT_FOUND status errors in gRPC services, covering common causes, debugging techniques, and best practices for handling missing resources.
 

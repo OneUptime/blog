@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Node, BGP, Operations
 
-Description: Practical usage patterns for Calico Node resources, including per-node BGP AS number assignments, multi-homed node configuration, inspecting node state, and using Node resources in operational workflows.
+Description: Practical usage patterns for Calico Node resources, including per-node BGP AS number assignments, multi-homed node configuration, inspecting node state, and using Node resources in operational...
 
 ---
 
 ## Introduction
 
-The Calico Node resource is primarily used in two operational contexts: initial configuration where per-node BGP settings need to differ from cluster defaults, and ongoing operations where Node resources provide visibility into each node's network identity. Reading Node resources surfaces the actual BGP configuration in use — the IP addresses, AS numbers, and tunnel endpoints — which is essential for debugging routing issues and planning topology changes.
+The Calico Node resource is primarily used in two operational contexts: initial configuration where per-node BGP settings need to differ from cluster defaults, and ongoing operations where Node resources provide visibility into each node's network identity. Reading Node resources surfaces the actual BGP configuration in use - the IP addresses, AS numbers, and tunnel endpoints - which is essential for debugging routing issues and planning topology changes.
 
 This guide covers practical patterns for using the Node resource in real cluster operations.
 

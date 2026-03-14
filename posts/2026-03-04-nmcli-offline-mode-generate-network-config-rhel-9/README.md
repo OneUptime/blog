@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nmcli, Offline Mode, Networking, Linux
+Tags: RHEL, Nmcli, Offline Mode, Networking, Linux
 
 Description: Learn how to use nmcli's offline mode to generate NetworkManager keyfiles without a running NetworkManager instance, ideal for provisioning and image building.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Reflection, Debugging, grpcurl, Protocol Buffers, Development, Testing
+Tags: GRPC, Reflection, Debugging, Grpcurl, Protocol Buffers, Development, Testing
 
 Description: A comprehensive guide to enabling and using gRPC reflection for debugging services, including server configuration, client tools, and security considerations.
 

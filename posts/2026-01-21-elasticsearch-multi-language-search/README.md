@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Multi-Language, Internationalization, i18n, Search, Text Analysis
+Tags: Elasticsearch, Multi-Language, Internationalization, I18n, Search, Text Analysis
 
 Description: A comprehensive guide to implementing multi-language search in Elasticsearch, covering language detection, language-specific analyzers, and strategies for multilingual content.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Performance
+Tags: Calico, Kubernetes, Networking, EBPF, Performance
 
 Description: A step-by-step guide to enabling Calico's eBPF data plane for improved network performance, replacing iptables with high-performance BPF programs on Linux kernels 5.3+.
 

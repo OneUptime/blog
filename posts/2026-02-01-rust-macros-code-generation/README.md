@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Macros, Metaprogramming, Code Generation, proc-macro
+Tags: Rust, Macros, Metaprogramming, Code Generation, Proc-macro
 
 Description: A practical guide to writing declarative and procedural macros in Rust for code generation and reducing boilerplate.
 

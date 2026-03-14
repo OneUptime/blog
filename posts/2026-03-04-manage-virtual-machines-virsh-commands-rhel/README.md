@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virsh, Virtual Machines, libvirt, Virtualization, Linux
+Tags: RHEL, KVM, Virsh, Virtual Machines, Libvirt, Virtualization, Linux
 
 Description: Learn the essential virsh commands for managing KVM virtual machines on RHEL, covering lifecycle management, configuration, monitoring, and troubleshooting.
 

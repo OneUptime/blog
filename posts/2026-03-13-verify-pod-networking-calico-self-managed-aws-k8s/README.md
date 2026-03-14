@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, AWS, Pod Networking, Self-Managed
+Tags: Calico, Kubernetes, Networking, Verification, AWS, Self-Managed
 
-Description: Learn how to verify that Calico pod networking is functioning correctly on a self-managed Kubernetes cluster running on AWS EC2, including VPC routing, security group configuration, and cross-node connectivity.
+Description: Learn how to verify that Calico pod networking is functioning correctly on a self-managed Kubernetes cluster running on AWS EC2, including VPC routing, security group configuration, and cross-node...
 
 ---
 
@@ -135,7 +135,7 @@ ROUTE_TABLE_ID=$(aws ec2 describe-route-tables \
   --query 'RouteTables[0].RouteTableId' \
   --output text)
 
-# View routes in the table — pod CIDRs should be present with node as next hop
+# View routes in the table - pod CIDRs should be present with node as next hop
 aws ec2 describe-route-tables \
   --route-table-ids $ROUTE_TABLE_ID \
   --query 'RouteTables[0].Routes'

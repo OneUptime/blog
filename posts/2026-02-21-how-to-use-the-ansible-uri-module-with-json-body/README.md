@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, JSON, uri Module, REST API
+Tags: Ansible, JSON, Uri Module, REST API
 
 Description: Master sending JSON request bodies with the Ansible uri module including nested objects, arrays, dynamic data, and templates.
 

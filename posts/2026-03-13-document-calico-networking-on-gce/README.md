@@ -10,7 +10,7 @@ Description: How to create operational documentation for Calico networking on GC
 
 ## Introduction
 
-Calico on GCE has unique operational documentation requirements compared to other cloud providers. The VPC static routes that enable native routing must be maintained in sync with Calico's IPAM block assignments — a relationship that isn't obvious to operators unfamiliar with how Calico allocates IP blocks. Clear documentation of this relationship, combined with runbooks for adding nodes and responding to connectivity incidents, prevents common operational mistakes.
+Calico on GCE has unique operational documentation requirements compared to other cloud providers. The VPC static routes that enable native routing must be maintained in sync with Calico's IPAM block assignments - a relationship that isn't obvious to operators unfamiliar with how Calico allocates IP blocks. Clear documentation of this relationship, combined with runbooks for adding nodes and responding to connectivity incidents, prevents common operational mistakes.
 
 Documentation for GCE Calico should be accessible to operators who may be experienced Kubernetes administrators but less familiar with GCP networking specifics.
 
@@ -112,4 +112,4 @@ One route per Calico IPAM block (per node):
 
 ## Conclusion
 
-GCE Calico documentation must clearly explain the VPC static route lifecycle — especially that routes must be added when nodes join and removed when they leave. Without this documentation, operators frequently add nodes without the corresponding VPC route, resulting in one-way connectivity failures that are confusing to diagnose. A clear provisioning checklist and quick troubleshooting reference table help operators get to the right fix quickly.
+GCE Calico documentation must clearly explain the VPC static route lifecycle - especially that routes must be added when nodes join and removed when they leave. Without this documentation, operators frequently add nodes without the corresponding VPC route, resulting in one-way connectivity failures that are confusing to diagnose. A clear provisioning checklist and quick troubleshooting reference table help operators get to the right fix quickly.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gcloud CLI, SSH, Compute Engine, Google Cloud
+Tags: GCP, Gcloud CLI, SSH, Compute Engine, Google Cloud
 
 Description: Learn how to use the gcloud CLI to SSH into Compute Engine instances, manage SSH keys, tunnel through IAP, and troubleshoot common connection issues.
 

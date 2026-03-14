@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Reflection, reflect Package, Type Inspection, Metaprogramming
+Tags: Go, Golang, Reflection, Reflect Package, Type Inspection, Metaprogramming
 
 Description: Learn how to use Go's reflect package for runtime type inspection, dynamic value manipulation, and building flexible libraries that work with any type.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Subscriptions, subscription-manager, Red Hat, Linux
+Tags: RHEL, Subscriptions, Subscription-manager, Red Hat, Linux
 
 Description: A hands-on guide to attaching, listing, removing, and managing RHEL subscriptions using subscription-manager, including auto-attach and pool-based attachment.
 

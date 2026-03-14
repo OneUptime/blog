@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, timedatectl, Time Configuration, systemd, System Administration
+Tags: Ubuntu, Timedatectl, Time Configuration, Systemd, System Administration
 
 Description: Master timedatectl on Ubuntu to manage system time, timezone settings, NTP synchronization, and hardware clock configuration from a single command-line tool.
 

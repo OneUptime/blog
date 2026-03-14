@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HPA, Custom Metrics, Kubernetes, Autoscaling, GitOps, Prometheus Adapter
+Tags: Flux CD, HPA, Custom Metrics, Kubernetes, Autoscaling, Prometheus
 
 Description: Learn how to configure Kubernetes HPA with the custom metrics API using Flux CD, enabling scaling based on application-specific metrics like request queue depth.
 
@@ -10,7 +10,7 @@ Description: Learn how to configure Kubernetes HPA with the custom metrics API u
 
 ## Introduction
 
-Custom metrics HPA allows scaling based on any metric your application exposes—request queue depth, active connections, pending jobs, cache hit ratio, or business-specific KPIs. The custom metrics API is an extension of the Kubernetes metrics API, and it requires an adapter (like Prometheus Adapter) to translate Prometheus metrics into the Kubernetes custom metrics format.
+Custom metrics HPA allows scaling based on any metric your application exposes-request queue depth, active connections, pending jobs, cache hit ratio, or business-specific KPIs. The custom metrics API is an extension of the Kubernetes metrics API, and it requires an adapter (like Prometheus Adapter) to translate Prometheus metrics into the Kubernetes custom metrics format.
 
 ## Prerequisites
 
@@ -177,4 +177,4 @@ spec:
 
 ## Conclusion
 
-Custom metrics HPA enables sophisticated autoscaling based on application-specific behavior rather than generic infrastructure metrics. Managing the HPA resource through Flux CD keeps the scaling policy in Git, but the full configuration also requires Prometheus, Prometheus Adapter, and proper metric naming—all of which should also be managed via Flux for a complete GitOps approach to autoscaling.
+Custom metrics HPA enables sophisticated autoscaling based on application-specific behavior rather than generic infrastructure metrics. Managing the HPA resource through Flux CD keeps the scaling policy in Git, but the full configuration also requires Prometheus, Prometheus Adapter, and proper metric naming-all of which should also be managed via Flux for a complete GitOps approach to autoscaling.

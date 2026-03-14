@@ -10,7 +10,7 @@ Description: Validate that BGP peer sessions are fully established in Calico by 
 
 ## Introduction
 
-Validating BGP peer session restoration requires confirming not just that peers show Established, but that route exchange is actually working — routes for remote pod CIDRs must appear in the routing table. After a BGP session dropout, there may be a brief convergence delay before all routes are re-advertised and installed.
+Validating BGP peer session restoration requires confirming not just that peers show Established, but that route exchange is actually working - routes for remote pod CIDRs must appear in the routing table. After a BGP session dropout, there may be a brief convergence delay before all routes are re-advertised and installed.
 
 ## Symptoms
 

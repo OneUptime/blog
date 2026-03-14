@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journalctl, Log Analysis, Linux
+Tags: RHEL, Journalctl, Log Analysis, Linux
 
 Description: Export systemd journal logs to a file on RHEL for offline analysis and archival.
 

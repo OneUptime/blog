@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, File I/O, Performance, Async, tokio, Memory-Mapped Files, Buffered I/O
+Tags: Rust, File I/O, Performance, Async, Tokio, Memory-Mapped Files, Buffered I/O
 
 Description: Learn how to handle file I/O efficiently in Rust. This guide covers buffered I/O, memory-mapped files, async file operations, and patterns for processing large files without exhausting memory.
 

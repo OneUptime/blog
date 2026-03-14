@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Version Compatibility, CNI, Upgrades, Lifecycle Management
+Tags: Calico, Kubernetes, Version Compatibility, CNI, Upgrade
 
 Description: A guide to understanding version compatibility between Calico components and Kubernetes releases, including how to check compatibility and plan upgrades safely.
 
@@ -10,7 +10,7 @@ Description: A guide to understanding version compatibility between Calico compo
 
 ## Introduction
 
-Calico's version compatibility matrix defines which Calico versions work with which Kubernetes versions. Running incompatible versions causes subtle failures — API deprecation errors, missing features, or outright crashes — that are difficult to diagnose if you don't know the version compatibility context.
+Calico's version compatibility matrix defines which Calico versions work with which Kubernetes versions. Running incompatible versions causes subtle failures - API deprecation errors, missing features, or outright crashes - that are difficult to diagnose if you don't know the version compatibility context.
 
 Understanding version compatibility means knowing the supported ranges, how to check your current versions, and how to plan Kubernetes and Calico upgrades without creating compatibility gaps.
 
@@ -58,7 +58,7 @@ kubectl version --short
 
 ## Component Versioning
 
-Calico uses a unified versioning model — all components in a release share the same version number:
+Calico uses a unified versioning model - all components in a release share the same version number:
 
 | Component | Expected Version |
 |---|---|
@@ -113,7 +113,7 @@ chmod +x calicoctl
 ## Best Practices
 
 - Pin your Calico version in your infrastructure-as-code and update it deliberately rather than using `latest`
-- Always check the compatibility matrix before upgrading Kubernetes — it may require a Calico upgrade first
+- Always check the compatibility matrix before upgrading Kubernetes - it may require a Calico upgrade first
 - Keep `calicoctl` version in sync with the cluster's Calico version
 - Monitor Calico release announcements for security advisories that require out-of-cycle upgrades
 

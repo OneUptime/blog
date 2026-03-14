@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, community, support, troubleshooting
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to the various community resources, support channels, and debugging tools available to Cilium users when they need help or want to contribute.
 
@@ -12,7 +12,7 @@ Description: A guide to the various community resources, support channels, and d
 
 Cilium has one of the most active and helpful communities in the cloud-native networking space. When you run into issues or have questions, knowing where to turn can make all the difference between a quick resolution and hours of frustration.
 
-This post maps out the full landscape of Cilium support resources — from real-time chat on Slack to GitHub discussions, official documentation, and enterprise support options. It also covers how to gather the right diagnostic information before asking for help, which dramatically increases the quality of responses you'll receive.
+This post maps out the full landscape of Cilium support resources - from real-time chat on Slack to GitHub discussions, official documentation, and enterprise support options. It also covers how to gather the right diagnostic information before asking for help, which dramatically increases the quality of responses you'll receive.
 
 Whether you're a new user trying to get started or an experienced operator debugging a production issue, this guide helps you find the right resource for your situation.
 
@@ -103,7 +103,7 @@ cilium sysdump --output-filename cilium-sysdump.zip
 
 - Always include your Cilium version, Kubernetes version, and cloud provider when asking for help
 - Attach the output of `cilium status` and `cilium debuginfo` to every support request
-- Search existing issues and Slack history before posting — your question is likely already answered
+- Search existing issues and Slack history before posting - your question is likely already answered
 - Use the `#help` channel on Slack for quick questions and GitHub Issues for confirmed bugs
 - Consider subscribing to the Cilium newsletter for updates: https://cilium.io/newsletter
 

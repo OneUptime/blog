@@ -10,7 +10,7 @@ Description: Validate that Calico VPP is correctly configured and operating by v
 
 ## Introduction
 
-Validating Calico VPP configurations ensures that the VPP dataplane is correctly set up before issues arise in production. VPP validation differs from standard Calico validation because you need to verify VPP-internal state — interface configuration, FIB entries, NAT tables — in addition to Kubernetes-level objects.
+Validating Calico VPP configurations ensures that the VPP dataplane is correctly set up before issues arise in production. VPP validation differs from standard Calico validation because you need to verify VPP-internal state - interface configuration, FIB entries, NAT tables - in addition to Kubernetes-level objects.
 
 ## Step 1: Validate VPP Process Health
 

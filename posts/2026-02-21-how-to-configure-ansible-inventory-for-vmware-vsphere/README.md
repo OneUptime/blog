@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, vSphere, Dynamic Inventory, Virtualization
+Tags: Ansible, VMware, VSphere, Dynamic Inventory, Virtualization
 
 Description: Learn how to set up Ansible dynamic inventory for VMware vSphere to automatically discover and manage virtual machines in your vCenter environment.
 

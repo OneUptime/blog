@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, Firewall, Security, Linux
+Tags: RHEL, Nftables, Firewall, Security, Linux
 
 Description: A hands-on guide to writing nftables firewall rules from scratch on RHEL, covering tables, chains, rules, and common filtering patterns.
 

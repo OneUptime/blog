@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Logging, Debugging, Troubleshooting
+Tags: Kubernetes, Kubectl, Logging, Debugging, Troubleshooting
 
 Description: A practical guide to using kubectl logs for debugging container issues, including streaming logs, filtering output, accessing previous container logs, and troubleshooting common logging problems.
 

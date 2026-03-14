@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Firewall, Security, Networking, nftables, Kubernetes
+Tags: Talos Linux, Firewall, Security, Networking, Nftables, Kubernetes
 
 Description: Learn how to configure and manage firewall rules in Talos Linux using the nftables-based network filtering system built into the machine configuration.
 

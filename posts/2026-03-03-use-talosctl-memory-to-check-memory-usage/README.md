@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Memory Management, Monitoring, Performance
+Tags: Talos Linux, Talosctl, Memory Management, Monitoring, Performance
 
 Description: Learn how to use the talosctl memory command to check and analyze memory usage on Talos Linux nodes for performance monitoring
 

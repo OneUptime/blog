@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico on OpenShift Hosted Control Planes
+# How to Troubleshoot Calico on OpenShift HCP
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: A diagnostic guide for resolving Calico installation and networking
 
 ## Introduction
 
-OpenShift Hosted Control Planes introduce a unique troubleshooting challenge: the Kubernetes control plane that Calico depends on runs in the management cluster, not on the worker nodes. If Calico on the worker nodes cannot reach the hosted cluster's API server, all Calico operations fail — including IPAM, policy enforcement, and workload endpoint management. This connectivity dependency across cluster boundaries is the most common source of Calico failures in HCP environments.
+OpenShift Hosted Control Planes introduce a unique troubleshooting challenge: the Kubernetes control plane that Calico depends on runs in the management cluster, not on the worker nodes. If Calico on the worker nodes cannot reach the hosted cluster's API server, all Calico operations fail - including IPAM, policy enforcement, and workload endpoint management. This connectivity dependency across cluster boundaries is the most common source of Calico failures in HCP environments.
 
 Beyond the API server connectivity issue, HCP-specific failures include CIDR overlap between hosted clusters, SCC misconfiguration inherited from the management cluster, and kubeconfig issues when the API server endpoint changes.
 

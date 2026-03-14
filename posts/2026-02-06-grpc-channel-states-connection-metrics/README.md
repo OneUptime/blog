@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Channel States, Connection Pool Metrics
+Tags: OpenTelemetry, GRPC, Channel States, Connection Pool Metrics
 
 Description: Monitor gRPC channel connectivity states and connection pool metrics with OpenTelemetry to detect connectivity issues early.
 

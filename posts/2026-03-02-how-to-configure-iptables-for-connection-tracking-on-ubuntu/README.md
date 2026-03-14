@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, iptables, Networking, Firewall, Security
+Tags: Ubuntu, Iptables, Networking, Firewall, Security
 
 Description: A practical guide to configuring iptables connection tracking on Ubuntu, covering stateful firewall rules, conntrack states, and performance tuning for production systems.
 

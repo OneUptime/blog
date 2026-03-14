@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, VM Hardware, vSphere, Configuration
+Tags: Ansible, VMware, VM Hardware, VSphere, Configuration
 
 Description: Learn how to modify VMware virtual machine hardware settings with Ansible including CPU, memory, firmware, and advanced hardware configurations.
 

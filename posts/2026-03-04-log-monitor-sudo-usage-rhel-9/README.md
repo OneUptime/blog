@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, Logging, Monitoring, Linux
+Tags: RHEL, Sudo, Logging, Monitoring, Linux
 
 Description: Set up comprehensive sudo logging and monitoring on RHEL using syslog, sudo I/O logging, and auditd to track privileged command execution.
 

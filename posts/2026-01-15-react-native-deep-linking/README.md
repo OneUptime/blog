@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Deep Linking, React Navigation, iOS, Android, Universal Links
+Tags: React Native, Deep Linking, React Navigation, IOS, Android, Universal Links
 
 Description: Learn how to implement deep linking in React Native apps to handle custom URL schemes and universal links on iOS and Android.
 

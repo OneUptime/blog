@@ -10,7 +10,7 @@ Description: Deploy Longhorn distributed block storage with S3 backup on Kuberne
 
 ## Introduction
 
-Longhorn is a lightweight, reliable, and powerful distributed block storage system for Kubernetes, originally developed by Rancher (now SUSE). It uses the existing disks on your Kubernetes worker nodes without requiring dedicated storage hardware. Longhorn supports volume snapshots, incremental backups to S3 or NFS, and cross-cluster disaster recovery — making it an excellent choice for clusters that don't have dedicated storage nodes.
+Longhorn is a lightweight, reliable, and powerful distributed block storage system for Kubernetes, originally developed by Rancher (now SUSE). It uses the existing disks on your Kubernetes worker nodes without requiring dedicated storage hardware. Longhorn supports volume snapshots, incremental backups to S3 or NFS, and cross-cluster disaster recovery - making it an excellent choice for clusters that don't have dedicated storage nodes.
 
 Deploying Longhorn through Flux CD gives you GitOps control over storage settings, backup schedules, and recurring snapshot policies. The Longhorn Manager is available as a Helm chart, and backup targets and recurring jobs are managed through its API or CRDs.
 
@@ -245,7 +245,7 @@ kubectl get recurringjobs -n longhorn-system
 
 ## Best Practices
 
-- Install `open-iscsi` on all worker nodes before deploying Longhorn — volumes will fail to attach without it.
+- Install `open-iscsi` on all worker nodes before deploying Longhorn - volumes will fail to attach without it.
 - Set `defaultReplicaCount: 3` for production volumes and `1` only for ephemeral caches.
 - Configure recurring backups to S3 and test restore by creating a volume from backup in a test environment.
 - Use `dataLocality: best-effort` to prefer placing the primary replica on the same node as the pod for read performance.
@@ -253,4 +253,4 @@ kubectl get recurringjobs -n longhorn-system
 
 ## Conclusion
 
-Longhorn deployed via Flux CD provides a simple yet powerful distributed block storage solution that leverages your existing node disks without requiring dedicated storage hardware. S3 backups with configurable retention give you disaster recovery capabilities with minimal configuration. Every storage setting — replica count, backup schedule, retention policy — is a Git-managed configuration that Flux applies consistently across your cluster.
+Longhorn deployed via Flux CD provides a simple yet powerful distributed block storage solution that leverages your existing node disks without requiring dedicated storage hardware. S3 backups with configurable retention give you disaster recovery capabilities with minimal configuration. Every storage setting - replica count, backup schedule, retention policy - is a Git-managed configuration that Flux applies consistently across your cluster.

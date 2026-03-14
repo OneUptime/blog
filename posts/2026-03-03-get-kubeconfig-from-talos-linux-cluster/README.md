@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubeconfig, kubectl, Kubernetes, Cluster Access
+Tags: Talos Linux, Kubeconfig, Kubectl, Kubernetes, Cluster Access
 
 Description: Learn the different ways to retrieve and manage your kubeconfig file from a Talos Linux Kubernetes cluster.
 

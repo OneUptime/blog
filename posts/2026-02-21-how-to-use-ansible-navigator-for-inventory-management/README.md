@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Inventory, DevOps
+Tags: Ansible, Ansible-navigator, Inventory, DevOps
 
 Description: Use ansible-navigator to inspect, validate, and manage Ansible inventories with interactive browsing and execution environment support.
 

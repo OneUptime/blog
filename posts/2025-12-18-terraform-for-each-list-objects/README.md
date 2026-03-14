@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, for_each, Loops, Lists, Objects, HCL
+Tags: Terraform, For_each, Loops, Lists, Objects, HCL
 
 Description: Learn how to effectively use for_each with list of objects in Terraform, including conversion techniques, indexing strategies, and best practices for managing multiple similar resources.
 

@@ -1,4 +1,4 @@
-# How to Configure TLS Passthrough and Source IP Visibility in the Cilium Gateway API
+# How to Configure TLS Passthrough in the Cilium Gateway API
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

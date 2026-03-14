@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Security, Configuration
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Security, Configuration
 
 Description: A step-by-step guide to configuring etcd role-based access control for Calico to ensure each Calico component only has access to the etcd paths it requires.
 
@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring etcd role-based access control 
 
 ## Introduction
 
-When Calico is configured to use etcd as its datastore (rather than the Kubernetes API), each Calico component — Felix, the CNI plugin, calicoctl, and the Calico API server — reads and writes different subsets of the etcd key space. Granting all components the same broad access violates the principle of least privilege and increases the blast radius if any component is compromised.
+When Calico is configured to use etcd as its datastore (rather than the Kubernetes API), each Calico component - Felix, the CNI plugin, calicoctl, and the Calico API server - reads and writes different subsets of the etcd key space. Granting all components the same broad access violates the principle of least privilege and increases the blast radius if any component is compromised.
 
 etcd RBAC allows you to define roles that restrict which key prefixes each Calico component can access and with which verbs (read, write, delete). This is particularly important in etcd clusters shared between Calico and the Kubernetes control plane, where Calico credentials should never be able to access Kubernetes secrets or other sensitive paths.
 

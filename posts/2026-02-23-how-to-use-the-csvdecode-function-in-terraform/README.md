@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, csvdecode, CSV Parsing, Data Import, Infrastructure as Code
+Tags: Terraform, Csvdecode, CSV Parsing, Data Import, Infrastructure as Code
 
 Description: Learn how to use Terraform's csvdecode function to import CSV data for bulk resource creation, network configurations, user management, and data-driven infrastructure.
 

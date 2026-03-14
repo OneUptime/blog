@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, S3, s3fs, Cloud Storage, AWS, Tutorial
+Tags: Ubuntu, S3, S3fs, Cloud Storage, AWS, Tutorial
 
 Description: Complete guide to mounting Amazon S3 buckets as local filesystems on Ubuntu using s3fs.
 

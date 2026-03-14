@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, aptly, Package Repository, Debian, DevOps
+Tags: Ubuntu, Aptly, Package Repository, Debian, DevOps
 
 Description: Set up and manage a private Debian/Ubuntu package repository using aptly on Ubuntu, including creating repos, adding packages, publishing, and serving via HTTP.
 

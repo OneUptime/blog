@@ -43,7 +43,7 @@ flowchart LR
 
 ## Common Whisker Queries
 
-```
+```plaintext
 # In Whisker UI - common investigation patterns:
 
 # Find all denied connections to a service:
@@ -61,4 +61,4 @@ flowchart LR
 
 ## Conclusion
 
-Whisker provides the fastest path to understanding Calico network policy behavior in a running cluster. The denied traffic view replaces hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns — this ensures the observability pipeline is functioning correctly before you rely on it during an incident.
+Whisker provides the fastest path to understanding Calico network policy behavior in a running cluster. The denied traffic view replaces hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns - this ensures the observability pipeline is functioning correctly before you rely on it during an incident.

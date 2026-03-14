@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DNSSEC, DNS, BIND, Zone Signing, Security, dnssec-signzone, Inline Signing, Key Management
+Tags: DNSSEC, DNS, BIND, Zone Signing, Security, Dnssec-signzone, Inline Signing, Key Management
 
 Description: A comprehensive guide to signing DNS zones with DNSSEC using BIND, covering both manual signing with dnssec-signzone and automatic inline signing for production deployments.
 

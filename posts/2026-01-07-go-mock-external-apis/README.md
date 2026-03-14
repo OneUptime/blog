@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Testing, Mocking, httptest, gomock
+Tags: Go, Testing, Mocking, Httptest, Gomock
 
 Description: Eliminate flaky tests by mocking external APIs in Go using httptest for HTTP mocking and gomock for interface mocking.
 

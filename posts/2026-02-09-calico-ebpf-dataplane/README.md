@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Calico, eBPF, Networking, Performance
+Tags: Kubernetes, Calico, EBPF, Networking, Performance
 
 Description: Configure Calico's eBPF dataplane for high-performance native routing in Kubernetes including setup, performance tuning, kube-proxy replacement, and comparison with standard iptables dataplane.
 

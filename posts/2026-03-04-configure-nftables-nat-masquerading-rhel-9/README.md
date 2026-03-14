@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, NAT, Masquerading, Linux
+Tags: RHEL, Nftables, NAT, Masquerading, Linux
 
 Description: Learn how to set up source NAT, destination NAT, masquerading, and port forwarding using nftables on RHEL.
 

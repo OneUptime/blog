@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, NFS, Automount, Linux
+Tags: RHEL, Autofs, NFS, Automount, Linux
 
 Description: Install and configure autofs on RHEL to automatically mount NFS shares when accessed and unmount them when idle.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Compatibility, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Understand Cilium's Kubernetes version compatibility requirements, how to configure your cluster for supported versions, troubleshoot compatibility issues, and validate correct operation across versions.
+Description: Understand Cilium's Kubernetes version compatibility requirements, how to configure your cluster for supported versions, troubleshoot compatibility issues, and validate correct operation across...
 
 ---
 

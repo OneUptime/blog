@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, xDS, Envoy, Protocol, Service Mesh
+Tags: Istio, XDS, Envoy, Protocol, Service Mesh
 
 Description: A practical guide to understanding the xDS protocol used by Istio to distribute configuration from the control plane to Envoy sidecar proxies.
 

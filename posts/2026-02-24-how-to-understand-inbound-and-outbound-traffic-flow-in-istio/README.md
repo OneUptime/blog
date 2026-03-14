@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Flow, Envoy, Kubernetes, Networking
+Tags: Istio, Traffic Flows, Envoy, Kubernetes, Networking
 
 Description: A detailed walkthrough of how inbound and outbound traffic flows through Istio's Envoy sidecar proxies in a Kubernetes service mesh.
 

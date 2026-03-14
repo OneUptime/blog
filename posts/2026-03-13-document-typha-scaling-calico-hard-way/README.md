@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Documentation, Scaling, CNI, Networking, Runbook
+Tags: Calico, Typha, Kubernetes, Networking, Scaling, Documentation, Hard Way
 
-Description: Create the operational documentation your team needs to understand and manage Typha scaling decisions in a manifest-based Calico installation — covering scaling formulas, configuration inventories, change logs, and scaling runbooks.
+Description: Create the operational documentation your team needs to understand and manage Typha scaling decisions in a manifest-based Calico installation - covering scaling formulas, configuration...
 
 ---
 
@@ -45,7 +45,7 @@ The standard Calico scaling formula is used:
 - Next review threshold: cluster reaches 600 nodes (triggers move to 4 replicas)
 
 ## Override Rationale
-None — formula-driven count matches zone count (3 AZs), so no override needed.
+None - formula-driven count matches zone count (3 AZs), so no override needed.
 If cluster were in 2 AZs with 450 nodes, formula gives 3 replicas but we would
 round down to 2 to match zone count, and monitor connection load carefully.
 
@@ -149,18 +149,18 @@ Keep a chronological record of every Typha scaling event:
 ```markdown
 # Typha Scaling Change Log
 
-## 2026-03-13 — Initial deployment
+## 2026-03-13 - Initial deployment
 - Replicas: 2
 - Cluster size: 120 nodes
 - Reason: Initial setup; 2 replicas for HA with cluster below 200-node threshold
 
-## 2026-06-01 — Scale up to 3
+## 2026-06-01 - Scale up to 3
 - Replicas: 2 → 3
 - Cluster size: 210 nodes
 - Reason: Crossed 200-node threshold; also aligns with 3-zone AZ configuration
 - Engineer: platform-team
 
-## 2026-09-15 — Scale up to 5
+## 2026-09-15 - Scale up to 5
 - Replicas: 3 → 5
 - Cluster size: 420 nodes
 - Reason: Formula yields ceil(420/200)=3 but one Typha pod was showing CPU
@@ -175,7 +175,7 @@ Keep a chronological record of every Typha scaling event:
 
 - Update the scaling rationale document every time you change the replica count, not just when you deploy Typha.
 - Store the configuration snapshot in the same Git repository as your cluster manifests so it is versioned alongside code changes.
-- Make the scaling runbook a PR review requirement for any Typha Deployment change — this forces engineers to check the runbook before making changes.
+- Make the scaling runbook a PR review requirement for any Typha Deployment change - this forces engineers to check the runbook before making changes.
 - Include the change log review as part of your quarterly cluster audit; a long gap in the log often indicates the autoscaler is working but no one is reviewing its decisions.
 - Link the runbook from Prometheus alert annotations so on-call engineers have immediate access during incidents.
 

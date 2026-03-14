@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Samba, SELinux, firewalld, Linux
+Tags: RHEL, Samba, SELinux, Firewalld, Linux
 
 Description: Get Samba working correctly with SELinux enforcing and firewalld active on RHEL, covering file contexts, booleans, ports, and troubleshooting.
 

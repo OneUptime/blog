@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Performance, Hooks, useMemo, useCallback, Optimization
+Tags: React, Performance, Hooks, UseMemo, UseCallback, Optimization
 
 Description: A comprehensive guide to understanding and optimizing React component re-renders using useMemo and useCallback hooks, with practical examples and best practices for building performant applications.
 

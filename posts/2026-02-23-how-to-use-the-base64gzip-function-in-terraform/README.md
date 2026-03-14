@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, base64gzip, Compression, Cloud Init, Lambda, Infrastructure as Code
+Tags: Terraform, Base64gzip, Compression, Cloud Init, Lambda, Infrastructure as Code
 
 Description: Learn how to use Terraform's base64gzip function to compress and encode strings for user data, Lambda functions, and cloud-init configs to stay within size limits.
 

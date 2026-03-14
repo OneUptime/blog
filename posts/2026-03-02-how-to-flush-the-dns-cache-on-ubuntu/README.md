@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, Networking, systemd-resolved, Troubleshooting
+Tags: Ubuntu, DNS, Networking, Systemd-resolved, Troubleshooting
 
 Description: How to flush the DNS cache on Ubuntu using systemd-resolved, nscd, and dnsmasq depending on which resolver your system uses.
 

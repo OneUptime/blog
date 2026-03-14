@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Cilium, CNI, eBPF, Networking, Kubernetes
+Tags: Talos Linux, Cilium, CNI, EBPF, Networking, Kubernetes
 
 Description: Complete guide to installing and configuring Cilium as the CNI plugin on Talos Linux using eBPF for high-performance Kubernetes networking.
 

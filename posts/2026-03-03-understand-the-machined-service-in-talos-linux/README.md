@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, machined, System Services, Kubernetes, Configuration Management, Infrastructure
+Tags: Talos Linux, Machined, System Services, Kubernetes, Configuration Management, Infrastructure
 
 Description: Explore the machined service in Talos Linux, the core daemon that manages node configuration, system state, and orchestrates all other services on the machine.
 

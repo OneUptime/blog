@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Linux, DevOps, System Administration
+Tags: Ubuntu, Systemd, Linux, DevOps, System Administration
 
 Description: Learn how to configure systemd Portable Services on Ubuntu to run self-contained service images with filesystem isolation and minimal dependencies on the host system.
 

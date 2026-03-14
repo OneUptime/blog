@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, cni-chaining, networking, kubernetes, multus, policy
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
-Description: Learn how to validate CNI chaining configurations where Cilium operates as a chained plugin alongside another primary CNI, ensuring both CNI plugins coexist correctly and policy enforcement works as expected.
+Description: Learn how to validate CNI chaining configurations where Cilium operates as a chained plugin alongside another primary CNI, ensuring both CNI plugins coexist correctly and policy enforcement works...
 
 ---
 
@@ -28,7 +28,7 @@ This guide covers the validation steps for Cilium in CNI chaining mode, from che
 Check that the CNI config file on nodes is correctly structured as a chain.
 
 ```bash
-# Inspect the CNI config file — look for a "plugins" array
+# Inspect the CNI config file - look for a "plugins" array
 # The primary CNI plugin should be first, Cilium should follow
 kubectl -n kube-system exec -it \
   $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
@@ -68,7 +68,7 @@ kubectl -n kube-system get configmap cilium-config \
 Even in chaining mode, Cilium should register endpoints for all non-hostNetwork pods.
 
 ```bash
-# Check Cilium endpoints — these should exist for all regular pods
+# Check Cilium endpoints - these should exist for all regular pods
 kubectl get ciliumendpoints -A | head -20
 
 # Count endpoints vs. running pods (should be similar)
@@ -131,7 +131,7 @@ kubectl get ciliumippools 2>/dev/null || echo "No Cilium IP pools (expected in c
 
 - Test chained CNI behavior after every upgrade of either the primary CNI or Cilium
 - Use `cilium monitor` to observe whether policy drop events are fired correctly
-- In chaining mode, some Cilium features (e.g., BPF NodePort) may be limited — check documentation
+- In chaining mode, some Cilium features (e.g., BPF NodePort) may be limited - check documentation
 - Ensure only one conflist file is active in `/etc/cni/net.d/` to avoid CNI selection ambiguity
 - Consider migrating to native Cilium IPAM for simpler operations and full feature access
 

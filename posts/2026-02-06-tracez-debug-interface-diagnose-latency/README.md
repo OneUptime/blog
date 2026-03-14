@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, TraceZ, Debugging, Latency, zPages, Performance
+Tags: OpenTelemetry, TraceZ, Debugging, Latency, ZPages, Performance
 
 Description: Learn how to use the OpenTelemetry TraceZ debug interface to identify and diagnose latency issues in your services with real-time span inspection.
 

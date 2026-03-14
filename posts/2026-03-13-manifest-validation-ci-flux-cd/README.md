@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Manifest Validation, CI/CD, GitOps, kubeval, kubeconform, Kustomize
+Tags: Flux CD, Manifest Validation, CI/CD, GitOps, Kubeval, Kubeconform, Kustomize
 
 Description: Learn how to add Kubernetes manifest validation to CI pipelines so that only syntactically correct and schema-valid manifests reach your Flux CD fleet repository.
 

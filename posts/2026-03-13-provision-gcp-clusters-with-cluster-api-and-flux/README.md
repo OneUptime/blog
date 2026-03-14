@@ -12,7 +12,7 @@ Description: Provision GCP GKE clusters using Cluster API and Flux CD for declar
 
 The Cluster API GCP provider (CAPG) supports two modes: provisioning self-managed Kubernetes on GCP Compute Engine instances, and provisioning managed GKE clusters through the `GCPManagedCluster` resource. This guide covers GKE-managed clusters, which delegate the control plane lifecycle to Google while still using CAPI's declarative model for the node pools.
 
-Using GKE through CAPG gives you the best of both worlds: Google manages the control plane (upgrades, security patches, etcd backups), while CAPI manages the node pool configuration through Git. Flux CD ensures the cluster manifests are continuously reconciled, and any drift—such as a node pool being manually scaled or configured outside Git—is detected and corrected.
+Using GKE through CAPG gives you the best of both worlds: Google manages the control plane (upgrades, security patches, etcd backups), while CAPI manages the node pool configuration through Git. Flux CD ensures the cluster manifests are continuously reconciled, and any drift-such as a node pool being manually scaled or configured outside Git-is detected and corrected.
 
 ## Prerequisites
 

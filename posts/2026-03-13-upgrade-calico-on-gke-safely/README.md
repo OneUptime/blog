@@ -1,10 +1,10 @@
-# Upgrade Calico on GKE Safely
+# How to Upgrade Calico on GKE Safely
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gke, gcp, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, GKE, Google Cloud
 
-Description: Learn how to safely upgrade Calico on Google Kubernetes Engine, covering pre-upgrade checks, the Tigera Operator upgrade procedure, and post-upgrade validation specific to the GKE environment.
+Description: Safely upgrade Calico on Google Kubernetes Engine clusters with minimal workload disruption.
 
 ---
 

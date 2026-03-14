@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Validation, istioctl, YAML, DevOps
+Tags: Istio, Validation, Istioctl, YAML, DevOps
 
 Description: How to use istioctl analyze to validate Istio configuration files, catch misconfigurations early, and integrate validation into your CI pipeline.
 

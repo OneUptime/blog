@@ -10,7 +10,7 @@ Description: Use calicoctl apply to create or update Calico resources declarativ
 
 ## Introduction
 
-`calicoctl apply` is the primary command for declarative Calico resource management. Like `kubectl apply`, it creates resources that don't exist and updates existing ones based on the YAML definition. It's the preferred command for infrastructure-as-code workflows because it's idempotent — running it multiple times produces the same result. Understanding when to use `apply` versus `create`, `replace`, or `patch` is essential for safe Calico operations.
+`calicoctl apply` is the primary command for declarative Calico resource management. Like `kubectl apply`, it creates resources that don't exist and updates existing ones based on the YAML definition. It's the preferred command for infrastructure-as-code workflows because it's idempotent - running it multiple times produces the same result. Understanding when to use `apply` versus `create`, `replace`, or `patch` is essential for safe Calico operations.
 
 ## Basic calicoctl apply Usage
 

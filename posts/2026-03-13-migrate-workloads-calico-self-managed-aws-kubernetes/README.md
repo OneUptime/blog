@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, AWS, Kubernetes, Networking, Migration, CNI
+Tags: Calico, Kubernetes, Networking, Migration, AWS, Self-Managed
 
 Description: Learn how to migrate workloads to Calico on a self-managed Kubernetes cluster running on AWS EC2, covering CNI replacement, IP pool configuration, and network policy enforcement.
 
@@ -10,7 +10,7 @@ Description: Learn how to migrate workloads to Calico on a self-managed Kubernet
 
 ## Introduction
 
-Running a self-managed Kubernetes cluster on AWS gives you full control over your infrastructure, but it also means you are responsible for choosing and maintaining your CNI plugin. Many teams start with the default AWS VPC CNI and later discover they need more advanced network policy capabilities, BGP peering support, or fine-grained IPAM control — all areas where Calico excels.
+Running a self-managed Kubernetes cluster on AWS gives you full control over your infrastructure, but it also means you are responsible for choosing and maintaining your CNI plugin. Many teams start with the default AWS VPC CNI and later discover they need more advanced network policy capabilities, BGP peering support, or fine-grained IPAM control - all areas where Calico excels.
 
 Migrating to Calico on a self-managed AWS cluster is different from managed EKS because you have direct access to the control plane nodes and can adjust kubelet and kube-proxy settings freely. This flexibility makes the migration more straightforward while also requiring careful planning to avoid network disruption.
 

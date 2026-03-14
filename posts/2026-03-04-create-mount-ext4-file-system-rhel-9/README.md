@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Filesystems, Storage, Linux
+Tags: RHEL, Ext4, Filesystems, Storage, Linux
 
 Description: Learn how to create, mount, and configure ext4 file systems on RHEL, covering partition preparation, formatting options, and persistent mount configuration.
 

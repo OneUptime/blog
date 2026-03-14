@@ -12,9 +12,9 @@ Description: Deploy and manage a full monitoring platform stack using Flux CD so
 
 Observability infrastructure is often the last thing to be treated as code. Teams deploy Prometheus manually, configure Grafana dashboards through the UI, and add Alertmanager routes through a web form. The result is a monitoring system that nobody fully understands, that drifts from its documented configuration, and that takes hours to recreate after a cluster failure.
 
-Flux CD brings GitOps discipline to monitoring infrastructure. Every component — Prometheus installation, scrape configs, dashboards, alert rules, Alertmanager routing — lives in Git and is continuously reconciled. When a platform team adds a new default dashboard or tightens an alert threshold, the change flows to every cluster automatically. When a cluster is rebuilt, monitoring is restored within minutes.
+Flux CD brings GitOps discipline to monitoring infrastructure. Every component - Prometheus installation, scrape configs, dashboards, alert rules, Alertmanager routing - lives in Git and is continuously reconciled. When a platform team adds a new default dashboard or tightens an alert threshold, the change flows to every cluster automatically. When a cluster is rebuilt, monitoring is restored within minutes.
 
-In this guide you will build a complete monitoring stack with the kube-prometheus-stack Helm chart, manage dashboards as ConfigMaps, define alert rules as PrometheusRule objects, and configure Alertmanager routing — all through Flux.
+In this guide you will build a complete monitoring stack with the kube-prometheus-stack Helm chart, manage dashboards as ConfigMaps, define alert rules as PrometheusRule objects, and configure Alertmanager routing - all through Flux.
 
 ## Prerequisites
 
@@ -321,4 +321,4 @@ spec:
 
 ## Conclusion
 
-A GitOps-managed monitoring platform built with Flux CD ensures your observability infrastructure is as reliable and well-maintained as the applications it monitors. Dashboards, alert rules, and Alertmanager configuration are all version-controlled, reviewed, and automatically applied. When a cluster needs to be rebuilt, monitoring is restored automatically from Git — no manual configuration, no forgotten settings, no monitoring gaps during recovery.
+A GitOps-managed monitoring platform built with Flux CD ensures your observability infrastructure is as reliable and well-maintained as the applications it monitors. Dashboards, alert rules, and Alertmanager configuration are all version-controlled, reviewed, and automatically applied. When a cluster needs to be rebuilt, monitoring is restored automatically from Git - no manual configuration, no forgotten settings, no monitoring gaps during recovery.

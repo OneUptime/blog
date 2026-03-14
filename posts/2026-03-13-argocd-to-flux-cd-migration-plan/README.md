@@ -10,7 +10,7 @@ Description: A practical step-by-step guide to planning and executing a migratio
 
 ## Introduction
 
-Migrating from ArgoCD to Flux CD is a strategic decision that requires careful planning, parallel operation periods, and thorough validation. The migration is not just a tooling change—it changes how your team thinks about deployments, how secrets are managed, and how notifications work. Done well, it can be nearly invisible to application teams; done poorly, it can cause downtime.
+Migrating from ArgoCD to Flux CD is a strategic decision that requires careful planning, parallel operation periods, and thorough validation. The migration is not just a tooling change-it changes how your team thinks about deployments, how secrets are managed, and how notifications work. Done well, it can be nearly invisible to application teams; done poorly, it can cause downtime.
 
 This guide provides a structured migration plan covering discovery, parallel operation, workload migration, and cutover strategies.
 
@@ -54,7 +54,7 @@ kubectl get applications -n argocd \
 
 Document each application with its migration complexity:
 
-```
+```plaintext
 | Application | Source Type | Sync Waves | Hooks | Notifications | Complexity |
 |-------------|-------------|------------|-------|---------------|------------|
 | frontend    | Helm        | No         | No    | Slack         | Low        |
@@ -187,4 +187,4 @@ kubectl get pods -n flux-system
 
 ## Conclusion
 
-Migrating from ArgoCD to Flux CD is achievable with a methodical, wave-based approach. The parallel operation period—running both tools simultaneously on different applications—is critical for building confidence and establishing migration patterns. Allow at least 2-4 weeks for the migration of a medium-complexity environment, and longer for environments with many hooks, waves, or custom health checks.
+Migrating from ArgoCD to Flux CD is achievable with a methodical, wave-based approach. The parallel operation period-running both tools simultaneously on different applications-is critical for building confidence and establishing migration patterns. Allow at least 2-4 weeks for the migration of a medium-complexity environment, and longer for environments with many hooks, waves, or custom health checks.

@@ -10,7 +10,7 @@ Description: Secure access to VPP troubleshooting tools by implementing RBAC con
 
 ## Introduction
 
-Calico VPP troubleshooting requires exec access to privileged pods in the `calico-vpp-dataplane` namespace. The `vppctl` CLI can modify live VPP configuration — adding routes, changing NAT rules, enabling packet traces — which makes unrestricted access a security risk. Securing this access means applying least-privilege RBAC, audit logging kubectl exec calls, and using read-only commands during normal operations.
+Calico VPP troubleshooting requires exec access to privileged pods in the `calico-vpp-dataplane` namespace. The `vppctl` CLI can modify live VPP configuration - adding routes, changing NAT rules, enabling packet traces - which makes unrestricted access a security risk. Securing this access means applying least-privilege RBAC, audit logging kubectl exec calls, and using read-only commands during normal operations.
 
 ## RBAC for VPP Troubleshooting Access
 
@@ -113,4 +113,4 @@ SCRIPT
 
 ## Conclusion
 
-Securing Calico VPP troubleshooting access requires RBAC that limits pod exec to the calico-vpp-dataplane namespace, audit logging of all exec calls to capture what vppctl commands were run, and a clear separation between read-only show commands and state-modifying commands. During normal troubleshooting, all needed information is available through `vppctl show` commands — there is no need to modify VPP state. Reserve write access for incident commanders only, and require a change ticket before executing any state-modifying vppctl commands.
+Securing Calico VPP troubleshooting access requires RBAC that limits pod exec to the calico-vpp-dataplane namespace, audit logging of all exec calls to capture what vppctl commands were run, and a clear separation between read-only show commands and state-modifying commands. During normal troubleshooting, all needed information is available through `vppctl show` commands - there is no need to modify VPP state. Reserve write access for incident commanders only, and require a change ticket before executing any state-modifying vppctl commands.

@@ -156,7 +156,7 @@ spec:
 
 ## Step 3: Directory Structure for Ordered Deployment
 
-```
+```plaintext
 fleet-repo/
   infrastructure/
     crds/              # Wave -10 to -5

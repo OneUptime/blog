@@ -10,9 +10,9 @@ Description: Deploy Flux CD on OpenShift while complying with Security Context C
 
 ## Introduction
 
-OpenShift is Red Hat's enterprise Kubernetes platform with significant security additions, the most notable being Security Context Constraints (SCCs). SCCs are OpenShift's mechanism for controlling what a pod can do — replacing the upstream Kubernetes PodSecurityPolicy (deprecated) with a more granular and powerful system. SCCs determine whether a pod can run as root, use host networking, mount specific volume types, and more.
+OpenShift is Red Hat's enterprise Kubernetes platform with significant security additions, the most notable being Security Context Constraints (SCCs). SCCs are OpenShift's mechanism for controlling what a pod can do - replacing the upstream Kubernetes PodSecurityPolicy (deprecated) with a more granular and powerful system. SCCs determine whether a pod can run as root, use host networking, mount specific volume types, and more.
 
-Deploying Flux CD on OpenShift requires understanding which SCCs Flux's controllers need and creating the appropriate bindings. Flux's controllers are generally well-behaved — they do not need root access or host networking — but they do require specific capabilities for reading Git repositories, applying manifests, and managing Helm charts. Getting the SCC configuration right from the start avoids frustrating "forbidden: unable to validate" errors.
+Deploying Flux CD on OpenShift requires understanding which SCCs Flux's controllers need and creating the appropriate bindings. Flux's controllers are generally well-behaved - they do not need root access or host networking - but they do require specific capabilities for reading Git repositories, applying manifests, and managing Helm charts. Getting the SCC configuration right from the start avoids frustrating "forbidden: unable to validate" errors.
 
 ## Prerequisites
 

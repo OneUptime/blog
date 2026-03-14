@@ -10,7 +10,7 @@ Description: Validate that Calico is correctly operating in FIPS 140-2 mode by v
 
 ## Introduction
 
-Validating Calico FIPS mode is not just about checking a configuration flag — it requires proving that all cryptographic operations across all Calico components actually use FIPS-approved algorithms. Simply setting `fipsMode: Enabled` in the Installation resource does not guarantee compliance if non-FIPS images, certificates, or cipher suites are in use.
+Validating Calico FIPS mode is not just about checking a configuration flag - it requires proving that all cryptographic operations across all Calico components actually use FIPS-approved algorithms. Simply setting `fipsMode: Enabled` in the Installation resource does not guarantee compliance if non-FIPS images, certificates, or cipher suites are in use.
 
 A complete FIPS validation covers four dimensions: OS-level FIPS enforcement, Calico image FIPS compliance, TLS certificate algorithm validation, and runtime cipher suite verification. Each dimension catches different categories of FIPS violations, and all four must pass for your deployment to be genuinely FIPS 140-2 compliant.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, vSphere, Automation, Infrastructure
+Tags: Ansible, VMware, VSphere, Automation, Infrastructure
 
 Description: Complete guide to setting up Ansible for VMware vSphere automation including collection installation, authentication, and your first playbook.
 

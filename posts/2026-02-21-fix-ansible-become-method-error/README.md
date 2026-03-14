@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Troubleshooting, Privilege Escalation, sudo, DevOps
+Tags: Ansible, Troubleshooting, Privilege Escalation, Sudo, DevOps
 
 Description: Resolve Ansible become_method requires become error by properly configuring privilege escalation in playbooks and configuration files.
 

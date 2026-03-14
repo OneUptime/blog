@@ -10,7 +10,7 @@ Description: A guide to migrating virtual machine workloads from OVS to Calico o
 
 ## Introduction
 
-Migrating from OVS-based networking to Calico on a RHEL OpenStack cluster follows the same general process as Ubuntu — VM shutdown, OVS cleanup, Calico installation, VM restart — with RHEL-specific package management and SELinux configuration steps. Planning for SELinux policy configuration is particularly important on RHEL, as new Calico operations that interact with iptables or network interfaces may trigger denials that need to be permitted.
+Migrating from OVS-based networking to Calico on a RHEL OpenStack cluster follows the same general process as Ubuntu - VM shutdown, OVS cleanup, Calico installation, VM restart - with RHEL-specific package management and SELinux configuration steps. Planning for SELinux policy configuration is particularly important on RHEL, as new Calico operations that interact with iptables or network interfaces may trigger denials that need to be permitted.
 
 ## Prerequisites
 
@@ -95,4 +95,4 @@ openstack server list
 
 ## Conclusion
 
-Migrating from OVS to Calico on RHEL OpenStack requires VM shutdown, OVS removal, Calico installation with RHEL-appropriate SELinux configuration and firewalld rules, and VM restart. The RHEL-specific steps — SELinux policy generation and firewalld configuration — are essential for a successful migration and should be tested in a staging environment before applying to production.
+Migrating from OVS to Calico on RHEL OpenStack requires VM shutdown, OVS removal, Calico installation with RHEL-appropriate SELinux configuration and firewalld rules, and VM restart. The RHEL-specific steps - SELinux policy generation and firewalld configuration - are essential for a successful migration and should be tested in a staging environment before applying to production.

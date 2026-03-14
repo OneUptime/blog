@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, rke, rancher, kubernetes, requirements, prerequisites, cni
+Tags: Cilium, Kubernetes, RKE, Rancher, EBPF
 
 Description: Learn how to validate that your Rancher Kubernetes Engine (RKE or RKE2) cluster meets all requirements for running Cilium, covering RKE-specific configuration and system prerequisites.
 

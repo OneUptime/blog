@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sysvinit, Linux, Service Management
+Tags: Ansible, Sysvinit, Linux, Service Management
 
 Description: Learn how to manage legacy SysV init services using the Ansible sysvinit module for older Linux distributions and compatibility scenarios.
 

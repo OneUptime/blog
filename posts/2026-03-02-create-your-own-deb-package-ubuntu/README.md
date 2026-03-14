@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dpkg, Package Management, Development, Debian
+Tags: Ubuntu, Dpkg, Package Management, Development, Debian
 
 Description: Learn how to build your own .deb packages on Ubuntu from scratch, including the directory structure, control files, pre/post install scripts, and building with dpkg-deb.
 

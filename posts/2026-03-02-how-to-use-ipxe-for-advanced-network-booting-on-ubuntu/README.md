@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, iPXE, PXE, Server
+Tags: Ubuntu, Networking, IPXE, PXE, Server
 
 Description: Configure iPXE for advanced network booting on Ubuntu, including HTTP boot, menu scripting, and chainloading from traditional PXE environments.
 

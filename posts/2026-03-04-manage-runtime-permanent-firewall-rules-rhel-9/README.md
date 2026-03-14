@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Runtime, Permanent, Linux
+Tags: RHEL, Firewalld, Runtime, Permanent, Linux
 
 Description: Understanding the difference between runtime and permanent firewalld rules on RHEL, and how to use this dual-layer system effectively for safe firewall changes.
 

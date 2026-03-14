@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Upgrades, CNI, Networking, Rolling Updates
+Tags: Calico, Typha, Kubernetes, Networking, Upgrade, Communication
 
-Description: Understand what happens to Felix connections, policy enforcement, and cluster networking during a Typha upgrade — covering the rolling update sequence, version compatibility requirements, and the impact window when running Calico in manifest mode.
+Description: Understand what happens to Felix connections, policy enforcement, and cluster networking during a Typha upgrade - covering the rolling update sequence, version compatibility requirements, and the...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Understand what happens to Felix connections, policy enforcement, a
 
 Upgrading Typha in a manifest-based Calico deployment is a rolling Deployment update, but it has networking implications that a standard application rollout does not. When a Typha pod is replaced, every Felix agent connected to it must reconnect to a remaining pod and receive a new full state snapshot before it can resume processing policy updates.
 
-Understanding what happens during this reconnection window — how long it lasts, what Felix does with stale state, and whether policy enforcement is disrupted — is essential for planning and communicating upgrades to the teams that depend on your cluster's network behavior.
+Understanding what happens during this reconnection window - how long it lasts, what Felix does with stale state, and whether policy enforcement is disrupted - is essential for planning and communicating upgrades to the teams that depend on your cluster's network behavior.
 
 ---
 
@@ -52,7 +52,7 @@ Calico's upgrade documentation specifies the supported version skew. In general,
 
 When Kubernetes performs a rolling update of the Typha Deployment, it replaces pods one at a time:
 
-```
+```plaintext
 Phase 1: Start replacement pod
   Old pod: Running, serving 150 Felix connections
   New pod: Starting, building API server cache
@@ -119,7 +119,7 @@ The total time to upgrade all Typha pods depends on:
 
 For a 3-replica Typha deployment, the total upgrade window is approximately:
 
-```
+```plaintext
 Total upgrade time = replicas * (readiness_delay + reconnection_time)
                    = 3 * (45s + 10s) = ~165 seconds (~3 minutes)
 ```

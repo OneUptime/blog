@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, azure-cni, kubernetes, troubleshooting, networking, cluster
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A troubleshooting reference for diagnosing cluster-wide networking issues when Cilium is deployed alongside Azure CNI in Azure Kubernetes environments.
 
@@ -114,4 +114,4 @@ az network nic show-effective-route-table \
 
 ## Conclusion
 
-Cluster-wide issues in Azure CNI + Cilium environments require a holistic approach—checking Cilium health across all nodes, validating identity allocation, MTU configuration, and global network policies. By following a systematic diagnostic process, you can identify whether issues originate from the Azure data plane, Cilium configuration, or their interaction, and resolve them efficiently.
+Cluster-wide issues in Azure CNI + Cilium environments require a holistic approach-checking Cilium health across all nodes, validating identity allocation, MTU configuration, and global network policies. By following a systematic diagnostic process, you can identify whether issues originate from the Azure data plane, Cilium configuration, or their interaction, and resolve them efficiently.

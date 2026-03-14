@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Kubernetes, Load Balancer, ServiceLB, Klipper, Networking, DevOps
+Tags: K3s, Kubernetes, Load Balancer, ServiceLB, Klipper, Networking, DevOps
 
 Description: A practical guide to configuring the built-in K3s Service Load Balancer (formerly Klipper).
 

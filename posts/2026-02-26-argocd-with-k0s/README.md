@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, k0s, Mirantis
+Tags: ArgoCD, GitOps, Kubernetes, K0s, Mirantis
 
 Description: Learn how to deploy and configure ArgoCD on K0s, the zero-friction Kubernetes distribution from Mirantis, including single-binary setup and production hardening.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Targets, Runlevels, Linux
+Tags: RHEL, Systemd, Targets, Runlevels, Linux
 
 Description: Learn how to view and change the default systemd target on RHEL, including the relationship between classic runlevels and modern targets, and how to override at boot via GRUB.
 

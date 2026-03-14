@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TCO, Kubernetes, Cost Comparison, k3s, RKE2, OpenShift, Infrastructure
+Tags: Talos Linux, TCO, Kubernetes, Cost Comparison, K3s, RKE2, OpenShift, Infrastructure
 
 Description: An honest comparison of total cost of ownership between Talos Linux and other Kubernetes distributions including operational and infrastructure costs.
 

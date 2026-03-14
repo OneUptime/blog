@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, perf, Performance, Profiling, Linux, Tutorial
+Tags: Ubuntu, Perf, Performance, Profiling, Linux, Tutorial
 
 Description: Complete guide to using Linux perf tool for system performance analysis on Ubuntu.
 

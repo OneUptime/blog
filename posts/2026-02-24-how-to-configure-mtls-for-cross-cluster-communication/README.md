@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Multi-Cluster, Security, Kubernetes
+Tags: Istio, MTLS, Multi-Cluster, Security, Kubernetes
 
 Description: Set up mutual TLS for service-to-service communication across multiple Kubernetes clusters in an Istio multi-cluster mesh deployment.
 

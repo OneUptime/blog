@@ -1,10 +1,10 @@
-# How to Configure HPA Based on CPU with Flux CD
+# HPA CPU Metrics with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HPA, CPU, Autoscaling, Kubernetes, GitOps, Horizontal Pod Autoscaler
+Tags: Flux CD, HPA, Horizontal Pod Autoscaler, CPU Metrics, Kubernetes, Autoscaling
 
-Description: Learn how to manage Kubernetes Horizontal Pod Autoscaler with CPU utilization targets using Flux CD GitOps for automated pod scaling.
+Description: Learn how to deploy and manage Kubernetes Horizontal Pod Autoscalers using CPU metrics through Flux CD GitOps workflows.
 
 ---
 

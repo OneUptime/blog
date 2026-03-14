@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Tracing, runtime/trace, Performance, Debugging, Profiling
+Tags: Go, Golang, Tracing, Runtime/trace, Performance, Debugging, Profiling
 
 Description: A practical guide to using Go's runtime/trace package to analyze goroutine execution, identify bottlenecks, and debug concurrency issues.
 

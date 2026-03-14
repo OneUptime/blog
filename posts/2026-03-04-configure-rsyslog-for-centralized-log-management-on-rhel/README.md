@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, Logging, Centralized Logs, Syslog, System Administration
+Tags: RHEL, Rsyslog, Logging, Centralized Logs, Syslog, System Administration
 
 Description: Set up rsyslog on RHEL to collect logs from multiple servers into a central log server, making it easier to search, monitor, and audit system events across your infrastructure.
 

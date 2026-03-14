@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Kong Gateway, Kong Plugins, API Gateway, KongPlugin CRD, Rate Limiting
+Tags: Flux CD, Kubernetes, GitOps, Kong Gateway, Kong Plugins, API Gateway, Rate Limiting
 
 Description: Manage Kong gateway plugins as Kubernetes CRDs using Flux CD GitOps to version control rate limiting, authentication, and request transformation plugin configurations.
 
@@ -14,7 +14,7 @@ Kong's plugin ecosystem is one of its most powerful features, providing ready-ma
 
 Managing Kong plugins through Flux CD transforms plugin configuration from an administrative task into a GitOps workflow. Rate limiting rules, authentication settings, and CORS policies are all committed to Git with timestamps, authors, and meaningful commit messages. When a plugin misconfiguration causes issues, rolling back is as simple as reverting a Git commit.
 
-This guide covers configuring the most commonly needed Kong plugins — rate limiting, key authentication, request transformation, and CORS — as Kubernetes CRDs managed through Flux CD.
+This guide covers configuring the most commonly needed Kong plugins - rate limiting, key authentication, request transformation, and CORS - as Kubernetes CRDs managed through Flux CD.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, System Commands, subprocess, Automation, DevOps
+Tags: Python, System Commands, Subprocess, Automation, DevOps
 
 Description: Learn how to run shell commands from Python safely using subprocess. Covers command execution, output capture, error handling, and security best practices.
 

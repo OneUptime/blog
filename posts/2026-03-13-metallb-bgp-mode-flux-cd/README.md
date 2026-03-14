@@ -1,10 +1,10 @@
-# How to Deploy MetalLB with BGP Mode via Flux CD
+# MetalLB BGP Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, MetalLB, BGP, Load Balancer, Kubernetes, Networking, GitOps, Bare Metal
+Tags: MetalLB, BGP, Flux-cd, GitOps, Kubernetes, Load-balancer, Bare-metal, Networking
 
-Description: Learn how to deploy MetalLB in BGP mode using Flux CD HelmRelease for production-grade load balancing on bare metal or on-premises Kubernetes clusters.
+Description: Learn how to deploy and configure MetalLB in BGP mode on bare-metal Kubernetes clusters using Flux CD, enabling dynamic load balancer IP advertisement to physical routers.
 
 ---
 

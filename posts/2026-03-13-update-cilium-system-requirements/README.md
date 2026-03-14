@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, requirements, kubernetes, linux, kernel, ebpf, system
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive reference guide to Cilium's core system requirements, covering kernel versions, Linux capabilities, container runtime support, and Kubernetes version compatibility.
 
@@ -10,7 +10,7 @@ Description: A comprehensive reference guide to Cilium's core system requirement
 
 ## Introduction
 
-Cilium's powerful eBPF-based networking requires a specific set of system capabilities that differ significantly from traditional CNI plugins. Before deploying Cilium — or before upgrading an existing installation — it's essential to verify that your infrastructure meets all system requirements. Mismatched requirements are the leading cause of failed Cilium installations.
+Cilium's powerful eBPF-based networking requires a specific set of system capabilities that differ significantly from traditional CNI plugins. Before deploying Cilium - or before upgrading an existing installation - it's essential to verify that your infrastructure meets all system requirements. Mismatched requirements are the leading cause of failed Cilium installations.
 
 Cilium's requirements have evolved over time as the project has added new features. Each major version of Cilium raises the minimum supported kernel version and may add new Linux capability requirements. Operators must check requirements not just at initial installation but before every upgrade, as Cilium's minimum supported Kubernetes and kernel versions can change between releases.
 
@@ -96,7 +96,7 @@ kubectl get nodes \
 # CRI-O 1.20+
 # Docker Engine 20.10+ (deprecated in newer Kubernetes versions)
 
-# For containerd — verify CNI plugin path configuration
+# For containerd - verify CNI plugin path configuration
 kubectl debug node/<node-name> -it --image=ubuntu -- \
   chroot /host cat /etc/containerd/config.toml | grep cni
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, monitoring, health-checks, kubernetes, networking, automation, observability
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to automate Cilium status checks in scripts and CI/CD pipelines to continuously monitor the health of your CNI layer and detect degraded agents before they impact workloads.
 
@@ -10,7 +10,7 @@ Description: Learn how to automate Cilium status checks in scripts and CI/CD pip
 
 ## Introduction
 
-Cilium's `cilium status` command provides a comprehensive health snapshot of the entire CNI installation — including agent status, BPF map health, Kubernetes connectivity, and policy enforcement state. Running this check manually is insufficient for production clusters; you need automated, continuous monitoring that alerts when Cilium agents degrade.
+Cilium's `cilium status` command provides a comprehensive health snapshot of the entire CNI installation - including agent status, BPF map health, Kubernetes connectivity, and policy enforcement state. Running this check manually is insufficient for production clusters; you need automated, continuous monitoring that alerts when Cilium agents degrade.
 
 This post shows how to build automated Cilium status checks using the `cilium` CLI and standard Kubernetes tooling, integrate them into monitoring pipelines, and create actionable alerts when components fall out of health.
 
@@ -64,7 +64,7 @@ echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo ""
 echo "--- Checking Cilium Status ---"
 if ! cilium status --wait --wait-duration "${WAIT_TIMEOUT}"; then
-  echo "ERROR: Cilium status check failed — one or more components are not ready"
+  echo "ERROR: Cilium status check failed - one or more components are not ready"
   FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
@@ -179,10 +179,10 @@ spec:
 
 - Always use `--wait` in scripts that run immediately after cluster changes; Cilium agents need time to restart.
 - Parse `cilium status -o json` for structured monitoring integrations rather than scraping text output.
-- Alert on per-node agent failures, not just cluster-level status — a single degraded node can cause widespread connectivity issues.
+- Alert on per-node agent failures, not just cluster-level status - a single degraded node can cause widespread connectivity issues.
 - Include `cilium status` output in incident runbooks so on-call engineers know how to interpret it.
-- Check `cilium-operator` health separately from agent health — operator failures affect policy management but not immediately existing traffic.
+- Check `cilium-operator` health separately from agent health - operator failures affect policy management but not immediately existing traffic.
 
 ## Conclusion
 
-Automating Cilium status checks gives you continuous visibility into the health of your cluster's CNI layer. By combining CLI-based health scripts with scheduled CronJobs and CI pipeline integration, you create multiple layers of detection for Cilium degradation — catching issues proactively rather than waiting for user-reported connectivity failures.
+Automating Cilium status checks gives you continuous visibility into the health of your cluster's CNI layer. By combining CLI-based health scripts with scheduled CronJobs and CI pipeline integration, you create multiple layers of detection for Cilium degradation - catching issues proactively rather than waiting for user-reported connectivity failures.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Humanitec, Score, Platform Engineering, Workload Specification
+Tags: Flux CD, Kubernetes, GitOps, Humanitec, Score, Platform Engineering, Workload specification
 
 Description: Use Score workload specifications with Flux CD for platform abstractions so developers write platform-agnostic workload definitions that Flux deploys to Kubernetes.
 

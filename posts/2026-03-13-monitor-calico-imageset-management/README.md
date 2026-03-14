@@ -161,4 +161,4 @@ kubectl get imageset -o json | jq '.items[] | {name: .metadata.name, creationTim
 
 ## Conclusion
 
-Monitoring Calico ImageSet management requires alerting on both immediate failures (ImagePullBackOff) and subtle drift (registry bypass, reconciliation delays). By combining Prometheus rules for DaemonSet availability, custom scripts for registry validation, and TigeraStatus monitoring, you can detect ImageSet-related issues before they affect cluster networking. Run the registry bypass check frequently — it is your safety net against accidental or intentional image substitution.
+Monitoring Calico ImageSet management requires alerting on both immediate failures (ImagePullBackOff) and subtle drift (registry bypass, reconciliation delays). By combining Prometheus rules for DaemonSet availability, custom scripts for registry validation, and TigeraStatus monitoring, you can detect ImageSet-related issues before they affect cluster networking. Run the registry bypass check frequently - it is your safety net against accidental or intentional image substitution.

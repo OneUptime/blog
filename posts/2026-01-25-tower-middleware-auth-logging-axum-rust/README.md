@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, axum, Tower, Middleware, Authentication
+Tags: Rust, Axum, Tower, Middleware, Authentication
 
 Description: Learn how to build reusable Tower middleware layers in Axum for authentication and request logging, with practical code examples you can drop into production.
 

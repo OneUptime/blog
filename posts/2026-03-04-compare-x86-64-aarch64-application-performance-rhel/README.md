@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, x86_64, AArch64, ARM, Performance Comparison, Benchmarking, Linux
+Tags: RHEL, X86_64, AArch64, ARM, Performance Comparison, Benchmarking, Linux
 
 Description: Set up a structured comparison of application performance between x86_64 and aarch64 architectures on RHEL to make informed hardware decisions.
 

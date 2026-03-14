@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipv6, control-plane, kubernetes, networking, testing
+Tags: Calico, IPv6, Control-plane, Kubernetes, Networking, Testing
 
 Description: Validate Calico's IPv6 control plane components, including BGP peering over IPv6, Felix configuration for IPv6, and network policy enforcement on IPv6 traffic.
 
@@ -10,7 +10,7 @@ Description: Validate Calico's IPv6 control plane components, including BGP peer
 
 ## Introduction
 
-Running Kubernetes and Calico over IPv6 (or in dual-stack mode with an IPv6 control plane) introduces a set of unique validation requirements beyond standard IPv4 testing. The control plane components — the Kubernetes API server, etcd, Calico Felix, and the BGP router daemon BIRD — must all be configured to use IPv6 addresses for communication, and each component has its own IPv6-specific configuration.
+Running Kubernetes and Calico over IPv6 (or in dual-stack mode with an IPv6 control plane) introduces a set of unique validation requirements beyond standard IPv4 testing. The control plane components - the Kubernetes API server, etcd, Calico Felix, and the BGP router daemon BIRD - must all be configured to use IPv6 addresses for communication, and each component has its own IPv6-specific configuration.
 
 Testing the IPv6 control plane before production catches issues specific to IPv6 operation: BIRD not binding to IPv6 interfaces, Felix choosing wrong IPv6 addresses for tunnel endpoints, or network policies not correctly handling IPv6 source and destination addresses. These issues are invisible in IPv4-only testing but can cause complete cluster failure in IPv6 deployments.
 
@@ -176,9 +176,9 @@ kubectl run ipv6-dns-test \
 - Use `calicoctl node status` to confirm BIRD6 sessions are Established, not just configured
 - Test network policy enforcement explicitly against IPv6 source and destination addresses since some tools default to IPv4 testing
 - Monitor IPv6-specific metrics in Calico (Felix IPv6 packet counts) separately from IPv4
-- Validate DNS AAAA record resolution before assuming IPv6 connectivity — missing AAAA records cause IPv6-preferred clients to fall back to IPv4
+- Validate DNS AAAA record resolution before assuming IPv6 connectivity - missing AAAA records cause IPv6-preferred clients to fall back to IPv4
 - Test IPv6 control plane components after each Kubernetes or Calico upgrade since IPv6 support can regress between versions
 
 ## Conclusion
 
-Validating Calico's IPv6 control plane before production deployment ensures that all components — BGP daemons, Felix, IPAM, and network policy enforcement — operate correctly with IPv6 traffic. By systematically testing each control plane component and end-to-end traffic flow, you build confidence that your IPv6 deployment will behave reliably when production workloads depend on it.
+Validating Calico's IPv6 control plane before production deployment ensures that all components - BGP daemons, Felix, IPAM, and network policy enforcement - operate correctly with IPv6 traffic. By systematically testing each control plane component and end-to-end traffic flow, you build confidence that your IPv6 deployment will behave reliably when production workloads depend on it.

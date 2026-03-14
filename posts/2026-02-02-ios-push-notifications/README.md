@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, iOS, Push Notifications, APNs, Mobile Development, Apple, Xcode
+Tags: Swift, IOS, Push Notifications, APNs, Mobile Development, Apple, Xcode
 
 Description: Implement push notifications in iOS with Swift. Covers APNs configuration, notification categories, custom actions, rich media, and background handling.
 

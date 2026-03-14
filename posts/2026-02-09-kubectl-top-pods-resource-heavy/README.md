@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Monitoring, Resource Management, kubectl, Performance
+Tags: Kubernetes, Monitoring, Resource Management, Kubectl, Performance
 
 Description: Master kubectl top pods command to monitor resource usage, identify resource-heavy containers, and optimize Kubernetes workload performance.
 

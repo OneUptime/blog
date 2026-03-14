@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ss, Sockets, Networking, Linux
+Tags: RHEL, Ss, Sockets, Networking, Linux
 
 Description: A comprehensive guide to using the ss command on RHEL for monitoring TCP/UDP sockets, investigating connection states, finding listening services, and diagnosing networking issues.
 

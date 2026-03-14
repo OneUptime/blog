@@ -10,7 +10,7 @@ Description: How to create operational documentation for Calico networking on AW
 
 ## Introduction
 
-Calico networking on AWS involves multiple interdependent systems — Calico IP pools, VPC CIDR ranges, security groups, route tables, and IAM roles. Without clear documentation, operators may make changes to one system without understanding the impact on others. A new team member deploying a node in a new AZ may not know they need to disable source/destination check, or may not understand which security group rules are required for VXLAN.
+Calico networking on AWS involves multiple interdependent systems - Calico IP pools, VPC CIDR ranges, security groups, route tables, and IAM roles. Without clear documentation, operators may make changes to one system without understanding the impact on others. A new team member deploying a node in a new AZ may not know they need to disable source/destination check, or may not understand which security group rules are required for VXLAN.
 
 Good documentation captures the decisions made when designing the network, the current state of all relevant AWS and Calico resources, and the procedures needed to safely make changes or respond to incidents.
 

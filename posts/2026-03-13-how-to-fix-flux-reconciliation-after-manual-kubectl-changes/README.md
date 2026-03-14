@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Reconciliation, Drift, kubectl
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Reconciliation, Drift, Kubectl
 
 Description: Restore Flux reconciliation to a clean state after manual kubectl changes have introduced drift between the cluster and your Git repository.
 

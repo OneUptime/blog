@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, strace, Debugging, System Calls, Troubleshooting, Tutorial
+Tags: Ubuntu, Strace, Debugging, System Calls, Troubleshooting, Tutorial
 
 Description: Complete guide to using strace for debugging applications and system issues on Ubuntu.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Database Maintenance, Kubernetes, Compaction
+Tags: Talos Linux, Etcd, Database Maintenance, Kubernetes, Compaction
 
 Description: Step-by-step guide to compacting and defragmenting etcd in Talos Linux to keep your cluster database lean and performant.
 

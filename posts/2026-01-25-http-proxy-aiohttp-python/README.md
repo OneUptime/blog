@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, aiohttp, HTTP Proxy, Reverse Proxy, Networking, asyncio, API Gateway
+Tags: Python, Aiohttp, HTTP Proxy, Reverse Proxy, Networking, Asyncio, API Gateway
 
 Description: Learn how to build an HTTP proxy server in Python using aiohttp. This guide covers forward proxies, reverse proxies, request modification, caching, and patterns for building API gateways.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Concepts
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: A comprehensive introduction to Cilium's core concepts including endpoints, identities, policies, and the eBPF datapath with practical configuration, troubleshooting, and monitoring guidance.
 
@@ -12,7 +12,7 @@ Description: A comprehensive introduction to Cilium's core concepts including en
 
 Understanding Cilium's core concepts is essential for operating it effectively. At its heart, Cilium introduces a security model based on cryptographic identities derived from Kubernetes labels rather than IP addresses. This identity-based approach enables policy enforcement that remains consistent even as pods are rescheduled across nodes and IP addresses change.
 
-Cilium's architecture centers on the Cilium Agent (a DaemonSet on each node), the Cilium Operator (a deployment managing cluster-wide state), and Hubble (the observability layer). Each node's Cilium Agent manages endpoints — the abstraction of any networked process — and programs the eBPF datapath based on current policy state. The eBPF programs run in the Linux kernel, providing high-performance packet processing without the overhead of traditional userspace networking.
+Cilium's architecture centers on the Cilium Agent (a DaemonSet on each node), the Cilium Operator (a deployment managing cluster-wide state), and Hubble (the observability layer). Each node's Cilium Agent manages endpoints - the abstraction of any networked process - and programs the eBPF datapath based on current policy state. The eBPF programs run in the Linux kernel, providing high-performance packet processing without the overhead of traditional userspace networking.
 
 This guide explains each core concept, how to work with them operationally, troubleshoot when things go wrong, and monitor the health of each component.
 

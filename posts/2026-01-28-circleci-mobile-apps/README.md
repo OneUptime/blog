@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, Mobile Apps, CI/CD, iOS, Android
+Tags: CircleCI, Mobile Apps, CI/CD, IOS, Android
 
 Description: Learn how to build and test iOS and Android apps in CircleCI, manage signing, and speed up mobile pipelines.
 

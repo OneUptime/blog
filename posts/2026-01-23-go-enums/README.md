@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Enums, iota, Type Safety, Constants, Patterns
+Tags: Go, Golang, Enums, Iota, Type Safety, Constants, Patterns
 
 Description: Learn idiomatic patterns for implementing enum-like types in Go using constants, iota, and type definitions for type-safe, self-documenting code.
 

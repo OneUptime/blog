@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Alpine, Debian, Base Image, Image Size, musl, glibc, Security, Performance
+Tags: Docker, Alpine, Debian, Base Image, Image Size, Musl, Glibc, Security, Performance
 
 Description: An in-depth comparison of Alpine and Debian-slim Docker base images covering size, compatibility, security, and real-world trade-offs.
 

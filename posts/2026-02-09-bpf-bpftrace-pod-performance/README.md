@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, eBPF, Performance, Monitoring, bpftrace
+Tags: Kubernetes, EBPF, Performance, Monitoring, Bpftrace
 
 Description: Master bpftrace and eBPF tools for analyzing Kubernetes pod performance with real-time system tracing, latency analysis, and resource monitoring.
 

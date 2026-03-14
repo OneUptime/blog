@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, etcd, High Availability
+Tags: Kubernetes, Etcd, High Availability
 
 Description: Compare stacked and external etcd topologies for Kubernetes high availability setups, understand the tradeoffs, and learn how to implement each approach for production control planes.
 

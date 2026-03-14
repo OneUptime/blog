@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Service Mesh, eBPF, Sidecarless, CNI
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Service Mesh, EBPF, Sidecarless, CNI
 
 Description: Deploy Cilium as a service mesh with Flux CD using eBPF-based networking for high-performance, sidecarless mutual TLS and observability.
 
@@ -10,9 +10,9 @@ Description: Deploy Cilium as a service mesh with Flux CD using eBPF-based netwo
 
 ## Introduction
 
-Cilium is a high-performance Kubernetes CNI plugin and service mesh that uses eBPF to implement networking, security, and observability directly in the Linux kernel — without sidecar proxies. Its service mesh capabilities include Transparent Encryption (WireGuard or IPsec), mutual authentication, L7 policy enforcement, and deep observability through Hubble.
+Cilium is a high-performance Kubernetes CNI plugin and service mesh that uses eBPF to implement networking, security, and observability directly in the Linux kernel - without sidecar proxies. Its service mesh capabilities include Transparent Encryption (WireGuard or IPsec), mutual authentication, L7 policy enforcement, and deep observability through Hubble.
 
-Managing Cilium through Flux CD gives your platform team a reproducible, GitOps-driven CNI and service mesh deployment. Cilium configuration changes — whether enabling new features or adjusting policy enforcement modes — flow through pull requests.
+Managing Cilium through Flux CD gives your platform team a reproducible, GitOps-driven CNI and service mesh deployment. Cilium configuration changes - whether enabling new features or adjusting policy enforcement modes - flow through pull requests.
 
 This guide covers deploying Cilium with service mesh features enabled using Flux CD HelmRelease.
 
@@ -219,12 +219,12 @@ kubectl exec -n cilium daemonset/cilium -- \
 
 ## Best Practices
 
-- Set `prune: false` on the Cilium Flux Kustomization — removing the CNI DaemonSet would lose all cluster networking.
+- Set `prune: false` on the Cilium Flux Kustomization - removing the CNI DaemonSet would lose all cluster networking.
 - Enable `kubeProxyReplacement: true` to replace kube-proxy with Cilium's eBPF implementation for better performance and feature parity.
-- Use WireGuard encryption (`encryption.type: wireguard`) for transparent encryption between pods — it is significantly faster than IPsec for most workloads.
-- Enable Hubble with all relevant metric types for full L4/L7 observability — Hubble's flow log is invaluable for debugging network policy issues.
+- Use WireGuard encryption (`encryption.type: wireguard`) for transparent encryption between pods - it is significantly faster than IPsec for most workloads.
+- Enable Hubble with all relevant metric types for full L4/L7 observability - Hubble's flow log is invaluable for debugging network policy issues.
 - Test Cilium CNI changes in a dedicated cluster or node pool before applying to production, as CNI changes can disrupt all pod networking if misconfigured.
 
 ## Conclusion
 
-Cilium as a service mesh deployed through Flux CD provides eBPF-powered networking, transparent encryption, and L7 observability without sidecar overhead. The CNI configuration, network policy, and service mesh features are all version-controlled and continuously reconciled by Flux — giving your platform team a powerful, modern networking foundation managed with GitOps rigor.
+Cilium as a service mesh deployed through Flux CD provides eBPF-powered networking, transparent encryption, and L7 observability without sidecar overhead. The CNI configuration, network policy, and service mesh features are all version-controlled and continuously reconciled by Flux - giving your platform team a powerful, modern networking foundation managed with GitOps rigor.

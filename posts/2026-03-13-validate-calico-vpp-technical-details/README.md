@@ -10,7 +10,7 @@ Description: How to technically validate Calico VPP's internal state, including 
 
 ## Introduction
 
-Validating Calico VPP at a technical level means verifying the internal state of VPP's data structures — not just that pods can ping each other, but that the ACL tables correctly implement the Calico policies, the FIB has the right routes for all pod CIDRs, the NAT tables correctly implement Kubernetes services, and the tap interfaces are properly connected to pod network namespaces.
+Validating Calico VPP at a technical level means verifying the internal state of VPP's data structures - not just that pods can ping each other, but that the ACL tables correctly implement the Calico policies, the FIB has the right routes for all pod CIDRs, the NAT tables correctly implement Kubernetes services, and the tap interfaces are properly connected to pod network namespaces.
 
 This depth of validation is important for production deployments where subtle misconfiguration could cause intermittent packet drops that are hard to detect with simple connectivity tests.
 

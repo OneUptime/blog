@@ -10,7 +10,7 @@ Description: Security hardening for Calico VPP uplink interfaces, including IOMM
 
 ## Introduction
 
-The Calico VPP uplink interface is the point where Kubernetes pod traffic enters and exits the physical network fabric. Securing this interface prevents attacks that target the DPDK layer — including DMA attacks against non-IOMMU-protected NIC drivers, MAC address spoofing from pods, and unauthorized configuration of the VPP uplink through the management plane.
+The Calico VPP uplink interface is the point where Kubernetes pod traffic enters and exits the physical network fabric. Securing this interface prevents attacks that target the DPDK layer - including DMA attacks against non-IOMMU-protected NIC drivers, MAC address spoofing from pods, and unauthorized configuration of the VPP uplink through the management plane.
 
 IOMMU protection via vfio-pci is the foundational security control for DPDK deployments. Without IOMMU, a compromised VPP process could theoretically use DPDK's DMA capabilities to access arbitrary system memory.
 
@@ -128,4 +128,4 @@ rules:
 
 ## Conclusion
 
-Securing Calico VPP uplink configuration requires IOMMU via vfio-pci as the foundational DPDK security control, MAC filtering to prevent spoofing from pods, RBAC protection for the uplink ConfigMap, and physical switch-level controls at the network boundary. IOMMU is the most critical control — without it, a compromised VPP process could use DPDK's DMA access to read or write arbitrary system memory, making it a serious security vulnerability in multi-tenant environments.
+Securing Calico VPP uplink configuration requires IOMMU via vfio-pci as the foundational DPDK security control, MAC filtering to prevent spoofing from pods, RBAC protection for the uplink ConfigMap, and physical switch-level controls at the network boundary. IOMMU is the most critical control - without it, a compromised VPP process could use DPDK's DMA access to read or write arbitrary system memory, making it a serious security vulnerability in multi-tenant environments.

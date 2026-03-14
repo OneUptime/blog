@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Profile, Security, Operations
+Tags: Calico, Kubernetes, Networking, Profiles, Security, Operations
 
-Description: Practical usage patterns for Calico Profile resources, including namespace policy inheritance, reusable policy sets for non-Kubernetes workloads, and using profiles to apply baseline security rules across workload groups.
+Description: Practical usage patterns for Calico Profile resources, including namespace policy inheritance, reusable policy sets for non-Kubernetes workloads, and using profiles to apply baseline security...
 
 ---
 
 ## Introduction
 
-Calico Profile resources are most powerful in two scenarios: as a mechanism for namespace-level label inheritance in Kubernetes (enabling namespace-scoped policy selectors), and as reusable policy templates for non-Kubernetes workloads where the same security rules apply to multiple endpoints. In Kubernetes, profiles operate mostly invisibly — but understanding their patterns enables advanced policy designs like default egress policies applied at the namespace level rather than per-workload.
+Calico Profile resources are most powerful in two scenarios: as a mechanism for namespace-level label inheritance in Kubernetes (enabling namespace-scoped policy selectors), and as reusable policy templates for non-Kubernetes workloads where the same security rules apply to multiple endpoints. In Kubernetes, profiles operate mostly invisibly - but understanding their patterns enables advanced policy designs like default egress policies applied at the namespace level rather than per-workload.
 
 ## Usage Pattern 1: Inspect Namespace Label Inheritance
 
@@ -54,7 +54,7 @@ calicoctl patch profile kns.production --patch='{
 }'
 ```
 
-Note: This is useful when migrating to a default-deny model incrementally — allow egress at the namespace profile level while implementing ingress restrictions via NetworkPolicy first.
+Note: This is useful when migrating to a default-deny model incrementally - allow egress at the namespace profile level while implementing ingress restrictions via NetworkPolicy first.
 
 ## Usage Pattern 3: Reusable Profile for Non-Kubernetes Workloads
 
@@ -133,4 +133,4 @@ for ep in data['items']:
 
 ## Conclusion
 
-Profiles provide policy inheritance that NetworkPolicies alone cannot — they attach labels and rules directly to endpoints regardless of how those endpoints are selected. For Kubernetes workloads, the primary value is namespace label propagation enabling `namespaceSelector` in cross-namespace policies. For non-Kubernetes workloads, profiles are the primary mechanism for applying consistent security baselines across groups of servers with identical security requirements.
+Profiles provide policy inheritance that NetworkPolicies alone cannot - they attach labels and rules directly to endpoints regardless of how those endpoints are selected. For Kubernetes workloads, the primary value is namespace label propagation enabling `namespaceSelector` in cross-namespace policies. For non-Kubernetes workloads, profiles are the primary mechanism for applying consistent security baselines across groups of servers with identical security requirements.

@@ -96,4 +96,4 @@ Get-Content C:\CalicoWindows\logs\calico-node.log -Tail 30
 
 ## Conclusion
 
-Verifying Calico on Windows nodes combines Windows-specific checks — HNS endpoint inspection, Windows service status, PowerShell-based connectivity tests — with standard Kubernetes pod IP and IPAM checks. Cross-OS connectivity testing between Linux and Windows pods is the definitive test that the mixed-OS networking model is working correctly end-to-end.
+Verifying Calico on Windows nodes combines Windows-specific checks - HNS endpoint inspection, Windows service status, PowerShell-based connectivity tests - with standard Kubernetes pod IP and IPAM checks. Cross-OS connectivity testing between Linux and Windows pods is the definitive test that the mixed-OS networking model is working correctly end-to-end.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, systemd, Logging, Persistent Storage, System Administration
+Tags: RHEL, Journald, Systemd, Logging, Persistent Storage, System Administration
 
 Description: Configure systemd-journald on RHEL to store journal logs persistently on disk so they survive reboots, and learn how to control storage size and retention.
 

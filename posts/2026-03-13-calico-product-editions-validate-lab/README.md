@@ -12,13 +12,13 @@ Description: Step-by-step guidance for testing and validating different Calico e
 
 Before deploying any CNI in production, you should validate it in a controlled lab environment. For Calico, this means testing the specific edition and dataplane combination you intend to use. A lab validates your assumptions about feature availability, upgrade behavior, and operational tooling before you invest in production infrastructure.
 
-Each Calico edition has distinct installation mechanisms and feature sets. Testing them side by side in a lab — even on a minimal three-node cluster — surfaces compatibility issues, missing capabilities, and operational rough edges early, when the cost of mistakes is low.
+Each Calico edition has distinct installation mechanisms and feature sets. Testing them side by side in a lab - even on a minimal three-node cluster - surfaces compatibility issues, missing capabilities, and operational rough edges early, when the cost of mistakes is low.
 
 This guide walks through setting up a lab cluster for each edition and the key validation tests you should run.
 
 ## Prerequisites
 
-- A lab Kubernetes cluster (kind, k3d, or three VMs) — at minimum one control plane node and two worker nodes
+- A lab Kubernetes cluster (kind, k3d, or three VMs) - at minimum one control plane node and two worker nodes
 - `kubectl` configured and pointing at the lab cluster
 - `calicoctl` installed (matching the Calico version you are testing)
 - Helm v3 for Enterprise/Cloud installation
@@ -109,9 +109,9 @@ Validate flow log collection by generating traffic and checking the Calico Cloud
 
 ## Best Practices
 
-- Always run the lab on the same kernel version you use in production — eBPF availability is kernel-dependent
+- Always run the lab on the same kernel version you use in production - eBPF availability is kernel-dependent
 - Run the validation checklist before and after any Calico upgrade in the lab to catch regressions
-- Test policy enforcement (not just connectivity) — a passing connectivity test does not mean policies are being enforced
+- Test policy enforcement (not just connectivity) - a passing connectivity test does not mean policies are being enforced
 - Record the exact manifests and versions used so the lab environment can be reproduced exactly in production
 
 ## Conclusion

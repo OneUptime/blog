@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-EKS with Calico supports full Kubernetes NetworkPolicy and Calico GlobalNetworkPolicy enforcement. AWS environments introduce unique networking considerations — security groups, VPC flow logs, and AWS-specific egress paths — that interact with Calico policy enforcement. Testing network policies on EKS validates that Calico correctly enforces isolation between workloads running in the same VPC.
+EKS with Calico supports full Kubernetes NetworkPolicy and Calico GlobalNetworkPolicy enforcement. AWS environments introduce unique networking considerations - security groups, VPC flow logs, and AWS-specific egress paths - that interact with Calico policy enforcement. Testing network policies on EKS validates that Calico correctly enforces isolation between workloads running in the same VPC.
 
 On EKS, pod-to-pod traffic within a node is handled at the Linux level by the VPC CNI, while Calico Felix enforces policies using iptables or eBPF. Pod-to-pod traffic between nodes traverses the VPC routing infrastructure. Testing must cover both intra-node and cross-node policy scenarios to ensure comprehensive coverage.
 

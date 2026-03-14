@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Environment, Configuration, Security, dotenv
+Tags: NodeJS, Environment, Configuration, Security, Dotenv
 
 Description: Learn how to set and manage environment variables in Node.js applications including using dotenv, cross-platform solutions, and best practices for configuration management.
 

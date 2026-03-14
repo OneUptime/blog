@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, PackageManager, JavaScript, Dependencies
+Tags: NodeJS, Npm, PackageManager, JavaScript, Dependencies
 
 Description: Learn the difference between dependencies and devDependencies in package.json, when to use each, and how they affect your production builds and bundle sizes.
 

@@ -10,7 +10,7 @@ Description: Monitor producer, consumer, and mixed GAMMA configuration types in 
 
 ## Introduction
 
-Monitoring different GAMMA configuration types requires distinguishing between traffic that is producer-controlled versus consumer-controlled at the flow level. Hubble's rich metadata—including source namespace, destination service, and applied policies—makes this differentiation possible.
+Monitoring different GAMMA configuration types requires distinguishing between traffic that is producer-controlled versus consumer-controlled at the flow level. Hubble's rich metadata-including source namespace, destination service, and applied policies-makes this differentiation possible.
 
 By tagging flows with their GAMMA configuration type context, platform teams can build dashboards that show whether routing rules from each ownership model are being exercised correctly. This is particularly valuable in multi-tenant environments where both producers and consumers may define routing policies.
 
@@ -27,7 +27,7 @@ hubble observe --namespace <producer-ns> --protocol http --follow \
   --to-service <api-service>
 ```
 
-Look for flows coming from multiple consumer namespaces—all routed to the same backend.
+Look for flows coming from multiple consumer namespaces-all routed to the same backend.
 
 ## Monitor Consumer-Specific Traffic
 

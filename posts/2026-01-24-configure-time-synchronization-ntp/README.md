@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, NTP, Time Synchronization, Chrony, systemd-timesyncd, System Administration
+Tags: Linux, NTP, Time Synchronization, Chrony, Systemd-timesyncd, System Administration
 
 Description: Learn how to configure accurate time synchronization on Linux servers using NTP, chrony, and systemd-timesyncd for reliable distributed systems.
 

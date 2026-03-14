@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, Requirements, eBPF
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A checklist of all requirements to install and run Cilium on Azure Kubernetes Service, including node pool configuration, network plugin settings, and kernel version requirements.
 
@@ -12,7 +12,7 @@ Description: A checklist of all requirements to install and run Cilium on Azure 
 
 Installing Cilium on AKS requires navigating Azure-specific configurations that differ from generic Kubernetes installations. AKS uses Azure CNI or kubenet as the default network plugin, and replacing or chaining with Cilium requires specific cluster and node pool settings. Additionally, AKS enforces certain node image constraints that affect kernel version availability, which directly impacts which Cilium eBPF features are available.
 
-Understanding these requirements before creating your AKS cluster is far easier than trying to retrofit Cilium onto a misconfigured cluster. This guide covers every requirement you need to verify — cluster configuration, node pool settings, networking mode, and node OS kernel versions — to ensure a successful Cilium installation on AKS.
+Understanding these requirements before creating your AKS cluster is far easier than trying to retrofit Cilium onto a misconfigured cluster. This guide covers every requirement you need to verify - cluster configuration, node pool settings, networking mode, and node OS kernel versions - to ensure a successful Cilium installation on AKS.
 
 ## Prerequisites
 

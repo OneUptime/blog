@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Error, Debugging, npm, Modules
+Tags: NodeJS, Error, Debugging, Npm, Modules
 
 Description: Learn how to diagnose and fix the 'Cannot find module' error in Node.js, including common causes like missing dependencies, incorrect paths, and corrupted node_modules.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Types, interface, Type Safety, Debugging
+Tags: TypeScript, Types, Interface, Type Safety, Debugging
 
 Description: Resolve TypeScript 'Index signature is missing' errors when working with dynamic object keys and type assignments.
 

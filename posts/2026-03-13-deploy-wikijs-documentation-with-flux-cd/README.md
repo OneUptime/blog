@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, WikiJS, Documentation, Knowledge Base
+Tags: Flux CD, Kubernetes, GitOps, Wikijs, Documentation, Knowledge Base
 
 Description: Deploy WikiJS modern wiki platform to Kubernetes using Flux CD for a GitOps-managed, self-hosted documentation and knowledge management system.
 
@@ -10,7 +10,7 @@ Description: Deploy WikiJS modern wiki platform to Kubernetes using Flux CD for 
 
 ## Introduction
 
-WikiJS is a modern, fast, and extensible wiki platform built on Node.js. It offers a rich editor experience, granular permission controls, full-text search, and dozens of storage backends—including Git synchronization, which means your wiki content can itself be stored in a Git repository. For engineering teams already invested in GitOps, WikiJS is a natural fit for internal documentation.
+WikiJS is a modern, fast, and extensible wiki platform built on Node.js. It offers a rich editor experience, granular permission controls, full-text search, and dozens of storage backends-including Git synchronization, which means your wiki content can itself be stored in a Git repository. For engineering teams already invested in GitOps, WikiJS is a natural fit for internal documentation.
 
 Deploying WikiJS on Kubernetes with Flux CD means your wiki infrastructure is declared in Git alongside the applications it documents. The official WikiJS Helm chart supports PostgreSQL, MySQL, and SQLite backends, with Ingress and TLS configuration baked in. Flux watches for changes and reconciles the cluster automatically, so upgrading WikiJS or adjusting its resource limits is a single pull request.
 
@@ -206,7 +206,7 @@ This makes your wiki content itself a GitOps artifact.
 - Enable the **Elasticsearch** or **MeiliSearch** module in WikiJS for fast full-text search across large wikis.
 - Configure SMTP under **Administration > Mail** so users receive email notifications for page comments and assignments.
 - Use WikiJS's built-in **LDAP/SAML** authentication modules to integrate with your existing identity provider.
-- Back up the PostgreSQL database regularly—WikiJS stores all page content, revisions, and metadata there.
+- Back up the PostgreSQL database regularly-WikiJS stores all page content, revisions, and metadata there.
 - Pin the WikiJS chart and image version in `HelmRelease` to prevent unexpected upgrades during peak usage.
 
 ## Conclusion

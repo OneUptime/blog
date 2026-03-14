@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ethtool, Network Diagnostics, NIC, Linux
+Tags: RHEL, Ethtool, Network Diagnostics, NIC, Linux
 
 Description: Learn how to use ethtool on RHEL for advanced network interface diagnostics including link status, driver info, offload settings, and NIC statistics.
 

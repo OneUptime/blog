@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, trustd, Security, Certificates, TLS, Kubernetes, Infrastructure
+Tags: Talos Linux, Trustd, Security, Certificates, TLS, Kubernetes, Infrastructure
 
 Description: Learn how the trustd service manages certificate trust relationships in Talos Linux, including how it handles certificate signing, node identity, and cluster security.
 

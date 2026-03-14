@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificate Authority, Security, Kubernetes
+Tags: Istio, MTLS, Certificate Authority, Security, Kubernetes
 
 Description: Replace Istio's built-in CA with your own third-party certificate authority for mTLS using tools like cert-manager, Vault, or custom root certificates.
 

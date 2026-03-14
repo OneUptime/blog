@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Set up regular Calico IPAM checks using calicoctl ipam check and ipam show to detect IP address leaks, block affinity inconsistencies, and IPAM utilization issues before they cause pod scheduling failures.
+Description: Set up regular Calico IPAM checks using calicoctl ipam check and ipam show to detect IP address leaks, block affinity inconsistencies, and IPAM utilization issues before they cause pod scheduling...
 
 ---
 
 ## Introduction
 
-Calico IPAM (IP Address Management) allocates IP addresses to pods using a block-based system where each node is assigned CIDR blocks, and pods on that node receive IPs from those blocks. IPAM issues — leaked allocations, orphaned blocks, or exhausted pools — manifest as pod scheduling failures with no obvious cause. Setting up IPAM checks means running `calicoctl ipam check` and `calicoctl ipam show` on a regular schedule.
+Calico IPAM (IP Address Management) allocates IP addresses to pods using a block-based system where each node is assigned CIDR blocks, and pods on that node receive IPs from those blocks. IPAM issues - leaked allocations, orphaned blocks, or exhausted pools - manifest as pod scheduling failures with no obvious cause. Setting up IPAM checks means running `calicoctl ipam check` and `calicoctl ipam show` on a regular schedule.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, Terminal, Linux, Productivity
+Tags: Ubuntu, Tmux, Terminal, Linux, Productivity
 
 Description: Learn how to customize tmux configuration on Ubuntu with practical settings for the status bar, keybindings, colors, plugins, and performance improvements.
 

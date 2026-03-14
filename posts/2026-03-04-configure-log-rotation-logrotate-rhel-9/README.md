@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, logrotate, Logging, System Administration, Linux
+Tags: RHEL, Logrotate, Logging, System Administration, Linux
 
 Description: Learn how to configure logrotate on RHEL to automatically manage log file sizes through rotation, compression, and cleanup policies.
 

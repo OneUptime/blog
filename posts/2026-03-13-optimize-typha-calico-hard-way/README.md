@@ -147,4 +147,4 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 
 ## Conclusion
 
-Optimizing Typha involves right-sizing resources, tuning the coalescing batch interval, placing Typha pods on stable nodes with anti-affinity across zones, and monitoring propagation latency through Prometheus metrics. These optimizations ensure that policy updates reach Felix agents quickly while minimizing Typha's impact on cluster resources — the defining goal of the fan-out architecture.
+Optimizing Typha involves right-sizing resources, tuning the coalescing batch interval, placing Typha pods on stable nodes with anti-affinity across zones, and monitoring propagation latency through Prometheus metrics. These optimizations ensure that policy updates reach Felix agents quickly while minimizing Typha's impact on cluster resources - the defining goal of the fan-out architecture.

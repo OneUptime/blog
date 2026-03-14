@@ -10,7 +10,7 @@ Description: Learn how to configure your CI system to build and push Docker imag
 
 ## Introduction
 
-The bridge between your CI system and Flux CD's image automation is the container registry. When CI pushes a new image tag, Flux CD's Image Reflector Controller polls the registry, detects the new tag, and—if the ImagePolicy matches—triggers the Image Update Automation to commit the new tag to Git and reconcile the cluster.
+The bridge between your CI system and Flux CD's image automation is the container registry. When CI pushes a new image tag, Flux CD's Image Reflector Controller polls the registry, detects the new tag, and-if the ImagePolicy matches-triggers the Image Update Automation to commit the new tag to Git and reconcile the cluster.
 
 Getting this right requires that images are tagged consistently with a scheme that Flux ImagePolicy can interpret: semantic versioning, numeric build numbers, or timestamp-based tags. The CI configuration, image tagging strategy, and Flux ImagePolicy must all align for the automation to function reliably.
 

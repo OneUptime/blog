@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, DevOps, Configuration Management, Updates
+Tags: Kubernetes, Kubectl, DevOps, Configuration Management, Updates
 
 Description: Learn how to use kubectl patch for making targeted in-place updates to Kubernetes resources, including strategic merge patches, JSON patches, and merge patches with practical examples.
 

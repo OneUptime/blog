@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Partitioning, Clustering, Query Optimization
+Tags: GCP, BigQuery, Dbt, Partitioning, Clustering, Query Optimization
 
 Description: Learn how to configure dbt models to create partitioned and clustered BigQuery tables for dramatically better query performance and lower costs.
 

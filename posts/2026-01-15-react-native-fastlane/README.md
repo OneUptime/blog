@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Fastlane, Automation, iOS, Android, Build Automation, DevOps
+Tags: React Native, Fastlane, Automation, IOS, Android, Build Automation, DevOps
 
 Description: Learn how to automate React Native build and deployment processes using Fastlane for iOS and Android.
 

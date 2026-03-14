@@ -10,7 +10,7 @@ Description: Deploy Rook-Ceph block storage for ReadWriteOnce persistent volumes
 
 ## Introduction
 
-Rook-Ceph block storage (based on RADOS Block Devices — RBD) provides `ReadWriteOnce` (RWO) persistent volumes for stateful workloads like databases and message brokers. Each PVC gets a dedicated RBD image backed by Ceph's distributed storage pool, providing thin provisioning, snapshots, and cloning capabilities.
+Rook-Ceph block storage (based on RADOS Block Devices - RBD) provides `ReadWriteOnce` (RWO) persistent volumes for stateful workloads like databases and message brokers. Each PVC gets a dedicated RBD image backed by Ceph's distributed storage pool, providing thin provisioning, snapshots, and cloning capabilities.
 
 Deploying Rook-Ceph block storage through Flux CD gives you GitOps-managed storage classes that your application teams can reference in their PVCs. Adding a new storage tier (e.g., a high-performance NVMe-backed pool) is a pull request to the storage infrastructure repository.
 
@@ -226,4 +226,4 @@ kubectl get storageclass rook-ceph-block -o yaml
 
 ## Conclusion
 
-Rook-Ceph block storage deployed via Flux CD provides a self-healing, distributed block storage layer for stateful Kubernetes workloads. The `CephBlockPool` and `StorageClass` resources are version-controlled, making it easy to add new storage tiers or modify replication settings through pull requests. Application teams reference StorageClasses in their PVCs without needing to know the details of the underlying Ceph configuration — storage as a platform service, managed by GitOps.
+Rook-Ceph block storage deployed via Flux CD provides a self-healing, distributed block storage layer for stateful Kubernetes workloads. The `CephBlockPool` and `StorageClass` resources are version-controlled, making it easy to add new storage tiers or modify replication settings through pull requests. Application teams reference StorageClasses in their PVCs without needing to know the details of the underlying Ceph configuration - storage as a platform service, managed by GitOps.

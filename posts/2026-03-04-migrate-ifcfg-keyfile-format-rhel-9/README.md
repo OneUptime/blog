@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NetworkManager, ifcfg, Keyfile, Migration, Linux
+Tags: RHEL, NetworkManager, Ifcfg, Keyfile, Migration, Linux
 
 Description: A practical guide to migrating network configuration from the legacy ifcfg format to the keyfile format on RHEL, with step-by-step procedures and rollback strategies.
 

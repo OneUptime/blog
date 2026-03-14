@@ -10,7 +10,7 @@ Description: Deploy Elasticsearch, Fluentd, and Kibana (EFK) logging stack to Ku
 
 ## Introduction
 
-The EFK stack — Elasticsearch, Fluentd, and Kibana — is one of the most widely adopted logging solutions in the Kubernetes ecosystem. Elasticsearch provides distributed search and analytics storage, Fluentd collects and aggregates logs from across your cluster, and Kibana delivers powerful visualization and querying capabilities. Together they give platform teams full observability into application and infrastructure logs.
+The EFK stack - Elasticsearch, Fluentd, and Kibana - is one of the most widely adopted logging solutions in the Kubernetes ecosystem. Elasticsearch provides distributed search and analytics storage, Fluentd collects and aggregates logs from across your cluster, and Kibana delivers powerful visualization and querying capabilities. Together they give platform teams full observability into application and infrastructure logs.
 
 Managing the EFK stack with Flux CD brings the same GitOps discipline you apply to your applications. All configuration lives in Git, changes are auditable, and the cluster converges automatically to the desired state. This eliminates configuration drift and makes onboarding new clusters straightforward.
 
@@ -221,4 +221,4 @@ Open `http://localhost:5601` and navigate to **Discover** to start querying your
 
 ## Conclusion
 
-You now have a fully GitOps-managed EFK logging stack running on Kubernetes. Every change to Elasticsearch configuration, Fluentd pipelines, or Kibana settings goes through a Git pull request, giving your team a clear audit trail and the ability to roll back instantly by reverting a commit. From here you can extend the stack by adding index lifecycle policies, Kibana dashboards as code, and alerting rules — all managed through Flux.
+You now have a fully GitOps-managed EFK logging stack running on Kubernetes. Every change to Elasticsearch configuration, Fluentd pipelines, or Kibana settings goes through a Git pull request, giving your team a clear audit trail and the ability to roll back instantly by reverting a commit. From here you can extend the stack by adding index lifecycle policies, Kibana dashboards as code, and alerting rules - all managed through Flux.

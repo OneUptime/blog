@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Spring Boot, Java, Linux
+Tags: RHEL, Systemd, System Administration, Spring Boot, Java, Linux
 
 Description: Learn how to deploy a Spring Boot Application as a systemd Service on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
 

@@ -10,7 +10,7 @@ Description: Manage VolumeSnapshotClass resources using Flux CD GitOps for versi
 
 ## Introduction
 
-Kubernetes Volume Snapshots provide a standardized way to create point-in-time copies of persistent volumes. `VolumeSnapshotClass` resources define how snapshots are created — analogous to how `StorageClass` defines how volumes are provisioned. Each CSI driver that supports snapshots requires a `VolumeSnapshotClass` configured with driver-specific parameters.
+Kubernetes Volume Snapshots provide a standardized way to create point-in-time copies of persistent volumes. `VolumeSnapshotClass` resources define how snapshots are created - analogous to how `StorageClass` defines how volumes are provisioned. Each CSI driver that supports snapshots requires a `VolumeSnapshotClass` configured with driver-specific parameters.
 
 Managing `VolumeSnapshotClass` resources through Flux CD ensures your snapshot capabilities are version-controlled and consistently available across clusters. Applications and backup tools can then reference these classes in their `VolumeSnapshot` and scheduled backup configurations.
 
@@ -276,11 +276,11 @@ kubectl get volumesnapshotcontent
 
 ## Best Practices
 
-- Set `deletionPolicy: Retain` for `VolumeSnapshotClass` on production if you want snapshots to survive `VolumeSnapshot` deletion — useful for long-term archives.
+- Set `deletionPolicy: Retain` for `VolumeSnapshotClass` on production if you want snapshots to survive `VolumeSnapshot` deletion - useful for long-term archives.
 - Label automated snapshots (`automated: "true"`) so cleanup CronJobs can target them without affecting manually created snapshots.
 - Test restoration from snapshot in a non-production environment at least monthly to ensure snapshots are valid.
 - Store snapshot retention policies in Git comments for compliance documentation.
-- Monitor `VolumeSnapshotContent` readiness with `kubectl get volumesnapshotcontent` — a snapshot stuck in `Pending` state indicates a CSI driver issue.
+- Monitor `VolumeSnapshotContent` readiness with `kubectl get volumesnapshotcontent` - a snapshot stuck in `Pending` state indicates a CSI driver issue.
 
 ## Conclusion
 

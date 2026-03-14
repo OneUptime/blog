@@ -22,7 +22,7 @@ This post covers the most common mistakes with concrete diagnostic commands and 
 
 ## Mistake 1: Relying on "Explicit Deny" in Kubernetes NetworkPolicy
 
-Kubernetes NetworkPolicy does not have an explicit `deny` action — it only has allow rules, with an implicit deny for any traffic not matched. If you want to log denied traffic or write policy in a way that clearly expresses the deny intent, use Calico NetworkPolicy instead.
+Kubernetes NetworkPolicy does not have an explicit `deny` action - it only has allow rules, with an implicit deny for any traffic not matched. If you want to log denied traffic or write policy in a way that clearly expresses the deny intent, use Calico NetworkPolicy instead.
 
 **Problem**: Cannot distinguish between "no policy match (implicit deny)" and "explicit deny" in Kubernetes NetworkPolicy. This makes auditing and troubleshooting harder.
 
@@ -45,7 +45,7 @@ spec:
 
 ## Mistake 2: Empty `namespaceSelector: {}` Matches All Namespaces
 
-Similar to the `podSelector: {}` mistake, an empty `namespaceSelector: {}` in Kubernetes NetworkPolicy matches ALL namespaces — not just the local namespace. This is often used incorrectly when developers intend to match "same namespace":
+Similar to the `podSelector: {}` mistake, an empty `namespaceSelector: {}` in Kubernetes NetworkPolicy matches ALL namespaces - not just the local namespace. This is often used incorrectly when developers intend to match "same namespace":
 
 ```yaml
 # Wrong: This allows traffic from ALL namespaces
@@ -66,7 +66,7 @@ ingress:
 
 ## Mistake 3: Not Understanding Policy Union Semantics
 
-If two NetworkPolicies both select the same pod, their ingress rules are OR'd — a packet is allowed if any policy allows it. Teams sometimes apply a restrictive policy expecting it to override a permissive one. It doesn't.
+If two NetworkPolicies both select the same pod, their ingress rules are OR'd - a packet is allowed if any policy allows it. Teams sometimes apply a restrictive policy expecting it to override a permissive one. It doesn't.
 
 **Symptom**: A pod accepts connections you expected to be blocked, and you have a "restrictive" policy applied to it.
 
@@ -123,11 +123,11 @@ kubectl apply -f my-calico-policy.yaml
 
 ## Best Practices
 
-- Review all policies that select the same pod before adding a new one — union semantics can create unexpected access grants
+- Review all policies that select the same pod before adding a new one - union semantics can create unexpected access grants
 - Use Calico NetworkPolicy with explicit deny for all security-sensitive policies
 - Verify policy namespace explicitly: `kubectl get networkpolicy -n production`
 - Always include `policyTypes` in Kubernetes NetworkPolicy to be explicit about which traffic directions are controlled
 
 ## Conclusion
 
-The most common Calico network policy mistakes stem from misunderstanding union semantics, empty selector behavior, namespace scoping, and implicit deny semantics. Building diagnostic habits — checking all policies that select a pod, verifying namespace, testing both allow and deny cases — prevents these mistakes from causing security gaps or availability incidents in production.
+The most common Calico network policy mistakes stem from misunderstanding union semantics, empty selector behavior, namespace scoping, and implicit deny semantics. Building diagnostic habits - checking all policies that select a pod, verifying namespace, testing both allow and deny cases - prevents these mistakes from causing security gaps or availability incidents in production.

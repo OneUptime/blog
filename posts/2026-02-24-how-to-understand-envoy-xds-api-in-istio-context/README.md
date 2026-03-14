@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, xDS, Control Plane, Kubernetes, Networking
+Tags: Istio, Envoy, XDS, Control Plane, Kubernetes, Networking
 
 Description: A practical explanation of the Envoy xDS APIs and how Istio uses them to dynamically configure every sidecar proxy in your service mesh without restarts.
 

@@ -115,4 +115,4 @@ flowchart LR
 
 ## Conclusion
 
-Preventing ContainerCreating during CNI migration requires ensuring at least one CNI is always functional on every node. The rolling migration pattern — cordon, drain, migrate, uncordon — eliminates the window of no CNI coverage that causes ContainerCreating at scale.
+Preventing ContainerCreating during CNI migration requires ensuring at least one CNI is always functional on every node. The rolling migration pattern - cordon, drain, migrate, uncordon - eliminates the window of no CNI coverage that causes ContainerCreating at scale.

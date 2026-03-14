@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeArtifact, Python, pip, DevOps
+Tags: AWS, CodeArtifact, Python, Pip, DevOps
 
 Description: Configure pip and twine to use AWS CodeArtifact for installing and publishing Python packages, including virtual environments, CI/CD integration, and poetry support.
 

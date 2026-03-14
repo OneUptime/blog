@@ -12,7 +12,7 @@ Description: Implement a true zero-trust network model in Kubernetes using Calic
 
 Zero trust security is built on a simple principle: never trust, always verify. In Kubernetes, the default permissive networking model is the opposite of zero trust. Every pod can reach every other pod unless explicitly prevented. Calico default deny policies flip this model, making denial the default and requiring explicit authorization for every traffic flow.
 
-Calico's `GlobalNetworkPolicy` resource is the foundation of zero trust in Kubernetes. Combined with namespace isolation, pod-level selectors, and service account-based policies, you can build a network model where every connection is authenticated, authorized, and audited. This is not just a security best practice — for regulated industries like finance and healthcare, it may be a compliance requirement.
+Calico's `GlobalNetworkPolicy` resource is the foundation of zero trust in Kubernetes. Combined with namespace isolation, pod-level selectors, and service account-based policies, you can build a network model where every connection is authenticated, authorized, and audited. This is not just a security best practice - for regulated industries like finance and healthcare, it may be a compliance requirement.
 
 This guide explains how to design and implement a complete zero-trust network architecture using Calico default deny policies, covering the full control plane from cluster-wide defaults to per-workload allow rules.
 
@@ -141,4 +141,4 @@ flowchart TD
 
 ## Conclusion
 
-Calico default deny policies, organized into tiers, give you the building blocks for a true zero-trust network in Kubernetes. Every traffic flow is denied until explicitly permitted, every permission is scoped to specific workloads, and every decision is logged. Start with the security tier for cluster-wide controls, then layer application-specific permissions on top. Zero trust is a journey — start with default deny and build up from there.
+Calico default deny policies, organized into tiers, give you the building blocks for a true zero-trust network in Kubernetes. Every traffic flow is denied until explicitly permitted, every permission is scoped to specific workloads, and every decision is logged. Start with the security tier for cluster-wide controls, then layer application-specific permissions on top. Zero trust is a journey - start with default deny and build up from there.

@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Node Taints, Kubernetes, Networking, Monitoring, Node Pools, Scheduling
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to configure and monitor node pool taints in Cilium-managed Kubernetes clusters, ensuring Cilium correctly handles tainted nodes and that workload scheduling aligns with network policy enforcement.
+Description: Learn how to configure and monitor node pool taints in Cilium-managed Kubernetes clusters, ensuring Cilium correctly handles tainted nodes and that workload scheduling aligns with network policy...
 
 ---
 
 ## Introduction
 
-Kubernetes node taints control which pods can be scheduled on specific nodes, and Cilium's interaction with tainted nodes requires careful configuration. When node pools have taints — for example, GPU nodes, spot instances, or dedicated system nodes — Cilium must have tolerations to ensure its DaemonSet pods can still run on all tainted nodes, maintaining network policy enforcement and pod connectivity across the entire cluster.
+Kubernetes node taints control which pods can be scheduled on specific nodes, and Cilium's interaction with tainted nodes requires careful configuration. When node pools have taints - for example, GPU nodes, spot instances, or dedicated system nodes - Cilium must have tolerations to ensure its DaemonSet pods can still run on all tainted nodes, maintaining network policy enforcement and pod connectivity across the entire cluster.
 
 Monitoring node pool taints with Cilium involves verifying that Cilium agents are running on all nodes regardless of their taints, ensuring that network policies correctly target pods on tainted nodes, and validating that Cilium's identity model correctly reflects pods deployed with specific node pool tolerations.
 

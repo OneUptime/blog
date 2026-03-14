@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, File Management, Debugging, Node Administration
+Tags: Talos Linux, Talosctl, File Management, Debugging, Node Administration
 
 Description: Learn how to use the talosctl cp command to copy files and directories from Talos Linux nodes for debugging and analysis
 

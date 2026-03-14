@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Encryption, eCryptfs, Home Directory
+Tags: Ubuntu, Security, Encryption, ECryptfs, Home Directory
 
 Description: Learn how to set up eCryptfs to encrypt your home directory on Ubuntu, protecting personal data at rest on laptops and workstations against physical theft.
 

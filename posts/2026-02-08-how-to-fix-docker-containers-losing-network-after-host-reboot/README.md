@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Reboot, iptables, Bridge, Troubleshooting, systemd, Linux
+Tags: Docker, Networking, Reboot, Iptables, Bridge, Troubleshooting, Systemd, Linux
 
 Description: Fix Docker containers that lose network connectivity after a host reboot due to iptables rules, bridge recreation, and service ordering issues.
 

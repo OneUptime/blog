@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Debugging, set -x, Linux, DevOps, Troubleshooting
+Tags: Bash, Shell Scripting, Debugging, Set -x, Linux, DevOps, Troubleshooting
 
 Description: Learn how to use set -x and other Bash debugging techniques to trace script execution, identify issues, and build more reliable shell scripts.
 

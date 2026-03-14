@@ -10,7 +10,7 @@ Description: Configure Fluent Bit to forward Kubernetes logs to Elasticsearch us
 
 ## Introduction
 
-Fluent Bit's Elasticsearch output plugin is one of the most commonly used integrations in Kubernetes logging pipelines. It supports both the native Elasticsearch API and OpenSearch-compatible endpoints, and provides options for index naming, data streams, TLS, and request buffering. Getting the output configuration right — especially around index lifecycle, authentication, and retry behavior — is critical for a production-grade pipeline.
+Fluent Bit's Elasticsearch output plugin is one of the most commonly used integrations in Kubernetes logging pipelines. It supports both the native Elasticsearch API and OpenSearch-compatible endpoints, and provides options for index naming, data streams, TLS, and request buffering. Getting the output configuration right - especially around index lifecycle, authentication, and retry behavior - is critical for a production-grade pipeline.
 
 Managing this configuration through Flux CD gives your team a single source of truth for how logs flow from nodes to Elasticsearch. When you need to change the index prefix, rotate credentials, or enable TLS, the change is a Git commit with a clear audit trail rather than a manual edit on a running pod.
 
@@ -227,7 +227,7 @@ kubectl logs -n logging daemonset/fluent-bit -f | grep "\[error\]"
 ## Best Practices
 
 - Always use environment variables (injected from Secrets) for credentials rather than embedding them in config files.
-- Set `Retry_Limit` to a finite number and monitor Fluent Bit's retry metrics — infinite retries can cause memory growth.
+- Set `Retry_Limit` to a finite number and monitor Fluent Bit's retry metrics - infinite retries can cause memory growth.
 - Use `Logstash_Format On` with date-based index names to enable Elasticsearch ILM rollover policies.
 - Enable `Replace_Dots On` to prevent Elasticsearch from rejecting fields with dots in their names.
 - Test your Elasticsearch output configuration in a development cluster before rolling to production.

@@ -12,7 +12,7 @@ Description: A guide to configuring Calico VPP's data plane, memory settings, in
 
 Calico VPP configuration covers two distinct layers: the Calico control plane (IP pools, BGP, Felix) and the VPP data plane (interface configuration, memory pools, CPU pinning, and buffer sizes). The Calico control plane is configured using the same CRDs as standard Calico, while VPP-specific settings are managed through Kubernetes ConfigMaps and the VPP startup configuration file.
 
-Getting VPP configuration right from the start is critical because many VPP parameters — particularly hugepages and CPU affinity — require node reboots or pod restarts to take effect. Planning your VPP configuration before initial deployment avoids the need for disruptive reconfigurations later.
+Getting VPP configuration right from the start is critical because many VPP parameters - particularly hugepages and CPU affinity - require node reboots or pod restarts to take effect. Planning your VPP configuration before initial deployment avoids the need for disruptive reconfigurations later.
 
 ## Prerequisites
 
@@ -115,4 +115,4 @@ buffers {
 
 ## Conclusion
 
-Configuring Calico VPP for a new cluster requires setting up the Calico control plane (IP pools, Felix) the same way as standard Calico, while configuring VPP-specific settings — interface binding, hugepages, buffer sizes, and CPU pinning — through ConfigMaps and the VPP startup file. Getting these settings right before initial deployment avoids the need for disruptive reconfigurations that require pod restarts.
+Configuring Calico VPP for a new cluster requires setting up the Calico control plane (IP pools, Felix) the same way as standard Calico, while configuring VPP-specific settings - interface binding, hugepages, buffer sizes, and CPU pinning - through ConfigMaps and the VPP startup file. Getting these settings right before initial deployment avoids the need for disruptive reconfigurations that require pod restarts.

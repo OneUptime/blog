@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, IP Pools, autoAssign, Configuration
+Tags: Kubernetes, MetalLB, IP Pools, AutoAssign, Configuration
 
 Description: Learn how to disable automatic IP assignment for premium or limited IP pools in MetalLB so that only explicitly requested services get IPs from those pools.
 

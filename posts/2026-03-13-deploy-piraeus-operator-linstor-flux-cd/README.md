@@ -14,7 +14,7 @@ Piraeus is the Kubernetes operator for LINSTOR, a software-defined storage syste
 
 The Piraeus operator deploys and manages all LINSTOR components: the LINSTOR controller (cluster metadata and API), LINSTOR satellites (per-node storage agents), and the LINSTOR CSI driver. Together these components provide dynamically provisioned PersistentVolumes backed by DRBD-replicated volumes that can fail over between nodes without data loss.
 
-Deploying Piraeus through Flux CD gives you GitOps-managed replicated storage infrastructure. The operator's CRDs — `LinstorCluster`, `LinstorSatelliteConfiguration`, and `LinstorNodeConnection` — are version-controlled in Git, ensuring consistent storage topology configuration and reproducible cluster deployments.
+Deploying Piraeus through Flux CD gives you GitOps-managed replicated storage infrastructure. The operator's CRDs - `LinstorCluster`, `LinstorSatelliteConfiguration`, and `LinstorNodeConnection` - are version-controlled in Git, ensuring consistent storage topology configuration and reproducible cluster deployments.
 
 ## Prerequisites
 
@@ -168,7 +168,7 @@ spec:
   # LVM thin pool storage configuration
   storagePools:
     - name: thinpool
-      # LVM thin provisioned pool — most flexible for snapshots
+      # LVM thin provisioned pool - most flexible for snapshots
       lvmThinPool:
         volumeGroup: piraeus-vg
         thinPool: piraeus-thinpool
@@ -194,7 +194,7 @@ kubectl label node storage-node-3 piraeus.io/satellite=true
 ```yaml
 # infrastructure/storage/piraeus/storageclasses.yaml
 
-# Replicated block storage — 2 copies (survives 1 node failure)
+# Replicated block storage - 2 copies (survives 1 node failure)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -211,7 +211,7 @@ parameters:
   linstor.csi.linbit.com/layerList: DRBD STORAGE
   property.linstor.csi.linbit.com/DrbdOptions/Net/rr-conflict: retry-connect
 ---
-# Replicated block storage — 3 copies for critical data
+# Replicated block storage - 3 copies for critical data
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -225,7 +225,7 @@ parameters:
   linstor.csi.linbit.com/placementCount: "3"   # 3 replicas
   linstor.csi.linbit.com/layerList: DRBD STORAGE
 ---
-# Local storage (no replication) — highest performance
+# Local storage (no replication) - highest performance
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -322,12 +322,12 @@ kubectl exec -n piraeus-datastore deploy/linstor-controller -- \
 
 ## Best Practices
 
-- Use LVM thin pools as the LINSTOR storage backend to enable efficient snapshot support and thin provisioning — raw device pools do not support snapshots.
-- Set `placementCount: "3"` for databases and stateful workloads that cannot tolerate data loss — two-replica deployments lose access to the volume if one node fails during maintenance.
+- Use LVM thin pools as the LINSTOR storage backend to enable efficient snapshot support and thin provisioning - raw device pools do not support snapshots.
+- Set `placementCount: "3"` for databases and stateful workloads that cannot tolerate data loss - two-replica deployments lose access to the volume if one node fails during maintenance.
 - Configure `DrbdOptions/auto-quorum: io-error` to prevent split-brain by returning I/O errors rather than corrupting data when quorum is lost.
-- Use `volumeBindingMode: WaitForFirstConsumer` for all Piraeus StorageClasses — this ensures LINSTOR places the primary replica on the same node where the pod is scheduled, minimizing remote I/O.
-- Monitor DRBD resource states with `linstor resource list` — a resource stuck in `SyncTarget` state indicates replication is catching up after a node reconnection.
+- Use `volumeBindingMode: WaitForFirstConsumer` for all Piraeus StorageClasses - this ensures LINSTOR places the primary replica on the same node where the pod is scheduled, minimizing remote I/O.
+- Monitor DRBD resource states with `linstor resource list` - a resource stuck in `SyncTarget` state indicates replication is catching up after a node reconnection.
 
 ## Conclusion
 
-The Piraeus Operator deployed via Flux CD provides LINSTOR-backed replicated block storage that combines the performance of local NVMe with the resilience of synchronous DRBD replication. Its straightforward architecture — controller, satellites, and CSI driver — is simpler to operate than Ceph while delivering comparable performance for block storage workloads. With Flux managing the operator, `LinstorCluster`, and StorageClass configurations in Git, your replicated storage infrastructure is reproducible, auditable, and consistently deployed across every cluster in your fleet.
+The Piraeus Operator deployed via Flux CD provides LINSTOR-backed replicated block storage that combines the performance of local NVMe with the resilience of synchronous DRBD replication. Its straightforward architecture - controller, satellites, and CSI driver - is simpler to operate than Ceph while delivering comparable performance for block storage workloads. With Flux managing the operator, `LinstorCluster`, and StorageClass configurations in Git, your replicated storage infrastructure is reproducible, auditable, and consistently deployed across every cluster in your fleet.

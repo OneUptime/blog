@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, pprof, Profiling, Performance, net/http
+Tags: OpenTelemetry, Go, Pprof, Profiling, Performance, Net/http
 
 Description: Combine OpenTelemetry tracing with Go's pprof profiler to correlate distributed traces with CPU, memory, and goroutine profiles for deep performance analysis.
 

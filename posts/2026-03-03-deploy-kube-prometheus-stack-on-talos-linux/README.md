@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kube-prometheus-stack, Prometheus, Grafana, Monitoring, Kubernetes
+Tags: Talos Linux, Kube-prometheus-stack, Prometheus, Grafana, Monitoring, Kubernetes
 
 Description: Deploy the complete kube-prometheus-stack on Talos Linux for an all-in-one monitoring solution with Prometheus, Grafana, and Alertmanager.
 

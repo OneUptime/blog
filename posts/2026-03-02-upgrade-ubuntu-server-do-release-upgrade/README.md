@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Upgrade, do-release-upgrade, Server Administration
+Tags: Ubuntu, Upgrade, Do-release-upgrade, Server Administration
 
 Description: A detailed guide to using the do-release-upgrade tool to safely upgrade Ubuntu Server between releases, covering flags, common options, and troubleshooting upgrade failures.
 

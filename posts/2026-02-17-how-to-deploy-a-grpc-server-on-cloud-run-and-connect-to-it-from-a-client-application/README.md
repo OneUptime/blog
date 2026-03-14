@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, gRPC, API Development, Microservices
+Tags: GCP, Cloud Run, GRPC, API Development, Microservices
 
 Description: A complete guide to deploying a gRPC server on Cloud Run with HTTP/2 support, including protobuf definitions, server implementation, client code, and health checking configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, mTLS, Authorization, Zero Trust
+Tags: Istio, Security, MTLS, Authorization, Zero Trust
 
 Description: Implement secure communication between microservices using Istio's mTLS, authorization policies, and certificate management features.
 

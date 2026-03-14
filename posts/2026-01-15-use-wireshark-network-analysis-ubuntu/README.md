@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Wireshark, Network Analysis, Ubuntu, Linux, Packet Capture, Security, Troubleshooting, tshark, Protocol Analysis
+Tags: Wireshark, Network Analysis, Ubuntu, Linux, Packet Capture, Security, Troubleshooting, Tshark, Protocol Analysis
 
 Description: A comprehensive guide to installing, configuring, and using Wireshark for deep network packet analysis and troubleshooting on Ubuntu Linux systems.
 

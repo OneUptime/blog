@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Dynamic Inventory, add_host, Automation
+Tags: Ansible, Dynamic Inventory, Add_host, Automation
 
 Description: Learn how to use the Ansible add_host module to dynamically add hosts during playbook execution for flexible infrastructure management.
 

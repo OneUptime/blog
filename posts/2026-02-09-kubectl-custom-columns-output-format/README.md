@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Formatting
+Tags: Kubernetes, Kubectl, Formatting
 
 Description: Learn how to create custom kubectl output columns to display exactly the resource fields you need in a clean, readable table format for better cluster visibility.
 

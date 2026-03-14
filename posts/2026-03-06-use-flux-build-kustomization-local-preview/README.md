@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Build, Kustomization, Preview, Local, DevOps
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Build, Kustomization, Preview, Local, DevOps
 
 Description: A practical guide to using the flux build kustomization command to preview and validate Kustomization output locally before deploying to your cluster.
 

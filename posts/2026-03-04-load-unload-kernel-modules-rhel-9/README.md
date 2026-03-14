@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kernel Modules, modprobe, Linux
+Tags: RHEL, Kernel Modules, Modprobe, Linux
 
 Description: A practical guide to managing kernel modules on RHEL, covering how to list, load, unload, and configure modules using modprobe, lsmod, and modinfo.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Kubespray, CRI, Validation, Troubleshooting
 
-Description: Validate Cilium networking after Kubespray-provisioned clusters report multiple container runtime interface (CRI) sockets, which can cause CNI configuration conflicts.
+Description: Validate Cilium networking after Kubespray-provisioned clusters report multiple container runtime interface sockets, which can cause CNI configuration conflicts.
 
 ---
 

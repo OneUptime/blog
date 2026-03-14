@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting
 
 Description: Diagnose and resolve common Calico eBPF mode issues including kernel incompatibilities, kube-proxy conflicts, service routing failures, and BPF program errors.
 

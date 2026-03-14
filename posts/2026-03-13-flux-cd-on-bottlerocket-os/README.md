@@ -10,7 +10,7 @@ Description: Configure Flux CD on AWS Bottlerocket OS for security-hardened, imm
 
 ## Introduction
 
-Bottlerocket is Amazon's purpose-built, open-source Linux operating system for running containers. Like Flatcar Container Linux, Bottlerocket is immutable — its root filesystem is read-only, and changes are made through a strictly defined API rather than shell access. It has a minimal footprint, automatic atomic updates, and built-in SELinux enforcement, making it one of the most security-hardened node operating systems available for Kubernetes.
+Bottlerocket is Amazon's purpose-built, open-source Linux operating system for running containers. Like Flatcar Container Linux, Bottlerocket is immutable - its root filesystem is read-only, and changes are made through a strictly defined API rather than shell access. It has a minimal footprint, automatic atomic updates, and built-in SELinux enforcement, making it one of the most security-hardened node operating systems available for Kubernetes.
 
 On AWS EKS, Bottlerocket AMIs are available as a first-class node group option. On self-managed clusters, Bottlerocket can be bootstrapped with kubeadm. In either case, Flux CD manages the workloads running on top of these hardened nodes, creating a fully GitOps-managed stack on security-optimized infrastructure.
 
@@ -104,7 +104,7 @@ kubectl get pods -n flux-system -o wide
 
 ## Step 4: Configure Bottlerocket Settings via SSM (API-based management)
 
-Bottlerocket is configured through its API — not through shell commands. Use AWS SSM for emergency access and `apiclient` for configuration:
+Bottlerocket is configured through its API - not through shell commands. Use AWS SSM for emergency access and `apiclient` for configuration:
 
 ```bash
 # Access a Bottlerocket node via SSM (not SSH)
@@ -208,7 +208,7 @@ spec:
 - Deploy the Bottlerocket Update Operator (BRUPOP) via Flux to manage OS updates with Kubernetes-aware drain and cordon behavior.
 - Use Bottlerocket node labels (e.g., `os-type: bottlerocket`) with node affinity rules to ensure security-sensitive workloads run specifically on hardened Bottlerocket nodes.
 - All containers running on Bottlerocket benefit from SELinux enforcement; ensure your container images do not require SELinux disabled.
-- Use `readOnlyRootFilesystem: true` and `allowPrivilegeEscalation: false` on all containers — Bottlerocket's hardened baseline makes these security settings easier to enforce.
+- Use `readOnlyRootFilesystem: true` and `allowPrivilegeEscalation: false` on all containers - Bottlerocket's hardened baseline makes these security settings easier to enforce.
 
 ## Conclusion
 

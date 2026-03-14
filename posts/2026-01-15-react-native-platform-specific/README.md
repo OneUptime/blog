@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Platform-Specific, iOS, Android, Cross-Platform, Mobile Development
+Tags: React Native, Platform-Specific, IOS, Android, Cross-Platform, Mobile Development
 
 Description: Learn how to write platform-specific code in React Native to handle iOS and Android differences effectively.
 

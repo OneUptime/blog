@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance, Testing, API
+Tags: K6, Load Testing, Performance, Testing, API
 
 Description: A practical guide to writing k6 load tests that catch performance issues before they reach production.
 

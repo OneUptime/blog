@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Network Namespaces, ip netns, Linux
+Tags: RHEL, Network Namespaces, Ip netns, Linux
 
 Description: A hands-on guide to creating and managing network namespaces on RHEL using ip netns, providing isolated network environments for testing, security, and understanding container networking.
 

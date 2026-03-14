@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, signum Function, Math, HCL, Infrastructure as Code, Numeric Functions
+Tags: Terraform, Signum Function, Math, HCL, Infrastructure as Code, Numeric Functions
 
 Description: Learn how to use the signum function in Terraform to determine the sign of a number and apply it for conditional logic based on numeric direction or polarity.
 

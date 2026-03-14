@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, removed Block, Infrastructure as Code, Refactoring
+Tags: Terraform, State Management, Removed Block, Infrastructure as Code, Refactoring
 
 Description: Learn how to use the Terraform removed block to stop managing resources without destroying them, keeping your infrastructure intact while cleaning up your configuration.
 

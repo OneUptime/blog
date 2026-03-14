@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Backup, Kubernetes, Cluster Management, Disaster Recovery
+Tags: Talos Linux, Etcd, Backup, Kubernetes, Cluster Management, Disaster Recovery
 
 Description: Learn how to take etcd snapshots in Talos Linux to protect your Kubernetes cluster state and enable disaster recovery.
 

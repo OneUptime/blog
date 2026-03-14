@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Developer CLI, azd, Azure, Project Templates, Deployments, Cloud Development, DevOps
+Tags: Azure Developer CLI, Azd, Azure, Project Templates, Deployments, Cloud Development, DevOps
 
 Description: Get started with Azure Developer CLI to scaffold complete Azure projects from templates and deploy them with a single command.
 

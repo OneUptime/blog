@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Boot Services, Linux, Service Management
+Tags: Ansible, Systemd, Boot Services, Linux, Service Management
 
 Description: Learn how to ensure services start automatically after a reboot using Ansible, covering systemd enable, dependencies, and boot verification.
 

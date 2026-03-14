@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Validate that Cilium is correctly advertising pod CIDRs and service IPs via BGP by inspecting route tables, peer state, and upstream router routing tables.
 
@@ -10,7 +10,7 @@ Description: Validate that Cilium is correctly advertising pod CIDRs and service
 
 ## Introduction
 
-Deploying Cilium BGP Control Plane is only half the battle — validating that routes are actually being advertised and accepted correctly is what ensures your services are reachable. A BGP session can be in `established` state while routes are silently filtered by either Cilium's service selector or the upstream router's inbound policy. Thorough validation catches these silent failures before they cause production incidents.
+Deploying Cilium BGP Control Plane is only half the battle - validating that routes are actually being advertised and accepted correctly is what ensures your services are reachable. A BGP session can be in `established` state while routes are silently filtered by either Cilium's service selector or the upstream router's inbound policy. Thorough validation catches these silent failures before they cause production incidents.
 
 Validation should happen at three levels: Cilium's internal route state (what it intends to advertise), the BGP protocol level (what it actually sent to peers), and the network level (what is actually reachable and installed in routing tables). Each level can diverge from the others due to policy mismatches, and checking all three gives you confidence that end-to-end routing is working.
 
@@ -124,4 +124,4 @@ flowchart TD
 
 ## Conclusion
 
-BGP route advertisement validation in Cilium requires checking the full chain from Cilium's internal state through the BGP protocol to the upstream routing table. The `cilium bgp routes advertised` command is your primary tool for confirming what Cilium is sending, while router-side commands confirm what is being accepted. Always perform end-to-end connectivity tests as the final validation step — a route can exist in BGP tables without being reachable due to next-hop resolution or policy issues on the data plane.
+BGP route advertisement validation in Cilium requires checking the full chain from Cilium's internal state through the BGP protocol to the upstream routing table. The `cilium bgp routes advertised` command is your primary tool for confirming what Cilium is sending, while router-side commands confirm what is being accepted. Always perform end-to-end connectivity tests as the final validation step - a route can exist in BGP tables without being reachable due to next-hop resolution or policy issues on the data plane.

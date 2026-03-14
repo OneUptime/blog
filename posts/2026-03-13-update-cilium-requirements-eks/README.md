@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, eks, aws, kubernetes, requirements, cni, upgrade
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
 Description: A guide to reviewing and updating Cilium's system and cluster requirements on Amazon EKS, covering node group OS versions, kernel compatibility, and AWS-specific networking prerequisites.
 
@@ -12,7 +12,7 @@ Description: A guide to reviewing and updating Cilium's system and cluster requi
 
 Amazon EKS presents unique requirements for Cilium due to AWS's VPC-native networking model and the Amazon Linux 2 vs Bottlerocket node options. EKS clusters running the Amazon VPC CNI (aws-node) require specific steps to chain with Cilium or replace it entirely, and each path has different prerequisites.
 
-EKS Kubernetes version support windows, node AMI selections, and instance type capabilities all affect Cilium compatibility. For example, running Cilium's eBPF dataplane on EKS requires Bottlerocket or Amazon Linux 2023 nodes with kernel 5.10+ — older Amazon Linux 2 instances may have kernel 4.14 which limits available Cilium features.
+EKS Kubernetes version support windows, node AMI selections, and instance type capabilities all affect Cilium compatibility. For example, running Cilium's eBPF dataplane on EKS requires Bottlerocket or Amazon Linux 2023 nodes with kernel 5.10+ - older Amazon Linux 2 instances may have kernel 4.14 which limits available Cilium features.
 
 This guide covers how to verify and update your EKS cluster to meet Cilium's requirements, including node group configuration, kernel verification, and AWS-specific networking settings.
 

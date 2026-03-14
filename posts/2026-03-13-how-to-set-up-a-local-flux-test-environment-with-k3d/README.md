@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Testing, k3d, k3s, Local Development
+Tags: Flux, Kubernetes, GitOps, Testing, K3d, K3s, Local Development
 
 Description: Learn how to set up a lightweight local Kubernetes cluster using k3d for fast Flux CD testing with multi-node support and built-in registry.
 

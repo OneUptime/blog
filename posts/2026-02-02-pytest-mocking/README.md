@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: pytest, Python, Mocking, Testing, Unit Tests, pytest-mock, unittest.mock, Test Isolation
+Tags: Pytest, Python, Mocking, Testing, Unit Tests, Pytest-mock, Unittest.mock, Test Isolation
 
 Description: A comprehensive guide to mocking in pytest using unittest.mock and pytest-mock.
 

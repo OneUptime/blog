@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rdiff-backup, Incremental Backups, Linux
+Tags: RHEL, Rdiff-backup, Incremental Backups, Linux
 
 Description: Configure rdiff-backup on RHEL for space-efficient incremental backups with the ability to restore files from any point in time.
 

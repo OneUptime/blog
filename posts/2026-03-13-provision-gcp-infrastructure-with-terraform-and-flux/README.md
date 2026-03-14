@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, GCP, Google Cloud, GitOps, Kubernetes, Infrastructure as Code
+Tags: Flux CD, Tofu Controller, Terraform, GCP, Google Cloud, GitOps, Kubernetes
 
 Description: Provision GCP infrastructure using Terraform via the Tofu Controller with Flux CD for fully GitOps-managed Google Cloud resource provisioning.
 

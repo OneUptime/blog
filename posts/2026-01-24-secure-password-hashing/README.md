@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, Password Hashing, Authentication, Cryptography, bcrypt, Argon2
+Tags: Security, Password Hashing, Authentication, Cryptography, Bcrypt, Argon2
 
 Description: Learn how to properly hash and verify passwords using modern algorithms like bcrypt and Argon2 to protect user credentials.
 

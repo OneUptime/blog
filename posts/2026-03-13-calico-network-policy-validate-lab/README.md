@@ -34,7 +34,7 @@ kubectl run pod-gamma --image=nicolaka/netshoot \
 ALPHA_IP=$(kubectl get pod pod-alpha -o jsonpath='{.status.podIP}')
 ```
 
-## Test 1: No Policy — Default Allow
+## Test 1: No Policy - Default Allow
 
 Confirm that without any policy, all pods can communicate:
 
@@ -174,7 +174,7 @@ spec:
 EOF
 
 kubectl exec pod-gamma -- wget --timeout=10 -qO- http://$ALPHA_IP
-# Expected: success (gamma allowed by this new policy — union semantics)
+# Expected: success (gamma allowed by this new policy - union semantics)
 ```
 
 ## Validation Summary
@@ -196,4 +196,4 @@ kubectl exec pod-gamma -- wget --timeout=10 -qO- http://$ALPHA_IP
 
 ## Conclusion
 
-Validating network policy fundamentals ensures that the core behaviors Calico relies on — deny-all enforcement, selector matching, rule ordering, GlobalNetworkPolicy scope, and union semantics — all work correctly in your specific cluster and Calico version. These tests are the foundation for validating any more complex policy configuration.
+Validating network policy fundamentals ensures that the core behaviors Calico relies on - deny-all enforcement, selector matching, rule ordering, GlobalNetworkPolicy scope, and union semantics - all work correctly in your specific cluster and Calico version. These tests are the foundation for validating any more complex policy configuration.

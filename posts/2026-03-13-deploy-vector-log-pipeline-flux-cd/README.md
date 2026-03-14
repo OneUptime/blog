@@ -10,7 +10,7 @@ Description: Deploy Vector log pipeline for high-performance log collection and 
 
 ## Introduction
 
-Vector is a high-performance observability data pipeline written in Rust. It can run as both a lightweight agent on every node (replacing Fluent Bit) and as a stateful aggregator (replacing Logstash or Fluentd). Its topology model — sources, transforms, and sinks connected in a directed acyclic graph — makes pipelines explicit, testable, and easy to reason about. Vector also handles metrics and traces, making it a unified observability pipeline tool.
+Vector is a high-performance observability data pipeline written in Rust. It can run as both a lightweight agent on every node (replacing Fluent Bit) and as a stateful aggregator (replacing Logstash or Fluentd). Its topology model - sources, transforms, and sinks connected in a directed acyclic graph - makes pipelines explicit, testable, and easy to reason about. Vector also handles metrics and traces, making it a unified observability pipeline tool.
 
 Deploying Vector via Flux CD is straightforward: the official Helm chart exposes the entire Vector configuration through its `values.yaml`, which means your pipeline topology lives as a versioned YAML file in Git. Changes to transforms or sinks go through code review and are automatically reconciled by Flux.
 
@@ -257,4 +257,4 @@ kubectl exec -n logging -it \
 
 ## Conclusion
 
-Vector deployed through Flux CD delivers a high-performance, unified observability pipeline that is fully described in Git. Its Rust implementation handles far higher throughput than JVM-based alternatives at a fraction of the memory cost. By expressing the entire topology — sources, transforms, sinks, and routing logic — in the HelmRelease values, you get a single, reviewable diff for every pipeline change, making your logging infrastructure as well-governed as your application code.
+Vector deployed through Flux CD delivers a high-performance, unified observability pipeline that is fully described in Git. Its Rust implementation handles far higher throughput than JVM-based alternatives at a fraction of the memory cost. By expressing the entire topology - sources, transforms, sinks, and routing logic - in the HelmRelease values, you get a single, reviewable diff for every pipeline change, making your logging infrastructure as well-governed as your application code.

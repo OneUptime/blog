@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, jsondecode, JSON Parsing, Data Processing, Infrastructure as Code
+Tags: Terraform, Jsondecode, JSON Parsing, Data Processing, Infrastructure as Code
 
 Description: Learn how to use Terraform's jsondecode function to parse JSON strings from files, APIs, and data sources into native Terraform maps, lists, and values.
 

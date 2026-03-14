@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fapolicyd, SELinux, Security, Defense in Depth
+Tags: RHEL, Fapolicyd, SELinux, Security, Defense in Depth
 
 Description: Learn how to combine fapolicyd application whitelisting with SELinux mandatory access controls to create a layered security posture on RHEL.
 

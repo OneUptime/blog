@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, tcpdump, ARP, Debugging, Networking
+Tags: Kubernetes, MetalLB, Tcpdump, ARP, Debugging, Networking
 
 Description: Learn how to use tcpdump to capture and analyze ARP traffic from MetalLB speaker pods. Debug unreachable services, duplicate MAC addresses, and ARP storms.
 

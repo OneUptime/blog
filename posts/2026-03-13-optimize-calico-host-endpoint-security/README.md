@@ -10,7 +10,7 @@ Description: Techniques for optimizing Calico host endpoint security policy perf
 
 ## Introduction
 
-Calico host endpoint policies add a layer of network inspection to every packet entering and leaving a Kubernetes node. While this is essential for security, poorly structured policies or excessive rule counts can introduce latency and consume significant CPU cycles on busy nodes. In high-throughput environments — such as nodes running latency-sensitive workloads or handling thousands of connections per second — this overhead can impact application performance.
+Calico host endpoint policies add a layer of network inspection to every packet entering and leaving a Kubernetes node. While this is essential for security, poorly structured policies or excessive rule counts can introduce latency and consume significant CPU cycles on busy nodes. In high-throughput environments - such as nodes running latency-sensitive workloads or handling thousands of connections per second - this overhead can impact application performance.
 
 Optimization focuses on reducing the number of policy evaluation steps per packet, leveraging IP sets for efficient selector matching, choosing the right dataplane (iptables vs. eBPF), and structuring policy rule ordering to allow the most common traffic early in the evaluation chain.
 

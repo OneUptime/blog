@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, libvirt, Bridge, KVM, Linux
+Tags: RHEL, Libvirt, Bridge, KVM, Linux
 
 Description: Configure libvirt to use bridged networking on RHEL so KVM virtual machines get direct access to your physical network with routable IP addresses.
 

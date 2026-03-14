@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Resource Inspection, talosctl, System Administration
+Tags: Talos Linux, Kubernetes, Resource Inspection, Talosctl, System Administration
 
 Description: Learn how to use talosctl get to inspect node resources in Talos Linux, from hardware details to network configuration and runtime state.
 

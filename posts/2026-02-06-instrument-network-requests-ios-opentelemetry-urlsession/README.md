@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, iOS, URLSession, Network, Instrumentation
+Tags: OpenTelemetry, Swift, IOS, URLSession, Network, Instrumentation
 
 Description: Automatically trace all network requests in your iOS app using OpenTelemetry's URLSession instrumentation for complete visibility into API calls and their performance.
 

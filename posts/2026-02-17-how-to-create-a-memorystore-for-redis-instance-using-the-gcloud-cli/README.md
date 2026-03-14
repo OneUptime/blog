@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Memorystore, Redis, gcloud CLI, Managed Cache
+Tags: GCP, Memorystore, Redis, Gcloud CLI, Managed Cache
 
 Description: Step-by-step guide to creating a Google Cloud Memorystore for Redis instance using the gcloud CLI, including configuration options and best practices.
 

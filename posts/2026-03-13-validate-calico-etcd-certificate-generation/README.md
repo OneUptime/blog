@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Validation
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Validation
 
 Description: How to validate that Calico etcd TLS certificates are correctly generated, have the right extensions, and are properly trusted for mutual TLS authentication.
 
@@ -40,7 +40,7 @@ openssl x509 -in calico-felix.crt -text -noout | grep -A20 "Extensions"
 
 Expected output for a client certificate:
 
-```
+```plaintext
 Subject: CN=calico-felix, O=calico
 Issuer: CN=calico-etcd-ca
 Not Before: Mar 13 00:00:00 2026 GMT

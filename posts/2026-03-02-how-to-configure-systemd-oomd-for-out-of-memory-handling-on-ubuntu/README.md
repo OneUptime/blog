@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Memory Management, OOM Killer, Linux
+Tags: Ubuntu, Systemd, Memory Management, OOM Killer, Linux
 
 Description: Configure systemd-oomd to proactively handle out-of-memory conditions on Ubuntu, prevent system freezes, and protect critical services from OOM kills.
 

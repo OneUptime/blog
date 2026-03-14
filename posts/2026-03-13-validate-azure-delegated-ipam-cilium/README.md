@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, ipam, delegated-ipam, kubernetes, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
-Description: Learn how to validate Azure Delegated IPAM with Cilium on AKS, ensuring that pod IP addresses are correctly allocated from Azure subnets and that Cilium's dataplane is functioning with delegated IP management.
+Description: Learn how to validate Azure Delegated IPAM with Cilium on AKS, ensuring that pod IP addresses are correctly allocated from Azure subnets and that Cilium's dataplane is functioning with delegated...
 
 ---
 
@@ -47,7 +47,7 @@ kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.ipam}{"\n"}{.data.azure-use-primary-address}'
 
 # Confirm Cilium is not managing its own IP pools
-kubectl get ciliumippool 2>/dev/null || echo "No Cilium IP pools — delegated IPAM is active"
+kubectl get ciliumippool 2>/dev/null || echo "No Cilium IP pools - delegated IPAM is active"
 ```
 
 ## Step 3: Validate Pod IP Allocation from Delegated Subnet
@@ -92,7 +92,7 @@ kubectl delete pod dns-test
 
 ## Best Practices
 
-- Size the delegated subnet generously — each pod consumes one IP from the Azure subnet
+- Size the delegated subnet generously - each pod consumes one IP from the Azure subnet
 - Monitor `CiliumNode` `.status.ipam.used` vs. `.spec.ipam.available` to catch IP exhaustion
 - Enable Azure Monitor and Cilium Hubble for correlated networking insights
 - Use Azure Policy to prevent unauthorized changes to the delegated subnet

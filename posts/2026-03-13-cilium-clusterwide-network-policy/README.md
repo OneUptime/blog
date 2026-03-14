@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, eBPF, Security
+Tags: Cilium, Kubernetes, Network Policy, EBPF, Security
 
-Description: Use CiliumClusterwideNetworkPolicy to enforce security policies across all namespaces simultaneously, including host networking and node-level traffic controls that namespace-scoped policies cannot reach.
+Description: Use CiliumClusterwideNetworkPolicy to enforce security policies across all namespaces simultaneously, including host networking and node-level traffic controls that namespace-scoped policies...
 
 ---
 
@@ -139,4 +139,4 @@ flowchart TD
 
 ## Conclusion
 
-`CiliumClusterwideNetworkPolicy` is the right tool for cluster-wide security baselines that must apply uniformly across all namespaces and that namespace administrators should not be able to override. The `nodeSelector` field makes CCNP unique in its ability to enforce policies on Kubernetes nodes themselves, not just pods — essential for hardening node access to SSH, kubelet, and other system services. Use CCNP for the foundation layer of your security model and namespace-scoped CNP for application-specific rules on top.
+`CiliumClusterwideNetworkPolicy` is the right tool for cluster-wide security baselines that must apply uniformly across all namespaces and that namespace administrators should not be able to override. The `nodeSelector` field makes CCNP unique in its ability to enforce policies on Kubernetes nodes themselves, not just pods - essential for hardening node access to SSH, kubelet, and other system services. Use CCNP for the foundation layer of your security model and namespace-scoped CNP for application-specific rules on top.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, cloud-init, DevOps, VM Bootstrap, Infrastructure as Code, Automation
+Tags: Terraform, Cloud-init, DevOps, VM Bootstrap, Infrastructure as Code, Automation
 
 Description: Learn how to use Terraform with cloud-init to automatically configure virtual machines at boot time, installing packages, creating users, and running scripts.
 

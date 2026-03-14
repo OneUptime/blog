@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Privileged Commands, Security, Compliance, Linux
+Tags: RHEL, Auditd, Privileged Commands, Security, Compliance, Linux
 
 Description: Configure auditd on RHEL to track execution of privileged commands including setuid/setgid binaries, sudo usage, and administrative tools.
 

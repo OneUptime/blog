@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Cosmos DB, Python, Async, asyncio, SDK, High Throughput, NoSQL
+Tags: Azure Cosmos DB, Python, Async, Asyncio, SDK, High Throughput, NoSQL
 
 Description: Use the Azure Cosmos DB Python SDK with async I/O to achieve high-throughput database operations for data-intensive Python applications.
 

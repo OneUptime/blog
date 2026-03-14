@@ -47,12 +47,12 @@ Flux uses the manager name `gotk-sync-manager` (or `manager` for older versions)
 If you use server-side apply with a different field manager for fields that Flux doesn't own, your changes persist across reconciliations.
 
 ```bash
-# Add an annotation that Flux doesn't manage — no conflict
+# Add an annotation that Flux doesn't manage - no conflict
 kubectl annotate deployment my-service -n team-alpha \
   ops.acme.com/last-manual-restart="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --overwrite
 
-# Add a label that Flux doesn't manage — no conflict
+# Add a label that Flux doesn't manage - no conflict
 kubectl label deployment my-service -n team-alpha \
   ops.acme.com/debug-mode=enabled \
   --overwrite
@@ -61,7 +61,7 @@ kubectl label deployment my-service -n team-alpha \
 flux reconcile kustomization my-service -n team-alpha
 kubectl get deployment my-service -n team-alpha \
   -o jsonpath='{.metadata.annotations.ops\.acme\.com/last-manual-restart}'
-# Annotation persists — Flux doesn't own it
+# Annotation persists - Flux doesn't own it
 ```
 
 ## Step 3: Use Server-Side Apply with a Custom Field Manager
@@ -81,7 +81,7 @@ spec:
       containers:
         - name: my-service
           env:
-            # Adding an env var that's not in Git — no conflict with Flux
+            # Adding an env var that's not in Git - no conflict with Flux
             - name: DEBUG_TRACE_ID
               value: "session-abc123"
 ```
@@ -137,7 +137,7 @@ To permanently give ownership of a field to another controller (like HPA for rep
 
 ```bash
 # First, remove spec.replicas from the Git manifest
-# Then apply the manifest — Flux will no longer own spec.replicas
+# Then apply the manifest - Flux will no longer own spec.replicas
 # HPA can now own it
 
 # Verify field ownership transferred
@@ -161,7 +161,7 @@ kubectl patch deployment my-service -n team-alpha \
 
 # Reset all field managers by using kubectl apply (client-side)
 kubectl apply -f deploy/deployment.yaml
-# This switches to client-side apply — use carefully
+# This switches to client-side apply - use carefully
 ```
 
 ## Step 7: Use Flux's ssa: merge for Controlled Override Behavior
@@ -183,14 +183,14 @@ spec:
 ```
 
 - `Merge` (default): Flux uses server-side apply, owns all declared fields
-- `IfNotPresent`: Flux creates the resource but never updates it — manual changes persist
-- `Ignore`: Flux skips this resource entirely — full manual control
+- `IfNotPresent`: Flux creates the resource but never updates it - manual changes persist
+- `Ignore`: Flux skips this resource entirely - full manual control
 
 ## Best Practices
 
 - Use `kubectl get -o json | jq '.metadata.managedFields'` to understand field ownership before making changes
 - Apply manual overrides with `--field-manager=descriptive-name` so you can identify them later
-- Avoid using `--force-conflicts=true` without suspending Flux first — Flux will reclaim the field on next reconciliation
+- Avoid using `--force-conflicts=true` without suspending Flux first - Flux will reclaim the field on next reconciliation
 - Document the intended field manager for each resource in your team runbooks
 - The cleanest long-term solution for persistent overrides is always to update the Git manifest
 - Periodically audit `managedFields` to identify fields owned by obsolete controllers or tools

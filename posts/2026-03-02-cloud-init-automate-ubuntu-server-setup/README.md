@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Automation, DevOps, Cloud
+Tags: Ubuntu, Cloud-init, Automation, DevOps, Cloud
 
 Description: Learn how to write cloud-init user-data configurations to fully automate Ubuntu Server setup, including users, packages, files, and post-install commands across cloud providers and bare metal.
 

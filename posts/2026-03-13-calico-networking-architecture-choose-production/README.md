@@ -10,7 +10,7 @@ Description: A decision framework for selecting the right Calico architectural c
 
 ## Introduction
 
-Calico's architecture has several configurable aspects that significantly impact performance, scalability, and operational complexity: whether to deploy Typha, how to configure BGP peering, which dataplane to use, and how to size Felix's resource allocation. These architectural decisions must be made before or at cluster creation — changing them later is disruptive.
+Calico's architecture has several configurable aspects that significantly impact performance, scalability, and operational complexity: whether to deploy Typha, how to configure BGP peering, which dataplane to use, and how to size Felix's resource allocation. These architectural decisions must be made before or at cluster creation - changing them later is disruptive.
 
 This post provides a production architecture decision framework organized by cluster scale and infrastructure type.
 
@@ -47,7 +47,7 @@ spec:
     cluster-autoscaler.kubernetes.io/safe-to-evict: 'false'
 ```
 
-Typha should run on nodes that are not evictable — typically control plane nodes or dedicated infrastructure nodes.
+Typha should run on nodes that are not evictable - typically control plane nodes or dedicated infrastructure nodes.
 
 ## Decision 2: Felix Resource Sizing
 
@@ -108,14 +108,14 @@ calicoctl patch bgpconfiguration default \
 
 For production clusters, ensure Calico control plane components are highly available:
 
-- **calico-node**: DaemonSet — HA by default (one per node)
+- **calico-node**: DaemonSet - HA by default (one per node)
 - **Typha**: Deploy 2+ replicas with pod anti-affinity
 - **calico-kube-controllers**: Deploy on a node with a taint preventing eviction
 - **Calico API server** (Enterprise): Deploy 2+ replicas
 
 ## Best Practices
 
-- Size Typha conservatively — more replicas adds redundancy without significant cost
+- Size Typha conservatively - more replicas adds redundancy without significant cost
 - Configure pod disruption budgets for Typha to prevent all replicas being evicted simultaneously
 - Use node affinity to pin Typha to infrastructure nodes that are not subject to cluster autoscaler eviction
 - Document your BGP ASN, peer configuration, and route reflector designations in your cluster runbook

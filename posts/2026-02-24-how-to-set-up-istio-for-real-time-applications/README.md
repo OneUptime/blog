@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Real-Time, WebSocket, gRPC Streaming, Kubernetes
+Tags: Istio, Real-Time, WebSocket, GRPC Streaming, Kubernetes
 
 Description: Configure Istio for real-time applications that use WebSockets, gRPC streaming, and Server-Sent Events with proper timeout and connection management.
 

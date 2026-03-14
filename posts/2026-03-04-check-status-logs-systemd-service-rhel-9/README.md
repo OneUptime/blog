@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Logs, journalctl, Linux, Troubleshooting
+Tags: RHEL, Systemd, Logs, Journalctl, Linux, Troubleshooting
 
 Description: Learn how to check service status and read logs using systemctl and journalctl on RHEL, including filtering, following live logs, and exporting output.
 

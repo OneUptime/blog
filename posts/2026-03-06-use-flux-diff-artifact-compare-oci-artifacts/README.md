@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, OCI, Artifacts, Diff, Kubernetes, DevOps, CLI
+Tags: Flux, Fluxcd, GitOps, OCI, Artifacts, Diff, Kubernetes, DevOps, CLI
 
 Description: Learn how to use the flux diff artifact command to compare OCI artifacts and track changes between different versions of your Kubernetes manifests.
 

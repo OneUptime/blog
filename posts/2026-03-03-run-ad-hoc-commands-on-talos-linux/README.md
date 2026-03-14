@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Commands, Debugging, Kubernetes, System Administration
+Tags: Talos Linux, Talosctl, Commands, Debugging, Kubernetes, System Administration
 
 Description: Practical techniques for running ad-hoc commands on Talos Linux nodes despite the absence of shell access or SSH.
 

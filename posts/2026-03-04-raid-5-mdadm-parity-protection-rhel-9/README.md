@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID 5, mdadm, Storage, Linux
+Tags: RHEL, RAID 5, Mdadm, Storage, Linux
 
 Description: Step-by-step instructions for configuring a RAID 5 array with mdadm on RHEL, providing both performance and single-disk fault tolerance through distributed parity.
 

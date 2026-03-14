@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, cidr, node-cidr, kubernetes, migration, ipam, networking, capacity-planning
+Tags: Calico, CIDR, Node-cidr, Kubernetes, Migration, IPAM, Networking, Capacity-planning
 
 Description: Learn how to safely re-plan and migrate Calico's node CIDR allocations when expanding cluster capacity, changing pod density requirements, or restructuring your IP address space.
 
@@ -12,7 +12,7 @@ Description: Learn how to safely re-plan and migrate Calico's node CIDR allocati
 
 Node CIDR planning determines how many pod IP addresses are available per node in your Kubernetes cluster. Calico allocates blocks of IPs from IP pools to nodes based on the configured block size. Incorrect block sizing leads to IP exhaustion on high-pod-density nodes or wasteful over-allocation on lightly loaded nodes.
 
-Migrating to a new node CIDR plan requires changing IP pool block sizes or CIDR ranges—operations that cannot be done in-place on active pools. Understanding how to plan the right node CIDR sizing and execute the migration safely is critical for clusters that are scaling up or being restructured.
+Migrating to a new node CIDR plan requires changing IP pool block sizes or CIDR ranges-operations that cannot be done in-place on active pools. Understanding how to plan the right node CIDR sizing and execute the migration safely is critical for clusters that are scaling up or being restructured.
 
 ## Prerequisites
 

@@ -12,7 +12,7 @@ Description: A guide to testing that Calico network policies are correctly enfor
 
 Network policy enforcement in Calico VPP works differently than in the standard iptables or eBPF dataplanes. VPP implements policy enforcement in user space through ACL (Access Control List) rules rather than Linux kernel iptables or BPF programs. Testing policies with the VPP data plane requires verifying both the expected connectivity behavior and that VPP's ACL tables contain the correct rules.
 
-The policy semantics are identical to standard Calico — the same Kubernetes NetworkPolicy and Calico NetworkPolicy/GlobalNetworkPolicy resources apply. The difference is in how Felix programs the rules and where to look when debugging policy enforcement issues.
+The policy semantics are identical to standard Calico - the same Kubernetes NetworkPolicy and Calico NetworkPolicy/GlobalNetworkPolicy resources apply. The difference is in how Felix programs the rules and where to look when debugging policy enforcement issues.
 
 ## Prerequisites
 

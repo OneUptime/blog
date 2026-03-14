@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Service Mesh, Kubernetes, CLI Tools
+Tags: Istio, Istioctl, Service Mesh, Kubernetes, CLI Tools
 
 Description: A practical guide to mastering istioctl, the command-line tool for installing, configuring, and debugging Istio service mesh deployments on Kubernetes.
 

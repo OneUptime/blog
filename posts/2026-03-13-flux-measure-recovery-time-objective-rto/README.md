@@ -10,7 +10,7 @@ Description: Measure and optimize Recovery Time Objective (RTO) for Flux CD mana
 
 ## Introduction
 
-Recovery Time Objective (RTO) is the maximum acceptable duration between a failure and the restoration of normal service. It is a commitment, not a hope — and you cannot make a commitment without measuring your actual recovery performance. Many teams define RTO in their SLAs without ever having timed an actual recovery.
+Recovery Time Objective (RTO) is the maximum acceptable duration between a failure and the restoration of normal service. It is a commitment, not a hope - and you cannot make a commitment without measuring your actual recovery performance. Many teams define RTO in their SLAs without ever having timed an actual recovery.
 
 Flux CD provides clear, observable reconciliation events that make RTO measurement straightforward. Every reconciliation cycle is logged with timestamps, and Flux exposes metrics for how long reconciliation takes. By combining Flux metrics with scripted recovery procedures and timing hooks, you can measure and continuously improve your RTO.
 
@@ -264,4 +264,4 @@ jq -s '
 
 ## Conclusion
 
-Measuring RTO is not bureaucratic overhead — it is the feedback loop that drives DR improvement. With Flux CD's observable reconciliation events and scripted recovery procedures with timing hooks, you can move from "we think our RTO is 30 minutes" to "our measured RTO is 23 minutes and trending down." That precision is what separates teams with genuine DR capabilities from teams with untested DR hopes.
+Measuring RTO is not bureaucratic overhead - it is the feedback loop that drives DR improvement. With Flux CD's observable reconciliation events and scripted recovery procedures with timing hooks, you can move from "we think our RTO is 30 minutes" to "our measured RTO is 23 minutes and trending down." That precision is what separates teams with genuine DR capabilities from teams with untested DR hopes.

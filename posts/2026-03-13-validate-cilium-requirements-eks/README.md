@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, eks, aws, kubernetes, requirements, prerequisites
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
 Description: A comprehensive guide to validating that your Amazon EKS cluster meets all requirements for running Cilium, including Kubernetes version, node OS, IAM permissions, and VPC configuration.
 
@@ -129,7 +129,7 @@ aws ec2 describe-security-groups \
 ## Best Practices
 
 - Use Bottlerocket or Amazon Linux 2023 nodes for best Cilium kernel support on EKS
-- Attach the minimum required IAM policy for ENI operations — avoid AmazonEC2FullAccess
+- Attach the minimum required IAM policy for ENI operations - avoid AmazonEC2FullAccess
 - Ensure subnets have at least 100+ free IPs per node when using ENI mode
 - Disable `aws-node` DaemonSet when switching from AWS VPC CNI to Cilium
 - Test requirements in a dedicated EKS test cluster before modifying production

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Security, Hardening
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Security, Hardening
 
 Description: Best practices for hardening Calico etcd RBAC configurations to protect the etcd datastore from unauthorized access and prevent lateral movement through the Calico data plane.
 
@@ -10,7 +10,7 @@ Description: Best practices for hardening Calico etcd RBAC configurations to pro
 
 ## Introduction
 
-etcd is the most sensitive component in a Kubernetes cluster — it holds all cluster state including secrets, configurations, and Calico network policy. When Calico uses etcd as its datastore, each Calico component has credentials that can access portions of the etcd keyspace. Hardening these credentials and the RBAC configuration that governs them is a critical security control.
+etcd is the most sensitive component in a Kubernetes cluster - it holds all cluster state including secrets, configurations, and Calico network policy. When Calico uses etcd as its datastore, each Calico component has credentials that can access portions of the etcd keyspace. Hardening these credentials and the RBAC configuration that governs them is a critical security control.
 
 An attacker who compromises a Calico component and obtains its etcd credentials could modify network policies to open firewall rules, create new IPAM allocations to facilitate network attacks, or access other portions of etcd if permissions are too broad. This guide covers hardening the Calico etcd RBAC configuration against these threats.
 

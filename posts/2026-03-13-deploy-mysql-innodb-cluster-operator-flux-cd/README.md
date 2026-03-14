@@ -10,7 +10,7 @@ Description: Deploy the MySQL InnoDB Cluster Operator for high-availability MySQ
 
 ## Introduction
 
-The MySQL InnoDB Cluster Operator (mysql-operator) is Oracle's official Kubernetes operator for MySQL InnoDB Cluster, which uses MySQL Group Replication under the hood for synchronous, multi-primary or single-primary HA. Unlike XtraDB Cluster which uses Galera, InnoDB Cluster is a native MySQL feature — no Percona distribution required. It includes MySQL Router for intelligent read/write routing and MySQL Shell for administrative operations.
+The MySQL InnoDB Cluster Operator (mysql-operator) is Oracle's official Kubernetes operator for MySQL InnoDB Cluster, which uses MySQL Group Replication under the hood for synchronous, multi-primary or single-primary HA. Unlike XtraDB Cluster which uses Galera, InnoDB Cluster is a native MySQL feature - no Percona distribution required. It includes MySQL Router for intelligent read/write routing and MySQL Shell for administrative operations.
 
 Deploying the MySQL InnoDB Cluster Operator through Flux CD gives you GitOps control over cluster creation, MySQL Router deployment, and configuration management. Version upgrades and topology changes flow through pull requests, making your MySQL fleet auditable and consistent.
 

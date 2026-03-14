@@ -10,7 +10,7 @@ Description: Set up a complete Calico VPP troubleshooting toolkit, including VPP
 
 ## Introduction
 
-Calico VPP (Vector Packet Processing) is a high-performance alternative dataplane that replaces the standard Linux networking stack with the VPP framework for significantly improved packet throughput. Troubleshooting VPP-mode Calico requires different tools than standard Linux networking — VPP has its own CLI (`vppctl`), its own packet tracing system, and its own show commands that are distinct from `ip route`, `iptables`, or `bpftool`.
+Calico VPP (Vector Packet Processing) is a high-performance alternative dataplane that replaces the standard Linux networking stack with the VPP framework for significantly improved packet throughput. Troubleshooting VPP-mode Calico requires different tools than standard Linux networking - VPP has its own CLI (`vppctl`), its own packet tracing system, and its own show commands that are distinct from `ip route`, `iptables`, or `bpftool`.
 
 Setting up a VPP troubleshooting environment means: installing the VPP CLI tools, configuring trace logging for problematic traffic, and understanding how to map VPP interfaces to Kubernetes pods.
 
@@ -118,4 +118,4 @@ data:
 
 ## Conclusion
 
-Setting up Calico VPP troubleshooting requires access to `vppctl`, the VPP packet tracing system, and an understanding of how VPP interfaces map to Kubernetes pods. The most important step is getting comfortable with `vppctl show interface` and `vppctl show ip fib` before incidents occur — these commands are the VPP equivalents of `ip link show` and `ip route show`. Practice using the trace system in a non-production environment so you can configure it quickly during incidents.
+Setting up Calico VPP troubleshooting requires access to `vppctl`, the VPP packet tracing system, and an understanding of how VPP interfaces map to Kubernetes pods. The most important step is getting comfortable with `vppctl show interface` and `vppctl show ip fib` before incidents occur - these commands are the VPP equivalents of `ip link show` and `ip route show`. Practice using the trace system in a non-production environment so you can configure it quickly during incidents.

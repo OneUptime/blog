@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, API Server, Troubleshooting, Kubernetes, Best Practices
+Tags: Calico, Kubernetes, API Server, CNI, Troubleshooting
 
 Description: Learn the most common mistakes teams make when deploying and managing the Calico API server, and how to avoid or fix each one.
 
@@ -23,7 +23,7 @@ Most of these mistakes stem from not treating the Calico API server with the sam
 - `calicoctl` CLI configured
 - Basic understanding of Kubernetes aggregated API servers
 
-## Step 1: Mistake — Running a Single Replica in Production
+## Step 1: Mistake - Running a Single Replica in Production
 
 A single API server replica means that any node failure or pod eviction takes down all Calico API access, blocking network policy management.
 
@@ -41,7 +41,7 @@ kubectl patch apiserver default \
 kubectl get pods -n calico-apiserver
 ```
 
-## Step 2: Mistake — Forgetting to Check TigeraStatus
+## Step 2: Mistake - Forgetting to Check TigeraStatus
 
 Teams often debug raw pod logs without first checking TigeraStatus, which provides a structured summary of all Calico component health.
 
@@ -59,7 +59,7 @@ kubectl describe tigerastatus apiserver
 # Message: Pod calico-apiserver-xxx is not running
 ```
 
-## Step 3: Mistake — Incorrect KUBECONFIG or Datastore Configuration
+## Step 3: Mistake - Incorrect KUBECONFIG or Datastore Configuration
 
 The Calico API server needs to reach the Kubernetes API. A misconfigured kubeconfig or missing service account token causes authentication failures.
 
@@ -77,7 +77,7 @@ kubectl exec -n calico-apiserver \
 kubectl get apiservice v3.projectcalico.org
 ```
 
-## Step 4: Mistake — Not Validating API Extension Registration
+## Step 4: Mistake - Not Validating API Extension Registration
 
 After installing the Calico API server, teams sometimes proceed without verifying that the API extension was properly registered, leading to confusing "resource not found" errors later.
 
@@ -95,7 +95,7 @@ kubectl get apiservice v3.projectcalico.org \
   -o jsonpath='{.status.conditions}' | jq .
 ```
 
-## Step 5: Mistake — Using kubectl Instead of calicoctl for Complex Queries
+## Step 5: Mistake - Using kubectl Instead of calicoctl for Complex Queries
 
 While kubectl works for simple Calico resource operations, complex queries involving Calico-specific fields and selectors require `calicoctl`.
 

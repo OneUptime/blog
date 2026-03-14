@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, fstab, UUID, Storage, File Systems, Linux
+Tags: RHEL, Fstab, UUID, Storage, File Systems, Linux
 
 Description: Learn how to use UUIDs and file system labels in /etc/fstab on RHEL to ensure stable and predictable device identification across reboots.
 

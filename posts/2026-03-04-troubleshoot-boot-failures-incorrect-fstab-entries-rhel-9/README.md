@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, fstab, Troubleshooting, Boot, Recovery, Linux
+Tags: RHEL, Fstab, Troubleshooting, Boot, Recovery, Linux
 
 Description: Learn how to diagnose and fix RHEL boot failures caused by misconfigured /etc/fstab entries, including recovery techniques and prevention strategies.
 

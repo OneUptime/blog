@@ -10,7 +10,7 @@ Description: A guide to configuring Calico's BGP settings, tenant network config
 
 ## Introduction
 
-After installing Calico on an Ubuntu OpenStack cluster, configuring it for production requires setting up BGP peering with physical routers, defining the IP ranges for tenant networks, and tuning Felix for the expected workload. OpenStack with Calico uses a flat network model where each tenant's virtual machine receives a routable IP from a pool — not a tunneled overlay IP. This simplifies routing but requires careful IP address planning.
+After installing Calico on an Ubuntu OpenStack cluster, configuring it for production requires setting up BGP peering with physical routers, defining the IP ranges for tenant networks, and tuning Felix for the expected workload. OpenStack with Calico uses a flat network model where each tenant's virtual machine receives a routable IP from a pool - not a tunneled overlay IP. This simplifies routing but requires careful IP address planning.
 
 The configuration touchpoints are the Neutron plugin settings (for OpenStack integration), the Felix configuration file (for Calico-level settings), and the BGP peer configuration (for advertising tenant IPs to physical switches).
 

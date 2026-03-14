@@ -28,7 +28,7 @@ This guide walks through a hub-and-spoke architecture where a single Git reposit
 
 Organize your fleet repository so each cluster has its own directory and inherits from shared base configuration.
 
-```
+```plaintext
 fleet-infra/
 ├── clusters/
 │   ├── dev/
@@ -204,7 +204,7 @@ kustomize edit set image my-app=gcr.io/my-org-dev/my-app:v1.2.3
 git add .
 git commit -m "chore: promote my-app v1.2.3 to staging"
 git push
-# Open a pull request — staging Flux reconciles after merge
+# Open a pull request - staging Flux reconciles after merge
 ```
 
 ## Best Practices

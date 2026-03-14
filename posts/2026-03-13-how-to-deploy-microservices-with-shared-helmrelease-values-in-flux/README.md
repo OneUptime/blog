@@ -241,7 +241,7 @@ kubectl describe helmrelease backend-api -n flux-system
 ## Best Practices
 
 - Always list the shared ConfigMap before the shared Secret in `valuesFrom` so secrets can override ConfigMap values
-- Keep inline `values` in each HelmRelease minimal — only service-specific settings
+- Keep inline `values` in each HelmRelease minimal - only service-specific settings
 - Use SOPS or External Secrets Operator for the shared Secret in production environments
 - Version your shared ConfigMap using labels to track changes
 - Test that your shared values are valid Helm values by running `helm template` locally

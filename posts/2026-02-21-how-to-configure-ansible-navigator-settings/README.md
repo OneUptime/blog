@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Configuration, DevOps
+Tags: Ansible, Ansible-navigator, Configuration, DevOps
 
 Description: Master the ansible-navigator configuration file to set defaults for execution environments, display modes, logging, and artifact management.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI, Networking, Calico, Flannel, Network Policy
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
-Description: Compare how different Kubernetes CNI plugins handle default access — from fully permissive models to those with built-in default-deny — and why Cilium's approach provides the best balance.
+Description: Compare how different Kubernetes CNI plugins handle default access - from fully permissive models to those with built-in default-deny - and why Cilium's approach provides the best balance.
 
 ---
 
@@ -89,4 +89,4 @@ All CNIs start permissive because Kubernetes was designed for connectivity. The 
 
 ## Conclusion
 
-Every Kubernetes CNI starts with permissive default access — that is a feature, not a flaw, of the Kubernetes network model. The question is what each CNI provides to move from permissive to controlled. Cilium's combination of native L7 enforcement, identity-based policy, and Hubble observability makes it the most capable platform for implementing network security in Kubernetes. The Star Wars demo's current access phase is the starting line; Cilium provides the tools to finish the race.
+Every Kubernetes CNI starts with permissive default access - that is a feature, not a flaw, of the Kubernetes network model. The question is what each CNI provides to move from permissive to controlled. Cilium's combination of native L7 enforcement, identity-based policy, and Hubble observability makes it the most capable platform for implementing network security in Kubernetes. The Star Wars demo's current access phase is the starting line; Cilium provides the tools to finish the race.

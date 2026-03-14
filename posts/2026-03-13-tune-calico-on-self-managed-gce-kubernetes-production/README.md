@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gce, gcp, kubernetes, networking, production, performance-tuning
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, GCE, Google Cloud, Self-Managed
 
 Description: Learn how to tune Calico networking on self-managed Kubernetes clusters running on Google Compute Engine, leveraging GCE's network capabilities for optimal production performance.
 
@@ -48,14 +48,14 @@ gcloud compute routes list --filter="name:calico-pod-route*"
 With GCE custom routes in place, configure the Calico IPPool to use native routing (no overlay).
 
 ```yaml
-# IP pool with no encapsulation — relies on GCE custom routes
+# IP pool with no encapsulation - relies on GCE custom routes
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: gce-native-pool
 spec:
   cidr: 192.168.0.0/16
-  # No overlay needed — GCE VPC routes handle pod traffic
+  # No overlay needed - GCE VPC routes handle pod traffic
   ipipMode: Never
   vxlanMode: Never
   # natOutgoing enables SNAT for traffic leaving the cluster
@@ -134,7 +134,7 @@ gcloud compute firewall-rules create allow-calico-typha \
 
 ## Best Practices
 
-- Use GCE custom routes for overlay-free pod networking — it reduces latency and CPU overhead
+- Use GCE custom routes for overlay-free pod networking - it reduces latency and CPU overhead
 - Leverage GCE jumbo frames by setting MTU to 8846 or higher based on your VM type
 - Enable Calico Prometheus metrics and integrate with Google Cloud Monitoring
 - Use GCP network tags consistently with Calico node selectors for policy enforcement

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Roles, Code Quality
+Tags: Ansible, Ansible-lint, Roles, Code Quality
 
 Description: Configure ansible-lint to properly validate Ansible roles including tasks, handlers, defaults, meta, and templates with role-specific rules.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, eBPF, kube-proxy, Kubernetes, Networking, Monitoring, Performance
+Tags: Calico, EBPF, Kube-proxy, Kubernetes, Networking, Monitoring, Performance
 
 Description: Learn how to enable and monitor Calico's eBPF-based kube-proxy replacement, which provides improved performance, lower latency, and better observability compared to iptables-based kube-proxy.
 
@@ -169,7 +169,7 @@ kubectl apply -f ebpf-health-alerts.yaml
 
 - Test eBPF kube-proxy replacement in a non-production cluster before enabling in production
 - Keep kube-proxy available in standby (node selector to non-existent node) for quick rollback
-- Monitor eBPF map utilization — eBPF maps have fixed sizes that can fill up in large clusters
+- Monitor eBPF map utilization - eBPF maps have fixed sizes that can fill up in large clusters
 - Verify that all Kubernetes features (NodePort, ExternalIP, LoadBalancer) work correctly after enabling eBPF mode
 - Use OneUptime to validate service endpoint availability after the eBPF mode transition
 

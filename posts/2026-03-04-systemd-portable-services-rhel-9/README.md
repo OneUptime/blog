@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Portable Services, Containers, Linux
+Tags: RHEL, Systemd, Portable Services, Containers, Linux
 
 Description: Learn how to use systemd portable services on RHEL to deploy self-contained service images that combine an application with its dependencies.
 

@@ -12,7 +12,7 @@ Description: Learn how to configure Calico installation options using Helm value
 
 When installing Calico via Helm, configuration is provided through Helm values and through the Tigera Operator's Installation CRD after deployment. The Helm chart itself handles deploying the Operator, while the Operator uses Installation and APIServer custom resources to configure and manage Calico's networking components.
 
-This two-layer configuration model — Helm values for the Operator, Installation CR for Calico itself — is powerful but requires understanding which settings belong at which layer. Network CIDR, encapsulation mode, and component variants are configured in the Installation CR. Operator deployment settings like replica count and node selectors are configured in Helm values.
+This two-layer configuration model - Helm values for the Operator, Installation CR for Calico itself - is powerful but requires understanding which settings belong at which layer. Network CIDR, encapsulation mode, and component variants are configured in the Installation CR. Operator deployment settings like replica count and node selectors are configured in Helm values.
 
 This guide covers both Helm values customization and Installation CR configuration for a new Calico deployment, giving you full control over the networking setup.
 

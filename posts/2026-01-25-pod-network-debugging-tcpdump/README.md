@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, tcpdump, Debugging, Troubleshooting
+Tags: Kubernetes, Networking, Tcpdump, Debugging, Troubleshooting
 
 Description: Learn how to capture and analyze network traffic in Kubernetes pods using tcpdump, including ephemeral debug containers, sidecar approaches, and interpreting packet captures for troubleshooting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, NFS, Home Directories, LDAP, Linux
+Tags: RHEL, Autofs, NFS, Home Directories, LDAP, Linux
 
 Description: Configure autofs on RHEL to automatically mount user home directories from an NFS server when users log in.
 

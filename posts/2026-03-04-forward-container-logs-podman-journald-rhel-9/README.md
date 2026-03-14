@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Podman, journald, Containers, Logging, Linux
+Tags: RHEL, Podman, Journald, Containers, Logging, Linux
 
 Description: Learn how to configure Podman containers on RHEL to send their logs to journald for centralized container log management using standard systemd tools.
 

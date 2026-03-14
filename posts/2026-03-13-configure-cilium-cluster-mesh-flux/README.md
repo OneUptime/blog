@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Cluster Mesh, Multi-cluster, Networking
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Cluster Mesh, Multi-Cluster, Networking
 
 Description: Set up Cilium Cluster Mesh for multi-cluster networking using Flux CD to enable cross-cluster service discovery and global load balancing.
 
@@ -10,9 +10,9 @@ Description: Set up Cilium Cluster Mesh for multi-cluster networking using Flux 
 
 ## Introduction
 
-Cilium Cluster Mesh connects multiple Kubernetes clusters into a single flat network, enabling pods across clusters to communicate directly, services to be globally load-balanced across clusters, and network policies to be enforced consistently across the entire mesh. Unlike service mesh federation approaches, Cluster Mesh operates at the network level using eBPF — providing lower overhead and higher performance.
+Cilium Cluster Mesh connects multiple Kubernetes clusters into a single flat network, enabling pods across clusters to communicate directly, services to be globally load-balanced across clusters, and network policies to be enforced consistently across the entire mesh. Unlike service mesh federation approaches, Cluster Mesh operates at the network level using eBPF - providing lower overhead and higher performance.
 
-Managing Cluster Mesh configuration through Flux CD ensures the mesh setup — cluster IDs, API server exposure, and global service configuration — is version-controlled. Adding a new cluster to the mesh or updating service export settings is a pull request operation.
+Managing Cluster Mesh configuration through Flux CD ensures the mesh setup - cluster IDs, API server exposure, and global service configuration - is version-controlled. Adding a new cluster to the mesh or updating service export settings is a pull request operation.
 
 This guide covers setting up Cilium Cluster Mesh between two clusters using Flux CD.
 
@@ -226,11 +226,11 @@ kubectl exec -n cilium daemonset/cilium -- \
 
 ## Best Practices
 
-- Assign each cluster a unique `cluster-id` (1-255) before enabling Cluster Mesh — changing cluster IDs after mesh creation requires re-initialization.
-- Use non-overlapping pod CIDR ranges across all meshed clusters — Cilium's flat network requires unique pod IPs across the entire mesh.
+- Assign each cluster a unique `cluster-id` (1-255) before enabling Cluster Mesh - changing cluster IDs after mesh creation requires re-initialization.
+- Use non-overlapping pod CIDR ranges across all meshed clusters - Cilium's flat network requires unique pod IPs across the entire mesh.
 - Use `service.cilium.io/shared: "true"` for active-active services and `service.cilium.io/global: "true"` with only local endpoints for active-passive failover.
 - Apply cross-cluster network policies with `io.cilium.k8s.policy.cluster` label selectors to control which remote clusters can access local services.
-- Monitor Cluster Mesh connectivity with `cilium clustermesh status` and alert on disconnected clusters — a disconnected cluster continues to serve local traffic but loses cross-cluster resilience.
+- Monitor Cluster Mesh connectivity with `cilium clustermesh status` and alert on disconnected clusters - a disconnected cluster continues to serve local traffic but loses cross-cluster resilience.
 
 ## Conclusion
 

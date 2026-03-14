@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Factory Reset, Troubleshooting, macOS, Windows, Linux
+Tags: Docker, Docker Desktop, Factory Reset, Troubleshooting, MacOS, Windows, Linux
 
 Description: Reset Docker Desktop to factory defaults on macOS, Windows, and Linux while understanding what gets deleted and how to back up first.
 

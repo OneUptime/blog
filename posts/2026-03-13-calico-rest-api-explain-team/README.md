@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, Team Communication, Automation, calicoctl
+Tags: Calico, Kubernetes, REST API, CNI, Team Communication
 
 Description: A practical guide for explaining Calico's REST API concepts to engineering teams, covering use cases, authentication, and when REST API access is preferable to calicoctl.
 
@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's REST API concepts to engi
 
 ## Introduction
 
-Most Calico users never need to call the REST API directly — `kubectl` and `calicoctl` cover the vast majority of use cases. But for teams building automation, custom controllers, or CI/CD integrations, understanding the Calico REST API unlocks programmatic control of network policy without external CLI dependencies.
+Most Calico users never need to call the REST API directly - `kubectl` and `calicoctl` cover the vast majority of use cases. But for teams building automation, custom controllers, or CI/CD integrations, understanding the Calico REST API unlocks programmatic control of network policy without external CLI dependencies.
 
 Explaining the REST API to your team means helping them understand when it is the right tool, how authentication works, and how to use it safely for automation.
 
@@ -39,7 +39,7 @@ The REST API is the right choice when you need to:
 
 The most important thing to explain is that the Calico REST API is not a separate service:
 
-> "The Calico REST API is just the Kubernetes API server serving the `projectcalico.org/v3` API group. You authenticate the same way you authenticate to Kubernetes — service account tokens, kubeconfig, OIDC. You use the same RBAC. You call the same HTTPS endpoint. It behaves exactly like any other Kubernetes API resource."
+> "The Calico REST API is just the Kubernetes API server serving the `projectcalico.org/v3` API group. You authenticate the same way you authenticate to Kubernetes - service account tokens, kubeconfig, OIDC. You use the same RBAC. You call the same HTTPS endpoint. It behaves exactly like any other Kubernetes API resource."
 
 This is a huge simplification for teams already familiar with the Kubernetes API.
 
@@ -65,7 +65,7 @@ Both return the same list. The kubectl command is just a wrapper around the REST
 
 For engineers building CI/CD integrations:
 
-> "In your CI/CD pipeline, create a Kubernetes service account with only the permissions it needs — typically create/update/delete for NetworkPolicy in specific namespaces. Use `kubectl create token` to generate a short-lived token for each pipeline run. Pass that token in the Authorization header. This is more secure than shipping a kubeconfig file with a long-lived credential."
+> "In your CI/CD pipeline, create a Kubernetes service account with only the permissions it needs - typically create/update/delete for NetworkPolicy in specific namespaces. Use `kubectl create token` to generate a short-lived token for each pipeline run. Pass that token in the Authorization header. This is more secure than shipping a kubeconfig file with a long-lived credential."
 
 Example workflow:
 ```bash
@@ -95,22 +95,22 @@ curl -s -k -H "Authorization: Bearer $TOKEN" \
   done
 ```
 
-The watch endpoint returns a stream of change events — your controller can react in real time to policy additions, modifications, or deletions.
+The watch endpoint returns a stream of change events - your controller can react in real time to policy additions, modifications, or deletions.
 
 ## Common Team Questions
 
 **Q: Do I need the Calico API server deployed for REST API access?**
-A: Yes — the `projectcalico.org/v3` API group is only available when the Calico API server is deployed. Without it, you can only access `crd.projectcalico.org/v1` resources.
+A: Yes - the `projectcalico.org/v3` API group is only available when the Calico API server is deployed. Without it, you can only access `crd.projectcalico.org/v1` resources.
 
 **Q: Is the REST API stable across Calico versions?**
 A: The `v3` API is versioned and stable within the Calico 3.x lifecycle. Breaking changes come with major version bumps (e.g., v4). Plan for updates when upgrading Calico major versions.
 
 ## Best Practices
 
-- Never hard-code kubeconfig credentials in scripts — use service account tokens generated per pipeline run
+- Never hard-code kubeconfig credentials in scripts - use service account tokens generated per pipeline run
 - Always validate input before sending to the REST API to avoid 422 validation errors in production pipelines
 - Use the `?dryRun=All` query parameter to test policy changes without applying them
 
 ## Conclusion
 
-The Calico REST API is the same as the Kubernetes API — same server, same auth, same RBAC — just serving the `projectcalico.org/v3` API group. For teams building automation, explaining it as "Kubernetes API for Calico resources" removes the mystery and makes implementation straightforward. The key practices: use short-lived service account tokens, minimal RBAC, and always test with `dryRun` before applying in production.
+The Calico REST API is the same as the Kubernetes API - same server, same auth, same RBAC - just serving the `projectcalico.org/v3` API group. For teams building automation, explaining it as "Kubernetes API for Calico resources" removes the mystery and makes implementation straightforward. The key practices: use short-lived service account tokens, minimal RBAC, and always test with `dryRun` before applying in production.

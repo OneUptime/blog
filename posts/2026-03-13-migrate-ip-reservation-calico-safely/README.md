@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, ip-reservation, kubernetes, migration, networking, ip-management
+Tags: Calico, IPAM, Ip-reservation, Kubernetes, Migration, Networking, Ip-management
 
 Description: Learn how to safely migrate IP reservations in Calico when changing reserved CIDR ranges, moving to a new IP pool, or restructuring your IP reservation strategy.
 

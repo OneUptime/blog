@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, flux v1, flux v2, Migration, GitOps, Kubernetes
+Tags: Flux CD, Flux v1, Flux v2, Migration, GitOps, Kubernetes
 
 Description: A practical guide to running Flux v1 and Flux v2 simultaneously in the same cluster for a safe, incremental migration.
 

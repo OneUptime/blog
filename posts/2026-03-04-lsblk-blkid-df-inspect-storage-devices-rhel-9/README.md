@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Storage, lsblk, blkid, df, Linux
+Tags: RHEL, Storage, Lsblk, Blkid, Df, Linux
 
 Description: Learn how to use lsblk, blkid, and df commands on RHEL to inspect storage devices, identify filesystems, check disk usage, and troubleshoot storage issues.
 

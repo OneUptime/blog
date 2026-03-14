@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, mTLS, Mutual TLS, Security, Certificates, Client Authentication, Zero Trust
+Tags: GRPC, MTLS, Mutual TLS, Security, Certificates, Client Authentication, Zero Trust
 
 Description: A complete guide to implementing mutual TLS authentication in gRPC services, including certificate generation, server/client configuration, and certificate rotation strategies.
 

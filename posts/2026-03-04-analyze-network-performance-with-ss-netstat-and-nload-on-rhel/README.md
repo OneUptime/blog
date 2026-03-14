@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Networking, Performance, ss, netstat, Monitoring
+Tags: RHEL, Networking, Performance, Ss, Netstat, Monitoring
 
 Description: Use ss, netstat, and nload on RHEL to analyze network connections, identify bottlenecks, and monitor bandwidth usage in real time.
 

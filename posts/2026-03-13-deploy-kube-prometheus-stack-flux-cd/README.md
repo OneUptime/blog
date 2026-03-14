@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Prometheus, Grafana, Alertmanager, kube-prometheus-stack, Flux CD, GitOps, Kubernetes, Monitoring
+Tags: Flux CD, Kubernetes, GitOps, Prometheus, Grafana, Alertmanager, Kube-prometheus-stack, Observability
 
-Description: Deploy the full kube-prometheus-stack (Prometheus, Grafana, Alertmanager, and exporters) on Kubernetes using Flux CD. This guide covers HelmRelease configuration, persistent storage, alerting rules, and GitOps best practices.
+Description: Deploy the full kube-prometheus-stack (Prometheus, Grafana, Alertmanager, and exporters) on Kubernetes using Flux CD.
 
 ---
 
@@ -36,7 +36,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # Slack incoming webhook URL — encrypt with SOPS before committing
+  # Slack incoming webhook URL - encrypt with SOPS before committing
   slack_api_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
 ```
 

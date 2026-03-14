@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Retry, Exponential Backoff, Resilience, Circuit Breaker, Error Handling, backoff, tokio-retry
+Tags: Rust, Retry, Exponential Backoff, Resilience, Circuit Breaker, Error Handling, Backoff, Tokio-retry
 
 Description: Learn how to implement retry logic with exponential backoff in Rust using the backoff and tokio-retry crates.
 

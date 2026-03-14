@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico with Binary Management on Bare Metal
+# How to Troubleshoot Calico with Binary Management on Bare Metal
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -51,9 +51,9 @@ ansible failing-nodes -i inventory.ini -m shell \
 ```
 
 Common errors:
-- `failed to read kubeconfig` — kubeconfig path in service unit is wrong
-- `failed to connect to datastore` — network connectivity to API server
-- `address already in use` — port conflict with another process
+- `failed to read kubeconfig` - kubeconfig path in service unit is wrong
+- `failed to connect to datastore` - network connectivity to API server
+- `address already in use` - port conflict with another process
 
 ## Step 4: Verify Templated Configuration
 

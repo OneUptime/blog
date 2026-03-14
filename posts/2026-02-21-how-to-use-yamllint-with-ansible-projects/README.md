@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, yamllint, YAML, Linting, Code Quality
+Tags: Ansible, Yamllint, YAML, Linting, Code Quality
 
 Description: Configure and use yamllint with Ansible projects for consistent YAML formatting, style enforcement, and automated quality checks.
 

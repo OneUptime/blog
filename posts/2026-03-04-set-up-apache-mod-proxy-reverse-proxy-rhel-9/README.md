@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Apache, mod_proxy, Reverse Proxy, Linux
+Tags: RHEL, Apache, Mod_proxy, Reverse Proxy, Linux
 
 Description: A practical guide to configuring Apache as a reverse proxy using mod_proxy on RHEL, covering HTTP, WebSocket, and load balancing setups.
 

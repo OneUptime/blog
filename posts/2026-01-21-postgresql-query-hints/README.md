@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Query Hints, pg_hint_plan, Query Optimization, Performance Tuning
+Tags: PostgreSQL, Query Hints, Pg_hint_plan, Query Optimization, Performance Tuning
 
 Description: A comprehensive guide to using query hints in PostgreSQL with pg_hint_plan extension, covering hint syntax, use cases, and best practices for controlling query execution plans.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, API Server, Team Communication, calicoctl, kubectl, CNI
+Tags: Calico, Kubernetes, API Server, CNI, Team Communication
 
 Description: A practical guide for explaining Calico's API server concepts to engineering teams, covering why it exists and how it changes the resource management workflow.
 
@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's API server concepts to en
 
 ## Introduction
 
-Explaining the Calico API server to a team requires addressing one fundamental question first: "Why does Calico need its own API server when Kubernetes already has one?" The answer is about resource richness, validation, and workflow unification — the Calico API server exposes a richer, more validated version of Calico resources through Kubernetes' standard API machinery.
+Explaining the Calico API server to a team requires addressing one fundamental question first: "Why does Calico need its own API server when Kubernetes already has one?" The answer is about resource richness, validation, and workflow unification - the Calico API server exposes a richer, more validated version of Calico resources through Kubernetes' standard API machinery.
 
 This post gives you the framing and live demonstrations to explain the Calico API server clearly to developers, SREs, and platform engineers.
 
@@ -29,7 +29,7 @@ Start with the outcome that matters to your team:
 Demonstrate this:
 
 ```bash
-# With Calico API server — kubectl works natively
+# With Calico API server - kubectl works natively
 kubectl get networkpolicies.projectcalico.org -n production
 kubectl apply -f calico-policy.yaml  # Uses projectcalico.org/v3
 kubectl describe globalnetworkpolicies.projectcalico.org default-deny
@@ -44,7 +44,7 @@ Both commands show the same resources. The API server enables the `kubectl` inte
 
 For developers and SREs who ask "why not just use CRDs?":
 
-> "Kubernetes CRDs are great for basic resources but have limitations. The full Calico API (`projectcalico.org/v3`) has richer validation rules, better selector expression parsing, and additional resource types that don't map cleanly to CRDs. The Calico API server implements the full Calico specification in Go code, not just a YAML schema — it can validate things like 'this CIDR doesn't overlap with that one' that CRD schema validation can't."
+> "Kubernetes CRDs are great for basic resources but have limitations. The full Calico API (`projectcalico.org/v3`) has richer validation rules, better selector expression parsing, and additional resource types that don't map cleanly to CRDs. The Calico API server implements the full Calico specification in Go code, not just a YAML schema - it can validate things like 'this CIDR doesn't overlap with that one' that CRD schema validation can't."
 
 The practical difference: when you write an invalid Calico policy (e.g., overlapping CIDRs, invalid selector syntax), the API server returns a clear error immediately rather than accepting the resource and failing silently later.
 
@@ -72,7 +72,7 @@ rules:
 
 For compliance and security teams:
 
-> "Every Calico policy change goes through the Kubernetes API server when the Calico API server is enabled. This means every policy creation, modification, or deletion appears in the Kubernetes audit log — who made the change, when, and from where. This is essential for compliance audit trails."
+> "Every Calico policy change goes through the Kubernetes API server when the Calico API server is enabled. This means every policy creation, modification, or deletion appears in the Kubernetes audit log - who made the change, when, and from where. This is essential for compliance audit trails."
 
 Check audit log integration:
 ```bash
@@ -87,7 +87,7 @@ grep "projectcalico" /var/log/kubernetes/audit.log | tail -5
 A: Not for most operations. `calicoctl` provides some additional CLI features (like `calicoctl node status` and `calicoctl ipam show`) that don't have `kubectl` equivalents, but all resource management can be done via `kubectl`.
 
 **Q: What happens to existing policies if the Calico API server goes down?**
-A: Policy enforcement continues normally — Felix reads from the Kubernetes CRDs and datastore, not from the API server. The API server is only in the path for resource management operations, not for enforcement.
+A: Policy enforcement continues normally - Felix reads from the Kubernetes CRDs and datastore, not from the API server. The API server is only in the path for resource management operations, not for enforcement.
 
 ## Best Practices
 

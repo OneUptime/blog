@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Ingress Gateway, Canary, Rollouts, Kubernetes, Monitoring, Traffic Splitting
+Tags: Calico, Ingress Gateway, Canary, Rollout, Kubernetes, Monitoring, Traffic Splitting
 
 Description: Learn how to monitor canary deployments through Calico's ingress gateway, tracking traffic splitting ratios, error rates, and latency to safely validate new versions before full rollout.
 

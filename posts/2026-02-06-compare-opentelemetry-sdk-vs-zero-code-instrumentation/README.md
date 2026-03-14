@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SDK, Zero-Code Instrumentation, Auto-Instrumentation, eBPF, Observability
+Tags: OpenTelemetry, SDK, Zero-Code Instrumentation, Auto-Instrumentation, EBPF, Observability
 
 Description: A comparison of OpenTelemetry SDK instrumentation and zero-code instrumentation approaches including auto-instrumentation agents, eBPF, and service meshes.
 

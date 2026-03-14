@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, urlencode, URL Encoding, API Integration, Infrastructure as Code
+Tags: Terraform, Urlencode, URL Encoding, API Integration, Infrastructure as Code
 
 Description: Learn how to use Terraform's urlencode function to safely encode strings for URLs, query parameters, API calls, and webhook configurations in your infrastructure code.
 

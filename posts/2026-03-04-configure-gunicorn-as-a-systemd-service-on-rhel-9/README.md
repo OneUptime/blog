@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Python, Linux
+Tags: RHEL, Systemd, Python, Linux
 
 Description: Step-by-step guide on configure gunicorn as a systemd service using Red Hat Enterprise Linux 9.
 

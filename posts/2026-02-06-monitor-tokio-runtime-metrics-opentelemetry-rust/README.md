@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, tokio, Runtime, Metrics, Async
+Tags: OpenTelemetry, Rust, Tokio, Runtime, Metrics, Async
 
 Description: Learn how to monitor Tokio runtime performance metrics using OpenTelemetry to track task scheduling, worker threads, and async executor health.
 

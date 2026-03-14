@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, asyncio, Coroutines, Async, Context Propagation
+Tags: OpenTelemetry, Python, Asyncio, Coroutines, Async, Context Propagation
 
 Description: Master the techniques for instrumenting Python asyncio coroutines with OpenTelemetry to maintain trace context across async operations and concurrent tasks.
 

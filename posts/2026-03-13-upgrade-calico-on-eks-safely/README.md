@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, eks, aws, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, EKS, AWS
 
 Description: A guide to safely upgrading Calico on Amazon EKS, including pre-upgrade checks specific to the EKS environment, the rolling upgrade procedure, and post-upgrade network validation.
 
@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on Amazon EKS, including pre-upg
 
 Amazon EKS clusters running Calico for network policy enforcement require careful upgrade management, particularly because EKS manages the control plane while you manage the worker nodes. The interaction between EKS Kubernetes version upgrades and Calico version compatibility creates a matrix of upgrade dependencies that must be planned carefully.
 
-Calico on EKS is typically used in "policy-only mode" — where AWS VPC CNI (aws-node) handles pod IP allocation while Calico enforces network policies. This chained mode has specific upgrade considerations that differ from full Calico CNI deployments. Understanding which components to upgrade and in what order is critical for maintaining network policy enforcement continuity.
+Calico on EKS is typically used in "policy-only mode" - where AWS VPC CNI (aws-node) handles pod IP allocation while Calico enforces network policies. This chained mode has specific upgrade considerations that differ from full Calico CNI deployments. Understanding which components to upgrade and in what order is critical for maintaining network policy enforcement continuity.
 
 This guide covers the safe upgrade procedure for Calico on EKS, addressing both the standard Calico component upgrade and the coordination with EKS node group upgrades.
 

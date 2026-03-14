@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, API, curl, REST API, Docker Engine, Automation, HTTP
+Tags: Docker, API, Curl, REST API, Docker Engine, Automation, HTTP
 
 Description: Access the Docker Engine API directly with curl to manage containers, images, and networks without the Docker CLI or any SDK.
 

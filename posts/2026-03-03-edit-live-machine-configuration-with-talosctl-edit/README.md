@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Machine Configuration, Editing, Operations
+Tags: Talos Linux, Talosctl, Machine Configuration, Editing, Operations
 
 Description: Learn how to use talosctl edit to directly modify the live machine configuration on running Talos Linux nodes for quick changes and troubleshooting.
 

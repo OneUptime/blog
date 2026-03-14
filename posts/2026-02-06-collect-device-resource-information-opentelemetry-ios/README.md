@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, iOS, Resource Attributes, Device Info, Mobile
+Tags: OpenTelemetry, Swift, IOS, Resource Attributes, Device Info, Mobile
 
 Description: Enrich your OpenTelemetry traces with device and app information to understand how different iOS devices, OS versions, and configurations affect your application's behavior.
 

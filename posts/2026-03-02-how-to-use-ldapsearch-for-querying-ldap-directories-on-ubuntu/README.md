@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LDAP, ldapsearch, OpenLDAP, Directory Services
+Tags: Ubuntu, LDAP, Ldapsearch, OpenLDAP, Directory Services
 
 Description: Master ldapsearch on Ubuntu to query LDAP directories effectively, with practical filter syntax, attribute selection, and real-world examples.
 

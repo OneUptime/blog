@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Admission Webhooks, Kyverno, Resource Standards, Governance
 
-Description: Combine Kubernetes admission webhooks with Flux CD to enforce resource standards — labeling requirements, security contexts, and naming conventions — for all resources entering your cluster.
+Description: Combine Kubernetes admission webhooks with Flux CD to enforce resource standards - labeling requirements, security contexts, and naming conventions - for all resources entering your cluster.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Combine Kubernetes admission webhooks with Flux CD to enforce resou
 
 Admission webhooks intercept Kubernetes API requests before resources are persisted to etcd, allowing you to validate or mutate them based on custom logic. Combined with Flux CD, admission webhooks create an enforceable policy layer: even if a misconfigured manifest passes code review and is committed to Git, the admission webhook prevents it from entering the cluster.
 
-Kyverno is a Kubernetes-native policy engine that uses admission webhooks and stores policies as Custom Resources — making it perfectly suited for GitOps management by Flux. Unlike OPA Gatekeeper (which uses Rego), Kyverno policies are written in YAML, making them more accessible to engineers who work primarily with Kubernetes manifests.
+Kyverno is a Kubernetes-native policy engine that uses admission webhooks and stores policies as Custom Resources - making it perfectly suited for GitOps management by Flux. Unlike OPA Gatekeeper (which uses Rego), Kyverno policies are written in YAML, making them more accessible to engineers who work primarily with Kubernetes manifests.
 
 This guide covers installing Kyverno via Flux, defining resource standards as Kyverno policies, and validating them in CI before they reach the cluster.
 
@@ -157,7 +157,7 @@ spec:
 
 ## Step 4: Mutate Resources to Add Missing Labels (Auto-Remediation)
 
-Kyverno can also mutate resources — automatically adding missing metadata rather than rejecting:
+Kyverno can also mutate resources - automatically adding missing metadata rather than rejecting:
 
 ```yaml
 # infrastructure/policies/kyverno/add-default-labels.yaml
@@ -283,7 +283,7 @@ jobs:
 
 ## Best Practices
 
-- Deploy Kyverno with 2+ replicas in production to prevent a single point of failure in the admission webhook path — a Kyverno outage can block all new resource creation.
+- Deploy Kyverno with 2+ replicas in production to prevent a single point of failure in the admission webhook path - a Kyverno outage can block all new resource creation.
 - Start new policies in `Audit` mode (set `validationFailureAction: audit`) to see what would be rejected before switching to `enforce`.
 - Create a policy exemption process: add an `exclude` block in the policy for specific namespaces or resources that have legitimate exceptions, and require a PR with security team approval to add exemptions.
 - Write Kyverno unit tests (`kyverno test`) for every policy and include them in CI to catch policy regressions early.
@@ -291,4 +291,4 @@ jobs:
 
 ## Conclusion
 
-Admission webhooks with Kyverno and Flux CD create a defense-in-depth approach to resource standards enforcement. Even if a non-compliant manifest passes code review and is committed to Git, Kyverno rejects it at the API server before Flux can apply it. By managing Kyverno policies through Flux, the policies themselves are subject to the same GitOps review and approval process as application manifests — creating a governance layer that is auditable, consistent, and continuously enforced across your entire cluster.
+Admission webhooks with Kyverno and Flux CD create a defense-in-depth approach to resource standards enforcement. Even if a non-compliant manifest passes code review and is committed to Git, Kyverno rejects it at the API server before Flux can apply it. By managing Kyverno policies through Flux, the policies themselves are subject to the same GitOps review and approval process as application manifests - creating a governance layer that is auditable, consistent, and continuously enforced across your entire cluster.

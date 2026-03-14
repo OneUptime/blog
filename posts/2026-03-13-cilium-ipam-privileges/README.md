@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, RBAC, Security
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Understand the Linux capabilities, Kubernetes RBAC permissions, and security context settings required for Cilium's IPAM subsystem to function correctly, and how to troubleshoot privilege-related IPAM failures.
+Description: Understand the Linux capabilities, Kubernetes RBAC permissions, and security context settings required for Cilium's IPAM subsystem to function correctly, and how to troubleshoot privilege-related...
 
 ---
 

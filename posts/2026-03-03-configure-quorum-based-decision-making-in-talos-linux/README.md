@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Quorum, etcd, Consensus, High Availability, Kubernetes
+Tags: Talos Linux, Quorum, Etcd, Consensus, High Availability, Kubernetes
 
 Description: Understand and configure quorum-based decision making in Talos Linux clusters to ensure consistent and reliable cluster state management.
 

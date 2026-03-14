@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Reconnection, Sync, Network Recovery
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Reconnection, Sync
 
 Description: Manage Flux CD reconciliation when edge sites reconnect to the network, handling accumulated changes and conflict resolution gracefully.
 
@@ -10,7 +10,7 @@ Description: Manage Flux CD reconciliation when edge sites reconnect to the netw
 
 ## Introduction
 
-When an edge site reconnects to the internet after an extended offline period, Flux CD does not simply pick up where it left off — it encounters a reconciliation challenge. Many commits may have accumulated in Git since the last successful fetch, new container images may be available, and the desired state may have changed significantly from what the edge cluster currently runs.
+When an edge site reconnects to the internet after an extended offline period, Flux CD does not simply pick up where it left off - it encounters a reconciliation challenge. Many commits may have accumulated in Git since the last successful fetch, new container images may be available, and the desired state may have changed significantly from what the edge cluster currently runs.
 
 Understanding how Flux handles reconnection and proactively managing the reconnection process prevents thundering herd problems (all sites reconnecting simultaneously and saturating the Git server), conflicting state, and unexpected workload disruptions.
 
@@ -31,7 +31,7 @@ When network connectivity is restored and Flux successfully fetches the Git repo
 2. Flux updates the GitRepository status with the new revision
 3. Kustomization controllers detect the revision change and begin reconciling
 4. All changes accumulated during the offline period are applied in a single reconciliation cycle
-5. Flux does not replay individual commits — it applies the current state of the repository
+5. Flux does not replay individual commits - it applies the current state of the repository
 
 ```bash
 # Monitor reconnection in real time
@@ -207,9 +207,9 @@ curl -X POST https://monitoring.example.com/api/events \
 ## Best Practices
 
 - Add random delays (jitter) to reconnection-triggered reconciliation to prevent thundering herd.
-- Set Flux source `timeout` generously — reconnection pulls may be slow on saturated links.
+- Set Flux source `timeout` generously - reconnection pulls may be slow on saturated links.
 - Monitor the age of the last successful Flux reconciliation as the primary connectivity health metric.
-- Document what happens to manually-made emergency changes during a network outage — Flux will overwrite them.
+- Document what happens to manually-made emergency changes during a network outage - Flux will overwrite them.
 - Test reconnection behavior quarterly by simulating an offline period in a test environment.
 - Use `flux reconcile --with-source` after manual network restoration to speed up reconnection.
 

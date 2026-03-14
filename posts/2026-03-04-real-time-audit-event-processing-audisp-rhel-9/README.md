@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, audisp, Plugins, Real-Time Processing, Security, Linux
+Tags: RHEL, Auditd, Audisp, Plugins, Real-Time Processing, Security, Linux
 
 Description: Configure audisp plugins on RHEL to process audit events in real time, enabling integration with SIEM systems, custom alerting, and event correlation.
 

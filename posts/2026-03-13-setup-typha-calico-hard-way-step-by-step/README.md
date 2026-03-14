@@ -184,4 +184,4 @@ kubectl exec -n calico-system deployment/calico-typha -- \
 
 ## Conclusion
 
-Setting up Typha in a hard way Calico installation requires creating RBAC resources, generating mTLS certificates, deploying the Typha Deployment and Service, and configuring Felix to connect through Typha. Each step is explicit in the hard way model — understanding each piece makes it straightforward to debug connection issues, rotate certificates, or scale Typha replicas as the cluster grows.
+Setting up Typha in a hard way Calico installation requires creating RBAC resources, generating mTLS certificates, deploying the Typha Deployment and Service, and configuring Felix to connect through Typha. Each step is explicit in the hard way model - understanding each piece makes it straightforward to debug connection issues, rotate certificates, or scale Typha replicas as the cluster grows.

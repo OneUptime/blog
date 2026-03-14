@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, cAdvisor, Metrics, Monitoring, Observability
+Tags: Docker, CAdvisor, Metrics, Monitoring, Observability
 
 Description: Learn how to use cAdvisor to collect Docker container metrics including CPU, memory, network, and filesystem usage for monitoring and analysis.
 

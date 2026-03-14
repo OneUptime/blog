@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IBM Cloud, IKS, Pod Networking
+Tags: Calico, Kubernetes, Networking, Verification, IBM Kubernetes Service
 
 Description: Learn how to verify Calico pod networking and policy enforcement on IBM Kubernetes Service (IKS), including IBM Cloud-specific Calico configurations and network policy validation.
 
@@ -44,7 +44,7 @@ calicoctl get nodes -o wide
 
 ## Step 2: Review IBM Pre-Configured Calico Policies
 
-IKS deploys default Calico GlobalNetworkPolicies — review these before adding your own.
+IKS deploys default Calico GlobalNetworkPolicies - review these before adding your own.
 
 ```bash
 # List all GlobalNetworkPolicies deployed by IBM
@@ -85,7 +85,7 @@ kubectl exec pod-a -- nslookup kubernetes.default.svc.cluster.local
 Validate that custom NetworkPolicies work alongside IBM's pre-configured policies.
 
 ```yaml
-# iks-app-policy.yaml — application-level network policy for IKS
+# iks-app-policy.yaml - application-level network policy for IKS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -147,7 +147,7 @@ calicoctl node status
 - Review IBM's pre-configured Calico policies before adding custom ones to understand the existing security baseline
 - Use IBM Cloud's Kubernetes network policy dashboard to visualize policy interactions
 - When upgrading IKS versions, verify that IBM's Calico policies are updated to the new version's format
-- Test policies that interact with IBM-managed host endpoints carefully — incorrect policies can disrupt worker node communication with the control plane
+- Test policies that interact with IBM-managed host endpoints carefully - incorrect policies can disrupt worker node communication with the control plane
 - Use IBM Cloud Activity Tracker to audit network policy changes
 
 ## Conclusion

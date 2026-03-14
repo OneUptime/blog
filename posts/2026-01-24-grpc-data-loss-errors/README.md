@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Data Loss, Error Handling, Status Codes, Reliability, Microservices, Protocol Buffers
+Tags: GRPC, Data Loss, Error Handling, Status Codes, Reliability, Microservices, Protocol Buffers
 
 Description: A comprehensive guide to diagnosing and fixing DATA_LOSS errors in gRPC services, covering causes, prevention strategies, and recovery patterns.
 

@@ -256,8 +256,8 @@ ssh nfs-server "ls /mnt/nfs-share/nfs-test/"
 
 - Use NFSv4.1 (`nfsvers=4.1`) for better performance and atomic operations compared to NFSv3.
 - Set `rsize` and `wsize` to 1 MiB for sequential workloads; reduce to 64KB for random small I/O.
-- Use `hard` mount option for production — `soft` mounts silently fail on server timeout, corrupting data.
-- Consider `onDelete: retain` for production data even if the StorageClass `reclaimPolicy` is Delete — you can always manually clean up directories.
+- Use `hard` mount option for production - `soft` mounts silently fail on server timeout, corrupting data.
+- Consider `onDelete: retain` for production data even if the StorageClass `reclaimPolicy` is Delete - you can always manually clean up directories.
 - Secure the NFS server with IP-based exports (`/mnt/share 10.0.0.0/24(rw,sync,no_subtree_check)`) to restrict which nodes can mount.
 
 ## Conclusion

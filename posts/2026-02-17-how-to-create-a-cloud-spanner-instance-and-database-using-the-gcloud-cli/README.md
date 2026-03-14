@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Spanner, gcloud CLI, Database, Google Cloud
+Tags: GCP, Cloud Spanner, Gcloud CLI, Database, Google Cloud
 
 Description: Learn how to create and configure a Cloud Spanner instance and database from the command line using gcloud CLI with practical examples.
 

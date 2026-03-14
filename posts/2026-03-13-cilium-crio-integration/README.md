@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CRI-O, Container Runtime, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A complete guide to integrating Cilium with the CRI-O container runtime including socket configuration, troubleshooting common CRI-O-specific issues, and validating Cilium endpoint creation with CRI-O.
+Description: A complete guide to integrating Cilium with the CRI-O container runtime including socket configuration, troubleshooting common CRI-O-specific issues, and validating Cilium endpoint creation with...
 
 ---
 
 ## Introduction
 
-CRI-O is a lightweight, purpose-built implementation of the Kubernetes Container Runtime Interface (CRI). It is the default container runtime for Red Hat OpenShift and is widely used with RHEL and Fedora-based Kubernetes distributions. CRI-O's design philosophy of doing one thing well — running OCI-compatible containers for Kubernetes — makes it a strong choice for production environments where minimalism and security are priorities.
+CRI-O is a lightweight, purpose-built implementation of the Kubernetes Container Runtime Interface (CRI). It is the default container runtime for Red Hat OpenShift and is widely used with RHEL and Fedora-based Kubernetes distributions. CRI-O's design philosophy of doing one thing well - running OCI-compatible containers for Kubernetes - makes it a strong choice for production environments where minimalism and security are priorities.
 
 Cilium's integration with CRI-O follows the same pattern as other CRI-compliant runtimes but has CRI-O-specific considerations: the socket path is `/var/run/crio/crio.sock`, CRI-O uses different CNI invocation behaviors than containerd in some versions, and SELinux contexts on RHEL/OpenShift nodes can affect Cilium's ability to access the socket and mount BPF filesystems.
 

@@ -26,7 +26,7 @@ This guide catalogs the most common mistakes engineers make when implementing Ca
 
 The most common outage after applying default deny: pods cannot resolve hostnames.
 
-**Wrong approach** — applying deny without DNS allow:
+**Wrong approach** - applying deny without DNS allow:
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -41,7 +41,7 @@ spec:
   # Missing DNS allow!
 ```
 
-**Correct approach** — always pair with DNS egress:
+**Correct approach** - always pair with DNS egress:
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -84,7 +84,7 @@ calicoctl get workloadendpoints -l app=frontend
 
 ## Mistake 4: Not Covering Both Ingress AND Egress
 
-A policy that only specifies `Ingress` in `types` does not apply any egress rules — not even implicit deny:
+A policy that only specifies `Ingress` in `types` does not apply any egress rules - not even implicit deny:
 
 ```yaml
 spec:

@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Profile, Troubleshooting
+Tags: Calico, Kubernetes, Networking, Profiles, Troubleshooting
 
-Description: Diagnose and resolve common Calico Profile resource issues including missing namespace profiles, broken label inheritance, unexpected traffic behavior from profile rules, and profile-NetworkPolicy ordering conflicts.
+Description: Diagnose and resolve common Calico Profile resource issues including missing namespace profiles, broken label inheritance, unexpected traffic behavior from profile rules, and profile-NetworkPolicy...
 
 ---
 
 ## Introduction
 
-Calico Profile issues are often subtle because profiles affect label inheritance — a misconfigured profile causes selector-based policies to stop matching endpoints without any obvious error. The most common issue in Kubernetes clusters is a namespace profile that is out of sync with the actual namespace, causing the namespace label not to propagate to workload endpoints. This breaks any NetworkPolicy that uses `namespaceSelector` to match pods in that namespace.
+Calico Profile issues are often subtle because profiles affect label inheritance - a misconfigured profile causes selector-based policies to stop matching endpoints without any obvious error. The most common issue in Kubernetes clusters is a namespace profile that is out of sync with the actual namespace, causing the namespace label not to propagate to workload endpoints. This breaks any NetworkPolicy that uses `namespaceSelector` to match pods in that namespace.
 
 ## Prerequisites
 

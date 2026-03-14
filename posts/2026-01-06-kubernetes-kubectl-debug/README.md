@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, kubectl, Debugging, DevOps
+Tags: Kubernetes, Troubleshooting, Kubectl, Debugging, DevOps
 
 Description: A practical guide to using kubectl debug for live container troubleshooting, including ephemeral containers, node debugging, and advanced debugging techniques.
 

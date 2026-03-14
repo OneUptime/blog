@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Suspend, Reconciliation, DevOps
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Suspend, Reconciliation, DevOps
 
 Description: A practical guide to using the flux suspend command to pause reconciliation of Flux CD resources in your Kubernetes cluster.
 

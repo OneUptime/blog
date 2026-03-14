@@ -12,7 +12,7 @@ Description: Debug Calico WireGuard encrypted pod traffic to ensure all inter-po
 
 Encrypted Pod Traffic in Calico ensures that pod-to-pod communication cannot be intercepted or tampered with, even by other processes on the same node. Using WireGuard or IPsec, Calico encrypts all data-plane traffic transparently, without requiring application changes.
 
-Calico's encryption works alongside network policies — traffic is still subject to policy evaluation, but the payload is encrypted in transit. This combination of network-layer policy enforcement and encryption provides defense in depth for sensitive workloads.
+Calico's encryption works alongside network policies - traffic is still subject to policy evaluation, but the payload is encrypted in transit. This combination of network-layer policy enforcement and encryption provides defense in depth for sensitive workloads.
 
 This guide covers debug WireGuard Encryption in Calico, including enabling WireGuard encryption and combining it with network policy for a complete zero-trust data plane.
 

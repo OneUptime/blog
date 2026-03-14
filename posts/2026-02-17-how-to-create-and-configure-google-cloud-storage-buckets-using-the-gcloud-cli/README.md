@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, gcloud CLI, Cloud Storage Buckets, DevOps
+Tags: GCP, Google Cloud Storage, Gcloud CLI, Cloud Storage Buckets, DevOps
 
 Description: Learn how to create, configure, and manage Google Cloud Storage buckets using the gcloud command-line interface with practical examples and best practices.
 

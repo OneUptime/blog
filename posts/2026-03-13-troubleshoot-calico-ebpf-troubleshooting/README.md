@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting
 
 Description: Resolve issues with Calico's eBPF diagnostic tools themselves, including bpftool access problems, missing debug commands, and restricted environments.
 
@@ -10,7 +10,7 @@ Description: Resolve issues with Calico's eBPF diagnostic tools themselves, incl
 
 ## Introduction
 
-Sometimes the troubleshooting tools themselves fail to work — bpftool is not installed, Felix debug commands are not available, or the environment restricts access to BPF subsystem inspection. This guide covers how to work around tool availability issues and get diagnostic information even in restricted environments.
+Sometimes the troubleshooting tools themselves fail to work - bpftool is not installed, Felix debug commands are not available, or the environment restricts access to BPF subsystem inspection. This guide covers how to work around tool availability issues and get diagnostic information even in restricted environments.
 
 ## Issue 1: bpftool Not Available in calico-node Pod
 

@@ -10,7 +10,7 @@ Description: Deploy Hugging Face Text Generation Inference server to Kubernetes 
 
 ## Introduction
 
-Hugging Face Text Generation Inference (TGI) is a high-performance inference server for transformer models. It features tensor parallelism, continuous batching, quantization support (GPTQ, AWQ, bitsandbytes), and streaming responses — making it one of the most production-ready options for deploying Hugging Face Hub models.
+Hugging Face Text Generation Inference (TGI) is a high-performance inference server for transformer models. It features tensor parallelism, continuous batching, quantization support (GPTQ, AWQ, bitsandbytes), and streaming responses - making it one of the most production-ready options for deploying Hugging Face Hub models.
 
 Managing TGI deployments through Flux CD ensures that model selection, quantization configuration, and GPU resource allocations are all tracked in version control. Swapping models or updating TGI versions becomes a straightforward pull request rather than a manual `kubectl` operation.
 
@@ -237,7 +237,7 @@ curl http://<tgi-svc-ip>:8080/v1/chat/completions \
 
 - Mount a PVC for `HF_HOME` so model weights (often 10-30GB) are cached across pod restarts and not re-downloaded each time.
 - Use `bitsandbytes-nf4` quantization for 4-bit loading on consumer or mid-range GPUs to reduce VRAM usage by roughly 75%.
-- Set `failureThreshold` high on readiness probes — large models can take 3-10 minutes to download and load on first run.
+- Set `failureThreshold` high on readiness probes - large models can take 3-10 minutes to download and load on first run.
 - For multi-GPU setups, add `--num-shard N` where N is the number of GPUs and request N `nvidia.com/gpu` resources.
 - Use Flux's SOPS integration to encrypt the Hugging Face token secret at rest in your Git repository.
 

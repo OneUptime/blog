@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, nftables, Firewall, Networking, Security
+Tags: Ubuntu, Nftables, Firewall, Networking, Security
 
 Description: Write nftables firewall rules from scratch on Ubuntu, covering tables, chains, rule syntax, sets, and migrating from iptables to the modern nftables framework.
 

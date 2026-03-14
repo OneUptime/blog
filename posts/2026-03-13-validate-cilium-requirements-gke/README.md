@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, gke, google-cloud, kubernetes, requirements, prerequisites
+Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
 
 Description: A guide to validating that your Google Kubernetes Engine cluster meets all requirements for running Cilium, covering GKE-specific cluster settings, node OS requirements, and networking configuration.
 
@@ -127,7 +127,7 @@ flowchart TD
 - If deploying Cilium independently, create a new node pool with the correct OS image type
 - Never enable both Calico network policy and Cilium simultaneously on GKE
 - Use Workload Identity for Cilium's GCP API access instead of service account keys
-- Test Cilium features in GKE Autopilot separately — some eBPF features may be restricted
+- Test Cilium features in GKE Autopilot separately - some eBPF features may be restricted
 
 ## Conclusion
 

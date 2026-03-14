@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, k0s, kubernetes, cni, networking, lightweight
+Tags: Cilium, Kubernetes, K0s, EBPF
 
 Description: A guide to deploying and configuring Cilium as the CNI on k0s, the lightweight Kubernetes distribution, for production-grade networking with minimal overhead.
 
@@ -48,7 +48,7 @@ spec:
     provider: custom
     podCIDR: "10.244.0.0/16"
     serviceCIDR: "10.96.0.0/12"
-    # Disable kube-proxy — Cilium will replace it with eBPF
+    # Disable kube-proxy - Cilium will replace it with eBPF
     kubeProxy:
       disabled: true
   # Disable the default CoreDNS; Cilium will manage DNS
@@ -124,7 +124,7 @@ Add worker nodes to the k0s cluster.
 # Generate a join token on the controller
 sudo k0s token create --role worker > worker-token.txt
 
-# On each worker node — install k0s and join
+# On each worker node - install k0s and join
 sudo k0s install worker --token-file worker-token.txt
 sudo k0s start
 
@@ -153,11 +153,11 @@ cilium hubble ui
 
 ## Best Practices
 
-- Use k0s's built-in Helm extension to install Cilium declaratively — it integrates with k0s's lifecycle management
-- Enable kube-proxy replacement from the start — it reduces resource usage and improves latency
+- Use k0s's built-in Helm extension to install Cilium declaratively - it integrates with k0s's lifecycle management
+- Enable kube-proxy replacement from the start - it reduces resource usage and improves latency
 - On resource-constrained edge nodes, set `operator.replicas=1` to reduce overhead
 - Use the `kubernetes` IPAM mode on k0s to align with the pod CIDR configured in k0s's ClusterConfig
-- Monitor node kernel version compatibility — Cilium's eBPF features have minimum kernel version requirements
+- Monitor node kernel version compatibility - Cilium's eBPF features have minimum kernel version requirements
 
 ## Conclusion
 

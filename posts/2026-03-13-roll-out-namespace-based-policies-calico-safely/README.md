@@ -12,7 +12,7 @@ Description: A phased rollout strategy for Calico namespace-based network polici
 
 Rolling out namespace isolation policies requires careful coordination because namespaces are shared boundaries between multiple teams and services. Applying a default deny policy to a namespace that hasn't yet had all its egress allow rules configured will immediately break the workloads inside.
 
-Calico's `projectcalico.org/v3` namespace-based policies use namespace labels as their matching criteria. This means you control policy scope by controlling namespace labels — a powerful tool for staged rollouts. You can apply the policy globally but only have it match namespaces as you add the correct labels.
+Calico's `projectcalico.org/v3` namespace-based policies use namespace labels as their matching criteria. This means you control policy scope by controlling namespace labels - a powerful tool for staged rollouts. You can apply the policy globally but only have it match namespaces as you add the correct labels.
 
 This guide provides a phased approach to rolling out namespace isolation in Calico, using namespace labels as the rollout gate mechanism so you can progress at a controlled pace.
 
@@ -114,4 +114,4 @@ flowchart LR
 
 ## Conclusion
 
-A label-gated rollout strategy for namespace isolation gives you precise control over which namespaces are affected at each stage. By using a `calico-policy=enabled` label as the rollout gate, you can progress at the pace your team can support — validating each namespace before moving to the next. Once all namespaces are labeled and tested, you have complete namespace isolation without a single outage.
+A label-gated rollout strategy for namespace isolation gives you precise control over which namespaces are affected at each stage. By using a `calico-policy=enabled` label as the rollout gate, you can progress at the pace your team can support - validating each namespace before moving to the next. Once all namespaces are labeled and tested, you have complete namespace isolation without a single outage.

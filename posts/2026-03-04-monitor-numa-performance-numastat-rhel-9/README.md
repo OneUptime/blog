@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NUMA, Performance, Monitoring, numastat, Linux
+Tags: RHEL, NUMA, Performance, Monitoring, Numastat, Linux
 
 Description: Learn how to use numastat on RHEL to monitor NUMA memory allocation and identify performance issues on multi-socket systems.
 

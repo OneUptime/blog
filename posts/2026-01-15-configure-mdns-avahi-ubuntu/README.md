@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, mDNS, Avahi, Networking, Service Discovery, Zeroconf, Linux, DNS, Local Network
+Tags: Ubuntu, MDNS, Avahi, Networking, Service Discovery, Zeroconf, Linux, DNS, Local Network
 
 Description: A comprehensive guide to setting up and configuring mDNS with Avahi on Ubuntu for zero-configuration networking and automatic service discovery.
 

@@ -117,7 +117,7 @@ kubectl get secret myapp-db-secret -n default \
   -o jsonpath='{.data.db-password}' | base64 -d
 ```
 
-## Step 6: Cutover — Switch from SOPS to ESO
+## Step 6: Cutover - Switch from SOPS to ESO
 
 Once validated, switch the `creationPolicy` to `Owner` and remove the SOPS-encrypted file:
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, Lab, Testing, Validation, curl, Automation
+Tags: Calico, Kubernetes, REST API, CNI, Lab
 
 Description: Step-by-step REST API validation tests for the Calico API in a lab cluster, confirming endpoint availability, CRUD operations, authentication, and error handling.
 
@@ -190,8 +190,8 @@ kubectl proxy --stop 2>/dev/null
 ## Best Practices
 
 - Always clean up test resources after validation to avoid accumulating test artifacts
-- Test error handling explicitly — knowing how the API signals failures is as important as knowing how it signals success
-- Use `jq` output for all validations — raw JSON is hard to read and error-prone to parse manually
+- Test error handling explicitly - knowing how the API signals failures is as important as knowing how it signals success
+- Use `jq` output for all validations - raw JSON is hard to read and error-prone to parse manually
 
 ## Conclusion
 

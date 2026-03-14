@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, lm_sensors, smartctl, Hardware Monitoring, SMART, Linux
+Tags: RHEL, Lm_sensors, Smartctl, Hardware Monitoring, SMART, Linux
 
 Description: Use lm_sensors and smartctl on RHEL to monitor CPU temperatures, fan speeds, voltages, and disk health to detect hardware problems before they cause failures.
 

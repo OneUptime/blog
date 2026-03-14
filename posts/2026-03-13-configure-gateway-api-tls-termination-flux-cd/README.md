@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Gateway API, TLS, HTTPS, cert-manager, HelmRelease
+Tags: Flux CD, Kubernetes, GitOps, Gateway API, TLS, HTTPS, Cert-Manager, HelmRelease
 
 Description: Configure Kubernetes Gateway API with TLS termination using Flux CD, integrating cert-manager for automatic certificate provisioning and managing HTTPS routing for production workloads.
 
@@ -14,7 +14,7 @@ The Kubernetes Gateway API replaces the traditional Ingress resource with a rich
 
 Managing Gateway API TLS configuration through Flux CD creates a complete GitOps lifecycle for your HTTPS infrastructure. Certificate references, listener configurations, and routing rules are all committed to Git, reviewed in pull requests, and automatically applied. When a certificate rotates, cert-manager updates the Secret and Envoy picks up the change without any manual intervention.
 
-This guide configures complete TLS termination using the Kubernetes Gateway API, cert-manager for certificate provisioning, and Flux CD for lifecycle management — covering both single-domain and wildcard certificate scenarios.
+This guide configures complete TLS termination using the Kubernetes Gateway API, cert-manager for certificate provisioning, and Flux CD for lifecycle management - covering both single-domain and wildcard certificate scenarios.
 
 ## Prerequisites
 
@@ -262,7 +262,7 @@ curl -I http://api.example.com/health
 ## Best Practices
 
 - Use `renewBefore: 720h` (30 days) on all Certificate resources to ensure cert-manager renews certificates well before expiration; Let's Encrypt certificates expire after 90 days.
-- Never commit TLS certificate Private Keys to Git; cert-manager stores them in Kubernetes Secrets automatically — use Sealed Secrets or ESO to manage the `letsencrypt-prod-account-key` Secret.
+- Never commit TLS certificate Private Keys to Git; cert-manager stores them in Kubernetes Secrets automatically - use Sealed Secrets or ESO to manage the `letsencrypt-prod-account-key` Secret.
 - Use different Certificate resources for different domains rather than listing all domains in one Certificate; this limits the blast radius if a certificate renewal fails.
 - Monitor certificate expiration with Prometheus alerts on the `certmanager_certificate_expiration_timestamp_seconds` metric; set alerts at 30 and 7 days to expiration.
 - Test certificate renewal in staging before relying on it in production; cert-manager's staging Let's Encrypt issuer uses the same renewal logic without the rate limits.

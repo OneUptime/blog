@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SSL, systemd, Certificate Renewal, TLS
+Tags: Ubuntu, SSL, Systemd, Certificate Renewal, TLS
 
 Description: Set up automated SSL certificate renewal using systemd timers on Ubuntu for reliable, loggable certificate management without depending on cron.
 

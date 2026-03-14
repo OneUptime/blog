@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, macOS, CUPS, Printer Sharing, Networking
+Tags: Ubuntu, MacOS, CUPS, Printer Sharing, Networking
 
 Description: Set up printer sharing between Ubuntu and macOS using CUPS and Bonjour/AirPrint, allowing macOS clients to print to Ubuntu-connected printers and vice versa.
 

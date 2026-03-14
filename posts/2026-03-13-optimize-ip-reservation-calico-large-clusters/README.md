@@ -10,7 +10,7 @@ Description: Learn how to optimize IP address reservation in Calico IPAM for lar
 
 ## Introduction
 
-In large Kubernetes clusters, IP reservation prevents critical addresses from being allocated to pods—addresses needed for network infrastructure, monitoring agents, or specific workloads with firewall-rule dependencies. Without proper reservation, Calico IPAM may allocate these IPs to regular pods, causing connectivity failures or breaking external firewall rules.
+In large Kubernetes clusters, IP reservation prevents critical addresses from being allocated to pods-addresses needed for network infrastructure, monitoring agents, or specific workloads with firewall-rule dependencies. Without proper reservation, Calico IPAM may allocate these IPs to regular pods, causing connectivity failures or breaking external firewall rules.
 
 IP reservation in Calico uses the `IPReservation` resource to mark specific IP ranges or individual addresses as unavailable for automatic IPAM allocation. Optimizing this reservation process is essential for large clusters where infrastructure-reserved IPs must coexist with large pod IP pools.
 

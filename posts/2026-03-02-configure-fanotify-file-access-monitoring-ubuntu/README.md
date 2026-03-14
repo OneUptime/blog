@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, fanotify, File Monitoring, Security, Kernel
+Tags: Ubuntu, Fanotify, File Monitoring, Security, Kernel
 
 Description: Use fanotify on Ubuntu to monitor and optionally control file access events across entire filesystems, enabling fine-grained access auditing and security enforcement.
 

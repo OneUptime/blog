@@ -10,7 +10,7 @@ Description: A complete guide to configuring Calico networking on Azure self-man
 
 ## Introduction
 
-Configuring Calico networking on Azure requires understanding Azure's Virtual Network (VNet) constraints and how they interact with Calico's routing model. Azure VMs do not support arbitrary forwarding of packets with source IPs that don't belong to the VM — unlike AWS where you disable source/destination check, Azure enforces this at the platform level. This means Calico must use overlay networking (VXLAN) by default on Azure, unless you configure Azure route tables manually for each node's pod CIDR.
+Configuring Calico networking on Azure requires understanding Azure's Virtual Network (VNet) constraints and how they interact with Calico's routing model. Azure VMs do not support arbitrary forwarding of packets with source IPs that don't belong to the VM - unlike AWS where you disable source/destination check, Azure enforces this at the platform level. This means Calico must use overlay networking (VXLAN) by default on Azure, unless you configure Azure route tables manually for each node's pod CIDR.
 
 Azure also provides IP Forwarding as a VM NIC setting that must be enabled for Calico's overlay traffic to function correctly on self-managed clusters. This guide covers configuring Calico for both VXLAN overlay mode and native routing mode on Azure.
 

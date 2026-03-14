@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Networking, IP Pools, Setup, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Configure Calico IPAM pool splits from scratch — creating zone-specific IP pools with node selectors, disabling the original pool, and verifying that new pod IP allocations flow to the correct sub-pool.
+Description: Configure Calico IPAM pool splits from scratch - creating zone-specific IP pools with node selectors, disabling the original pool, and verifying that new pod IP allocations flow to the correct...
 
 ---
 
@@ -34,7 +34,7 @@ Before making any changes, document the current IPAM state:
 # List all IP pools with their CIDRs, block sizes, and selectors
 calicoctl get ippool -o wide
 
-# Show current block allocation — note which IPs are already in use
+# Show current block allocation - note which IPs are already in use
 calicoctl ipam show --show-blocks
 
 # Confirm IPAM is consistent before starting
@@ -47,8 +47,8 @@ calicoctl ipam check
 
 For a cluster with nodes spread across two availability zones (`zone-a` and `zone-b`) using the default pool `10.0.0.0/16`:
 
-- Sub-pool A: `10.0.0.0/17` — for nodes labeled `zone=zone-a` (IPs 10.0.0.0 – 10.0.127.255)
-- Sub-pool B: `10.0.128.0/17` — for nodes labeled `zone=zone-b` (IPs 10.0.128.0 – 10.0.255.255)
+- Sub-pool A: `10.0.0.0/17` - for nodes labeled `zone=zone-a` (IPs 10.0.0.0 – 10.0.127.255)
+- Sub-pool B: `10.0.128.0/17` - for nodes labeled `zone=zone-b` (IPs 10.0.128.0 – 10.0.255.255)
 
 Confirm all existing pod IPs fall within one planned sub-pool range before proceeding. If pods have IPs in both halves, you must drain and restart them first.
 
@@ -128,7 +128,7 @@ kubectl get nodes --show-labels | grep "zone="
 Disabling the original pool stops new pod IP allocations from using it. Existing pod IPs in the original pool remain valid and routable.
 
 ```bash
-# Disable the original pool — new allocations will use sub-pools
+# Disable the original pool - new allocations will use sub-pools
 calicoctl patch ippool default-ipv4-ippool \
   --patch '{"spec":{"disabled":true}}'
 
@@ -180,7 +180,7 @@ kubectl delete pod test-zone-a test-zone-b
 - Set `blockSize` consistently across all sub-pools; mixing block sizes in the same cluster complicates IPAM block affinity management.
 - Match the `ipipMode` and `vxlanMode` of sub-pools to the original pool unless you are intentionally changing encapsulation as part of the split.
 - Keep a fallback pool with no `nodeSelector` during the transition period to catch any unlabeled nodes.
-- Run `calicoctl ipam check` after every step — not just at the end.
+- Run `calicoctl ipam check` after every step - not just at the end.
 
 ---
 

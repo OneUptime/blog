@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving IPv6 control plane issues in Ca
 
 ## Introduction
 
-Running Calico's control plane over IPv6 introduces specific challenges beyond the standard IPv6 data plane configuration. The control plane includes Calico's connectivity to the Kubernetes API server, etcd (when using etcd backend), and BGP sessions between nodes — all of which must function correctly over IPv6 for the cluster to operate.
+Running Calico's control plane over IPv6 introduces specific challenges beyond the standard IPv6 data plane configuration. The control plane includes Calico's connectivity to the Kubernetes API server, etcd (when using etcd backend), and BGP sessions between nodes - all of which must function correctly over IPv6 for the cluster to operate.
 
 IPv6 control plane issues often manifest as BGP sessions failing to establish, Calico nodes unable to sync policies from the API server, or Felix (Calico's policy agent) reporting connectivity failures to the Typha proxy. These failures can be difficult to diagnose because IPv4 control plane connectivity may still work, giving a false sense of cluster health.
 
@@ -81,7 +81,7 @@ kubectl -n calico-system get endpoints calico-typha -o yaml
 Update Calico configuration to use IPv6 for Typha connections:
 
 ```yaml
-# calico-config-ipv6.yaml — Configure Calico to use IPv6 for Typha and Felix communication
+# calico-config-ipv6.yaml - Configure Calico to use IPv6 for Typha and Felix communication
 # Apply using: kubectl apply -f calico-config-ipv6.yaml
 apiVersion: v1
 kind: ConfigMap

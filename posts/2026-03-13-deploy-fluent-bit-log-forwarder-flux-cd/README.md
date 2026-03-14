@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Logging, Fluent Bit, Log Forwarding, DaemonSet
+Tags: Flux CD, Kubernetes, GitOps, Logging, Fluent Bit, Log Forwarding, DaemonSets
 
 Description: Deploy Fluent Bit as a lightweight log forwarder DaemonSet on Kubernetes using Flux CD for GitOps-managed log collection.
 
@@ -12,7 +12,7 @@ Description: Deploy Fluent Bit as a lightweight log forwarder DaemonSet on Kuber
 
 Fluent Bit is an ultra-lightweight log processor and forwarder written in C, consuming less than 1 MB of memory per node. Its low resource footprint makes it the preferred choice for running as a DaemonSet on every Kubernetes node where it tails container log files and forwards them to a centralized backend such as Elasticsearch, Loki, or an S3-compatible store.
 
-Deploying Fluent Bit through Flux CD means your DaemonSet configuration, filter pipelines, and output destinations are all version-controlled. When you need to add a new parser or adjust output buffering, you open a pull request — Flux detects the change and rolls it out across every node automatically.
+Deploying Fluent Bit through Flux CD means your DaemonSet configuration, filter pipelines, and output destinations are all version-controlled. When you need to add a new parser or adjust output buffering, you open a pull request - Flux detects the change and rolls it out across every node automatically.
 
 This post covers deploying Fluent Bit using the official Helm chart as a Flux HelmRelease, configuring the Kubernetes filter for metadata enrichment, and sending logs to a backend of your choice.
 
@@ -194,11 +194,11 @@ kubectl exec -n logging deploy/some-pod -- \
 ## Best Practices
 
 - Use `Mem_Buf_Limit` on inputs to prevent Fluent Bit from consuming unbounded memory during backend outages.
-- Set `Retry_Limit False` cautiously — on a persistent backend failure this can cause memory growth. Set a numeric retry limit for safety.
+- Set `Retry_Limit False` cautiously - on a persistent backend failure this can cause memory growth. Set a numeric retry limit for safety.
 - Use the `grep` filter to exclude noisy system namespaces like `kube-system` if not needed.
 - Tag logs with environment labels (`cluster`, `region`) using the `record_modifier` filter to simplify queries.
 - Monitor Fluent Bit's built-in metrics endpoint at port `2020` with Prometheus for visibility into input/output throughput.
 
 ## Conclusion
 
-Fluent Bit deployed as a Flux-managed DaemonSet gives you a production-grade log forwarder with minimal operational overhead. Its C-based engine ensures near-zero resource cost per node, and the Helm chart's rich values API means every configuration change — from adding a new output to adjusting buffer limits — is a Git commit. Flux reconciles the DaemonSet update across every node in a rolling fashion, keeping your log pipeline consistent at all times.
+Fluent Bit deployed as a Flux-managed DaemonSet gives you a production-grade log forwarder with minimal operational overhead. Its C-based engine ensures near-zero resource cost per node, and the Helm chart's rich values API means every configuration change - from adding a new output to adjusting buffer limits - is a Git commit. Flux reconciles the DaemonSet update across every node in a rolling fashion, keeping your log pipeline consistent at all times.

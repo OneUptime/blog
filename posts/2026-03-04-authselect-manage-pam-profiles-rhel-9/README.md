@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, authselect, PAM, Linux
+Tags: RHEL, Authselect, PAM, Linux
 
 Description: Learn how to use authselect on RHEL to manage PAM profiles safely, enable features like faillock and fingerprint auth, and create custom profiles.
 

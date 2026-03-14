@@ -10,7 +10,7 @@ Description: A practical guide to diagnosing and resolving BGP peering issues in
 
 ## Introduction
 
-BGP peering issues in Calico manifest in several ways: sessions fail to establish, routes are not advertised, or pod traffic is dropped even when sessions appear healthy. Troubleshooting requires systematic inspection at multiple layers—from the BGP daemon configuration to iptables rules and kernel routing tables.
+BGP peering issues in Calico manifest in several ways: sessions fail to establish, routes are not advertised, or pod traffic is dropped even when sessions appear healthy. Troubleshooting requires systematic inspection at multiple layers-from the BGP daemon configuration to iptables rules and kernel routing tables.
 
 The most common BGP peering problems stem from network-level issues such as firewall rules blocking TCP port 179, misconfigured AS numbers, incorrect peer IP addresses, or IP address mismatches between what Calico expects and what the node actually uses. Understanding the BGP session state machine helps you quickly identify where in the handshake process a session is failing.
 
@@ -33,9 +33,9 @@ kubectl exec -n calico-system ${NODE_POD} -- birdcl show protocols all
 ```
 
 Key states and their meanings:
-- `Active`: Attempting to connect — check network connectivity and port 179
+- `Active`: Attempting to connect - check network connectivity and port 179
 - `Connect`: TCP connection in progress
-- `OpenSent`/`OpenConfirm`: Handshake in progress — likely an AS number or capability mismatch
+- `OpenSent`/`OpenConfirm`: Handshake in progress - likely an AS number or capability mismatch
 - `Established`: Session is healthy
 
 ## Diagnose TCP Port 179 Connectivity

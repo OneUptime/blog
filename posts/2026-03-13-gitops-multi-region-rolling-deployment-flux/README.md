@@ -25,7 +25,7 @@ This guide walks through setting up a three-region rolling deployment with Flux 
 
 ## Step 1: Structure the Repository for Multi-Region Overlays
 
-```
+```plaintext
 fleet-infra/
 └── apps/
     └── my-app/
@@ -226,10 +226,10 @@ flux suspend kustomization my-app-eu-west-1
 
 - Order regions from smallest/least critical to largest/most critical traffic so failures affect fewer users.
 - Set `timeout` long enough for your application's startup time but not so long that a clearly broken deployment keeps the `dependsOn` chain waiting for the full timeout.
-- Add smoke tests or synthetic monitoring checks as part of your health check strategy — Flux health checks only verify Kubernetes resource readiness, not application correctness.
+- Add smoke tests or synthetic monitoring checks as part of your health check strategy - Flux health checks only verify Kubernetes resource readiness, not application correctness.
 - Use `postBuild.substituteFrom` with a ConfigMap to parameterize the new tag across all region overlays from a single source.
 - Document the rollout order in your runbook so the on-call engineer knows which regions are already updated when investigating a failure.
 
 ## Conclusion
 
-Multi-region rolling deployments with Flux CD `dependsOn` and health checks give you automated, sequenced rollouts without additional tooling. The entire rollout policy — order, health criteria, timeouts — lives in Git as declarative configuration. When a region fails, the chain stops automatically, and you recover by reverting that region in Git, keeping the cluster state and Git state aligned throughout.
+Multi-region rolling deployments with Flux CD `dependsOn` and health checks give you automated, sequenced rollouts without additional tooling. The entire rollout policy - order, health criteria, timeouts - lives in Git as declarative configuration. When a region fails, the chain stops automatically, and you recover by reverting that region in Git, keeping the cluster state and Git state aligned throughout.

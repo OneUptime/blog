@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, D-Bus, Linux, Services
+Tags: Ubuntu, Systemd, D-Bus, Linux, Services
 
 Description: Configure systemd D-Bus activation on Ubuntu to start services on demand when a client sends a message to a D-Bus name, reducing idle resource usage.
 

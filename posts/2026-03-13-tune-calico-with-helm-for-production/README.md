@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, helm, kubernetes, networking, production, performance-tuning, gitops
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, Helm
 
 Description: Learn how to tune Calico networking for production environments using Helm, enabling reproducible, version-controlled network configuration that integrates with GitOps workflows.
 
@@ -14,7 +14,7 @@ Helm is the most popular Kubernetes package manager, and using it to manage Cali
 
 Tuning Calico via Helm means expressing all performance and behavior settings as Helm values rather than post-install patches. This approach ensures that every cluster in your fleet has identical, auditable Calico configuration, and that configuration changes go through your standard code review and deployment process.
 
-This guide covers how to structure Helm values for production Calico deployments, including MTU optimization, IPAM configuration, Felix tuning, and resource allocation — all expressed as Helm values for GitOps compatibility.
+This guide covers how to structure Helm values for production Calico deployments, including MTU optimization, IPAM configuration, Felix tuning, and resource allocation - all expressed as Helm values for GitOps compatibility.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ Define a production-ready Helm values file with all tuning parameters set.
 
 ```yaml
 # calico-production-values.yaml
-# Production Helm values for Calico — store in version control
+# Production Helm values for Calico - store in version control
 
 tigera-operator:
   # Resource limits for the Tigera operator
@@ -64,7 +64,7 @@ installation:
 
   # Configure IPAM for production block sizing
   calicoNetwork:
-    # Set MTU for VXLAN — adjust based on your network (1450 for standard, 8951 for jumbo)
+    # Set MTU for VXLAN - adjust based on your network (1450 for standard, 8951 for jumbo)
     mtu: 1450
     bgp: Disabled
     ipPools:
@@ -123,7 +123,7 @@ calicoctl patch felixconfiguration default --patch='{
 Manage the Calico Helm release via Flux for automated GitOps deployments.
 
 ```yaml
-# flux-calico-helmrelease.yaml — Flux HelmRelease for production Calico
+# flux-calico-helmrelease.yaml - Flux HelmRelease for production Calico
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -154,7 +154,7 @@ spec:
 ## Best Practices
 
 - Store all Helm values files in Git with PR-based change reviews
-- Pin the Calico chart version explicitly — avoid using `latest` or ranges in production
+- Pin the Calico chart version explicitly - avoid using `latest` or ranges in production
 - Use Helm `--atomic` flag during upgrades to auto-rollback on failure
 - Separate Helm values files per environment (dev, staging, prod) with overlays
 - Run `helm diff` before upgrading to review what will change

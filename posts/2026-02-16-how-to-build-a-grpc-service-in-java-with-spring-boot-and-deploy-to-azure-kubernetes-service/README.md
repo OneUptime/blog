@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Java, Spring Boot, Azure, Kubernetes, AKS, Microservices
+Tags: GRPC, Java, Spring Boot, Azure, Kubernetes, AKS, Microservices
 
 Description: Learn how to build a gRPC service using Java and Spring Boot, then deploy it to Azure Kubernetes Service with full configuration details.
 

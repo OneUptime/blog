@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, base64decode, Decoding, Data Processing, Infrastructure as Code
+Tags: Terraform, Base64decode, Decoding, Data Processing, Infrastructure as Code
 
 Description: Learn how to use Terraform's base64decode function to decode base64-encoded strings from external sources, data lookups, and cross-system configuration sharing.
 

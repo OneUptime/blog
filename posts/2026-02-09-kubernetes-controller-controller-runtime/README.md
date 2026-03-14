@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Controller, controller-runtime, Go
+Tags: Kubernetes, Controller, Controller-runtime, Go
 
 Description: Learn how to build production-ready Kubernetes controllers using the controller-runtime library with proper reconciliation logic, event handling, and error management.
 

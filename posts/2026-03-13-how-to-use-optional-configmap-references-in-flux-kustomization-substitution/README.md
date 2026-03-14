@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, ConfigMap, Substitution, Optional
+Tags: Flux, Fluxcd, GitOps, Kubernetes, Kustomization, ConfigMap, Substitution, Optional
 
 Description: Learn how to use the optional flag for ConfigMap references in Flux post-build substitution so that missing ConfigMaps do not block reconciliation.
 

@@ -10,7 +10,7 @@ Description: Procedural and operational practices that prevent Calico IPAM block
 
 ## Introduction
 
-Preventing IPAM block conflicts in Calico primarily involves following correct node lifecycle procedures. Block conflicts most commonly arise from improper node removal — deleting a node from Kubernetes without allowing Calico to clean up its IPAM allocations. The correct procedure is to drain the node, delete it from Kubernetes, and confirm IPAM cleanup before the node is decommissioned.
+Preventing IPAM block conflicts in Calico primarily involves following correct node lifecycle procedures. Block conflicts most commonly arise from improper node removal - deleting a node from Kubernetes without allowing Calico to clean up its IPAM allocations. The correct procedure is to drain the node, delete it from Kubernetes, and confirm IPAM cleanup before the node is decommissioned.
 
 ## Symptoms
 

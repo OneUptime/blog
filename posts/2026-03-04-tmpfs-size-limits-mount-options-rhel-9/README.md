@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, tmpfs, Configuration, Linux
+Tags: RHEL, Tmpfs, Configuration, Linux
 
 Description: Learn how to properly configure tmpfs size limits and mount options on RHEL to control memory usage and security of RAM-based filesystems.
 

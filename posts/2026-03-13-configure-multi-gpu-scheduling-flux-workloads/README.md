@@ -10,7 +10,7 @@ Description: Configure multi-GPU scheduling policies for Flux CD managed ML work
 
 ## Introduction
 
-Running large ML training jobs or serving very large models requires multiple GPUs, often across multiple nodes. Kubernetes provides powerful scheduling primitives — node affinity, pod affinity, topology spread constraints, and resource requests — that control how multi-GPU workloads are placed across your cluster.
+Running large ML training jobs or serving very large models requires multiple GPUs, often across multiple nodes. Kubernetes provides powerful scheduling primitives - node affinity, pod affinity, topology spread constraints, and resource requests - that control how multi-GPU workloads are placed across your cluster.
 
 Managing these scheduling policies through Flux CD ensures consistency across environments and teams. When a data scientist needs to increase the GPU count for a training run, the change goes through a pull request and is applied automatically, with full audit history.
 
@@ -249,4 +249,4 @@ kubectl get pods -n ml-workloads -o json | \
 
 ## Conclusion
 
-Configuring multi-GPU scheduling through Flux CD gives ML platform teams precise control over how GPU workloads are placed across the cluster. Scheduling policies become code — reviewed, tested, and automatically applied — eliminating the manual coordination overhead that typically accompanies large-scale GPU cluster management.
+Configuring multi-GPU scheduling through Flux CD gives ML platform teams precise control over how GPU workloads are placed across the cluster. Scheduling policies become code - reviewed, tested, and automatically applied - eliminating the manual coordination overhead that typically accompanies large-scale GPU cluster management.

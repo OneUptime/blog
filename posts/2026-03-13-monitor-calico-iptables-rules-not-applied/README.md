@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Monitoring, iptables, Felix, Prometheus
+Tags: Calico, Kubernetes, Networking, Monitoring, Iptables, Felix, Prometheus
 
 Description: Set up monitoring to detect when Calico iptables rules are not being applied using Felix metrics, Prometheus alerts, and periodic validation checks.
 
@@ -10,7 +10,7 @@ Description: Set up monitoring to detect when Calico iptables rules are not bein
 
 ## Introduction
 
-Calico iptables rule application failures are particularly dangerous because they are silent — traffic continues to flow but network policies stop being enforced, creating security gaps. Monitoring for this condition requires tracking Felix's iptables programming metrics and validating that Calico chains exist on nodes.
+Calico iptables rule application failures are particularly dangerous because they are silent - traffic continues to flow but network policies stop being enforced, creating security gaps. Monitoring for this condition requires tracking Felix's iptables programming metrics and validating that Calico chains exist on nodes.
 
 The Felix Prometheus metrics endpoint exposes counters specifically for iptables failures, making it the primary monitoring target for this scenario.
 
@@ -170,11 +170,11 @@ graph TD
 
 ## Best Practices
 
-- Alert on any increase in `felix_iptables_restore_errors_total` — zero errors is the only acceptable state
+- Alert on any increase in `felix_iptables_restore_errors_total` - zero errors is the only acceptable state
 - Include iptables chain count validation in your periodic cluster health checks
 - Monitor Felix policy sync metrics (`felix_active_local_policies`) to detect stale policy programming
 - Use OneUptime to run synthetic network policy enforcement tests as an end-to-end check
 
 ## Conclusion
 
-Monitoring for Calico iptables rule application failures requires Felix Prometheus metrics (especially `felix_iptables_restore_errors_total`), periodic iptables chain count validation, and end-to-end network policy enforcement tests. Zero iptables errors is the target state — any increase in error counters should trigger immediate investigation.
+Monitoring for Calico iptables rule application failures requires Felix Prometheus metrics (especially `felix_iptables_restore_errors_total`), periodic iptables chain count validation, and end-to-end network policy enforcement tests. Zero iptables errors is the target state - any increase in error counters should trigger immediate investigation.

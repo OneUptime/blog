@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, NetFlow, Network Monitoring, IPFIX, sFlow
+Tags: OpenTelemetry, Collector, NetFlow, Network Monitoring, IPFIX, SFlow
 
 Description: Learn how to configure the Netflow Receiver in the OpenTelemetry Collector to collect and analyze network flow data from routers and switches.
 

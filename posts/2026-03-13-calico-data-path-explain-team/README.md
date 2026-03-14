@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Team Communication, iptables, eBPF, Packet Processing
+Tags: Calico, Kubernetes, Data Path, CNI, Team Communication, Iptables, EBPF, Packet Processing
 
 Description: A practical guide for explaining how packets flow through Calico's dataplane to engineering teams, using analogies and live demonstrations to make packet processing intuitive.
 
@@ -10,7 +10,7 @@ Description: A practical guide for explaining how packets flow through Calico's 
 
 ## Introduction
 
-Explaining the Calico data path to a team is challenging because it involves Linux kernel internals (netfilter, TC hooks) that most application developers have never encountered. The key is to abstract at the right level — explaining what happens to packets without requiring kernel expertise — while giving enough detail that the team can use the knowledge for debugging.
+Explaining the Calico data path to a team is challenging because it involves Linux kernel internals (netfilter, TC hooks) that most application developers have never encountered. The key is to abstract at the right level - explaining what happens to packets without requiring kernel expertise - while giving enough detail that the team can use the knowledge for debugging.
 
 This post provides a three-level explanation framework: executive summary, practical mental model, and hands-on investigation. Tailor the depth to your audience.
 
@@ -24,7 +24,7 @@ This post provides a three-level explanation framework: executive summary, pract
 
 For any audience, start with this:
 
-> "When a packet leaves a pod, it passes through a checkpoint. Calico's checkpoint looks at who is sending the packet and where it's going, and decides to allow or drop it based on your network policies. This happens for every packet, on every node, in kernel space — so it's fast and doesn't need an external service to function."
+> "When a packet leaves a pod, it passes through a checkpoint. Calico's checkpoint looks at who is sending the packet and where it's going, and decides to allow or drop it based on your network policies. This happens for every packet, on every node, in kernel space - so it's fast and doesn't need an external service to function."
 
 Key points:
 1. Enforcement is per-packet, per-pod, in kernel space
@@ -35,7 +35,7 @@ Key points:
 
 For SREs and developers who debug connectivity issues, introduce the checkpoint metaphor with more detail:
 
-**iptables mode — the sequential checkpoint**:
+**iptables mode - the sequential checkpoint**:
 
 ```mermaid
 graph LR
@@ -47,7 +47,7 @@ graph LR
 
 > "The packet goes through a series of checks, like airport security. First check: is this going to a service? (redirect to the actual pod IP). Second check: does this pod have a security policy? Third check: does the policy allow this specific packet?"
 
-**eBPF mode — the instant lookup**:
+**eBPF mode - the instant lookup**:
 
 > "In eBPF mode, the first check (service routing) and the policy check are collapsed into a single lookup in a hash table. Instead of scanning through rules sequentially, the kernel looks up the destination in a table and gets the answer instantly."
 
@@ -93,11 +93,11 @@ A: On the node where the destination pod runs. The check happens when the packet
 A: Existing iptables/eBPF rules stay in place. Traffic based on the last-known policy continues. New policy changes won't be applied until Felix restarts.
 
 **Q: Why is eBPF faster?**
-A: iptables checks rules sequentially (10,000 services = 10,000 rule checks for some packets). eBPF uses hash maps — any lookup is O(1) regardless of the number of services or pods.
+A: iptables checks rules sequentially (10,000 services = 10,000 rule checks for some packets). eBPF uses hash maps - any lookup is O(1) regardless of the number of services or pods.
 
 ## Best Practices
 
-- Keep the explanation level matched to the audience — executives don't need to know about netfilter chains
+- Keep the explanation level matched to the audience - executives don't need to know about netfilter chains
 - Use the packet trace hands-on exercise at the end of team training so participants leave with a concrete skill
 - Prepare a one-page "data path cheat sheet" with the key debugging commands for each dataplane mode
 

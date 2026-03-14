@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, auditd, Compliance, Linux
+Tags: Ubuntu, Security, Auditd, Compliance, Linux
 
 Description: Configure auditd system call monitoring rules on Ubuntu to detect privilege escalation, unauthorized setuid execution, and suspicious process behavior for security auditing.
 

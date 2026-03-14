@@ -225,7 +225,7 @@ spec:
 - Use Crossplane `nameRef` and `selector` for fine-grained dependencies between resources within the same Kustomization path.
 - Always set `healthChecks` on Kustomizations that contain Crossplane resources so `dependsOn` waits for resources to be truly ready, not just applied.
 - Set `timeout` generously on Kustomizations with long-provisioning resources like RDS (30 minutes) or GKE clusters (45 minutes).
-- Never use Flux `dependsOn` with a circular reference—model your dependency graph carefully before implementing.
+- Never use Flux `dependsOn` with a circular reference-model your dependency graph carefully before implementing.
 
 ## Conclusion
 

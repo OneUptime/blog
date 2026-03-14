@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubelet, Kubernetes, Networking, Node Configuration
+Tags: Talos Linux, Kubelet, Kubernetes, Networking, Node Configuration
 
 Description: Step-by-step guide to configuring the kubelet node IP in Talos Linux so Kubernetes registers nodes with the correct network address.
 

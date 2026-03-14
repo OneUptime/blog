@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, File Systems, Linux, Security, Monitoring, Auditing
+Tags: EBPF, File Systems, Linux, Security, Monitoring, Auditing
 
 Description: A guide to using eBPF for file access monitoring and auditing.
 

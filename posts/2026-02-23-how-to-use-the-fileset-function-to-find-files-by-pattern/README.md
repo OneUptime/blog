@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, fileset Function, File Systems, HCL, Infrastructure as Code, Glob Patterns
+Tags: Terraform, Fileset Function, File Systems, HCL, Infrastructure as Code, Glob Patterns
 
 Description: Learn how to use the fileset function in Terraform to find files matching a glob pattern and use them for dynamic resource creation like S3 uploads and config management.
 

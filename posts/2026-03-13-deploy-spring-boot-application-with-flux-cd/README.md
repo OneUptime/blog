@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Spring Boot, Java, Deployment
+Tags: Flux CD, Kubernetes, GitOps, Spring Boot, Java, Deployments
 
 Description: Deploy a Spring Boot Java application to Kubernetes using Flux CD, with ConfigMaps for externalized configuration and graceful shutdown support.
 
@@ -29,7 +29,7 @@ This guide covers the Spring Boot Docker build (using layered JAR for efficient 
 Spring Boot's layered JAR mode splits the JAR into layers that change at different frequencies, dramatically improving Docker layer cache efficiency.
 
 ```dockerfile
-# Dockerfile — extract and run using Spring Boot layered JAR
+# Dockerfile - extract and run using Spring Boot layered JAR
 FROM eclipse-temurin:21-jre-alpine AS extractor
 WORKDIR /app
 # Copy the fat JAR built by Maven/Gradle
@@ -78,7 +78,7 @@ management.endpoint.health.show-details=always
 management.health.livenessstate.enabled=true
 management.health.readinessstate.enabled=true
 
-# Graceful shutdown — wait for in-flight requests to complete
+# Graceful shutdown - wait for in-flight requests to complete
 server.shutdown=graceful
 spring.lifecycle.timeout-per-shutdown-phase=20s
 ```
@@ -268,7 +268,7 @@ spec:
 ```bash
 flux get kustomizations my-spring-app
 
-# JVM takes time to start — watch pods become Ready
+# JVM takes time to start - watch pods become Ready
 kubectl get pods -n my-spring-app --watch
 
 # Check Actuator health

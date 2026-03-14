@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Google Cloud, gcloud, CLI, Cloud, Tutorial
+Tags: Ubuntu, Google Cloud, Gcloud, CLI, Cloud, Tutorial
 
 Description: Complete guide to installing and configuring Google Cloud SDK on Ubuntu.
 

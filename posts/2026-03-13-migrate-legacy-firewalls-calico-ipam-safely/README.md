@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, firewall, kubernetes, migration, networking, security, legacy
+Tags: Calico, IPAM, Firewall, Kubernetes, Migration, Networking, Security, LEGACY
 
 Description: Learn how to safely migrate legacy firewall rules to work with Calico IPAM, ensuring existing firewall policies remain effective as pods receive dynamic IP addresses.
 
@@ -10,7 +10,7 @@ Description: Learn how to safely migrate legacy firewall rules to work with Cali
 
 ## Introduction
 
-Legacy firewalls typically operate on static IP-based rules—blocking or allowing traffic based on known source and destination IPs. When migrating workloads to Kubernetes with Calico IPAM, pods receive dynamic IPs that change on restart, making static firewall rules unreliable.
+Legacy firewalls typically operate on static IP-based rules-blocking or allowing traffic based on known source and destination IPs. When migrating workloads to Kubernetes with Calico IPAM, pods receive dynamic IPs that change on restart, making static firewall rules unreliable.
 
 The solution is a two-pronged approach: use Calico's IPAM features (IP pools, node selectors, and fixed IP annotations) to make pod IPs more predictable, and gradually replace static firewall rules with Calico network policies that use label selectors rather than IPs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, nsswitch, DNS, Name Resolution, System Administration
+Tags: Ubuntu, Nsswitch, DNS, Name Resolution, System Administration
 
 Description: Understand /etc/nsswitch.conf on Ubuntu - how it controls hostname resolution, user lookup, and service discovery, and how to configure it for your environment.
 

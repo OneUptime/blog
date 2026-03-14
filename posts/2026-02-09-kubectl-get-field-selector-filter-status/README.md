@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, DevOps
+Tags: Kubernetes, Kubectl, DevOps
 
 Description: Learn how to use kubectl field selectors to efficiently filter Kubernetes resources by status, phase, and metadata fields for faster debugging and resource management.
 

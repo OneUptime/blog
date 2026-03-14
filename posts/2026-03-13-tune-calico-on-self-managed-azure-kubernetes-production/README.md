@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, azure, kubernetes, networking, production, performance-tuning, vnet
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, Azure, Self-Managed
 
 Description: A step-by-step guide to tuning Calico networking on self-managed Kubernetes clusters running on Azure VMs, optimizing MTU, IPAM, and routing for Azure VNet-aware production deployments.
 
@@ -57,7 +57,7 @@ metadata:
   name: azure-vxlan-pool
 spec:
   cidr: 10.244.0.0/16
-  # Use VXLAN for encapsulation — compatible with Azure VNet routing
+  # Use VXLAN for encapsulation - compatible with Azure VNet routing
   ipipMode: Never
   vxlanMode: Always
   natOutgoing: true
@@ -144,12 +144,12 @@ az network nsg rule create \
 
 ## Best Practices
 
-- Use VXLAN mode rather than IPIP for Azure — Azure VNets handle UDP better
+- Use VXLAN mode rather than IPIP for Azure - Azure VNets handle UDP better
 - Enable Typha for clusters with more than 50 nodes to reduce API server load
 - Configure Azure NSGs before installing Calico to avoid connectivity gaps
 - Monitor Calico node pod logs for VXLAN tunnel errors on Azure
 - Use managed disks with premium SSD for etcd nodes to avoid network-storage contention
-- Test Azure accelerated networking before enabling — it can affect MTU expectations
+- Test Azure accelerated networking before enabling - it can affect MTU expectations
 
 ## Conclusion
 

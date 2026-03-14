@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Version Compatibility, CNI, Production, Upgrade Strategy, Lifecycle
+Tags: Calico, Kubernetes, Version Compatibility, CNI, Production
 
 Description: A decision framework for selecting Calico versions and planning upgrade sequences for production Kubernetes environments to maintain version compatibility.
 
@@ -54,7 +54,7 @@ graph LR
     Step2 --> Step3[Step 3: Upgrade K8s to 1.28\nVerify compatibility]
 ```
 
-Never skip minor versions in Kubernetes upgrades — go 1.26 → 1.27 → 1.28, not 1.26 → 1.28. Calico must support each intermediate version in the sequence.
+Never skip minor versions in Kubernetes upgrades - go 1.26 → 1.27 → 1.28, not 1.26 → 1.28. Calico must support each intermediate version in the sequence.
 
 ## Decision 4: Handling Out-of-Cycle Security Updates
 
@@ -85,7 +85,7 @@ spec:
   # Version is controlled by the operator image
 ```
 
-Never use `latest` tags in production — they make rollbacks difficult and hide what version is actually running.
+Never use `latest` tags in production - they make rollbacks difficult and hide what version is actually running.
 
 ## Version Compatibility Quick Reference
 

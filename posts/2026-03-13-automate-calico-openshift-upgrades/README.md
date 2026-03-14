@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Automation
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Automation
 
 Description: Automate Calico upgrades on OpenShift using GitOps and CI/CD pipelines that account for OCP-specific requirements including MachineConfigPool completion checks.
 

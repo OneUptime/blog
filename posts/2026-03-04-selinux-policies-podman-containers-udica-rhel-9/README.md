@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, Podman, udica, Containers, Linux
+Tags: RHEL, SELinux, Podman, Udica, Containers, Linux
 
 Description: Use udica on RHEL to generate custom SELinux policies for Podman containers, providing fine-grained security beyond the default container policy.
 

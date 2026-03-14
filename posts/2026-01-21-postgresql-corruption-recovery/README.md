@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Data Recovery, Corruption, Disaster Recovery, pg_resetwal
+Tags: PostgreSQL, Data Recovery, Corruption, Disaster Recovery, Pg_resetwal
 
 Description: A guide to detecting and recovering from PostgreSQL data corruption, covering diagnostic tools and recovery procedures.
 

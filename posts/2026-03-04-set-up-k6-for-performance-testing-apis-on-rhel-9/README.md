@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, k6, Performance Testing, API Testing, Load Testing, Linux
+Tags: RHEL, K6, Performance Testing, API Testing, Load Testing, Linux
 
 Description: Learn how to install and set up k6 on RHEL for performance testing APIs, including test script creation, load profiles, thresholds, checks, and CI/CD integration.
 

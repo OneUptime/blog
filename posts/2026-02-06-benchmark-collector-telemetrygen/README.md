@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Benchmarking, Performance Testing, telemetrygen, Load Testing
+Tags: OpenTelemetry, Collector, Benchmarking, Performance Testing, Telemetrygen, Load Testing
 
 Description: Master telemetrygen to benchmark OpenTelemetry Collector performance, identify bottlenecks, and validate configurations under realistic load conditions.
 

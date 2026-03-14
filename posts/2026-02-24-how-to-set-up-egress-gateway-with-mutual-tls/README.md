@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Egress Gateway, mTLS, Kubernetes, Security
+Tags: Istio, Egress Gateway, MTLS, Kubernetes, Security
 
 Description: Step-by-step guide to configuring an Istio egress gateway with mutual TLS for secure outbound traffic from your service mesh.
 

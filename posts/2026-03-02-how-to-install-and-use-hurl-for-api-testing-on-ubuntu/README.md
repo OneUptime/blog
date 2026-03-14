@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, API Testing, hurl, HTTP, DevOps
+Tags: Ubuntu, API Testing, Hurl, HTTP, DevOps
 
 Description: Learn how to install hurl on Ubuntu and use its plain-text format to write and run HTTP API tests with assertions, variables, and CI integration.
 

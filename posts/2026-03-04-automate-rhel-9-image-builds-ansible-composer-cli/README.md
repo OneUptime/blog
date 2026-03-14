@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Ansible, composer-cli
+Tags: RHEL, Image Builder, Ansible, Composer-cli
 
 Description: Automate RHEL 9 image builds using Ansible and composer-cli.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Felix
+Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Felix
 
 Description: Fix Calico iptables rules not being applied by resolving Felix configuration errors, clearing iptables conflicts, and restarting calico-node to trigger rule reprogramming.
 
@@ -10,7 +10,7 @@ Description: Fix Calico iptables rules not being applied by resolving Felix conf
 
 ## Introduction
 
-When Calico's Felix daemon fails to apply iptables rules, pods lose network policy enforcement and NAT functionality. Fixing this requires resolving the specific reason Felix is not programming rules — which may be a Felix configuration error, an iptables backend conflict, a failed calico-node pod, or a locked iptables state from another process.
+When Calico's Felix daemon fails to apply iptables rules, pods lose network policy enforcement and NAT functionality. Fixing this requires resolving the specific reason Felix is not programming rules - which may be a Felix configuration error, an iptables backend conflict, a failed calico-node pod, or a locked iptables state from another process.
 
 Felix is designed to be resilient: it retries iptables programming and will reprogram rules after a pod restart. The primary fix path is identifying what is blocking Felix and removing the blocker, then verifying Felix successfully reprograms all expected chains.
 
@@ -132,4 +132,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing Calico iptables rules not being applied requires identifying why Felix is not programming rules — whether due to a pod crash, backend mismatch, or lock contention — and then restarting calico-node to trigger rule reprogramming. Verify Calico chains are present after the fix before closing the incident.
+Fixing Calico iptables rules not being applied requires identifying why Felix is not programming rules - whether due to a pod crash, backend mismatch, or lock contention - and then restarting calico-node to trigger rule reprogramming. Verify Calico chains are present after the fix before closing the incident.

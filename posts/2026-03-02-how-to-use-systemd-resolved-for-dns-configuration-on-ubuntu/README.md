@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, DNS, Networking, systemd-resolved
+Tags: Ubuntu, Systemd, DNS, Networking, Systemd-resolved
 
 Description: Configure systemd-resolved for DNS on Ubuntu, set up DNS over TLS, manage per-link DNS, troubleshoot resolution issues, and understand the stub resolver.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
 
 Description: Optimize Calico eBPF service handling with connection tracking tuning and service affinity configuration.
 
@@ -10,7 +10,7 @@ Description: Optimize Calico eBPF service handling with connection tracking tuni
 
 ## Introduction
 
-Calico eBPF mode handles all Kubernetes service types — ClusterIP, NodePort, LoadBalancer, and ExternalName — using BPF programs and maps that are loaded directly into the kernel. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
+Calico eBPF mode handles all Kubernetes service types - ClusterIP, NodePort, LoadBalancer, and ExternalName - using BPF programs and maps that are loaded directly into the kernel. This provides lower latency service routing compared to iptables-based approaches and scales better with the number of services and endpoints.
 
 Understanding how eBPF handles each service type is important for troubleshooting and optimization. ClusterIP services are handled via BPF NAT maps, NodePort services add host networking DNAT, and LoadBalancer services optionally use DSR to eliminate the load balancer hop from return traffic.
 

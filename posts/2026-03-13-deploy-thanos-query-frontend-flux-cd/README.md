@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Thanos, Query Frontend, Prometheus, Caching, Flux CD, GitOps, Kubernetes, Metrics
+Tags: Flux CD, Kubernetes, GitOps, Thanos, Query Frontend, Prometheus, Caching, Observability
 
-Description: Deploy the Thanos Query Frontend on Kubernetes using Flux CD to add query splitting, caching, and retry logic in front of the Thanos Querier. This guide improves long-range query performance and reduces backend load.
+Description: Deploy the Thanos Query Frontend on Kubernetes using Flux CD to add query splitting, caching, and retry logic in front of the Thanos Querier.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Deploy the Thanos Query Frontend on Kubernetes using Flux CD to add
 
 The Thanos Query Frontend is an optional component that sits in front of the Thanos Querier and provides query splitting, result caching, and retry logic. For long-range queries spanning weeks or months, the frontend splits them into smaller day-sized chunks that can be executed in parallel and cached independently.
 
-This component significantly reduces Thanos Querier load for repeated queries—such as those from Grafana dashboards—by serving cached results from an in-memory or Memcached backend. Deploying it via Flux CD ensures cache configuration and query splitting parameters are version-controlled.
+This component significantly reduces Thanos Querier load for repeated queries-such as those from Grafana dashboards-by serving cached results from an in-memory or Memcached backend. Deploying it via Flux CD ensures cache configuration and query splitting parameters are version-controlled.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Resource Optimization, ARM, IoT
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Resource Optimization, ARM
 
 Description: Tune Flux CD controllers for minimal resource usage on edge devices, enabling GitOps on hardware with as little as 512MB RAM and 1 CPU core.
 
@@ -10,7 +10,7 @@ Description: Tune Flux CD controllers for minimal resource usage on edge devices
 
 ## Introduction
 
-Running Kubernetes on resource-constrained edge devices is a careful balancing act. The application workloads must have enough CPU and memory to function, and Kubernetes system components — including Flux — must not crowd them out. On a device with 1GB RAM total, Kubernetes itself consumes 200-400MB, leaving 600-800MB for everything else including Flux and your applications.
+Running Kubernetes on resource-constrained edge devices is a careful balancing act. The application workloads must have enough CPU and memory to function, and Kubernetes system components - including Flux - must not crowd them out. On a device with 1GB RAM total, Kubernetes itself consumes 200-400MB, leaving 600-800MB for everything else including Flux and your applications.
 
 With careful configuration, Flux CD can run with a total footprint of under 100MB RAM across all its controllers. The key is disabling controllers you do not need, setting tight resource limits, and configuring reconciliation parameters that reduce the frequency and cost of Flux operations.
 
@@ -254,7 +254,7 @@ spec:
 
 ## Best Practices
 
-- Disable all unused Flux controllers — each one consumes 40-80MB RAM at rest.
+- Disable all unused Flux controllers - each one consumes 40-80MB RAM at rest.
 - Set memory limits conservatively and monitor for OOMKilled events, then adjust.
 - Use the `--concurrent` flag to limit how many reconciliations run simultaneously.
 - Switch from GitRepository to OCIRepository to reduce peak memory usage during reconciliation.

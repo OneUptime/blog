@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Pod Management, CNI
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to identify and validate unmanaged pods in a Cilium-managed cluster — pods that are not under Cilium's network policy enforcement — and understand when this is intentional versus a misconfiguration.
+Description: Learn how to identify and validate unmanaged pods in a Cilium-managed cluster - pods that are not under Cilium's network policy enforcement - and understand when this is intentional versus a...
 
 ---
 
 ## Introduction
 
-In Cilium, every pod that is connected to the network through the Cilium CNI plugin is represented as a managed endpoint. Cilium applies network policies, enforces identity-based security, and tracks connectivity for managed pods. However, some pods may be "unmanaged" — either because they use host networking, were created before Cilium was installed, or are running on nodes where Cilium is not functioning correctly.
+In Cilium, every pod that is connected to the network through the Cilium CNI plugin is represented as a managed endpoint. Cilium applies network policies, enforces identity-based security, and tracks connectivity for managed pods. However, some pods may be "unmanaged" - either because they use host networking, were created before Cilium was installed, or are running on nodes where Cilium is not functioning correctly.
 
 Unmanaged pods are a security concern because they bypass Cilium's network policy enforcement. A pod that should be subject to isolation policies but is running unmanaged has unrestricted network access. Validating which pods are unmanaged and understanding why is essential for ensuring your security posture is correctly implemented.
 
@@ -60,7 +60,7 @@ diff /tmp/pod-ips.txt /tmp/cilium-ips.txt
 
 ## Step 3: Inspect Host-Network Pods
 
-Host-network pods use the node's IP and are typically not managed as Cilium endpoints — this is usually intentional.
+Host-network pods use the node's IP and are typically not managed as Cilium endpoints - this is usually intentional.
 
 ```bash
 # List all host-network pods (these are expected to be unmanaged in most cases)

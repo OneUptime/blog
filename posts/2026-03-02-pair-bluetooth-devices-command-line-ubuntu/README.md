@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Bluetooth, bluetoothctl, Pairing, Command Line
+Tags: Ubuntu, Bluetooth, Bluetoothctl, Pairing, Command Line
 
 Description: Learn how to pair, trust, and connect Bluetooth devices from the command line on Ubuntu using bluetoothctl, with examples for keyboards, mice, speakers, and phones.
 

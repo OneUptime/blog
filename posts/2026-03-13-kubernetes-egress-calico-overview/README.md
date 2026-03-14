@@ -10,7 +10,7 @@ Description: A comprehensive guide to how Calico handles pod egress traffic, cov
 
 ## Introduction
 
-Egress traffic — traffic originating from pods and destined for services outside the cluster — is one of the most security-critical traffic flows in a Kubernetes cluster. Without controls, any pod can reach any external endpoint. Calico provides multiple layers of egress control, from simple NetworkPolicy egress rules to dedicated egress gateways with stable source IPs.
+Egress traffic - traffic originating from pods and destined for services outside the cluster - is one of the most security-critical traffic flows in a Kubernetes cluster. Without controls, any pod can reach any external endpoint. Calico provides multiple layers of egress control, from simple NetworkPolicy egress rules to dedicated egress gateways with stable source IPs.
 
 Understanding Calico's egress capabilities requires understanding the default behavior (SNAT to the node IP), the policy mechanisms available (IP-based and FQDN-based), and the enterprise capability of egress gateways that provide stable, predictable source IPs for external communication.
 
@@ -22,7 +22,7 @@ Understanding Calico's egress capabilities requires understanding the default be
 
 ## Default Egress Behavior: SNAT
 
-By default, when a pod initiates traffic to a destination outside the cluster CIDR, Calico applies SNAT (Source Network Address Translation) — rewriting the source IP from the pod's RFC 1918 address to the node's external IP.
+By default, when a pod initiates traffic to a destination outside the cluster CIDR, Calico applies SNAT (Source Network Address Translation) - rewriting the source IP from the pod's RFC 1918 address to the node's external IP.
 
 ```mermaid
 graph LR
@@ -102,7 +102,7 @@ spec:
 
 ## Best Practices
 
-- Always enable egress NetworkPolicy in production — the default allow-all egress posture is insecure
+- Always enable egress NetworkPolicy in production - the default allow-all egress posture is insecure
 - Use FQDN policies instead of IP-based policies for any external SaaS endpoints to prevent policy drift as IP addresses rotate
 - Deploy egress gateways for any workload that communicates with external services requiring IP allowlisting
 - Monitor egress traffic volume by destination using Calico flow logs (Cloud/Enterprise) or network monitoring tools

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Configuration, Multi-Cluster, DevOps
+Tags: Talos Linux, Talosctl, Configuration, Multi-Cluster, DevOps
 
 Description: Learn how to use talosctl config context to switch between multiple Talos Linux clusters efficiently and safely
 

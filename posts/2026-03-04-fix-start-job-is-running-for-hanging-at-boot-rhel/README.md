@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Boot, systemd, Troubleshooting, Startup
+Tags: RHEL, Boot, Systemd, Troubleshooting, Startup
 
 Description: Fix RHEL systems that hang at boot with 'A start job is running for...' messages by identifying and resolving stalled systemd units.
 

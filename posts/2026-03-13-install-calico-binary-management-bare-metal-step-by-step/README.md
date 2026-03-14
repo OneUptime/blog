@@ -10,9 +10,9 @@ Description: A step-by-step guide to installing Calico on bare metal using an au
 
 ## Introduction
 
-Managing Calico binary installations across many bare metal nodes manually is not sustainable. Binary management tools — Ansible, Chef, Puppet, or OS package managers — automate the distribution, version control, and lifecycle management of the Calico binaries across your node fleet. This approach combines the benefits of binary installation (native OS service, no container runtime dependency) with the scale and repeatability of configuration management.
+Managing Calico binary installations across many bare metal nodes manually is not sustainable. Binary management tools - Ansible, Chef, Puppet, or OS package managers - automate the distribution, version control, and lifecycle management of the Calico binaries across your node fleet. This approach combines the benefits of binary installation (native OS service, no container runtime dependency) with the scale and repeatability of configuration management.
 
-Calico's binary components — calico-node, the CNI plugins, and calicoctl — are distributed as static binaries that can be managed by any tool that can copy files and manage systemd services. This makes them straightforward to automate with standard infrastructure tooling.
+Calico's binary components - calico-node, the CNI plugins, and calicoctl - are distributed as static binaries that can be managed by any tool that can copy files and manage systemd services. This makes them straightforward to automate with standard infrastructure tooling.
 
 This guide covers installing Calico with Ansible as the binary management layer on bare metal Kubernetes nodes.
 

@@ -12,7 +12,7 @@ Description: A guide to verifying that Calico VPP pod networking is working corr
 
 Verifying Calico VPP on OpenShift requires the same checks as standard Kubernetes Calico VPP verification, plus the OpenShift-specific system namespace health checks. OpenShift's router, DNS, monitoring, and registry pods are the most important system components to verify, as they confirm that VPP's packet processing is not inadvertently dropping traffic to critical services.
 
-The VPP CLI provides packet-level verification that goes beyond what kubectl can show — you can see exactly which sessions are being processed by VPP and confirm that VPP's ACL tables are enforcing the correct network policies for OpenShift's system pods.
+The VPP CLI provides packet-level verification that goes beyond what kubectl can show - you can see exactly which sessions are being processed by VPP and confirm that VPP's ACL tables are enforcing the correct network policies for OpenShift's system pods.
 
 ## Prerequisites
 

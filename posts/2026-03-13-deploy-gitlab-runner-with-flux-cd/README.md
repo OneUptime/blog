@@ -10,7 +10,7 @@ Description: Deploy GitLab Runner on Kubernetes using Flux CD so your CI/CD jobs
 
 ## Introduction
 
-GitLab Runner is the open-source agent that picks up CI/CD jobs from a GitLab instance and executes them. Running runners inside Kubernetes is the modern approach: each job gets its own ephemeral pod, resources scale automatically, and there is no persistent runner host to maintain. Combined with Flux CD, the runner deployment itself becomes a GitOps artifact—every configuration change is a Git commit.
+GitLab Runner is the open-source agent that picks up CI/CD jobs from a GitLab instance and executes them. Running runners inside Kubernetes is the modern approach: each job gets its own ephemeral pod, resources scale automatically, and there is no persistent runner host to maintain. Combined with Flux CD, the runner deployment itself becomes a GitOps artifact-every configuration change is a Git commit.
 
 Flux CD watches your fleet repository and reconciles the Kubernetes cluster to match. When you update the runner registration token (via a secret reference), change executor settings, or bump the chart version, Flux applies the change without manual `helm upgrade` commands. This makes GitLab Runner infrastructure as auditable and reproducible as the application code it builds.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, ImagePolicy, Digest, image-automation, GitOps, Kubernetes
+Tags: Flux, ImagePolicy, Digest, Image-automation, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track image digest changes for fixed tags like latest or stable.
 

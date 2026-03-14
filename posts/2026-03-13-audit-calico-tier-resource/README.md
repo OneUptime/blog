@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Tier, Audit, Compliance
 
-Description: A guide to auditing Calico Tier resources to verify the security policy hierarchy is correctly ordered, policies are in their intended tiers, RBAC controls are enforced, and no policies have been moved to bypass security baselines.
+Description: A guide to auditing Calico Tier resources to verify the security policy hierarchy is correctly ordered, policies are in their intended tiers, RBAC controls are enforced, and no policies have been...
 
 ---
 
@@ -12,7 +12,7 @@ Description: A guide to auditing Calico Tier resources to verify the security po
 
 Calico Tier audits verify the integrity of the policy governance model. The audit answers: Are tiers in the correct order? Are security-critical policies in the security tier and not in lower-priority tiers? Has any policy been moved from a high-priority tier to a lower one (intentionally or accidentally)? And does RBAC prevent unauthorized tier manipulation?
 
-A compromised tier hierarchy — where security policies are moved to lower-priority tiers — is equivalent to disabling those security controls, since application-tier Allow policies would take precedence.
+A compromised tier hierarchy - where security policies are moved to lower-priority tiers - is equivalent to disabling those security controls, since application-tier Allow policies would take precedence.
 
 ## Prerequisites
 
@@ -119,7 +119,7 @@ done
 | RBAC unauthorized access | PASS | No app service accounts can modify policies |
 
 ### Findings
-1. [MEDIUM] platform tier order changed from 500 to 400 — investigate if intentional
+1. [MEDIUM] platform tier order changed from 500 to 400 - investigate if intentional
 ```
 
 ## Conclusion

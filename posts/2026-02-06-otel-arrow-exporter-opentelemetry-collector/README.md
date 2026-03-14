@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Exporter, OTel Arrow, Performance, Optimization, gRPC, Protocol
+Tags: OpenTelemetry, Collector, Exporter, OTel Arrow, Performance, Optimization, GRPC, Protocol
 
 Description: Master the OTel Arrow exporter configuration to achieve high-performance telemetry data transmission with Apache Arrow's columnar format in OpenTelemetry Collector.
 

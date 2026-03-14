@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, Kubernetes, GitOps, Helm, Debugging, kubectl
+Tags: Flux CD, HelmRelease, Kubernetes, GitOps, Helm, Debugging, Kubectl
 
 Description: Learn how to use kubectl and Helm commands to debug HelmRelease history, diagnose failed releases, and troubleshoot deployment issues in Flux.
 

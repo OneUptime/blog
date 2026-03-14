@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, pprof, Performance, Profiling, Optimization, Troubleshooting
+Tags: OpenTelemetry, Collector, Pprof, Performance, Profiling, Optimization, Troubleshooting
 
 Description: Master performance profiling of the OpenTelemetry Collector using the pprof extension to identify bottlenecks, memory leaks, and optimization opportunities.
 

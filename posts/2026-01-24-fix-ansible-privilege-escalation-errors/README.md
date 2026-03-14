@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Privilege Escalation, sudo, become, DevOps, Troubleshooting, Linux
+Tags: Ansible, Privilege Escalation, Sudo, Become, DevOps, Troubleshooting, Linux
 
 Description: Learn how to diagnose and fix common Ansible privilege escalation errors including sudo failures, password issues, and become method problems.
 

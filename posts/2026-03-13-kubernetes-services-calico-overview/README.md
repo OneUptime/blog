@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Networking, kube-proxy, eBPF, ClusterIP
+Tags: Calico, Kubernetes, Services, CNI, Networking, Kube-proxy, EBPF, ClusterIP
 
 Description: A comprehensive guide to how Calico integrates with Kubernetes Services, covering ClusterIP routing, kube-proxy replacement, and service policy enforcement.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to how Calico integrates with Kubernetes Serv
 
 ## Introduction
 
-Kubernetes Services are the standard mechanism for stable network access to a set of pods. While Services are a Kubernetes API resource, their implementation at the network layer involves either kube-proxy or Calico's eBPF replacement — both of which interact with Calico's pod networking and policy enforcement.
+Kubernetes Services are the standard mechanism for stable network access to a set of pods. While Services are a Kubernetes API resource, their implementation at the network layer involves either kube-proxy or Calico's eBPF replacement - both of which interact with Calico's pod networking and policy enforcement.
 
 Understanding how Calico integrates with Services requires understanding both the service routing mechanism (how ClusterIPs get translated to pod IPs) and how Calico's network policy applies to service traffic. This post covers the full integration between Calico and Kubernetes Services.
 
@@ -94,15 +94,15 @@ With eBPF mode, Calico also supports:
 
 ## NetworkPolicy on Service Endpoints
 
-When all backends of a service are blocked by NetworkPolicy, the service effectively becomes unreachable. This is intentional — policy applies to the endpoints, not the service VIP. Use `calicoctl get workloadendpoints` to verify which policies apply to service backend pods.
+When all backends of a service are blocked by NetworkPolicy, the service effectively becomes unreachable. This is intentional - policy applies to the endpoints, not the service VIP. Use `calicoctl get workloadendpoints` to verify which policies apply to service backend pods.
 
 ## Best Practices
 
 - In eBPF mode, verify kube-proxy is disabled before relying on Calico for service routing
-- Write ingress policy using pod selectors, not service ClusterIPs — the ClusterIP is never the observable source
+- Write ingress policy using pod selectors, not service ClusterIPs - the ClusterIP is never the observable source
 - Use `externalTrafficPolicy: Local` for LoadBalancer services when client source IP preservation is required (iptables mode)
-- Monitor service endpoint health separately from pod health — a pod can be running but removed from service endpoints
+- Monitor service endpoint health separately from pod health - a pod can be running but removed from service endpoints
 
 ## Conclusion
 
-Calico integrates with Kubernetes Services either alongside kube-proxy (iptables mode) or replacing it entirely (eBPF mode). Policy is always enforced against pod IPs, not service ClusterIPs. Understanding this distinction — that ClusterIPs are virtual addresses that are resolved before policy evaluation — is essential for writing correct ingress and egress policies for service traffic.
+Calico integrates with Kubernetes Services either alongside kube-proxy (iptables mode) or replacing it entirely (eBPF mode). Policy is always enforced against pod IPs, not service ClusterIPs. Understanding this distinction - that ClusterIPs are virtual addresses that are resolved before policy evaluation - is essential for writing correct ingress and egress policies for service traffic.

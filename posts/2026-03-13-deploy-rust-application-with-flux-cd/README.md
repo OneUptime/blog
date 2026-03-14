@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Rust, Axum, Deployment, Performance
+Tags: Flux CD, Kubernetes, GitOps, Rust, Axum, Deployments, Performance
 
 Description: Deploy a Rust application container to Kubernetes using Flux CD, taking advantage of Rust's zero-cost abstractions for high-performance, memory-safe microservices.
 
@@ -28,7 +28,7 @@ This guide covers optimizing the Rust Docker build for layer caching, writing Ku
 The most important optimization is to copy `Cargo.toml` and `Cargo.lock` and build a dummy binary before copying your source. This caches all dependency compilation in a Docker layer.
 
 ```dockerfile
-# Dockerfile — dependency caching pattern for fast rebuilds
+# Dockerfile - dependency caching pattern for fast rebuilds
 FROM rust:1.78-alpine AS chef
 RUN cargo install cargo-chef
 WORKDIR /app

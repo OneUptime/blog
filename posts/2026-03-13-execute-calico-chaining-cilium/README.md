@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Calico, CNI Chaining, Kubernetes, Networking, eBPF, Security, Migration
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
 Description: Learn how to chain Cilium onto an existing Calico CNI deployment to augment it with eBPF-based observability and L7 policy enforcement as an intermediate migration step before fully replacing Calico.
 
@@ -10,7 +10,7 @@ Description: Learn how to chain Cilium onto an existing Calico CNI deployment to
 
 ## Introduction
 
-Organizations running Calico as their CNI may want to adopt Cilium's eBPF-based L7 policy enforcement and Hubble observability without a full CNI replacement—especially in production clusters where replacing the CNI requires node restarts. CNI chaining with Calico allows Cilium to run as a secondary plugin, handling policy enforcement while Calico continues to manage IP allocation and routing.
+Organizations running Calico as their CNI may want to adopt Cilium's eBPF-based L7 policy enforcement and Hubble observability without a full CNI replacement-especially in production clusters where replacing the CNI requires node restarts. CNI chaining with Calico allows Cilium to run as a secondary plugin, handling policy enforcement while Calico continues to manage IP allocation and routing.
 
 This guide is intended as a transition path: Cilium chains onto Calico, you validate Cilium policies alongside Calico policies, then complete the migration by removing Calico and promoting Cilium to the primary CNI.
 
@@ -78,7 +78,7 @@ kubectl debug node/<node-name> -it --image=ubuntu -- \
 With Cilium running in chaining mode, CiliumNetworkPolicies are enforced via eBPF alongside any existing Calico NetworkPolicies.
 
 ```yaml
-# CiliumNetworkPolicy for L7 HTTP enforcement — not possible with Calico alone
+# CiliumNetworkPolicy for L7 HTTP enforcement - not possible with Calico alone
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

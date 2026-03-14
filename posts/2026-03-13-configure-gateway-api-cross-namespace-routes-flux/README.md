@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Gateway API, HTTPRoute, ReferenceGrant, Multi-tenant, Namespace Isolation
+Tags: Flux CD, Kubernetes, GitOps, Gateway API, HTTPRoute, ReferenceGrant, Multi-Tenant
 
 Description: Manage Kubernetes Gateway API cross-namespace route references using Flux CD to enable multi-tenant routing with proper isolation controls and explicit access grants between namespaces.
 
@@ -12,7 +12,7 @@ Description: Manage Kubernetes Gateway API cross-namespace route references usin
 
 One of the most powerful features of the Kubernetes Gateway API is its role-oriented multi-tenant model. In traditional Kubernetes Ingress, a single resource controls all routing in a namespace, and there is no standard mechanism for safely allowing application teams to attach routes to centrally-managed gateways. Gateway API solves this with a three-tier model: platform engineers manage GatewayClass and Gateway resources, while application developers manage HTTPRoute resources in their own namespaces.
 
-The cross-namespace reference capability — enabled by the `ReferenceGrant` CRD — allows routes in one namespace to reference services or gateways in another namespace, with explicit, auditable grants. This enables a platform team to run a shared gateway in a dedicated namespace while giving application teams autonomous control over their routing rules, all managed through Flux CD with clear ownership boundaries.
+The cross-namespace reference capability - enabled by the `ReferenceGrant` CRD - allows routes in one namespace to reference services or gateways in another namespace, with explicit, auditable grants. This enables a platform team to run a shared gateway in a dedicated namespace while giving application teams autonomous control over their routing rules, all managed through Flux CD with clear ownership boundaries.
 
 This guide implements a complete multi-tenant routing architecture using Gateway API cross-namespace references managed by Flux CD.
 
@@ -43,7 +43,7 @@ flowchart TD
     RG -->|Authorizes| HR2
 ```
 
-## Step 2: Platform Team — Configure the Shared Gateway
+## Step 2: Platform Team - Configure the Shared Gateway
 
 The platform team defines and manages the shared Gateway that all teams attach to.
 
@@ -81,7 +81,7 @@ spec:
             kind: HTTPRoute
 ```
 
-## Step 3: Platform Team — Create ReferenceGrants
+## Step 3: Platform Team - Create ReferenceGrants
 
 Explicitly grant each application namespace permission to reference the shared gateway.
 
@@ -166,7 +166,7 @@ metadata:
     app.kubernetes.io/managed-by: flux
 ```
 
-## Step 5: Application Teams — Attach HTTPRoutes to the Shared Gateway
+## Step 5: Application Teams - Attach HTTPRoutes to the Shared Gateway
 
 Each application team manages their own HTTPRoute in their namespace, referencing the shared gateway.
 
@@ -294,4 +294,4 @@ flux get kustomization backend-routing
 
 ## Conclusion
 
-Gateway API cross-namespace routing managed through Flux CD enables a clean multi-tenant architecture where platform teams control infrastructure boundaries and application teams control their own routing rules. The `ReferenceGrant` model makes cross-namespace access explicit and auditable — every permission is documented in Git, reviewed in pull requests, and automatically enforced by the Gateway implementation. This is the foundation for a scalable, self-service API gateway platform that grows with your organization.
+Gateway API cross-namespace routing managed through Flux CD enables a clean multi-tenant architecture where platform teams control infrastructure boundaries and application teams control their own routing rules. The `ReferenceGrant` model makes cross-namespace access explicit and auditable - every permission is documented in Git, reviewed in pull requests, and automatically enforced by the Gateway implementation. This is the foundation for a scalable, self-service API gateway platform that grows with your organization.

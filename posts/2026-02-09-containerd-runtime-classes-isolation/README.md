@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, containerd, Container Runtime, Security, Workload Isolation
+Tags: Kubernetes, Containerd, Container Runtime, Security, Workload Isolation
 
 Description: Learn how to configure containerd Runtime Classes to isolate different workload types using multiple runtime handlers for enhanced security and performance in Kubernetes clusters.
 

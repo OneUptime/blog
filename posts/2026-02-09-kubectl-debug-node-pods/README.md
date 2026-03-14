@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Node, Troubleshooting
+Tags: Kubernetes, Kubectl, Debugging, Node, Troubleshooting
 
 Description: Master kubectl debug node command to create privileged debug pods on specific nodes for system-level troubleshooting.
 

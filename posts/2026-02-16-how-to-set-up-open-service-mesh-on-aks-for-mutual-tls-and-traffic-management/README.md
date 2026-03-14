@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Open Service Mesh, mTLS, Service Mesh, Kubernetes, Traffic Management, Security
+Tags: AKS, Open Service Mesh, MTLS, Service Mesh, Kubernetes, Traffic Management, Security
 
 Description: Step-by-step guide to installing Open Service Mesh on AKS and configuring mutual TLS encryption and traffic management policies.
 

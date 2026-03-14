@@ -10,7 +10,7 @@ Description: Manage Cluster API MachineDeployment resources using Flux CD GitOps
 
 ## Introduction
 
-MachineDeployment is the Cluster API resource for managing groups of worker nodes. It is analogous to a Kubernetes Deployment—it maintains a desired number of Machine replicas and handles rolling updates when the node configuration changes. Managing MachineDeployments through Flux means node pool configuration, scaling events, and machine template updates are all version-controlled and continuously reconciled.
+MachineDeployment is the Cluster API resource for managing groups of worker nodes. It is analogous to a Kubernetes Deployment-it maintains a desired number of Machine replicas and handles rolling updates when the node configuration changes. Managing MachineDeployments through Flux means node pool configuration, scaling events, and machine template updates are all version-controlled and continuously reconciled.
 
 When a platform engineer changes the instance type or node count in a MachineDeployment manifest, Flux applies the change to the management cluster, and CAPI performs a rolling update of the worker nodes. This brings the same controlled, reviewable process to infrastructure scaling that Kubernetes Deployments bring to application scaling.
 

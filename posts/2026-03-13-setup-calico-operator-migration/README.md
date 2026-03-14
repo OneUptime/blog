@@ -18,7 +18,7 @@ This guide walks through the complete migration procedure with pre-flight checks
 
 ## Prerequisites
 
-- Calico installed via manifests (non-operator) — version v3.15+
+- Calico installed via manifests (non-operator) - version v3.15+
 - Kubernetes v1.22+
 - `kubectl` with cluster-admin access
 - `calicoctl` CLI installed

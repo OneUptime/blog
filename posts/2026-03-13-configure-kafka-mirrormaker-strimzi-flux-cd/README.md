@@ -12,7 +12,7 @@ Description: Configure Kafka MirrorMaker for cluster replication and disaster re
 
 Kafka MirrorMaker 2 (MM2) is the Kafka tool for replicating topics between clusters. It is built on Kafka Connect and supports bidirectional, active-active replication with offset translation, consumer group synchronization, and configurable topic filters. Common use cases include disaster recovery (primary-to-DR replication), cross-region data distribution, and migration from one Kafka cluster to another.
 
-Strimzi manages MirrorMaker 2 through the `KafkaMirrorMaker2` CRD, which provides a clean declarative API for defining replication flows between clusters. Deploying through Flux CD ensures that replication configuration — which topics to mirror, offset sync frequency, replication factor — is version-controlled and consistently applied.
+Strimzi manages MirrorMaker 2 through the `KafkaMirrorMaker2` CRD, which provides a clean declarative API for defining replication flows between clusters. Deploying through Flux CD ensures that replication configuration - which topics to mirror, offset sync frequency, replication factor - is version-controlled and consistently applied.
 
 ## Prerequisites
 
@@ -267,7 +267,7 @@ kubectl exec -n kafka-target target-cluster-kafka-0 -- \
 
 ## Best Practices
 
-- Set `topics.exclude` to prevent MirrorMaker's own internal topics (`mirrormaker2-.*`, `__consumer_offsets`) from being replicated — this causes loops.
+- Set `topics.exclude` to prevent MirrorMaker's own internal topics (`mirrormaker2-.*`, `__consumer_offsets`) from being replicated - this causes loops.
 - Enable `sync.group.offsets.enabled: "true"` so consumer groups can resume from the correct offset after a DR failover.
 - Use `replication.factor: "3"` for all MM2 internal topics on the target cluster for durability.
 - Monitor replication lag with the MM2 connector metrics endpoint at port 8083 and alert if lag exceeds your RPO.
@@ -275,4 +275,4 @@ kubectl exec -n kafka-target target-cluster-kafka-0 -- \
 
 ## Conclusion
 
-Strimzi's `KafkaMirrorMaker2` CRD managed by Flux CD gives you a GitOps-managed Kafka replication solution that supports DR, active-active geo-distribution, and online cluster migrations. Consumer group offset synchronization means a DR failover does not reset consumer positions. Every change to the replication configuration — adding topics to mirror, adjusting lag thresholds, enabling bidirectional sync — is a Git commit reviewed by your team and applied automatically.
+Strimzi's `KafkaMirrorMaker2` CRD managed by Flux CD gives you a GitOps-managed Kafka replication solution that supports DR, active-active geo-distribution, and online cluster migrations. Consumer group offset synchronization means a DR failover does not reset consumer positions. Every change to the replication configuration - adding topics to mirror, adjusting lag thresholds, enabling bidirectional sync - is a Git commit reviewed by your team and applied automatically.

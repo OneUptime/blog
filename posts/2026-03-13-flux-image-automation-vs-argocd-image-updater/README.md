@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, Image Automation, Image Updater, GitOps, Container Registry, Comparison
+Tags: Flux CD, ArgoCD, Image Automation, Image Updater, GitOps, Kubernetes, Container Images
 
 Description: Compare Flux CD image automation and ArgoCD Image Updater capabilities for automated container image tag updates in GitOps workflows.
 
@@ -10,7 +10,7 @@ Description: Compare Flux CD image automation and ArgoCD Image Updater capabilit
 
 ## Introduction
 
-Automated image updates—where the GitOps tool detects a new container image tag and automatically updates the Git repository—is a key feature for teams practicing continuous delivery. Flux CD provides this through the Image Reflector Controller and Image Automation Controller. ArgoCD provides it through the separate ArgoCD Image Updater project.
+Automated image updates-where the GitOps tool detects a new container image tag and automatically updates the Git repository-is a key feature for teams practicing continuous delivery. Flux CD provides this through the Image Reflector Controller and Image Automation Controller. ArgoCD provides it through the separate ArgoCD Image Updater project.
 
 This comparison examines both tools' capabilities, configuration complexity, and operational characteristics for production image automation workflows.
 

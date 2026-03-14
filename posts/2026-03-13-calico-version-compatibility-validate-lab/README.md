@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Version Compatibility, CNI, Lab, Testing, Upgrades, Validation
+Tags: Calico, Kubernetes, Version Compatibility, CNI, Lab
 
 Description: Step-by-step procedures for validating Calico and Kubernetes version compatibility in a lab environment before production upgrades.
 
@@ -10,7 +10,7 @@ Description: Step-by-step procedures for validating Calico and Kubernetes versio
 
 ## Introduction
 
-Version compatibility validation in a lab cluster serves two purposes: confirming that your planned upgrade sequence is supported, and verifying that no functionality is broken after the upgrade. A lab validation should mirror the production upgrade sequence exactly — same versions, same order, same configuration.
+Version compatibility validation in a lab cluster serves two purposes: confirming that your planned upgrade sequence is supported, and verifying that no functionality is broken after the upgrade. A lab validation should mirror the production upgrade sequence exactly - same versions, same order, same configuration.
 
 This guide walks through the complete version compatibility validation workflow, from pre-upgrade checks to post-upgrade functional testing.
 
@@ -168,14 +168,14 @@ calicoctl version
 | Node connectivity | Working | Working | Working |
 | Policy enforcement | Working | Working | Working |
 | calicoctl version sync | Match | Match | Match |
-| TigeraStatus healthy | — | All Available | All Available |
+| TigeraStatus healthy | - | All Available | All Available |
 
 ## Best Practices
 
-- Mirror the production environment exactly in the lab — same node OS, kernel version, and cluster configuration
+- Mirror the production environment exactly in the lab - same node OS, kernel version, and cluster configuration
 - Keep the upgrade record file for post-incident analysis if production upgrades have issues
 - Run the lab validation at least one week before the planned production upgrade to allow time for issue discovery
 
 ## Conclusion
 
-Lab version compatibility validation confirms that the planned upgrade sequence is supported and functional before affecting production. The four-phase approach — pre-upgrade baseline, Calico upgrade, Kubernetes upgrade, post-upgrade validation — ensures each component upgrade is independently validated before combining them, reducing the risk of compounding failures during the production upgrade window.
+Lab version compatibility validation confirms that the planned upgrade sequence is supported and functional before affecting production. The four-phase approach - pre-upgrade baseline, Calico upgrade, Kubernetes upgrade, post-upgrade validation - ensures each component upgrade is independently validated before combining them, reducing the risk of compounding failures during the production upgrade window.

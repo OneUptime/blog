@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, ImagePolicy, Monorepo, Tag-Pattern, image-automation, GitOps, Kubernetes
+Tags: Flux, ImagePolicy, Monorepo, Tag-Pattern, Image-automation, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy with tag patterns to track separate services from a monorepo that share a single container registry.
 

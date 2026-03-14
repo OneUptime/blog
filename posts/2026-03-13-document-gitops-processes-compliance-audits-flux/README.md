@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Compliance, Documentation, Audit, Change Management
 
-Description: Document Flux CD GitOps processes in a way that satisfies compliance audit requirements, mapping each technical control to its audit evidence and creating a complete documentation package auditors can evaluate.
+Description: Document Flux CD GitOps processes in a way that satisfies compliance audit requirements, mapping each technical control to its audit evidence and creating a complete documentation package auditors...
 
 ---
 
 ## Introduction
 
-Technical controls are only half of compliance. The other half is documentation — written evidence that the controls exist, that they work as intended, and that your team follows them consistently. Auditors evaluate both the controls and the documentation. A perfectly configured Flux CD deployment that lacks documentation will fail an audit just as surely as one with poor configuration.
+Technical controls are only half of compliance. The other half is documentation - written evidence that the controls exist, that they work as intended, and that your team follows them consistently. Auditors evaluate both the controls and the documentation. A perfectly configured Flux CD deployment that lacks documentation will fail an audit just as surely as one with poor configuration.
 
 The good news is that a GitOps repository already contains most of the documentation an auditor needs. The Git history is a change log, the PR review trail is an approval record, branch protection settings are access control documentation, and Flux events are deployment records. The work is organizing and presenting this information in a form auditors expect, supplemented with narrative documentation that explains the overall process.
 
@@ -91,7 +91,7 @@ Create a controls matrix that maps compliance requirements to specific technical
 The procedure document describes how your team follows the process in practice:
 
 ```markdown
-# Change Management Procedure — GitOps with Flux CD
+# Change Management Procedure - GitOps with Flux CD
 
 **Document Owner**: Platform Team
 **Review Frequency**: Quarterly
@@ -214,7 +214,7 @@ ls -la "$OUTPUT_DIR/"
 
 Store all compliance documentation in Git alongside your configuration:
 
-```
+```plaintext
 fleet-infra/
 ├── compliance/
 │   ├── README.md                        # Compliance documentation index
@@ -251,7 +251,7 @@ spec:
 Create a guide specifically for walking an auditor through your controls:
 
 ```markdown
-# Auditor Walkthrough Guide — Flux CD GitOps
+# Auditor Walkthrough Guide - Flux CD GitOps
 
 ## How to Verify Change Authorization Controls
 
@@ -281,7 +281,7 @@ Create a guide specifically for walking an auditor through your controls:
 
 ## Best Practices
 
-- Review and update all compliance documentation quarterly, or whenever a significant process change occurs — stale documentation is worse than no documentation because it actively misleads auditors.
+- Review and update all compliance documentation quarterly, or whenever a significant process change occurs - stale documentation is worse than no documentation because it actively misleads auditors.
 - Store compliance documents in Git so changes to the documentation itself are tracked and auditable.
 - Designate a documentation owner who is responsible for keeping each document current.
 - Walk through the auditor guide internally before the audit to identify gaps between your documentation and your actual practice.

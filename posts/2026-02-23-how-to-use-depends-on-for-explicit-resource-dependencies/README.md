@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Dependencies, depends_on, Infrastructure as Code
+Tags: Terraform, HCL, Dependencies, Depends_on, Infrastructure as Code
 
 Description: Learn when and how to use the Terraform depends_on meta-argument to declare explicit resource dependencies that Terraform cannot infer from references, with real-world examples and common pitfalls.
 

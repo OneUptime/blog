@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Load Balancer, Health Checks, asyncio, High Availability, Distributed Systems, Networking
+Tags: Python, Load Balancer, Health Checks, Asyncio, High Availability, Distributed Systems, Networking
 
 Description: Learn how to build a load balancer with health checks in Python using asyncio. This guide covers round-robin, weighted, and least-connections algorithms, plus health monitoring for automatic failover.
 

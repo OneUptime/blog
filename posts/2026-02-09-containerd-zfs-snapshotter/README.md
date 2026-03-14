@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, containerd, ZFS, Storage, Performance
+Tags: Kubernetes, Containerd, ZFS, Storage, Performance
 
 Description: Learn how to configure containerd with ZFS snapshotter to leverage copy-on-write technology for efficient container storage, faster cloning, and better space utilization in Kubernetes.
 

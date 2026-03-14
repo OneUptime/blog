@@ -10,7 +10,7 @@ Description: A guide to optimizing Typha TLS performance including session resum
 
 ## Introduction
 
-TLS adds CPU overhead for the cryptographic handshake and ongoing encryption. For Typha, which handles long-lived persistent connections from all Felix agents, this overhead is bounded — the handshake happens once per connection, and the persistent connection amortizes the cost across millions of policy updates. However, certificate key size and cipher suite selection still affect handshake time and ongoing encryption throughput, particularly in large clusters where Typha may handle thousands of simultaneous reconnections during a rolling restart.
+TLS adds CPU overhead for the cryptographic handshake and ongoing encryption. For Typha, which handles long-lived persistent connections from all Felix agents, this overhead is bounded - the handshake happens once per connection, and the persistent connection amortizes the cost across millions of policy updates. However, certificate key size and cipher suite selection still affect handshake time and ongoing encryption throughput, particularly in large clusters where Typha may handle thousands of simultaneous reconnections during a rolling restart.
 
 ## Step 1: Choose the Right Key Algorithm
 
@@ -69,7 +69,7 @@ During a cluster-wide Felix restart (e.g., after a Calico upgrade), all Felix ag
 ```bash
 # Rolling restart with controlled pace
 kubectl rollout restart daemonset/calico-node -n calico-system
-# kubectl rollout has a default maxUnavailable — this naturally staggers restarts
+# kubectl rollout has a default maxUnavailable - this naturally staggers restarts
 kubectl rollout status daemonset/calico-node -n calico-system --timeout=600s
 ```
 

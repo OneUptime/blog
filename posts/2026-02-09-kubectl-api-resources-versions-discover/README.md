@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, API Discovery
+Tags: Kubernetes, Kubectl, API Discovery
 
 Description: Learn how to use kubectl api-resources and api-versions to discover available resource types, API groups, and cluster capabilities for better Kubernetes resource management.
 

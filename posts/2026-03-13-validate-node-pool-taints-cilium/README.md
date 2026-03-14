@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Node Taints, Node Pools, CNI
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to validate that Cilium agent pods are correctly scheduled on tainted node pools and that networking is fully functional for workloads on specialized node groups.
 
@@ -10,9 +10,9 @@ Description: Learn how to validate that Cilium agent pods are correctly schedule
 
 ## Introduction
 
-Kubernetes node taints are commonly used to dedicate node pools to specific workloads — GPU nodes, high-memory nodes, or nodes with compliance requirements. When you add taints to node pools, you must ensure that the Cilium DaemonSet includes matching tolerations so that Cilium agents are scheduled on every tainted node.
+Kubernetes node taints are commonly used to dedicate node pools to specific workloads - GPU nodes, high-memory nodes, or nodes with compliance requirements. When you add taints to node pools, you must ensure that the Cilium DaemonSet includes matching tolerations so that Cilium agents are scheduled on every tainted node.
 
-A missing Cilium toleration means no CNI agent runs on the tainted node, causing pod networking to fail entirely for any workload scheduled there. This is a silent failure mode — pods may be stuck in `ContainerCreating` with cryptic CNI errors rather than an obvious scheduling failure.
+A missing Cilium toleration means no CNI agent runs on the tainted node, causing pod networking to fail entirely for any workload scheduled there. This is a silent failure mode - pods may be stuck in `ContainerCreating` with cryptic CNI errors rather than an obvious scheduling failure.
 
 This guide covers how to inspect Cilium DaemonSet tolerations, validate agent deployment on tainted nodes, and verify full networking functionality for workloads on specialized node pools.
 
@@ -73,7 +73,7 @@ done
 If Cilium is missing from tainted nodes, patch the DaemonSet with the required tolerations.
 
 ```yaml
-# cilium-tolerations-patch.yaml — add tolerations for custom node pool taints
+# cilium-tolerations-patch.yaml - add tolerations for custom node pool taints
 spec:
   template:
     spec:

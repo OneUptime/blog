@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Configuration Generation, talosctl, Cluster Setup
+Tags: Talos Linux, Kubernetes, Configuration Generation, Talosctl, Cluster Setup
 
 Description: Master the talosctl gen config command to generate Talos Linux cluster configurations with the right options for your environment.
 

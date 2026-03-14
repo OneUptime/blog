@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, max Function, Math, HCL, Infrastructure as Code, Numeric Functions
+Tags: Terraform, Max Function, Math, HCL, Infrastructure as Code, Numeric Functions
 
 Description: Learn how to use the max function in Terraform to find the largest number from a set of values and enforce minimum thresholds in infrastructure configurations.
 

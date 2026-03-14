@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, faq, kubernetes, networking, community, support
+Tags: Cilium, FAQ, Troubleshooting, Kubernetes
 
 Description: A comprehensive guide to the most frequently asked questions from Cilium users, covering installation issues, policy behavior, performance, and debugging common problems.
 
@@ -12,7 +12,7 @@ Description: A comprehensive guide to the most frequently asked questions from C
 
 As Cilium has grown to become one of the most widely deployed CNI plugins in production Kubernetes environments, a rich body of frequently asked questions has emerged from the community. These questions span installation challenges, network policy debugging, performance optimization, and integration with other Kubernetes components.
 
-Understanding the Cilium FAQ isn't just about resolving issues — it's about building mental models for how Cilium works. Many FAQ questions reveal important architectural insights: why certain eBPF programs are loaded, how Cilium interacts with kube-proxy, why health checks behave differently with Cilium policies applied, and how Cilium's dataplane model differs from traditional CNIs.
+Understanding the Cilium FAQ isn't just about resolving issues - it's about building mental models for how Cilium works. Many FAQ questions reveal important architectural insights: why certain eBPF programs are loaded, how Cilium interacts with kube-proxy, why health checks behave differently with Cilium policies applied, and how Cilium's dataplane model differs from traditional CNIs.
 
 This guide covers the most impactful FAQ topics for Cilium users, organized by category to help you quickly find answers to common questions and understand the reasoning behind Cilium's behavior.
 
@@ -69,7 +69,7 @@ cilium endpoint list | grep $POD_IP
 
 **Q: Why can't my pods reach the Kubernetes API server after applying egress policies?**
 
-When Cilium policies are applied to a pod, egress must be explicitly allowed — including to the API server.
+When Cilium policies are applied to a pod, egress must be explicitly allowed - including to the API server.
 
 ```yaml
 # Allow egress to the Kubernetes API server
@@ -126,7 +126,7 @@ cilium node list
 ## Best Practices
 
 - Always run `cilium connectivity test` after installation and upgrades
-- Check `cilium status` before opening bug reports — it often shows the root cause
+- Check `cilium status` before opening bug reports - it often shows the root cause
 - Use Hubble observe with `--verdict DROPPED` to diagnose policy-related drops
 - Consult the official Cilium documentation at docs.cilium.io before the community channels
 - When upgrading, read the release notes carefully for breaking changes

@@ -10,7 +10,7 @@ Description: Configure comprehensive logging and auditing for Calico namespace-b
 
 ## Introduction
 
-Auditing namespace-based policies means tracking both cross-namespace traffic decisions and changes to namespace labels that affect policy scope. When a namespace label changes, it can silently change which policies apply — without proper logging, this is invisible.
+Auditing namespace-based policies means tracking both cross-namespace traffic decisions and changes to namespace labels that affect policy scope. When a namespace label changes, it can silently change which policies apply - without proper logging, this is invisible.
 
 Calico provides the `Log` action in `projectcalico.org/v3` policies that captures traffic decisions, while Kubernetes API audit logs track namespace label modifications. Together, these give you a complete picture of what traffic is flowing between namespaces and why.
 

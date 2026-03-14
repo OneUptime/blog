@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Network Monitoring, Kubernetes, Cilium, eBPF, Prometheus, Network Policy
+Tags: Talos Linux, Network Monitoring, Kubernetes, Cilium, EBPF, Prometheus, Network Policy
 
 Description: Learn how to monitor and analyze network traffic on Talos Linux Kubernetes clusters using Cilium Hubble, Prometheus, and network observability tools.
 

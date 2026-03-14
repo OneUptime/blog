@@ -12,7 +12,7 @@ Description: Set up comprehensive monitoring for Calico networking on GCE using 
 
 Monitoring Calico on GCE combines GCP's native network observability tools with Calico's own metrics. GCP VPC Flow Logs provide packet-level visibility into allowed and denied traffic at the VPC layer, while Cloud Monitoring can alert on network anomalies. Felix metrics, exposed via Prometheus, show the health of policy enforcement at the pod level.
 
-GCE-specific monitoring should also track VPC route table health — as the number of nodes grows, ensuring that all pod CIDR routes remain present is critical for cluster stability.
+GCE-specific monitoring should also track VPC route table health - as the number of nodes grows, ensuring that all pod CIDR routes remain present is critical for cluster stability.
 
 ## Prerequisites
 

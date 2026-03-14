@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cost, kubernetes, labels, finops, cloud-cost, gitops
+Tags: Flux, Cost, Kubernetes, Labels, FinOps, Cloud-cost, GitOps
 
 Description: Learn how to implement cloud cost tracking for Flux-managed workloads by automatically applying cost allocation labels to Kubernetes resources through Kustomization post-build patches.
 
@@ -10,7 +10,7 @@ Description: Learn how to implement cloud cost tracking for Flux-managed workloa
 
 ## Introduction
 
-Cloud cost allocation in Kubernetes requires consistent labeling of workloads with team, environment, and service metadata. When deploying with Flux CD, you can enforce cost allocation labels automatically using Kustomization `postBuild` patches and variable substitution — ensuring every resource created by Flux carries the labels needed by your FinOps tooling (Kubecost, OpenCost, Cloud provider cost allocation).
+Cloud cost allocation in Kubernetes requires consistent labeling of workloads with team, environment, and service metadata. When deploying with Flux CD, you can enforce cost allocation labels automatically using Kustomization `postBuild` patches and variable substitution - ensuring every resource created by Flux carries the labels needed by your FinOps tooling (Kubecost, OpenCost, Cloud provider cost allocation).
 
 Without systematic label enforcement, cost allocation becomes a manual, error-prone process. This guide shows how to build cost tracking into your Flux-managed GitOps pipeline so that labels are applied consistently at the GitOps layer, not by individual teams.
 

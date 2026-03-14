@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, disableWait, Install, Upgrade
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, DisableWait, Install, Upgrade
 
 Description: Learn how to configure the disableWait option on HelmRelease in Flux CD to skip waiting for resources to become ready during install and upgrade operations.
 

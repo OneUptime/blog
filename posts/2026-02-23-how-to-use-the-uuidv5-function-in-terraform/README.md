@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, uuidv5, Deterministic UUID, Hashing, Infrastructure as Code
+Tags: Terraform, Uuidv5, Deterministic UUID, Hashing, Infrastructure as Code
 
 Description: Learn how to use Terraform's uuidv5 function to generate deterministic, reproducible UUIDs based on namespace and name inputs for consistent resource identification.
 

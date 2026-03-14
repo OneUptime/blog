@@ -10,7 +10,7 @@ Description: Deploy Gitea self-hosted Git service to Kubernetes using Flux CD fo
 
 ## Introduction
 
-Gitea is a painless, lightweight self-hosted Git service written in Go. It provides a GitHub-like experience—repositories, pull requests, issues, wikis, CI integration via Gitea Actions—without the resource overhead of GitLab. It is an ideal choice for teams that want full control over their source code without relying on third-party SaaS platforms.
+Gitea is a painless, lightweight self-hosted Git service written in Go. It provides a GitHub-like experience-repositories, pull requests, issues, wikis, CI integration via Gitea Actions-without the resource overhead of GitLab. It is an ideal choice for teams that want full control over their source code without relying on third-party SaaS platforms.
 
 Running Gitea on Kubernetes through Flux CD means your source control infrastructure is managed with the same GitOps discipline you apply to your applications. The Gitea Helm chart supports PostgreSQL as the database backend, persistent volume claims for repository data, and SSH ingress for Git-over-SSH operations.
 

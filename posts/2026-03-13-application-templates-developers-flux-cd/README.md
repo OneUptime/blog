@@ -10,7 +10,7 @@ Description: Create reusable application templates for developers using Flux CD 
 
 ## Introduction
 
-One of the most common complaints from developers working with Kubernetes is the amount of boilerplate they must write before deploying a service. Deployments, Services, Ingresses, HorizontalPodAutoscalers, ServiceMonitors — the list grows quickly. Platform engineering teams solve this by providing application templates: curated, opinionated starting points that encode organizational best practices.
+One of the most common complaints from developers working with Kubernetes is the amount of boilerplate they must write before deploying a service. Deployments, Services, Ingresses, HorizontalPodAutoscalers, ServiceMonitors - the list grows quickly. Platform engineering teams solve this by providing application templates: curated, opinionated starting points that encode organizational best practices.
 
 Flux CD's Kustomize integration makes it straightforward to build a template library. Developers reference a base template from the platform repository, provide a handful of values through Kustomize patches, and Flux reconciles the rest. The platform team updates templates centrally, and all applications that reference them pick up improvements automatically.
 
@@ -27,7 +27,7 @@ In this guide you will build a layered template system with a generic web applic
 
 Organize templates in a dedicated directory within the platform repository.
 
-```
+```plaintext
 platform-gitops/
 └── templates/
     ├── web-app/
@@ -225,7 +225,7 @@ git push origin v1.4.0
 # Teams update their kustomization.yaml reference
 # From: ?ref=v1.3.0
 # To:   ?ref=v1.4.0
-# Then open a PR — Flux picks it up on merge
+# Then open a PR - Flux picks it up on merge
 ```
 
 ## Best Practices
@@ -239,4 +239,4 @@ git push origin v1.4.0
 
 ## Conclusion
 
-Application templates combined with Flux CD remove the majority of Kubernetes complexity from developers while keeping platform teams in control of organizational defaults. Developers reference a versioned template, apply a handful of patches for their service-specific values, and merge a PR — Flux handles everything else. As your platform matures, templates become the primary lever for rolling out operational improvements across every team simultaneously.
+Application templates combined with Flux CD remove the majority of Kubernetes complexity from developers while keeping platform teams in control of organizational defaults. Developers reference a versioned template, apply a handful of patches for their service-specific values, and merge a PR - Flux handles everything else. As your platform matures, templates become the primary lever for rolling out operational improvements across every team simultaneously.

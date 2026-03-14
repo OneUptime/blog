@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Security, Keychain, Secure Storage, Mobile Development, iOS, Android
+Tags: React Native, Security, Keychain, Secure Storage, Mobile Development, IOS, Android
 
 Description: Learn how to securely store sensitive data in React Native using Keychain (iOS) and Keystore (Android) for maximum security.
 

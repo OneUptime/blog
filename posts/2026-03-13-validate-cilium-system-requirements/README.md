@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, requirements, system, kernel, ebpf, kubernetes, prerequisites
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive checklist for validating that all system-level requirements are met before deploying Cilium, covering kernel features, system limits, and hardware capabilities.
 
@@ -52,14 +52,14 @@ mount | grep -E "bpf|debugfs"
 mount -t bpf bpf /sys/fs/bpf
 mount -t debugfs debugfs /sys/kernel/debug
 
-# Make mounts persistent — add to /etc/fstab
+# Make mounts persistent - add to /etc/fstab
 grep -q "bpf" /etc/fstab || echo "WARNING: BPF FS not in /etc/fstab"
 ```
 
 ## Step 3: Check System Limits
 
 ```bash
-# Verify inotify limits — Cilium uses file watchers extensively
+# Verify inotify limits - Cilium uses file watchers extensively
 sysctl fs.inotify.max_user_instances
 sysctl fs.inotify.max_user_watches
 
@@ -129,7 +129,7 @@ flowchart TD
 - Use cloud-init or Ignition to apply sysctl settings consistently across all nodes
 - Document the specific kernel features required for your Cilium feature set
 - Include system requirement validation in your node image build pipeline
-- Monitor kernel upgrades on nodes — security patches sometimes change relevant settings
+- Monitor kernel upgrades on nodes - security patches sometimes change relevant settings
 
 ## Conclusion
 

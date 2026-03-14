@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, blockaffinity, kubernetes, troubleshooting, networking
+Tags: Calico, IPAM, BlockAffinity, Kubernetes, Troubleshooting, Networking
 
 Description: A guide to diagnosing and resolving unexpected BlockAffinity behavior in Calico IPAM, covering block allocation, deallocation, and cross-node borrowing issues.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving unexpected BlockAffinity behavi
 
 ## Introduction
 
-Calico IPAM organizes IP addresses into blocks (typically /26 subnets by default) and assigns these blocks to nodes. The BlockAffinity resource represents the relationship between a block and a node—which node "owns" or has "affinity" for a given IP block.
+Calico IPAM organizes IP addresses into blocks (typically /26 subnets by default) and assigns these blocks to nodes. The BlockAffinity resource represents the relationship between a block and a node-which node "owns" or has "affinity" for a given IP block.
 
 Issues with BlockAffinity can cause pods to fail IP allocation, result in unexpected IP assignments from remote blocks, or leave stale block allocations after node removal. Understanding how Calico manages block affinity is essential for diagnosing these IPAM-level problems.
 
@@ -114,4 +114,4 @@ calicoctl patch ippool default-ipv4-ippool --type merge \
 
 ## Conclusion
 
-BlockAffinity issues in Calico IPAM often arise from node lifecycle events—nodes being removed without proper cleanup, or blocks being borrowed across nodes when local blocks are exhausted. By regularly inspecting BlockAffinity state, cleaning up stale entries, and ensuring appropriate block sizing, you can maintain a healthy IPAM configuration for your cluster.
+BlockAffinity issues in Calico IPAM often arise from node lifecycle events-nodes being removed without proper cleanup, or blocks being borrowed across nodes when local blocks are exhausted. By regularly inspecting BlockAffinity state, cleaning up stale entries, and ensuring appropriate block sizing, you can maintain a healthy IPAM configuration for your cluster.

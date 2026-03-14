@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Zero Trust, Security, mTLS, Authorization
+Tags: Istio, Zero Trust, Security, MTLS, Authorization
 
 Description: Implement a complete zero-trust security architecture using Istio with identity verification, encryption, and fine-grained access control.
 

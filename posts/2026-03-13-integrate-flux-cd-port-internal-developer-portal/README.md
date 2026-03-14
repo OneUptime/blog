@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Port, Platform Engineering, IDP, Developer Portal
+Tags: Flux CD, Kubernetes, GitOps, Port, Platform Engineering, IdP, Developer Portal
 
 Description: Integrate Flux CD with Port IDP for developer self-service so teams can view GitOps deployment state and trigger Flux operations directly from the Port developer portal.
 
@@ -12,7 +12,7 @@ Description: Integrate Flux CD with Port IDP for developer self-service so teams
 
 Port is a modern internal developer portal that lets platform teams build custom software catalog experiences without writing frontend code. Its entity model, scorecards, and action framework make it particularly well-suited for surfacing GitOps state from Flux CD. Unlike Backstage which requires code to add custom functionality, Port achieves the same result through configuration.
 
-By integrating Flux CD with Port, platform teams can expose Kustomization status, HelmRelease health, and image policy state as Port entities. Developers see current deployment information in a clean UI, and platform teams can build self-service actions that trigger Flux operations — like forcing a reconciliation or suspending a deployment — through Port's action framework.
+By integrating Flux CD with Port, platform teams can expose Kustomization status, HelmRelease health, and image policy state as Port entities. Developers see current deployment information in a clean UI, and platform teams can build self-service actions that trigger Flux operations - like forcing a reconciliation or suspending a deployment - through Port's action framework.
 
 In this guide you will configure Port's Kubernetes exporter to ingest Flux objects, build a blueprint for Flux services, and create self-service actions for common Flux operations.
 

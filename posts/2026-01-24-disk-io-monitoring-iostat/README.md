@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: iostat, Disk I/O, Performance Monitoring, Linux, sysstat, Storage, System Administration
+Tags: Iostat, Disk I/O, Performance Monitoring, Linux, Sysstat, Storage, System Administration
 
 Description: Learn how to use iostat to monitor disk I/O performance, identify bottlenecks, and optimize storage performance on Linux systems.
 

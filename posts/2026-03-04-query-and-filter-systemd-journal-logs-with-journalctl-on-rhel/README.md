@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journalctl, systemd, Logging, Journal, Troubleshooting
+Tags: RHEL, Journalctl, Systemd, Logging, Journal, Troubleshooting
 
 Description: Master journalctl on RHEL to query, filter, and search systemd journal logs by service, time range, priority, and other criteria for fast troubleshooting.
 

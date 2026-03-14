@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Concurrency, Maps, sync.Map, Mutex, Race Conditions
+Tags: Go, Golang, Concurrency, Maps, Sync.Map, Mutex, Race Conditions
 
 Description: Learn how to safely access maps from multiple goroutines in Go using mutexes, sync.Map, and other concurrency patterns to avoid race conditions.
 

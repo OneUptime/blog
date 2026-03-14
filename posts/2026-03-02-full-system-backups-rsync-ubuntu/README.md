@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, rsync, System Administration
+Tags: Ubuntu, Backup, Rsync, System Administration
 
 Description: Learn how to create full system backups using rsync on Ubuntu, including exclude patterns, scheduling with cron, and verifying your backup integrity.
 

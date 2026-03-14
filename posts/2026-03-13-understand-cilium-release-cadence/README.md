@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Community, Release, Versioning, Open Source
+Tags: Cilium, Community, Releases, Versioning, Open Source
 
 Description: Understand Cilium's release cadence, versioning scheme, stable branch lifecycle, and how to plan cluster upgrades around release schedules.
 

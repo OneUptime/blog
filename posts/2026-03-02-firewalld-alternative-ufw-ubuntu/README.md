@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, firewalld, Firewall, Security, Networking
+Tags: Ubuntu, Firewalld, Firewall, Security, Networking
 
 Description: Install and configure firewalld on Ubuntu as an alternative to UFW, covering zones, services, rich rules, and the key differences from UFW's approach to firewall management.
 

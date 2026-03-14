@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, Async Await, Concurrency, iOS, Modern Swift
+Tags: Swift, Async Await, Concurrency, IOS, Modern Swift
 
 Description: Master Swift's modern concurrency model with async/await, tasks, actors, and structured concurrency for cleaner and safer asynchronous code.
 

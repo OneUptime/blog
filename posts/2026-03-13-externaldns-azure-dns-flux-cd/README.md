@@ -1,10 +1,10 @@
-# How to Deploy ExternalDNS with Azure DNS Provider via Flux CD
+# Deploy ExternalDNS with Azure DNS Using Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ExternalDNS, Azure DNS, DNS, Kubernetes, GitOps, Networking
+Tags: ExternalDNS, Azure DNS, DNS, Flux CD, GitOps, Kubernetes, Networking, AKS
 
-Description: Learn how to deploy ExternalDNS with the Azure DNS provider using Flux CD HelmRelease to automatically manage DNS records for Kubernetes services.
+Description: Deploy ExternalDNS configured for Azure DNS on Kubernetes using Flux CD to automatically manage DNS records for Kubernetes Ingress and Service resources in Azure DNS zones.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Scala, Docker, sbt, JVM, Containers, Multi-Stage Build, GraalVM, Native Image, Kubernetes
+Tags: Scala, Docker, Sbt, JVM, Containers, Multi-Stage Build, GraalVM, Native Image, Kubernetes
 
 Description: A comprehensive guide to containerizing Scala applications with Docker.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, proc, Debugging, Linux
+Tags: RHEL, Proc, Debugging, Linux
 
 Description: Learn how to explore the /proc Filesystem for Process Diagnostics on RHEL with step-by-step instructions, configuration examples, and best practices.
 

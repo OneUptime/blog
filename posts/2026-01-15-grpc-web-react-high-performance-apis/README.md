@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, gRPC-Web, API, Performance, Protocol Buffers, Frontend
+Tags: React, GRPC-Web, API, Performance, Protocol Buffers, Frontend
 
 Description: Learn how to implement gRPC-Web in React applications for high-performance API communication, including protobuf setup, code generation, streaming, and production best practices.
 

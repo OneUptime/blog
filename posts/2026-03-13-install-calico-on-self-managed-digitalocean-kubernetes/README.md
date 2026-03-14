@@ -1,10 +1,10 @@
-# Install Calico on Self-Managed DigitalOcean Kubernetes
+# How to Install Calico on Self-Managed DigitalOcean Kubernetes Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, DigitalOcean, Kubernetes, Networking, CNI, Self-Managed, Droplets
+Tags: Calico, Kubernetes, Networking, CNI, Installation, DigitalOcean, Self-Managed
 
-Description: Guide to installing Calico on self-managed Kubernetes clusters running on DigitalOcean Droplets for advanced network policy management.
+Description: A step-by-step guide to installing Calico as the CNI on self-managed Kubernetes clusters running on DigitalOcean Droplets.
 
 ---
 

@@ -12,7 +12,7 @@ Description: A guide to creating and configuring Calico NetworkPolicy resources,
 
 The Calico NetworkPolicy resource is a namespace-scoped policy that extends the standard Kubernetes NetworkPolicy with additional capabilities including egress policies, action logging, and named ports. Calico NetworkPolicy resources are applied to pods within a specific namespace based on selector expressions, making them the primary tool for implementing pod-level microsegmentation.
 
-Understanding the NetworkPolicy resource structure — tiers, order, selectors, and rule actions — is foundational to building effective security policies in Calico.
+Understanding the NetworkPolicy resource structure - tiers, order, selectors, and rule actions - is foundational to building effective security policies in Calico.
 
 ## Prerequisites
 

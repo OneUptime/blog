@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, unittest, Testing, Test Automation, TDD, Quality Assurance
+Tags: Python, Unittest, Testing, Test Automation, TDD, Quality Assurance
 
 Description: Learn how to write effective tests using Python's built-in unittest module. This guide covers test cases, assertions, fixtures, mocking, and best practices for test organization.
 

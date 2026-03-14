@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, k8s_info, Querying, DevOps
+Tags: Ansible, Kubernetes, K8s_info, Querying, DevOps
 
 Description: Master the Ansible k8s_info module with advanced filtering, field selectors, label queries, and data extraction techniques for Kubernetes resources.
 

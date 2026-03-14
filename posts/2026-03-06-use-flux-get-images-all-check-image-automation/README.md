@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, CLI, image-automation, image-policy, image-repository, GitOps, Kubernetes, flux-get
+Tags: Flux, CLI, Image-automation, Image-policy, Image-repository, GitOps, Kubernetes, Flux-get
 
 Description: A practical guide to using flux get images commands to monitor and troubleshoot Flux image automation including repositories, policies, and update automation.
 

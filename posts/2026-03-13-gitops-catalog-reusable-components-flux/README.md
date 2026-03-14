@@ -25,7 +25,7 @@ In this guide you will build a component catalog with OCI artifacts, set up a pu
 
 ## Step 1: Structure the Catalog Repository
 
-```
+```plaintext
 platform-catalog/
 ├── components/
 │   ├── redis/

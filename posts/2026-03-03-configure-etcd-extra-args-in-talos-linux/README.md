@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Cluster Configuration, Kubernetes, Database
+Tags: Talos Linux, Etcd, Cluster Configuration, Kubernetes, Database
 
 Description: A practical guide to configuring etcd extra arguments in Talos Linux for performance tuning, security hardening, and reliable cluster storage.
 

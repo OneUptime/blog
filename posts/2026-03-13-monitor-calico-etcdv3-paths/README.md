@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Monitoring, Observability
+Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Monitoring, Observability
 
 Description: Set up monitoring for Calico etcdv3 path health to detect data inconsistencies, IPAM exhaustion, and etcd storage growth before they impact cluster networking.
 
@@ -12,7 +12,7 @@ Description: Set up monitoring for Calico etcdv3 path health to detect data inco
 
 Monitoring Calico's etcdv3 paths provides early warning for several categories of operational issues: IP address pool exhaustion, runaway growth in etcd storage due to leaked IPAM allocations, data inconsistencies caused by interrupted Calico operations, and etcd performance degradation under high write load from busy clusters.
 
-Without monitoring, these problems are typically discovered only when they cause visible failures — pods failing to start, policies not updating, or nodes becoming unhealthy. Proactive monitoring allows you to address issues during business hours rather than during incidents.
+Without monitoring, these problems are typically discovered only when they cause visible failures - pods failing to start, policies not updating, or nodes becoming unhealthy. Proactive monitoring allows you to address issues during business hours rather than during incidents.
 
 ## Prerequisites
 
@@ -141,4 +141,4 @@ etcd --auto-compaction-mode=periodic --auto-compaction-retention=1h
 
 ## Conclusion
 
-Monitoring Calico etcdv3 paths requires tracking etcd storage utilization, IPAM pool exhaustion, policy count changes, and key growth rates. By exposing these metrics to Prometheus and building targeted alerts, you can detect datastore health issues — from IPAM leaks to approaching storage quotas — well before they impact cluster operations.
+Monitoring Calico etcdv3 paths requires tracking etcd storage utilization, IPAM pool exhaustion, policy count changes, and key growth rates. By exposing these metrics to Prometheus and building targeted alerts, you can detect datastore health issues - from IPAM leaks to approaching storage quotas - well before they impact cluster operations.

@@ -12,7 +12,7 @@ Description: Diagnose CIDR conflicts in Calico IP pools by comparing pod CIDRs a
 
 CIDR conflicts in Calico occur when the pod IP pool overlaps with the node host network, the Kubernetes service CIDR, or another IP pool. When pods receive IP addresses from a CIDR that overlaps with the node network, routing becomes ambiguous: the node cannot determine whether a destination IP is a pod or a physical host, causing traffic to be misrouted or dropped.
 
-These conflicts are particularly dangerous because they may work in a lab environment where address ranges happen not to overlap in practice, but fail in production where the actual node addresses fall within the conflicting range. The failure mode is often intermittent — only affecting traffic to specific IPs — making it difficult to diagnose without examining CIDR ranges explicitly.
+These conflicts are particularly dangerous because they may work in a lab environment where address ranges happen not to overlap in practice, but fail in production where the actual node addresses fall within the conflicting range. The failure mode is often intermittent - only affecting traffic to specific IPs - making it difficult to diagnose without examining CIDR ranges explicitly.
 
 This guide covers the diagnosis steps to identify CIDR conflicts in Calico IP pool configurations.
 

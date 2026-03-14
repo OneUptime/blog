@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, L3/L4
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: Understand how Layer 3 and Layer 4 network policies work in Cilium and how the Star Wars demo illustrates their application and limitations.
 
@@ -105,4 +105,4 @@ kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/
 
 ## Conclusion
 
-The L3/L4 policy in the Cilium Star Wars demo achieves significant access control: unauthorized pods cannot connect at all. But it reveals the fundamental limitation of connection-level policies — once a connection is established, any HTTP method and path is reachable. This is why the demo progresses to L7 policy in its next stage, and why a complete microservice security strategy requires both L3/L4 and L7 policy enforcement.
+The L3/L4 policy in the Cilium Star Wars demo achieves significant access control: unauthorized pods cannot connect at all. But it reveals the fundamental limitation of connection-level policies - once a connection is established, any HTTP method and path is reachable. This is why the demo progresses to L7 policy in its next stage, and why a complete microservice security strategy requires both L3/L4 and L7 policy enforcement.

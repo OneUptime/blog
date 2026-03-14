@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Multi-Zone, Security, Linux
+Tags: RHEL, Firewalld, Multi-Zone, Security, Linux
 
 Description: How to design and implement a multi-zone firewall configuration on RHEL, with separate zones for public, management, and internal traffic on different interfaces.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extensions, pprof, Performance, Profiling, Debugging, Go, Optimization
+Tags: OpenTelemetry, Collector, Extensions, Pprof, Performance, Profiling, Debugging, Go, Optimization
 
 Description: Master the pprof extension configuration in OpenTelemetry Collector to profile and debug performance issues with CPU, memory, and goroutine analysis.
 

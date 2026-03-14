@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, CIS, scap-security-guide, Automation, Linux
+Tags: RHEL, CIS, Scap-security-guide, Automation, Linux
 
 Description: Automate CIS benchmark compliance on RHEL using the scap-security-guide project, including pre-built Ansible playbooks, bash scripts, and Kickstart integration.
 

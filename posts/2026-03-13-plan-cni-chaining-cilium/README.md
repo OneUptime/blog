@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, cni, networking, cni-chaining
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
-Description: Learn how to plan and architect CNI chaining configurations with Cilium, understanding when chaining is appropriate, what capabilities are available in chained mode, and how to design a migration path to standalone Cilium. This guide covers the key planning considerations before deploying chained CNI configurations.
+Description: Learn how to plan and architect CNI chaining configurations with Cilium, understanding when chaining is appropriate, what capabilities are available in chained mode, and how to design a migration...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to plan and architect CNI chaining configurations with Ci
 
 CNI chaining allows multiple CNI plugins to operate together, where each plugin in the chain handles a different aspect of pod networking. Cilium supports running as a chained CNI on top of other plugins like AWS VPC CNI, Azure CNI, or Calico, enabling you to add Cilium's network policy enforcement and observability without replacing the primary IP management plugin.
 
-While chaining unlocks powerful capabilities for incremental Cilium adoption, it comes with architectural trade-offs. Not all Cilium features are available in chained mode — eBPF-based kube-proxy replacement, Hubble flow visibility, and bandwidth management may have limited support depending on the primary CNI. Careful planning before deployment prevents operational surprises.
+While chaining unlocks powerful capabilities for incremental Cilium adoption, it comes with architectural trade-offs. Not all Cilium features are available in chained mode - eBPF-based kube-proxy replacement, Hubble flow visibility, and bandwidth management may have limited support depending on the primary CNI. Careful planning before deployment prevents operational surprises.
 
 This guide helps you assess your environment, understand capability constraints, and design a chaining architecture that meets your security and observability goals.
 
@@ -70,7 +70,7 @@ Key questions to answer before proceeding:
 - Do you need eBPF-based kube-proxy replacement? (Not available in chain mode)
 - Do you need full Hubble L7 visibility? (Limited in chain mode)
 - Is the primary CNI cloud-managed (EKS, AKS)? (Constraints may apply)
-- What is your eventual migration target — full Cilium, or permanent chaining?
+- What is your eventual migration target - full Cilium, or permanent chaining?
 
 ## Step 3: Plan the Configuration Strategy
 
@@ -96,7 +96,7 @@ Design the CNI configuration chain before applying it to any nodes.
 
 Verify the node kernel and system requirements before deploying the chain.
 ```bash
-# Check kernel version — Cilium requires 4.19.57+ for basic chaining
+# Check kernel version - Cilium requires 4.19.57+ for basic chaining
 uname -r
 
 # Verify BPF filesystem is mounted
@@ -113,7 +113,7 @@ modprobe --dry-run bpf
 - Document which features are active in chained mode versus standalone mode
 - Monitor Cilium agent logs closely during and after the initial chain deployment
 - Use `cilium connectivity test` to validate policy enforcement after chaining is active
-- Keep the primary CNI and Cilium version pinned — avoid upgrading both simultaneously
+- Keep the primary CNI and Cilium version pinned - avoid upgrading both simultaneously
 
 ## Conclusion
 

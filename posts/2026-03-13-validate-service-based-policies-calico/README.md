@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Validation
+Tags: Calico, Kubernetes, Network Policy, Services, Validation
 
 Description: Validate Calico service-based network policies before production deployment.
 

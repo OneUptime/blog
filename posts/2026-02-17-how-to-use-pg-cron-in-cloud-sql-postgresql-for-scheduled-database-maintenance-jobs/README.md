@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, pg_cron, Database Maintenance
+Tags: GCP, Cloud SQL, PostgreSQL, Pg_cron, Database Maintenance
 
 Description: Learn how to enable and use pg_cron in Cloud SQL for PostgreSQL to automate scheduled database maintenance tasks like vacuuming, partition management, and data cleanup.
 

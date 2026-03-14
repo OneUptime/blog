@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, kubectl, Events, Debugging
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, Kubectl, Events, Debugging
 
 Description: Learn how to use kubectl to view and filter Flux CD events for debugging reconciliation issues, tracking deployments, and understanding what is happening in your GitOps pipeline.
 

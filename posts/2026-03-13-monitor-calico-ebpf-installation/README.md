@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation, Monitoring
+Tags: Calico, Kubernetes, Networking, EBPF, Installation, Monitoring
 
 Description: Set up monitoring during and immediately after Calico eBPF installation to detect installation failures, track node readiness progress, and establish performance baselines.
 
@@ -126,4 +126,4 @@ kube_pod_container_status_running{namespace="calico-system"} == 1
 
 ## Conclusion
 
-Monitoring a Calico eBPF installation in real time provides immediate feedback on progress and failures. The real-time monitor script shows the key indicators in a dashboard format during installation. Post-installation, recording rules establish baseline performance metrics that serve as reference points for future comparisons. Set up the baseline monitoring immediately after installation success so you have historical data from the first day the cluster is running — this data becomes invaluable during future troubleshooting or performance analysis.
+Monitoring a Calico eBPF installation in real time provides immediate feedback on progress and failures. The real-time monitor script shows the key indicators in a dashboard format during installation. Post-installation, recording rules establish baseline performance metrics that serve as reference points for future comparisons. Set up the baseline monitoring immediately after installation success so you have historical data from the first day the cluster is running - this data becomes invaluable during future troubleshooting or performance analysis.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Validation
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Validation
 
 Description: How to validate that Calico etcd RBAC roles and permissions are correctly configured so each Calico component can only access its required etcd key paths.
 
@@ -42,7 +42,7 @@ etcdctl ... role get calico-admin
 
 Expected output for `calico-felix`:
 
-```
+```plaintext
 Role calico-felix
 KV Read:
   [/calico/v1/config/, /calico/v1/config/0) (prefix /calico/v1/config/)

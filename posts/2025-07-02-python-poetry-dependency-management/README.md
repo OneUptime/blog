@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Poetry, Dependency Management, Packaging, pyproject.toml
+Tags: Python, Poetry, Dependency Management, Packaging, Pyproject.toml
 
 Description: A comprehensive guide to managing Python dependencies with Poetry. Learn project setup, dependency groups, virtual environments, and publishing packages to PyPI.
 

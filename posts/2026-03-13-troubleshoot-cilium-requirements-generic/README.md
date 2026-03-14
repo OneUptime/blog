@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Troubleshooting, CNI
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive guide to verifying system requirements for Cilium on generic Kubernetes clusters, covering kernel versions, mount points, and CNI prerequisites.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to verifying system requirements for Cilium o
 
 ## Introduction
 
-Installing Cilium on a generic (self-managed) Kubernetes cluster requires careful validation of the underlying system environment. Unlike managed cloud offerings, generic clusters can run on a wide variety of Linux distributions, kernel versions, and hardware configurations — each introducing unique compatibility challenges.
+Installing Cilium on a generic (self-managed) Kubernetes cluster requires careful validation of the underlying system environment. Unlike managed cloud offerings, generic clusters can run on a wide variety of Linux distributions, kernel versions, and hardware configurations - each introducing unique compatibility challenges.
 
 Cilium's eBPF-based dataplane relies on specific kernel features that must be available and properly configured. Missing kernel modules, incorrect mount points, or incompatible CNI configurations are the most common reasons for Cilium installation failures on generic clusters.
 
@@ -30,7 +30,7 @@ Cilium depends on eBPF, which requires specific kernel capabilities. Run this ch
 SSH into each node and run the kernel validation:
 
 ```bash
-# Check kernel version — must be 4.9.17 or higher
+# Check kernel version - must be 4.9.17 or higher
 uname -r
 
 # Verify eBPF filesystem is mounted
@@ -52,7 +52,7 @@ for module in ip_tables ip6_tables xt_socket xt_tproxy xt_mark; do
   if lsmod | grep -q "^${module}"; then
     echo "${module}: LOADED"
   else
-    echo "${module}: MISSING — load with: modprobe ${module}"
+    echo "${module}: MISSING - load with: modprobe ${module}"
   fi
 done
 
@@ -71,7 +71,7 @@ Clean up conflicting CNI configurations:
 ls -la /etc/cni/net.d/
 
 # Remove configurations from any previous CNI (e.g., flannel, calico) before installing Cilium
-# WARNING: This will disrupt existing pod networking — drain nodes first
+# WARNING: This will disrupt existing pod networking - drain nodes first
 sudo rm -f /etc/cni/net.d/10-flannel.conflist
 sudo rm -f /etc/cni/net.d/calico.conflist
 

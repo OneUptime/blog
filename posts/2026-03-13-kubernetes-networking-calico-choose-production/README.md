@@ -12,7 +12,7 @@ Description: A decision framework for selecting Calico networking modes and IP a
 
 Choosing the right networking configuration for a production Calico deployment involves several interconnected decisions: encapsulation mode, BGP peering topology, IP pool sizing, and IPv6 support. Each decision has performance, operational, and compatibility implications that compound in a production environment.
 
-This post provides a structured decision framework for the key networking choices Calico users face when designing for production. The framework is opinionated — based on what works in real production environments — while acknowledging that every infrastructure environment has unique constraints.
+This post provides a structured decision framework for the key networking choices Calico users face when designing for production. The framework is opinionated - based on what works in real production environments - while acknowledging that every infrastructure environment has unique constraints.
 
 ## Prerequisites
 
@@ -87,15 +87,15 @@ spec:
   nodeSelector: all()
 ```
 
-Dual-stack requires Kubernetes 1.20+ and must be enabled at cluster creation — it cannot be retrofitted to existing single-stack clusters without downtime.
+Dual-stack requires Kubernetes 1.20+ and must be enabled at cluster creation - it cannot be retrofitted to existing single-stack clusters without downtime.
 
 ## Best Practices
 
-- Size IP pools at cluster creation — resizing requires careful IPAM migration
+- Size IP pools at cluster creation - resizing requires careful IPAM migration
 - Use CrossSubnet mode for multi-AZ deployments to avoid unnecessary encapsulation overhead within an AZ
 - For clusters > 50 nodes with BGP, deploy route reflectors on dedicated non-worker nodes
-- Document your encapsulation mode, pool CIDR, and BGP topology in your cluster runbook — these are the facts you need fastest during incidents
+- Document your encapsulation mode, pool CIDR, and BGP topology in your cluster runbook - these are the facts you need fastest during incidents
 
 ## Conclusion
 
-Production Calico networking decisions center on four choices: encapsulation mode (matched to your fabric capabilities), IP pool size (sized generously at creation), BGP topology (mesh for small, route reflectors for large), and IPv4/dual-stack. Making these decisions explicitly before cluster creation — and documenting the rationale — prevents the most common production networking problems.
+Production Calico networking decisions center on four choices: encapsulation mode (matched to your fabric capabilities), IP pool size (sized generously at creation), BGP topology (mesh for small, route reflectors for large), and IPv4/dual-stack. Making these decisions explicitly before cluster creation - and documenting the rationale - prevents the most common production networking problems.

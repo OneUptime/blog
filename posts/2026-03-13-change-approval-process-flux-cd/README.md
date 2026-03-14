@@ -10,7 +10,7 @@ Description: Enforce a complete change approval workflow using Git branch protec
 
 ## Introduction
 
-A change approval process ensures that no change reaches production without the appropriate review, testing, and sign-off. In traditional IT service management (ITIL), this is implemented through a Change Advisory Board (CAB) and formal change request forms. In GitOps with Flux CD, the same outcomes are achieved through pull requests, branch protection rules, and automated validation — but the workflow is native to the development toolchain that engineers already use.
+A change approval process ensures that no change reaches production without the appropriate review, testing, and sign-off. In traditional IT service management (ITIL), this is implemented through a Change Advisory Board (CAB) and formal change request forms. In GitOps with Flux CD, the same outcomes are achieved through pull requests, branch protection rules, and automated validation - but the workflow is native to the development toolchain that engineers already use.
 
 This guide shows how to implement a change approval process that satisfies ITIL Change Management requirements using Flux CD and GitHub, including standard changes (routine, pre-approved), normal changes (require explicit approval), and emergency changes (fast-track with post-incident review).
 
@@ -83,7 +83,7 @@ gh api repos/your-org/fleet-infra/branches/main/protection \
 
 For environments that require different approval thresholds, use separate repository branches:
 
-```
+```plaintext
 main        → Production (2 required approvers, Code Owner required)
 staging     → Staging (1 required approver)
 development → Development (no required approvers; CI required)
@@ -95,7 +95,7 @@ Create PR templates for each change type:
 
 ```markdown
 <!-- .github/PULL_REQUEST_TEMPLATE/normal-change.md -->
-## Change Request — Normal Change
+## Change Request - Normal Change
 
 **Change Type**: Normal Change
 
@@ -112,7 +112,7 @@ Create PR templates for each change type:
 - [ ] Load test / smoke test completed (for high-risk changes)
 
 **Rollback Plan**:
-`git revert <sha>` — note any additional manual steps
+`git revert <sha>` - note any additional manual steps
 
 **Deployment Window Compliance**:
 - [ ] Change scheduled within approved deployment window
@@ -155,21 +155,21 @@ jobs:
           # Production RBAC changes are high risk
           if git diff --name-only origin/main...HEAD | grep -q "rbac"; then
             RISK_LEVEL="high"
-            WARNINGS="$WARNINGS\n⚠️ RBAC changes detected — security review required"
+            WARNINGS="$WARNINGS\n⚠️ RBAC changes detected - security review required"
           fi
 
           # Namespace deletions are high risk
           if git diff origin/main...HEAD | grep -q "kind: Namespace" && \
              git diff origin/main...HEAD | grep -q "^-"; then
             RISK_LEVEL="high"
-            WARNINGS="$WARNINGS\n⚠️ Namespace deletion detected — impact assessment required"
+            WARNINGS="$WARNINGS\n⚠️ Namespace deletion detected - impact assessment required"
           fi
 
           # Large number of files changed
           CHANGED=$(git diff --name-only origin/main...HEAD | wc -l)
           if [ "$CHANGED" -gt 10 ]; then
             RISK_LEVEL="medium"
-            WARNINGS="$WARNINGS\n⚠️ $CHANGED files changed — consider splitting into smaller PRs"
+            WARNINGS="$WARNINGS\n⚠️ $CHANGED files changed - consider splitting into smaller PRs"
           fi
 
           echo "Risk Level: $RISK_LEVEL"
@@ -246,11 +246,11 @@ gh pr list --state merged --json number,mergedAt,reviews,author \
 ## Best Practices
 
 - Publish the change approval matrix as documentation in the repository so all engineers know the requirements before opening a PR.
-- Use GitHub's "required number of approvals" and "Code Owners" settings as the technical enforcement mechanism — do not rely on policy documents alone.
+- Use GitHub's "required number of approvals" and "Code Owners" settings as the technical enforcement mechanism - do not rely on policy documents alone.
 - Conduct monthly reviews of rejected PRs (those closed without merging) to identify whether your approval process is creating unnecessary friction.
 - Keep emergency change exceptions minimal and always require a post-incident review that files a retrospective PR updating any configuration that was temporarily bypassed.
 - Use labels (standard-change, normal-change, emergency-change) on PRs to make the change classification visible at a glance in your PR dashboard.
 
 ## Conclusion
 
-A change approval process with Flux CD and GitHub branch protection gives you ITIL-aligned change management implemented directly in your engineering workflow. Every change — whether routine or emergency — flows through a documented, auditable process where the approval evidence lives permanently in Git. The result is a change management practice that satisfies compliance requirements while remaining fast enough for a modern engineering team.
+A change approval process with Flux CD and GitHub branch protection gives you ITIL-aligned change management implemented directly in your engineering workflow. Every change - whether routine or emergency - flows through a documented, auditable process where the approval evidence lives permanently in Git. The result is a change management practice that satisfies compliance requirements while remaining fast enough for a modern engineering team.

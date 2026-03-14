@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, i18n, Internationalization, Localization, Translation
+Tags: Ruby, Rails, I18n, Internationalization, Localization, Translation
 
 Description: A comprehensive guide to implementing internationalization (i18n) in Ruby on Rails applications.
 

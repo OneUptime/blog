@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, Cloud Images, cloud-init
+Tags: Ubuntu, KVM, Cloud Images, Cloud-init
 
 Description: Learn how to deploy Ubuntu cloud images with KVM on Ubuntu, including cloud-init configuration, custom metadata, and automated VM provisioning.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Kickstart, Virtualization, virt-install, Automation
+Tags: RHEL, KVM, Kickstart, Virtualization, Virt-install, Automation
 
 Description: Automate RHEL virtual machine creation on KVM using virt-install and Kickstart files, covering hypervisor setup, VM provisioning, and scripting batch deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Egress Gateway, Network Security, eBPF
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Egress Gateway, Network Security, EBPF
 
 Description: Configure Cilium Egress Gateway for controlled outbound traffic using Flux CD to provide stable source IPs for pods accessing external services.
 
@@ -182,12 +182,12 @@ hubble observe \
 
 ## Best Practices
 
-- Assign elastic/static IPs to gateway nodes at the cloud provider level before creating EgressGatewayPolicy resources — the `egressIP` must already be assigned to the node's network interface.
+- Assign elastic/static IPs to gateway nodes at the cloud provider level before creating EgressGatewayPolicy resources - the `egressIP` must already be assigned to the node's network interface.
 - Use dedicated gateway nodes (with the `egress-gateway: "true"` label) that are sized appropriately to handle the egress bandwidth of all matched pods.
 - Create separate egress policies for different teams or services so each can have its own stable IP, enabling fine-grained firewall rules at the external service level.
-- Apply `destinationCIDRs` as specifically as possible rather than using `0.0.0.0/0` — routing all traffic through the gateway node adds latency for internal cluster traffic.
-- Monitor gateway node bandwidth and CPU usage — all matched pods' external traffic flows through the gateway node, which can become a bottleneck under heavy load.
+- Apply `destinationCIDRs` as specifically as possible rather than using `0.0.0.0/0` - routing all traffic through the gateway node adds latency for internal cluster traffic.
+- Monitor gateway node bandwidth and CPU usage - all matched pods' external traffic flows through the gateway node, which can become a bottleneck under heavy load.
 
 ## Conclusion
 
-Cilium Egress Gateway managed through Flux CD provides a GitOps-controlled, stable-IP egress solution for Kubernetes workloads. Teams can declare which pods require stable source IPs, which external destinations are affected, and which gateway IP to use — all through version-controlled CiliumEgressGatewayPolicy resources that Flux applies and reconciles automatically.
+Cilium Egress Gateway managed through Flux CD provides a GitOps-controlled, stable-IP egress solution for Kubernetes workloads. Teams can declare which pods require stable source IPs, which external destinations are affected, and which gateway IP to use - all through version-controlled CiliumEgressGatewayPolicy resources that Flux applies and reconciles automatically.

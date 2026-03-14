@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SPIFFE, SPIRE, Service Identity, Zero Trust, Kubernetes, mTLS, Workload Identity
+Tags: SPIFFE, SPIRE, Service Identity, Zero Trust, Kubernetes, MTLS, Workload Identity
 
 Description: Learn how to implement SPIFFE/SPIRE for cryptographic service identity in Kubernetes. This guide covers server deployment, workload registration, and integration with service meshes.
 

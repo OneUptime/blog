@@ -10,9 +10,9 @@ Description: Deploy OAuth2 Proxy authentication middleware to Kubernetes using F
 
 ## Introduction
 
-OAuth2 Proxy is a reverse proxy that sits in front of web applications and enforces authentication using external OAuth2 or OIDC providers—GitHub, Google, Azure AD, Keycloak, Dex, and many others. It acts as an authentication gateway: unauthenticated requests are redirected to the identity provider, and only after successful login does the proxy forward the request to the upstream application.
+OAuth2 Proxy is a reverse proxy that sits in front of web applications and enforces authentication using external OAuth2 or OIDC providers-GitHub, Google, Azure AD, Keycloak, Dex, and many others. It acts as an authentication gateway: unauthenticated requests are redirected to the identity provider, and only after successful login does the proxy forward the request to the upstream application.
 
-The power of OAuth2 Proxy is its universality. You can add SSO authentication to any HTTP service—Grafana, Kubernetes Dashboard, internal tools, even static sites—without modifying the application's code. In a Kubernetes environment, it integrates as an Ingress `auth-url` annotation or as a sidecar proxy.
+The power of OAuth2 Proxy is its universality. You can add SSO authentication to any HTTP service-Grafana, Kubernetes Dashboard, internal tools, even static sites-without modifying the application's code. In a Kubernetes environment, it integrates as an Ingress `auth-url` annotation or as a sidecar proxy.
 
 Managing OAuth2 Proxy with Flux CD means your authentication middleware configuration is version-controlled. Adding a new allowed domain, rotating a client secret, or updating the proxy version are all Git commits that Flux applies without downtime.
 
@@ -88,7 +88,7 @@ spec:
       provider: github
       github-org: my-github-org      # Restrict to this GitHub org
       email-domain: "*"              # Allow any email domain
-      upstream: "file:///dev/null"   # No upstream — used in auth-url mode
+      upstream: "file:///dev/null"   # No upstream - used in auth-url mode
 
       # Cookie settings
       cookie-secure: "true"
@@ -188,4 +188,4 @@ With these annotations, any request to `app.example.com` that lacks a valid OAut
 
 ## Conclusion
 
-OAuth2 Proxy is now deployed on Kubernetes and managed by Flux CD. Any internal web application can be protected with GitHub (or another OIDC provider) authentication by adding two Ingress annotations—no application code changes required. Flux ensures the proxy configuration stays consistent with your Git-declared state, and secret rotation is as simple as updating a Kubernetes secret and committing the change.
+OAuth2 Proxy is now deployed on Kubernetes and managed by Flux CD. Any internal web application can be protected with GitHub (or another OIDC provider) authentication by adding two Ingress annotations-no application code changes required. Flux ensures the proxy configuration stays consistent with your Git-declared state, and secret rotation is as simple as updating a Kubernetes secret and committing the change.

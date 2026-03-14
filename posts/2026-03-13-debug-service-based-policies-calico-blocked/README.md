@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Debugging
+Tags: Calico, Kubernetes, Network Policy, Services, Debugging
 
 Description: Debug Calico service-based network policies when traffic is blocked due to service selector mismatches.
 

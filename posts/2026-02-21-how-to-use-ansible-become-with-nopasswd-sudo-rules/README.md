@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, NOPASSWD, Security, Linux
+Tags: Ansible, Sudo, NOPASSWD, Security, Linux
 
 Description: Configure NOPASSWD sudo rules for Ansible become with proper security boundaries and command restrictions
 

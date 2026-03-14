@@ -10,7 +10,7 @@ Description: Deploy new features in dark launch mode using Flux CD, serving the 
 
 ## Introduction
 
-A dark launch deploys new code to production but keeps its output invisible to end users. The new code path executes alongside the existing code — handling real production traffic, querying real databases, processing real data — but the results are discarded or logged rather than returned to users. This lets you validate behavior, performance, and correctness under real production load before flipping the switch to make the feature visible.
+A dark launch deploys new code to production but keeps its output invisible to end users. The new code path executes alongside the existing code - handling real production traffic, querying real databases, processing real data - but the results are discarded or logged rather than returned to users. This lets you validate behavior, performance, and correctness under real production load before flipping the switch to make the feature visible.
 
 In Kubernetes, dark launches are implemented through application-level feature flags combined with infrastructure-level traffic configuration. Flux CD manages both layers as Git-declared configuration, giving you the same review-and-merge workflow for dark launch activation as for any other change.
 
@@ -171,14 +171,14 @@ Increase the dark launch sample rate through sequential Git commits as confidenc
 
 ```mermaid
 flowchart TD
-    A["SAMPLE_RATE=10% — initial validation"] --> B{Divergence rate acceptable?}
+    A["SAMPLE_RATE=10% - initial validation"] --> B{Divergence rate acceptable?}
     B -- No --> C[Debug new code path, keep rate low]
-    B -- Yes --> D["SAMPLE_RATE=25% — PR approved and merged"]
+    B -- Yes --> D["SAMPLE_RATE=25% - PR approved and merged"]
     D --> E{Still healthy?}
     E -- No --> C
     E -- Yes --> F["SAMPLE_RATE=50%"]
     F --> G["SAMPLE_RATE=100%"]
-    G --> H[Enable feature for users — set DARK_LAUNCH=false, FEATURE=true]
+    G --> H[Enable feature for users - set DARK_LAUNCH=false, FEATURE=true]
 ```
 
 Each step is a separate PR:
@@ -235,11 +235,11 @@ gh pr create --title "feat: launch new payment processor (dark launch complete)"
 ## Best Practices
 
 - Start with a very low sample rate (5-10%) to limit load on the new code path before it has been validated.
-- Always discard or ignore dark launch results — never let a dark launch response reach a user, even if the stable path fails.
+- Always discard or ignore dark launch results - never let a dark launch response reach a user, even if the stable path fails.
 - Set resource limits that account for the additional CPU and memory used by running two code paths.
 - Create a dashboard that tracks dark launch divergence rate and error rate so the team can monitor progress.
-- Document a clear exit criteria in the PR description for each sample rate increase — define what "no divergence" means quantitatively.
+- Document a clear exit criteria in the PR description for each sample rate increase - define what "no divergence" means quantitatively.
 
 ## Conclusion
 
-The dark launch pattern implemented through Flux-managed ConfigMaps gives you the ability to validate new code under real production load without exposing users to unproven behavior. Every change to the dark launch configuration — enabling it, increasing the sample rate, and finally promoting to a real launch — flows through the same Git-based review workflow as any other deployment change, keeping your entire deployment history auditable and reversible.
+The dark launch pattern implemented through Flux-managed ConfigMaps gives you the ability to validate new code under real production load without exposing users to unproven behavior. Every change to the dark launch configuration - enabling it, increasing the sample rate, and finally promoting to a real launch - flows through the same Git-based review workflow as any other deployment change, keeping your entire deployment history auditable and reversible.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, GCE, Google Compute Engine, Kubernetes, Networking, CNI, Self-Managed
+Tags: Calico, Kubernetes, Networking, CNI, Installation, GCE, Google Cloud, Self-Managed
 
 Description: Guide to installing Calico on self-managed Kubernetes clusters running on Google Compute Engine instances for advanced networking and policy enforcement.
 
@@ -10,7 +10,7 @@ Description: Guide to installing Calico on self-managed Kubernetes clusters runn
 
 ## Introduction
 
-While GKE is the recommended way to run Kubernetes on Google Cloud, some teams run self-managed Kubernetes on GCE instances for greater control or specific configurations. On GCE, Calico can use either VXLAN overlay or BGP routing — GCE's flat VPC allows BGP to work well, making it a viable option for high-performance networking.
+While GKE is the recommended way to run Kubernetes on Google Cloud, some teams run self-managed Kubernetes on GCE instances for greater control or specific configurations. On GCE, Calico can use either VXLAN overlay or BGP routing - GCE's flat VPC allows BGP to work well, making it a viable option for high-performance networking.
 
 This guide covers installing Calico on a kubeadm Kubernetes cluster on GCE, using both VXLAN and BGP configuration options.
 

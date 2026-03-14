@@ -200,8 +200,8 @@ kubectl exec -n rabbitmq rabbitmq-0 -- rabbitmqadmin list queues name messages
 - Use `minReplicaCount: 0` for batch-style task workers that can tolerate cold starts, and `minReplicaCount: 1` for tasks that require low-latency response.
 - Include a `preStop` lifecycle hook and a sufficient `terminationGracePeriodSeconds` so workers finish processing in-flight messages before the pod terminates during scale-down.
 - Use a PodDisruptionBudget to prevent KEDA from scaling down too aggressively during rolling upgrades, preserving processing capacity.
-- Prefer the `http` protocol for the RabbitMQ trigger when using the Management API — it provides richer metrics including message rates, not just queue depth.
+- Prefer the `http` protocol for the RabbitMQ trigger when using the Management API - it provides richer metrics including message rates, not just queue depth.
 
 ## Conclusion
 
-KEDA with a RabbitMQ trigger managed by Flux CD gives your team an automated approach to queue-depth-driven scaling. Worker counts automatically track queue backlog, preventing message accumulation during traffic spikes while scaling to zero during idle periods — all with the scaling policy defined declaratively in Git.
+KEDA with a RabbitMQ trigger managed by Flux CD gives your team an automated approach to queue-depth-driven scaling. Worker counts automatically track queue backlog, preventing message accumulation during traffic spikes while scaling to zero during idle periods - all with the scaling policy defined declaratively in Git.

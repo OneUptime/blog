@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lookup Plugins, vars, Dynamic Variables, Jinja2
+Tags: Ansible, Lookup Plugins, Vars, Dynamic Variables, Jinja2
 
 Description: Learn how to use the Ansible vars lookup plugin to dynamically reference variables by name and build flexible automation playbooks.
 

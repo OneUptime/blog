@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dpkg, APT, Troubleshooting, Package Management
+Tags: Ubuntu, Dpkg, APT, Troubleshooting, Package Management
 
 Description: Fix the dpkg 'status database area is locked' error on Ubuntu by safely identifying and resolving lock file conflicts without corrupting the package database.
 

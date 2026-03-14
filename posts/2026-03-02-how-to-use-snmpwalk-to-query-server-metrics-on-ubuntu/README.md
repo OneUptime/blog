@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SNMP, snmpwalk, Monitoring, Networking
+Tags: Ubuntu, SNMP, Snmpwalk, Monitoring, Networking
 
 Description: A comprehensive guide to using snmpwalk and related SNMP tools on Ubuntu to query server metrics, explore OID trees, and retrieve specific system statistics from network devices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Test NodeLocal DNSCache behavior with live Calico workloads, measuring cache effectiveness, failover to CoreDNS, and DNS performance under load.
 

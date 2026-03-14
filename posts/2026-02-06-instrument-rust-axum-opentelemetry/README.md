@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, axum, Web Framework, Tracing, tokio
+Tags: OpenTelemetry, Rust, Axum, Web Framework, Tracing, Tokio
 
 Description: Learn how to add comprehensive OpenTelemetry instrumentation to Axum web applications with middleware, extractors, and distributed tracing examples.
 

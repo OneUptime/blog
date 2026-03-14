@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, DNS, eBPF
+Tags: Cilium, Kubernetes, Network Policy, DNS, EBPF
 
 Description: Use Cilium FQDN-based DNS policies to control egress traffic based on fully qualified domain names rather than IP addresses, enabling dynamic external access control.
 
@@ -151,4 +151,4 @@ sequenceDiagram
 
 ## Conclusion
 
-Cilium DNS policies provide a maintainable, reliable approach to egress control for external services. By anchoring policies to domain names instead of IP addresses, you eliminate the operational burden of keeping CIDR lists synchronized with constantly-changing cloud service IPs. Always include explicit DNS allow rules in any egress-restricted policy — without them, pods cannot perform DNS resolution and all domain-based policies will silently fail. Use Hubble DNS observability to audit which external domains your services are accessing.
+Cilium DNS policies provide a maintainable, reliable approach to egress control for external services. By anchoring policies to domain names instead of IP addresses, you eliminate the operational burden of keeping CIDR lists synchronized with constantly-changing cloud service IPs. Always include explicit DNS allow rules in any egress-restricted policy - without them, pods cannot perform DNS resolution and all domain-based policies will silently fail. Use Hubble DNS observability to audit which external domains your services are accessing.

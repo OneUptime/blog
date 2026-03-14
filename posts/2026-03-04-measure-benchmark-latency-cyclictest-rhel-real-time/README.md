@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Real-Time, cyclictest, Latency Benchmarking, Performance, Linux
+Tags: RHEL, Real-Time, Cyclictest, Latency Benchmarking, Performance, Linux
 
 Description: Use cyclictest on RHEL real-time systems to measure scheduling latency and validate that your real-time configuration meets deterministic performance requirements.
 

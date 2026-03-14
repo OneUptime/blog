@@ -26,7 +26,7 @@ mTLS closes this attack surface: only processes holding certificates signed by t
 
 For engineers who understand Kubernetes but not Typha specifics:
 
-```
+```plaintext
 The setup is equivalent to other mTLS systems in Kubernetes:
 - etcd uses client certificates to authenticate kubeadm
 - The Kubernetes API server uses client certificates for control plane components
@@ -85,4 +85,4 @@ Typha does not support CRL (Certificate Revocation Lists). Revocation is handled
 
 ## Conclusion
 
-Explaining Typha TLS to different audiences requires adjusting the level of detail: security teams need the threat model and audit evidence, platform engineers need the operational mechanics, and new team members need the conceptual analogy. The core message is consistent across all audiences: Typha mTLS ensures that only authorized Felix agents — those with certificates signed by the cluster CA — can connect to the policy fan-out layer, closing a meaningful attack surface in the Calico architecture.
+Explaining Typha TLS to different audiences requires adjusting the level of detail: security teams need the threat model and audit evidence, platform engineers need the operational mechanics, and new team members need the conceptual analogy. The core message is consistent across all audiences: Typha mTLS ensures that only authorized Felix agents - those with certificates signed by the cluster CA - can connect to the policy fan-out layer, closing a meaningful attack surface in the Calico architecture.

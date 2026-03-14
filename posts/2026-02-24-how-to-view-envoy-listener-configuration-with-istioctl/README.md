@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Listeners, istioctl, Kubernetes, Debugging
+Tags: Istio, Envoy, Listeners, Istioctl, Kubernetes, Debugging
 
 Description: A detailed guide to inspecting Envoy listener configuration in Istio to debug traffic interception, protocol detection, and connection handling.
 

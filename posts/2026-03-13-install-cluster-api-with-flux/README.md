@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cluster API, CAPI, GitOps, Kubernetes, Infrastructure as Code
+Tags: Flux CD, Cluster API, CAPI, GitOps, Kubernetes, Multi-Cluster
 
 Description: Learn how to use Flux CD to manage Cluster API workload clusters declaratively, enabling GitOps-driven Kubernetes cluster provisioning.
 
@@ -10,7 +10,7 @@ Description: Learn how to use Flux CD to manage Cluster API workload clusters de
 
 ## Introduction
 
-Cluster API (CAPI) enables declarative, Kubernetes-native infrastructure management for provisioning and managing Kubernetes clusters. When combined with Flux CD, the entire cluster lifecycle — creation, upgrades, and deletion — can be managed through GitOps workflows.
+Cluster API (CAPI) enables declarative, Kubernetes-native infrastructure management for provisioning and managing Kubernetes clusters. When combined with Flux CD, the entire cluster lifecycle - creation, upgrades, and deletion - can be managed through GitOps workflows.
 
 This guide covers installing Cluster API on a management cluster with Flux and provisioning workload clusters declaratively through Git commits.
 
@@ -200,4 +200,4 @@ kubectl get nodes --kubeconfig workload-kubeconfig.yaml
 
 ## Conclusion
 
-Combining Flux CD with Cluster API creates a fully GitOps-managed Kubernetes infrastructure where cluster creation, upgrades, and deletion are all driven by Git commits. This approach gives platform teams an auditable, declarative cluster management system with automatic reconciliation. The initial setup requires more configuration than imperative tools, but the operational benefits — reproducibility, auditability, and self-healing — make it the recommended approach for organizations managing multiple Kubernetes clusters.
+Combining Flux CD with Cluster API creates a fully GitOps-managed Kubernetes infrastructure where cluster creation, upgrades, and deletion are all driven by Git commits. This approach gives platform teams an auditable, declarative cluster management system with automatic reconciliation. The initial setup requires more configuration than imperative tools, but the operational benefits - reproducibility, auditability, and self-healing - make it the recommended approach for organizations managing multiple Kubernetes clusters.

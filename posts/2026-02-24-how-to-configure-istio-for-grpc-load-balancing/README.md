@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Load Balancing, Kubernetes, Service Mesh
+Tags: Istio, GRPC, Load Balancing, Kubernetes, Service Mesh
 
 Description: Learn how to configure Istio for proper gRPC load balancing across your Kubernetes services, including connection-level and request-level strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Temporary Pods, Troubleshooting
+Tags: Kubernetes, Kubectl, Debugging, Temporary Pods, Troubleshooting
 
 Description: Master kubectl run with --rm flag to create temporary debug pods that automatically clean up after use.
 

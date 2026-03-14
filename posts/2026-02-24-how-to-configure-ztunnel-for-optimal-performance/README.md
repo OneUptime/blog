@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, ztunnel, Performance, Kubernetes
+Tags: Istio, Ambient Mesh, Ztunnel, Performance, Kubernetes
 
 Description: Tune ztunnel resource allocation, connection pooling, and configuration for optimal performance in Istio ambient mode deployments.
 

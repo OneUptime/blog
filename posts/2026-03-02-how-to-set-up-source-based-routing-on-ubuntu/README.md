@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Routing, Policy Routing, iproute2
+Tags: Ubuntu, Networking, Routing, Policy Routing, Iproute2
 
 Description: Configure source-based (policy) routing on Ubuntu to route traffic through different gateways based on source IP address using ip rule and ip route.
 

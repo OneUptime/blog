@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, kube-proxy, Networking
+Tags: Calico, Kubernetes, EBPF, Kube-proxy, Networking
 
 Description: Optimize Calico eBPF kube-proxy replacement for production with DSR and connection tracking tuning.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Troubleshooting
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Troubleshooting
 
 Description: A diagnostic guide for identifying and resolving common Calico installation failures on on-premises Kubernetes clusters.
 
@@ -10,7 +10,7 @@ Description: A diagnostic guide for identifying and resolving common Calico inst
 
 ## Introduction
 
-On-premises Kubernetes clusters present unique troubleshooting challenges for Calico installations. Physical network misconfigurations, firewall rules blocking BGP port 179, incorrect IP auto-detection on multi-homed servers, and mismatched pod CIDR values can all prevent Calico from starting correctly. Unlike cloud environments, there is no managed network layer to fall back on — every failure must be traced to a specific configuration or connectivity issue.
+On-premises Kubernetes clusters present unique troubleshooting challenges for Calico installations. Physical network misconfigurations, firewall rules blocking BGP port 179, incorrect IP auto-detection on multi-homed servers, and mismatched pod CIDR values can all prevent Calico from starting correctly. Unlike cloud environments, there is no managed network layer to fall back on - every failure must be traced to a specific configuration or connectivity issue.
 
 Calico's diagnostic surface is broad: the Tigera Operator, the `calico-node` DaemonSet, the `calico-kube-controllers` Deployment, and the CNI plugin binary each have their own logs and failure modes. Knowing which layer is failing tells you which logs to read.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, installation, troubleshooting, helm, kops, kubespray
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to diagnosing and resolving issues when Cilium has been installed via external cluster provisioning tools such as kops, Kubespray, Talos, or other third-party installers.
 
@@ -130,7 +130,7 @@ EOF
 ## Best Practices
 
 - Always check your installer's documentation for supported Cilium configuration methods
-- Never manually edit Cilium resources that are managed by an external installer—changes will be overwritten
+- Never manually edit Cilium resources that are managed by an external installer-changes will be overwritten
 - Pin the Cilium version in your installer configuration to prevent unexpected upgrades
 - Test Cilium after every cluster upgrade performed by the external installer
 - Use the official `cilium` CLI for diagnostics even if Cilium was not installed with it

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, gather_facts, Custom Facts, Modules, DevOps
+Tags: Ansible, Gather_facts, Custom Facts, Modules, DevOps
 
 Description: Extend Ansible fact gathering with custom fact modules and local facts for application-specific system information.
 

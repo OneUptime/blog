@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DNS, Debugging, Networking, dig
+Tags: Kubernetes, DNS, Debugging, Networking, Dig
 
 Description: Master DNS troubleshooting in Kubernetes using dig and nslookup to diagnose service discovery issues and resolve name resolution problems.
 

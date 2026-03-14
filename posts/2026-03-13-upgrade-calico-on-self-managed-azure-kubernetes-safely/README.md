@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, azure, kubernetes, upgrade, networking, safety, vnet
+Tags: Calico, Kubernetes, Networking, Upgrade, Azure, Self-Managed
 
 Description: A guide to safely upgrading Calico on self-managed Kubernetes clusters running on Azure VMs, with Azure-specific validation steps and procedures for maintaining network continuity.
 
@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on self-managed Kubernetes clust
 
 Self-managed Kubernetes clusters on Azure VMs run Calico on top of Azure's VNet networking layer. Upgrading Calico in this environment requires ensuring that Azure VNet routes, NSG rules, and VXLAN configurations remain consistent throughout the rolling upgrade process.
 
-Azure VMs communicate via VNet, and Calico's VXLAN tunnels or Azure route-based networking must remain functional during the upgrade. Unlike AKS, there's no managed upgrade workflow — all aspects of the Calico upgrade are your responsibility, including ensuring the Tigera Operator rollout doesn't cause traffic gaps on nodes being upgraded.
+Azure VMs communicate via VNet, and Calico's VXLAN tunnels or Azure route-based networking must remain functional during the upgrade. Unlike AKS, there's no managed upgrade workflow - all aspects of the Calico upgrade are your responsibility, including ensuring the Tigera Operator rollout doesn't cause traffic gaps on nodes being upgraded.
 
 This guide provides safe Calico upgrade procedures for self-managed Azure Kubernetes, including Azure-specific pre-checks, backup procedures, and post-upgrade validation.
 
@@ -97,7 +97,7 @@ Trigger the rolling upgrade through the operator.
 kubectl apply \
   -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
 
-# Monitor calico-node rolling update — each node upgrades sequentially
+# Monitor calico-node rolling update - each node upgrades sequentially
 kubectl rollout status daemonset/calico-node -n calico-system --timeout=15m
 
 # During rolling upgrade, verify VXLAN tunnel recovery on recently upgraded nodes
@@ -145,7 +145,7 @@ kubectl delete service conn-test
 - Verify Azure proximity placement groups (if used) don't interfere with Calico node selection
 - Monitor Azure VM CPU and network metrics during the rolling upgrade
 - Keep a terminal session open with `kubectl get pods -n calico-system -w` throughout the upgrade
-- Test VXLAN connectivity explicitly if using VXLAN mode — Azure VNet sometimes needs time to learn new routes
+- Test VXLAN connectivity explicitly if using VXLAN mode - Azure VNet sometimes needs time to learn new routes
 
 ## Conclusion
 

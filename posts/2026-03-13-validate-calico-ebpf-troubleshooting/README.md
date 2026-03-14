@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Validation
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Validation
 
 Description: Validate that your Calico eBPF troubleshooting toolkit is ready and functional before incidents occur, ensuring fast response when issues arise.
 

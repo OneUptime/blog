@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Alerts, Real-Time Monitoring, Security, Linux
+Tags: RHEL, Auditd, Alerts, Real-Time Monitoring, Security, Linux
 
 Description: Configure real-time alerting from Linux audit events on RHEL using audisp plugins, custom scripts, and email notifications.
 

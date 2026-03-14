@@ -10,7 +10,7 @@ Description: Provision cloud VPCs and networking resources using Crossplane mana
 
 ## Introduction
 
-Virtual Private Clouds are the foundational networking layer for cloud infrastructure. Every other resource—databases, compute instances, Kubernetes clusters—depends on a properly configured VPC. Managing VPCs through Crossplane and Flux ensures your network topology is version-controlled, reproducible, and continuously reconciled.
+Virtual Private Clouds are the foundational networking layer for cloud infrastructure. Every other resource-databases, compute instances, Kubernetes clusters-depends on a properly configured VPC. Managing VPCs through Crossplane and Flux ensures your network topology is version-controlled, reproducible, and continuously reconciled.
 
 Provisioning a production VPC involves many interdependent resources: the VPC itself, subnets across multiple availability zones, internet and NAT gateways, route tables, and security groups. Crossplane manages all of these as individual Kubernetes objects, and Flux coordinates their creation in the correct order.
 

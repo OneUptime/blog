@@ -1,4 +1,4 @@
-# How to Test Community-Tested Kubernetes Networking with Calico with Live Workloads
+# How to Test Kubernetes Networking with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

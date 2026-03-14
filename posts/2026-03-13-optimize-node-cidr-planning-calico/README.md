@@ -12,7 +12,7 @@ Description: Learn how to plan and optimize node CIDR allocation in Calico to su
 
 Node CIDR planning is a foundational step in Kubernetes cluster design that determines how many nodes can join the cluster, how many pods each node can run, and how the cluster fits into your organization's IP addressing scheme. Poor CIDR planning leads to IP exhaustion, difficult-to-change configurations, and complex subnet calculations as the cluster grows.
 
-Calico's IPAM model, which uses per-node IP blocks rather than pre-assigned per-node CIDRs like many other CNIs, provides more flexibility—but still requires careful upfront planning of the overall pool CIDR and block sizes. This guide covers best practices for node CIDR planning in Calico deployments.
+Calico's IPAM model, which uses per-node IP blocks rather than pre-assigned per-node CIDRs like many other CNIs, provides more flexibility-but still requires careful upfront planning of the overall pool CIDR and block sizes. This guide covers best practices for node CIDR planning in Calico deployments.
 
 ## Prerequisites
 

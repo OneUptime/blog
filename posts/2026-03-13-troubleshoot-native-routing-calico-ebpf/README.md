@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Networking, Performance
+Tags: Calico, Kubernetes, EBPF, Networking, Performance
 
 Description: Diagnose native routing failures in Calico eBPF mode including map lookup errors, BPF program failures, and kernel compatibility issues.
 
@@ -72,4 +72,4 @@ graph LR
 
 ## Conclusion
 
-Calico eBPF native routing delivers measurable performance improvements by bypassing traditional kernel networking overhead. Enable eBPF mode after verifying kernel compatibility, disable kube-proxy, and benchmark throughput and latency to validate the improvement. The migration is reversible — eBPF mode can be disabled and kube-proxy re-enabled if issues are encountered.
+Calico eBPF native routing delivers measurable performance improvements by bypassing traditional kernel networking overhead. Enable eBPF mode after verifying kernel compatibility, disable kube-proxy, and benchmark throughput and latency to validate the improvement. The migration is reversible - eBPF mode can be disabled and kube-proxy re-enabled if issues are encountered.

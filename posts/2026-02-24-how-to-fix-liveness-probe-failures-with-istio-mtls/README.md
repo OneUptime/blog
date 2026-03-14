@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Liveness Probe, mTLS, Kubernetes, Troubleshooting
+Tags: Istio, Liveness Probe, MTLS, Kubernetes, Troubleshooting
 
 Description: How to resolve liveness probe failures caused by mutual TLS configuration in Istio service mesh deployments.
 

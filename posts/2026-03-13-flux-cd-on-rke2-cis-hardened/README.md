@@ -10,7 +10,7 @@ Description: Bootstrap Flux CD on RKE2 with CIS security hardening enabled, ensu
 
 ## Introduction
 
-RKE2 (Rancher Kubernetes Engine 2) is a security-focused Kubernetes distribution from SUSE that ships with CIS Kubernetes Benchmark compliance built in. Its hardened profile applies secure defaults across the API server, controller manager, scheduler, kubelet, and etcd — settings that many organizations must enable to meet compliance requirements (PCI-DSS, HIPAA, SOC 2).
+RKE2 (Rancher Kubernetes Engine 2) is a security-focused Kubernetes distribution from SUSE that ships with CIS Kubernetes Benchmark compliance built in. Its hardened profile applies secure defaults across the API server, controller manager, scheduler, kubelet, and etcd - settings that many organizations must enable to meet compliance requirements (PCI-DSS, HIPAA, SOC 2).
 
 Bootstrapping Flux CD on a CIS-hardened RKE2 cluster requires some additional consideration: hardening restricts pod security, network policies, and audit logging in ways that affect Flux's controllers. This guide covers configuring RKE2 with the CIS profile, adjusting Flux's deployment to comply with pod security standards, and verifying the full GitOps workflow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-builder, Execution Environments, Containers
+Tags: Ansible, Ansible-builder, Execution Environments, Containers
 
 Description: Master ansible-builder to create custom Ansible Execution Environments with collections, Python packages, and system dependencies.
 

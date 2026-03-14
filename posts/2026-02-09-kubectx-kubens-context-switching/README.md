@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, DevOps, CLI, Productivity
+Tags: Kubernetes, Kubectl, DevOps, CLI, Productivity
 
 Description: Master fast Kubernetes context and namespace switching with kubectx and kubens to eliminate repetitive typing and speed up your daily cluster management workflow with practical examples.
 

@@ -10,7 +10,7 @@ Description: A guide to automating Calico performance tuning on bare metal nodes
 
 ## Introduction
 
-Production tuning for binary-managed Calico on bare metal follows the same principles as other deployment models — disable encapsulation, enable eBPF, tune Felix timers, optimize the OS network stack. What differs is that all of these changes are encoded in Ansible roles and applied consistently across the entire node fleet, rather than being applied manually node by node.
+Production tuning for binary-managed Calico on bare metal follows the same principles as other deployment models - disable encapsulation, enable eBPF, tune Felix timers, optimize the OS network stack. What differs is that all of these changes are encoded in Ansible roles and applied consistently across the entire node fleet, rather than being applied manually node by node.
 
 Encoding tuning parameters in Ansible variables also makes them auditable and version-controlled. When you change a tuning parameter, the change is recorded in your playbook repository alongside the reason for the change. This is valuable for production environments where configuration drift is a compliance concern.
 

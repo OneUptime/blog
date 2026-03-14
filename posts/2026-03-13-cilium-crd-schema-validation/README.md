@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CRD, Schema Validation, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Learn how to configure, troubleshoot, validate, and monitor Cilium Custom Resource Definition schema validation to ensure your CiliumNetworkPolicies and other Cilium CRDs are always correctly structured.
+Description: Learn how to configure, troubleshoot, validate, and monitor Cilium Custom Resource Definition schema validation to ensure your CiliumNetworkPolicies and other Cilium CRDs are always correctly...
 
 ---
 

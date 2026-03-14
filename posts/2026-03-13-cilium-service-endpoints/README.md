@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Services
+Tags: Cilium, Kubernetes, Networking, EBPF, Services
 
 Description: Understand how Cilium manages Kubernetes service endpoints using eBPF maps, replacing kube-proxy for load balancing and connection tracking at kernel speed.
 
@@ -12,7 +12,7 @@ Description: Understand how Cilium manages Kubernetes service endpoints using eB
 
 Kubernetes services traditionally rely on kube-proxy to manage iptables rules that load balance traffic across pod endpoints. As clusters scale to thousands of services and tens of thousands of endpoints, kube-proxy's iptables approach creates performance bottlenecks: iptables rules are evaluated linearly, updates require full rule rebuilds, and each new service adds to the latency of every subsequent packet traversal.
 
-Cilium replaces kube-proxy entirely using eBPF maps for service endpoint management. eBPF hash maps provide O(1) lookup regardless of cluster size — looking up a service with 50,000 endpoints takes the same time as looking up one with 10. When a pod is added or removed, Cilium updates only the relevant eBPF map entry, not the entire rule set. This architecture also enables features that iptables simply cannot provide, like per-service load balancing algorithms, service topology awareness, and session affinity without conntrack tables.
+Cilium replaces kube-proxy entirely using eBPF maps for service endpoint management. eBPF hash maps provide O(1) lookup regardless of cluster size - looking up a service with 50,000 endpoints takes the same time as looking up one with 10. When a pod is added or removed, Cilium updates only the relevant eBPF map entry, not the entire rule set. This architecture also enables features that iptables simply cannot provide, like per-service load balancing algorithms, service topology awareness, and session affinity without conntrack tables.
 
 This guide explains how Cilium manages service endpoints, how to inspect the endpoint state, and how to troubleshoot endpoint-related connectivity issues.
 

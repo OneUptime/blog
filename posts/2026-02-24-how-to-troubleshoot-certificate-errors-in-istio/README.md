@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Troubleshooting, mTLS, Security, Kubernetes
+Tags: Istio, Certificates, Troubleshooting, MTLS, Security, Kubernetes
 
 Description: A practical troubleshooting guide for diagnosing and fixing certificate errors in Istio, covering expired certs, chain issues, and rotation failures.
 

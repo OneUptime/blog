@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, mTLS, TLS, Security, Certificates, Linux
+Tags: RHEL, MTLS, TLS, Security, Certificates, Linux
 
 Description: Learn how to configure mutual TLS (mTLS) between services on RHEL, covering certificate authority setup, certificate generation, server and client configuration, and certificate rotation strategies.
 

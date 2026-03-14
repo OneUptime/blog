@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Reconciliation, etcd, Backup, Restore
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Reconciliation, Etcd, Backup, Restore
 
 Description: Recover Flux reconciliation after restoring an etcd backup, handling stale state, resource version conflicts, and inventory mismatches caused by the time gap between backup and restore.
 

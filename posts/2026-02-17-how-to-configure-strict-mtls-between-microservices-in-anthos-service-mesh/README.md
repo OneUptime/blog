@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Anthos Service Mesh, mTLS, Microservices Security, Zero Trust
+Tags: GCP, Anthos Service Mesh, MTLS, Microservices Security, Zero Trust
 
 Description: Learn how to configure and enforce strict mutual TLS authentication between microservices in Anthos Service Mesh for zero-trust network security on GKE.
 

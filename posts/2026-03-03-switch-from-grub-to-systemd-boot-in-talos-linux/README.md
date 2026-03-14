@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, GRUB, systemd-boot, Boot Loader, Migration
+Tags: Talos Linux, GRUB, Systemd-boot, Boot Loader, Migration
 
 Description: A step-by-step guide to migrating your Talos Linux nodes from GRUB to systemd-boot for improved boot performance and security.
 

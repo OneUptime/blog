@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, TLS, Security, Kubernetes
+Tags: Istio, MTLS, TLS, Security, Kubernetes
 
 Description: A practical comparison of Istio mesh-level mTLS and application-level TLS covering certificate management, performance, security boundaries, and when to use each approach.
 

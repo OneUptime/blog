@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Mesh, Helm, mTLS, Observability
+Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Mesh, Helm, MTLS, Observability
 
 Description: Deploy Linkerd service mesh using Helm charts with Flux CD for lightweight, ultra-low latency mTLS and observability on Kubernetes.
 
@@ -12,7 +12,7 @@ Description: Deploy Linkerd service mesh using Helm charts with Flux CD for ligh
 
 Linkerd is a lightweight, Rust-based service mesh designed for simplicity and ultra-low overhead. Unlike Istio's Envoy-based proxies, Linkerd's micro-proxies (written in Rust) consume significantly less CPU and memory per pod while still providing automatic mTLS, golden metrics (success rate, RPS, latency), and distributed tracing.
 
-Managing Linkerd through Flux CD gives you a declarative, GitOps-driven service mesh deployment. Linkerd upgrades, configuration changes, and namespace injection policies are all managed through Git — making the mesh as reproducible and auditable as your applications.
+Managing Linkerd through Flux CD gives you a declarative, GitOps-driven service mesh deployment. Linkerd upgrades, configuration changes, and namespace injection policies are all managed through Git - making the mesh as reproducible and auditable as your applications.
 
 This guide covers deploying Linkerd using Helm charts with Flux CD, including certificate management and namespace injection.
 
@@ -239,7 +239,7 @@ linkerd viz dashboard
 
 - Manage the Linkerd trust anchor certificate with cert-manager or a Vault PKI backend for automated rotation, rather than manually created certificates.
 - Use `dependsOn` in HelmReleases to ensure `linkerd-crds` is applied before `linkerd-control-plane`, and the control plane before `linkerd-viz`.
-- Enable `controllerReplicas: 3` and `enablePodAntiAffinity: true` for production high availability — Linkerd's control plane should not be a single point of failure.
+- Enable `controllerReplicas: 3` and `enablePodAntiAffinity: true` for production high availability - Linkerd's control plane should not be a single point of failure.
 - Use `valuesFrom` in HelmRelease to pull sensitive values (identity certificates) from Kubernetes Secrets rather than embedding them in the HelmRelease spec.
 - Run `linkerd check --pre` locally against staging before promoting Linkerd version changes to production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Consumer, Polling, Performance, max.poll.records, max.poll.interval.ms, Throughput Optimization
+Tags: Apache Kafka, Consumer, Polling, Performance, Max.poll.records, Max.poll.interval.ms, Throughput Optimization
 
 Description: Learn how to configure and optimize Kafka consumer polling strategies for different workloads, balancing throughput, latency, and resource usage.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nmcli, Static IP, Networking, Linux
+Tags: RHEL, Nmcli, Static IP, Networking, Linux
 
 Description: Learn how to set up static IP addresses on Red Hat Enterprise Linux 9 using the nmcli command-line tool, including practical examples for production servers.
 

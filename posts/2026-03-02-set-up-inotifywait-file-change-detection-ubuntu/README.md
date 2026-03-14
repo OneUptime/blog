@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, inotifywait, File Monitoring, inotify, Automation
+Tags: Ubuntu, Inotifywait, File Monitoring, Inotify, Automation
 
 Description: Use inotifywait on Ubuntu to monitor files and directories for changes and trigger automated actions in response to create, modify, delete, and move events.
 

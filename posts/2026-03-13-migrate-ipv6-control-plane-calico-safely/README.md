@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipv6, control-plane, kubernetes, migration, networking, dual-stack
+Tags: Calico, IPv6, Control-plane, Kubernetes, Migration, Networking, Dual-Stack
 
 Description: Learn how to safely migrate Calico's control plane to IPv6, enabling IPv6 BGP sessions, Felix communications, and API server connectivity in a dual-stack or IPv6-only cluster.
 
@@ -10,7 +10,7 @@ Description: Learn how to safely migrate Calico's control plane to IPv6, enablin
 
 ## Introduction
 
-Calico's control plane—Felix, BIRD, and Typha—can operate over IPv6, enabling clusters to use IPv6 for both pod networking and internal component communication. Migrating the control plane to IPv6 is a prerequisite for fully IPv6-native Kubernetes deployments where IPv4 is either not available or being phased out.
+Calico's control plane-Felix, BIRD, and Typha-can operate over IPv6, enabling clusters to use IPv6 for both pod networking and internal component communication. Migrating the control plane to IPv6 is a prerequisite for fully IPv6-native Kubernetes deployments where IPv4 is either not available or being phased out.
 
 The control plane migration must be done in coordination with Kubernetes API server and etcd IPv6 configuration. A dual-stack intermediate state (running both IPv4 and IPv6 control plane traffic) is the safest migration path, allowing rollback if issues are discovered.
 

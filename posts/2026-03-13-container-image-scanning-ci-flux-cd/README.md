@@ -149,7 +149,7 @@ security-checks:
   - secret
 ```
 
-```
+```plaintext
 # .trivyignore - Document why each CVE is ignored
 # CVE-2024-XXXX: No fix available as of 2024-01-01; accepted risk documented in ticket INFRA-1234
 CVE-2024-XXXX

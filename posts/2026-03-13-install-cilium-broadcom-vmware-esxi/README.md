@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, VMware, ESXi, vSphere, Kubernetes, Networking, eBPF, On-Premises
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
 Description: Guide to installing Cilium on Kubernetes clusters running on VMware ESXi or vSphere infrastructure for on-premises eBPF networking.
 
@@ -184,7 +184,7 @@ hubble observe --namespace production
 
 - Set VMware portgroup security to allow forged transmits for VXLAN encapsulated traffic
 - Use VMware NSX-T for advanced network integration with Cilium when available
-- Test MTU settings carefully — VMware VMXNET3 adapters default to 1500, set Cilium MTU to 1450 for VXLAN
+- Test MTU settings carefully - VMware VMXNET3 adapters default to 1500, set Cilium MTU to 1450 for VXLAN
 - Enable promiscuous mode only on portgroups used by Kubernetes nodes, not broadly across the ESXi environment
 - Use vSphere resource pools to ensure Kubernetes nodes have dedicated CPU/memory resources
 

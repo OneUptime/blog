@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Distributed Tracing, Microservices, OpenTelemetry, Observability, gRPC, Tracing
+Tags: Go, Distributed Tracing, Microservices, OpenTelemetry, Observability, GRPC, Tracing
 
 Description: Learn how to implement distributed tracing in Go microservices with proper context propagation across HTTP, gRPC, and message queues using OpenTelemetry.
 

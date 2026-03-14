@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TimescaleDB, Python, PostgreSQL, Time-Series, Database, psycopg2, SQLAlchemy, Data Analytics
+Tags: TimescaleDB, Python, PostgreSQL, Time-Series, Database, Psycopg2, SQLAlchemy, Data Analytics
 
 Description: Learn how to use TimescaleDB with Python for time-series data management.
 

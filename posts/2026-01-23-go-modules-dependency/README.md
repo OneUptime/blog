@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Modules, Dependencies, go.mod, Package Management
+Tags: Go, Golang, Modules, Dependencies, Go.mod, Package Management
 
 Description: Learn how to use Go modules for dependency management, including initialization, versioning, updates, and best practices for managing Go packages.
 

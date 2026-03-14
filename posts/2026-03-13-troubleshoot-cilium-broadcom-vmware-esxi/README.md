@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, vmware, esxi, kubernetes, troubleshooting, networking, virtualization
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
 Description: A troubleshooting guide for diagnosing and resolving issues when running Cilium on Kubernetes clusters deployed on Broadcom VMware ESXi hypervisor infrastructure.
 
@@ -10,7 +10,7 @@ Description: A troubleshooting guide for diagnosing and resolving issues when ru
 
 ## Introduction
 
-Running Kubernetes with Cilium on VMware ESXi-hosted virtual machines presents unique networking challenges. ESXi's virtual networking layer—including virtual switches (vSwitches), distributed virtual switches (DVS), and port groups—can interfere with Cilium's eBPF-based networking if not configured correctly.
+Running Kubernetes with Cilium on VMware ESXi-hosted virtual machines presents unique networking challenges. ESXi's virtual networking layer-including virtual switches (vSwitches), distributed virtual switches (DVS), and port groups-can interfere with Cilium's eBPF-based networking if not configured correctly.
 
 The most common issues involve promiscuous mode requirements for overlay networking, MAC address changes being blocked by vSwitch security policies, forged transmits settings affecting pod traffic, and virtual NIC driver limitations that prevent some eBPF features from working.
 
@@ -129,7 +129,7 @@ cilium connectivity test
 ## Best Practices
 
 - Always configure promiscuous mode, MAC address changes, and forged transmits on port groups used by Kubernetes node VMs
-- Use VMXNET3 virtual NICs for best Cilium compatibility—avoid E1000 and older adapters
+- Use VMXNET3 virtual NICs for best Cilium compatibility-avoid E1000 and older adapters
 - Enable jumbo frames (9000 MTU) on DVS for optimal performance, eliminating encapsulation overhead
 - Test Cilium connectivity after any vSwitch or port group configuration changes
 - Document required ESXi/vSphere settings in your cluster provisioning runbooks

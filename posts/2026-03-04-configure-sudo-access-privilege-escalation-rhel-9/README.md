@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, Security, Privilege Escalation, Linux
+Tags: RHEL, Sudo, Security, Privilege Escalation, Linux
 
 Description: Learn how to configure sudo access on RHEL, including visudo, the sudoers file, drop-in configurations, NOPASSWD rules, and command restrictions for secure privilege escalation.
 

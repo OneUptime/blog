@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, tmpfs, Memory, Optimization
+Tags: Docker, Performance, Tmpfs, Memory, Optimization
 
 Description: Learn how to use Docker tmpfs mounts to store data in memory for faster I/O, reduce disk wear, and improve application performance for temporary data.
 

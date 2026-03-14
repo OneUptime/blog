@@ -1,10 +1,10 @@
-# Install Calico on Rancher Step by Step
+# How to Install Calico on Rancher Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Rancher, Kubernetes, RKE, Networking, Network Policy
+Tags: Calico, Kubernetes, Networking, CNI, Installation, Rancher
 
-Description: Step-by-step guide to installing Calico on Rancher-managed Kubernetes clusters using RKE and the Rancher UI for network policy enforcement.
+Description: A step-by-step guide to installing Calico as the CNI on Kubernetes clusters managed by Rancher.
 
 ---
 

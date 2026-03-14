@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Monitoring, Prometheus, Kubernetes, Observability
+Tags: Istio, GRPC, Monitoring, Prometheus, Kubernetes, Observability
 
 Description: Monitor gRPC services with Istio using built-in Envoy metrics, Prometheus integration, and Grafana dashboards for request rates, latencies, and error tracking.
 

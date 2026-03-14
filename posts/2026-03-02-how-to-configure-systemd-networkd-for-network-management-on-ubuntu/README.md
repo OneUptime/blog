@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Networking, systemd-networkd, Linux
+Tags: Ubuntu, Systemd, Networking, Systemd-networkd, Linux
 
 Description: Configure network interfaces on Ubuntu using systemd-networkd with static IPs, DHCP, VLANs, bonds, and bridges through simple INI-style configuration files.
 

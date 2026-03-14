@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Multipass, cloud-init, Virtualization
+Tags: Ubuntu, Multipass, Cloud-init, Virtualization
 
 Description: A practical guide to using cloud-init configurations with Multipass on Ubuntu to provision local virtual machines with custom software, users, and settings.
 

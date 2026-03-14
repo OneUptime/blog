@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Memory, vm.swappiness, Virtual Memory, Performance, Linux, Tuning
+Tags: RHEL, Memory, Vm.swappiness, Virtual Memory, Performance, Linux, Tuning
 
 Description: Learn how to configure vm.swappiness and other virtual memory parameters on RHEL to optimize memory behavior for your workload.
 

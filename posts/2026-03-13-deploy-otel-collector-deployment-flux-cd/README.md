@@ -1,10 +1,10 @@
-# Deploy OpenTelemetry Collector as a Deployment with Flux CD
+# How to Deploy OpenTelemetry Collector as a Deployment with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Collector, Deployment, Flux CD, GitOps, Kubernetes, Observability
+Tags: Flux CD, Kubernetes, GitOps, OpenTelemetry, OTEL Collector, Deployments, Observability
 
-Description: Deploy the OpenTelemetry Collector as a scalable Kubernetes Deployment using Flux CD. This guide covers centralized telemetry aggregation, multi-backend export pipelines, and horizontal scaling for production workloads.
+Description: Deploy OpenTelemetry Collector as a central Deployment using Flux CD for aggregating and processing telemetry from multiple application sources before exporting to backends.
 
 ---
 

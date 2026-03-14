@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubeconfig, ServiceAccount, Authentication, CI/CD
+Tags: Kubernetes, Kubeconfig, ServiceAccount, Authentication, CI/CD
 
 Description: Learn how to create a kubeconfig file from a Kubernetes ServiceAccount token for CI/CD pipelines, external tools, or limited-access users.
 

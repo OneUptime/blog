@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, STIG, Compliance, Security, DISA, Linux
+Tags: RHEL, Auditd, STIG, Compliance, Security, DISA, Linux
 
 Description: Configure the Linux audit system on RHEL to meet DISA STIG requirements with the correct audit rules, daemon settings, and log management.
 

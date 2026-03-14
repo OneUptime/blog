@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, OpenEBS, cStor, Block Storage, Storage Engine
+Tags: Flux CD, Kubernetes, GitOps, OpenEBS, CStor, Block Storage, Storage Engine
 
 Description: Deploy OpenEBS cStor storage engine to Kubernetes using Flux CD for GitOps-managed enterprise-grade block storage with snapshots and replication.
 

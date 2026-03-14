@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Troubleshooting, Go, Python, Performance, Microservices
+Tags: GRPC, Troubleshooting, Go, Python, Performance, Microservices
 
 Description: Learn how to diagnose and resolve gRPC message size limit errors by adjusting server and client configurations, implementing streaming, and optimizing message payloads.
 

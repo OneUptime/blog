@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journalctl, Real-Time Monitoring, Logging, systemd, Troubleshooting
+Tags: RHEL, Journalctl, Real-Time Monitoring, Logging, Systemd, Troubleshooting
 
 Description: Use journalctl -f and related options on RHEL to watch log output in real time, filtering by service, priority, or other criteria for live troubleshooting.
 

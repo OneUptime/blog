@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, uv, Package Management
+Tags: OpenTelemetry, Python, Uv, Package Management
 
 Description: Fix OpenTelemetry auto-instrumentation failures caused by uv sync removing or not installing instrumentation packages correctly.
 

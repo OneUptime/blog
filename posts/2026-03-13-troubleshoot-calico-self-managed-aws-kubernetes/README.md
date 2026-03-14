@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aws, kubernetes, self-managed, troubleshooting, networking, ec2
+Tags: Calico, Kubernetes, Networking, Troubleshooting, AWS, Self-Managed
 
 Description: A guide to diagnosing and resolving networking issues when running Calico on self-managed Kubernetes clusters deployed on AWS EC2 instances.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving networking issues when running 
 
 ## Introduction
 
-Self-managed Kubernetes on AWS (using tools like kubeadm, kops, or Kubespray) with Calico provides more flexibility than EKS but requires you to manage all networking components yourself. AWS-specific networking behaviors—such as security groups, the VPC's source/destination check, and the limited IP protocol support—directly impact Calico's behavior.
+Self-managed Kubernetes on AWS (using tools like kubeadm, kops, or Kubespray) with Calico provides more flexibility than EKS but requires you to manage all networking components yourself. AWS-specific networking behaviors-such as security groups, the VPC's source/destination check, and the limited IP protocol support-directly impact Calico's behavior.
 
 The most common issues in this environment involve AWS security groups blocking Calico's encapsulation protocols, the VPC's source/destination check interfering with pod routing, and BGP being blocked by security groups. Understanding these AWS-specific constraints is the key to effective troubleshooting.
 

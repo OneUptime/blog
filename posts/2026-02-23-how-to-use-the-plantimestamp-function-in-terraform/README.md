@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, plantimestamp, Time Functions, Plan Stability, Infrastructure as Code
+Tags: Terraform, Plantimestamp, Time Functions, Plan Stability, Infrastructure as Code
 
 Description: Learn how to use Terraform's plantimestamp function for consistent timestamps across plan and apply phases, avoiding unnecessary resource changes on every run.
 

@@ -10,7 +10,7 @@ Description: A guide to configuring Calico networking for Windows nodes when cre
 
 ## Introduction
 
-Creating a new Rancher-managed cluster with Windows nodes and Calico as the CNI involves configuring the cluster at creation time rather than retrofitting an existing cluster. Rancher's cluster creation wizard handles many of the initial configuration steps, but Calico-specific settings — IP pools, encapsulation mode, MTU — require additional configuration through the standard Calico CRDs after the cluster is running.
+Creating a new Rancher-managed cluster with Windows nodes and Calico as the CNI involves configuring the cluster at creation time rather than retrofitting an existing cluster. Rancher's cluster creation wizard handles many of the initial configuration steps, but Calico-specific settings - IP pools, encapsulation mode, MTU - require additional configuration through the standard Calico CRDs after the cluster is running.
 
 Rancher passes Calico configuration through Helm chart values during cluster creation, and then the Tigera Operator manages the ongoing configuration. Understanding which settings to configure at creation time (through Rancher) versus post-creation time (through `calicoctl`) is key to a well-configured mixed-OS cluster.
 

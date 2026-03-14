@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Network Policy, IBM Kubernetes Service, IKS, Security
+Tags: Calico, Kubernetes, Networking, Network Policy, IBM Kubernetes Service, Security
 
 Description: Test and validate Kubernetes and Calico network policies on IBM Kubernetes Service clusters.
 
@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes and Calico network policies on IBM Kub
 
 ## Introduction
 
-IBM Kubernetes Service uses Calico as its full CNI, giving IKS clusters access to both standard Kubernetes NetworkPolicy and Calico's extended GlobalNetworkPolicy resources. IBM also supports Calico's tiered policies, which allow you to assign priorities to policy tiers for ordered evaluation — a feature particularly useful in enterprise multi-team environments.
+IBM Kubernetes Service uses Calico as its full CNI, giving IKS clusters access to both standard Kubernetes NetworkPolicy and Calico's extended GlobalNetworkPolicy resources. IBM also supports Calico's tiered policies, which allow you to assign priorities to policy tiers for ordered evaluation - a feature particularly useful in enterprise multi-team environments.
 
 Testing network policies on IKS should cover both standard Kubernetes NetworkPolicy resources and Calico GlobalNetworkPolicy resources. IBM's IKS documentation recommends using Calico GlobalNetworkPolicy for cluster-wide default policies and namespace-scoped NetworkPolicy for application-level isolation.
 

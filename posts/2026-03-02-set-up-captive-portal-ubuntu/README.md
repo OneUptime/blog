@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Captive Portal, hostapd, iptables
+Tags: Ubuntu, Networking, Captive Portal, Hostapd, Iptables
 
 Description: Learn how to set up a captive portal on Ubuntu to require authentication before granting internet access, using hostapd, dnsmasq, Nginx, and iptables.
 

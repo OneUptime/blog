@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, Apache, mod_wsgi, Django
+Tags: Ubuntu, Python, Apache, Mod_wsgi, Django
 
 Description: Configure Apache's mod_wsgi module on Ubuntu to serve Python WSGI applications including Django and Flask, with virtual environment support and daemon mode.
 

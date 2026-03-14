@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Leader Election, Troubleshooting, Kubernetes
+Tags: Talos Linux, Etcd, Leader Election, Troubleshooting, Kubernetes
 
 Description: Learn how to diagnose and fix etcd leader election issues in Talos Linux to maintain a stable and healthy Kubernetes cluster.
 

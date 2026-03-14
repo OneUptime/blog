@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, MariaDB, PostgreSQL, Migration, Database, pgloader
+Tags: RHEL, MariaDB, PostgreSQL, Migration, Database, Pgloader
 
 Description: Migrate your data from MariaDB to PostgreSQL on RHEL using pgloader for automated schema conversion and data transfer with minimal manual effort.
 

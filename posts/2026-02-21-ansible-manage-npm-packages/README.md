@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, npm, Node.js, JavaScript, DevOps
+Tags: Ansible, Npm, Node.js, JavaScript, DevOps
 
 Description: Learn how to install, update, and manage npm packages globally and per-project using the Ansible community.general.npm module with practical examples.
 

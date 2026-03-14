@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Svelte, SvelteKit, JavaScript, Nginx
+Tags: Flux CD, Kubernetes, GitOps, Svelte, SvelteKit, JavaScript, NGINX
 
 Description: Deploy a Svelte or SvelteKit application to Kubernetes using Flux CD, covering both static export and SSR adapter configurations.
 
@@ -24,7 +24,7 @@ This guide covers two deployment patterns with Flux CD: the fully static export 
 ## Step 1: Choose Your SvelteKit Adapter
 
 ```javascript
-// svelte.config.js — Option A: static adapter for Nginx serving
+// svelte.config.js - Option A: static adapter for Nginx serving
 import adapter from "@sveltejs/adapter-static";
 
 export default {
@@ -39,7 +39,7 @@ export default {
 ```
 
 ```javascript
-// svelte.config.js — Option B: Node.js adapter for SSR
+// svelte.config.js - Option B: Node.js adapter for SSR
 import adapter from "@sveltejs/adapter-node";
 
 export default {
@@ -56,7 +56,7 @@ export default {
 ### Option A: Static Output with Nginx
 
 ```dockerfile
-# Dockerfile.static — Nginx serving static SvelteKit output
+# Dockerfile.static - Nginx serving static SvelteKit output
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -96,7 +96,7 @@ server {
 ### Option B: Node.js Adapter for SSR
 
 ```dockerfile
-# Dockerfile.ssr — SvelteKit with Node.js adapter
+# Dockerfile.ssr - SvelteKit with Node.js adapter
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -131,7 +131,7 @@ kind: Namespace
 metadata:
   name: my-svelte-app
 ---
-# deploy/configmap.yaml — runtime configuration for the SvelteKit app
+# deploy/configmap.yaml - runtime configuration for the SvelteKit app
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -326,7 +326,7 @@ kubectl port-forward -n my-svelte-app svc/my-svelte-app 8080:80
 
 ## Best Practices
 
-- For public-facing `PUBLIC_*` environment variables in SvelteKit SSR, pass them as environment variables to the Node.js process rather than baking them into the build — the Node adapter reads them at runtime.
+- For public-facing `PUBLIC_*` environment variables in SvelteKit SSR, pass them as environment variables to the Node.js process rather than baking them into the build - the Node adapter reads them at runtime.
 - Use the `adapter-static` for pure content sites (documentation, marketing pages) and `adapter-node` for applications that need server-side logic, API routes, or per-request personalization.
 - Implement a `/api/health` server route in SvelteKit SSR for a meaningful liveness probe that checks database or backend API connectivity.
 - Use `npm ci` with a lockfile and pin the Node.js version in the Dockerfile to ensure reproducible builds.

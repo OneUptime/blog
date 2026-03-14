@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LVM, pvmove, Storage, Disk Management
+Tags: Ubuntu, LVM, Pvmove, Storage, Disk Management
 
 Description: Use pvmove on Ubuntu to migrate LVM data between Physical Volumes online without service interruption, covering full disk and targeted LV migration scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fapolicyd, RPM, Security, Package Management
+Tags: RHEL, Fapolicyd, RPM, Security, Package Management
 
 Description: Learn how fapolicyd integrates with the RPM database to automatically trust packages installed through official channels on RHEL.
 

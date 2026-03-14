@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, OCI, CI/CD, GitOps, OCIRepository, Kubernetes Manifests, Supply Chain Security
+Tags: Flux CD, OCI, CI/CD, GitOps, OCIRepository, Kubernetes manifests, Supply Chain Security
 
 Description: Learn how to package and push OCI artifacts containing Kubernetes manifests in CI pipelines for Flux CD OCIRepository-based deployments.
 
@@ -28,7 +28,7 @@ This guide walks through configuring CI to build and push OCI manifest artifacts
 
 An OCI artifact created by `flux push artifact` packages a directory as a tarball with OCI media types. Flux CD extracts it and treats the contents as a Kustomize directory or plain manifests.
 
-```
+```plaintext
 manifests/
   myapp/
     namespace.yaml

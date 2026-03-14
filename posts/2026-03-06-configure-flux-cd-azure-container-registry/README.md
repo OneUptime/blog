@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, Azure, ACR, container-registry, GitOps, Kubernetes, OCI
+Tags: Flux-cd, Azure, ACR, Container-registry, GitOps, Kubernetes, OCI
 
 Description: Learn how to integrate Flux CD with Azure Container Registry using managed identity, token-based authentication, and OCI artifact support.
 

@@ -10,7 +10,7 @@ Description: Configure IP-in-IP tunneling in Calico for pod networking across L3
 
 ## Introduction
 
-IP-in-IP tunneling (also called IPIP) encapsulates IP packets inside other IP packets using protocol number 4. Calico uses IP-in-IP to route pod traffic across nodes when native routing is not available, with 20 bytes of overhead per packet — less than VXLAN's 50 bytes. This makes IP-in-IP the preferred lightweight encapsulation option when VXLAN's larger overhead is a concern.
+IP-in-IP tunneling (also called IPIP) encapsulates IP packets inside other IP packets using protocol number 4. Calico uses IP-in-IP to route pod traffic across nodes when native routing is not available, with 20 bytes of overhead per packet - less than VXLAN's 50 bytes. This makes IP-in-IP the preferred lightweight encapsulation option when VXLAN's larger overhead is a concern.
 
 Calico supports three IP-in-IP modes: `Always` (always encapsulate), `CrossSubnet` (only encapsulate when crossing subnet boundaries), and `Never` (disable IP-in-IP). The `CrossSubnet` mode is particularly useful in environments where some node pairs are on the same subnet (can use native routing) while others are on different subnets (require encapsulation).
 

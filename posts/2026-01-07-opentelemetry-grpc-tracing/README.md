@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Tracing, Microservices, Observability, Performance
+Tags: OpenTelemetry, GRPC, Tracing, Microservices, Observability, Performance
 
 Description: Learn how to add comprehensive tracing to gRPC services using OpenTelemetry interceptors.
 

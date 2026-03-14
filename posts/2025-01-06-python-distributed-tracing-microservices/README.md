@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, OpenTelemetry, Distributed Tracing, Microservices, gRPC, Celery, Context Propagation, Observability
+Tags: Python, OpenTelemetry, Distributed Tracing, Microservices, GRPC, Celery, Context Propagation, Observability
 
 Description: A practical guide to implementing distributed tracing across Python microservices.
 

@@ -12,7 +12,7 @@ Description: Deploy the Elastic Cloud on Kubernetes (ECK) operator for managed E
 
 Elastic Cloud on Kubernetes (ECK) is the official Elastic operator for managing Elasticsearch, Kibana, Logstash, Beats, and APM Server on Kubernetes. ECK automates cluster provisioning, TLS certificate management, rolling upgrades, and storage resizing. It supports both basic (free) and platinum/enterprise features depending on your license.
 
-Deploying ECK through Flux CD gives you GitOps control over the operator installation and over every Elasticsearch cluster managed by it. Cluster topology changes — adding data nodes, enabling hot-warm architecture, upgrading Elasticsearch versions — are Git commits that Flux applies safely through ECK's rolling update mechanism.
+Deploying ECK through Flux CD gives you GitOps control over the operator installation and over every Elasticsearch cluster managed by it. Cluster topology changes - adding data nodes, enabling hot-warm architecture, upgrading Elasticsearch versions - are Git commits that Flux applies safely through ECK's rolling update mechanism.
 
 ## Prerequisites
 
@@ -264,7 +264,7 @@ kubectl port-forward svc/kibana-kb-http 5601:5601 -n elastic-system
 ## Best Practices
 
 - Use dedicated master nodes (`node.roles: [master]`) and data nodes (`node.roles: [data_hot, data_content]`) rather than all-in-one nodes for production.
-- ECK automatically generates and rotates TLS certificates — never disable this in production (`selfSignedCertificate.disabled: false`).
+- ECK automatically generates and rotates TLS certificates - never disable this in production (`selfSignedCertificate.disabled: false`).
 - Set `ES_JAVA_OPTS` heap to 50% of the container memory limit, and never exceed 32 GiB (beyond which JVM performance degrades).
 - Use `data_hot`/`data_warm`/`data_cold` node roles with ILM to implement tiered storage automatically.
 - Pin the Elasticsearch version in Git and use Flux image policies for controlled upgrades with PR review.

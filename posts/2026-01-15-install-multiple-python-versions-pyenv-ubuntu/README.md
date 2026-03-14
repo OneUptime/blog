@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, pyenv, Development, Version Management, Tutorial
+Tags: Ubuntu, Python, Pyenv, Development, Version Management, Tutorial
 
 Description: Master Python version management on Ubuntu using pyenv to install, switch between, and manage multiple Python versions for different projects.
 

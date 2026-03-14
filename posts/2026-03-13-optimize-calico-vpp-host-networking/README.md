@@ -141,7 +141,7 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 Document your optimization results:
 
-```
+```plaintext
 | Configuration | Throughput | Latency (p99) |
 |--------------|-----------|---------------|
 | Baseline (iptables) | 5 Gbps | 2ms |

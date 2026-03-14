@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Monitor Cilium BGP session health, route advertisement metrics, and peer state changes using Cilium's built-in metrics, Prometheus, and Grafana dashboards.
 
@@ -129,4 +129,4 @@ flowchart LR
 
 ## Conclusion
 
-Comprehensive BGP monitoring in Cilium requires both metric-based alerting for automated detection and CLI tooling for ad-hoc investigation. The `cilium_bgp_session_state` metric is your primary health indicator — alert on any session that stays down for more than 2 minutes. Complement session monitoring with prefix count tracking to detect silent route withdrawal issues that can cause traffic blackholes even when sessions remain established.
+Comprehensive BGP monitoring in Cilium requires both metric-based alerting for automated detection and CLI tooling for ad-hoc investigation. The `cilium_bgp_session_state` metric is your primary health indicator - alert on any session that stays down for more than 2 minutes. Complement session monitoring with prefix count tracking to detect silent route withdrawal issues that can cause traffic blackholes even when sessions remain established.

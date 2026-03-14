@@ -1,4 +1,4 @@
-# How to Validate Resolution of kube-system Access Problems with Calico NetworkPolicy
+# How to Validate Resolution of kube-system Access with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

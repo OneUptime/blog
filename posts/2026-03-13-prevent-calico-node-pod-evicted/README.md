@@ -10,7 +10,7 @@ Description: Prevent calico-node pod eviction with priority class configuration,
 
 ## Introduction
 
-Preventing calico-node eviction is primarily about ensuring the pod has the `system-node-critical` priority class and appropriate resource configuration. The priority class ensures Kubernetes treats calico-node as essential infrastructure that should only be evicted as an absolute last resort — and even then, only after all user workloads have been evicted first.
+Preventing calico-node eviction is primarily about ensuring the pod has the `system-node-critical` priority class and appropriate resource configuration. The priority class ensures Kubernetes treats calico-node as essential infrastructure that should only be evicted as an absolute last resort - and even then, only after all user workloads have been evicted first.
 
 ## Symptoms
 

@@ -10,7 +10,7 @@ Description: Deploy Amazon MQ broker configuration on AWS using Flux CD and the 
 
 ## Introduction
 
-Amazon MQ is a managed message broker service for Apache ActiveMQ and RabbitMQ on AWS. It handles provisioning, patching, and high availability automatically. For teams that want to use Amazon MQ with a GitOps workflow, the AWS Controllers for Kubernetes (ACK) provides a Kubernetes operator that manages AWS resources — including Amazon MQ brokers — through Kubernetes CRDs.
+Amazon MQ is a managed message broker service for Apache ActiveMQ and RabbitMQ on AWS. It handles provisioning, patching, and high availability automatically. For teams that want to use Amazon MQ with a GitOps workflow, the AWS Controllers for Kubernetes (ACK) provides a Kubernetes operator that manages AWS resources - including Amazon MQ brokers - through Kubernetes CRDs.
 
 Using the ACK Amazon MQ controller with Flux CD means your broker configuration, user settings, and maintenance window are described in Git. Changes flow through pull requests and are applied by Flux, which calls the ACK controller, which calls the Amazon MQ API. This brings GitOps discipline to AWS managed services without requiring infrastructure-as-code tools like Terraform.
 
@@ -135,7 +135,7 @@ spec:
     timeOfDay: "02:00"
     timeZone: UTC
 
-  # Storage (not configurable for RabbitMQ — AWS manages it)
+  # Storage (not configurable for RabbitMQ - AWS manages it)
   storageType: efs   # for ActiveMQ
 
   # Network: place in private subnets
@@ -268,10 +268,10 @@ kubectl get broker production-broker -n messaging \
 
 - Use `CLUSTER_MULTI_AZ` deployment mode for production brokers to survive AZ failures without data loss.
 - Set maintenance windows during low-traffic periods for auto minor version upgrades.
-- Use VPC endpoints and private subnets — never expose Amazon MQ brokers to the public internet.
+- Use VPC endpoints and private subnets - never expose Amazon MQ brokers to the public internet.
 - Enable CloudWatch logging (`logs.general: true`) for broker activity monitoring.
 - Use IRSA for the ACK controller rather than static AWS credentials stored in Kubernetes Secrets.
 
 ## Conclusion
 
-Using the AWS ACK Amazon MQ controller with Flux CD brings GitOps discipline to managed message broker provisioning on AWS. Your broker configuration — deployment mode, maintenance windows, user management — is declared in Git and applied through the same pull request workflow as your application deployments. This eliminates the need for separate Terraform or CloudFormation stacks for broker provisioning, reducing operational complexity for teams already invested in Kubernetes GitOps.
+Using the AWS ACK Amazon MQ controller with Flux CD brings GitOps discipline to managed message broker provisioning on AWS. Your broker configuration - deployment mode, maintenance windows, user management - is declared in Git and applied through the same pull request workflow as your application deployments. This eliminates the need for separate Terraform or CloudFormation stacks for broker provisioning, reducing operational complexity for teams already invested in Kubernetes GitOps.

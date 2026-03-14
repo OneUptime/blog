@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Roles, validate_argument_spec, Variable Validation
+Tags: Ansible, Roles, Validate_argument_spec, Variable Validation
 
 Description: Learn how to use Ansible validate_argument_spec to enforce variable types and constraints on role inputs for better reliability.
 

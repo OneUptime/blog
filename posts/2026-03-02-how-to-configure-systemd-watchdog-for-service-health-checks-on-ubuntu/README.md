@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Service Management, High Availability
+Tags: Ubuntu, Systemd, Service Management, High Availability
 
 Description: Learn how to configure systemd's built-in watchdog mechanism to automatically detect and restart unresponsive services on Ubuntu systems.
 

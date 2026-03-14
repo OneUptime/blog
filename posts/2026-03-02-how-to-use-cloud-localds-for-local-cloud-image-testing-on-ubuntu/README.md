@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Cloud Images, cloud-init, QEMU, Testing
+Tags: Ubuntu, Cloud Images, Cloud-init, QEMU, Testing
 
 Description: Use cloud-localds on Ubuntu to create NoCloud seed ISOs for testing Ubuntu cloud images locally with QEMU, enabling offline cloud-init configuration testing before cloud deployment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, Dependencies, PackageManager, Troubleshooting
+Tags: NodeJS, Npm, Dependencies, PackageManager, Troubleshooting
 
 Description: Learn how to diagnose and resolve npm peer dependency conflicts including understanding peer dependencies, using legacy-peer-deps, and managing complex dependency trees.
 

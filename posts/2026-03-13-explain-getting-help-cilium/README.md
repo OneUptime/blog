@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Community, Support, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: An explanation of the Cilium community support ecosystem — Slack, GitHub, documentation, and enterprise support — and how to navigate it effectively when you need help.
+Description: An explanation of the Cilium community support ecosystem - Slack, GitHub, documentation, and enterprise support - and how to navigate it effectively when you need help.
 
 ---
 
@@ -81,4 +81,4 @@ kubectl get configmap -n kube-system cilium-config -o yaml
 
 ## Conclusion
 
-The Cilium help ecosystem is well-organized and community-responsive. The most important habit is choosing the right channel for your problem type and coming prepared with diagnostic information. A question that includes your Cilium version, a `cilium status` output, and specific error messages will get resolved far faster than a vague complaint about something "not working." Invest two minutes in collecting diagnostics before asking — it will save hours.
+The Cilium help ecosystem is well-organized and community-responsive. The most important habit is choosing the right channel for your problem type and coming prepared with diagnostic information. A question that includes your Cilium version, a `cilium status` output, and specific error messages will get resolved far faster than a vague complaint about something "not working." Invest two minutes in collecting diagnostics before asking - it will save hours.

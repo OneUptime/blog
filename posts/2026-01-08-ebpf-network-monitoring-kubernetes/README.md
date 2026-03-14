@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, Kubernetes, Cilium, Network Monitoring, BCC, Observability, Performance Analysis, Linux Kernel, Cloud-Native
+Tags: EBPF, Kubernetes, Cilium, Network Monitoring, BCC, Observability, Performance Analysis, Linux Kernel, Cloud-Native
 
 Description: Learn how to leverage eBPF technology for deep network observability and monitoring in Kubernetes clusters using Cilium, BCC tools, and custom probes.
 

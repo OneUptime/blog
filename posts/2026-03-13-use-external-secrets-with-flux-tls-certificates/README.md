@@ -10,7 +10,7 @@ Description: Sync TLS certificates from external secret stores using ESO and Flu
 
 ## Introduction
 
-TLS certificates are time-sensitive secrets with a hard expiry date. When a certificate expires, your services become inaccessible and browsers show security warnings — one of the most visible production failures possible. While cert-manager is excellent for certificates issued by Let's Encrypt or internal CAs, many organizations manage certificates through centralized certificate management systems or purchase wildcard certificates that are stored in secret stores like AWS Secrets Manager or HashiCorp Vault.
+TLS certificates are time-sensitive secrets with a hard expiry date. When a certificate expires, your services become inaccessible and browsers show security warnings - one of the most visible production failures possible. While cert-manager is excellent for certificates issued by Let's Encrypt or internal CAs, many organizations manage certificates through centralized certificate management systems or purchase wildcard certificates that are stored in secret stores like AWS Secrets Manager or HashiCorp Vault.
 
 The External Secrets Operator bridges centralized certificate stores and Kubernetes, syncing certificates into `kubernetes.io/tls` typed Secrets that Ingress controllers and services can consume directly. Combined with Flux CD for configuration management and a short refresh interval, ESO ensures your Ingress controllers always have the latest certificate, well ahead of expiry.
 
@@ -27,7 +27,7 @@ This guide covers syncing TLS certificates from AWS Secrets Manager and HashiCor
 
 Store certificates and private keys as JSON objects in your secret store. Use PEM-encoded strings:
 
-**AWS Secrets Manager — Secret: `platform/tls/wildcard-example-com`**
+**AWS Secrets Manager - Secret: `platform/tls/wildcard-example-com`**
 ```json
 {
   "certificate": "-----BEGIN CERTIFICATE-----\nMIID...BASE64...\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nMIID...CHAIN...\n-----END CERTIFICATE-----",

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: fluxcd, GitOps, Kubernetes, Continuous Delivery, Automation
+Tags: Fluxcd, GitOps, Kubernetes, Continuous Delivery, Automation
 
 Description: Learn how to use FluxCD for GitOps-based continuous delivery with automated image updates and Helm chart management.
 

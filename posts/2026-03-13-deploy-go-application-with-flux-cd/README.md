@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Go, Golang, Deployment
+Tags: Flux CD, Kubernetes, GitOps, Go, Golang, Deployments
 
 Description: Deploy a compiled Go application to Kubernetes using Flux CD GitOps, leveraging Go's minimal runtime footprint for lean container images and fast startup.
 
@@ -28,7 +28,7 @@ This guide covers the Go multi-stage Dockerfile, Kubernetes manifest design, and
 Go's static compilation makes distroless containers practical. The image contains only the binary and essential system certificates.
 
 ```dockerfile
-# Dockerfile — multi-stage: compile on full Go image, run on distroless
+# Dockerfile - multi-stage: compile on full Go image, run on distroless
 FROM golang:1.22-alpine AS builder
 WORKDIR /app
 
@@ -123,7 +123,7 @@ spec:
       labels:
         app: my-go-app
     spec:
-      # Go distroless images are very secure — enforce it
+      # Go distroless images are very secure - enforce it
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -191,7 +191,7 @@ spec:
       port: 80
       targetPort: 8080
 ---
-# deploy/pdb.yaml — ensure at least 2 replicas during disruptions
+# deploy/pdb.yaml - ensure at least 2 replicas during disruptions
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -298,7 +298,7 @@ spec:
 # Check Flux status
 flux get kustomizations my-go-app
 
-# Go pods start almost instantly — they should be Ready within seconds
+# Go pods start almost instantly - they should be Ready within seconds
 kubectl get pods -n my-go-app
 
 # Test the API

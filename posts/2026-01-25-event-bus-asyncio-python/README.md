@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, asyncio, Event Bus, Pub-Sub, Event-Driven Architecture, Concurrency, Design Pattern
+Tags: Python, Asyncio, Event Bus, Pub-Sub, Event-Driven Architecture, Concurrency, Design Pattern
 
 Description: Learn how to build an async event bus in Python using asyncio. This guide covers event publishing, subscription management, error handling, and patterns for building decoupled event-driven systems.
 

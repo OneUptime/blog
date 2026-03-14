@@ -108,7 +108,7 @@ Missing `cali-` chains indicate Felix has not programmed rules on that node.
 
 ## Step-by-Step Diagnostic Flow
 
-```
+```plaintext
 Pod connectivity failure
   └─ Check flannel.1 interface + VXLAN routes (Flannel layer)
        └─ OK? → Check NetworkPolicy selectors (policy layer)

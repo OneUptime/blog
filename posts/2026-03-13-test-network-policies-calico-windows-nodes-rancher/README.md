@@ -10,7 +10,7 @@ Description: A guide to testing Calico network policy enforcement on Windows nod
 
 ## Introduction
 
-Testing network policies in a Rancher-managed cluster with Windows nodes can be initiated from the Rancher UI (for deploying test workloads) or from the kubectl CLI. Policy testing itself is identical to non-Rancher deployments — the Calico policy model and HNS enforcement mechanism do not change based on the cluster management layer. However, Rancher's project and namespace model can affect how policies apply.
+Testing network policies in a Rancher-managed cluster with Windows nodes can be initiated from the Rancher UI (for deploying test workloads) or from the kubectl CLI. Policy testing itself is identical to non-Rancher deployments - the Calico policy model and HNS enforcement mechanism do not change based on the cluster management layer. However, Rancher's project and namespace model can affect how policies apply.
 
 Rancher organizes namespaces into Projects, and it creates its own system network policies in some configurations. Before adding Calico policies, check whether Rancher has pre-created any NetworkPolicy resources in your namespaces, as these may affect baseline connectivity.
 

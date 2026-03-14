@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DNSSEC, DNS, Security, Cryptography, dnssec-keygen, KSK, ZSK, Key Management, BIND
+Tags: DNSSEC, DNS, Security, Cryptography, Dnssec-keygen, KSK, ZSK, Key Management, BIND
 
 Description: A comprehensive guide to generating DNSSEC keys using dnssec-keygen, covering key types, algorithms, key sizes, lifecycle management, and file formats.
 

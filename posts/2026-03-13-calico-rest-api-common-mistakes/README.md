@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, Troubleshooting, Best Practices, Automation
+Tags: Calico, Kubernetes, REST API, CNI, Troubleshooting
 
-Description: Common mistakes when using Calico's REST API for automation — from missing resourceVersion on updates to overpermissioned service accounts — and how to prevent them.
+Description: Common mistakes when using Calico's REST API for automation - from missing resourceVersion on updates to overpermissioned service accounts - and how to prevent them.
 
 ---
 
@@ -20,7 +20,7 @@ REST API mistakes in Calico automation range from resource conflicts caused by m
 
 ## Mistake 1: Missing resourceVersion on Updates
 
-Kubernetes uses optimistic locking — when you update a resource, you must include the current `resourceVersion` in the metadata. Without it, the update is rejected with a 409 Conflict error.
+Kubernetes uses optimistic locking - when you update a resource, you must include the current `resourceVersion` in the metadata. Without it, the update is rejected with a 409 Conflict error.
 
 **Symptom**: Update calls return `409 Conflict` even though you just read the resource.
 
@@ -66,7 +66,7 @@ Using the cluster admin kubeconfig or a service account with cluster-admin permi
 
 **Fix**: Create dedicated service accounts with minimal RBAC:
 ```bash
-# Minimal permissions — only what the automation needs
+# Minimal permissions - only what the automation needs
 kubectl create clusterrole calico-policy-automation \
   --verb=get,list,watch,create,update,patch,delete \
   --resource=networkpolicies.projectcalico.org \
@@ -111,7 +111,7 @@ while true; do
 done
 ```
 
-**Correct approach** — use watch:
+**Correct approach** - use watch:
 ```bash
 # Use watch for real-time change notification
 curl -s "$APIBASE/apis/projectcalico.org/v3/globalnetworkpolicies?watch=true" | \

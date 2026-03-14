@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Terraform, cloud-init, DevOps, Infrastructure
+Tags: Ubuntu, Terraform, Cloud-init, DevOps, Infrastructure
 
 Description: Combine cloud-init and Terraform to automate Ubuntu server provisioning, configuring packages, users, and services at first boot without manual intervention.
 

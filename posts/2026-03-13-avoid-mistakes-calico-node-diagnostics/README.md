@@ -97,4 +97,4 @@ mindmap
 
 ## Conclusion
 
-The most damaging node diagnostic mistake is restarting the entire calico-node DaemonSet when only one pod is affected — this causes a rolling network disruption across all nodes. Always scope the restart to the single affected pod. The most common diagnostic mistake is running `calicoctl node status` from the wrong node and concluding BGP is healthy when the affected node's BGP peers are actually down. Always start by finding the correct node, then running all diagnostics from that node's calico-node pod.
+The most damaging node diagnostic mistake is restarting the entire calico-node DaemonSet when only one pod is affected - this causes a rolling network disruption across all nodes. Always scope the restart to the single affected pod. The most common diagnostic mistake is running `calicoctl node status` from the wrong node and concluding BGP is healthy when the affected node's BGP peers are actually down. Always start by finding the correct node, then running all diagnostics from that node's calico-node pod.

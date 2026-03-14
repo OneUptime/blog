@@ -10,7 +10,7 @@ Description: Policy authoring and testing practices that ensure Calico NetworkPo
 
 ## Introduction
 
-Preventing NetworkPolicy not taking effect requires building verification into the policy authoring process. Every NetworkPolicy change should include a traffic test that confirms the policy is enforcing the intended behavior — this is the only way to catch selector mismatches and ordering issues before they become production problems.
+Preventing NetworkPolicy not taking effect requires building verification into the policy authoring process. Every NetworkPolicy change should include a traffic test that confirms the policy is enforcing the intended behavior - this is the only way to catch selector mismatches and ordering issues before they become production problems.
 
 ## Symptoms
 

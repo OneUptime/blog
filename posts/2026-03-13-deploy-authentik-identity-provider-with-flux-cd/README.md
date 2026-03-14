@@ -12,7 +12,7 @@ Description: Deploy Authentik identity provider platform to Kubernetes using Flu
 
 Authentik is a modern, open-source identity provider that brings enterprise-grade features to self-hosted environments: single sign-on (SSO), OAuth2 and OIDC server, SAML IdP, LDAP provider, SCIM provisioning, and a powerful flow-based authentication engine that you can customize without writing code. Its Web UI makes it approachable for teams migrating from commercial IdPs.
 
-Unlike lighter-weight solutions such as Dex or OAuth2 Proxy, Authentik maintains its own user database, group management, and authentication flows, making it a full replacement for products like Okta or Azure AD B2C in on-premises environments. Flux CD manages the Authentik deployment declaratively, so every configuration change—from a new OIDC provider to an updated enrollment flow—goes through Git.
+Unlike lighter-weight solutions such as Dex or OAuth2 Proxy, Authentik maintains its own user database, group management, and authentication flows, making it a full replacement for products like Okta or Azure AD B2C in on-premises environments. Flux CD manages the Authentik deployment declaratively, so every configuration change-from a new OIDC provider to an updated enrollment flow-goes through Git.
 
 This guide deploys Authentik using the official Helm chart with PostgreSQL and Redis backends.
 
@@ -153,7 +153,7 @@ spec:
           cpu: 500m
           memory: 1Gi
 
-    # GeoIP (optional — for location-based access policies)
+    # GeoIP (optional - for location-based access policies)
     geoip:
       enabled: false
 ```
@@ -240,7 +240,7 @@ grafana.ini:
 
 ## Best Practices
 
-- Use Authentik's **Blueprints** feature to export and import provider, application, and flow configurations as YAML files—making Authentik configuration itself a GitOps artifact.
+- Use Authentik's **Blueprints** feature to export and import provider, application, and flow configurations as YAML files-making Authentik configuration itself a GitOps artifact.
 - Enable **MFA** enforcement at the flow level for admin accounts and sensitive applications.
 - Use the **LDAP outpost** to expose Authentik as an LDAP server for legacy applications that do not support OIDC.
 - Configure Authentik's **SCIM** provider to automatically provision and deprovision users in downstream applications.
@@ -248,4 +248,4 @@ grafana.ini:
 
 ## Conclusion
 
-Authentik is now deployed on Kubernetes and managed by Flux CD. Your organization has a fully self-hosted identity platform capable of SSO, MFA, OIDC, SAML, and LDAP—all without a third-party SaaS dependency. Flux ensures the deployment stays in sync with Git, and Authentik's Blueprints feature lets you extend GitOps to the identity provider's own configuration.
+Authentik is now deployed on Kubernetes and managed by Flux CD. Your organization has a fully self-hosted identity platform capable of SSO, MFA, OIDC, SAML, and LDAP-all without a third-party SaaS dependency. Flux ensures the deployment stays in sync with Git, and Authentik's Blueprints feature lets you extend GitOps to the identity provider's own configuration.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, package.json, Dependencies, Versioning, JavaScript
+Tags: NodeJS, Npm, Package.json, Dependencies, Versioning, JavaScript
 
 Description: Learn the difference between tilde (~) and caret (^) version ranges in package.json, how semantic versioning works, and best practices for managing dependency versions in Node.js projects.
 

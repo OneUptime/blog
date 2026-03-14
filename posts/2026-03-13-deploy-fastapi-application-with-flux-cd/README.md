@@ -56,7 +56,7 @@ CMD ["gunicorn", "main:app", \
 
 A minimal `requirements.txt`:
 
-```
+```plaintext
 fastapi==0.111.0
 uvicorn[standard]==0.30.0
 gunicorn==22.0.0
@@ -88,7 +88,7 @@ async def health_check():
 
 @app.get("/ready", tags=["Monitoring"])
 async def readiness_check():
-    """Readiness probe — check DB connectivity here."""
+    """Readiness probe - check DB connectivity here."""
     return {"status": "ready"}
 
 @app.get("/api/v1/items")

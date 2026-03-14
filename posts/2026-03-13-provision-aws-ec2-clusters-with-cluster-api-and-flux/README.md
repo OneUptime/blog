@@ -10,7 +10,7 @@ Description: Provision AWS EKS/EC2-based Kubernetes clusters using Cluster API m
 
 ## Introduction
 
-Cluster API with the AWS provider (CAPA) enables you to provision Kubernetes clusters on AWS EC2 instances using declarative Kubernetes manifests. The cluster definition—control plane configuration, node pools, networking—is stored in Git and continuously reconciled by CAPI. Flux CD manages the cluster manifests, ensuring the cluster state is always synchronized with the desired configuration in your repository.
+Cluster API with the AWS provider (CAPA) enables you to provision Kubernetes clusters on AWS EC2 instances using declarative Kubernetes manifests. The cluster definition-control plane configuration, node pools, networking-is stored in Git and continuously reconciled by CAPI. Flux CD manages the cluster manifests, ensuring the cluster state is always synchronized with the desired configuration in your repository.
 
 Each workload cluster is represented by a set of CAPI resources: a `Cluster` object (the root), `AWSCluster` (AWS-specific network configuration), `KubeadmControlPlane` (control plane bootstrapping), and `MachineDeployment` (worker node pools). These objects work together to provision a fully functional Kubernetes cluster on EC2.
 
@@ -274,7 +274,7 @@ kubectl --kubeconfig=production-workload-01.kubeconfig apply -f \
 - Use 3 or 5 control plane nodes for production clusters. An odd number is required for etcd quorum.
 - Use private subnets for control plane and worker nodes. Place the API server load balancer in public subnets.
 - Store kubeconfigs as Kubernetes Secrets in the management cluster, not as local files. CAPI creates them automatically in the cluster's namespace.
-- Deploy a CNI plugin immediately after cluster creation—CAPI does not install CNI for you, and nodes will remain NotReady until a CNI is present.
+- Deploy a CNI plugin immediately after cluster creation-CAPI does not install CNI for you, and nodes will remain NotReady until a CNI is present.
 - Use `MachineHealthCheck` resources to enable automatic remediation of unhealthy nodes.
 
 ## Conclusion

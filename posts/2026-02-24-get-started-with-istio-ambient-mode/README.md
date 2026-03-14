@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, Service Mesh, Kubernetes, ztunnel
+Tags: Istio, Ambient Mode, Service Mesh, Kubernetes, Ztunnel
 
 Description: A beginner-friendly introduction to Istio ambient mode covering what it is, why it exists, and how to get your first ambient mesh running.
 

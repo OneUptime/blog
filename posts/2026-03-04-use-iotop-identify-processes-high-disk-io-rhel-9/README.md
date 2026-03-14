@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, iotop, Disk I/O, Performance, Monitoring, Linux
+Tags: RHEL, Iotop, Disk I/O, Performance, Monitoring, Linux
 
 Description: Learn how to use iotop on RHEL to identify which processes are consuming the most disk I/O and causing performance problems.
 

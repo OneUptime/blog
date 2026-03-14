@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, OAuth2, Authentication, Security, API, fosite
+Tags: Go, OAuth2, Authentication, Security, API, Fosite
 
 Description: Build an OAuth2 authorization server in Go using fosite for secure API authentication with authorization code, client credentials, and refresh token flows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Elixir, Phoenix, opentelemetry_phoenix, Tracing
+Tags: OpenTelemetry, Elixir, Phoenix, Opentelemetry_phoenix, Tracing
 
 Description: Complete guide to instrumenting Phoenix applications with opentelemetry_phoenix library for automatic tracing of HTTP requests, controllers, and views.
 

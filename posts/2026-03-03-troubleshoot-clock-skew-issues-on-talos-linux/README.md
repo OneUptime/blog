@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Clock Skew, Time Synchronization, Troubleshooting, Kubernetes, etcd
+Tags: Talos Linux, Clock Skew, Time Synchronization, Troubleshooting, Kubernetes, Etcd
 
 Description: A comprehensive guide to diagnosing and resolving clock skew issues on Talos Linux nodes that can cause certificate errors, etcd instability, and other cluster problems.
 

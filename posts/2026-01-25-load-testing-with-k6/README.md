@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance Testing, JavaScript, DevOps, Testing Tools
+Tags: K6, Load Testing, Performance Testing, JavaScript, DevOps, Testing Tools
 
 Description: A practical guide to implementing load testing with k6, covering script creation, virtual users, thresholds, and CI/CD integration for reliable performance validation.
 

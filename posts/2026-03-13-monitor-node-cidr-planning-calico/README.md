@@ -10,7 +10,7 @@ Description: Learn how to plan and monitor node CIDR allocations in Calico, ensu
 
 ## Introduction
 
-Every Kubernetes node needs a range of pod IP addresses large enough to accommodate the maximum number of pods it will run. In Calico, this range comes from IP pool blocks allocated to the node via the block affinity mechanism. Planning node CIDRs correctly — accounting for the maximum pods per node, block size, and cluster growth — is essential for preventing pod scheduling failures from IP exhaustion.
+Every Kubernetes node needs a range of pod IP addresses large enough to accommodate the maximum number of pods it will run. In Calico, this range comes from IP pool blocks allocated to the node via the block affinity mechanism. Planning node CIDRs correctly - accounting for the maximum pods per node, block size, and cluster growth - is essential for preventing pod scheduling failures from IP exhaustion.
 
 Node CIDR planning with Calico involves choosing appropriate IP pool CIDRs, configuring block sizes, and ensuring that the total IP space scales with your cluster's expected maximum pod count. Monitoring node CIDR utilization helps detect when individual nodes are running low on IP capacity before pods start failing to schedule.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID, mdadm, Reshape, Linux
+Tags: RHEL, RAID, Mdadm, Reshape, Linux
 
 Description: Learn how to grow an mdadm RAID array by adding disks, changing RAID levels, or modifying chunk sizes on RHEL without losing data.
 

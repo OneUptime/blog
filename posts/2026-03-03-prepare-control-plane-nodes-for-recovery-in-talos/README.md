@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Control Plane, Disaster Recovery, Kubernetes, etcd, Node Preparation
+Tags: Talos Linux, Control Plane, Disaster Recovery, Kubernetes, Etcd, Node Preparation
 
 Description: How to properly prepare Talos Linux control plane nodes for cluster recovery by resetting state and configuring them for bootstrap.
 

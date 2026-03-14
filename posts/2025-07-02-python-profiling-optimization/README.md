@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Profiling, Performance, Optimization, cProfile, memory_profiler
+Tags: Python, Profiling, Performance, Optimization, CProfile, Memory_profiler
 
 Description: Learn how to profile and optimize Python applications for better performance. This guide covers CPU profiling, memory analysis, and practical optimization techniques.
 

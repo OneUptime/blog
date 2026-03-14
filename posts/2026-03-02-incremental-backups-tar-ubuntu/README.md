@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, tar, System Administration
+Tags: Ubuntu, Backup, Tar, System Administration
 
 Description: Learn how to implement an incremental backup strategy using tar on Ubuntu, including level-based incremental backups, scheduling, and restoration procedures.
 

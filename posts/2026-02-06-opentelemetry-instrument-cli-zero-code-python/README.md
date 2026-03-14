@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, CLI, Zero-Code, Auto-Instrumentation, opentelemetry-instrument
+Tags: OpenTelemetry, Python, CLI, Zero-Code, Auto-Instrumentation, Opentelemetry-instrument
 
 Description: Master the opentelemetry-instrument CLI tool to add comprehensive observability to Python applications without modifying a single line of code, including configuration, best practices.
 

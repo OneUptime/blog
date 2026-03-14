@@ -186,10 +186,10 @@ linkerd viz stat serviceprofile/api-service.production.svc.cluster.local -n prod
 ## Best Practices
 
 - Generate initial ServiceProfiles with `linkerd profile --tap` to capture real traffic patterns before manually defining routes, then refine in Git.
-- Mark GET, HEAD, and OPTIONS routes as `isRetryable: true` — these are idempotent by HTTP convention. Always mark POST, PUT, PATCH, and DELETE as `isRetryable: false` unless you know your specific endpoints are idempotent.
-- Set `retryBudget.retryRatio` to 0.2 (20% additional requests) as a starting point — monitor actual retry rates and lower the budget if your upstream service is sensitive to amplified load.
-- Name ServiceProfile resources using the fully qualified service DNS name format: `<service>.<namespace>.svc.cluster.local` — Linkerd uses this for matching.
-- Update ServiceProfiles when new API routes are added to your service — unmatched routes are tracked as a single `[UNKNOWN]` bucket in Linkerd metrics, hiding per-route visibility.
+- Mark GET, HEAD, and OPTIONS routes as `isRetryable: true` - these are idempotent by HTTP convention. Always mark POST, PUT, PATCH, and DELETE as `isRetryable: false` unless you know your specific endpoints are idempotent.
+- Set `retryBudget.retryRatio` to 0.2 (20% additional requests) as a starting point - monitor actual retry rates and lower the budget if your upstream service is sensitive to amplified load.
+- Name ServiceProfile resources using the fully qualified service DNS name format: `<service>.<namespace>.svc.cluster.local` - Linkerd uses this for matching.
+- Update ServiceProfiles when new API routes are added to your service - unmatched routes are tracked as a single `[UNKNOWN]` bucket in Linkerd metrics, hiding per-route visibility.
 
 ## Conclusion
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, NGINX, Ingress, Rate Limiting, Security, DDoS Protection, ConfigMap
+Tags: Flux CD, Kubernetes, GitOps, NGINX, Ingress, Rate Limiting, Security, DDoS Protection
 
 Description: Configure rate limiting on NGINX Ingress Controller using annotations and ConfigMaps managed by Flux CD to protect backend services from traffic spikes and abuse.
 
@@ -12,7 +12,7 @@ Description: Configure rate limiting on NGINX Ingress Controller using annotatio
 
 Rate limiting is essential protection for any production API. Without it, a single misbehaving client can consume all your backend capacity, causing slowdowns or outages for legitimate users. NGINX Ingress Controller provides several rate limiting mechanisms through annotations and ConfigMap settings, ranging from simple per-IP rate limits to sophisticated burst handling and connection limiting.
 
-Managing rate limiting configuration through Flux CD means your protection policies are version controlled and consistently applied. When security requirements change — say, a DDoS incident reveals a gap in your rate limiting strategy — the fix is a pull request that goes through review and is automatically deployed across all affected services.
+Managing rate limiting configuration through Flux CD means your protection policies are version controlled and consistently applied. When security requirements change - say, a DDoS incident reveals a gap in your rate limiting strategy - the fix is a pull request that goes through review and is automatically deployed across all affected services.
 
 This guide covers NGINX Ingress rate limiting comprehensively: global limits via ConfigMap, per-route limits via annotations, burst handling, and connection limiting, all managed through Flux CD.
 

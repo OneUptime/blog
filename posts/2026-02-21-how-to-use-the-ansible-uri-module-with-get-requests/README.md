@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HTTP GET, uri Module, REST API
+Tags: Ansible, HTTP GET, Uri Module, REST API
 
 Description: A detailed guide to making HTTP GET requests with the Ansible uri module for API queries, health checks, and data retrieval.
 

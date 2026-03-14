@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Host Endpoints, Security
+Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
 Description: Configure logging for Calico host endpoint policies to audit host-level traffic decisions.
 

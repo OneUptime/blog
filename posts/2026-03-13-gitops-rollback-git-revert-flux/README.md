@@ -10,9 +10,9 @@ Description: Roll back Kubernetes deployments by reverting Git commits and letti
 
 ## Introduction
 
-In GitOps, the Git repository is the source of truth for cluster state. That property makes rollbacks conceptually simple: if you want to go back to a previous state, revert the Git commit that introduced the change and Flux will reconcile the cluster back to what it was. No manual `kubectl` commands, no imperative scripts — just a standard `git revert` that produces an auditable rollback commit.
+In GitOps, the Git repository is the source of truth for cluster state. That property makes rollbacks conceptually simple: if you want to go back to a previous state, revert the Git commit that introduced the change and Flux will reconcile the cluster back to what it was. No manual `kubectl` commands, no imperative scripts - just a standard `git revert` that produces an auditable rollback commit.
 
-This approach is powerful because it treats rollbacks as first-class changes. A `git revert` creates a new commit that reverses the previous change, so the full history — the original change and the rollback — is preserved in Git. Anyone can see what was changed, when it was changed, when it was rolled back, and who did each operation.
+This approach is powerful because it treats rollbacks as first-class changes. A `git revert` creates a new commit that reverses the previous change, so the full history - the original change and the rollback - is preserved in Git. Anyone can see what was changed, when it was changed, when it was rolled back, and who did each operation.
 
 This guide covers how to execute a rollback using `git revert`, how to verify Flux applies it correctly, and how to structure your repository to make rollbacks as fast as possible.
 
@@ -92,7 +92,7 @@ gh pr create \
 
 Reverts commit a3f9c12 (my-app v2.5.0) due to memory leak causing OOMKills.
 
-This is a rollback-only change — no new configuration is introduced.
+This is a rollback-only change - no new configuration is introduced.
 Approved by incident commander per emergency change process." \
   --label "rollback,incident"
 
@@ -174,7 +174,7 @@ git push origin --delete rollback/INC-2026-042
 
 ## Best Practices
 
-- Write atomic commits — one logical change per commit — so that reverting a single commit has a predictable and contained effect.
+- Write atomic commits - one logical change per commit - so that reverting a single commit has a predictable and contained effect.
 - Always use `git revert` rather than `git reset` for rollbacks on shared branches. Revert preserves history; reset rewrites it, which will conflict with other team members' local copies.
 - Use the PR title and body to record the incident reference so the rollback is traceable in both Git history and your incident management system.
 - Test rollbacks in staging periodically so the procedure is familiar when it is needed in production.
@@ -182,4 +182,4 @@ git push origin --delete rollback/INC-2026-042
 
 ## Conclusion
 
-Rolling back with `git revert` and Flux CD is one of the purest expressions of GitOps: the desired state is expressed in Git, and Flux makes the cluster match it. The process is fast, auditable, and reversible. Every rollback creates a permanent record in Git history that shows exactly what was rolled back, when, and by whom — which is exactly what incident reviews and compliance audits require.
+Rolling back with `git revert` and Flux CD is one of the purest expressions of GitOps: the desired state is expressed in Git, and Flux makes the cluster match it. The process is fast, auditable, and reversible. Every rollback creates a permanent record in Git history that shows exactly what was rolled back, when, and by whom - which is exactly what incident reviews and compliance audits require.

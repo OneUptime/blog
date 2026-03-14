@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Immutable Rules, Security, Tamper Resistance, Linux
+Tags: RHEL, Auditd, Immutable Rules, Security, Tamper Resistance, Linux
 
 Description: Lock down your audit rules on RHEL by making them immutable, preventing attackers from disabling auditing even with root access.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Flannel, Canal, Kubernetes, Networking, Documentation, Team
 
-Description: A guide to creating effective internal documentation for a Canal (Flannel + Calico network policy) deployment that helps operations and development teams understand, operate, and troubleshoot the cluster network.
+Description: A guide to creating effective internal documentation for a Canal (Flannel + Calico network policy) deployment that helps operations and development teams understand, operate, and troubleshoot the...
 
 ---
 
@@ -18,7 +18,7 @@ Good Canal documentation is organized by role, uses tested commands, and include
 
 Every Canal documentation set should include a node-level architecture description.
 
-```
+```plaintext
 Node Architecture (Canal):
   Pod A ──► veth ──► flannel.1 ──► VXLAN ──► flannel.1 ──► veth ──► Pod B
                         │
@@ -130,4 +130,4 @@ kubectl exec -n kube-system deploy/calicoctl -- calicoctl get ippool -o yaml
 
 ## Conclusion
 
-Canal documentation organized by audience — operations runbooks and developer policy guides — reduces incident response time and gives development teams the information they need to write and test NetworkPolicy objects without needing platform team involvement. Including the node architecture, tested commands, and a troubleshooting quick reference makes the documentation actionable rather than descriptive. Versioning the documentation alongside the Canal version prevents drift between documentation and the actual cluster state.
+Canal documentation organized by audience - operations runbooks and developer policy guides - reduces incident response time and gives development teams the information they need to write and test NetworkPolicy objects without needing platform team involvement. Including the node architecture, tested commands, and a troubleshooting quick reference makes the documentation actionable rather than descriptive. Versioning the documentation alongside the Canal version prevents drift between documentation and the actual cluster state.

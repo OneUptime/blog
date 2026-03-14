@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Automate Calico upgrades on OpenStack using Ansible playbooks and CI/CD pipelines that account for Neutron ML2 driver dependencies.
 

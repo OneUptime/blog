@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Profiling, Performance, pprof, Debugging, Optimization
+Tags: Go, Profiling, Performance, Pprof, Debugging, Optimization
 
 Description: Master Go application profiling with pprof, covering CPU, memory, goroutine, and block profiling with practical examples and visualization techniques.
 

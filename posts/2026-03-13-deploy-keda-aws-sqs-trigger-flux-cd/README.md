@@ -227,11 +227,11 @@ aws sqs get-queue-attributes \
 
 ## Best Practices
 
-- Always prefer IRSA over static credentials on EKS — it eliminates credential rotation overhead and follows the principle of least privilege.
+- Always prefer IRSA over static credentials on EKS - it eliminates credential rotation overhead and follows the principle of least privilege.
 - Enable `scaleOnInFlight: "true"` to include in-flight messages in the queue depth calculation, preventing KEDA from scaling down while messages are being processed.
 - Set `queueLength` (messages per replica) based on your worker's throughput and your desired processing latency SLA.
 - Configure SQS message visibility timeout longer than your worker's maximum processing time to prevent double-processing during scale-down.
-- Use a SQS dead-letter queue (DLQ) and set up CloudWatch alarms on DLQ depth — failed messages that land in the DLQ do not count toward KEDA's queue depth metric.
+- Use a SQS dead-letter queue (DLQ) and set up CloudWatch alarms on DLQ depth - failed messages that land in the DLQ do not count toward KEDA's queue depth metric.
 
 ## Conclusion
 

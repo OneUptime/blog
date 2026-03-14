@@ -252,10 +252,10 @@ kubectl exec -n rabbitmq production-server-0 -- rabbitmqctl node_health_check
 
 ## Best Practices
 
-- Run 3 or more replicas with an odd number for quorum queue quorum — quorum queues replace classic mirrored queues as the HA mechanism.
+- Run 3 or more replicas with an odd number for quorum queue quorum - quorum queues replace classic mirrored queues as the HA mechanism.
 - Set `vm_memory_high_watermark.relative = 0.70` to trigger back-pressure before OOM conditions.
 - Enable the `rabbitmq_prometheus` plugin and scrape the `/metrics` endpoint for Grafana dashboards.
-- Use quorum queues (declared with `x-queue-type: quorum`) for HA — they are replicated using Raft and survive node losses.
+- Use quorum queues (declared with `x-queue-type: quorum`) for HA - they are replicated using Raft and survive node losses.
 - Set TLS on the AMQP listener for production environments where clients are outside the cluster network.
 
 ## Conclusion

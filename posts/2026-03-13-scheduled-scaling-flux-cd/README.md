@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, kubernetes, autoscaling, scheduling, cost-optimization, gitops
+Tags: Flux-cd, Kubernetes, Autoscaling, Scheduling, Cost-Optimization, GitOps
 
-Description: Learn how to implement time-based scheduled scaling for Kubernetes workloads using Flux CD, enabling automatic replica adjustments based on known traffic patterns and business hours. This guide covers Kustomize patch strategies and CronJob-driven Flux reconciliation for scheduled scaling.
+Description: Learn how to implement time-based scheduled scaling for Kubernetes workloads using Flux CD, enabling automatic replica adjustments based on known traffic patterns and business hours.
 
 ---
 
 ## Introduction
 
-Many production workloads follow predictable traffic patterns — higher load during business hours, spikes at specific times, quiet periods overnight and on weekends. Scheduled scaling lets you pre-provision capacity before demand arrives, avoiding the latency of reactive HPA scale-up, and scale back down during known quiet periods to reduce costs.
+Many production workloads follow predictable traffic patterns - higher load during business hours, spikes at specific times, quiet periods overnight and on weekends. Scheduled scaling lets you pre-provision capacity before demand arrives, avoiding the latency of reactive HPA scale-up, and scale back down during known quiet periods to reduce costs.
 
 Flux CD enables scheduled scaling through two complementary patterns: using Kustomize overlays to define time-specific replica counts, and using CronJobs to trigger Flux reconciliation with different overlays at scheduled times. Unlike raw KEDA cron triggers, this approach keeps all scaling policy in Git and fully auditable.
 
@@ -55,7 +55,7 @@ spec:
 Manage which overlay is active via a Flux Kustomization that points to the appropriate path.
 ```yaml
 # clusters/production/api-service-kustomization.yaml
-# Flux Kustomization for the API service — path is updated by the scheduler CronJob
+# Flux Kustomization for the API service - path is updated by the scheduler CronJob
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -66,7 +66,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Path points to the active overlay — changed by the CronJob scheduler
+  # Path points to the active overlay - changed by the CronJob scheduler
   path: ./apps/api-service/overlays/peak-hours
   prune: true
 ```

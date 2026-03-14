@@ -12,7 +12,7 @@ Description: Deploy the Percona MongoDB Operator for production MongoDB replica 
 
 The Percona Operator for MongoDB manages MongoDB replica sets and sharded clusters on Kubernetes, providing automated failover, rolling upgrades, backup via Percona Backup for MongoDB (PBM), and optional PMM monitoring integration. It supports both Percona Server for MongoDB (PSMDB) and is built on the community MongoDB operator patterns.
 
-Managing MongoDB clusters through Flux CD ensures that topology, backup configuration, and user settings are version-controlled. When a team needs to add a shard or change a MongoDB parameter, the change flows through a pull request with clear diffs — not a manual `mongo` shell command applied directly to the cluster.
+Managing MongoDB clusters through Flux CD ensures that topology, backup configuration, and user settings are version-controlled. When a team needs to add a shard or change a MongoDB parameter, the change flows through a pull request with clear diffs - not a manual `mongo` shell command applied directly to the cluster.
 
 ## Prerequisites
 

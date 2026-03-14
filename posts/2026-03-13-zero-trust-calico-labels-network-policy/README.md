@@ -10,7 +10,7 @@ Description: Implement zero trust microsegmentation in Kubernetes using Calico l
 
 ## Introduction
 
-Zero trust microsegmentation means every workload communicates only with the workloads it needs to reach, and those relationships are defined by explicit, auditable policy rules. Labels are the identity mechanism in Kubernetes — they define what a workload is, and Calico uses those labels to enforce what it can talk to.
+Zero trust microsegmentation means every workload communicates only with the workloads it needs to reach, and those relationships are defined by explicit, auditable policy rules. Labels are the identity mechanism in Kubernetes - they define what a workload is, and Calico uses those labels to enforce what it can talk to.
 
 In a zero trust model, the label on a pod is essentially its cryptographic identity within the cluster (though Calico Enterprise with Istio integration provides cryptographic identity through mTLS). Without zero trust, a compromised pod can reach any other pod in the cluster. With label-based microsegmentation, a compromised pod is contained to only its explicitly allowed communication paths.
 

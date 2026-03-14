@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Resource Management
+Tags: Kubernetes, Kubelet, Resource Management
 
 Description: Learn how to configure kubelet's overcommit memory settings and pod eviction thresholds to prevent node resource exhaustion and optimize memory allocation in your Kubernetes cluster.
 

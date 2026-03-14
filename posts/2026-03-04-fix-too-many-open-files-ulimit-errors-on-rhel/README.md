@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ulimit, File Descriptors, Troubleshooting, Performance
+Tags: RHEL, Ulimit, File Descriptors, Troubleshooting, Performance
 
 Description: Fix 'too many open files' errors on RHEL by increasing file descriptor limits for specific users, services, or system-wide.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, gRPC Exporter, Retry Policies
+Tags: OpenTelemetry, OTLP, GRPC Exporter, Retry Policies
 
 Description: Configure the OTLP gRPC exporter with retry policies, exponential backoff, and timeouts to ensure telemetry data reaches your backend reliably.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Split Brain, High Availability, etcd, Kubernetes, Networking
+Tags: Talos Linux, Split Brain, High Availability, Etcd, Kubernetes, Networking
 
 Description: Learn how to prevent, detect, and recover from split-brain scenarios in Talos Linux clusters where network partitions create isolated node groups.
 

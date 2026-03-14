@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, azure, kubernetes, self-managed, cni, networking
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, Azure, Self-Managed
 
 Description: Learn how to install and configure Calico on a self-managed Kubernetes cluster running on Azure VMs, providing full control over networking with Calico's complete feature set.
 
@@ -28,7 +28,7 @@ This guide walks through setting up a self-managed Kubernetes cluster on Azure V
 Configure the VMs and network before initializing the cluster.
 
 ```bash
-# On all nodes — disable swap (required for Kubernetes)
+# On all nodes - disable swap (required for Kubernetes)
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
@@ -54,7 +54,7 @@ sudo sysctl --system
 Initialize the control plane with a non-overlapping pod CIDR.
 
 ```bash
-# On the control plane node — get the private IP from Azure instance metadata
+# On the control plane node - get the private IP from Azure instance metadata
 PRIVATE_IP=$(curl -s -H "Metadata:true" \
   "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/privateIpAddress?api-version=2021-02-01&format=text")
 
@@ -163,7 +163,7 @@ kubectl run curl-test -n test --image=curlimages/curl --rm -it -- curl nginx-svc
 
 - Use VXLAN encapsulation on Azure to avoid needing to configure User Defined Routes for pod traffic
 - Configure Azure Accelerated Networking on VM NICs to improve VXLAN performance
-- Apply Azure NSG rules before joining nodes — Calico initialization requires network connectivity
+- Apply Azure NSG rules before joining nodes - Calico initialization requires network connectivity
 - Use Azure Private DNS for in-cluster DNS instead of public DNS for better performance
 - Back up kubeadm certificates and etcd regularly on self-managed clusters
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, kubelet, Troubleshooting, Container Runtime
+Tags: Talos Linux, Kubernetes, Kubelet, Troubleshooting, Container Runtime
 
 Description: Learn how to diagnose and resolve kubelet failures on Talos Linux, including common error patterns, log analysis, and configuration fixes.
 

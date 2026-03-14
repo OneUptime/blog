@@ -125,7 +125,7 @@ done
 
 ## Step 2: Flagger Automated Canary
 
-Flagger automates all of the above—creating Deployments, managing VirtualService weights, and analyzing metrics:
+Flagger automates all of the above-creating Deployments, managing VirtualService weights, and analyzing metrics:
 
 ```yaml
 apiVersion: flagger.app/v1beta1

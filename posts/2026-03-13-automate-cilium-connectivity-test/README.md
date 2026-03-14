@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, connectivity, testing, kubernetes, networking, automation, ci-cd
+Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
 
 Description: Learn how to automate Cilium's built-in connectivity test suite in your CI/CD pipeline to continuously validate network policy enforcement and pod-to-pod connectivity after cluster changes.
 
@@ -12,7 +12,7 @@ Description: Learn how to automate Cilium's built-in connectivity test suite in 
 
 Cilium ships with a comprehensive connectivity test suite that validates end-to-end network connectivity, network policy enforcement, and service routing across your cluster. Running these tests manually is useful during installation, but to maintain confidence over time, they should be automated as part of your CI/CD pipeline and run after any cluster upgrade, node change, or Cilium configuration update.
 
-The `cilium connectivity test` command deploys a set of test pods into a dedicated namespace and runs a structured series of connectivity checks — testing direct pod-to-pod communication, service endpoints, DNS resolution, and network policy enforcement. Automating this gives you continuous validation that your CNI layer is functioning correctly.
+The `cilium connectivity test` command deploys a set of test pods into a dedicated namespace and runs a structured series of connectivity checks - testing direct pod-to-pod communication, service endpoints, DNS resolution, and network policy enforcement. Automating this gives you continuous validation that your CNI layer is functioning correctly.
 
 ## Prerequisites
 

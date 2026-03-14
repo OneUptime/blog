@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, Terminal, Productivity, CLI, Tutorial
+Tags: Ubuntu, Tmux, Terminal, Productivity, CLI, Tutorial
 
 Description: Master tmux terminal multiplexer on Ubuntu for managing multiple sessions, persistent remote connections, and improved productivity.
 

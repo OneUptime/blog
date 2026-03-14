@@ -10,7 +10,7 @@ Description: Build production-grade operational processes for Calico ImageSet ma
 
 ## Introduction
 
-Operationalizing Calico ImageSet management means turning a technical configuration into a reliable, repeatable process that your entire team can execute consistently. Without operational processes, ImageSet management becomes a hero task — one person who knows the exact steps required to upgrade Calico images, and everyone else blocked when that person is unavailable.
+Operationalizing Calico ImageSet management means turning a technical configuration into a reliable, repeatable process that your entire team can execute consistently. Without operational processes, ImageSet management becomes a hero task - one person who knows the exact steps required to upgrade Calico images, and everyone else blocked when that person is unavailable.
 
 Good operationalization includes: documented runbooks for common tasks, defined change management processes for upgrades, clear ownership of the registry and ImageSet resources, and tested rollback procedures. These processes protect against both accidental misconfiguration and planned maintenance windows going wrong.
 
@@ -152,4 +152,4 @@ EOF
 
 ## Conclusion
 
-Operationalizing Calico ImageSet management transforms image upgrades from ad-hoc procedures into reliable, team-executable workflows. Clear runbooks, defined ownership via RACI, GitOps-based delivery, and tested rollback procedures eliminate the "hero dependency" problem and make upgrades predictable. Treat your ImageSet management process with the same rigor you apply to other critical infrastructure changes — it controls the images running at the heart of your cluster's network fabric.
+Operationalizing Calico ImageSet management transforms image upgrades from ad-hoc procedures into reliable, team-executable workflows. Clear runbooks, defined ownership via RACI, GitOps-based delivery, and tested rollback procedures eliminate the "hero dependency" problem and make upgrades predictable. Treat your ImageSet management process with the same rigor you apply to other critical infrastructure changes - it controls the images running at the heart of your cluster's network fabric.

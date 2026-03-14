@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GKE, Google Cloud, Requirements, eBPF
+Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
 
 Description: A comprehensive checklist for verifying all Cilium requirements on Google Kubernetes Engine, including Dataplane V2 considerations, node image selection, and GKE-specific networking.
 

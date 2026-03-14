@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, Logging, Linux
+Tags: RHEL, Rsyslog, Logging, Linux
 
 Description: Learn how to configure rsyslog on RHEL 9 for centralized log management from multiple servers.
 

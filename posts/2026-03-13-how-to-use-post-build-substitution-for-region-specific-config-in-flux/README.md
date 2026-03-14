@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Region
+Tags: Flux, Fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Region
 
 Description: Learn how to leverage Flux post-build substitution to manage region-specific configurations such as endpoints, domains, and resource sizing across geographically distributed Kubernetes clusters.
 

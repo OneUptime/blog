@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-nspawn, machinectl, Containers, Linux
+Tags: RHEL, Systemd-nspawn, Machinectl, Containers, Linux
 
 Description: Use machinectl to manage systemd-nspawn containers on RHEL, including starting, stopping, inspecting, and cloning container images.
 

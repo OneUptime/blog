@@ -70,7 +70,7 @@ kubectl get node <node-name> -o jsonpath='{.metadata.annotations}' | python3 -m 
 Ensure the block size is appropriate for your expected pod density per node.
 
 ```yaml
-# ippool-validated.yaml — example IP pool with explicit block size
+# ippool-validated.yaml - example IP pool with explicit block size
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:

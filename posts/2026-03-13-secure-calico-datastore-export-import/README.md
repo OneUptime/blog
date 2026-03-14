@@ -10,7 +10,7 @@ Description: Secure Calico datastore export and import operations by encrypting 
 
 ## Introduction
 
-Calico datastore exports contain all network policies, BGP configurations, and IP pool definitions — sensitive infrastructure data. Securing exports means encrypting the YAML files at rest, using access-controlled storage with minimal permissions, and auditing who runs export and import operations via Kubernetes audit logs.
+Calico datastore exports contain all network policies, BGP configurations, and IP pool definitions - sensitive infrastructure data. Securing exports means encrypting the YAML files at rest, using access-controlled storage with minimal permissions, and auditing who runs export and import operations via Kubernetes audit logs.
 
 ## Key Commands
 

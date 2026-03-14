@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, virt-manager, Virtualization
+Tags: Ubuntu, KVM, Virt-manager, Virtualization
 
 Description: Learn how to install and use virt-manager on Ubuntu to create, configure, and manage KVM virtual machines through a graphical interface.
 

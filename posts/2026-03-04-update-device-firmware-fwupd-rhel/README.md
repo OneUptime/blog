@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fwupd, Firmware, Hardware, Security, Linux
+Tags: RHEL, Fwupd, Firmware, Hardware, Security, Linux
 
 Description: Use fwupd on RHEL to check for and apply firmware updates to supported hardware devices, including UEFI, SSDs, and peripherals.
 

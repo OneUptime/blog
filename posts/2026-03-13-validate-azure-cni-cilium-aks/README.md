@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, aks, cni, kubernetes, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A practical guide to validating Azure CNI with Cilium as the network policy engine on Azure Kubernetes Service, covering installation checks, connectivity tests, and policy enforcement verification.
 
@@ -107,4 +107,4 @@ cilium policy get
 
 ## Conclusion
 
-Validating Azure CNI with Cilium on AKS ensures your cluster's networking layer is healthy and policy enforcement is active before workloads go to production. By combining Azure's native IPAM with Cilium's eBPF dataplane, you get a robust networking foundation—but only systematic validation confirms everything is wired together correctly.
+Validating Azure CNI with Cilium on AKS ensures your cluster's networking layer is healthy and policy enforcement is active before workloads go to production. By combining Azure's native IPAM with Cilium's eBPF dataplane, you get a robust networking foundation-but only systematic validation confirms everything is wired together correctly.

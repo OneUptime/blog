@@ -10,7 +10,7 @@ Description: Monitor for Calico egress policy blocks on Kubernetes API access us
 
 ## Introduction
 
-Monitoring for Kubernetes API access failures caused by Calico egress policies requires detecting the failure quickly, before dependent workloads begin cascading. Operators, controllers, and service accounts all depend on API access — a silent block affects multiple systems simultaneously.
+Monitoring for Kubernetes API access failures caused by Calico egress policies requires detecting the failure quickly, before dependent workloads begin cascading. Operators, controllers, and service accounts all depend on API access - a silent block affects multiple systems simultaneously.
 
 The most direct monitoring approach is a synthetic probe that periodically tests API access from within pods in each namespace that has egress policies applied. Complementing this with Calico Felix drop metrics and Kubernetes API server error rate alerts provides defense-in-depth monitoring.
 

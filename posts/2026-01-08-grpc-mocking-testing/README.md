@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Mocking, Testing, Golang, gomock, mockgen, Unit-testing
+Tags: GRPC, Mocking, Testing, Golang, Gomock, Mockgen, Unit-testing
 
 Description: Learn how to effectively mock gRPC services for testing using gomock, configurable mock servers, and stream mocking techniques.
 

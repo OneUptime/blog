@@ -1,10 +1,10 @@
-# Troubleshoot Calico Installation on EKS
+# How to Troubleshoot Installation Issues with Calico on EKS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, eks, aws, kubernetes, installation, troubleshooting
+Tags: Calico, Kubernetes, Networking, Troubleshooting, EKS, AWS
 
-Description: A guide to diagnosing and resolving common issues when installing Calico on Amazon EKS, covering network policy enforcement and compatibility with the AWS VPC CNI plugin.
+Description: Diagnose and resolve common Calico installation issues on Amazon EKS clusters.
 
 ---
 

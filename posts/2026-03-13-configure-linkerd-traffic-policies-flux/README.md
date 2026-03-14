@@ -10,7 +10,7 @@ Description: Configure Linkerd traffic policies and circuit breaking using Flux 
 
 ## Introduction
 
-Linkerd provides traffic policy primitives through its policy resources: Server, ServerAuthorization, and HTTPRoute CRDs. These enable fine-grained control over which clients can access which services, what mTLS mode is required, and how traffic should be routed — all managed declaratively.
+Linkerd provides traffic policy primitives through its policy resources: Server, ServerAuthorization, and HTTPRoute CRDs. These enable fine-grained control over which clients can access which services, what mTLS mode is required, and how traffic should be routed - all managed declaratively.
 
 By managing Linkerd traffic policies through Flux CD, your service-to-service communication rules are version-controlled. Adding a new authorized client or adjusting traffic routing for a service becomes a pull request, not an ad-hoc change.
 
@@ -197,12 +197,12 @@ linkerd viz routes deployment/api-service -n production
 
 ## Best Practices
 
-- Set `config.linkerd.io/default-inbound-policy: deny` on production namespaces and create explicit `ServerAuthorization` resources for each allowed client — this enforces zero-trust at the Linkerd layer.
+- Set `config.linkerd.io/default-inbound-policy: deny` on production namespaces and create explicit `ServerAuthorization` resources for each allowed client - this enforces zero-trust at the Linkerd layer.
 - Always create a `ServerAuthorization` for the Linkerd viz prometheus scraper and the Kubernetes kubelet (for health probes) when using the `deny` default policy.
-- Use `policy.linkerd.io/v1beta3` HTTPRoute for traffic splitting alongside `ServerAuthorization` — the two resources complement each other for access control plus routing.
+- Use `policy.linkerd.io/v1beta3` HTTPRoute for traffic splitting alongside `ServerAuthorization` - the two resources complement each other for access control plus routing.
 - Name `ServerAuthorization` resources descriptively (e.g., `allow-frontend-to-api`) rather than generically so their purpose is clear in `kubectl get` output.
-- Test policy changes in a staging environment with `linkerd policy` inspection before committing to production — an incorrect policy can immediately deny all traffic to a service.
+- Test policy changes in a staging environment with `linkerd policy` inspection before committing to production - an incorrect policy can immediately deny all traffic to a service.
 
 ## Conclusion
 
-Linkerd traffic policies managed through Flux CD provide a declarative, GitOps-controlled approach to service-to-service access control and traffic routing. Every authorization change is version-controlled and reviewable, giving platform and security teams confidence that communication patterns between services are exactly as intended — and any deviation is corrected automatically by Flux's continuous reconciliation.
+Linkerd traffic policies managed through Flux CD provide a declarative, GitOps-controlled approach to service-to-service access control and traffic routing. Every authorization change is version-controlled and reviewable, giving platform and security teams confidence that communication patterns between services are exactly as intended - and any deviation is corrected automatically by Flux's continuous reconciliation.

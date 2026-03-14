@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, azure-cni, cni-chaining, legacy, troubleshooting, aks
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Troubleshooting guide for diagnosing issues specific to the legacy Azure CNI chaining mode with Cilium, covering common failure patterns and their resolutions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, S3, Python, boto3
+Tags: AWS, S3, Python, Boto3
 
 Description: Practical guide to uploading and downloading files from S3 using Python's Boto3 library, covering basic operations, multipart uploads, progress tracking, and error handling.
 

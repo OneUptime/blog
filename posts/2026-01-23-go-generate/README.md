@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Code Generation, go generate, Tooling, Automation
+Tags: Go, Golang, Code Generation, Go generate, Tooling, Automation
 
 Description: Learn how to use go generate to automate code generation in Go projects, including stringer, mock generation, and custom generators.
 

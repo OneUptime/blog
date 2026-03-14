@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, External Services, Security, Kubernetes
+Tags: Istio, MTLS, External Services, Security, Kubernetes
 
 Description: Set up mutual TLS authentication when your Istio mesh services need to communicate with external APIs that require client certificate authentication.
 

@@ -64,9 +64,9 @@ kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- cat /var/log/vpp/vpp.l
 ```
 
 Common VPP startup errors:
-- `failed to initialize DPDK` — DPDK driver not loaded or wrong PCI address
-- `failed to allocate hugepages` — insufficient hugepages
-- `cannot open interface` — interface name mismatch
+- `failed to initialize DPDK` - DPDK driver not loaded or wrong PCI address
+- `failed to allocate hugepages` - insufficient hugepages
+- `cannot open interface` - interface name mismatch
 
 ## Step 5: Verify Interface Configuration
 

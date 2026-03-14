@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, telemetrygen, Pipeline Validation, Testing, Collector, Traces
+Tags: OpenTelemetry, Telemetrygen, Pipeline Validation, Testing, Collector, Traces
 
 Description: Learn how to use the telemetrygen tool to generate synthetic test traces for validating and load-testing your OpenTelemetry Collector pipelines.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, High Availability, HA, CNI, Networking, Reliability
+Tags: Calico, Typha, Kubernetes, Networking, High Availability, Customization, Hard Way
 
 Description: Go beyond basic HA and customize Typha for zone-aware failover, disruption budget protection, and topology-aware connection routing in a manifest-based Calico installation.
 
@@ -208,7 +208,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-typha \
 - Match the Typha replica count to the number of availability zones so each zone has exactly one Typha pod; this gives the clearest HA boundary.
 - Use `whenUnsatisfiable: DoNotSchedule` in topology spread constraints for production and `ScheduleAnyway` for development to allow deployment on single-zone clusters.
 - Set `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` to prevent the cluster autoscaler from evicting Typha pods during scale-down events.
-- Review the PDB after every replica count change — `minAvailable: 2` is appropriate for 3 replicas but too restrictive for 2 replicas (it would prevent any pod from being evicted).
+- Review the PDB after every replica count change - `minAvailable: 2` is appropriate for 3 replicas but too restrictive for 2 replicas (it would prevent any pod from being evicted).
 - Monitor `kube_pod_info{namespace="kube-system",pod=~"calico-typha.*"}` grouped by node and zone in Prometheus to detect HA distribution drift over time.
 
 ---

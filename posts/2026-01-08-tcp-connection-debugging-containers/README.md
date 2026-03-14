@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TCP, Debugging, Containers, Docker, Kubernetes, Networking, Troubleshooting, netcat, ss, Connection states
+Tags: TCP, Debugging, Containers, Docker, Kubernetes, Networking, Troubleshooting, Netcat, Ss, Connection states
 
 Description: A comprehensive guide to diagnosing and resolving TCP connection problems in containerized environments using essential networking tools and techniques.
 

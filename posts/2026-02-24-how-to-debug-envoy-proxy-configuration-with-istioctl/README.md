@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, istioctl, Debugging, Kubernetes, Service Mesh
+Tags: Istio, Envoy, Istioctl, Debugging, Kubernetes, Service Mesh
 
 Description: Learn how to debug Envoy proxy configurations in Istio using istioctl commands to inspect listeners, routes, clusters, and endpoints.
 

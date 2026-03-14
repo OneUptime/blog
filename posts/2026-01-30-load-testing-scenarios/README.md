@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Testing, Performance, k6, Load Testing
+Tags: Testing, Performance, K6, Load Testing
 
 Description: Design effective load testing scenarios with k6 covering ramp-up patterns, virtual user modeling, and realistic traffic simulation.
 

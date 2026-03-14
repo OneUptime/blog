@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, kuttl, Testing, Integration Tests
+Tags: Flux, Kubernetes, GitOps, Kuttl, Testing, Integration Tests
 
 Description: Learn how to use kuttl to create integration tests that verify your Flux GitOps deployments produce the correct cluster state.
 

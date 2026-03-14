@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ruby, rbenv, Development, Version Management, Linux
+Tags: RHEL, Ruby, Rbenv, Development, Version Management, Linux
 
 Description: Install and manage multiple Ruby versions on RHEL using rbenv, allowing per-project Ruby version selection without affecting system packages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Security, Access Control, sudo, SELinux
+Tags: RHEL, Security, Access Control, Sudo, SELinux
 
 Description: Implement least privilege access on RHEL servers using sudo rules, SELinux, and proper user and group management.
 

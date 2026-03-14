@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, tcpdump, Troubleshooting, Packet Capture
+Tags: Kubernetes, Networking, Tcpdump, Troubleshooting, Packet Capture
 
 Description: Use tcpdump to capture and analyze network traffic on Kubernetes nodes for debugging connectivity issues, examining pod communication, and identifying network problems at the packet level.
 

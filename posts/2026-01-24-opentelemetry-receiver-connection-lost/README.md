@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Receiver, Connection, Troubleshooting, gRPC, OTLP, Networking
+Tags: OpenTelemetry, Collector, Receiver, Connection, Troubleshooting, GRPC, OTLP, Networking
 
 Description: Learn how to diagnose and fix Receiver Connection Lost errors in OpenTelemetry Collector deployments.
 

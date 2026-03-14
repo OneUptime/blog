@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, flux diff, Change preview, GitOps, Kubernetes, Deployments, Validation
+Tags: Flux CD, Flux diff, Change preview, GitOps, Kubernetes, Deployments, Validation
 
 Description: Learn how to use the flux diff command to preview changes before they are applied to your Kubernetes cluster, reducing deployment risk.
 

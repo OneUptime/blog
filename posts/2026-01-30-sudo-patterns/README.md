@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, sudo, Privilege Escalation, Authorization
+Tags: Security, Sudo, Privilege Escalation, Authorization
 
 Description: Learn to implement sudo patterns for temporary privilege escalation with audit trails.
 

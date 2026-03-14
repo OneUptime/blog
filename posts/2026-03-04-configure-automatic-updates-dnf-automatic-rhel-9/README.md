@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dnf-automatic, Automatic Updates, Security, Linux, Package Management
+Tags: RHEL, Dnf-automatic, Automatic Updates, Security, Linux, Package Management
 
 Description: A complete guide to setting up automatic system updates on RHEL using dnf-automatic, covering configuration options, security-only updates, email notifications, and timer scheduling.
 

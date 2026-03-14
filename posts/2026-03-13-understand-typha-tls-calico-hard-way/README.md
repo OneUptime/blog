@@ -10,7 +10,7 @@ Description: An explanation of how TLS and mutual TLS authentication work betwee
 
 ## Introduction
 
-Typha uses mutual TLS (mTLS) to authenticate connections from Felix agents. Without mTLS, any process that can reach the Typha service endpoint could connect and receive the full stream of Calico resource state — including network policy configurations. mTLS ensures that only Felix agents with certificates signed by the trusted CA can receive this data.
+Typha uses mutual TLS (mTLS) to authenticate connections from Felix agents. Without mTLS, any process that can reach the Typha service endpoint could connect and receive the full stream of Calico resource state - including network policy configurations. mTLS ensures that only Felix agents with certificates signed by the trusted CA can receive this data.
 
 Understanding Typha TLS in a hard way installation requires understanding how X.509 certificates work in the context of mutual authentication, why a shared CA is required, and what happens when certificates expire or are rotated.
 
@@ -25,7 +25,7 @@ In the Typha context:
 3. Felix verifies Typha's certificate against the CA (`typha-ca.crt`)
 4. Felix presents its client certificate (`felix-client.crt`)
 5. Typha verifies Felix's certificate against the same CA
-6. Both sides are authenticated — the connection is established
+6. Both sides are authenticated - the connection is established
 
 ## Certificate Roles
 
@@ -68,14 +68,14 @@ If the CN does not match Typha's expected value, the connection is rejected.
 If TLS is not configured on either side:
 
 ```bash
-# Typha without TLS — any connection is accepted
-# Felix without TLS — connects without authenticating Typha
+# Typha without TLS - any connection is accepted
+# Felix without TLS - connects without authenticating Typha
 
 # Check if TLS is configured
 kubectl get deployment calico-typha -n calico-system -o yaml | grep -i "TYPHA_CA\|TYPHA_SERVER" | wc -l
 ```
 
-If this returns 0, TLS is not configured — this is insecure and should only be acceptable in isolated development environments.
+If this returns 0, TLS is not configured - this is insecure and should only be acceptable in isolated development environments.
 
 ## Certificate Expiry
 

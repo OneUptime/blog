@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Performance, Virtualization, react-window, Large Lists, Optimization
+Tags: React, Performance, Virtualization, React-window, Large Lists, Optimization
 
 Description: Learn how to efficiently render large lists in React applications using react-window, a lightweight library that implements windowing techniques to dramatically improve performance.
 

@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving node CIDR allocation issues in 
 
 ## Introduction
 
-Calico's IPAM system allocates IP addresses to pods using a block-based model. Each node is assigned one or more IP blocks (default /26 blocks, providing 64 IPs per block), and pod IPs are allocated from within these node-local blocks. The node CIDR planning decisions made during cluster setup have long-term consequences — too-small blocks lead to IPAM exhaustion as pod density increases, while too-large blocks waste IP space.
+Calico's IPAM system allocates IP addresses to pods using a block-based model. Each node is assigned one or more IP blocks (default /26 blocks, providing 64 IPs per block), and pod IPs are allocated from within these node-local blocks. The node CIDR planning decisions made during cluster setup have long-term consequences - too-small blocks lead to IPAM exhaustion as pod density increases, while too-large blocks waste IP space.
 
 Node CIDR planning issues become visible as clusters grow: new pods fail to start because a node's allocated blocks are exhausted, nodes cannot acquire additional blocks because the IP pool is exhausted, or CIDR sizes chosen for initial pod density don't accommodate later scale requirements.
 
@@ -56,7 +56,7 @@ calicoctl get ippool <pool-name> -o yaml | grep blockSize
 Block size planning reference:
 
 ```yaml
-# ippool-sized.yaml — IP pool with block size tuned for high-density nodes
+# ippool-sized.yaml - IP pool with block size tuned for high-density nodes
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -106,7 +106,7 @@ If the pool is exhausted or approaching exhaustion, expand by adding a new pool 
 Add supplemental IP pool capacity:
 
 ```yaml
-# supplemental-pool.yaml — Additional IP pool to expand cluster IP capacity
+# supplemental-pool.yaml - Additional IP pool to expand cluster IP capacity
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:

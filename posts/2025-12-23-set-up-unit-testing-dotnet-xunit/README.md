@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, xUnit, Testing, Unit Testing, Best Practices
+Tags: .NET, C#, XUnit, Testing, Unit Testing, Best Practices
 
 Description: Learn how to set up comprehensive unit testing in .NET applications using xUnit.
 

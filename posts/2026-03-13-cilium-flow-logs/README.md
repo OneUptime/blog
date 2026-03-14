@@ -12,7 +12,7 @@ Description: Configure Cilium Hubble flow log export to persistent storage or SI
 
 Network flow logs are a fundamental requirement for security compliance, forensic investigation, and audit trail requirements in regulated industries. In cloud environments, providers offer VPC flow logs that record all network traffic at the subnet level. In Kubernetes, Cilium's Hubble flow logs provide the same capability with far richer context: every flow record includes the Kubernetes pod name, namespace, labels, service name, protocol details, and policy verdict, not just source and destination IPs.
 
-Hubble flow logs can be exported in multiple formats: to files on each node for integration with log shipping agents, to a SIEM system via Fluentd or Fluentbit, or directly to object storage like S3 via the Hubble export feature. For security auditing purposes, the policy verdict field is particularly valuable — it creates an audit trail of every connection that was allowed or denied, with the specific policy rule that made the decision.
+Hubble flow logs can be exported in multiple formats: to files on each node for integration with log shipping agents, to a SIEM system via Fluentd or Fluentbit, or directly to object storage like S3 via the Hubble export feature. For security auditing purposes, the policy verdict field is particularly valuable - it creates an audit trail of every connection that was allowed or denied, with the specific policy rule that made the decision.
 
 This guide covers configuring Hubble flow log export, shipping logs to a centralized system, and building queries for security auditing.
 

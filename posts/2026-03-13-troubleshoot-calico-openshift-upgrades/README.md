@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Troubleshooting
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Troubleshooting
 
 Description: Diagnose and resolve Calico upgrade failures specific to OpenShift, including SCC permission errors, OLM conflicts, and MachineConfigPool interactions.
 
@@ -94,4 +94,4 @@ flowchart TD
 
 ## Conclusion
 
-OpenShift-specific Calico upgrade failures revolve around SCC permission changes, OCP network operator interaction, and MachineConfigPool node reboots interfering with the rolling update. Always check SCC bindings first when calico-node pods fail to start, and verify MachineConfigPools are stable before initiating Calico upgrades. The OpenShift network operator is a common source of silent conflicts — check its status and logs whenever Calico behaves unexpectedly after an upgrade on OCP.
+OpenShift-specific Calico upgrade failures revolve around SCC permission changes, OCP network operator interaction, and MachineConfigPool node reboots interfering with the rolling update. Always check SCC bindings first when calico-node pods fail to start, and verify MachineConfigPools are stable before initiating Calico upgrades. The OpenShift network operator is a common source of silent conflicts - check its status and logs whenever Calico behaves unexpectedly after an upgrade on OCP.

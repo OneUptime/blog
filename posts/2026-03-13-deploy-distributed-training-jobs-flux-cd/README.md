@@ -12,7 +12,7 @@ Description: Set up distributed ML training jobs on Kubernetes using Flux CD for
 
 Distributed ML training across multiple GPUs and nodes is essential for training large models within reasonable timeframes. Kubernetes provides the orchestration layer, but coordinating distributed training workers, managing job lifecycle, and ensuring reproducibility requires a structured approach.
 
-Flux CD brings GitOps discipline to distributed training: every training job configuration — worker count, GPU allocation, hyperparameters via ConfigMaps, and training image versions — is version-controlled. Teams can reproduce any historical training run by checking out the corresponding Git commit.
+Flux CD brings GitOps discipline to distributed training: every training job configuration - worker count, GPU allocation, hyperparameters via ConfigMaps, and training image versions - is version-controlled. Teams can reproduce any historical training run by checking out the corresponding Git commit.
 
 This guide covers setting up distributed PyTorch and TensorFlow training jobs on Kubernetes using Flux CD, with patterns for job templates, hyperparameter management, and monitoring.
 
@@ -25,7 +25,7 @@ This guide covers setting up distributed PyTorch and TensorFlow training jobs on
 
 ## Step 1: Organize the Training Job Repository Structure
 
-```
+```plaintext
 clusters/my-cluster/training-jobs/
 ├── kustomization.yaml
 ├── namespaces.yaml
@@ -221,4 +221,4 @@ kubectl describe pytorchjob resnet50-imagenet-v2 -n ml-training
 
 ## Conclusion
 
-Managing distributed training jobs through Flux CD transforms ad-hoc GPU training runs into a reproducible, auditable engineering practice. Every training configuration is a Git commit, every experiment is tracked, and the cluster state is continuously reconciled — bringing the same reliability to ML training infrastructure that GitOps delivers for application deployments.
+Managing distributed training jobs through Flux CD transforms ad-hoc GPU training runs into a reproducible, auditable engineering practice. Every training configuration is a Git commit, every experiment is tracked, and the cluster state is continuously reconciled - bringing the same reliability to ML training infrastructure that GitOps delivers for application deployments.

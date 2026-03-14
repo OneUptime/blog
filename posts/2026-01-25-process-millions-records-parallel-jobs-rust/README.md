@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Parallel Processing, rayon, Performance, Big Data
+Tags: Rust, Parallel Processing, Rayon, Performance, Big Data
 
 Description: Learn how to leverage Rust's Rayon library to process millions of records in parallel, dramatically cutting processing time while maintaining memory safety and code clarity.
 

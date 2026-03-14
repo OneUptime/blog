@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Automation, Scripting, Cloud
+Tags: Ubuntu, Cloud-init, Automation, Scripting, Cloud
 
 Description: A comprehensive guide to running scripts at first boot using cloud-init on Ubuntu, covering runcmd, bootcmd, user scripts, and script frequency options.
 

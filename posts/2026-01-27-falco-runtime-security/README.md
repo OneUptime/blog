@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Falco, Runtime Security, Kubernetes, Container Security, Cloud Native, Threat Detection, eBPF, DevSecOps
+Tags: Falco, Runtime Security, Kubernetes, Container Security, Cloud Native, Threat Detection, EBPF, DevSecOps
 
 Description: A comprehensive guide to deploying and configuring Falco for runtime threat detection across Kubernetes, Docker, and bare metal environments.
 

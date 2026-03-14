@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Path Units, File Monitoring, Linux
+Tags: RHEL, Systemd, Path Units, File Monitoring, Linux
 
 Description: Learn how to use systemd path units on RHEL to trigger services automatically when files or directories change.
 

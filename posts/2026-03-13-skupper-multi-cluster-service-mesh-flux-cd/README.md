@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Skupper, Multi-Cluster, Service Mesh, Kubernetes, GitOps, AMQP, Multicloud
+Tags: Skupper, Flux-cd, GitOps, Multi-Cluster, Service-Mesh, Kubernetes
 
 Description: Learn how to deploy Skupper for multicloud service interconnection using Flux CD GitOps to enable secure cross-cluster service communication without VPN.
 
@@ -10,7 +10,7 @@ Description: Learn how to deploy Skupper for multicloud service interconnection 
 
 ## Introduction
 
-Skupper (Red Hat Service Interconnect) creates a Layer 7 service network across multiple Kubernetes clusters, cloud providers, or virtual machines using AMQP-based messaging. Unlike Submariner (Layer 3), Skupper operates at the application layer, making it network-topology agnostic—it works across NAT, firewalls, and different cloud providers without requiring network-level access between clusters.
+Skupper (Red Hat Service Interconnect) creates a Layer 7 service network across multiple Kubernetes clusters, cloud providers, or virtual machines using AMQP-based messaging. Unlike Submariner (Layer 3), Skupper operates at the application layer, making it network-topology agnostic-it works across NAT, firewalls, and different cloud providers without requiring network-level access between clusters.
 
 Managing Skupper through Flux CD allows you to define inter-cluster service connections declaratively in Git.
 

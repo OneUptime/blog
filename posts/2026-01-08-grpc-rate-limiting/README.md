@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Rate Limiting, Security, Token Bucket, Sliding Window, Redis, Interceptors
+Tags: GRPC, Rate Limiting, Security, Token Bucket, Sliding Window, Redis, Interceptors
 
 Description: Learn how to implement rate limiting in gRPC services using token bucket, sliding window algorithms, and distributed rate limiting with Redis.
 

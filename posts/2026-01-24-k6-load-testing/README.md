@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance Testing, JavaScript, Stress Testing, Grafana, DevOps
+Tags: K6, Load Testing, Performance Testing, JavaScript, Stress Testing, Grafana, DevOps
 
 Description: A practical guide to configuring and running load tests with k6, covering test scenarios, thresholds, metrics, and CI/CD integration.
 

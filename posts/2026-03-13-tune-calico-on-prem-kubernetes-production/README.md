@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Performance, Production
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Performance, Production
 
 Description: A guide to performance-tuning Calico for high-throughput, low-latency production workloads on an on-premises Kubernetes cluster.
 

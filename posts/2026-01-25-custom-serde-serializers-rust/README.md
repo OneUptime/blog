@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, serde, Serialization, JSON, Data Formats
+Tags: Rust, Serde, Serialization, JSON, Data Formats
 
 Description: Learn how to write custom serde serializers and deserializers in Rust to handle complex data transformations, non-standard formats, and domain-specific serialization requirements.
 

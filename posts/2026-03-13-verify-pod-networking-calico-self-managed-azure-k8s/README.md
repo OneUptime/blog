@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Azure, Pod Networking, Self-Managed
+Tags: Calico, Kubernetes, Networking, Verification, Azure, Self-Managed
 
 Description: Learn how to verify Calico pod networking on a self-managed Kubernetes cluster running on Azure VMs, including NSG configuration, VXLAN mode requirements, and cross-node connectivity validation.
 
@@ -34,7 +34,7 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
 ```
 
 ```yaml
-# ippool-azure-vxlan.yaml — Azure-compatible IP pool with VXLAN
+# ippool-azure-vxlan.yaml - Azure-compatible IP pool with VXLAN
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -140,7 +140,7 @@ kubectl exec pod-a -- wget -qO- --timeout=5 http://checkip.amazonaws.com
 ## Best Practices
 
 - Always use `vxlanMode: Always` and `ipipMode: Never` for Calico on Azure
-- Check Azure NSG rules early in troubleshooting — they are the most common cause of failures
+- Check Azure NSG rules early in troubleshooting - they are the most common cause of failures
 - Avoid enabling BGP mode on Azure without careful testing as it requires additional NSG rules
 - Use Calico's built-in connectivity test after any NSG rule changes
 - Monitor VXLAN tunnel interface status as part of your node health checks

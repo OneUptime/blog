@@ -12,7 +12,7 @@ Description: On-call runbook for resolving Kubernetes API access failures caused
 
 This runbook guides on-call engineers through diagnosing and resolving Kubernetes API server access failures caused by Calico egress policies. This type of incident is high-impact because it affects all pods in a namespace that run operators, service accounts, or any code that calls the Kubernetes API.
 
-Time is critical in this scenario: operators that cannot reach the API may begin making incorrect decisions or failing over, causing cascading issues. The triage sequence is optimized for speed — identify the blocking policy and add the allow rule within the first 10 minutes.
+Time is critical in this scenario: operators that cannot reach the API may begin making incorrect decisions or failing over, causing cascading issues. The triage sequence is optimized for speed - identify the blocking policy and add the allow rule within the first 10 minutes.
 
 ## Symptoms
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, XDP, eBPF, Networking
+Tags: Cilium, Kubernetes, XDP, EBPF, Networking
 
 Description: Enable Cilium XDP acceleration to process network packets at the driver level before they enter the Linux network stack, achieving maximum throughput for Kubernetes service load balancing.
 
@@ -10,7 +10,7 @@ Description: Enable Cilium XDP acceleration to process network packets at the dr
 
 ## Introduction
 
-XDP (eXpress Data Path) is the fastest eBPF attachment point available in Linux — programs run directly in the NIC driver context, processing packets before they are allocated as kernel `sk_buff` structures and before they enter the network stack. This dramatically reduces per-packet CPU overhead and enables line-rate packet processing even on standard server hardware.
+XDP (eXpress Data Path) is the fastest eBPF attachment point available in Linux - programs run directly in the NIC driver context, processing packets before they are allocated as kernel `sk_buff` structures and before they enter the network stack. This dramatically reduces per-packet CPU overhead and enables line-rate packet processing even on standard server hardware.
 
 Cilium leverages XDP for its service load balancing implementation. When XDP acceleration is enabled, NodePort and LoadBalancer traffic is processed at the driver level by an eBPF program that performs the service VIP-to-backend IP translation and packet forwarding without any conventional network stack involvement. For traffic-intensive services like API gateways, proxies, or streaming endpoints, XDP can double or triple the achievable throughput compared to TC eBPF alone.
 

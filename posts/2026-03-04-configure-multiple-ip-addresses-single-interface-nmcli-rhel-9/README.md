@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nmcli, Multiple IPs, Networking, Linux
+Tags: RHEL, Nmcli, Multiple IPs, Networking, Linux
 
 Description: Learn how to assign multiple IP addresses to a single network interface on RHEL using nmcli, with practical use cases and configuration examples.
 

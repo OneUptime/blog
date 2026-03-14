@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, GitLab CI, CI/CD
+Tags: Ansible, Ansible-lint, GitLab CI, CI/CD
 
 Description: Configure GitLab CI/CD pipelines to run ansible-lint with caching, collection dependencies, merge request integration, and code quality reports.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Parametric Functions, sequenceMatch, sequenceCount, User Behavior, Funnel Analysis
+Tags: ClickHouse, Parametric Functions, SequenceMatch, SequenceCount, User Behavior, Funnel Analysis
 
 Description: A comprehensive guide to using ClickHouse parametric functions like sequenceMatch and sequenceCount for user behavior analysis, funnel tracking, and pattern detection in event streams.
 

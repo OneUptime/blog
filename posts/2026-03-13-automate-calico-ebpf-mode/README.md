@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Automation, GitOps
+Tags: Calico, Kubernetes, Networking, EBPF, Automation, GitOps
 
 Description: Automate Calico eBPF mode enablement across multiple clusters using Infrastructure as Code, node bootstrapping scripts, and GitOps delivery.
 

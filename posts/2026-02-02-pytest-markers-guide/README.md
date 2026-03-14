@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, pytest, Testing, Test Automation, Markers, TDD, CI/CD
+Tags: Python, Pytest, Testing, Test Automation, Markers, TDD, CI/CD
 
 Description: Learn how to use pytest markers to organize, filter, and control test execution.
 

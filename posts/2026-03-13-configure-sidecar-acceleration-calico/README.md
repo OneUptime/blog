@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
 
 Description: Configure Calico sidecar acceleration to bypass redundant network processing when using service mesh sidecars like Envoy, reducing latency for sidecar-proxied traffic.
 
@@ -10,7 +10,7 @@ Description: Configure Calico sidecar acceleration to bypass redundant network p
 
 ## Introduction
 
-Calico sidecar acceleration uses eBPF to optimize traffic flows involving sidecar proxies like Envoy or Linkerd2-proxy. When a service mesh sidecar intercepts pod traffic, packets normally traverse the kernel network stack multiple times — once for the original pod, once for the sidecar, and once for the destination. Calico's eBPF dataplane can detect these sidecar flows and apply optimized routing that reduces redundant processing. This feature is particularly valuable in high-throughput microservices deployments where sidecar latency overhead is a concern.
+Calico sidecar acceleration uses eBPF to optimize traffic flows involving sidecar proxies like Envoy or Linkerd2-proxy. When a service mesh sidecar intercepts pod traffic, packets normally traverse the kernel network stack multiple times - once for the original pod, once for the sidecar, and once for the destination. Calico's eBPF dataplane can detect these sidecar flows and apply optimized routing that reduces redundant processing. This feature is particularly valuable in high-throughput microservices deployments where sidecar latency overhead is a concern.
 
 ## Prerequisites
 

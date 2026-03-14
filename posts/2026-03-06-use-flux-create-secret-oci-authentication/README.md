@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, OCI, Secrets, Authentication, GitOps, Kubernetes, container-registry
+Tags: Flux, Fluxcd, OCI, Secrets, Authentication, GitOps, Kubernetes, Container-registry
 
 Description: A practical guide to creating OCI registry authentication secrets with the flux create secret oci command for secure artifact access.
 

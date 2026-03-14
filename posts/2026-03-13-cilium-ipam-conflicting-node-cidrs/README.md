@@ -1,10 +1,10 @@
-# Conflicting Node CIDRs in Cilium IPAM: Configure, Troubleshoot, Validate, and Monitor
+# Conflicting Node CIDRs in Cilium IPAM
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, CIDR Conflicts, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Learn how to detect and resolve CIDR conflicts in Cilium IPAM configurations where node pod CIDRs overlap with each other or with other network ranges, causing routing failures and connectivity issues.
+Description: Learn how to detect and resolve CIDR conflicts in Cilium IPAM configurations where node pod CIDRs overlap with each other or with other network ranges, causing routing failures and connectivity...
 
 ---
 

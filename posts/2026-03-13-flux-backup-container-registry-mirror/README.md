@@ -256,7 +256,7 @@ spec:
 - Store Harbor on a separate storage class with redundancy (RAID or cloud managed disk).
 - Automate Harbor credential rotation and store credentials in your secret manager.
 - Configure Harbor rate limiting to prevent exhausting upstream registries during cache warming.
-- Monitor Harbor disk usage — a full cache disk will cause pull failures, not fallback to upstream.
+- Monitor Harbor disk usage - a full cache disk will cause pull failures, not fallback to upstream.
 - Test the mirror path by temporarily blocking access to the primary registry in a staging environment.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API Server, apiserver-builder
+Tags: Kubernetes, API Server, Apiserver-builder
 
 Description: Learn how to use apiserver-builder to scaffold and implement a custom Kubernetes API server with proper code generation, validation, and storage integration.
 

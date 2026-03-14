@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Team Communication, kube-proxy, Networking
+Tags: Calico, Kubernetes, Services, CNI, Team Communication, Kube-proxy, Networking
 
 Description: A practical guide for explaining Kubernetes service networking with Calico to engineering teams, focusing on how ClusterIPs work and how policy applies to service traffic.
 
@@ -10,7 +10,7 @@ Description: A practical guide for explaining Kubernetes service networking with
 
 ## Introduction
 
-Kubernetes Services are the first networking concept most developers learn, but the interaction between services and network policy is one of the most misunderstood areas of Kubernetes networking. Developers often assume they can write NetworkPolicy against a service's ClusterIP — and are confused when it doesn't work as expected.
+Kubernetes Services are the first networking concept most developers learn, but the interaction between services and network policy is one of the most misunderstood areas of Kubernetes networking. Developers often assume they can write NetworkPolicy against a service's ClusterIP - and are confused when it doesn't work as expected.
 
 Explaining service networking with Calico to your team requires clarifying the relationship between service VIPs, pod IPs, and policy enforcement. This post gives you the analogies and live demonstrations to make that clear.
 
@@ -28,7 +28,7 @@ Start with the fundamental service concept:
 
 The practical implication for policy:
 
-> "By the time Calico's network policy evaluates an ingress packet on a backend pod, the source is the client pod's IP — not the service ClusterIP. The ClusterIP is gone from the packet. This is why you cannot write ingress policy matching on a ClusterIP as a source."
+> "By the time Calico's network policy evaluates an ingress packet on a backend pod, the source is the client pod's IP - not the service ClusterIP. The ClusterIP is gone from the packet. This is why you cannot write ingress policy matching on a ClusterIP as a source."
 
 ## Live Demonstration: Service Traffic Source IP
 
@@ -47,7 +47,7 @@ SVC_IP=$(kubectl get svc backend-svc -o jsonpath='{.spec.clusterIP}')
 kubectl exec client -- curl -s http://$SVC_IP/api/request | jq '.request.headers'
 ```
 
-The echo server response will show the client's pod IP as the source — not the service ClusterIP. This makes the policy implication concrete.
+The echo server response will show the client's pod IP as the source - not the service ClusterIP. This makes the policy implication concrete.
 
 ## Explaining kube-proxy vs. Calico eBPF
 
@@ -83,7 +83,7 @@ ingress:
 
 ## Explaining Headless Services
 
-Headless services (with `clusterIP: None`) are simpler from a networking perspective — they return pod IPs directly in DNS responses, with no virtual IP and no kube-proxy DNAT:
+Headless services (with `clusterIP: None`) are simpler from a networking perspective - they return pod IPs directly in DNS responses, with no virtual IP and no kube-proxy DNAT:
 
 ```bash
 # DNS lookup for a headless service returns pod IPs directly
@@ -101,4 +101,4 @@ For headless services, Calico policy works exactly as for direct pod-to-pod traf
 
 ## Conclusion
 
-The most important concept for explaining Kubernetes Services with Calico is that ClusterIPs are virtual — they are resolved to pod IPs before Calico's policy enforcement sees the packet. Writing policy for service traffic means writing policy against the actual pod identities (source pod labels), not the virtual service address. Once teams internalize this, most service-related policy confusion disappears.
+The most important concept for explaining Kubernetes Services with Calico is that ClusterIPs are virtual - they are resolved to pod IPs before Calico's policy enforcement sees the packet. Writing policy for service traffic means writing policy against the actual pod identities (source pod labels), not the virtual service address. Once teams internalize this, most service-related policy confusion disappears.

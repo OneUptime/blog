@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Kubernetes, Network Policies, Security, Cilium, Cloud Native
+Tags: EBPF, Kubernetes, Network Policies, Security, Cilium, Cloud Native
 
 Description: Learn how to enforce Kubernetes network policies using eBPF for improved performance and security.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Boot Time, Performance, Linux
+Tags: Ubuntu, Systemd, Boot Time, Performance, Linux
 
 Description: Use systemd-analyze to measure and optimize Ubuntu boot times, identify slow services, generate SVG boot charts, and diagnose startup issues.
 

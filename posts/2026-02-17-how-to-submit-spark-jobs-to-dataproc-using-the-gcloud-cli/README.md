@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dataproc, Spark, gcloud, Big Data
+Tags: GCP, Dataproc, Spark, Gcloud, Big Data
 
 Description: Step-by-step instructions for submitting PySpark, SparkR, and Spark SQL jobs to Dataproc clusters using the gcloud command-line interface.
 

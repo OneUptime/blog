@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Linux, systemd, Troubleshooting
+Tags: RHEL, Linux, Systemd, Troubleshooting
 
 Description: Step-by-step guide on troubleshoot 'failed to start' systemd service errors on rhel 9 with practical examples and commands.
 

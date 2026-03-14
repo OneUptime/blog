@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GitHub, Bug Reports, Open Source, Community
+Tags: Cilium, Community, GitHub, Open Source
 
 Description: An explanation of how the Cilium GitHub issue workflow operates, including issue triage, labels, milestones, and how to track fixes.
 

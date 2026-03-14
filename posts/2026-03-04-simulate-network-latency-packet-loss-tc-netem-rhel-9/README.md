@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, tc netem, Latency, Packet Loss, Linux
+Tags: RHEL, Tc netem, Latency, Packet Loss, Linux
 
 Description: Learn how to use tc netem on RHEL to simulate real-world network conditions like latency, jitter, packet loss, duplication, and reordering for application testing and chaos engineering.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Backup, tar, System Administration, Disaster Recovery, Linux
+Tags: RHEL, Backup, Tar, System Administration, Disaster Recovery, Linux
 
 Description: Use tar to create full system backups on RHEL, including how to properly exclude virtual filesystems and restore from backup archives.
 

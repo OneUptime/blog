@@ -98,7 +98,7 @@ groups:
 
 Create a dedicated uplink dashboard:
 
-```
+```plaintext
 # RX/TX Throughput
 rate(vpp_interface_rx_bytes{interface=~"GigabitEthernet.*"}[5m]) * 8 / 1e9
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Django, Python, PostgreSQL, Migrations
+Tags: Flux CD, Kubernetes, GitOps, Django, Python, PostgreSQL, Migration
 
 Description: Deploy a Django application with PostgreSQL to Kubernetes using Flux CD, including database migrations via Kubernetes Jobs and secret management.
 
@@ -12,7 +12,7 @@ Description: Deploy a Django application with PostgreSQL to Kubernetes using Flu
 
 Django is a batteries-included Python web framework that powers everything from content platforms to APIs. Deploying Django to Kubernetes involves a few more moving parts than a stateless Node.js service: you need a database, you need to run `manage.py migrate` before or during deployments, and you need to serve static files separately from the Django process. Getting these pieces right in a GitOps workflow requires some deliberate design.
 
-Flux CD handles the orchestration by letting you declare the entire deployment — Django web server, Celery workers, migration Jobs, and ConfigMaps — as manifests in Git. Flux's `dependsOn` feature ensures migration Jobs complete before traffic is shifted to new application pods, preventing requests from hitting an incompatible schema.
+Flux CD handles the orchestration by letting you declare the entire deployment - Django web server, Celery workers, migration Jobs, and ConfigMaps - as manifests in Git. Flux's `dependsOn` feature ensures migration Jobs complete before traffic is shifted to new application pods, preventing requests from hitting an incompatible schema.
 
 This guide covers the Django Dockerfile, the migration Job pattern, PostgreSQL connection management via Secrets, and the full Flux pipeline.
 
@@ -240,7 +240,7 @@ kubectl logs -n my-django-app -l app=my-django-app
 
 - Version-stamp migration Job names (e.g., `django-migrate-v1-0-0`) so Flux creates a new Job for each release rather than trying to update an immutable resource.
 - Use the External Secrets Operator to sync `DATABASE_URL` and `SECRET_KEY` from a secrets manager (GCP Secret Manager, AWS Secrets Manager) rather than creating Kubernetes secrets manually.
-- Serve static files (`STATIC_ROOT`) from a separate Nginx sidecar or a CDN — do not serve them through gunicorn.
+- Serve static files (`STATIC_ROOT`) from a separate Nginx sidecar or a CDN - do not serve them through gunicorn.
 - Set `DEBUG=False` and `ALLOWED_HOSTS` explicitly in production settings and inject them via ConfigMap.
 - Use `WaitForJobCompletion` style health checks in Flux to block the application Kustomization until migrations finish.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, xDS, Dynamic Configuration
+Tags: Envoy, XDS, Dynamic Configuration
 
 Description: Learn how to implement dynamic configuration in Envoy using the xDS protocol for runtime updates without restarts.
 

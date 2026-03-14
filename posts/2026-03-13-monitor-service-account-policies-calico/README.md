@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Monitoring
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Monitoring
 
 Description: Monitor Calico service account-based network policies to track SA coverage, identity-based traffic decisions, and unauthorized access attempts.
 
@@ -104,4 +104,4 @@ flowchart LR
 
 ## Conclusion
 
-Monitoring service account-based Calico policies requires tracking SA coverage as a key metric — the percentage of pods using dedicated service accounts versus the default SA. Alert when this metric degrades, as it indicates new workloads are being deployed without the required SA configuration. Combine SA coverage metrics with Calico denial rate metrics to build a comprehensive picture of your identity-based network security posture.
+Monitoring service account-based Calico policies requires tracking SA coverage as a key metric - the percentage of pods using dedicated service accounts versus the default SA. Alert when this metric degrades, as it indicates new workloads are being deployed without the required SA configuration. Combine SA coverage metrics with Calico denial rate metrics to build a comprehensive picture of your identity-based network security posture.

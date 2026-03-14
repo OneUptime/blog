@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Security
+Tags: Calico, Kubernetes, Networking, EBPF, Security
 
 Description: Apply security hardening for Calico eBPF mode, covering BPF program access controls, kernel security settings, and eBPF-specific threat mitigations.
 
@@ -134,4 +134,4 @@ bpftrace -e 'kprobe:sys_bpf { printf("BPF syscall: pid=%d comm=%s\n", pid, comm)
 
 ## Conclusion
 
-Securing Calico eBPF mode involves restricting BPF syscall access for non-network workloads via seccomp profiles, monitoring for unexpected BPF program loading with runtime security tools like Falco, protecting Calico's metrics and health endpoints with network policies, and understanding the implications of Linux kernel lockdown mode. The eBPF security model is fundamentally different from iptables — instead of file-based security, it relies on the kernel's BPF verifier and process privilege controls. Building monitoring for unexpected BPF activity is the most impactful security control for eBPF deployments.
+Securing Calico eBPF mode involves restricting BPF syscall access for non-network workloads via seccomp profiles, monitoring for unexpected BPF program loading with runtime security tools like Falco, protecting Calico's metrics and health endpoints with network policies, and understanding the implications of Linux kernel lockdown mode. The eBPF security model is fundamentally different from iptables - instead of file-based security, it relies on the kernel's BPF verifier and process privilege controls. Building monitoring for unexpected BPF activity is the most impactful security control for eBPF deployments.

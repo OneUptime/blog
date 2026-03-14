@@ -10,7 +10,7 @@ Description: Temporarily scale Flux-managed deployments without triggering recon
 
 ## Introduction
 
-Scaling a deployment managed by Flux creates a conflict: you manually set `replicas: 10` for a traffic spike, but Flux sees the Git-declared value of `replicas: 3` and reconciles it back to three. This drift correction is Flux doing exactly what it is designed to do — but it is the wrong behavior when you intentionally need to override replica counts during incidents or traffic events.
+Scaling a deployment managed by Flux creates a conflict: you manually set `replicas: 10` for a traffic spike, but Flux sees the Git-declared value of `replicas: 3` and reconciles it back to three. This drift correction is Flux doing exactly what it is designed to do - but it is the wrong behavior when you intentionally need to override replica counts during incidents or traffic events.
 
 There are three correct approaches to scaling Flux-managed deployments: using a HorizontalPodAutoscaler (which Flux explicitly accommodates), temporarily suspending Flux reconciliation, or modifying the replica count in Git as an emergency change. Each approach has a different tradeoff between speed, safety, and GitOps compliance.
 
@@ -22,7 +22,7 @@ This guide covers all three approaches, explains when to use each, and shows how
 - kubectl and Flux CLI installed
 - Understanding of server-side apply field ownership
 
-## Step 1: The Problem — Why Naive Scaling Fails
+## Step 1: The Problem - Why Naive Scaling Fails
 
 Observe the conflict before learning to avoid it:
 
@@ -33,19 +33,19 @@ kubectl scale deployment my-service -n team-alpha --replicas=10
 # Wait for Flux's next reconciliation (check interval)
 flux get kustomization my-service -n team-alpha
 
-# Flux restores it to 2 — the Git-declared value
+# Flux restores it to 2 - the Git-declared value
 kubectl get deployment my-service -n team-alpha -o jsonpath='{.spec.replicas}'
 # Output: 2
 ```
 
 The conflict happens because Flux owns the `spec.replicas` field through its server-side apply field manager.
 
-## Step 2: The Correct Approach — Use HPA and Remove replicas from Git
+## Step 2: The Correct Approach - Use HPA and Remove replicas from Git
 
 The cleanest solution is to let HPA manage replica counts and remove `spec.replicas` from your Flux-managed manifests entirely.
 
 ```yaml
-# deploy/deployment.yaml — Remove spec.replicas entirely when HPA is in use
+# deploy/deployment.yaml - Remove spec.replicas entirely when HPA is in use
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -142,7 +142,7 @@ If the Git-declared replica count is too low for the current traffic, update Git
 
 ```bash
 # Update replicas in Git, then commit and push
-# Then resume Flux — it will apply the updated value
+# Then resume Flux - it will apply the updated value
 flux resume kustomization my-service -n team-alpha
 ```
 
@@ -200,7 +200,7 @@ flux reconcile kustomization my-service -n team-alpha --with-source
 
 ## Best Practices
 
-- Always configure HPA for production workloads and remove `spec.replicas` from Deployment manifests — this is the cleanest solution
+- Always configure HPA for production workloads and remove `spec.replicas` from Deployment manifests - this is the cleanest solution
 - When suspending Flux for emergency scaling, set a calendar reminder to resume within a defined SLA (e.g., 4 hours)
 - Log all manual scaling operations in your incident management system with a link to the Kustomization that was suspended
 - After every incident where you scaled manually, file a follow-up to add HPA and remove the need for future manual overrides

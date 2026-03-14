@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Delegation, delegate_to, DevOps, Automation, Orchestration, Best Practices
+Tags: Ansible, Delegation, Delegate_to, DevOps, Automation, Orchestration, Best Practices
 
 Description: Learn how to use Ansible delegation with delegate_to to run tasks on different hosts, manage load balancers, and coordinate multi-tier deployments.
 

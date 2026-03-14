@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, upgrade, external-installers, kubeadm, kops, kubespray, kubernetes
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to upgrade Cilium when it was installed via external Kubernetes provisioning tools like kubeadm, kops, or kubespray, with tool-specific upgrade procedures and validation steps.
 
@@ -10,7 +10,7 @@ Description: Learn how to upgrade Cilium when it was installed via external Kube
 
 ## Introduction
 
-Many Kubernetes clusters are provisioned using external tools like kubeadm, kops, kubespray, or Cluster API that bundle CNI installation as part of cluster provisioning. When Cilium is installed via one of these external installers, upgrading it requires a different approach than upgrading a standalone Cilium installation — you must coordinate with the installer's lifecycle management or bypass it appropriately.
+Many Kubernetes clusters are provisioned using external tools like kubeadm, kops, kubespray, or Cluster API that bundle CNI installation as part of cluster provisioning. When Cilium is installed via one of these external installers, upgrading it requires a different approach than upgrading a standalone Cilium installation - you must coordinate with the installer's lifecycle management or bypass it appropriately.
 
 External installers often manage Cilium manifests in their own configuration format, which means a direct `helm upgrade` or `kubectl apply` may not be recognized by the installer's drift detection. Understanding the boundaries between the installer's managed resources and your operational changes is critical for safe upgrades.
 
@@ -46,7 +46,7 @@ kubectl get configmap -n kube-system cilium-config \
 
 ## Step 2: Upgrade Cilium on kubeadm-provisioned Clusters
 
-kubeadm doesn't manage CNI — Cilium can be upgraded independently.
+kubeadm doesn't manage CNI - Cilium can be upgraded independently.
 
 ```bash
 # For kubeadm clusters, Cilium is a post-cluster addon

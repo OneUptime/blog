@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's component architecture to
 
 ## Introduction
 
-Explaining Calico's architecture to a team is challenging because the components (Felix, BIRD, confd, Typha) have non-obvious names and non-obvious relationships. Most teams who run Calico can use it without understanding the architecture — until something breaks and they need to know where to look.
+Explaining Calico's architecture to a team is challenging because the components (Felix, BIRD, confd, Typha) have non-obvious names and non-obvious relationships. Most teams who run Calico can use it without understanding the architecture - until something breaks and they need to know where to look.
 
 The goal of this session is not to make everyone a Calico expert. It is to give team members enough understanding to answer: "Which component is responsible for this?" and "Where should I look when this breaks?" This post provides the narrative and visual framework to accomplish that.
 
@@ -24,9 +24,9 @@ The goal of this session is not to make everyone a Calico expert. It is to give 
 
 Start with the fundamental architecture split:
 
-> "Calico has two layers: the control plane, which decides what should happen, and the data plane, which makes it happen. Felix is the bridge between the two — it translates control plane decisions (network policies, routes) into data plane rules (iptables, eBPF programs, route table entries)."
+> "Calico has two layers: the control plane, which decides what should happen, and the data plane, which makes it happen. Felix is the bridge between the two - it translates control plane decisions (network policies, routes) into data plane rules (iptables, eBPF programs, route table entries)."
 
-This mental model helps teams understand why a "config change" (control plane) takes a moment to be "enforced" (data plane) — Felix must reconcile the new state.
+This mental model helps teams understand why a "config change" (control plane) takes a moment to be "enforced" (data plane) - Felix must reconcile the new state.
 
 ## Explain Each Component with a Job Title
 
@@ -54,7 +54,7 @@ graph LR
 
 Walk through: "When you apply a NetworkPolicy, Kubernetes stores it. Typha reads it and sends it to Felix on every node. Felix calculates the new iptables rules and updates them. Now the policy is enforced."
 
-This sequence makes the "latency" between policy application and enforcement visible — it's the Typha-to-Felix propagation delay (typically sub-second).
+This sequence makes the "latency" between policy application and enforcement visible - it's the Typha-to-Felix propagation delay (typically sub-second).
 
 ## Explain Failure Modes
 
@@ -62,7 +62,7 @@ Give each component a failure mode that the team can recognize:
 
 - **Felix fails**: Policy stops being enforced. New pods don't get routes. Existing connections keep working (kernel routes and iptables rules persist until changed).
 - **BIRD fails**: BGP session drops. Remote nodes lose routes to pods on this node. Cross-node traffic fails. Same-node traffic continues.
-- **Typha fails**: Felix stops receiving updates. Policy changes stop propagating. Everything continues working until the next policy change — then it silently doesn't apply.
+- **Typha fails**: Felix stops receiving updates. Policy changes stop propagating. Everything continues working until the next policy change - then it silently doesn't apply.
 - **confd fails**: BIRD's config stops updating. BGP peer changes don't take effect. Existing BGP sessions continue.
 
 Knowing these failure modes helps the team answer "what is still working if X fails?"
@@ -92,4 +92,4 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 
 ## Conclusion
 
-Explaining Calico's architecture is most effective when you use job title analogies for each component, walk through the configuration flow as a sequence of events, and map each component to its failure mode. Teams don't need to understand the implementation details — they need to understand which component to look at when something goes wrong and what "healthy" looks like for each component.
+Explaining Calico's architecture is most effective when you use job title analogies for each component, walk through the configuration flow as a sequence of events, and map each component to its failure mode. Teams don't need to understand the implementation details - they need to understand which component to look at when something goes wrong and what "healthy" looks like for each component.

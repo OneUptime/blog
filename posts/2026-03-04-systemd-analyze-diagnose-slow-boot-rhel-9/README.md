@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Boot Performance, Diagnostics, Linux
+Tags: RHEL, Systemd, Boot Performance, Diagnostics, Linux
 
 Description: A hands-on guide to using systemd-analyze on RHEL to measure boot times, find bottleneck services, and generate visual boot charts for performance tuning.
 

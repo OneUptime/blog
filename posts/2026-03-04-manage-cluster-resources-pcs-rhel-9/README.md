@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pcs, Pacemaker, Cluster, Resources, High Availability, Linux
+Tags: RHEL, Pcs, Pacemaker, Cluster, Resources, High Availability, Linux
 
 Description: Learn how to create, manage, and monitor cluster resources using the pcs command on RHEL Pacemaker clusters.
 

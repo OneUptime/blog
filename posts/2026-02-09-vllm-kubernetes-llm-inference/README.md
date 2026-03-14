@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, vLLM, LLM, Inference, Large Language Models
+Tags: Kubernetes, VLLM, LLM, Inference, Large Language Models
 
 Description: Deploy vLLM on Kubernetes for high-throughput, low-latency inference of large language models with PagedAttention, continuous batching, and optimized CUDA kernels.
 

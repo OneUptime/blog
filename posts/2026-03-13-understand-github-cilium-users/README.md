@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, github, community, open-source, contribution, issue-tracking
+Tags: Cilium, Community, GitHub, Open Source
 
-Description: Learn how to effectively use GitHub to engage with the Cilium project — from filing bug reports and feature requests to contributing code and understanding the project's development workflow.
+Description: Learn how to effectively use GitHub to engage with the Cilium project - from filing bug reports and feature requests to contributing code and understanding the project's development workflow.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to effectively use GitHub to engage with the Cilium proje
 
 GitHub is the central hub for Cilium's development, issue tracking, and community engagement. With thousands of issues, pull requests, and discussions, the Cilium GitHub repository (`github.com/cilium/cilium`) can be overwhelming for new users. Understanding how to navigate it efficiently makes the difference between finding solutions quickly and spending hours searching.
 
-Beyond issue tracking, GitHub is where Cilium's roadmap is discussed, new features are proposed through enhancement issues, and security advisories are published. For operators running Cilium in production, staying current with GitHub activity — particularly releases and security advisories — is an important operational practice.
+Beyond issue tracking, GitHub is where Cilium's roadmap is discussed, new features are proposed through enhancement issues, and security advisories are published. For operators running Cilium in production, staying current with GitHub activity - particularly releases and security advisories - is an important operational practice.
 
 This guide covers how to use GitHub as a Cilium user: finding relevant issues, filing effective bug reports, tracking feature development, and optionally contributing back to the project.
 
@@ -29,13 +29,13 @@ Understanding the repository layout helps you find relevant code and documentati
 
 ```bash
 # Key directories in the Cilium repository:
-# /pkg/           — Core Cilium Go packages
-# /daemon/        — Cilium agent daemon
-# /cilium-cli/    — The cilium CLI tool
-# /install/       — Helm charts and install manifests
-# /Documentation/ — Official documentation source
-# /test/          — Integration and e2e tests
-# /examples/      — Demo applications (including Star Wars demo)
+# /pkg/           - Core Cilium Go packages
+# /daemon/        - Cilium agent daemon
+# /cilium-cli/    - The cilium CLI tool
+# /install/       - Helm charts and install manifests
+# /Documentation/ - Official documentation source
+# /test/          - Integration and e2e tests
+# /examples/      - Demo applications (including Star Wars demo)
 
 # Clone the repo to explore locally (optional)
 git clone https://github.com/cilium/cilium.git
@@ -132,11 +132,11 @@ make tests
 
 ## Best Practices
 
-- Use the issue template — skipping it makes triage slower
+- Use the issue template - skipping it makes triage slower
 - Link related issues and PRs in your bug report for context
 - Watch the Cilium repository for security advisories (`Watch > Security alerts`)
 - Check the CI status of your PR by reviewing GitHub Actions runs
-- Be responsive to review comments — abandoned PRs get closed
+- Be responsive to review comments - abandoned PRs get closed
 - Celebrate small contributions: documentation fixes are as valuable as code
 
 ## Conclusion

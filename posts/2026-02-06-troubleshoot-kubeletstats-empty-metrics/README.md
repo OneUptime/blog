@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, kubelet, Metrics, Kubernetes
+Tags: OpenTelemetry, Kubelet, Metrics, Kubernetes
 
 Description: Troubleshoot the kubeletstats receiver returning empty metrics because of read-only kubelet port and authentication issues.
 

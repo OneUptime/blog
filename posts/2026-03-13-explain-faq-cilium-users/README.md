@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, FAQ, eBPF, Networking, Troubleshooting
+Tags: Cilium, FAQ, Troubleshooting, Kubernetes
 
 Description: An explanation of the most common Cilium FAQ topics, why these questions arise, and what the answers reveal about Cilium's architecture.
 
@@ -10,7 +10,7 @@ Description: An explanation of the most common Cilium FAQ topics, why these ques
 
 ## Introduction
 
-The Cilium FAQ is not just a list of answers — each question in it represents a pattern of confusion that arises from genuine architectural differences between Cilium and what users expect from traditional networking. Understanding why certain questions appear in the FAQ is as valuable as knowing the answers, because it helps you build correct mental models of how Cilium works.
+The Cilium FAQ is not just a list of answers - each question in it represents a pattern of confusion that arises from genuine architectural differences between Cilium and what users expect from traditional networking. Understanding why certain questions appear in the FAQ is as valuable as knowing the answers, because it helps you build correct mental models of how Cilium works.
 
 The most common FAQ topics cluster around three themes: installation and kernel requirements (which are stricter than most CNIs), network policy behavior (particularly around default-deny and policy ordering), and performance questions (when L7 policy adds latency and when it does not). By explaining the reasoning behind FAQ answers rather than just listing them, this post helps you troubleshoot novel issues by analogy rather than by pattern-matching to known questions.
 
@@ -108,4 +108,4 @@ kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
 
 ## Conclusion
 
-The Cilium FAQ reflects real-world pain points that arise from Cilium's unique architecture. Kernel requirements, policy enforcement modes, DNS-aware policies, and observability tooling are the areas where Cilium differs most from other CNIs. By understanding why these questions arise — rooted in eBPF kernel dependencies and identity-based policy model differences — you develop the architectural intuition needed to diagnose novel issues without relying on a FAQ lookup.
+The Cilium FAQ reflects real-world pain points that arise from Cilium's unique architecture. Kernel requirements, policy enforcement modes, DNS-aware policies, and observability tooling are the areas where Cilium differs most from other CNIs. By understanding why these questions arise - rooted in eBPF kernel dependencies and identity-based policy model differences - you develop the architectural intuition needed to diagnose novel issues without relying on a FAQ lookup.

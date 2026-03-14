@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Spring Boot, gRPC, Monitoring, Java, Tracing
+Tags: OpenTelemetry, Spring Boot, GRPC, Monitoring, Java, Tracing
 
 Description: Master OpenTelemetry instrumentation for Spring Boot gRPC services, including automatic tracing, custom metrics, context propagation, and performance monitoring for high-throughput RPC systems.
 

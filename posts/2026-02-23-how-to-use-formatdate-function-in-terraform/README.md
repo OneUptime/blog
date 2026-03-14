@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, formatdate, Date Formatting, Time Functions, Infrastructure as Code
+Tags: Terraform, Formatdate, Date Formatting, Time Functions, Infrastructure as Code
 
 Description: Learn how to use Terraform's formatdate function to convert timestamps into human-readable date strings for resource tags, naming, and configuration values.
 

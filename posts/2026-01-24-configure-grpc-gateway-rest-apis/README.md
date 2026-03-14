@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, REST, API Gateway, Go, Microservices, Protocol Buffers
+Tags: GRPC, REST, API Gateway, Go, Microservices, Protocol Buffers
 
 Description: Learn how to set up gRPC-Gateway to automatically generate REST APIs from your gRPC service definitions, enabling clients to communicate via HTTP/JSON.
 

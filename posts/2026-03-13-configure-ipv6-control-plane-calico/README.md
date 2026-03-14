@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, kubernetes, ipv6, networking, cni
+Tags: Calico, Kubernetes, IPv6, Networking, CNI
 
 Description: Learn how to configure an IPv6 control plane in Kubernetes using Calico, enabling dual-stack or pure IPv6 cluster networking for modern infrastructure requirements.
 

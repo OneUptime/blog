@@ -167,4 +167,4 @@ kubectl get all -n tigera-operator
 
 ## Conclusion
 
-Real-time monitoring during Calico operator migration gives you the confidence to proceed or abort based on objective data. By tracking TigeraStatus, per-node migration progress, network latency, and pod restart rates simultaneously, you can detect issues within seconds of them occurring. Set up the tmux monitoring dashboard before starting the migration and keep the network latency test running throughout — an unexpected spike in latency or pod restarts is your early warning signal to investigate before the migration completes.
+Real-time monitoring during Calico operator migration gives you the confidence to proceed or abort based on objective data. By tracking TigeraStatus, per-node migration progress, network latency, and pod restart rates simultaneously, you can detect issues within seconds of them occurring. Set up the tmux monitoring dashboard before starting the migration and keep the network latency test running throughout - an unexpected spike in latency or pod restarts is your early warning signal to investigate before the migration completes.

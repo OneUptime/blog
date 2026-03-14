@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Configuration, Datastore
+Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Configuration, Datastore
 
 Description: Understand and configure the etcdv3 key paths used by Calico to store network policy, IPAM, and host configuration data in your Kubernetes cluster.
 
@@ -10,7 +10,7 @@ Description: Understand and configure the etcdv3 key paths used by Calico to sto
 
 ## Introduction
 
-Calico uses a structured hierarchy of etcdv3 key paths to store all its operational data — from network policies and IP address management (IPAM) records to host configuration and Felix agent state. Understanding this path structure is essential for configuring etcd RBAC correctly, diagnosing datastore issues, and performing maintenance operations such as data migration or backup.
+Calico uses a structured hierarchy of etcdv3 key paths to store all its operational data - from network policies and IP address management (IPAM) records to host configuration and Felix agent state. Understanding this path structure is essential for configuring etcd RBAC correctly, diagnosing datastore issues, and performing maintenance operations such as data migration or backup.
 
 The Calico etcdv3 path hierarchy is organized by data type, with each path prefix corresponding to a specific category of information. Knowing which component reads and writes which paths helps you configure minimal permissions and understand the blast radius of potential datastore failures.
 
@@ -122,4 +122,4 @@ done
 
 ## Conclusion
 
-Understanding Calico's etcdv3 path structure enables precise RBAC configuration, targeted backup/restore operations, and effective troubleshooting. The key prefixes — `/calico/v1/policy/`, `/calico/v1/host/`, `/calico/v1/ipam/`, and `/calico/felix/v1/` — each serve distinct functional areas and can be managed independently. Always interact with these paths using calicoctl in preference to direct etcdctl manipulation to avoid data corruption.
+Understanding Calico's etcdv3 path structure enables precise RBAC configuration, targeted backup/restore operations, and effective troubleshooting. The key prefixes - `/calico/v1/policy/`, `/calico/v1/host/`, `/calico/v1/ipam/`, and `/calico/felix/v1/` - each serve distinct functional areas and can be managed independently. Always interact with these paths using calicoctl in preference to direct etcdctl manipulation to avoid data corruption.

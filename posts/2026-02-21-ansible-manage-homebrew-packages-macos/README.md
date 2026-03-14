@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Homebrew, macOS, Package Management, DevOps
+Tags: Ansible, Homebrew, MacOS, Package Management, DevOps
 
 Description: Learn how to automate Homebrew package management on macOS using Ansible, covering formulae, casks, taps, and complete developer workstation provisioning.
 

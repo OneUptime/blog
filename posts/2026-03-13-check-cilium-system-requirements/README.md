@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, System Requirements, eBPF, Networking, Prerequisites
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive guide to checking all system-level requirements for Cilium, including kernel version, BPF support, CPU architecture, and networking stack configuration.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to checking all system-level requirements for
 
 ## Introduction
 
-Cilium's system requirements are more specific than most Kubernetes CNI plugins because of its deep integration with the Linux kernel via eBPF. Before installing Cilium in any environment — cloud-managed, self-managed, or bare metal — verifying the system requirements prevents failures that are difficult to diagnose after the fact. This guide provides a complete requirements checklist with the commands to verify each one.
+Cilium's system requirements are more specific than most Kubernetes CNI plugins because of its deep integration with the Linux kernel via eBPF. Before installing Cilium in any environment - cloud-managed, self-managed, or bare metal - verifying the system requirements prevents failures that are difficult to diagnose after the fact. This guide provides a complete requirements checklist with the commands to verify each one.
 
 The requirements fall into three categories: hard requirements (must be met or Cilium will not start), soft requirements (must be met for specific features), and recommended settings (improve performance and security but are not required for basic operation). Understanding which category each requirement falls into helps you prioritize what to fix first.
 
@@ -155,4 +155,4 @@ echo "Results: $PASS passed, $FAIL failed"
 
 ## Conclusion
 
-System requirements for Cilium are well-documented and can be verified with standard Linux commands. The most common blocker is kernel version — ensure your nodes are running 5.10+ for the most complete feature support. BPF filesystem mounting and the availability of BPF syscalls are the other critical prerequisites. Once these hard requirements are met, specific features like WireGuard, bandwidth management, and BPF host routing have their own kernel version gates that are easy to verify.
+System requirements for Cilium are well-documented and can be verified with standard Linux commands. The most common blocker is kernel version - ensure your nodes are running 5.10+ for the most complete feature support. BPF filesystem mounting and the availability of BPF syscalls are the other critical prerequisites. Once these hard requirements are met, specific features like WireGuard, bandwidth management, and BPF host routing have their own kernel version gates that are easy to verify.

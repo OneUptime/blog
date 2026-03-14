@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Email, Mail Server, iRedMail, System Administration
+Tags: Ubuntu, Email, Mail Server, IRedMail, System Administration
 
 Description: A complete guide to setting up a full-featured mail server on Ubuntu using iRedMail, including prerequisites, DNS configuration, and post-installation steps.
 

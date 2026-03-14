@@ -112,4 +112,4 @@ kubectl delete pod test-a test-b
 
 ## Conclusion
 
-Calico Node resource validation covers three layers: resource existence (every k8s node has a Calico Node), BGP configuration accuracy (correct IPs and AS numbers), and functional BGP session establishment. Tunnel IP conflicts are rare but critical to detect — two nodes sharing a tunnel IP causes traffic black-holing that is difficult to diagnose without explicitly checking the Node resource configuration.
+Calico Node resource validation covers three layers: resource existence (every k8s node has a Calico Node), BGP configuration accuracy (correct IPs and AS numbers), and functional BGP session establishment. Tunnel IP conflicts are rare but critical to detect - two nodes sharing a tunnel IP causes traffic black-holing that is difficult to diagnose without explicitly checking the Node resource configuration.

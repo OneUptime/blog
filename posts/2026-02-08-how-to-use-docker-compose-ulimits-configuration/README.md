@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, ulimit, Resource Limits, Performance Tuning, Linux, DevOps
+Tags: Docker, Docker Compose, Ulimit, Resource Limits, Performance Tuning, Linux, DevOps
 
 Description: Configure Docker Compose ulimits to control file descriptors, process counts, and memory locks for containerized applications.
 

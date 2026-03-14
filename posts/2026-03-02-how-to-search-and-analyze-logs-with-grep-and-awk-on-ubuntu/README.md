@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, grep, awk, System Administration
+Tags: Ubuntu, Logging, Grep, Awk, System Administration
 
 Description: Use grep and awk to efficiently search, filter, and analyze log files on Ubuntu, extracting meaningful insights from large log datasets with command-line tools.
 

@@ -1,4 +1,4 @@
-# How to Use Cilium Command Cheatsheet
+# How to Use Command Cheatsheet for Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

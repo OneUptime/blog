@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, distinct Function, Lists, HCL, Infrastructure as Code, Deduplication
+Tags: Terraform, Distinct Function, Lists, HCL, Infrastructure as Code, Deduplication
 
 Description: Learn how to use the distinct function in Terraform to remove duplicate elements from lists while preserving the original order of first occurrences.
 

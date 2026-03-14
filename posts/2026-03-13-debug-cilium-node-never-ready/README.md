@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Troubleshooting, Node Readiness, eBPF, Operations
+Tags: Cilium, Kubernetes, Troubleshooting, Node Readiness, EBPF, Operations
 
 Description: Debug Kubernetes nodes running Cilium that never enter the Ready state by diagnosing Cilium agent startup failures, eBPF loading errors, and initialization problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, pytest, Testing, Observability, Tracing
+Tags: OpenTelemetry, Python, Pytest, Testing, Observability, Tracing
 
 Description: Learn how to instrument your Python test suites with pytest-opentelemetry to gain deep observability into test execution, failures, and performance bottlenecks.
 

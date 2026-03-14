@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, swappiness, Memory, Tuning, Linux
+Tags: RHEL, Swappiness, Memory, Tuning, Linux
 
 Description: Understand and tune the vm.swappiness kernel parameter on RHEL to control how aggressively the system uses swap space.
 

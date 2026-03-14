@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aws, ec2, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, AWS, Self-Managed
 
 Description: Learn how to safely upgrade Calico on self-managed Kubernetes clusters running on AWS EC2, with AWS-specific validation steps and procedures for a zero-disruption rolling upgrade.
 
@@ -138,7 +138,7 @@ aws ec2 describe-security-groups \
 
 - Plan upgrades during AWS maintenance windows when VPC route table changes have minimal traffic impact
 - Monitor AWS CloudWatch for EC2 network metrics during the rolling upgrade
-- Keep EC2 instance security groups documented — Calico upgrades don't change them, but they affect node connectivity
+- Keep EC2 instance security groups documented - Calico upgrades don't change them, but they affect node connectivity
 - Use kops `rolling-update` command if managing the cluster with kops, as it handles node cordon/drain
 - Verify BGP session counts before and after upgrade to confirm peer recovery
 

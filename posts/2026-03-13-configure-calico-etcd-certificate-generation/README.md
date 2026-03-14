@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, PKI, Configuration
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, PKI, Configuration
 
 Description: A step-by-step guide to generating and configuring TLS certificates for Calico's etcd client connections using OpenSSL and cert-manager.
 
@@ -12,7 +12,7 @@ Description: A step-by-step guide to generating and configuring TLS certificates
 
 Calico's communication with etcd must be secured using mutual TLS (mTLS) to prevent eavesdropping and ensure that only authorized Calico components can connect to the etcd cluster. This requires a PKI (Public Key Infrastructure) with a Certificate Authority, server certificates for etcd, and client certificates for each Calico component.
 
-Generating these certificates correctly — with the right Subject Alternative Names, key usage extensions, and validity periods — is critical for both security and operational reliability. Misconfigured certificates are a common source of Calico failures, especially after upgrades or when certificates expire unexpectedly.
+Generating these certificates correctly - with the right Subject Alternative Names, key usage extensions, and validity periods - is critical for both security and operational reliability. Misconfigured certificates are a common source of Calico failures, especially after upgrades or when certificates expire unexpectedly.
 
 This guide covers generating etcd certificates for Calico using OpenSSL for manual generation and cert-manager for automated lifecycle management.
 

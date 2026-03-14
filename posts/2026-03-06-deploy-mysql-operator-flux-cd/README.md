@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, MySQL, Kubernetes, Database, GitOps, Operator, InnoDB Cluster, mysql-operator
+Tags: Flux CD, MySQL, Kubernetes, Database, GitOps, Operator, InnoDB Cluster, Mysql-operator
 
 Description: A hands-on guide to deploying the MySQL Operator for Kubernetes using Flux CD to manage MySQL InnoDB Clusters through GitOps workflows.
 

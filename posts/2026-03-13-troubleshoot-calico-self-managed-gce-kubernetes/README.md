@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gcp, gce, kubernetes, self-managed, troubleshooting, networking
+Tags: Calico, Kubernetes, Networking, Troubleshooting, GCE, Google Cloud, Self-Managed
 
 Description: A guide to diagnosing and resolving networking issues when running Calico on self-managed Kubernetes clusters deployed on Google Compute Engine (GCE) instances.
 
@@ -119,10 +119,10 @@ kubectl exec test-pod-1 -- traceroute ${POD2_IP}
 
 ## Best Practices
 
-- Create GCE firewall rules before deploying Calico—nodes need to communicate during initialization
+- Create GCE firewall rules before deploying Calico-nodes need to communicate during initialization
 - Use GCE custom routes for overlay-free networking to achieve the best performance
 - Apply GCE instance tags consistently to simplify firewall rule management
-- Monitor GCE route count—there is a limit per VPC network (250 routes by default)
+- Monitor GCE route count-there is a limit per VPC network (250 routes by default)
 - Test cross-zone connectivity explicitly, as GCE zones are separate fault domains
 
 ## Conclusion

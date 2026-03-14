@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, WiFi, hostapd, 5GHz, Networking
+Tags: Ubuntu, WiFi, Hostapd, 5GHz, Networking
 
 Description: Configure a 5GHz 802.11ac WiFi access point on Ubuntu using hostapd, with proper channel selection, VHT capabilities configuration, and DFS channel handling.
 

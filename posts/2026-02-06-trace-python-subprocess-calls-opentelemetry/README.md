@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, subprocess, Child Process, Tracing, Context Propagation
+Tags: OpenTelemetry, Python, Subprocess, Child Process, Tracing, Context Propagation
 
 Description: Learn how to implement distributed tracing for Python subprocess calls using OpenTelemetry, including context propagation, exit code tracking, and comprehensive monitoring of child processes.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Networking, eBPF
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A comprehensive introduction to Cilium's IP Address Management (IPAM) modes, how to select the right IPAM mode for your environment, and how to configure, troubleshoot, and monitor IPAM in production clusters.
+Description: A comprehensive introduction to Cilium's IP Address Management (IPAM) modes, how to select the right IPAM mode for your environment, and how to configure, troubleshoot, and monitor IPAM in...
 
 ---
 
@@ -187,4 +187,4 @@ curl -s http://localhost:9963/metrics | grep -E "ipam|cidr"
 
 ## Conclusion
 
-Cilium's IPAM subsystem is flexible enough to work across bare metal, on-premises, and all major cloud providers. The choice between cluster-pool, kubernetes, and cloud-native IPAM modes depends on your environment and networking requirements. Cluster-pool is the most portable option and works with overlay networks, while cloud-native modes enable direct routing and integration with cloud security groups. Monitor IPAM pool utilization proactively — IP exhaustion causes pod creation failures that are difficult to recover from in production without planned expansion procedures.
+Cilium's IPAM subsystem is flexible enough to work across bare metal, on-premises, and all major cloud providers. The choice between cluster-pool, kubernetes, and cloud-native IPAM modes depends on your environment and networking requirements. Cluster-pool is the most portable option and works with overlay networks, while cloud-native modes enable direct routing and integration with cloud security groups. Monitor IPAM pool utilization proactively - IP exhaustion causes pod creation failures that are difficult to recover from in production without planned expansion procedures.

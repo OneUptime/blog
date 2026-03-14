@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Init Containers, iptables, Kubernetes, Networking
+Tags: Istio, Init Containers, Iptables, Kubernetes, Networking
 
 Description: A detailed explanation of Istio's init container, how it sets up iptables rules for traffic interception, and how to troubleshoot init container issues.
 

@@ -192,12 +192,12 @@ kubectl get authorizationpolicy -n production
 
 ## Best Practices
 
-- Start with a `deny-all` AuthorizationPolicy per namespace, then add explicit ALLOW policies — this is the zero-trust model.
-- Use Kubernetes ServiceAccounts as the principal identity in `source.principals` — each service should have its own dedicated ServiceAccount for precise control.
-- Apply the ALLOW policy for the Istio ingress gateway to allow external traffic into your namespace — without this, no external requests reach your services.
+- Start with a `deny-all` AuthorizationPolicy per namespace, then add explicit ALLOW policies - this is the zero-trust model.
+- Use Kubernetes ServiceAccounts as the principal identity in `source.principals` - each service should have its own dedicated ServiceAccount for precise control.
+- Apply the ALLOW policy for the Istio ingress gateway to allow external traffic into your namespace - without this, no external requests reach your services.
 - Use the `AUDIT` action during policy development to log (but not block) traffic, then switch to `ALLOW`/`DENY` once you are confident in the rules.
-- Review and rotate policies when service accounts change — keep the AuthorizationPolicy source principals in sync with your service's ServiceAccount.
+- Review and rotate policies when service accounts change - keep the AuthorizationPolicy source principals in sync with your service's ServiceAccount.
 
 ## Conclusion
 
-Managing Istio AuthorizationPolicies through Flux CD gives your security team a GitOps-controlled, auditable zero-trust network policy framework. Every access control rule is a code review away, with full Git history tracking who authorized which service-to-service communication and when — making security compliance straightforward to demonstrate and enforce.
+Managing Istio AuthorizationPolicies through Flux CD gives your security team a GitOps-controlled, auditable zero-trust network policy framework. Every access control rule is a code review away, with full Git history tracking who authorized which service-to-service communication and when - making security compliance straightforward to demonstrate and enforce.

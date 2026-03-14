@@ -12,7 +12,7 @@ Description: Manage Kubernetes Gateway API resources for Istio using Flux CD to 
 
 The Kubernetes Gateway API is the successor to Ingress, providing a richer, more expressive API for managing ingress and east-west traffic. Istio supports the Gateway API natively, enabling teams to configure HTTP routes, TLS termination, traffic splitting, and header-based routing using standardized Kubernetes resources.
 
-Managing Gateway API resources through Flux CD means your traffic routing rules — Gateway, HTTPRoute, TCPRoute — are all version-controlled. Rolling out a canary deployment or adding a new route requires a pull request, not manual `kubectl apply` commands.
+Managing Gateway API resources through Flux CD means your traffic routing rules - Gateway, HTTPRoute, TCPRoute - are all version-controlled. Rolling out a canary deployment or adding a new route requires a pull request, not manual `kubectl apply` commands.
 
 This guide covers installing the Gateway API CRDs and managing Istio Gateway API resources with Flux CD.
 
@@ -238,12 +238,12 @@ curl -H "Host: api.example.com" -H "X-Beta-User: true" http://$GATEWAY_IP/api/fe
 
 ## Best Practices
 
-- Install Gateway API CRDs with `prune: false` — these are cluster-level resources that should never be accidentally removed by Flux.
+- Install Gateway API CRDs with `prune: false` - these are cluster-level resources that should never be accidentally removed by Flux.
 - Use `allowedRoutes.namespaces` on Gateways to restrict which namespaces can attach HTTPRoutes, preventing unauthorized route injection.
-- Model canary rollouts as weight changes in HTTPRoute `backendRefs` — increase the canary weight gradually via pull requests.
+- Model canary rollouts as weight changes in HTTPRoute `backendRefs` - increase the canary weight gradually via pull requests.
 - Use `parentRefs` pointing to a Service (not a Gateway) for east-west (service-to-service) traffic routing within the mesh.
 - Test HTTPRoute changes in staging by deploying to a staging-namespaced Gateway before promoting to production routes.
 
 ## Conclusion
 
-Managing Istio Gateway API resources through Flux CD brings GitOps discipline to Kubernetes traffic routing. Every route change — canary rollout, header-based routing, traffic split — is a version-controlled pull request that can be reviewed, tested in staging, and automatically applied to production by Flux's continuous reconciliation.
+Managing Istio Gateway API resources through Flux CD brings GitOps discipline to Kubernetes traffic routing. Every route change - canary rollout, header-based routing, traffic split - is a version-controlled pull request that can be reviewed, tested in staging, and automatically applied to production by Flux's continuous reconciliation.

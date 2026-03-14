@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, pgBadger, Log Analysis, Performance, Monitoring
+Tags: PostgreSQL, PgBadger, Log Analysis, Performance, Monitoring
 
 Description: A guide to using pgBadger for analyzing PostgreSQL logs, generating reports, and identifying performance issues.
 

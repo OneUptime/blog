@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Node Management, systemd, High Availability
+Tags: Kubernetes, Node Management, Systemd, High Availability
 
 Description: Learn how to configure Kubernetes node graceful shutdown with systemd integration to ensure pods terminate cleanly during node restarts and system shutdowns.
 

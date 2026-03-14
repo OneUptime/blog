@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, systemd, Timers, Automation, Scheduling, Linux
+Tags: RHEL, Ansible, Systemd, Timers, Automation, Scheduling, Linux
 
 Description: Schedule Ansible playbooks to run automatically using systemd timers on RHEL for reliable, logged automation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, image-automation, Kubernetes, GitOps, Image-Tags
+Tags: Flux, Fluxcd, Image-automation, Kubernetes, GitOps, Image-Tags
 
 Description: Learn how to configure Flux CD ImagePolicy to filter image tags by environment prefix such as prod-, staging-, or dev-.
 

@@ -10,7 +10,7 @@ Description: Learn how to coordinate frontend and backend deployment as a unit u
 
 ## Introduction
 
-Full-stack applications require both frontend and backend services to work in concert. When you deploy a new API version that introduces breaking changes, the frontend must be updated simultaneously — or the frontend must gracefully handle version mismatches. Coordinating these deployments manually is error-prone; Flux CD provides a GitOps-native way to deploy both together while ensuring the backend is healthy before the frontend is exposed to users.
+Full-stack applications require both frontend and backend services to work in concert. When you deploy a new API version that introduces breaking changes, the frontend must be updated simultaneously - or the frontend must gracefully handle version mismatches. Coordinating these deployments manually is error-prone; Flux CD provides a GitOps-native way to deploy both together while ensuring the backend is healthy before the frontend is exposed to users.
 
 The key challenge in full-stack deployment is timing: the backend API must be ready to serve requests before the frontend starts directing user traffic to it. A new frontend that hits an old or unavailable backend creates a broken user experience. Flux's `dependsOn` field solves this by making the frontend Kustomization dependent on the backend, so Flux waits for backend readiness before deploying the frontend.
 
@@ -27,7 +27,7 @@ In this guide you will structure a Git repository with frontend and backend dire
 
 Organize your frontend and backend under a shared apps directory.
 
-```
+```plaintext
 apps/
 ├── shared/
 │   ├── kustomization.yaml

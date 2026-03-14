@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Performance Testing, API Testing, DevOps
+Tags: K6, Load Testing, Performance Testing, API Testing, DevOps
 
 Description: Learn how to get started with k6 for load testing APIs and web applications, including test scripts, virtual users, and result analysis.
 

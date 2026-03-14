@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, SSH, Security Monitoring, Linux
+Tags: RHEL, Auditd, SSH, Security Monitoring, Linux
 
 Description: Use auditd on RHEL to monitor changes to SSH configuration files and track who modifies your SSH server and client settings.
 

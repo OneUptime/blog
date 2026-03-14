@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Disk Management, Storage, Infrastructure
+Tags: Talos Linux, Talosctl, Disk Management, Storage, Infrastructure
 
 Description: Learn how to use the talosctl disks command to list and inspect available disks on Talos Linux nodes for storage planning
 

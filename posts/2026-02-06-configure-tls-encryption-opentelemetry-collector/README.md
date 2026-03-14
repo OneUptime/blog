@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, TLS, Security, Encryption, mTLS
+Tags: OpenTelemetry, Collector, TLS, Security, Encryption, MTLS
 
 Description: Secure your OpenTelemetry Collector deployments with TLS encryption for receivers, exporters, and internal communications using certificates and mutual TLS authentication.
 

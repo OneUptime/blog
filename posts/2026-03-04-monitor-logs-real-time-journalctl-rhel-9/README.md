@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journalctl, Real-Time Monitoring, Linux
+Tags: RHEL, Journalctl, Real-Time Monitoring, Linux
 
 Description: Monitor system logs in real time using journalctl -f on RHEL 9 for live troubleshooting.
 

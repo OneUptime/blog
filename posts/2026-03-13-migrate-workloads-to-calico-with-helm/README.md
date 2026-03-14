@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Helm, Kubernetes, Networking, Migration, CNI, GitOps
+Tags: Calico, Kubernetes, Networking, Migration, Helm, CNI
 
 Description: Learn how to install and manage Calico using the official Helm chart, enabling GitOps-friendly deployment workflows and easy configuration management for production Kubernetes clusters.
 
@@ -12,7 +12,7 @@ Description: Learn how to install and manage Calico using the official Helm char
 
 Helm is the de facto package manager for Kubernetes, and Calico provides an official Helm chart through the Tigera operator chart. Using Helm to install Calico brings several advantages: version-controlled configuration via `values.yaml`, easy upgrades through `helm upgrade`, and seamless integration with GitOps pipelines using Flux or Argo CD.
 
-Migrating an existing Calico installation to Helm management — or performing a fresh Calico install via Helm — enables teams to manage Calico configuration as code alongside their other Helm-based workloads. This is particularly valuable in organizations that standardize on Helm for all cluster component management.
+Migrating an existing Calico installation to Helm management - or performing a fresh Calico install via Helm - enables teams to manage Calico configuration as code alongside their other Helm-based workloads. This is particularly valuable in organizations that standardize on Helm for all cluster component management.
 
 This guide covers adding the Calico Helm repository, installing Calico via Helm, configuring IP pools and encapsulation through Helm values, and integrating with GitOps workflows for ongoing management.
 

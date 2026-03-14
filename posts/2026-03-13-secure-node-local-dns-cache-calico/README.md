@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Secure NodeLocal DNSCache in Calico clusters by controlling DNS traffic with network policies and preventing DNS rebinding attacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Testing, kubeconform, Validation, CI/CD
+Tags: Flux, Kubernetes, GitOps, Testing, Kubeconform, Validation, CI/CD
 
 Description: Learn how to use kubeconform to validate Flux manifests against Kubernetes and Flux CRD schemas for early error detection.
 

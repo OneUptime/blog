@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, udev, Device Naming, Persistent Naming, Storage, Linux
+Tags: RHEL, Udev, Device Naming, Persistent Naming, Storage, Linux
 
 Description: Configure persistent device naming with udev on RHEL to ensure storage devices, network interfaces, and serial ports maintain consistent names across reboots.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cockpit, Firewall, firewalld, Linux
+Tags: RHEL, Cockpit, Firewall, Firewalld, Linux
 
 Description: A practical guide to managing firewall zones, services, and port rules through the Cockpit web console on RHEL.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, for_each, Maps, Infrastructure as Code
+Tags: Terraform, HCL, For_each, Maps, Infrastructure as Code
 
 Description: Learn how to use the Terraform for_each meta-argument with maps to create multiple resources with stable identifiers, including patterns for maps of strings, maps of objects.
 

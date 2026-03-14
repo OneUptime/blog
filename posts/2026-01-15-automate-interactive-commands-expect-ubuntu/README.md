@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, expect, Automation, Interactive, Scripting, Tutorial
+Tags: Ubuntu, Expect, Automation, Interactive, Scripting, Tutorial
 
 Description: Complete guide to using expect for automating interactive command-line programs on Ubuntu.
 

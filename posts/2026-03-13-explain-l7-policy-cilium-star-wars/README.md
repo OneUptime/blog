@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, L7 Policy, HTTP, Envoy, Network Policy
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A technical deep-dive into how Cilium's L7 proxy intercepts HTTP traffic and enforces HTTP method and path policies in the Star Wars demo.
 
@@ -12,7 +12,7 @@ Description: A technical deep-dive into how Cilium's L7 proxy intercepts HTTP tr
 
 Explaining L7 HTTP policy enforcement in Cilium requires understanding the mechanics of traffic interception, proxy operation, and how policy decisions are made on HTTP semantics rather than TCP connection state. When a `CiliumNetworkPolicy` contains `rules.http`, Cilium switches from pure eBPF enforcement to a hybrid model: eBPF at the L3/L4 level for connection decisions, and an Envoy-based proxy for HTTP-level decisions.
 
-The Envoy proxy used by Cilium is not a sidecar — it runs as a shared process on each node, managed by the Cilium agent. When an L7 policy is active for an endpoint, the eBPF TC hook inserts a redirect rule that routes TCP traffic for that endpoint through the local Envoy instance before it reaches the pod's network namespace. Envoy then applies the HTTP policies, generates access logs, and either forwards or drops the request.
+The Envoy proxy used by Cilium is not a sidecar - it runs as a shared process on each node, managed by the Cilium agent. When an L7 policy is active for an endpoint, the eBPF TC hook inserts a redirect rule that routes TCP traffic for that endpoint through the local Envoy instance before it reaches the pod's network namespace. Envoy then applies the HTTP policies, generates access logs, and either forwards or drops the request.
 
 This explanation covers the proxy lifecycle, how Cilium programs Envoy with policy rules via xDS, and the observable behavior of L7 enforcement.
 
@@ -88,4 +88,4 @@ done 2>&1 | grep real | awk "{sum+=\$2} END {print sum/NR}"'
 
 ## Conclusion
 
-Cilium's L7 HTTP policy enforcement is a technically sophisticated hybrid: eBPF for connection-level decisions and an in-node Envoy proxy for HTTP semantic decisions. The architecture avoids sidecar complexity while providing the full flexibility of HTTP method, path, and header-based policy rules. Understanding how the proxy intercept mechanism works — the eBPF redirect, the Envoy xDS configuration, and the Hubble observability — is essential for operating L7 policies in production.
+Cilium's L7 HTTP policy enforcement is a technically sophisticated hybrid: eBPF for connection-level decisions and an in-node Envoy proxy for HTTP semantic decisions. The architecture avoids sidecar complexity while providing the full flexibility of HTTP method, path, and header-based policy rules. Understanding how the proxy intercept mechanism works - the eBPF redirect, the Envoy xDS configuration, and the Hubble observability - is essential for operating L7 policies in production.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Artifacts, Package Management, CI/CD, Azure DevOps, NuGet, npm, Release Management
+Tags: Azure Artifacts, Package Management, CI/CD, Azure DevOps, NuGet, Npm, Release Management
 
 Description: Learn how to configure Azure Artifacts feed views to promote packages through development, staging, and production release stages with quality gates.
 

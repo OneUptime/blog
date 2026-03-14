@@ -17,7 +17,7 @@ External API access failures are fixed by addressing the specific blocking layer
 - Calico cluster with external API access failures confirmed by diagnosis
 - `calicoctl` CLI and `kubectl` with admin access
 
-## Step 1: Fix — Add DNS and HTTPS Egress Allow Rules
+## Step 1: Fix - Add DNS and HTTPS Egress Allow Rules
 
 The most common fix: add explicit Allow rules for DNS and HTTPS egress in the namespace or globally.
 
@@ -62,7 +62,7 @@ kubectl run api-test --image=nicolaka/netshoot --rm -it --restart=Never -- \
   curl -s --connect-timeout 10 https://api.example.com
 ```
 
-## Step 2: Fix — Enable NAT on the IP Pool
+## Step 2: Fix - Enable NAT on the IP Pool
 
 If the external API server rejects connections because it sees a non-routable pod IP as the source, enable NAT.
 
@@ -80,7 +80,7 @@ kubectl run source-ip-test --image=nicolaka/netshoot --rm -it --restart=Never --
 # Should return the node IP, not a pod IP
 ```
 
-## Step 3: Fix — Add Specific API Endpoint to Egress Policy
+## Step 3: Fix - Add Specific API Endpoint to Egress Policy
 
 For stricter security, add only specific API endpoints to the egress allow list rather than all external HTTPS.
 
@@ -114,7 +114,7 @@ spec:
 calicoctl apply -f fix-specific-api-egress.yaml
 ```
 
-## Step 4: Fix — Configure HTTPS Proxy for Inspected Traffic
+## Step 4: Fix - Configure HTTPS Proxy for Inspected Traffic
 
 If the cluster uses a corporate proxy that performs HTTPS inspection, configure pods to use the proxy.
 
@@ -180,7 +180,7 @@ kubectl delete pod api-validate -n "${NAMESPACE}" --ignore-not-found
 
 ## Best Practices
 
-- Add DNS egress rules before HTTPS egress rules — HTTPS calls fail silently if DNS is blocked
+- Add DNS egress rules before HTTPS egress rules - HTTPS calls fail silently if DNS is blocked
 - Use namespace-scoped NetworkPolicies for per-team API access rather than global policies when teams have different external API requirements
 - Audit egress allow rules quarterly to remove rules for APIs that are no longer used
 - Monitor external API call success rates with OneUptime to catch policy-related regressions quickly

@@ -10,7 +10,7 @@ Description: Compare the multi-cluster scaling capabilities of Flux CD and ArgoC
 
 ## Introduction
 
-Managing GitOps at scale—across dozens or hundreds of Kubernetes clusters—is one of the most demanding use cases for any GitOps tool. Both Flux CD and ArgoCD have architectural patterns for multi-cluster management, but they approach it differently: Flux CD uses a hub-and-spoke model where each cluster runs its own Flux controllers, while ArgoCD uses a centralized control plane that manages remote clusters via the ArgoCD API server.
+Managing GitOps at scale-across dozens or hundreds of Kubernetes clusters-is one of the most demanding use cases for any GitOps tool. Both Flux CD and ArgoCD have architectural patterns for multi-cluster management, but they approach it differently: Flux CD uses a hub-and-spoke model where each cluster runs its own Flux controllers, while ArgoCD uses a centralized control plane that manages remote clusters via the ArgoCD API server.
 
 At 100+ clusters, both architectures have tradeoffs around blast radius, operational overhead, network connectivity requirements, and how changes are distributed. This post examines these tradeoffs with concrete architectural examples.
 
@@ -160,4 +160,4 @@ EOF
 
 ## Conclusion
 
-Flux CD scales horizontally through distributed, independent controller installations—ideal for edge or air-gapped clusters. ArgoCD scales through a centralized control plane with ApplicationSets—ideal for teams that need centralized visibility and management. At 100+ clusters, Flux CD's distributed model reduces blast radius and network dependencies, while ArgoCD's centralized model simplifies operations for teams that can maintain the central control plane.
+Flux CD scales horizontally through distributed, independent controller installations-ideal for edge or air-gapped clusters. ArgoCD scales through a centralized control plane with ApplicationSets-ideal for teams that need centralized visibility and management. At 100+ clusters, Flux CD's distributed model reduces blast radius and network dependencies, while ArgoCD's centralized model simplifies operations for teams that can maintain the central control plane.

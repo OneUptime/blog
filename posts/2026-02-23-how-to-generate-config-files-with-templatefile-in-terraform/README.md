@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, templatefile, Configuration Management, Infrastructure as Code, DevOps
+Tags: Terraform, Templatefile, Configuration Management, Infrastructure as Code, DevOps
 
 Description: Learn how to use Terraform's templatefile function to generate application configuration files dynamically with variable substitution, loops, and conditionals.
 

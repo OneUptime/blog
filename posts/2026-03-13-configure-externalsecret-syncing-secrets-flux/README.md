@@ -10,7 +10,7 @@ Description: Create ExternalSecret resources to sync secrets from external store
 
 ## Introduction
 
-The `ExternalSecret` resource is the central building block of the External Secrets Operator. It defines which secrets to fetch from an external store, how to map them to Kubernetes Secret keys, and how frequently to refresh them. Understanding how to configure `ExternalSecret` effectively lets you model any secret synchronization pattern — single values, multiple values from one secret, bulk imports from a path, and cross-namespace references.
+The `ExternalSecret` resource is the central building block of the External Secrets Operator. It defines which secrets to fetch from an external store, how to map them to Kubernetes Secret keys, and how frequently to refresh them. Understanding how to configure `ExternalSecret` effectively lets you model any secret synchronization pattern - single values, multiple values from one secret, bulk imports from a path, and cross-namespace references.
 
 When managed through Flux CD, `ExternalSecret` resources live alongside the application manifests that consume them. A Deployment and its `ExternalSecret` are committed together, reviewed together, and reconciled together. This eliminates the common pain of deploying an application and manually creating secrets separately.
 

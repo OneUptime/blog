@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, VS Code, IDE
+Tags: Ansible, Ansible-lint, VS Code, IDE
 
 Description: Configure VS Code to run ansible-lint in real time with the Ansible extension, providing inline warnings, auto-completion, and quick fixes.
 

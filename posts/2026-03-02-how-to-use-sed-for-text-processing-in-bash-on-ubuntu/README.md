@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Bash, sed, Text Processing, Linux
+Tags: Ubuntu, Bash, Sed, Text Processing, Linux
 
 Description: Learn how to use sed for text substitution, deletion, insertion, and transformation in Bash scripts on Ubuntu, with practical real-world examples.
 

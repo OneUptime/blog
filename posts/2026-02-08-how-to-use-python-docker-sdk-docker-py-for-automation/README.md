@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Python, docker-py, SDK, Automation, Scripting, Containers
+Tags: Docker, Python, Docker-py, SDK, Automation, Scripting, Containers
 
 Description: Use the Python Docker SDK (docker-py) to automate container management, image builds, and orchestration tasks programmatically.
 

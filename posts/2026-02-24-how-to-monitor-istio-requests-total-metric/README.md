@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Metrics, Prometheus, istio_requests_total, Monitoring
+Tags: Istio, Metrics, Prometheus, Istio_requests_total, Monitoring
 
 Description: Deep dive into the istio_requests_total metric covering its labels, common PromQL queries, alerting patterns, and best practices for production monitoring.
 

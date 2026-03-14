@@ -1,4 +1,4 @@
-# calicoctl Command Guide
+# calicoctl Command Guide - Automate Delete
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

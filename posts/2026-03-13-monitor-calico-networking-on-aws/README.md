@@ -10,7 +10,7 @@ Description: Set up comprehensive monitoring for Calico networking on AWS, inclu
 
 ## Introduction
 
-Monitoring Calico networking on AWS benefits from combining Calico's own telemetry with AWS-native monitoring capabilities. AWS VPC Flow Logs capture traffic at the VPC level — including dropped packets that never reach the destination node — while Calico's Felix metrics show policy enforcement decisions. Together, these sources give you full visibility from the VPC network layer through to the pod-level policy layer.
+Monitoring Calico networking on AWS benefits from combining Calico's own telemetry with AWS-native monitoring capabilities. AWS VPC Flow Logs capture traffic at the VPC level - including dropped packets that never reach the destination node - while Calico's Felix metrics show policy enforcement decisions. Together, these sources give you full visibility from the VPC network layer through to the pod-level policy layer.
 
 On AWS, cross-AZ traffic patterns are particularly important to monitor because they directly affect cost (cross-AZ data transfer is billed) and latency. Tracking the ratio of same-AZ vs cross-AZ pod communication helps identify opportunities to improve pod placement.
 

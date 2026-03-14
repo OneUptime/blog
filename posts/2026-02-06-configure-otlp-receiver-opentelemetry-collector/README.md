@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, OTLP Receiver, Configuration, gRPC, HTTP
+Tags: OpenTelemetry, Collector, OTLP Receiver, Configuration, GRPC, HTTP
 
 Description: Learn how to configure the OTLP receiver in the OpenTelemetry Collector for ingesting traces, metrics, and logs via gRPC and HTTP protocols.
 

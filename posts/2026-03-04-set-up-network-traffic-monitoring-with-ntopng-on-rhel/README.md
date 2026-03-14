@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ntopng, Network Monitoring, Traffic Analysis, Security
+Tags: RHEL, Ntopng, Network Monitoring, Traffic Analysis, Security
 
 Description: Install and configure ntopng on RHEL to monitor network traffic in real time with a web-based interface showing flows, protocols, and top talkers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Backstage, Platform Engineering, Developer Portal, IDP
+Tags: Flux CD, Kubernetes, GitOps, Backstage, Platform Engineering, Developer Portal, IdP
 
 Description: Connect Flux CD deployments with Backstage software catalog so developers can see real-time GitOps deployment status directly in their internal developer portal.
 
@@ -10,9 +10,9 @@ Description: Connect Flux CD deployments with Backstage software catalog so deve
 
 ## Introduction
 
-Backstage has become the de facto standard for internal developer portals. It centralizes service discovery, documentation, CI/CD status, and now — with the right integrations — GitOps deployment state. When developers can see Flux reconciliation status, active image versions, and deployment health inside Backstage, they no longer need to context-switch to kubectl or the Flux CLI.
+Backstage has become the de facto standard for internal developer portals. It centralizes service discovery, documentation, CI/CD status, and now - with the right integrations - GitOps deployment state. When developers can see Flux reconciliation status, active image versions, and deployment health inside Backstage, they no longer need to context-switch to kubectl or the Flux CLI.
 
-Integrating Flux CD with Backstage closes the feedback loop between what developers build and what is actually running in production. A developer opens their service page in Backstage and immediately sees the current Flux Kustomization status, the last reconciled Git revision, and any errors that need attention — all without leaving the portal.
+Integrating Flux CD with Backstage closes the feedback loop between what developers build and what is actually running in production. A developer opens their service page in Backstage and immediately sees the current Flux Kustomization status, the last reconciled Git revision, and any errors that need attention - all without leaving the portal.
 
 In this guide you will configure the Backstage Kubernetes plugin to surface Flux objects, annotate catalog entities with Flux metadata, and build a custom Backstage component that displays GitOps deployment state.
 
@@ -229,7 +229,7 @@ const serviceEntityPage = (
 
 - Use Backstage's built-in Kubernetes plugin view for raw Flux object inspection and build custom cards for curated summaries
 - Sync your catalog-info.yaml annotations with the Flux object names to avoid mismatches
-- Configure read-only Backstage service accounts — the portal should display state, not modify it
+- Configure read-only Backstage service accounts - the portal should display state, not modify it
 - Add a direct link from Backstage to the platform's GitOps repository for the selected service
 - Surface Flux alerts and notifications in Backstage using a webhook integration with the Backstage events API
 - Use TechDocs to link runbooks from the Backstage entity page for common Flux operational tasks

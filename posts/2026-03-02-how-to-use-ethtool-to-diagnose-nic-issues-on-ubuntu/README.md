@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, ethtool, Troubleshooting, Hardware
+Tags: Ubuntu, Networking, Ethtool, Troubleshooting, Hardware
 
 Description: Comprehensive guide to using ethtool on Ubuntu to diagnose network interface card problems, check link speed, duplex settings, driver info, and interface statistics.
 

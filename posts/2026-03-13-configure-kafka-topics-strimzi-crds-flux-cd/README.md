@@ -10,7 +10,7 @@ Description: Manage Kafka KafkaTopic resources using Strimzi and Flux CD GitOps 
 
 ## Introduction
 
-One of Strimzi's most powerful features is its Topic Operator, which synchronizes `KafkaTopic` Kubernetes resources with actual Kafka topics. This means your entire Kafka topic catalog — partitions, replication factor, retention settings, cleanup policies — lives in Git as Kubernetes YAML files. Adding a topic is a pull request, and Strimzi's Topic Operator applies it automatically.
+One of Strimzi's most powerful features is its Topic Operator, which synchronizes `KafkaTopic` Kubernetes resources with actual Kafka topics. This means your entire Kafka topic catalog - partitions, replication factor, retention settings, cleanup policies - lives in Git as Kubernetes YAML files. Adding a topic is a pull request, and Strimzi's Topic Operator applies it automatically.
 
 Managing topics through Flux CD extends this to multi-cluster GitOps: the same topic definitions can be promoted from development to staging to production through standard Flux promotion workflows, ensuring topics are configured consistently across environments.
 
@@ -56,7 +56,7 @@ metadata:
     app: orders-service
     team: commerce
 spec:
-  # High-throughput order events — many partitions for parallel consumption
+  # High-throughput order events - many partitions for parallel consumption
   partitions: 12
   replicas: 3
   config:
@@ -106,7 +106,7 @@ metadata:
   labels:
     strimzi.io/cluster: production
 spec:
-  # Single partition for dead letter — order doesn't matter
+  # Single partition for dead letter - order doesn't matter
   partitions: 1
   replicas: 3
   config:
@@ -230,10 +230,10 @@ kubectl exec -n kafka production-kafka-0 -- \
 
 ## Best Practices
 
-- Align `partitions` count with your maximum expected consumer parallelism — you cannot reduce partitions later.
+- Align `partitions` count with your maximum expected consumer parallelism - you cannot reduce partitions later.
 - Set `min.insync.replicas: "2"` for all production topics and pair it with producer `acks=all` for durability guarantees.
 - Use `cleanup.policy: compact` for topics used as event-sourced state stores, and `delete` for event streams.
-- Be careful with `prune: true` on the topics Kustomization — if a team accidentally deletes a YAML file, the topic (and its data) will be deleted.
+- Be careful with `prune: true` on the topics Kustomization - if a team accidentally deletes a YAML file, the topic (and its data) will be deleted.
 - Label topics with `team` and `app` labels for accountability and to enable team-specific RBAC on KafkaTopic resources.
 
 ## Conclusion

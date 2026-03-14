@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Execution Environments, Automation
+Tags: Ansible, Ansible-navigator, Execution Environments, Automation
 
 Description: Learn to run Ansible playbooks using ansible-navigator with execution environments, interactive mode, and stdout mode for CI/CD pipelines.
 

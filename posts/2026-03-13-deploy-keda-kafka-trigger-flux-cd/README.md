@@ -10,7 +10,7 @@ Description: Deploy KEDA with Apache Kafka trigger for event-driven scaling usin
 
 ## Introduction
 
-Kafka is one of the most common event streaming platforms in modern architectures. When Kafka consumer lag grows — meaning more messages are arriving than consumers can process — you need to scale up consumer replicas quickly. KEDA's Kafka scaler does exactly this, monitoring consumer group lag and scaling your deployments accordingly.
+Kafka is one of the most common event streaming platforms in modern architectures. When Kafka consumer lag grows - meaning more messages are arriving than consumers can process - you need to scale up consumer replicas quickly. KEDA's Kafka scaler does exactly this, monitoring consumer group lag and scaling your deployments accordingly.
 
 Managing KEDA's Kafka ScaledObjects through Flux CD ensures your scaling policies are version-controlled alongside your application code. Adjusting lag thresholds, consumer group names, or bootstrap server addresses flows through a pull request review process.
 
@@ -202,9 +202,9 @@ kubectl get pods -n app -l app=order-consumer -w
 
 ## Best Practices
 
-- Set `lagThreshold` based on your consumer throughput per pod — if each pod processes 100 messages/second and you want lag cleared within 10 seconds, set `lagThreshold: "1000"`.
+- Set `lagThreshold` based on your consumer throughput per pod - if each pod processes 100 messages/second and you want lag cleared within 10 seconds, set `lagThreshold: "1000"`.
 - Use `minReplicaCount: 1` rather than 0 for Kafka consumers to keep one replica subscribed to partitions, avoiding partition reassignment delays on scale-up.
-- Encrypt Kafka credentials at rest using Flux's SOPS integration — never commit plain-text passwords to your Git repository.
+- Encrypt Kafka credentials at rest using Flux's SOPS integration - never commit plain-text passwords to your Git repository.
 - Configure `cooldownPeriod` to be longer than your maximum message processing time to prevent premature scale-down mid-batch.
 - Use KEDA's multi-trigger feature to combine Kafka lag with CPU metrics, scaling up on either condition for comprehensive autoscaling coverage.
 

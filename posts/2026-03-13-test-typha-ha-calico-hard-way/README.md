@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, High Availability, Testing, CNI, Networking, Chaos
+Tags: Calico, Typha, Kubernetes, Networking, High Availability, Testing, Hard Way
 
-Description: Validate Typha HA by deliberately killing pods, draining nodes, and simulating zone failures — confirming that Felix agents maintain policy enforcement continuity through each disruption in a manifest-based Calico deployment.
+Description: Validate Typha HA by deliberately killing pods, draining nodes, and simulating zone failures - confirming that Felix agents maintain policy enforcement continuity through each disruption in a...
 
 ---
 
 ## Introduction
 
-Declaring a Typha deployment "highly available" requires evidence, not assumptions. The only way to know whether HA configurations actually work is to exercise the failure scenarios they are designed to handle: pod crashes, node drains, and zone-level outages. These tests must be run against the actual production configuration — not just reviewed in manifests.
+Declaring a Typha deployment "highly available" requires evidence, not assumptions. The only way to know whether HA configurations actually work is to exercise the failure scenarios they are designed to handle: pod crashes, node drains, and zone-level outages. These tests must be run against the actual production configuration - not just reviewed in manifests.
 
 This post provides a set of destructive but safe HA tests for Typha, with clear pass/fail criteria for each.
 
@@ -26,7 +26,7 @@ This post provides a set of destructive but safe HA tests for Typha, with clear 
 
 ---
 
-## Step 1: Baseline — Confirm HA Configuration Before Testing
+## Step 1: Baseline - Confirm HA Configuration Before Testing
 
 Before running any destructive test, confirm the expected HA state:
 
@@ -49,7 +49,7 @@ done
 
 ---
 
-## Step 2: Test — Single Typha Pod Crash
+## Step 2: Test - Single Typha Pod Crash
 
 Kill one Typha pod and verify that Felix agents on all nodes maintain connectivity and policy enforcement:
 
@@ -97,7 +97,7 @@ Pass criteria: The policy remains accessible throughout the pod crash and recove
 
 ---
 
-## Step 3: Test — Node Drain with PDB Enforcement
+## Step 3: Test - Node Drain with PDB Enforcement
 
 Drain the node hosting a Typha pod and confirm the PDB prevents the drain from evicting more than one pod:
 
@@ -130,7 +130,7 @@ Pass criteria: The drain completes without timing out. At all times during the d
 
 ---
 
-## Step 4: Test — Rolling Restart of All Typha Pods
+## Step 4: Test - Rolling Restart of All Typha Pods
 
 Simulate a certificate rotation or configuration rollout by performing a rolling restart and confirming no policy enforcement gap:
 
@@ -163,7 +163,7 @@ calicoctl delete globalnetworkpolicy rolling-restart-test
 
 ---
 
-## Step 5: Test — Connection Rebalancing After Scale-Up
+## Step 5: Test - Connection Rebalancing After Scale-Up
 
 Add a Typha replica and confirm connections redistribute:
 
@@ -199,13 +199,13 @@ kubectl scale deployment calico-typha -n kube-system --replicas=3
 - Always check Felix logs on several nodes during each test to confirm no policy enforcement errors appear.
 - Document the pass/fail results of each test in a test report and attach it to the cluster's operational documentation.
 - Re-run the PDB drain test after every replica count change to confirm the PDB still prevents unsafe eviction.
-- Schedule quarterly HA tests as part of your cluster reliability program — configuration drift can silently break HA guarantees.
+- Schedule quarterly HA tests as part of your cluster reliability program - configuration drift can silently break HA guarantees.
 
 ---
 
 ## Conclusion
 
-Testing Typha HA is not optional for production clusters. The tests in this post — pod crash, node drain with PDB enforcement, rolling restart, and connection rebalancing — exercise every HA mechanism you have configured. Passing all of them gives you evidence-based confidence that your Typha deployment is genuinely highly available.
+Testing Typha HA is not optional for production clusters. The tests in this post - pod crash, node drain with PDB enforcement, rolling restart, and connection rebalancing - exercise every HA mechanism you have configured. Passing all of them gives you evidence-based confidence that your Typha deployment is genuinely highly available.
 
 ---
 

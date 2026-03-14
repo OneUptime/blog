@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, journald, systemd, System Administration
+Tags: Ubuntu, Logging, Journald, Systemd, System Administration
 
 Description: Configure structured logging with journald on Ubuntu, including storage settings, field filtering, log forwarding, and integration with log analysis tools.
 

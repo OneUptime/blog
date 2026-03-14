@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, rancher, kubernetes, networking, production, performance-tuning
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, Rancher
 
 Description: Learn how to tune Calico networking on Rancher-managed Kubernetes clusters for production workloads, covering MTU, IPAM, BGP, and eBPF optimizations specific to the Rancher environment.
 
@@ -10,9 +10,9 @@ Description: Learn how to tune Calico networking on Rancher-managed Kubernetes c
 
 ## Introduction
 
-Rancher simplifies Kubernetes cluster management across on-premises and cloud environments, but production deployments require careful Calico tuning to maximize performance and reliability. Default Calico settings are designed for broad compatibility, not peak throughput — meaning production clusters often leave significant performance on the table.
+Rancher simplifies Kubernetes cluster management across on-premises and cloud environments, but production deployments require careful Calico tuning to maximize performance and reliability. Default Calico settings are designed for broad compatibility, not peak throughput - meaning production clusters often leave significant performance on the table.
 
-Rancher's RKE and RKE2 distributions have specific networking configurations that interact with Calico in unique ways. Understanding these interactions — from how Rancher provisions worker nodes to how it manages CNI configuration — is essential for tuning Calico effectively.
+Rancher's RKE and RKE2 distributions have specific networking configurations that interact with Calico in unique ways. Understanding these interactions - from how Rancher provisions worker nodes to how it manages CNI configuration - is essential for tuning Calico effectively.
 
 This guide walks through key Calico tuning parameters for Rancher clusters, including MTU optimization, IPAM configuration, BGP peering, and optional eBPF dataplane settings that can dramatically improve network performance.
 
@@ -76,7 +76,7 @@ metadata:
   name: rancher-worker-pool
 spec:
   cidr: 10.244.0.0/16
-  # Block size of 26 provides 64 IPs per node — suitable for dense workloads
+  # Block size of 26 provides 64 IPs per node - suitable for dense workloads
   blockSize: 26
   ipipMode: Never
   vxlanMode: Always

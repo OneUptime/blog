@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Dependencies, Services, Linux
+Tags: RHEL, Systemd, Dependencies, Services, Linux
 
 Description: Understand and configure systemd service dependencies on RHEL, including ordering, requirement, and binding directives, plus tools to visualize and debug dependency trees.
 

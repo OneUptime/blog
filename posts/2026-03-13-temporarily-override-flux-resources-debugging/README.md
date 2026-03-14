@@ -202,7 +202,7 @@ kubectl diff -k ./deploy/  # Run from the application repo
 ## Best Practices
 
 - Always document why and when you suspended Flux in the Kustomization annotations before making changes
-- Set a maximum suspension time — if debugging takes longer than expected, open a proper incident ticket
+- Set a maximum suspension time - if debugging takes longer than expected, open a proper incident ticket
 - Prefer `kubectl debug` with ephemeral containers over patching deployments when possible
 - Never suspend multiple Kustomizations simultaneously without a clear plan to resume each one
 - After resuming, verify the reconciliation completed successfully before closing your debugging session

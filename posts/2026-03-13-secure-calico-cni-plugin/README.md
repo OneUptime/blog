@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Security
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Security
 
 Description: Security hardening for the Calico CNI plugin, covering CNI configuration file protection, IPAM access control, WorkloadEndpoint isolation, and preventing CNI bypass attacks.
 
@@ -22,7 +22,7 @@ A compromised or manipulated CNI configuration could assign pods to wrong IP poo
 
 ## Security Practice 1: Protect CNI Configuration Files
 
-CNI configuration files are critical — an attacker who can modify them could disable Calico's policy enforcement:
+CNI configuration files are critical - an attacker who can modify them could disable Calico's policy enforcement:
 
 ```bash
 # Verify file permissions on nodes

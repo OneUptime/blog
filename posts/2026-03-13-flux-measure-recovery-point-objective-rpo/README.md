@@ -10,7 +10,7 @@ Description: Measure and minimize Recovery Point Objective (RPO) for Flux CD man
 
 ## Introduction
 
-Recovery Point Objective (RPO) defines the maximum amount of data or state change that can be lost during a disaster. For a GitOps-managed system like Flux CD, RPO has an interesting nuance: the Git repository itself has a near-zero RPO for configuration changes, because every committed change is immediately durable in Git. However, in-cluster state — running pod data, database writes, unsynced secrets — has a different RPO that depends on your backup strategy.
+Recovery Point Objective (RPO) defines the maximum amount of data or state change that can be lost during a disaster. For a GitOps-managed system like Flux CD, RPO has an interesting nuance: the Git repository itself has a near-zero RPO for configuration changes, because every committed change is immediately durable in Git. However, in-cluster state - running pod data, database writes, unsynced secrets - has a different RPO that depends on your backup strategy.
 
 Understanding where your RPO exposure lies in a Flux environment requires separating the different layers of state. Configuration state (in Git) is always recoverable to the last commit. Runtime state (in pods, databases, PVCs) depends on backup frequency. Flux-specific state (reconciliation history, image tags detected) is tracked in etcd and has the same RPO as your etcd backup.
 
@@ -101,7 +101,7 @@ fi
 
 ## Step 3: Measure Flux-Specific RPO
 
-Flux tracks reconciliation state, image tags, and automation state in Kubernetes objects. These are stored in etcd and have the same RPO as your etcd backup — but you can also measure the Flux-specific gap.
+Flux tracks reconciliation state, image tags, and automation state in Kubernetes objects. These are stored in etcd and have the same RPO as your etcd backup - but you can also measure the Flux-specific gap.
 
 ```bash
 #!/bin/bash
@@ -241,10 +241,10 @@ spec:
 
 ## Best Practices
 
-- Separate RPO analysis by state layer — Git has zero RPO, etcd has backup-interval RPO.
+- Separate RPO analysis by state layer - Git has zero RPO, etcd has backup-interval RPO.
 - Increase etcd backup frequency to reduce Kubernetes API RPO beyond the 6-hour default.
 - Store etcd backups in cross-region object storage so the backup survives a regional outage.
-- Build RPO measurement into your DR drills — calculate actual data loss, not just recovery time.
+- Build RPO measurement into your DR drills - calculate actual data loss, not just recovery time.
 - Alert proactively when etcd backup age exceeds half your RPO target.
 - Include RPO in your SLA and review it quarterly.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Installation, Automation, CI/CD, eBPF, GitOps
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to automating Cilium post-installation steps using Helm, ArgoCD, Flux, and CI/CD pipelines for reproducible, consistent deployments.
 
@@ -10,7 +10,7 @@ Description: A guide to automating Cilium post-installation steps using Helm, Ar
 
 ## Introduction
 
-Manual post-installation steps are prone to human error and inconsistency across environments. Automating Cilium's post-installation configuration — Hubble enablement, network policy deployment, encryption setup, and connectivity validation — ensures that every cluster environment starts in the same known-good state. This is essential for organizations with multiple clusters (dev, staging, production) or that use GitOps workflows for infrastructure management.
+Manual post-installation steps are prone to human error and inconsistency across environments. Automating Cilium's post-installation configuration - Hubble enablement, network policy deployment, encryption setup, and connectivity validation - ensures that every cluster environment starts in the same known-good state. This is essential for organizations with multiple clusters (dev, staging, production) or that use GitOps workflows for infrastructure management.
 
 This guide shows how to automate each post-installation step using Helm values, Kubernetes manifests, ArgoCD Applications, and CI/CD pipeline scripts. The goal is a fully automated Cilium deployment where a single `helm install` or `argocd app sync` command produces a complete, validated Cilium installation.
 

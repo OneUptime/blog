@@ -10,7 +10,7 @@ Description: Recover from Git repository corruption in a Flux CD setup by switch
 
 ## Introduction
 
-Git repositories are generally very reliable, but corruption can occur. Force-pushed history rewrites, partial object store corruption, a provider outage, or a malicious commit can all put your Flux CD pipeline in a degraded state. When Flux cannot clone or pull from its source repository, it stops reconciling — meaning your cluster drifts from its desired state and new deployments stop rolling out.
+Git repositories are generally very reliable, but corruption can occur. Force-pushed history rewrites, partial object store corruption, a provider outage, or a malicious commit can all put your Flux CD pipeline in a degraded state. When Flux cannot clone or pull from its source repository, it stops reconciling - meaning your cluster drifts from its desired state and new deployments stop rolling out.
 
 The good news is that Git's distributed nature is your ally. Every developer who has cloned the repository holds a full copy of the history. Your CI/CD system likely has a cached clone. And if you have configured a mirror repository as part of your resilience strategy, Flux can be pointed at the mirror within minutes.
 
@@ -184,7 +184,7 @@ Configure GitHub mirroring to Gitea or another provider:
 - Protect the main branch with required reviews and disable force-push in production repositories.
 - Enable Git provider audit logs so corruption caused by human error is traceable.
 - Store Flux bootstrap credentials for both primary and mirror repositories so failover is fast.
-- Regularly verify mirror freshness — a stale mirror is not much better than no mirror.
+- Regularly verify mirror freshness - a stale mirror is not much better than no mirror.
 - Use signed commits to detect tampered history.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, kubelet, Stats, Receiver, Kubernetes, Pods
+Tags: OpenTelemetry, Collector, Kubelet, Stats, Receiver, Kubernetes, Pods
 
 Description: Configure the Kubelet Stats Receiver to collect detailed pod and container resource metrics including CPU, memory, network, and filesystem usage from Kubernetes nodes.
 

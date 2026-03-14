@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pgbench, PostgreSQL, Load Testing, Database, Benchmarking
+Tags: RHEL, Pgbench, PostgreSQL, Load Testing, Database, Benchmarking
 
 Description: Learn how to use pgbench on RHEL to load test PostgreSQL databases, measuring transaction throughput and latency.
 

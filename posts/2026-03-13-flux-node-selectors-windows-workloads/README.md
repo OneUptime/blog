@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, Node Selectors, GitOps, Scheduling, AKS
+Tags: Flux CD, Kubernetes, Windows Containers, Node Selectors, GitOps, Scheduling
 
 Description: Configure node selectors for Windows workloads in Flux-managed deployments, ensuring correct scheduling and leveraging Kustomize for DRY configuration.
 

@@ -10,7 +10,7 @@ Description: Kubernetes networking fundamentals explained from a Calico user's p
 
 ## Introduction
 
-Kubernetes imposes a specific networking model on all CNI plugins: every pod gets its own IP, every pod can reach every other pod without NAT (unless policy prevents it), and every node can reach every pod IP. This model is what makes Kubernetes networking portable across providers — but it is CNI plugins like Calico that actually implement it.
+Kubernetes imposes a specific networking model on all CNI plugins: every pod gets its own IP, every pod can reach every other pod without NAT (unless policy prevents it), and every node can reach every pod IP. This model is what makes Kubernetes networking portable across providers - but it is CNI plugins like Calico that actually implement it.
 
 Understanding Kubernetes networking from a Calico perspective means understanding both the requirements the Kubernetes model imposes and the specific mechanisms Calico uses to satisfy them. This post covers the networking model, the CNI interface, and how Calico maps its components to each Kubernetes networking requirement.
 
@@ -51,7 +51,7 @@ graph TD
 ```
 
 1. **IP allocation**: The Calico IPAM plugin selects an IP from the configured `IPPool` and records the allocation in the Calico datastore
-2. **Network namespace setup**: A veth pair is created — one end in the pod's network namespace, one end on the host — giving the pod its network interface
+2. **Network namespace setup**: A veth pair is created - one end in the pod's network namespace, one end on the host - giving the pod its network interface
 3. **Routing**: Felix programs a host route for the pod's IP pointing to the pod's veth interface
 
 ## IP Pools and IPAM
@@ -77,7 +77,7 @@ Calico supports three cross-node routing modes:
 
 - **IP-in-IP**: Pod packets are encapsulated inside an IP tunnel between nodes. Works in most network environments.
 - **VXLAN**: Pod packets are encapsulated in VXLAN (UDP). Works in environments that block IP protocols other than TCP/UDP.
-- **Native routing (BGP)**: Routes are distributed via BGP — no encapsulation. Requires a BGP-capable network fabric.
+- **Native routing (BGP)**: Routes are distributed via BGP - no encapsulation. Requires a BGP-capable network fabric.
 
 ## Network Policy Integration
 
@@ -88,7 +88,7 @@ Calico implements both the Kubernetes `NetworkPolicy` resource and its own exten
 - Always size your `IPPool` CIDR large enough for your maximum expected pod count per node
 - Prefer VXLAN mode in cloud environments where BGP is not available
 - Use `calicoctl ipam show` to monitor IP allocation and detect exhaustion before it becomes an outage
-- Understand the `natOutgoing` setting — disabling it requires that your network fabric can route pod CIDRs
+- Understand the `natOutgoing` setting - disabling it requires that your network fabric can route pod CIDRs
 
 ## Conclusion
 

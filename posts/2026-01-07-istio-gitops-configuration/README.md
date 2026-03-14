@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GitOps, ArgoCD, fluxcd, Service Mesh, DevOps
+Tags: Istio, GitOps, ArgoCD, Fluxcd, Service Mesh, DevOps
 
 Description: Learn how to implement GitOps workflows for Istio configuration management.
 

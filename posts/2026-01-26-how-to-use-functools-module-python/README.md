@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, functools, Functional Programming, Decorators, Caching, Performance
+Tags: Python, Functools, Functional Programming, Decorators, Caching, Performance
 
 Description: Master Python's functools module for functional programming patterns. Learn to use lru_cache, partial, reduce, wraps, and other powerful tools with practical examples.
 

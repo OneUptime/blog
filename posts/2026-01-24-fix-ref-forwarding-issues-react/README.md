@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, ref, forwardRef, useRef, useImperativeHandle, TypeScript, Components
+Tags: React, Ref, ForwardRef, UseRef, UseImperativeHandle, TypeScript, Components
 
 Description: Learn how to properly forward refs through components, handle common ref issues, and expose custom imperative handles in React.
 

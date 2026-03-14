@@ -10,7 +10,7 @@ Description: A guide to configuring DevStack with Calico to simulate production 
 
 ## Introduction
 
-DevStack is not a production environment, but you can configure it to test production-like Calico settings before applying them to real clusters. Tuning DevStack to simulate production characteristics — realistic Felix timers, production-like IP pool sizes, and optimized etcd configuration — lets you validate that your production configuration doesn't break basic functionality before deploying it.
+DevStack is not a production environment, but you can configure it to test production-like Calico settings before applying them to real clusters. Tuning DevStack to simulate production characteristics - realistic Felix timers, production-like IP pool sizes, and optimized etcd configuration - lets you validate that your production configuration doesn't break basic functionality before deploying it.
 
 This approach is particularly useful for testing Felix timer changes, as timer misconfigurations can cause subtle issues like slow policy propagation or excessive CPU usage that are easier to detect in a controlled DevStack environment than in production.
 
@@ -86,4 +86,4 @@ Confirm `felix_exec_time_seconds` is within expected bounds.
 
 ## Conclusion
 
-Tuning DevStack to simulate production Calico settings — production Felix timers, realistic IP pool configuration, and load simulation with multiple VMs — validates that configuration changes work correctly before production deployment. The ability to measure policy convergence time and observe Felix CPU usage under load makes DevStack a valuable pre-production testing environment for Calico configuration tuning.
+Tuning DevStack to simulate production Calico settings - production Felix timers, realistic IP pool configuration, and load simulation with multiple VMs - validates that configuration changes work correctly before production deployment. The ability to measure policy convergence time and observe Felix CPU usage under load makes DevStack a valuable pre-production testing environment for Calico configuration tuning.

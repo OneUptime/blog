@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Verdaccio, npm, Node.js, Package Registry, Docker Compose, JavaScript
+Tags: Docker, Verdaccio, Npm, Node.js, Package Registry, Docker Compose, JavaScript
 
 Description: Deploy Verdaccio in Docker as a private npm registry for hosting internal packages and caching public ones
 

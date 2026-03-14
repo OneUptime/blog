@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Storage, vSphere, Disk Management
+Tags: Ansible, VMware, Storage, VSphere, Disk Management
 
 Description: Learn how to manage VMware virtual machine disks and storage with Ansible including adding disks, resizing, changing storage policies, and managing SCSI controllers.
 

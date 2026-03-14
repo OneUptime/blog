@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Configuration
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Configuration
 
 Description: A comprehensive guide to configuring the Calico CNI plugin, covering network configuration files, IPAM settings, policy enforcement modes, and container interface naming.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to configuring the Calico CNI plugin, coverin
 
 ## Introduction
 
-The Calico CNI plugin is the component that runs whenever a pod is created or deleted. It configures the container's network namespace — creating veth pairs, assigning IP addresses from Calico's IPAM system, and setting up routes. The CNI plugin's configuration is stored in `/etc/cni/net.d/10-calico.conflist` and controls how every pod's network interface is initialized.
+The Calico CNI plugin is the component that runs whenever a pod is created or deleted. It configures the container's network namespace - creating veth pairs, assigning IP addresses from Calico's IPAM system, and setting up routes. The CNI plugin's configuration is stored in `/etc/cni/net.d/10-calico.conflist` and controls how every pod's network interface is initialized.
 
 Getting CNI plugin configuration right is essential for pod networking reliability. Misconfigured CNI plugins cause pods to fail to start, receive wrong IP addresses, or be unable to communicate with the cluster network. This guide covers the key configuration parameters and their implications.
 

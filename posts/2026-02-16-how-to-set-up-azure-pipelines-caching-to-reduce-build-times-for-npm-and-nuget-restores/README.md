@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Caching, npm, NuGet, Build Optimization, CI/CD, DevOps
+Tags: Azure Pipelines, Caching, Npm, NuGet, Build Optimization, CI/CD, DevOps
 
 Description: Configure pipeline caching in Azure Pipelines to dramatically cut build times by reusing npm and NuGet package restores across runs.
 

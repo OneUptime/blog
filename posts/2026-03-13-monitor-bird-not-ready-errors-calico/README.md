@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for BIRD not ready errors in Calico 
 
 ## Introduction
 
-Monitoring BIRD health in Calico is essential for detecting BGP routing failures before they impact application traffic. The calico-node pod exposes Prometheus metrics, emits Kubernetes events, and writes structured logs — all of which can be used to build comprehensive observability for BIRD state.
+Monitoring BIRD health in Calico is essential for detecting BGP routing failures before they impact application traffic. The calico-node pod exposes Prometheus metrics, emits Kubernetes events, and writes structured logs - all of which can be used to build comprehensive observability for BIRD state.
 
 Without dedicated monitoring, BIRD failures often go unnoticed until users report intermittent connectivity issues. By the time the issue is escalated, the failure may have been occurring for hours. Proactive monitoring surfaces these problems within seconds and enables automated alerting to the on-call team.
 

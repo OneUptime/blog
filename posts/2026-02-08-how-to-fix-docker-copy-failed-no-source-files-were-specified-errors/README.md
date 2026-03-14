@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, COPY, Build error, dockerignore, Troubleshooting, Build Context
+Tags: Docker, Dockerfile, COPY, Build error, Dockerignore, Troubleshooting, Build Context
 
 Description: Fix the Docker COPY failed error when source files are missing from the build context due to dockerignore rules, wrong paths, or build context issues.
 

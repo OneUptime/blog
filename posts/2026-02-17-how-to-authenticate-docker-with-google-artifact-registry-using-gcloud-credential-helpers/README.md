@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Artifact Registry, Docker, Authentication, gcloud, DevOps
+Tags: GCP, Artifact Registry, Docker, Authentication, Gcloud, DevOps
 
 Description: Learn the different methods to authenticate Docker with Google Artifact Registry, including gcloud credential helpers, service account keys, and access tokens.
 

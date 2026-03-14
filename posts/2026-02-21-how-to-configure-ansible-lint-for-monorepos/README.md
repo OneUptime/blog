@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Monorepo, Code Quality
+Tags: Ansible, Ansible-lint, Monorepo, Code Quality
 
 Description: Learn how to configure ansible-lint for monorepo projects with multiple playbook directories, roles, collections, and varying lint standards.
 

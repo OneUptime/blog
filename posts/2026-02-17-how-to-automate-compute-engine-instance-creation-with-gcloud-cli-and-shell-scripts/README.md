@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, gcloud, Automation, Shell Script
+Tags: GCP, Compute Engine, Gcloud, Automation, Shell Script
 
 Description: A practical guide to automating Google Compute Engine VM creation using gcloud CLI commands and shell scripts, covering parameterization, startup scripts, and batch operations.
 

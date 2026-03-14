@@ -1,4 +1,4 @@
-# How to Migrate Existing Workloads to Calico on Self-Managed DigitalOcean Kubernetes
+# How to Migrate Workloads to Calico on DO Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: A guide to migrating existing workloads from another CNI plugin to 
 
 ## Introduction
 
-Migrating from an existing CNI plugin — such as Flannel or Weave — to Calico on a self-managed DigitalOcean cluster requires careful planning. The CNI plugin manages pod IP assignment and network routing, so switching it means all existing pod IPs will change and pods must be restarted. The key is to migrate in a controlled, node-by-node sequence to minimize service disruption.
+Migrating from an existing CNI plugin - such as Flannel or Weave - to Calico on a self-managed DigitalOcean cluster requires careful planning. The CNI plugin manages pod IP assignment and network routing, so switching it means all existing pod IPs will change and pods must be restarted. The key is to migrate in a controlled, node-by-node sequence to minimize service disruption.
 
 DigitalOcean Droplets allow you to drain, reconfigure, and re-add nodes without replacing the underlying VM, which simplifies the migration process. You can move one node at a time while the rest of the cluster continues to serve traffic on the existing CNI.
 

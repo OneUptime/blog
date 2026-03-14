@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, base64encode, Encoding, User Data, Infrastructure as Code
+Tags: Terraform, Base64encode, Encoding, User Data, Infrastructure as Code
 
 Description: Learn how to use Terraform's base64encode function to encode strings for user data scripts, API payloads, cloud-init configs, and Kubernetes secrets.
 

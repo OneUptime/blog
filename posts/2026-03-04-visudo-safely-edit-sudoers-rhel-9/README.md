@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, visudo, sudo, Security, Linux
+Tags: RHEL, Visudo, Sudo, Security, Linux
 
 Description: Learn the correct way to edit sudoers files on RHEL using visudo, with safety checks, syntax validation, and recovery procedures for when things go wrong.
 

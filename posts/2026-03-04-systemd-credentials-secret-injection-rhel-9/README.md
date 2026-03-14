@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Credentials, Secrets, Security, Linux
+Tags: RHEL, Systemd, Credentials, Secrets, Security, Linux
 
 Description: Learn how to use the systemd credentials framework on RHEL to securely inject secrets into services without exposing them in unit files or environment variables.
 

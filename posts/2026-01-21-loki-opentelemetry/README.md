@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, OpenTelemetry, OTLP, Log Collection, Observability, OTel Collector
+Tags: Grafana Loki, OpenTelemetry, OTLP, Log Collection, Observability, OTEL Collector
 
 Description: A comprehensive guide to collecting and shipping logs to Grafana Loki using OpenTelemetry, including OTel Collector configuration, SDK instrumentation, and best practices for unified observability.
 

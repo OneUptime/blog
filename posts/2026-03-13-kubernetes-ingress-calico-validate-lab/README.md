@@ -10,7 +10,7 @@ Description: A systematic validation suite for testing Calico ingress network po
 
 ## Introduction
 
-Validating ingress policy requires testing both the allow and deny cases. A policy that appears to work because connectivity succeeded may still be misconfigured — it might be allowing too much traffic. Systematic validation requires explicitly testing both intended-allow and intended-deny traffic paths.
+Validating ingress policy requires testing both the allow and deny cases. A policy that appears to work because connectivity succeeded may still be misconfigured - it might be allowing too much traffic. Systematic validation requires explicitly testing both intended-allow and intended-deny traffic paths.
 
 This guide provides a complete ingress validation suite for Calico, organized by policy complexity. Run these tests after any policy change in a lab cluster before applying to production.
 
@@ -36,7 +36,7 @@ kubectl run denied-client --image=nicolaka/netshoot \
   --labels="app=denied-client" -- sleep 3600
 ```
 
-## Validation 1: Baseline (No Policy) — All Ingress Allowed
+## Validation 1: Baseline (No Policy) - All Ingress Allowed
 
 Confirm all pods can reach the target before any policy is applied:
 
@@ -177,17 +177,17 @@ kubectl exec -n external-ns external-client -- wget --timeout=10 -qO- http://$TA
 
 | Test | Expected Result |
 |---|---|
-| No policy — both clients connect | Success |
-| Deny-all policy — both clients blocked | Timeout |
-| Allow specific source — only allowed-client succeeds | Asymmetric |
+| No policy - both clients connect | Success |
+| Deny-all policy - both clients blocked | Timeout |
+| Allow specific source - only allowed-client succeeds | Asymmetric |
 | Calico NetworkPolicy explicit deny | Allowed passes, denied times out |
 | Cross-namespace allow | External-ns client succeeds |
 
 ## Best Practices
 
-- Always test both the allow and deny cases — a passing allow test does not confirm the deny is working
+- Always test both the allow and deny cases - a passing allow test does not confirm the deny is working
 - Clean up test policies after validation to avoid interference with other tests
-- Document the expected result for each test before running — confirms your policy intent before testing implementation
+- Document the expected result for each test before running - confirms your policy intent before testing implementation
 
 ## Conclusion
 

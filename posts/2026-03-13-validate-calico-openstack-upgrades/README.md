@@ -1,8 +1,8 @@
-# How to Validate Calico on OpenStack Upgrades
+# How to  Calico on OpenStack Upgrades - Validate
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Validate Calico upgrades on OpenStack by verifying Neutron integration, VM network connectivity, and floating IP functionality post-upgrade.
 

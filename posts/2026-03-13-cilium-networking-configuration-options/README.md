@@ -1,8 +1,8 @@
-# Cilium Networking Configuration Options: Configure, Troubleshoot, Validate, and Monitor
+# Cilium Networking Configuration Options
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Configuration
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Explore the full range of Cilium networking configuration options including tunnel modes, direct routing, encryption, and datapath settings with practical examples.
 

@@ -1,8 +1,8 @@
-# Adjusting Cilium CNI Configuration: Configure, Troubleshoot, Validate, and Monitor
+# Adjusting Cilium CNI Configuration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI, Configuration, Tuning
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to safely adjust Cilium's CNI configuration for different deployment scenarios including chaining mode, custom paths, MTU settings, and runtime tuning without disrupting existing workloads.
 
@@ -12,7 +12,7 @@ Description: Learn how to safely adjust Cilium's CNI configuration for different
 
 Once Cilium is deployed, you will inevitably need to adjust its CNI configuration to accommodate changes in your cluster environment. These adjustments might include enabling CNI chaining to work alongside other plugins, changing MTU settings to avoid packet fragmentation, adjusting the CNI configuration file ordering to ensure Cilium takes priority, or migrating from one CNI configuration format to another during upgrades.
 
-CNI configuration changes are particularly sensitive because they affect the low-level networking setup of every new pod. A mistake in CNI configuration can cause all new pods to fail network initialization while existing pods remain unaffected (since their networks are already configured). This asymmetry makes CNI configuration issues insidious — the cluster appears healthy until you try to create new pods.
+CNI configuration changes are particularly sensitive because they affect the low-level networking setup of every new pod. A mistake in CNI configuration can cause all new pods to fail network initialization while existing pods remain unaffected (since their networks are already configured). This asymmetry makes CNI configuration issues insidious - the cluster appears healthy until you try to create new pods.
 
 This guide covers the procedures for safely adjusting CNI configuration, troubleshooting adjustment-related failures, validating changes don't break pod networking, and monitoring the impact of CNI changes.
 

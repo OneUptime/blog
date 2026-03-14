@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, Persistent Logging, systemd, Linux
+Tags: RHEL, Journald, Persistent Logging, Systemd, Linux
 
 Description: Learn how to configure systemd-journald on RHEL to store logs persistently across reboots, manage journal size limits, and clean up old log data with vacuum commands.
 

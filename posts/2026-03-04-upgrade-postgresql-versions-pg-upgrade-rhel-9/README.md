@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, pg_upgrade, Upgrade
+Tags: RHEL, PostgreSQL, Pg_upgrade, Upgrade
 
 Description: Upgrade PostgreSQL versions on RHEL 9 using pg_upgrade for major version migration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Go, cilium/ebpf, Programming, Linux, Cloud Native
+Tags: EBPF, Go, Cilium/ebpf, Programming, Linux, Cloud Native
 
 Description: A guide to developing eBPF programs in Go using the cilium/ebpf library.
 

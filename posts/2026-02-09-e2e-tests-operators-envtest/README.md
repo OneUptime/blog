@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operator, Testing, envtest, Controller Runtime
+Tags: Kubernetes, Operator, Testing, Envtest, Controller Runtime
 
 Description: Learn how to build comprehensive end-to-end tests for Kubernetes operators using the envtest framework, testing controller logic without requiring a full cluster.
 

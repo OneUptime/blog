@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Performance, Tuning, Storage, Linux
+Tags: RHEL, Ext4, Performance, Tuning, Storage, Linux
 
 Description: Learn how to optimize ext4 file system performance on RHEL by tuning mount options, journal settings, and filesystem parameters for specific workloads.
 

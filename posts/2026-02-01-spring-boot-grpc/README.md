@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, gRPC, Protocol Buffers, Microservices, RPC
+Tags: Java, Spring Boot, GRPC, Protocol Buffers, Microservices, RPC
 
 Description: A practical guide to implementing gRPC services and clients in Spring Boot with Protocol Buffers.
 

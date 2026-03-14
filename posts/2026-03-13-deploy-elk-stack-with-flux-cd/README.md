@@ -10,11 +10,11 @@ Description: Deploy Elasticsearch, Logstash, and Kibana (ELK) logging stack to K
 
 ## Introduction
 
-The ELK stack — Elasticsearch, Logstash, and Kibana — is a battle-tested logging solution that provides powerful log ingestion, transformation, and visualization capabilities. Logstash distinguishes itself from lighter-weight shippers by offering a rich plugin ecosystem for parsing, enriching, and routing log data from many sources before indexing it into Elasticsearch.
+The ELK stack - Elasticsearch, Logstash, and Kibana - is a battle-tested logging solution that provides powerful log ingestion, transformation, and visualization capabilities. Logstash distinguishes itself from lighter-weight shippers by offering a rich plugin ecosystem for parsing, enriching, and routing log data from many sources before indexing it into Elasticsearch.
 
 Deploying the ELK stack via Flux CD ensures your logging infrastructure is version-controlled and reproducible. When a team member modifies a Logstash pipeline, the change goes through a Git pull request, is reviewed, and then automatically applied to the cluster. There is no manual `kubectl apply` and no configuration drift between environments.
 
-This guide walks through deploying each ELK component as a Flux `HelmRelease`, connecting them, and exposing Kibana behind an Ingress — all using real production-ready values.
+This guide walks through deploying each ELK component as a Flux `HelmRelease`, connecting them, and exposing Kibana behind an Ingress - all using real production-ready values.
 
 ## Prerequisites
 
@@ -255,4 +255,4 @@ kubectl run -it --rm --restart=Never test-curl \
 
 ## Conclusion
 
-Your ELK stack is now fully managed through Git via Flux CD. Logstash's rich filtering capabilities make it the right choice when you need to parse diverse log formats or enrich events before indexing. With this setup, updating a pipeline configuration is as simple as editing a ConfigMap in Git — Flux handles the rest, applying changes safely and reporting health back through its status API.
+Your ELK stack is now fully managed through Git via Flux CD. Logstash's rich filtering capabilities make it the right choice when you need to parse diverse log formats or enrich events before indexing. With this setup, updating a pipeline configuration is as simple as editing a ConfigMap in Git - Flux handles the rest, applying changes safely and reporting health back through its status API.

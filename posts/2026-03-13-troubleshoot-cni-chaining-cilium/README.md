@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, CNI, Kubernetes, Networking, Troubleshooting, AWS VPC CNI
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
 Description: A practical guide to troubleshooting CNI chaining configurations with Cilium, covering common failure modes when chaining with AWS VPC CNI, Flannel, or other plugins.
 
@@ -125,7 +125,7 @@ kubectl -n kube-system exec -it ds/cilium -- cilium status | grep -i "ipam"
 - Use `cni-chaining-mode: aws-cni` and `tunnel: disabled` for EKS to avoid encapsulation overhead
 - Ensure the CNI conflist file has a consistent name prefix to guarantee correct loading order
 - When upgrading either CNI in a chain, upgrade one at a time and test connectivity between upgrades
-- Use `cilium monitor` to trace packet drops in chained mode — they appear as policy drops even if the primary CNI is the root cause
+- Use `cilium monitor` to trace packet drops in chained mode - they appear as policy drops even if the primary CNI is the root cause
 - Avoid chaining more than two CNI plugins; complexity increases disproportionately with each addition
 
 ## Conclusion

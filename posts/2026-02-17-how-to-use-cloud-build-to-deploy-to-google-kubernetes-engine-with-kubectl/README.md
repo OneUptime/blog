@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, GKE, Kubernetes, CI/CD, kubectl, DevOps
+Tags: GCP, Cloud Build, GKE, Kubernetes, CI/CD, Kubectl, DevOps
 
 Description: Learn how to configure Google Cloud Build to deploy containerized applications to Google Kubernetes Engine using kubectl commands in your build pipeline.
 

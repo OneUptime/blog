@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Mesh, kubectl, DevOps
+Tags: Istio, Kubernetes, Service Mesh, Kubectl, DevOps
 
 Description: Quick methods to list and inspect all Istio custom resources in a Kubernetes namespace for debugging and auditing.
 

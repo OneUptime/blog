@@ -12,7 +12,7 @@ Description: Validate that your Calico label-based network policies work correct
 
 Testing label-based network policies requires verifying two things: that the correct pods are selected by your policy selectors, and that traffic behaves as expected for both selected and non-selected pods. A label typo or a missing label on a deployment can render an entire security policy ineffective.
 
-Calico's label selectors are evaluated dynamically — when you add or change a pod label, the policy takes effect immediately without requiring a policy update. This makes testing particularly important: you need to verify that both label additions and removals cause the expected policy behavior changes.
+Calico's label selectors are evaluated dynamically - when you add or change a pod label, the policy takes effect immediately without requiring a policy update. This makes testing particularly important: you need to verify that both label additions and removals cause the expected policy behavior changes.
 
 This guide provides a comprehensive test framework for Calico label-based policies, including selector verification, traffic testing, and label mutation testing to ensure your policies are robust to label changes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ad Hoc Commands, Service Restart, systemd
+Tags: Ansible, Ad Hoc Commands, Service Restart, Systemd
 
 Description: Learn how to safely restart services across your server fleet using Ansible ad hoc commands, including rolling restarts and health checks.
 

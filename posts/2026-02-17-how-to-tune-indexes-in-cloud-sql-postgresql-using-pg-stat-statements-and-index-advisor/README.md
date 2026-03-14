@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, Index Tuning, pg_stat_statements
+Tags: GCP, Cloud SQL, PostgreSQL, Index Tuning, Pg_stat_statements
 
 Description: Learn how to use pg_stat_statements and Cloud SQL Index Advisor to identify missing indexes, drop unused ones, and optimize index strategy in PostgreSQL.
 

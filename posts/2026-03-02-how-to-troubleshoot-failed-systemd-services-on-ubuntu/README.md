@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Troubleshooting, Linux Administration
+Tags: Ubuntu, Systemd, Troubleshooting, Linux Administration
 
 Description: A practical guide to diagnosing and fixing failed systemd services on Ubuntu using journalctl, systemctl, and other diagnostic tools.
 

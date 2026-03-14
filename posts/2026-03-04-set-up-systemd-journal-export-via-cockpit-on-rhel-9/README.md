@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Cockpit, Linux
+Tags: RHEL, Systemd, Cockpit, Linux
 
 Description: Step-by-step guide on set up systemd journal export via cockpit using Red Hat Enterprise Linux 9.
 

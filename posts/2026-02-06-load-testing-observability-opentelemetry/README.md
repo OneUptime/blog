@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Load Testing, Performance, Observability, Metrics, Tracing, k6, Locust
+Tags: OpenTelemetry, Load Testing, Performance, Observability, Metrics, Tracing, K6, Locust
 
 Description: Learn how to combine OpenTelemetry with load testing tools to get deep visibility into system behavior under stress, identifying bottlenecks before they hit production.
 

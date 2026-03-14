@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aws, kubernetes, self-managed, cni, networking
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, AWS, Self-Managed
 
 Description: A step-by-step guide to installing Calico on a self-managed Kubernetes cluster running on AWS EC2, covering both the CNI and network policy configuration for cloud environments.
 
@@ -28,7 +28,7 @@ This guide covers deploying kubeadm-based Kubernetes on AWS EC2 with Calico as t
 Initialize the cluster with a pod CIDR that doesn't overlap with the AWS VPC.
 
 ```bash
-# On the control plane node — initialize kubeadm with the pod CIDR
+# On the control plane node - initialize kubeadm with the pod CIDR
 # Use a CIDR that doesn't overlap with your VPC or other networks
 sudo kubeadm init \
   --pod-network-cidr=192.168.0.0/16 \

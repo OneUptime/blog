@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, GitOps, fluxcd, CI/CD, DevOps, Automation
+Tags: Kubernetes, GitOps, Fluxcd, CI/CD, DevOps, Automation
 
 Description: A comprehensive guide to implementing GitOps with FluxCD, including installation, image automation, Helm releases, multi-tenancy, and production best practices.
 

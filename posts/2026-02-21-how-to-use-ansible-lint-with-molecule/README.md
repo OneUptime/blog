@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Molecule, Testing
+Tags: Ansible, Ansible-lint, Molecule, Testing
 
 Description: Integrate ansible-lint with Molecule testing framework to automatically lint your roles and playbooks as part of the testing workflow.
 

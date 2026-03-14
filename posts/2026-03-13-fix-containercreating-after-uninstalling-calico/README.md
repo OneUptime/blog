@@ -123,4 +123,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing ContainerCreating after Calico uninstall requires either installing a replacement CNI or reinstalling Calico, then ensuring the CNI config in `/etc/cni/net.d/` references available CNI binaries. Delete stuck ContainerCreating pods after the CNI is fixed — they will not automatically retry scheduling.
+Fixing ContainerCreating after Calico uninstall requires either installing a replacement CNI or reinstalling Calico, then ensuring the CNI config in `/etc/cni/net.d/` references available CNI binaries. Delete stuck ContainerCreating pods after the CNI is fixed - they will not automatically retry scheduling.

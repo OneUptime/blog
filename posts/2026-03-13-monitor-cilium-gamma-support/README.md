@@ -29,7 +29,7 @@ This guide covers the metrics and Hubble queries most relevant to GAMMA health m
 |--------|-------------|
 | `cilium_policy_l7_total` | L7 policy decisions (relevant when GAMMA routes enforce L7 rules) |
 | `cilium_forward_count_total` | Total forwarded packets per endpoint |
-| `cilium_drop_count_total` | Dropped packets—check for unexpected drops on mesh services |
+| `cilium_drop_count_total` | Dropped packets-check for unexpected drops on mesh services |
 
 Query for HTTP-level policy decisions:
 

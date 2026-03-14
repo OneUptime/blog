@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, API, CRDs, Developer, Reference
+Tags: Cilium, Kubernetes, API, CRD, Developer, Reference
 
 Description: Understand the Cilium API reference including its REST API, custom resource definitions, and compatibility guarantees for building integrations.
 

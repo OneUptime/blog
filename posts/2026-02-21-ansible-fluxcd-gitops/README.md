@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, fluxcd, GitOps, Kubernetes
+Tags: Ansible, Fluxcd, GitOps, Kubernetes
 
 Description: Bootstrap and configure FluxCD on Kubernetes clusters using Ansible for automated GitOps-based continuous delivery.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, Envoy, Routing, Kubernetes
+Tags: Istio, Debugging, Istioctl, Envoy, Routing, Kubernetes
 
 Description: How to inspect Envoy routing configuration with istioctl proxy-config route to debug VirtualService rules and traffic routing in Istio.
 

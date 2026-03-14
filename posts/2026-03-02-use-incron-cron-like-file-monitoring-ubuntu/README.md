@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, incron, File Monitoring, inotify, Automation
+Tags: Ubuntu, Incron, File Monitoring, Inotify, Automation
 
 Description: Configure incron on Ubuntu to monitor filesystem events using inotify and trigger commands in response to file changes, using familiar crontab-style syntax.
 

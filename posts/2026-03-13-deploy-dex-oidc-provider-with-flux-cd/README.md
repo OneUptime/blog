@@ -10,9 +10,9 @@ Description: Deploy Dex OpenID Connect identity provider to Kubernetes using Flu
 
 ## Introduction
 
-Dex is a federated identity provider and OpenID Connect (OIDC) server developed by the Cloud Native Computing Foundation. Rather than managing its own user database, Dex acts as a bridge—it accepts login requests and delegates authentication to upstream identity providers such as GitHub, Google, LDAP, SAML, or Keycloak. Downstream applications receive standard OIDC tokens they can verify, regardless of which upstream provider the user logged in through.
+Dex is a federated identity provider and OpenID Connect (OIDC) server developed by the Cloud Native Computing Foundation. Rather than managing its own user database, Dex acts as a bridge-it accepts login requests and delegates authentication to upstream identity providers such as GitHub, Google, LDAP, SAML, or Keycloak. Downstream applications receive standard OIDC tokens they can verify, regardless of which upstream provider the user logged in through.
 
-Dex is particularly popular in Kubernetes environments because it is lightweight, native to the cloud-native ecosystem, and integrates directly with tools like `kubectl` (via OIDC tokens), ArgoCD, Grafana, and Harbor. Flux CD manages the Dex deployment declaratively, so adding a new connector—say, a corporate LDAP directory—is a Git pull request rather than a manual configuration change.
+Dex is particularly popular in Kubernetes environments because it is lightweight, native to the cloud-native ecosystem, and integrates directly with tools like `kubectl` (via OIDC tokens), ArgoCD, Grafana, and Harbor. Flux CD manages the Dex deployment declaratively, so adding a new connector-say, a corporate LDAP directory-is a Git pull request rather than a manual configuration change.
 
 This guide deploys Dex using the official Helm chart with GitHub and a static password connector configured via Flux CD.
 
@@ -110,7 +110,7 @@ spec:
       enablePasswordDB: true
       staticPasswords:
         - email: admin@example.com
-          # bcrypt hash of "AdminPassword123!" — generate with: htpasswd -bnBC 10 "" password | tr -d ':\n'
+          # bcrypt hash of "AdminPassword123!" - generate with: htpasswd -bnBC 10 "" password | tr -d ':\n'
           hash: "$2y$10$G7bFZk9yQQ4/cU3Hs6fzNeQqDSJH6l5Nfj9P8yRY0Qr8TXy1J9Mu"
           username: admin
           userID: "1234567890"
@@ -220,4 +220,4 @@ grafana.ini:
 
 ## Conclusion
 
-Dex is now deployed on Kubernetes and managed by Flux CD. Adding a new connector—whether LDAP, SAML, or another OAuth2 provider—is a Git pull request that updates the `config.connectors` list in your HelmRelease values. Downstream applications receive standard OIDC tokens, completely decoupled from the upstream identity provider, giving your team maximum flexibility in authentication architecture.
+Dex is now deployed on Kubernetes and managed by Flux CD. Adding a new connector-whether LDAP, SAML, or another OAuth2 provider-is a Git pull request that updates the `config.connectors` list in your HelmRelease values. Downstream applications receive standard OIDC tokens, completely decoupled from the upstream identity provider, giving your team maximum flexibility in authentication architecture.

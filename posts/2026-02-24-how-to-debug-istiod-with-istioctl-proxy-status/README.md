@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, istioctl, Debugging, Kubernetes, Service Mesh
+Tags: Istio, Istiod, Istioctl, Debugging, Kubernetes, Service Mesh
 
 Description: A hands-on guide to using istioctl proxy-status to check the synchronization state between Istiod and Envoy sidecars in your Istio mesh.
 

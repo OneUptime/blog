@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, mTLS, Authorization, Best Practices
+Tags: Istio, Security, MTLS, Authorization, Best Practices
 
 Description: Security best practices for Istio service mesh covering mTLS, authorization policies, certificate management, and zero-trust networking.
 

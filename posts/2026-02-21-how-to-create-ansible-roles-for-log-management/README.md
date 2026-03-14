@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Logging, rsyslog, Log Management, DevOps
+Tags: Ansible, Logging, Rsyslog, Log Management, DevOps
 
 Description: Build an Ansible role for centralized log management with rsyslog, log rotation, and remote log shipping to a central log server.
 

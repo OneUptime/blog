@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Logging, OpenSearch, Dashboards, Visualization
+Tags: Flux CD, Kubernetes, GitOps, Logging, OpenSearch, Dashboard, Visualization
 
 Description: Deploy OpenSearch Dashboards visualization platform to Kubernetes using Flux CD for GitOps-managed log exploration and analytics.
 
@@ -12,7 +12,7 @@ Description: Deploy OpenSearch Dashboards visualization platform to Kubernetes u
 
 OpenSearch Dashboards is the open-source visualization frontend for OpenSearch, providing interactive log exploration, saved searches, visualizations, and dashboards. It is the direct counterpart to Kibana but maintains its open-source character under the Apache 2.0 license. When paired with OpenSearch on Kubernetes, Dashboards gives your team a powerful self-hosted log analytics platform without license restrictions.
 
-Deploying OpenSearch Dashboards via Flux CD ensures that connection settings, authentication configuration, and Ingress rules are version-controlled alongside the OpenSearch cluster itself. Changes to the Dashboards configuration — such as adding SAML integration or updating the OpenSearch endpoint — go through a standard pull request workflow.
+Deploying OpenSearch Dashboards via Flux CD ensures that connection settings, authentication configuration, and Ingress rules are version-controlled alongside the OpenSearch cluster itself. Changes to the Dashboards configuration - such as adding SAML integration or updating the OpenSearch endpoint - go through a standard pull request workflow.
 
 This guide deploys OpenSearch Dashboards as a Flux HelmRelease, configures its connection to an OpenSearch cluster, enables OIDC authentication, and exposes it through an Ingress.
 
@@ -217,7 +217,7 @@ Navigate to `http://localhost:5601`, log in with admin credentials, and configur
 ## Best Practices
 
 - Run at least two Dashboards replicas with a load-balanced Service to avoid downtime during pod restarts.
-- Store all credentials in Secrets managed by Sealed Secrets or External Secrets — never in plaintext YAML.
+- Store all credentials in Secrets managed by Sealed Secrets or External Secrets - never in plaintext YAML.
 - Use multi-tenancy to give different teams isolated tenant spaces within a single Dashboards instance.
 - Import saved dashboards and index patterns via CI jobs rather than manual UI clicks, so dashboards are reproducible.
 - Enable the `opensearch_security.cookie.secure` setting and serve Dashboards over HTTPS in production.

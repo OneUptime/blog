@@ -10,7 +10,7 @@ Description: Targeted fixes for calico-node CrashLoopBackOff including kernel mo
 
 ## Introduction
 
-Fixing a calico-node CrashLoopBackOff requires matching the repair action to the specific failure identified during diagnosis. Applying the wrong fix — for example, restarting the pod when the issue is a missing kernel module — wastes time and may mask the actual problem. This guide covers the four most common root causes and their corresponding fixes.
+Fixing a calico-node CrashLoopBackOff requires matching the repair action to the specific failure identified during diagnosis. Applying the wrong fix - for example, restarting the pod when the issue is a missing kernel module - wastes time and may mask the actual problem. This guide covers the four most common root causes and their corresponding fixes.
 
 Each fix is designed to be applied with minimal disruption. Where node-level changes are required (such as loading a kernel module), the steps are written to be applied one node at a time. Cluster-wide configuration changes (such as RBAC corrections) take effect immediately without a node drain.
 

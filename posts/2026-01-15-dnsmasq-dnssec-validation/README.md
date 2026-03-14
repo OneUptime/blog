@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DNSSEC, dnsmasq, DNS, Security, Linux, Infrastructure
+Tags: DNSSEC, Dnsmasq, DNS, Security, Linux, Infrastructure
 
 Description: A comprehensive guide to configuring dnsmasq as a validating DNS resolver with DNSSEC support, including trust anchor management, troubleshooting, and security best practices.
 

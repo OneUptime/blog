@@ -248,7 +248,7 @@ kubectl exec -n redis redis-replication-sentinel-0 -- \
 
 ## Best Practices
 
-- Run 3 Sentinel instances (`redisSentinel.replicas: 3`) for a proper quorum — 2 Sentinels is the minimum but requires both to agree.
+- Run 3 Sentinel instances (`redisSentinel.replicas: 3`) for a proper quorum - 2 Sentinels is the minimum but requires both to agree.
 - Set `quorum: "2"` to require agreement from 2 of 3 Sentinels before failing over, preventing split-brain.
 - Enable AOF persistence (`appendonly yes`) for data durability alongside RDB snapshots.
 - Disable dangerous commands (`FLUSHALL`, `FLUSHDB`, `DEBUG`) in production via `rename-command`.

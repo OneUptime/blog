@@ -12,7 +12,7 @@ Description: Test and validate Kubernetes network policies with Calico on a sing
 
 Single-node Kubernetes clusters are excellent environments for testing network policy logic because the simplified topology makes it easy to isolate policy behavior. All pods run on the same node, so any connectivity failures are definitively caused by network policies rather than routing issues.
 
-Testing network policies on a single-node cluster is a common practice before deploying policies to multi-node production clusters. The policies are identical — Calico enforces them using the same iptables rules regardless of cluster topology. This makes single-node clusters reliable testbeds for network security configurations.
+Testing network policies on a single-node cluster is a common practice before deploying policies to multi-node production clusters. The policies are identical - Calico enforces them using the same iptables rules regardless of cluster topology. This makes single-node clusters reliable testbeds for network security configurations.
 
 This guide walks through testing a comprehensive set of network policies on a single-node Kubernetes cluster with Calico, covering ingress control, egress restrictions, and Calico-specific global policies.
 

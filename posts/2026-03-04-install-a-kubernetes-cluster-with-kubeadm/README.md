@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, kubeadm, Linux
+Tags: RHEL, Kubernetes, Containers, Kubeadm, Linux
 
 Description: Learn how to install a Kubernetes Cluster with kubeadm on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
 

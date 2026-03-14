@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, macOS, Apple, Homebrew, Configuration Management
+Tags: Ansible, MacOS, Apple, Homebrew, Configuration Management
 
 Description: Manage macOS workstations and build servers with Ansible using Homebrew, defaults commands, and macOS-specific system configuration.
 

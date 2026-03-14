@@ -18,7 +18,7 @@ Calico Tier troubleshooting requires understanding how tier order maps to evalua
 - Understanding of expected tier hierarchy and policy assignments
 - Access to Felix logs for policy evaluation debugging
 
-## Issue 1: Security Policy Not Enforcing — Lower-Priority Tier Allows Traffic First
+## Issue 1: Security Policy Not Enforcing - Lower-Priority Tier Allows Traffic First
 
 **Symptom**: A deny rule in the security tier doesn't block traffic that a policy in the default tier allows.
 
@@ -125,4 +125,4 @@ calicoctl get tier security -o yaml
 
 ## Conclusion
 
-Tier troubleshooting centers on ordering and assignment: verify security tier has lower order than default, verify policies are in the intended tiers, and verify no unintended `Pass` actions allow traffic to skip security tier evaluation. The most dangerous failure mode is a reversed tier order — it can appear to work normally for most traffic while allowing a specific class of traffic to bypass security controls entirely.
+Tier troubleshooting centers on ordering and assignment: verify security tier has lower order than default, verify policies are in the intended tiers, and verify no unintended `Pass` actions allow traffic to skip security tier evaluation. The most dangerous failure mode is a reversed tier order - it can appear to work normally for most traffic while allowing a specific class of traffic to bypass security controls entirely.

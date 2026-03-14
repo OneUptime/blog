@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, OCI, Artifacts, Lists, GitOps, Kubernetes, container-registry, Inventory
+Tags: Flux, Fluxcd, OCI, Artifacts, Lists, GitOps, Kubernetes, Container-registry, Inventory
 
 Description: A practical guide to listing and inspecting OCI artifacts in container registries using the flux list artifacts command.
 

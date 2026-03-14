@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, High Availability, Pacemaker, Clustering, pcs
+Tags: Ubuntu, High Availability, Pacemaker, Clustering, Pcs
 
 Description: A practical guide to managing Pacemaker cluster resources using the pcs command-line tool on Ubuntu, covering resource creation, constraints, and operations.
 

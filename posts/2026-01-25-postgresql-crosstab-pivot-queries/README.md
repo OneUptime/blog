@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, SQL, Crosstab, Pivot Tables, Data Analysis, tablefunc
+Tags: PostgreSQL, SQL, Crosstab, Pivot Tables, Data Analysis, Tablefunc
 
 Description: Learn how to transform row-based data into columnar format using PostgreSQL's crosstab function. This guide covers installation, basic syntax, dynamic pivoting, and practical examples for reporting.
 

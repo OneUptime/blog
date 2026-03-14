@@ -1,10 +1,10 @@
-# Migrate Workloads to Calico on Self-Managed GCE Kubernetes
+# How to Migrate Workloads to Calico on GCE Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, GCE, Google Cloud, Kubernetes, Networking, Migration, CNI
+Tags: Calico, Kubernetes, Networking, Migration, GCE, Google Cloud, Self-Managed
 
-Description: A practical guide to migrating workloads from an existing CNI to Calico on a self-managed Kubernetes cluster deployed on Google Compute Engine, leveraging GCE's native routing support for optimal performance.
+Description: Migrate existing workloads to Calico on self-managed Kubernetes clusters running on Google Compute Engine.
 
 ---
 

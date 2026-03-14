@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Host Firewall, Security, eBPF, Node Security
+Tags: Cilium, Kubernetes, Host Firewall, Security, EBPF, Node Security
 
 Description: Configure the Cilium Host Firewall to secure node-level network traffic using CiliumNetworkPolicies applied to host endpoints.
 
@@ -10,7 +10,7 @@ Description: Configure the Cilium Host Firewall to secure node-level network tra
 
 ## Introduction
 
-The Cilium Host Firewall extends Cilium's network policy enforcement to the node's own network stack, not just the pod network. This means you can apply the same eBPF-based policy enforcement to traffic entering or leaving the Kubernetes node itself—including SSH, API server, kubelet, and etcd traffic.
+The Cilium Host Firewall extends Cilium's network policy enforcement to the node's own network stack, not just the pod network. This means you can apply the same eBPF-based policy enforcement to traffic entering or leaving the Kubernetes node itself-including SSH, API server, kubelet, and etcd traffic.
 
 Traditional node firewalls use iptables or nftables rules. The Cilium Host Firewall replaces these with eBPF programs, providing richer policy capabilities including identity-aware rules and L7 filtering for node traffic.
 

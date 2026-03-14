@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, k0s, Controller, Worker, Architecture
+Tags: Flux CD, Kubernetes, GitOps, K0s, Controller, Worker, Architecture
 
 Description: Deploy Flux CD on k0s Kubernetes with a separated controller and worker node architecture for clean control-plane and data-plane separation.
 
@@ -182,11 +182,11 @@ flux get kustomizations --watch
 ## Best Practices
 
 - Taint k0s controller nodes with `node-role.kubernetes.io/control-plane:NoSchedule` to prevent application pods from running on the control plane.
-- Use k0s's built-in support for multiple controllers (`k0s install controller --enable-worker` is NOT recommended for production — keep controllers and workers separate).
+- Use k0s's built-in support for multiple controllers (`k0s install controller --enable-worker` is NOT recommended for production - keep controllers and workers separate).
 - Configure k0s with a network provider like Calico or Cilium that supports network policies for proper microsegmentation between Flux system pods and application pods.
 - Use the k0s autopilot feature for automated, rolling k0s version upgrades managed declaratively through Kubernetes resources.
 - Monitor k0s controller health with `k0s status` and the Kubernetes control plane metrics exposed on port 10249-10259.
 
 ## Conclusion
 
-k0s's clean controller-worker architecture provides excellent isolation between Kubernetes control plane operations and application workloads. Flux CD fits naturally into this model — its controllers run on worker nodes managing the same workloads they reconcile. The single-binary k0s installation combined with Flux's GitOps model creates a highly reproducible cluster that is straightforward to deploy, upgrade, and manage.
+k0s's clean controller-worker architecture provides excellent isolation between Kubernetes control plane operations and application workloads. Flux CD fits naturally into this model - its controllers run on worker nodes managing the same workloads they reconcile. The single-binary k0s installation combined with Flux's GitOps model creates a highly reproducible cluster that is straightforward to deploy, upgrade, and manage.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, IPAM, Validation
 
-Description: Validate Calico IPAM health by confirming consistency checks pass, cross-checking IP allocation counts against running pod counts, and verifying IPPool capacity is adequate for expected cluster growth.
+Description: Validate Calico IPAM health by confirming consistency checks pass, cross-checking IP allocation counts against running pod counts, and verifying IPPool capacity is adequate for expected cluster...
 
 ---
 
@@ -93,4 +93,4 @@ flowchart LR
 
 ## Conclusion
 
-IPAM validation requires three checks: consistency (ipam check), utilization (ipam show), and capacity planning (IPPool size vs growth rate). The IP count vs running pod count cross-check catches inconsistencies that `calicoctl ipam check` sometimes misses — a significant gap between allocated IPs and running pods indicates leaked allocations or IPAM state drift. Run the full validation suite monthly and after any IPPool configuration change.
+IPAM validation requires three checks: consistency (ipam check), utilization (ipam show), and capacity planning (IPPool size vs growth rate). The IP count vs running pod count cross-check catches inconsistencies that `calicoctl ipam check` sometimes misses - a significant gap between allocated IPs and running pods indicates leaked allocations or IPAM state drift. Run the full validation suite monthly and after any IPPool configuration change.

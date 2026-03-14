@@ -12,7 +12,7 @@ Description: Deploy the CockroachDB Kubernetes Operator for a distributed SQL da
 
 CockroachDB is a distributed SQL database designed for global deployments with automatic horizontal scaling, geo-partitioning, and multi-region active-active capabilities. It speaks the PostgreSQL wire protocol, making it compatible with many PostgreSQL drivers without code changes. The CockroachDB Kubernetes Operator automates deployment, scaling, certificate management, and upgrades.
 
-Deploying CockroachDB through Flux CD gives you GitOps control over cluster topology, SQL user management, and backup configuration. Scaling the cluster — adding nodes, adjusting storage, enabling geo-partitioning — flows through pull requests with clear diffs.
+Deploying CockroachDB through Flux CD gives you GitOps control over cluster topology, SQL user management, and backup configuration. Scaling the cluster - adding nodes, adjusting storage, enabling geo-partitioning - flows through pull requests with clear diffs.
 
 ## Prerequisites
 
@@ -237,7 +237,7 @@ kubectl port-forward svc/crdb-production-public 8080:8080 -n cockroachdb
 
 - Always run an odd number of CockroachDB nodes (3, 5, 7) to maintain Raft quorum during node failures.
 - Set `--cache=.25` and `--max-sql-memory=.25` to limit CockroachDB's memory usage to 25% of RAM each, leaving room for the OS and other processes.
-- Use SSD-backed storage classes — CockroachDB's performance degrades significantly on spinning disks.
+- Use SSD-backed storage classes - CockroachDB's performance degrades significantly on spinning disks.
 - Enable `tlsEnabled: true` and use cert-manager for certificate rotation.
 - Monitor the Admin UI dashboard for range lease rebalancing, slow queries, and node health before adding load.
 

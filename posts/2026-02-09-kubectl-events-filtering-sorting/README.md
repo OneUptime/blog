@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Troubleshooting
+Tags: Kubernetes, Kubectl, Troubleshooting
 
 Description: Master kubectl events to view, filter, and sort Kubernetes cluster events for faster troubleshooting of pod failures, scheduling issues, and system problems.
 

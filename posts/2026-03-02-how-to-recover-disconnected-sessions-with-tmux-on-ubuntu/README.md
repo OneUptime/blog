@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, Terminal, Linux, System Administration
+Tags: Ubuntu, Tmux, Terminal, Linux, System Administration
 
 Description: Learn how to recover and resume disconnected tmux sessions on Ubuntu after SSH drops, system restarts, and other interruptions, including session persistence with tmux-resurrect.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SCORM, xAPI, Learning Analytics
+Tags: OpenTelemetry, SCORM, XAPI, Learning Analytics
 
 Description: Monitor SCORM and xAPI Learning Record Store data ingestion pipelines with OpenTelemetry for reliable learning analytics.
 

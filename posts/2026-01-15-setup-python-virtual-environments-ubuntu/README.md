@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, venv, Virtual Environments, Development, Tutorial
+Tags: Ubuntu, Python, Venv, Virtual Environments, Development, Tutorial
 
 Description: Complete guide to creating and managing Python virtual environments on Ubuntu.
 

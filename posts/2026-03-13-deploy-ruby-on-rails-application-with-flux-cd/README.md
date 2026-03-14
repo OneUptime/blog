@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Ruby on Rails, Ruby, PostgreSQL, Migrations
+Tags: Flux CD, Kubernetes, GitOps, Ruby on Rails, Ruby, PostgreSQL, Migration
 
 Description: Deploy a Ruby on Rails application with database migrations to Kubernetes using Flux CD, handling asset precompilation and the migration Job pattern.
 
@@ -43,7 +43,7 @@ RUN npm install -g yarn
 COPY Gemfile Gemfile.lock ./
 RUN bundle install
 COPY . .
-# Precompile assets at build time — SECRET_KEY_BASE is a placeholder
+# Precompile assets at build time - SECRET_KEY_BASE is a placeholder
 RUN SECRET_KEY_BASE_DUMMY=1 rails assets:precompile
 
 FROM base AS runner
@@ -58,7 +58,7 @@ CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
 ```
 
 ```ruby
-# config/puma.rb — production Puma config
+# config/puma.rb - production Puma config
 workers ENV.fetch("WEB_CONCURRENCY", 2).to_i
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 5).to_i
 threads threads_count, threads_count
@@ -264,7 +264,7 @@ curl http://localhost:3000/up
 
 - Set `RAILS_LOG_TO_STDOUT=1` so Puma and Rails write logs to stdout, where Kubernetes can capture them with `kubectl logs`.
 - Use Rails credentials or a secrets manager for `SECRET_KEY_BASE` and database passwords rather than storing them in plaintext ConfigMaps.
-- Precompile assets during `docker build` (as shown), not at container startup — startup precompilation blocks the readiness probe and slows deployments.
+- Precompile assets during `docker build` (as shown), not at container startup - startup precompilation blocks the readiness probe and slows deployments.
 - Use `db:migrate` (not `db:reset` or `db:schema:load`) in the migration Job to safely apply incremental schema changes.
 - Version-stamp migration Job names so Flux creates a new Job for each release, allowing health checks to verify the correct migration Job completed.
 

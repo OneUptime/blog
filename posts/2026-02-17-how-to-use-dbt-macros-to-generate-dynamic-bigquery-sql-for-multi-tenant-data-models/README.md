@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Macros, Multi-Tenant, SQL Generation
+Tags: GCP, BigQuery, Dbt, Macros, Multi-Tenant, SQL Generation
 
 Description: Learn how to write dbt macros that dynamically generate BigQuery SQL for multi-tenant data models, reducing code duplication and maintaining consistency across tenant-specific transformations.
 

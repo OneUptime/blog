@@ -12,7 +12,7 @@ Description: Verification checklist to confirm Calico CNI has been completely re
 
 Validating that Calico CNI removal is complete requires checking all layers where Calico leaves state: Kubernetes resources, CRDs, node-level files, and iptables rules. A removal that appears complete at the Kubernetes resource layer may still have node-level state that will interfere with a new CNI plugin.
 
-This validation checklist is designed to be run after the removal procedure before installing a new CNI plugin. Each check is binary — pass or fail — making the overall validation status clear.
+This validation checklist is designed to be run after the removal procedure before installing a new CNI plugin. Each check is binary - pass or fail - making the overall validation status clear.
 
 ## Symptoms
 
@@ -124,4 +124,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating complete Calico CNI removal requires checking five layers: pods, CRDs, RBAC, node CNI config files, and node iptables chains. All five must pass before the cluster is ready for a new CNI installation. Node-level checks are the most frequently missed — always SSH to nodes to confirm cleanup.
+Validating complete Calico CNI removal requires checking five layers: pods, CRDs, RBAC, node CNI config files, and node iptables chains. All five must pass before the cluster is ready for a new CNI installation. Node-level checks are the most frequently missed - always SSH to nodes to confirm cleanup.

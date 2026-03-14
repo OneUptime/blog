@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Observability, gRPC, OTLP
+Tags: OpenTelemetry, Observability, GRPC, OTLP
 
 Description: A practical guide to implementing the OpenTelemetry OTLP gRPC exporter for traces, metrics, and logs in your applications.
 

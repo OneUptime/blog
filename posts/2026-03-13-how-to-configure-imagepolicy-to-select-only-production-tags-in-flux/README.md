@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Production
+Tags: Flux, Fluxcd, Image-policy, Kubernetes, GitOps, Production
 
 Description: Learn how to configure Flux CD ImagePolicy to select only production-ready image tags for automated deployments.
 

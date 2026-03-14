@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Troubleshooting, Services, Linux
+Tags: RHEL, Systemd, Troubleshooting, Services, Linux
 
 Description: A practical guide to diagnosing and fixing failed systemd services on RHEL, covering common failure patterns, journal inspection, and real-world fixes.
 

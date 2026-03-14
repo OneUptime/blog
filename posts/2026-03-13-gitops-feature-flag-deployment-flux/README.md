@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Feature Flags, ConfigMap, Deployment
+Tags: Flux CD, GitOps, Kubernetes, Feature Flags, ConfigMap, Deployments
 
 Description: Deploy and manage feature flags using GitOps with Flux CD by storing flag configuration in Git and reconciling it to Kubernetes ConfigMaps consumed by your applications.
 
@@ -10,9 +10,9 @@ Description: Deploy and manage feature flags using GitOps with Flux CD by storin
 
 ## Introduction
 
-Feature flags decouple deployment from release — you ship code with a feature hidden behind a flag, then enable the feature separately for some or all users without a new deployment. In a GitOps workflow, feature flag configuration belongs in Git alongside the application manifests. Flux reconciles flag changes to ConfigMaps in the cluster, your application reads the ConfigMap, and features are toggled without rebuilding or redeploying the container image.
+Feature flags decouple deployment from release - you ship code with a feature hidden behind a flag, then enable the feature separately for some or all users without a new deployment. In a GitOps workflow, feature flag configuration belongs in Git alongside the application manifests. Flux reconciles flag changes to ConfigMaps in the cluster, your application reads the ConfigMap, and features are toggled without rebuilding or redeploying the container image.
 
-This approach keeps feature flag state in Git (auditable, reviewable, reversible) rather than in a database or external service. It works well for infrastructure-level flags — which namespaces or regions have a feature enabled — while external flag services (LaunchDarkly, Unleash) handle user-level targeting. The two patterns are complementary.
+This approach keeps feature flag state in Git (auditable, reviewable, reversible) rather than in a database or external service. It works well for infrastructure-level flags - which namespaces or regions have a feature enabled - while external flag services (LaunchDarkly, Unleash) handle user-level targeting. The two patterns are complementary.
 
 This guide covers defining feature flags as Kubernetes ConfigMaps managed by Flux, rolling out flag changes through PRs, and implementing flag-aware deployment patterns.
 
@@ -175,10 +175,10 @@ Roll out flags progressively by opening a series of PRs that increase the rollou
 
 ```mermaid
 flowchart LR
-    A[0% — flag off] --> B[10% — PR approved]
-    B --> C[25% — PR approved]
-    C --> D[50% — PR approved]
-    D --> E[100% — flag fully on]
+    A[0% - flag off] --> B[10% - PR approved]
+    B --> C[25% - PR approved]
+    C --> D[50% - PR approved]
+    D --> E[100% - flag fully on]
     E --> F[Remove flag, clean up code]
 ```
 
@@ -207,12 +207,12 @@ kubectl get events -n production \
 
 ## Best Practices
 
-- Treat every feature flag change as a code change — it goes through a PR, passes CI, and requires an approving review.
+- Treat every feature flag change as a code change - it goes through a PR, passes CI, and requires an approving review.
 - Set a sunset date for every feature flag in the PR description. Flags that are never cleaned up accumulate into technical debt.
 - Use environment-specific overlays to test flags in staging before enabling them in production.
 - For user-level targeting (% of users, specific users, A/B groups), combine this pattern with a dedicated feature flag service. Git-managed ConfigMaps handle infrastructure-level toggles well but are not suited for per-user targeting.
-- Monitor application behavior closely after enabling a flag — set up dashboards filtered by the flag's affected code paths.
+- Monitor application behavior closely after enabling a flag - set up dashboards filtered by the flag's affected code paths.
 
 ## Conclusion
 
-Managing feature flags as Kubernetes ConfigMaps in a Flux-managed GitOps repository gives you auditable, reviewable flag management with the same workflow you use for all other configuration changes. Every flag enable, disable, or percentage adjustment is a Git commit with a PR, an approver, and a permanent record — making feature flag management as safe and traceable as any other deployment operation.
+Managing feature flags as Kubernetes ConfigMaps in a Flux-managed GitOps repository gives you auditable, reviewable flag management with the same workflow you use for all other configuration changes. Every flag enable, disable, or percentage adjustment is a Git commit with a PR, an approver, and a permanent record - making feature flag management as safe and traceable as any other deployment operation.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, containerd, Linux
+Tags: RHEL, Kubernetes, Containers, Containerd, Linux
 
 Description: Learn how to configure containerd as the Kubernetes Container Runtime on RHEL with step-by-step instructions, configuration examples, and best practices.
 

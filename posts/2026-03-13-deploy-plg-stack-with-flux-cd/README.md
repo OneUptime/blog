@@ -10,11 +10,11 @@ Description: Deploy Promtail, Loki, and Grafana (PLG) logging stack to Kubernete
 
 ## Introduction
 
-The PLG stack — Promtail, Loki, and Grafana — is a lightweight, cost-effective alternative to the ELK stack for Kubernetes log aggregation. Loki indexes only log metadata (labels) rather than full log content, making it dramatically cheaper to operate at scale. Promtail runs as a DaemonSet and ships logs from every node directly to Loki. Grafana, which your team likely already uses for metrics, doubles as the query and visualization frontend.
+The PLG stack - Promtail, Loki, and Grafana - is a lightweight, cost-effective alternative to the ELK stack for Kubernetes log aggregation. Loki indexes only log metadata (labels) rather than full log content, making it dramatically cheaper to operate at scale. Promtail runs as a DaemonSet and ships logs from every node directly to Loki. Grafana, which your team likely already uses for metrics, doubles as the query and visualization frontend.
 
 Flux CD is a natural fit for managing the PLG stack because all three components are available as Helm charts through the Grafana chart repository. Pinning chart versions and values in Git ensures your logging configuration is auditable and reproducible across staging and production clusters.
 
-This guide deploys Loki in simple scalable mode, Promtail as a DaemonSet, and connects Grafana with a pre-configured Loki datasource — all via Flux HelmRelease resources.
+This guide deploys Loki in simple scalable mode, Promtail as a DaemonSet, and connects Grafana with a pre-configured Loki datasource - all via Flux HelmRelease resources.
 
 ## Prerequisites
 
@@ -233,4 +233,4 @@ kubectl port-forward svc/grafana 3000:80 -n logging
 
 ## Conclusion
 
-The PLG stack managed by Flux CD provides a lean, cost-effective logging solution that integrates naturally with a Prometheus and Grafana observability stack. Because Loki stores only labels rather than full-text indexes, your storage costs are a fraction of Elasticsearch. Every configuration change — from Promtail pipeline stages to Loki schema settings — is tracked in Git and applied automatically by Flux, giving your team the audit trail and rollback capabilities that production systems demand.
+The PLG stack managed by Flux CD provides a lean, cost-effective logging solution that integrates naturally with a Prometheus and Grafana observability stack. Because Loki stores only labels rather than full-text indexes, your storage costs are a fraction of Elasticsearch. Every configuration change - from Promtail pipeline stages to Loki schema settings - is tracked in Git and applied automatically by Flux, giving your team the audit trail and rollback capabilities that production systems demand.

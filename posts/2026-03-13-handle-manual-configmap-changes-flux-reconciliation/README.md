@@ -10,7 +10,7 @@ Description: Manage manual ConfigMap updates alongside Flux reconciliation using
 
 ## Introduction
 
-ConfigMaps hold application configuration that sometimes needs emergency updates outside the normal Git PR workflow. A database connection string changed, a feature flag needs to be flipped immediately, or a third-party API endpoint moved — waiting for a PR review cycle is not always feasible. But in a Flux-managed cluster, manual ConfigMap changes are reverted on the next reconciliation cycle, making emergency configuration updates frustrating and unreliable.
+ConfigMaps hold application configuration that sometimes needs emergency updates outside the normal Git PR workflow. A database connection string changed, a feature flag needs to be flipped immediately, or a third-party API endpoint moved - waiting for a PR review cycle is not always feasible. But in a Flux-managed cluster, manual ConfigMap changes are reverted on the next reconciliation cycle, making emergency configuration updates frustrating and unreliable.
 
 The right approach depends on the type of configuration change: some configuration is stable and belongs in Git, some is dynamic and should be managed by a secrets manager or external system, and some is genuinely operational and needs a structured way to bypass GitOps temporarily. This guide covers all three patterns and gives you the tools to make the right choice for each situation.
 
@@ -33,7 +33,7 @@ kubectl patch configmap my-service-config -n team-alpha \
 # Flux reconciles on its next interval and reverts it
 flux reconcile kustomization my-service -n team-alpha
 
-# The flag is back to "false" — the Git-declared value
+# The flag is back to "false" - the Git-declared value
 kubectl get configmap my-service-config -n team-alpha \
   -o jsonpath='{.data.FEATURE_FLAG_NEW_UI}'
 # false
@@ -85,7 +85,7 @@ data:
 
 ```yaml
 # Dynamic config: managed by External Secrets Operator or another system
-# configmaps/dynamic-config.yaml — NOT in Flux-managed manifests
+# configmaps/dynamic-config.yaml - NOT in Flux-managed manifests
 # This ConfigMap is created and updated by an operator, not by Flux
 apiVersion: v1
 kind: ConfigMap
@@ -190,23 +190,23 @@ metadata:
   name: my-service-config
   namespace: team-alpha
   annotations:
-    # Use Flux's IfNotPresent strategy — only creates, never overwrites
+    # Use Flux's IfNotPresent strategy - only creates, never overwrites
     kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
 data:
   DATABASE_HOST: postgresql.team-alpha.svc.cluster.local
   LOG_LEVEL: info
 ```
 
-The `IfNotPresent` annotation tells Flux to create the ConfigMap if it doesn't exist but never overwrite it if it does. This allows manual updates to persist across reconciliations but means Git changes to the ConfigMap are also never applied — use this carefully.
+The `IfNotPresent` annotation tells Flux to create the ConfigMap if it doesn't exist but never overwrite it if it does. This allows manual updates to persist across reconciliations but means Git changes to the ConfigMap are also never applied - use this carefully.
 
 ## Best Practices
 
-- Always prefer making ConfigMap changes through Git — it is slower but provides an audit trail and review process
+- Always prefer making ConfigMap changes through Git - it is slower but provides an audit trail and review process
 - For emergency changes: suspend, change, open PR immediately, merge, then resume Flux
 - Use Kustomize ConfigMap generators for configs that should trigger pod restarts when changed in Git
 - Move feature flags to a dedicated feature flag system (OpenFeature, LaunchDarkly) to keep them out of GitOps entirely
 - Use External Secrets Operator for sensitive configuration (passwords, API keys) that must change without Git commits
-- Never leave Flux suspended after an emergency ConfigMap change — always follow up with a Git PR within the same working day
+- Never leave Flux suspended after an emergency ConfigMap change - always follow up with a Git PR within the same working day
 
 ## Conclusion
 

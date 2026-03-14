@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, System Administration, Security
+Tags: Ubuntu, Cloud-init, System Administration, Security
 
 Description: Learn the correct ways to disable cloud-init on Ubuntu after initial instance setup, including disabling specific modules, preventing network reconfiguration, and fully removing cloud-init.
 

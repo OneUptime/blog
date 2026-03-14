@@ -10,7 +10,7 @@ Description: Learn how to configure Calico host endpoint selectors to target spe
 
 ## Introduction
 
-Calico host endpoint selectors are the mechanism by which GlobalNetworkPolicy objects target specific HostEndpoint resources. Rather than applying a policy to all nodes uniformly, selectors allow you to apply differentiated policies based on node labels — enforcing stricter rules on control plane nodes, different port allowances for GPU nodes, or region-specific rules for geographically distributed clusters.
+Calico host endpoint selectors are the mechanism by which GlobalNetworkPolicy objects target specific HostEndpoint resources. Rather than applying a policy to all nodes uniformly, selectors allow you to apply differentiated policies based on node labels - enforcing stricter rules on control plane nodes, different port allowances for GPU nodes, or region-specific rules for geographically distributed clusters.
 
 Mastering selectors is fundamental to building a layered host endpoint security model. Calico selectors support equality, set membership, existence checks, and compound boolean expressions, giving you expressive power to match exactly the nodes you intend to affect.
 

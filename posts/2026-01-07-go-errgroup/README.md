@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Concurrency, errgroup, Error Handling, Parallel Processing
+Tags: Go, Concurrency, Errgroup, Error Handling, Parallel Processing
 
 Description: Master errgroup in Go for coordinating parallel goroutines with proper error propagation, cancellation, and bounded concurrency.
 

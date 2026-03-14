@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Performance, Benchmarking, Kubernetes, Service Mesh
+Tags: Istio, MTLS, Performance, Benchmarking, Kubernetes, Service Mesh
 
 Description: Learn how to accurately benchmark the performance impact of Istio mutual TLS on your services using real load testing tools and methodologies.
 

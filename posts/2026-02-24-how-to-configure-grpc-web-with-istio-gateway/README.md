@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC-Web, Gateway, Kubernetes, Frontend
+Tags: Istio, GRPC-Web, Gateway, Kubernetes, Frontend
 
 Description: Configure Istio's ingress gateway to serve gRPC-Web traffic from browser clients, enabling web applications to call gRPC backends directly.
 

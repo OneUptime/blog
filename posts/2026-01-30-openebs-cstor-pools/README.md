@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenEBS, Kubernetes, Storage, cStor
+Tags: OpenEBS, Kubernetes, Storage, CStor
 
 Description: A complete guide to building and managing OpenEBS cStor pools in Kubernetes, covering pool architecture, RAID configurations, replica management, and production best practices for enterprise storage.
 

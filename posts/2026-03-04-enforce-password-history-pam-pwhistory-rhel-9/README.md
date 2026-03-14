@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pam_pwhistory, Password Policy, Linux
+Tags: RHEL, Pam_pwhistory, Password Policy, Linux
 
 Description: Configure pam_pwhistory on RHEL to prevent users from reusing old passwords, meeting compliance requirements and improving overall security posture.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Context Managers, with Statement, Resource Management, Best Practices
+Tags: Python, Context Managers, With Statement, Resource Management, Best Practices
 
 Description: Master Python context managers for safe resource handling. Learn to use the with statement, create custom context managers, and avoid resource leaks.
 

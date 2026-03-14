@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, pgBackRest, Backup, Recovery, PITR, Enterprise Backup
+Tags: PostgreSQL, PgBackRest, Backup, Recovery, PITR, Enterprise Backup
 
 Description: A comprehensive guide to using pgBackRest for PostgreSQL backups, covering installation, configuration, backup types, retention policies, and point-in-time recovery.
 

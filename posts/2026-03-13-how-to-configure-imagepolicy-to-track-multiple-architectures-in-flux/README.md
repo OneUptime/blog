@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, ImagePolicy, Multi-Arch, image-automation, GitOps, Kubernetes
+Tags: Flux, ImagePolicy, Multi-Arch, Image-automation, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track container images that support multiple CPU architectures like amd64 and arm64.
 

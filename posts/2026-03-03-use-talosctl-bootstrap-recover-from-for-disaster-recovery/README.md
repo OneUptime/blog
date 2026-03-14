@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Disaster Recovery, etcd, Kubernetes, Bootstrap, Cluster Recovery
+Tags: Talos Linux, Disaster Recovery, Etcd, Kubernetes, Bootstrap, Cluster Recovery
 
 Description: A detailed guide to using the talosctl bootstrap recover-from command to restore a Talos Linux cluster from an etcd snapshot.
 

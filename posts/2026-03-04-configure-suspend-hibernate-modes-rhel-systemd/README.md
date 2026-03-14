@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Suspend, Hibernate, systemd, Power Management, Linux
+Tags: RHEL, Suspend, Hibernate, Systemd, Power Management, Linux
 
 Description: Configure suspend-to-RAM, suspend-to-disk (hibernate), and hybrid sleep modes on RHEL using systemd for power management on laptops and workstations.
 

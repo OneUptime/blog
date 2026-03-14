@@ -46,7 +46,7 @@ If IP reservations are missing and pods are receiving IPs that conflict with inf
 Reserve a specific IP range from Calico IPAM:
 
 ```yaml
-# ip-reservation.yaml — Reserve IPs used by infrastructure components
+# ip-reservation.yaml - Reserve IPs used by infrastructure components
 apiVersion: projectcalico.org/v3
 kind: IPReservation
 metadata:
@@ -72,7 +72,7 @@ calicoctl get ipreservation infrastructure-ips -o yaml
 
 ## Step 3: Resolve Conflicts Between Reserved and Allocated IPs
 
-If an IP was allocated to a pod before a reservation was created, a conflict exists. Calico will not automatically reclaim the IP — the pod must be restarted to receive a new address.
+If an IP was allocated to a pod before a reservation was created, a conflict exists. Calico will not automatically reclaim the IP - the pod must be restarted to receive a new address.
 
 Identify and resolve IP conflicts:
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC-Web, Connect-RPC, Browser Tracing
+Tags: OpenTelemetry, GRPC-Web, Connect-RPC, Browser Tracing
 
 Description: Instrument gRPC-Web and Connect-RPC services with OpenTelemetry to trace requests from the browser all the way to your backend services.
 

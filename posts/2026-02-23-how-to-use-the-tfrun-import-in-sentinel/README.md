@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, HashiCorp, tfrun, Workspace Management
+Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Tfrun, Workspace Management
 
 Description: Learn how to use the tfrun import in Sentinel to access workspace metadata, cost estimates, and run information for context-aware Terraform policies.
 

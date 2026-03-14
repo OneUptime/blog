@@ -1,4 +1,4 @@
-# How to Deploy Goldilocks for Resource Recommendations with Flux CD
+# How to Deploy Goldilocks for Resource Recommendations with Flux CD - Cd
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

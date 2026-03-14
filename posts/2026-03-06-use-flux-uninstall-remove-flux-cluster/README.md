@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Uninstall, Cleanup, Cluster-management
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Uninstall, Cleanup, Cluster-management
 
 Description: Learn how to use the flux uninstall command to safely and completely remove Flux CD from your Kubernetes cluster.
 

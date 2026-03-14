@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virt-install, Virtualization, Virtual Machines, Linux
+Tags: RHEL, KVM, Virt-install, Virtualization, Virtual Machines, Linux
 
 Description: Learn how to create KVM virtual machines from the command line using virt-install on RHEL 9 with various configuration options.
 

@@ -69,7 +69,7 @@ EOF
 
 ## Step 4: Deploy Cluster-Wide Default Deny with GlobalNetworkPolicy
 
-Calico's GlobalNetworkPolicy applies across all namespaces — a capability not available with standard Kubernetes NetworkPolicy.
+Calico's GlobalNetworkPolicy applies across all namespaces - a capability not available with standard Kubernetes NetworkPolicy.
 
 ```bash
 kubectl apply -f - <<EOF

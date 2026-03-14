@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, containerd, Container Runtime, Kubernetes, System Configuration
+Tags: Talos Linux, Containerd, Container Runtime, Kubernetes, System Configuration
 
 Description: A practical guide to configuring the containerd runtime in Talos Linux for custom runtimes, plugins, and performance optimization.
 

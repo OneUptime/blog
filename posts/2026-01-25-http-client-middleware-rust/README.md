@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, HTTP Client, Middleware, reqwest, Tower
+Tags: Rust, HTTP Client, Middleware, Reqwest, Tower
 
 Description: Learn how to build a flexible HTTP client in Rust with middleware support using Tower and reqwest, enabling reusable logic for logging, retries, authentication, and more.
 

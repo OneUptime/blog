@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubelet, Kubernetes, Machine Configuration, Node Configuration
+Tags: Talos Linux, Kubelet, Kubernetes, Machine Configuration, Node Configuration
 
 Description: A comprehensive guide to configuring kubelet extra settings in Talos Linux for resource management, pod limits, and node-level Kubernetes tuning.
 

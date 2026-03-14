@@ -98,4 +98,4 @@ data:
 
 ## Conclusion
 
-Enabling Calico flow logs requires a single FelixConfiguration change to activate file-based flow capture. The most important configuration decision is the aggregation level: per-flow (0) for full audit detail, per-pod (1) for security monitoring, or per-namespace (2) for capacity planning. Use different aggregation levels for allowed vs. denied traffic — full detail for denies to enable forensic analysis, aggregated for allows to manage log volume.
+Enabling Calico flow logs requires a single FelixConfiguration change to activate file-based flow capture. The most important configuration decision is the aggregation level: per-flow (0) for full audit detail, per-pod (1) for security monitoring, or per-namespace (2) for capacity planning. Use different aggregation levels for allowed vs. denied traffic - full detail for denies to enable forensic analysis, aggregated for allows to manage log volume.

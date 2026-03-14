@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Playbook Development, DevOps
+Tags: Ansible, Ansible-navigator, Playbook Development, DevOps
 
 Description: Use ansible-navigator's interactive features to develop, test, and debug Ansible playbooks more efficiently than with ansible-playbook.
 

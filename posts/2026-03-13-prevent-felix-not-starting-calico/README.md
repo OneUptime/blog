@@ -10,7 +10,7 @@ Description: Node preparation and configuration validation practices that preven
 
 ## Introduction
 
-Preventing Felix startup failures requires the same pre-flight preparation as preventing calico-node CrashLoopBackOff, but with additional focus on iptables tooling and FelixConfiguration validation. Felix is more sensitive to iptables version compatibility than other components — in particular, newer kernels may require iptables-legacy rather than nftables-based iptables.
+Preventing Felix startup failures requires the same pre-flight preparation as preventing calico-node CrashLoopBackOff, but with additional focus on iptables tooling and FelixConfiguration validation. Felix is more sensitive to iptables version compatibility than other components - in particular, newer kernels may require iptables-legacy rather than nftables-based iptables.
 
 ## Symptoms
 

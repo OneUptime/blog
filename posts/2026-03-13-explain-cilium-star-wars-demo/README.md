@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, EBPF, Networking, Network Policy, Star Wars Demo
 
 Description: A deep-dive explanation of how the Cilium Star Wars demo works under the hood, covering eBPF identity enforcement and CiliumNetworkPolicy mechanics.
 
@@ -10,9 +10,9 @@ Description: A deep-dive explanation of how the Cilium Star Wars demo works unde
 
 ## Introduction
 
-The Cilium Star Wars demo is more than a clever marketing exercise — it is a carefully constructed pedagogical tool that reveals how eBPF-based network policy differs fundamentally from traditional approaches. To explain the demo properly, you need to understand the mechanics behind Cilium's identity model, how eBPF programs intercept and evaluate traffic, and how `CiliumNetworkPolicy` translates label selectors into kernel-level enforcement.
+The Cilium Star Wars demo is more than a clever marketing exercise - it is a carefully constructed pedagogical tool that reveals how eBPF-based network policy differs fundamentally from traditional approaches. To explain the demo properly, you need to understand the mechanics behind Cilium's identity model, how eBPF programs intercept and evaluate traffic, and how `CiliumNetworkPolicy` translates label selectors into kernel-level enforcement.
 
-When Cilium assigns a security identity to a workload, it does so based on the pod's Kubernetes labels. This identity is embedded in network packets using a Kubernetes concept called the "security context" and tracked in Cilium's distributed identity store backed by etcd or Kubernetes CRD storage. Every time a packet arrives at a node, Cilium's eBPF programs look up the source identity and evaluate it against the active policies for the destination endpoint — all without leaving the kernel.
+When Cilium assigns a security identity to a workload, it does so based on the pod's Kubernetes labels. This identity is embedded in network packets using a Kubernetes concept called the "security context" and tracked in Cilium's distributed identity store backed by etcd or Kubernetes CRD storage. Every time a packet arrives at a node, Cilium's eBPF programs look up the source identity and evaluate it against the active policies for the destination endpoint - all without leaving the kernel.
 
 This document explains the flow of the Star Wars demo from the perspective of the Cilium data plane, helping engineers understand not just what happens, but why Cilium can enforce policy this way without performance penalties.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, fragments, mtu, networking, troubleshooting, ebpf
+Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
 
 Description: A guide to diagnosing and resolving IP packet fragmentation issues in Cilium, including MTU mismatches and fragment reassembly problems affecting pod connectivity.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving IP packet fragmentation issues 
 
 ## Introduction
 
-IP packet fragmentation occurs when packets are larger than the Maximum Transmission Unit (MTU) of a network path. In Kubernetes with Cilium, fragmentation can cause subtle connectivity issues—connections that work for small payloads but fail or perform poorly for larger ones, or applications that hang when transferring large files.
+IP packet fragmentation occurs when packets are larger than the Maximum Transmission Unit (MTU) of a network path. In Kubernetes with Cilium, fragmentation can cause subtle connectivity issues-connections that work for small payloads but fail or perform poorly for larger ones, or applications that hang when transferring large files.
 
 Cilium's eBPF dataplane has specific handling for IP fragments that differs from traditional iptables-based implementations. Understanding how Cilium processes fragments is essential for diagnosing issues that involve large packets, especially in overlay networks where encapsulation adds overhead.
 

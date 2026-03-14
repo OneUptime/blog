@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, journald, Logging, systemd, Linux
+Tags: Ansible, Journald, Logging, Systemd, Linux
 
 Description: Automate systemd-journald configuration across your Linux fleet using Ansible to control log storage, retention, size limits, and forwarding.
 

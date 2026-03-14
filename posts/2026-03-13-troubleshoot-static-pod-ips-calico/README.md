@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Static IPs, IPAM, Networking, Troubleshooting
+Tags: Calico, Kubernetes, Static IP, IPAM, Networking, Troubleshooting
 
 Description: A guide to diagnosing and resolving issues with static pod IP configurations in Calico, covering annotation-based IP assignment, IP persistence across restarts, and IPAM conflict management.
 
@@ -12,7 +12,7 @@ Description: A guide to diagnosing and resolving issues with static pod IP confi
 
 Static pod IPs in Kubernetes are useful for legacy application integrations, network appliances, and compliance requirements where pod IP addresses must be predictable and stable. Calico supports static IPs through IPAM annotations, but maintaining truly static IPs across pod restarts and node failures requires additional configuration beyond just the annotation.
 
-The key challenge with static pod IPs is that Kubernetes treats pods as ephemeral — when a pod is deleted and recreated, it's a new pod that must request its IP again. Without proper configuration, a "static" IP pod may receive a different IP after a node failure or scheduler restart. Additionally, IP conflicts arise when the annotation requests an IP that was allocated to a different pod during a cluster disruption.
+The key challenge with static pod IPs is that Kubernetes treats pods as ephemeral - when a pod is deleted and recreated, it's a new pod that must request its IP again. Without proper configuration, a "static" IP pod may receive a different IP after a node failure or scheduler restart. Additionally, IP conflicts arise when the annotation requests an IP that was allocated to a different pod during a cluster disruption.
 
 This guide covers how to implement reliable static pod IP configurations in Calico and troubleshoot the common failure modes.
 
@@ -29,7 +29,7 @@ The `cni.projectcalico.org/ipAddrs` annotation is Calico's mechanism for request
 Configure a pod or StatefulSet with a static IP:
 
 ```yaml
-# static-ip-statefulset.yaml — StatefulSet with static IP via Calico IPAM annotation
+# static-ip-statefulset.yaml - StatefulSet with static IP via Calico IPAM annotation
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -71,7 +71,7 @@ Without an IPReservation, Calico may allocate the static IP to a different pod b
 Create an IPReservation for all static pod IPs:
 
 ```yaml
-# static-ip-reservation.yaml — Reserve IPs used by static pod assignments
+# static-ip-reservation.yaml - Reserve IPs used by static pod assignments
 apiVersion: projectcalico.org/v3
 kind: IPReservation
 metadata:
@@ -142,12 +142,12 @@ kubectl delete pod ip-test
 
 ## Best Practices
 
-- Always create an `IPReservation` for any IP you intend to assign statically — this prevents races during pod restarts
+- Always create an `IPReservation` for any IP you intend to assign statically - this prevents races during pod restarts
 - Maintain a static IP registry (CMDB entry or ConfigMap) mapping pod names to reserved IPs
-- Use StatefulSets rather than Deployments for pods requiring static IPs — StatefulSets' pod identity model works better with static addressing
+- Use StatefulSets rather than Deployments for pods requiring static IPs - StatefulSets' pod identity model works better with static addressing
 - Validate that static IPs are within an active Calico IP pool CIDR before applying annotations
 - Test static IP behavior during node failures by cordoning a node and verifying pods restart with the same IPs on a different node
 
 ## Conclusion
 
-Static pod IPs in Calico require two components: the IPAM annotation to request a specific IP and an IPReservation to prevent that IP from being allocated elsewhere. The combination of these two resources creates reliable, persistent IP assignments that survive pod restarts and scheduler events. When static IP assignment fails, the most common causes are missing IPReservation (IP allocated elsewhere during downtime) and annotation format errors — both diagnosable with `calicoctl ipam show` and pod event inspection.
+Static pod IPs in Calico require two components: the IPAM annotation to request a specific IP and an IPReservation to prevent that IP from being allocated elsewhere. The combination of these two resources creates reliable, persistent IP assignments that survive pod restarts and scheduler events. When static IP assignment fails, the most common causes are missing IPReservation (IP allocated elsewhere during downtime) and annotation format errors - both diagnosable with `calicoctl ipam show` and pod event inspection.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, DevOps, Configuration Management
+Tags: Kubernetes, Kubectl, DevOps, Configuration Management
 
 Description: Learn the key differences between kubectl apply and kubectl create, when to use each command, and best practices for managing Kubernetes resources declaratively and imperatively.
 

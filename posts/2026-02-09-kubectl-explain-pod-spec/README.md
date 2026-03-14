@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Documentation, API, Debugging
+Tags: Kubernetes, Kubectl, Documentation, API, Debugging
 
 Description: Master kubectl explain to understand Kubernetes API resource fields, pod specifications, and configuration options directly from the command line.
 

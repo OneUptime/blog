@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Delegation, run_once, Orchestration
+Tags: Ansible, Delegation, Run_once, Orchestration
 
 Description: Learn how to use run_once with delegate_to in Ansible to execute tasks exactly once during multi-host plays for database migrations and API calls.
 

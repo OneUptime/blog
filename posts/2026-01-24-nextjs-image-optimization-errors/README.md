@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Image Optimization, Performance, Web Development, Troubleshooting, next/image
+Tags: Next.js, Image Optimization, Performance, Web Development, Troubleshooting, Next/image
 
 Description: Learn how to diagnose and fix common Image Optimization errors in Next.js including configuration issues, domain whitelisting, and loader problems.
 

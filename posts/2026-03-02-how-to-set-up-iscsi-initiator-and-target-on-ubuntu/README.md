@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Storage, iSCSI, SAN, Networking
+Tags: Ubuntu, Storage, ISCSI, SAN, Networking
 
 Description: Step-by-step guide to configuring an iSCSI target using targetcli and an iSCSI initiator using open-iscsi on Ubuntu for network-attached block storage.
 

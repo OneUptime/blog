@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, tcpdump, Network Debugging, Packet Capture, Troubleshooting
+Tags: Istio, Tcpdump, Network Debugging, Packet Capture, Troubleshooting
 
 Description: A hands-on guide to using tcpdump for low-level network debugging in Istio service mesh environments.
 

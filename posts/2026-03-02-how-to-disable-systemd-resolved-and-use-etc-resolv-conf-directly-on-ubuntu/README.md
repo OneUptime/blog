@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, systemd-resolved, Networking, resolv.conf
+Tags: Ubuntu, DNS, Systemd-resolved, Networking, Resolv.conf
 
 Description: Step-by-step instructions for disabling systemd-resolved on Ubuntu and configuring /etc/resolv.conf for direct DNS resolution without the stub resolver.
 

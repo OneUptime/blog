@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Profile, Configuration, Security
+Tags: Calico, Kubernetes, Networking, Profiles, Configuration, Security
 
-Description: How to configure Calico Profile resources to define reusable policy rule sets and labels applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across workloads.
+Description: How to configure Calico Profile resources to define reusable policy rule sets and labels applied to workload endpoints, enabling policy inheritance patterns for consistent security postures across...
 
 ---
 
@@ -12,7 +12,7 @@ Description: How to configure Calico Profile resources to define reusable policy
 
 Calico Profile resources attach policy rules and labels directly to workload endpoints, providing a mechanism for inherited policy that applies regardless of NetworkPolicy selectors. Profiles are automatically created for Kubernetes namespaces and are used to propagate namespace-level labels to all endpoints within that namespace. Understanding Profile configuration is important when working with non-Kubernetes workloads, legacy deployments, or when troubleshooting how label inheritance affects policy evaluation.
 
-In Kubernetes deployments, Profiles are primarily managed automatically — but understanding their structure helps with advanced troubleshooting and non-Kubernetes Calico deployments.
+In Kubernetes deployments, Profiles are primarily managed automatically - but understanding their structure helps with advanced troubleshooting and non-Kubernetes Calico deployments.
 
 ## Prerequisites
 

@@ -1,10 +1,10 @@
-# How to Configure Split-Horizon DNS with Flux CD
+# Split-Horizon DNS with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, DNS, Split-Horizon, CoreDNS, Networking, Kubernetes, GitOps, Internal DNS
+Tags: Flux-cd, DNS, Split-Horizon, Kubernetes, Networking, GitOps
 
-Description: Learn how to configure split-horizon DNS for internal and external services using Flux CD to manage CoreDNS and ExternalDNS configurations.
+Description: Configure and manage split-horizon DNS for your Kubernetes clusters using Flux CD, allowing internal and external clients to resolve the same hostname to different endpoints.
 
 ---
 

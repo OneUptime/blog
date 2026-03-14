@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Artifacts, npm, Package Management, Upstream Sources, Azure DevOps, Node.js, DevOps
+Tags: Azure Artifacts, Npm, Package Management, Upstream Sources, Azure DevOps, Node.js, DevOps
 
 Description: Configure Azure Artifacts upstream sources to proxy npm packages from public registries alongside your private internal packages.
 

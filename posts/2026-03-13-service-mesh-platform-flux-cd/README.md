@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, Platform Engineering, mTLS
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, Platform Engineering, MTLS
 
 Description: Build and manage a service mesh platform using Flux CD GitOps so Istio installation, mesh configuration, and traffic policies are all version-controlled and continuously reconciled.
 
@@ -10,7 +10,7 @@ Description: Build and manage a service mesh platform using Flux CD GitOps so Is
 
 ## Introduction
 
-A service mesh provides the infrastructure layer for service-to-service communication: mutual TLS, traffic management, observability, and access control. Without GitOps, service mesh configuration becomes a source of drift — production meshes develop manual customizations that nobody documents, and recreating them after a disaster becomes a archaeology project.
+A service mesh provides the infrastructure layer for service-to-service communication: mutual TLS, traffic management, observability, and access control. Without GitOps, service mesh configuration becomes a source of drift - production meshes develop manual customizations that nobody documents, and recreating them after a disaster becomes a archaeology project.
 
 Managing Istio and its configuration through Flux CD solves this comprehensively. The mesh installation, namespace enrollment, traffic policies, authorization rules, and observability integrations all live in Git. Every change is reviewed, audited, and automatically applied. Flux's health check capabilities let you verify that Istio components are healthy before applying dependent configurations.
 

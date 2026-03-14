@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostics, Operations
 
-Description: Build operational processes for Calico cluster diagnostics including weekly health check procedures, incident escalation criteria, diagnostic bundle retention policies, and quarterly cluster health reviews.
+Description: Build operational processes for Calico cluster diagnostics including weekly health check procedures, incident escalation criteria, diagnostic bundle retention policies, and quarterly cluster...
 
 ---
 
 ## Introduction
 
-Operationalizing Calico cluster diagnostics means embedding diagnostic procedures into the team's regular rhythms — not just incident response. Weekly validation runs catch IPAM drift before exhaustion, quarterly health reviews identify configuration debt, and clear escalation criteria ensure the right people are engaged at the right time when cluster-wide issues occur.
+Operationalizing Calico cluster diagnostics means embedding diagnostic procedures into the team's regular rhythms - not just incident response. Weekly validation runs catch IPAM drift before exhaustion, quarterly health reviews identify configuration debt, and clear escalation criteria ensure the right people are engaged at the right time when cluster-wide issues occur.
 
 ## Weekly Cluster Health Check Procedure
 
@@ -96,4 +96,4 @@ flowchart TD
 
 ## Conclusion
 
-Operationalizing Calico cluster diagnostics requires three time horizons: weekly validation runs to catch drift, real-time incident escalation criteria to engage the right people quickly, and quarterly reviews to identify systemic trends. The most valuable operational investment is the weekly check — catching IPAM growth toward exhaustion weeks before it becomes a P1 is worth more than having a perfect P1 response playbook. Build the weekly check into your team's SRE rotation before the first IPAM exhaustion incident.
+Operationalizing Calico cluster diagnostics requires three time horizons: weekly validation runs to catch drift, real-time incident escalation criteria to engage the right people quickly, and quarterly reviews to identify systemic trends. The most valuable operational investment is the weekly check - catching IPAM growth toward exhaustion weeks before it becomes a P1 is worth more than having a perfect P1 response playbook. Build the weekly check into your team's SRE rotation before the first IPAM exhaustion incident.

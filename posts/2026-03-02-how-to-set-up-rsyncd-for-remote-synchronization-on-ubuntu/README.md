@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, rsync, Networking, File Transfer, Backup
+Tags: Ubuntu, Rsync, Networking, File Transfer, Backup
 
 Description: Configure rsyncd, the rsync daemon, on Ubuntu to serve files over the native rsync protocol for efficient remote synchronization without requiring SSH access.
 

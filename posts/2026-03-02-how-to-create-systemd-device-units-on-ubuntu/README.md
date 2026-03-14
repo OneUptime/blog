@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, udev, Hardware, Linux
+Tags: Ubuntu, Systemd, Udev, Hardware, Linux
 
 Description: Understand and create systemd device units on Ubuntu to trigger services when specific hardware devices appear, combining udev rules with systemd service activation.
 

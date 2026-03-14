@@ -10,7 +10,7 @@ Description: Learn how to validate that Kubernetes service ClusterIP addresses a
 
 ## Introduction
 
-Kubernetes services use ClusterIP addresses drawn from the service CIDR — a separate IP range from the pod CIDR. Unlike pod IPs, ClusterIP addresses are virtual; they exist only in iptables or eBPF rules and are never assigned to actual network interfaces. This means routing service IPs requires kube-proxy or Calico's eBPF dataplane to intercept and translate traffic.
+Kubernetes services use ClusterIP addresses drawn from the service CIDR - a separate IP range from the pod CIDR. Unlike pod IPs, ClusterIP addresses are virtual; they exist only in iptables or eBPF rules and are never assigned to actual network interfaces. This means routing service IPs requires kube-proxy or Calico's eBPF dataplane to intercept and translate traffic.
 
 When service CIDR reachability breaks, pods cannot reach other services via their ClusterIP addresses, causing application-level failures that appear as DNS resolution succeeding but connections failing. This is distinct from pod-to-pod connectivity issues and requires a different diagnostic approach.
 
@@ -107,7 +107,7 @@ kubectl debug node/<node-name> -it --image=busybox -- ip route show | grep <serv
 - Document the service CIDR alongside the pod CIDR in your cluster infrastructure records
 - Ensure service and pod CIDRs do not overlap with each other or with existing network ranges
 - In default-deny policy configurations, always test service reachability after applying policies
-- Monitor kube-proxy pod health — service CIDR failures are often caused by kube-proxy failures
+- Monitor kube-proxy pod health - service CIDR failures are often caused by kube-proxy failures
 - If using Calico eBPF mode, validate service maps rather than iptables rules
 
 ## Conclusion

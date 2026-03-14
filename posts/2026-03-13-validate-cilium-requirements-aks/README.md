@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, aks, azure, kubernetes, requirements, prerequisites
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A checklist-driven guide to validating that your AKS cluster meets all requirements for running Cilium, covering node OS, kernel version, networking configuration, and AKS-specific prerequisites.
 
@@ -10,7 +10,7 @@ Description: A checklist-driven guide to validating that your AKS cluster meets 
 
 ## Introduction
 
-Running Cilium on Azure Kubernetes Service requires meeting specific prerequisites at both the AKS configuration level and the underlying node infrastructure. AKS abstracts much of the node configuration, but some settings—like the network plugin mode, Kubernetes version, and node OS—directly impact Cilium's capabilities and must be validated before deployment.
+Running Cilium on Azure Kubernetes Service requires meeting specific prerequisites at both the AKS configuration level and the underlying node infrastructure. AKS abstracts much of the node configuration, but some settings-like the network plugin mode, Kubernetes version, and node OS-directly impact Cilium's capabilities and must be validated before deployment.
 
 Failing to meet these requirements often results in Cilium agents that start but cannot load eBPF programs, missing features like kube-proxy replacement, or policy enforcement that silently does not work. Proactive requirements validation prevents these issues.
 

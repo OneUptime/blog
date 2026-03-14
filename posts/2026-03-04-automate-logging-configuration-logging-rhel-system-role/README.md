@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, System Roles, Logging, rsyslog
+Tags: RHEL, System Roles, Logging, Rsyslog
 
 Description: Use the logging RHEL System Role to configure rsyslog across RHEL systems.
 

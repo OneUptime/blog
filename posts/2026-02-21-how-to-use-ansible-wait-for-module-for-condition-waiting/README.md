@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, wait_for, Conditions, Networking, DevOps
+Tags: Ansible, Wait_for, Conditions, Networking, DevOps
 
 Description: Use the Ansible wait_for module to wait for ports, files, and conditions before proceeding with playbook execution.
 

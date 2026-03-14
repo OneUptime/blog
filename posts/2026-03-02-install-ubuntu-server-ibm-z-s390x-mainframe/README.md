@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, IBM Z, s390x, Mainframe, Enterprise
+Tags: Ubuntu, IBM Z, S390x, Mainframe, Enterprise
 
 Description: A guide to installing Ubuntu Server on IBM Z (zSeries) mainframe systems in s390x architecture, covering LPAR setup, z/VM, and KVM on IBM Z configurations.
 

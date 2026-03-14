@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Node.js, Build Optimization, npm, Layer Caching, Multi-Stage Build
+Tags: Docker, Node.js, Build Optimization, Npm, Layer Caching, Multi-Stage Build
 
 Description: Practical techniques to dramatically reduce Docker build times for Node.js applications
 

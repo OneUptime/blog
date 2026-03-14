@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Troubleshooting
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Troubleshooting
 
 Description: Diagnose and resolve common Calico CNI plugin failures that prevent pods from starting, cause IP assignment failures, or result in missing network connectivity.
 

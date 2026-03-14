@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, IoT, GitOps, Edge Computing, Device Management, ConfigMap
+Tags: Flux CD, Kubernetes, IoT, GitOps, Edge Computing, Device Management
 
 Description: Use Flux CD to manage IoT device configuration at scale, providing GitOps-driven configuration versioning and rollback for thousands of devices.
 

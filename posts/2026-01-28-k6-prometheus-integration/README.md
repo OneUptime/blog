@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Prometheus, Metrics, Monitoring, Grafana, Performance Testing
+Tags: K6, Prometheus, Metrics, Monitoring, Grafana, Performance Testing
 
 Description: Learn how to export k6 metrics to Prometheus for real-time monitoring, alerting, and correlation with application metrics.
 

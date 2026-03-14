@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, auditd, Compliance, Linux
+Tags: Ubuntu, Security, Auditd, Compliance, Linux
 
 Description: Master ausearch on Ubuntu to efficiently query and analyze audit logs, using filters for time, users, system calls, and keys to investigate security events.
 

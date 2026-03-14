@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, image-automation, Multi-Environment, GitOps, Kubernetes, Staging, Production
+Tags: Flux, Image-automation, Multi-Environment, GitOps, Kubernetes, Staging, Production
 
 Description: Learn how to configure Flux ImageUpdateAutomation to manage image updates independently across multiple environments like staging and production.
 

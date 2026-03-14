@@ -27,7 +27,7 @@ In this guide you will learn how to configure a single Kustomization resource th
 
 Organize your repository so all microservice manifests live under a common directory that a single kustomization.yaml can reference.
 
-```
+```plaintext
 apps/
 ├── kustomization.yaml        # Root kustomization referencing all services
 ├── frontend/

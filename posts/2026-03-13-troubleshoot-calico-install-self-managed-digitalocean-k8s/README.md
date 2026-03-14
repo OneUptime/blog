@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico on Self-Managed DigitalOcean Kubernetes
+# How to Troubleshoot Calico on DO Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ Description: A practical guide to diagnosing and resolving common Calico install
 
 Installing Calico on self-managed Kubernetes clusters running on DigitalOcean Droplets is straightforward in most cases, but several failure modes can surface during or after installation. Pods may remain in a Pending state, nodes may not become Ready, or Calico components themselves may crash-loop. Diagnosing these issues efficiently requires knowing which logs to check and which configuration values to verify.
 
-DigitalOcean Droplet networking has specific characteristics — private networking, floating IPs, and the Droplet metadata service — that can interact with Calico's auto-detection logic in unexpected ways. Understanding both layers helps you isolate problems quickly.
+DigitalOcean Droplet networking has specific characteristics - private networking, floating IPs, and the Droplet metadata service - that can interact with Calico's auto-detection logic in unexpected ways. Understanding both layers helps you isolate problems quickly.
 
 This guide covers the most common installation issues and how to resolve them on self-managed DigitalOcean Kubernetes clusters.
 
@@ -44,9 +44,9 @@ kubectl logs -n kube-system -l k8s-app=calico-node --tail=50
 ```
 
 Common errors include:
-- `Failed to auto-detect IP address` — Calico picked the wrong interface
-- `BIRD is not ready` — BGP daemon failed to start
-- `Datastore is not ready` — etcd or Kubernetes API connectivity issue
+- `Failed to auto-detect IP address` - Calico picked the wrong interface
+- `BIRD is not ready` - BGP daemon failed to start
+- `Datastore is not ready` - etcd or Kubernetes API connectivity issue
 
 ## Step 3: Fix IP Auto-Detection
 

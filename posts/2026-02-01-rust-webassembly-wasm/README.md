@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, WebAssembly, WASM, wasm-bindgen, Web Development
+Tags: Rust, WebAssembly, WASM, Wasm-bindgen, Web Development
 
 Description: A practical guide to building WebAssembly modules in Rust using wasm-bindgen and wasm-pack for web applications.
 

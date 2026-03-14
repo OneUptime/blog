@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, Terminal, Linux, Productivity
+Tags: Ubuntu, Tmux, Terminal, Linux, Productivity
 
 Description: Learn the complete workflow for managing tmux panes, windows, and sessions on Ubuntu with practical examples for organizing multi-task terminal workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, go:embed, Static Assets, Binary, Deployments
+Tags: Go, Go:embed, Static Assets, Binary, Deployments
 
 Description: Learn how to use Go's built-in embed directive to bundle static files like HTML, CSS, JavaScript, and images directly into your compiled binary for simpler deployments and distribution.
 

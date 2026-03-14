@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sysstat, sar, Performance Monitoring
+Tags: RHEL, Sysstat, Sar, Performance Monitoring
 
 Description: Use sar from sysstat on RHEL 9 to monitor CPU, memory, disk, and network over time.
 

@@ -10,7 +10,7 @@ Description: Migrate DNS entries for services deployed by Flux CD using a zero-d
 
 ## Introduction
 
-DNS migrations are required when services move between clusters, change their domain names, or when organizations consolidate multiple domains. In Flux-managed clusters, DNS records are often managed by ExternalDNS, which automatically creates and updates DNS records based on Kubernetes Service and Ingress annotations. This means DNS records are derived from Git-declared Ingress configurations — changing a domain is a GitOps operation.
+DNS migrations are required when services move between clusters, change their domain names, or when organizations consolidate multiple domains. In Flux-managed clusters, DNS records are often managed by ExternalDNS, which automatically creates and updates DNS records based on Kubernetes Service and Ingress annotations. This means DNS records are derived from Git-declared Ingress configurations - changing a domain is a GitOps operation.
 
 The challenge with DNS migrations is the propagation delay. DNS changes take time to propagate (typically minutes to hours depending on TTL), and during this window some users resolve to the old address while others resolve to the new one. A well-executed migration runs both endpoints simultaneously during the transition window and uses decreasing TTLs to speed up propagation.
 
@@ -75,7 +75,7 @@ dig my-service.acme.example.com | grep TTL
 ```
 
 ```yaml
-# deploy/ingress.yaml — Add TTL annotation
+# deploy/ingress.yaml - Add TTL annotation
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -110,7 +110,7 @@ Wait at least the old TTL duration after reducing TTL before proceeding with the
 Run both the old and new DNS names simultaneously during the migration window.
 
 ```yaml
-# deploy/ingress.yaml — Add new hostname alongside old
+# deploy/ingress.yaml - Add new hostname alongside old
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -128,7 +128,7 @@ spec:
         - my-service.acme-new.example.com      # New domain (being introduced)
       secretName: my-service-tls
   rules:
-    # Old domain — keep routing traffic
+    # Old domain - keep routing traffic
     - host: my-service.acme.example.com
       http:
         paths:
@@ -139,7 +139,7 @@ spec:
                 name: my-service
                 port:
                   number: 8080
-    # New domain — start routing traffic
+    # New domain - start routing traffic
     - host: my-service.acme-new.example.com
       http:
         paths:
@@ -152,7 +152,7 @@ spec:
                   number: 8080
 ```
 
-Commit and push — ExternalDNS will create the new DNS record, cert-manager will issue a certificate covering both domains.
+Commit and push - ExternalDNS will create the new DNS record, cert-manager will issue a certificate covering both domains.
 
 ## Step 4: Verify the New Domain Before Removing the Old
 
@@ -190,7 +190,7 @@ grep -r "my-service.acme.example.com" --include="*.yaml" \
 Update any downstream services or configuration that reference the old domain:
 
 ```yaml
-# Another service that calls my-service — update its environment variable
+# Another service that calls my-service - update its environment variable
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -221,7 +221,7 @@ kubectl logs -n ingress-nginx \
 ```
 
 ```yaml
-# deploy/ingress.yaml — Remove old domain after migration complete
+# deploy/ingress.yaml - Remove old domain after migration complete
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -250,13 +250,13 @@ spec:
                   number: 8080
 ```
 
-Commit and push — ExternalDNS will remove the old DNS record, cert-manager will renew the certificate with only the new domain.
+Commit and push - ExternalDNS will remove the old DNS record, cert-manager will renew the certificate with only the new domain.
 
 ## Best Practices
 
 - Reduce TTL to 60 seconds at least one old-TTL period before any cutover to enable fast propagation
 - Always run both old and new domains simultaneously during the migration window (minimum 24 hours)
-- Monitor ingress access logs on the old domain before removing it — make the removal data-driven
+- Monitor ingress access logs on the old domain before removing it - make the removal data-driven
 - Use `external-dns.alpha.kubernetes.io/alias: "true"` for CNAME-based migrations to reduce propagation delay
 - Test the new domain with synthetic monitoring before updating client configurations
 - Add a redirect (301) from the old domain to the new domain before removing DNS, to help search engines and cached bookmarks

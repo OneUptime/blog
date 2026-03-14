@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, sepolicy, Custom Policy, Linux
+Tags: RHEL, SELinux, Sepolicy, Custom Policy, Linux
 
 Description: Use sepolicy generate on RHEL to create a custom SELinux policy module for confining applications that do not have a default policy.
 

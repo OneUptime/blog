@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, apid, Kubernetes, System Services, API Server, Infrastructure
+Tags: Talos Linux, Apid, Kubernetes, System Services, API Server, Infrastructure
 
 Description: A deep dive into the apid service in Talos Linux, covering its role in cluster management, how it handles API requests, and how to troubleshoot common issues.
 

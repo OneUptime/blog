@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, DNS, Networking, Monitoring, Security, Linux
+Tags: EBPF, DNS, Networking, Monitoring, Security, Linux
 
 Description: A guide to using eBPF for DNS query monitoring and analysis.
 

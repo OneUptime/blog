@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Troubleshooting
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Troubleshooting
 
 Description: Diagnose and resolve common Calico etcd RBAC issues including permission denied errors, missing role bindings, and component authentication failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, pow Function, Math, HCL, Infrastructure as Code, Numeric Functions, Exponents
+Tags: Terraform, Pow Function, Math, HCL, Infrastructure as Code, Numeric Functions, Exponents
 
 Description: Learn how to use the pow function in Terraform to calculate powers and exponents for subnet sizing, capacity planning, and resource scaling calculations.
 

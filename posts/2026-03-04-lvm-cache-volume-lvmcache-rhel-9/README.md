@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, lvmcache, Caching, Linux
+Tags: RHEL, LVM, Lvmcache, Caching, Linux
 
 Description: A step-by-step guide to creating LVM cache volumes using lvmcache on RHEL, combining fast and slow storage transparently.
 

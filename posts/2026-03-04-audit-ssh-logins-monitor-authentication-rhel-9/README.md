@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SSH, auditd, Authentication, Security Monitoring, Linux
+Tags: RHEL, SSH, Auditd, Authentication, Security Monitoring, Linux
 
 Description: Set up SSH login auditing and authentication monitoring on RHEL using auditd, journalctl, and log analysis to detect brute force attacks and unauthorized access.
 

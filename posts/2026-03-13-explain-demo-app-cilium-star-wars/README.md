@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Star Wars Demo, HTTP Policy
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: An in-depth explanation of how the Star Wars demo application exposes HTTP endpoints and how Cilium uses them to demonstrate L7-aware policy enforcement.
 
@@ -10,7 +10,7 @@ Description: An in-depth explanation of how the Star Wars demo application expos
 
 ## Introduction
 
-The demo application powering the Cilium Star Wars scenario is deliberately designed to expose both safe and dangerous HTTP endpoints. This design choice makes it possible to demonstrate the limitations of L3/L4 policies — which can only control whether a connection is established — versus L7 policies, which can control what happens once a connection is open. The `/v1/exhaust-port` endpoint is the smoking gun: an L3/L4 policy cannot block it when the `tiefighter` already has permission to connect on port 80.
+The demo application powering the Cilium Star Wars scenario is deliberately designed to expose both safe and dangerous HTTP endpoints. This design choice makes it possible to demonstrate the limitations of L3/L4 policies - which can only control whether a connection is established - versus L7 policies, which can control what happens once a connection is open. The `/v1/exhaust-port` endpoint is the smoking gun: an L3/L4 policy cannot block it when the `tiefighter` already has permission to connect on port 80.
 
 Explaining this nuance is the whole point of the demo application. In real systems, this maps precisely to scenarios like an authenticated service calling a privileged administrative API that it should not have access to. Port 443 is open, TLS is valid, but the `/admin/drop-database` path should be forbidden. Standard `NetworkPolicy` cannot help here. Cilium can.
 
@@ -106,4 +106,4 @@ kubectl exec -n kube-system ds/cilium -- cilium policy get
 
 ## Conclusion
 
-The demo application is a masterclass in API surface security. By exposing both safe and privileged endpoints on the same port, it forces the audience to confront the limitation of connection-level policies and appreciate what HTTP-aware enforcement provides. Cilium's ability to enforce this without a sidecar — by redirecting to an in-node proxy — is both architecturally clean and operationally simpler than mesh-based alternatives.
+The demo application is a masterclass in API surface security. By exposing both safe and privileged endpoints on the same port, it forces the audience to confront the limitation of connection-level policies and appreciate what HTTP-aware enforcement provides. Cilium's ability to enforce this without a sidecar - by redirecting to an in-node proxy - is both architecturally clean and operationally simpler than mesh-based alternatives.

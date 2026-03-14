@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, etcd, Disaster Recovery
+Tags: ArgoCD, GitOps, Kubernetes, Etcd, Disaster Recovery
 
 Description: Learn how to recover ArgoCD after etcd data corruption including diagnosis, etcd restoration, and ArgoCD state rebuild strategies.
 

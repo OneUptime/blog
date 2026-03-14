@@ -119,4 +119,4 @@ kubectl delete pod test-z1 test-z2
 
 ## Conclusion
 
-Validating Calico on GCE requires checking GCP-level settings (can-ip-forward, firewall rules, VPC routes) alongside standard Calico health checks. The VPC static routes are the most critical GCE-specific element — if a node's pod CIDR doesn't have a corresponding VPC route in native routing mode, all traffic to pods on that node from other nodes will fail silently.
+Validating Calico on GCE requires checking GCP-level settings (can-ip-forward, firewall rules, VPC routes) alongside standard Calico health checks. The VPC static routes are the most critical GCE-specific element - if a node's pod CIDR doesn't have a corresponding VPC route in native routing mode, all traffic to pods on that node from other nodes will fail silently.

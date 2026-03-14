@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Production, Decision Framework, iptables, Performance
+Tags: Calico, Kubernetes, EBPF, CNI, Production, Decision Framework, Iptables, Performance
 
 Description: A structured decision framework for choosing between Calico's eBPF and iptables dataplanes for production Kubernetes deployments.
 
@@ -12,7 +12,7 @@ Description: A structured decision framework for choosing between Calico's eBPF 
 
 Calico supports three dataplanes in production: standard Linux (iptables/nftables), eBPF, and Windows HNS. For Linux-based clusters, the decision between iptables and eBPF is the most consequential networking choice you will make for your cluster's performance profile and operational model.
 
-Both dataplanes are production-ready and fully supported by Tigera. The decision is not "stable vs. experimental" — it is a question of which set of tradeoffs best matches your workload characteristics, kernel constraints, and operational requirements.
+Both dataplanes are production-ready and fully supported by Tigera. The decision is not "stable vs. experimental" - it is a question of which set of tradeoffs best matches your workload characteristics, kernel constraints, and operational requirements.
 
 This post gives you a structured framework for making that decision with confidence.
 
@@ -78,10 +78,10 @@ iptables has decades of tooling (`iptables -L`, `iptables-save`). eBPF requires 
 
 ## Best Practices
 
-- Never switch dataplanes without a full lab validation first — the switch requires restarting all calico-node pods
+- Never switch dataplanes without a full lab validation first - the switch requires restarting all calico-node pods
 - Keep your kernel version documented and aligned with your eBPF decision in your cluster runbook
 - Monitor CPU usage on nodes after enabling eBPF to confirm the expected reduction in `kube-proxy` and `calico-node` CPU overhead
-- Plan for kube-proxy removal before enabling eBPF — leaving kube-proxy running causes duplicate service processing
+- Plan for kube-proxy removal before enabling eBPF - leaving kube-proxy running causes duplicate service processing
 
 ## Conclusion
 

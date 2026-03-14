@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Authentication, Monitoring, Linux
+Tags: RHEL, Auditd, Authentication, Monitoring, Linux
 
 Description: Set up auditd rules on RHEL to monitor user logins, failed authentication attempts, and privilege escalation for security auditing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Jaeger, spanmetrics, Grafana
+Tags: OpenTelemetry, Jaeger, Spanmetrics, Grafana
 
 Description: Fix Grafana dashboard issues caused by metric name and format differences between the spanmetrics processor and connector.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Calico, eBPF, Kubernetes, Networking Performance
+Tags: Talos Linux, Calico, EBPF, Kubernetes, Networking Performance
 
 Description: Learn how to enable and configure Calico's eBPF data plane on Talos Linux for improved networking performance and lower overhead.
 

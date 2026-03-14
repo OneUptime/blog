@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, zPages, Debugging, Live Monitoring, Troubleshooting
+Tags: OpenTelemetry, Collector, ZPages, Debugging, Live Monitoring, Troubleshooting
 
 Description: Learn how to leverage OpenTelemetry zPages extension for real-time collector debugging, pipeline monitoring, and performance analysis with practical examples.
 

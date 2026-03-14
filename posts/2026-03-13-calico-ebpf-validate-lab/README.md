@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Lab, Testing, Validation, Performance
+Tags: Calico, Kubernetes, EBPF, CNI, Lab, Testing, Validation, Performance
 
 Description: Step-by-step instructions for enabling and verifying Calico eBPF mode in a lab Kubernetes cluster, including kernel compatibility checks and functional validation.
 
@@ -142,7 +142,7 @@ kubectl exec client -- wget -qO- http://$(kubectl get pod echo -o jsonpath='{.st
 
 ## Best Practices
 
-- Always test on the same kernel version as production nodes — eBPF features are kernel-specific
+- Always test on the same kernel version as production nodes - eBPF features are kernel-specific
 - Run a brief load test after enabling eBPF to confirm CPU usage has not increased (it should decrease)
 - Check `/sys/fs/bpf/calico/` on nodes to inspect the eBPF map directory structure
 - Document your kernel version and Calico version combination for the runbook

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: pytest, Python, Testing, Parametrize, Unit Testing
+Tags: Pytest, Python, Testing, Parametrize, Unit Testing
 
 Description: A practical guide to mastering pytest parametrize for running tests with multiple inputs. Learn how to use the @pytest.mark.
 

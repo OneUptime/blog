@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cert-Manager, TLS, Certificates, Kubernetes, GitOps, letsencrypt
+Tags: Flux CD, Cert-Manager, TLS, Certificates, Kubernetes, GitOps, Letsencrypt
 
 Description: A practical guide to deploying and managing cert-manager with Flux CD for automated TLS certificate provisioning in Kubernetes.
 

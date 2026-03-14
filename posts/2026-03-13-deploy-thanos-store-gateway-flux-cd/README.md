@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Thanos, Store Gateway, Prometheus, S3, Flux CD, GitOps, Kubernetes, Long-Term Metrics
+Tags: Flux CD, Kubernetes, GitOps, Thanos, Store Gateway, Long-Term Storage, Prometheus, Observability
 
-Description: Deploy the Thanos Store Gateway on Kubernetes using Flux CD to serve historical metric blocks from S3 object storage to Thanos Querier. This guide covers sharding, caching, and production deployment patterns.
+Description: Deploy the Thanos Store Gateway on Kubernetes using Flux CD to serve historical metric blocks from S3 object storage to Thanos Querier.
 
 ---
 
@@ -34,7 +34,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # S3 object store configuration — encrypt with SOPS before committing
+  # S3 object store configuration - encrypt with SOPS before committing
   objstore.yaml: |
     type: S3
     config:

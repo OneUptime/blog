@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Velero, VolumeSnapshotLocation, PersistentVolumes, GitOps, Kubernetes, Backup
+Tags: Flux CD, Velero, VolumeSnapshotLocation, PersistentVolume, GitOps, Kubernetes, Backup
 
 Description: Configure Velero VolumeSnapshotLocation resources using Flux CD to manage persistent volume snapshot backends for complete Kubernetes data protection.
 
@@ -10,7 +10,7 @@ Description: Configure Velero VolumeSnapshotLocation resources using Flux CD to 
 
 ## Introduction
 
-Velero's VolumeSnapshotLocation (VSL) resource defines where Persistent Volume snapshots are created and stored. Unlike Kubernetes resource backups (which go to object storage), volume snapshots are created as native cloud provider snapshots—EBS snapshots on AWS, Managed Disk snapshots on Azure, and Persistent Disk snapshots on GCP. Managing VSLs through Flux ensures snapshot configuration is version-controlled and consistently applied.
+Velero's VolumeSnapshotLocation (VSL) resource defines where Persistent Volume snapshots are created and stored. Unlike Kubernetes resource backups (which go to object storage), volume snapshots are created as native cloud provider snapshots-EBS snapshots on AWS, Managed Disk snapshots on Azure, and Persistent Disk snapshots on GCP. Managing VSLs through Flux ensures snapshot configuration is version-controlled and consistently applied.
 
 A complete Velero backup strategy requires both a BackupStorageLocation (for Kubernetes resource data) and a VolumeSnapshotLocation (for PV data). When a backup runs, Velero quiesces the pods, triggers cloud provider snapshots for each PV, and records the snapshot IDs in the backup metadata stored in the BSL. On restore, the snapshots are used to recreate the volumes.
 

@@ -10,7 +10,7 @@ Description: A guide to validating that Typha TLS certificates are correctly con
 
 ## Introduction
 
-Validating Typha TLS goes beyond confirming that Felix can connect — it involves confirming that the certificates are valid and unexpired, that the CA matches on both sides, that CN verification is enforced, and that unauthenticated connections are rejected. This level of validation is required during initial setup, after certificate rotation, and as part of periodic security audits.
+Validating Typha TLS goes beyond confirming that Felix can connect - it involves confirming that the certificates are valid and unexpired, that the CA matches on both sides, that CN verification is enforced, and that unauthenticated connections are rejected. This level of validation is required during initial setup, after certificate rotation, and as part of periodic security audits.
 
 ## Step 1: Verify Certificate Validity and Expiry
 
@@ -73,7 +73,7 @@ openssl verify -CAfile /tmp/typha-ca.crt /tmp/felix-client.crt
 
 ## Step 4: Verify Unauthenticated Connections Are Rejected
 
-Attempt a connection to Typha without a client certificate — this should fail.
+Attempt a connection to Typha without a client certificate - this should fail.
 
 ```bash
 kubectl run tls-test --image=alpine --restart=Never -- sh -c \
@@ -116,7 +116,7 @@ NOW_EPOCH=$(date +%s)
 DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
 echo "Days until Typha TLS certificate expiry: $DAYS_LEFT"
-[ "$DAYS_LEFT" -lt 30 ] && echo "WARNING: Certificate expires soon — rotate now"
+[ "$DAYS_LEFT" -lt 30 ] && echo "WARNING: Certificate expires soon - rotate now"
 ```
 
 ## Conclusion

@@ -10,7 +10,7 @@ Description: Secure direct BGP-to-workload connectivity in Calico by combining n
 
 ## Introduction
 
-When pod IPs are directly routable via BGP, every pod becomes potentially reachable from anywhere on your network — or even the internet if your BGP peers propagate routes externally. This creates significant security concerns: without proper controls, any host that has a route to the pod CIDR can connect directly to any pod on any port.
+When pod IPs are directly routable via BGP, every pod becomes potentially reachable from anywhere on your network - or even the internet if your BGP peers propagate routes externally. This creates significant security concerns: without proper controls, any host that has a route to the pod CIDR can connect directly to any pod on any port.
 
 Calico's network policy engine provides the primary defense, but it must be configured explicitly. By default, Calico allows all traffic unless deny policies exist. The security model for direct pod connectivity requires a default-deny stance at the pod level, combined with explicit allow rules for legitimate traffic, BGP route filtering to limit where routes are propagated, and access controls on BGP peering sessions themselves.
 

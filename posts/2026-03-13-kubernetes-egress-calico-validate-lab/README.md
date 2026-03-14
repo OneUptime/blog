@@ -166,10 +166,10 @@ kubectl exec egress-test -- curl --max-time 5 -s https://example.com
 
 ## Best Practices
 
-- Always test DNS egress explicitly — blocking DNS breaks all service resolution including internal services
+- Always test DNS egress explicitly - blocking DNS breaks all service resolution including internal services
 - Validate egress policy in the same namespace isolation context you plan to use in production
 - Use `calicoctl get workloadendpoints` to confirm policy is applied to the correct endpoints
-- Test both allow and deny cases — a test that only confirms the allow path may not catch policy misconfiguration
+- Test both allow and deny cases - a test that only confirms the allow path may not catch policy misconfiguration
 
 ## Conclusion
 

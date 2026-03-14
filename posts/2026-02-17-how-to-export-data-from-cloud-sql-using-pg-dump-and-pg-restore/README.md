@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, pg_dump, pg_restore, Data Export
+Tags: GCP, Cloud SQL, PostgreSQL, Pg_dump, Pg_restore, Data Export
 
 Description: A hands-on guide to exporting data from Cloud SQL for PostgreSQL using pg_dump and restoring it with pg_restore for migrations, backups, and environment cloning.
 

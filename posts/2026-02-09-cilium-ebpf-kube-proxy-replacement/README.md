@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cilium, eBPF
+Tags: Kubernetes, Cilium, EBPF
 
 Description: Replace kube-proxy with Cilium's eBPF-based implementation to reduce latency, improve throughput.
 

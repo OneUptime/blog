@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CLI, Troubleshooting, Installation, eBPF
+Tags: Cilium, CLI, Kubernetes, Tools
 
 Description: A guide to diagnosing and fixing common Cilium CLI installation problems including download failures, permission errors, and version mismatches.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and fixing common Cilium CLI installation pro
 
 ## Introduction
 
-Installing the Cilium CLI is straightforward in most cases, but several common issues can block the installation or cause the CLI to malfunction. Understanding these failure modes — download failures due to network restrictions, permission errors when moving binaries to system paths, architecture mismatches on ARM systems, and version mismatches between the CLI and the Cilium installation — allows you to resolve them quickly without lengthy debugging sessions.
+Installing the Cilium CLI is straightforward in most cases, but several common issues can block the installation or cause the CLI to malfunction. Understanding these failure modes - download failures due to network restrictions, permission errors when moving binaries to system paths, architecture mismatches on ARM systems, and version mismatches between the CLI and the Cilium installation - allows you to resolve them quickly without lengthy debugging sessions.
 
 This guide covers the diagnostic steps for each category of installation failure and provides tested fixes. Most issues are resolved by verifying the architecture, checking the checksum, and ensuring proper permissions.
 

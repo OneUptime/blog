@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, istioctl, Proxy Config, Debugging, Kubernetes
+Tags: Istio, Envoy, Istioctl, Proxy Config, Debugging, Kubernetes
 
 Description: Master the istioctl proxy-config command to inspect and debug Envoy proxy configurations across listeners, routes, clusters, and endpoints.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debugging, type_debug, Jinja2 Filters, Troubleshooting
+Tags: Ansible, Debugging, Type_debug, Jinja2 Filters, Troubleshooting
 
 Description: Learn how to use the Ansible type_debug filter to inspect variable types and resolve common type-related issues in playbooks.
 

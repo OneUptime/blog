@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Authentication, pg_hba.conf, Security, Access Control
+Tags: PostgreSQL, Authentication, Pg_hba.conf, Security, Access Control
 
 Description: A comprehensive guide to configuring PostgreSQL client authentication with pg_hba.conf, covering authentication methods and security best practices.
 

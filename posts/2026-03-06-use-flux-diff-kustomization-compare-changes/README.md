@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Diff, Kustomization, Comparison, Preview, DevOps
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Diff, Kustomization, Comparison, Preview, DevOps
 
 Description: A practical guide to using the flux diff kustomization command to compare local changes against what is currently deployed in your Kubernetes cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Node Taints, Node Pools, Networking, Troubleshooting
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to diagnosing and resolving Cilium issues caused by node pool taints, covering DaemonSet tolerations, taint-based pod scheduling, and Cilium initialization on tainted nodes.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving Cilium issues caused by node po
 
 ## Introduction
 
-Node pool taints are used to dedicate nodes for specific workloads (GPU nodes, spot instances, database nodes) by preventing general-purpose pods from scheduling on them. However, Kubernetes DaemonSets like Cilium must run on all nodes to provide networking — and if the Cilium DaemonSet lacks the correct tolerations for a node's taints, Cilium won't start on tainted nodes, leaving pods on those nodes without networking.
+Node pool taints are used to dedicate nodes for specific workloads (GPU nodes, spot instances, database nodes) by preventing general-purpose pods from scheduling on them. However, Kubernetes DaemonSets like Cilium must run on all nodes to provide networking - and if the Cilium DaemonSet lacks the correct tolerations for a node's taints, Cilium won't start on tainted nodes, leaving pods on those nodes without networking.
 
 This is a particularly insidious failure mode because the tainted nodes may appear healthy in the cluster until workloads are scheduled on them and fail to get network interfaces. The nodes may show as `Ready` in kubectl while Cilium is not running on them.
 
@@ -48,7 +48,7 @@ Cilium's DaemonSet must tolerate all taints that exist on nodes in your cluster.
 Update Cilium Helm values to add tolerations:
 
 ```yaml
-# cilium-values-tolerations.yaml — Add tolerations for custom node pool taints
+# cilium-values-tolerations.yaml - Add tolerations for custom node pool taints
 tolerations:
   # Default Cilium tolerations that should always be present
   - key: node.kubernetes.io/not-ready
@@ -97,7 +97,7 @@ Check Cilium initialization on tainted nodes:
 TAINTED_NODE=<node-name>
 CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o wide | grep $TAINTED_NODE | awk '{print $1}')
 
-# Check the pod status — it should be Running, not Init or CrashLoopBackOff
+# Check the pod status - it should be Running, not Init or CrashLoopBackOff
 kubectl -n kube-system describe pod $CILIUM_POD | grep -E "Status:|Ready:"
 
 # Verify the Cilium agent is healthy on this node

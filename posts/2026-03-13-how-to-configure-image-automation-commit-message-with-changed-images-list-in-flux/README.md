@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, image-automation, Commit-Message, Changelog, GitOps, Kubernetes
+Tags: Flux, Image-automation, Commit-Message, Changelog, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation commit messages to include a detailed list of all changed container images.
 

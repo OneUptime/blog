@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, System Roles, kdump, Crash Dumps
+Tags: RHEL, System Roles, Kdump, Crash Dumps
 
 Description: Use the kdump RHEL System Role to configure kernel crash dump settings.
 

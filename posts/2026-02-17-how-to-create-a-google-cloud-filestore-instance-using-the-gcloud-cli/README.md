@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Filestore, NFS, Storage, gcloud CLI
+Tags: GCP, Filestore, NFS, Storage, Gcloud CLI
 
 Description: Step-by-step instructions for creating a Google Cloud Filestore NFS instance using the gcloud command-line tool, including tier selection and network configuration.
 

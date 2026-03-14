@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Staged Policies, Kubernetes
+Tags: Calico, Kubernetes, Network Policy, Staged Policies
 
 Description: A phased rollout strategy for Staged Kubernetes NetworkPolicy in Calico that prevents outages.
 

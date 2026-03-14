@@ -12,7 +12,7 @@ Description: Fix issues during Calico CNI removal by removing finalizers, cleani
 
 Fixing problems during Calico CNI removal requires addressing each stuck component individually. The recommended approach is to work through the layers in order: first resolve stuck finalizers on IPAM resources, then clean up CNI configuration files on each node, flush remaining iptables rules, and finally remove the CRDs.
 
-Manual finalizer removal should be done carefully — finalizers exist to prevent data loss during cleanup. In the case of Calico IPAM resources, removing the finalizer is safe once the calico-node DaemonSet is already deleted, as there is no controller left to honor the finalizer's intent.
+Manual finalizer removal should be done carefully - finalizers exist to prevent data loss during cleanup. In the case of Calico IPAM resources, removing the finalizer is safe once the calico-node DaemonSet is already deleted, as there is no controller left to honor the finalizer's intent.
 
 ## Symptoms
 

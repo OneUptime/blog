@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Operations
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Operations
 
 Description: Build sustainable operational processes for Calico eBPF troubleshooting including runbooks, on-call training, and post-incident learning workflows.
 
@@ -54,7 +54,7 @@ The minimum eBPF knowledge for on-call rotation:
 ```bash
 kubectl exec -n calico-system -l k8s-app=calico-node -- \
   sh -c 'bpftool prog list 2>/dev/null | grep -c calico || echo 0'
-```
+```plaintext
 - If 0 on all nodes: cluster-wide regression
 - If 0 on some nodes: partial regression (more dangerous)
 
@@ -62,7 +62,7 @@ kubectl exec -n calico-system -l k8s-app=calico-node -- \
 ```bash
 kubectl logs -n calico-system ds/calico-node -c calico-node | \
   grep -i "bpf\|fallback" | tail -20
-```
+```plaintext
 - "kernel doesn't support BPF": kernel version issue
 - "mount failed": BPF filesystem not mounted
 - "Installation changed": operator config changed
@@ -122,4 +122,4 @@ INCIDENT_TYPES=(
 
 ## Conclusion
 
-Operationalizing eBPF troubleshooting turns specialized knowledge into team-wide capability. By building a training curriculum that brings all on-call engineers to a minimum competency level, maintaining runbooks for each known alert type, automating diagnostic data collection, and running post-incident learning loops, you continuously improve both the speed of resolution and the quality of your runbooks. Track MTTR as a key operational metric — a declining MTTR over time is evidence that your operationalization efforts are working.
+Operationalizing eBPF troubleshooting turns specialized knowledge into team-wide capability. By building a training curriculum that brings all on-call engineers to a minimum competency level, maintaining runbooks for each known alert type, automating diagnostic data collection, and running post-incident learning loops, you continuously improve both the speed of resolution and the quality of your runbooks. Track MTTR as a key operational metric - a declining MTTR over time is evidence that your operationalization efforts are working.

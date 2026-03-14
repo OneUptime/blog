@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, OpenTelemetry, Observability, Tracing, Auto-Instrumentation, Kubernetes, Linux, Performance
+Tags: EBPF, OpenTelemetry, Observability, Tracing, Auto-Instrumentation, Kubernetes, Linux, Performance
 
 Description: A practical guide to combining eBPF with OpenTelemetry for automatic, zero-code distributed tracing and observability.
 

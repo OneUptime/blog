@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, boto3, Python, Pagination, SDK
+Tags: AWS, Boto3, Python, Pagination, SDK
 
 Description: Learn how to use Boto3 paginators to efficiently handle large API responses in Python, avoiding incomplete data and memory issues.
 

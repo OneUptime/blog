@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, tfsec, Security, Static Analysis, DevSecOps
+Tags: Terraform, Tfsec, Security, Static Analysis, DevSecOps
 
 Description: Learn how to integrate tfsec into your Terraform workflow to catch security misconfigurations before they reach your cloud infrastructure.
 

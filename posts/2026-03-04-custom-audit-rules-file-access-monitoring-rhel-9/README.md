@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Audit Rules, File Monitoring, Security, Linux
+Tags: RHEL, Auditd, Audit Rules, File Monitoring, Security, Linux
 
 Description: Write custom auditd rules on RHEL to monitor file access, track changes to sensitive files, and create an audit trail for compliance.
 

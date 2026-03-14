@@ -12,7 +12,7 @@ Description: Deploy the CloudNativePG operator for production PostgreSQL cluster
 
 CloudNativePG (CNPG) is a Kubernetes operator that manages PostgreSQL clusters natively, without relying on external tools like Patroni or Consul for high availability. It implements PostgreSQL streaming replication entirely within Kubernetes using leader election, automated failover, and rolling updates. CNPG is backed by EDB and has become one of the most actively maintained PostgreSQL operators in the cloud-native ecosystem.
 
-Deploying CNPG through Flux CD gives you GitOps control over the operator itself and over every PostgreSQL cluster it manages. Cluster topology changes — adding a replica, changing PostgreSQL version, adjusting connection limits — are Git commits reviewed by your team and applied automatically.
+Deploying CNPG through Flux CD gives you GitOps control over the operator itself and over every PostgreSQL cluster it manages. Cluster topology changes - adding a replica, changing PostgreSQL version, adjusting connection limits - are Git commits reviewed by your team and applied automatically.
 
 This post covers deploying the CNPG operator via Flux HelmRelease and creating a production-ready PostgreSQL cluster using the `Cluster` CRD.
 
@@ -249,7 +249,7 @@ kubectl exec -n databases -it postgres-primary-1 -- \
 
 ## Best Practices
 
-- Store all PostgreSQL credentials in SealedSecrets or External Secrets — never commit plaintext passwords to Git.
+- Store all PostgreSQL credentials in SealedSecrets or External Secrets - never commit plaintext passwords to Git.
 - Use separate PVCs for WAL storage (`walStorage`) to isolate write-intensive WAL I/O from data reads.
 - Enable Prometheus monitoring via `monitoring.enablePodMonitor: true` and import the CNPG Grafana dashboard.
 - Pin the `imageName` to a specific PostgreSQL patch version and use Flux image policies for automated upgrade PRs.
@@ -257,4 +257,4 @@ kubectl exec -n databases -it postgres-primary-1 -- \
 
 ## Conclusion
 
-CloudNativePG deployed through Flux CD gives you a production-grade PostgreSQL operator that handles failover, rolling upgrades, and backup management natively within Kubernetes. Every cluster change — adding a replica, adjusting parameters, rotating credentials — is a Git commit that Flux applies safely. The operator's tight Kubernetes integration means your database clusters benefit from the same observability and automation as your application workloads.
+CloudNativePG deployed through Flux CD gives you a production-grade PostgreSQL operator that handles failover, rolling upgrades, and backup management natively within Kubernetes. Every cluster change - adding a replica, adjusting parameters, rotating credentials - is a Git commit that Flux applies safely. The operator's tight Kubernetes integration means your database clusters benefit from the same observability and automation as your application workloads.

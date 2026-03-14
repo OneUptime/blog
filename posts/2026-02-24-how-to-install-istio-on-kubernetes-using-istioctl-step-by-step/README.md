@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Mesh, istioctl, DevOps
+Tags: Istio, Kubernetes, Service Mesh, Istioctl, DevOps
 
 Description: A complete step-by-step guide to installing Istio on Kubernetes using the istioctl CLI tool with practical commands and verification steps.
 

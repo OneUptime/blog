@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, auditd, Security, Logging, Compliance
+Tags: Ansible, Auditd, Security, Logging, Compliance
 
 Description: Set up and manage the Linux audit daemon (auditd) with Ansible to track security events, file access, and system calls across your infrastructure.
 

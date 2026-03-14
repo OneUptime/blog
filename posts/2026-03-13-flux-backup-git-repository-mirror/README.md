@@ -10,7 +10,7 @@ Description: Configure a backup Git repository mirror for Flux CD resilience, en
 
 ## Introduction
 
-Flux CD's entire operation depends on access to a Git repository. If your primary Git provider — GitHub, GitLab, or Bitbucket — experiences an outage or your repository becomes inaccessible, Flux stops reconciling. While existing workloads continue running, no new deployments can be made, and configuration drift cannot be corrected.
+Flux CD's entire operation depends on access to a Git repository. If your primary Git provider - GitHub, GitLab, or Bitbucket - experiences an outage or your repository becomes inaccessible, Flux stops reconciling. While existing workloads continue running, no new deployments can be made, and configuration drift cannot be corrected.
 
 A backup Git repository mirror provides a secondary source of truth. When the primary is unreachable, Flux can be quickly pointed at the mirror, restoring full GitOps capabilities within minutes. The mirror is kept in sync automatically, so it always reflects the latest commits from your main repository.
 
@@ -211,7 +211,7 @@ Run this as a Kubernetes CronJob every 15 minutes to get early warning of mirror
 
 - Keep the mirror in a different geographic region from the primary.
 - Monitor mirror lag and alert if the mirror falls more than one commit behind.
-- Test the failover script monthly — not just when you need it.
+- Test the failover script monthly - not just when you need it.
 - Ensure credentials for both primary and mirror repositories are stored and rotated in your secret manager.
 - Consider a second mirror at a third provider for extreme resilience requirements.
 - After failback, verify no commits were made to the mirror that are not in the primary.

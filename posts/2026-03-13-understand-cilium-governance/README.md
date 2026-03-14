@@ -74,7 +74,7 @@ cat MAINTAINERS.md
 
 Or view via GitHub:
 
-```
+```plaintext
 https://github.com/cilium/cilium/blob/main/MAINTAINERS.md
 ```
 

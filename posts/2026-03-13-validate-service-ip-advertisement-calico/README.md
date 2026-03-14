@@ -12,7 +12,7 @@ Description: Validate that Calico is correctly advertising Kubernetes service IP
 
 Validating Calico service IP advertisement ensures that Kubernetes services are correctly reachable from external networks via BGP-advertised routes. Unlike pod IP validation, service IP validation must account for kube-proxy or eBPF service handling on nodes, which performs DNAT to redirect traffic from service IPs to backend pods.
 
-A successfully advertised service IP route on an external router does not guarantee service reachability — you also need to verify that the node receiving the traffic correctly forwards it to a healthy backend pod and that return traffic can reach the original client. This validation flow requires checking both the BGP control plane and the service forwarding data plane.
+A successfully advertised service IP route on an external router does not guarantee service reachability - you also need to verify that the node receiving the traffic correctly forwards it to a healthy backend pod and that return traffic can reach the original client. This validation flow requires checking both the BGP control plane and the service forwarding data plane.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, ConfigMaps, Variables, GitOps, Kubernetes
+Tags: Flux CD, Tofu Controller, Terraform, ConfigMap, Variables, GitOps, Kubernetes
 
 Description: Pass Terraform variables from Kubernetes ConfigMaps using the Tofu Controller to share non-sensitive configuration across multiple Terraform resources.
 
@@ -10,7 +10,7 @@ Description: Pass Terraform variables from Kubernetes ConfigMaps using the Tofu 
 
 ## Introduction
 
-Terraform variables serve as the interface between generic reusable modules and environment-specific configuration. When managing multiple Terraform resources with the Tofu Controller, you often have variables that are shared across many resources—the AWS region, the VPC ID, the environment name, the cluster name. Duplicating these in every `Terraform` resource is tedious and error-prone.
+Terraform variables serve as the interface between generic reusable modules and environment-specific configuration. When managing multiple Terraform resources with the Tofu Controller, you often have variables that are shared across many resources-the AWS region, the VPC ID, the environment name, the cluster name. Duplicating these in every `Terraform` resource is tedious and error-prone.
 
 Kubernetes ConfigMaps provide a natural home for non-sensitive shared Terraform variables. The Tofu Controller can read variables from ConfigMaps using the `varsFrom` field, allowing you to centralize shared configuration and inject it into multiple Terraform resources. When the ConfigMap changes, all dependent Terraform resources will reconcile with the updated values.
 

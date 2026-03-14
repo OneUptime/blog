@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, systemd, DevOps, Server Administration
+Tags: Ubuntu, Linux, Systemd, DevOps, Server Administration
 
 Description: Master systemd on Ubuntu for managing services, creating timers, using journald for logging, and troubleshooting system issues.
 

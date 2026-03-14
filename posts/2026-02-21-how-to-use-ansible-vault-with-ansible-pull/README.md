@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, ansible-pull, Security, Configuration Management
+Tags: Ansible, Vault, Ansible-pull, Security, Configuration Management
 
 Description: Learn how to securely use Ansible Vault encrypted secrets with ansible-pull for node-based self-provisioning and configuration.
 

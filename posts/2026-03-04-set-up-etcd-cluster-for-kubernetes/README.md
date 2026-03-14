@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, etcd, Linux
+Tags: RHEL, Kubernetes, Containers, Etcd, Linux
 
 Description: Learn how to set Up etcd Cluster for Kubernetes on RHEL with step-by-step instructions, configuration examples, and best practices.
 

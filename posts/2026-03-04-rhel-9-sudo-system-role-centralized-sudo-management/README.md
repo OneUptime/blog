@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, System Roles, sudo, Privilege Escalation
+Tags: RHEL, System Roles, Sudo, Privilege Escalation
 
 Description: Use the sudo RHEL System Role to centrally manage sudo rules across RHEL systems.
 

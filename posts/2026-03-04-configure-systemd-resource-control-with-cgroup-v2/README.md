@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Cgroups, Linux
+Tags: RHEL, Systemd, System Administration, Cgroups, Linux
 
 Description: Learn how to configure systemd Resource Control with Cgroup v2 on RHEL with step-by-step instructions, configuration examples, and best practices.
 

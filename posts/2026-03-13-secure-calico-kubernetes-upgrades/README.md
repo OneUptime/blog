@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Security
+Tags: Calico, Kubernetes, Networking, Upgrade, Security
 
 Description: Apply security best practices during Calico upgrades including image verification, change control, policy continuity checks, and rollback preparedness.
 
@@ -99,4 +99,4 @@ SNAPSHOT_POLICY_COUNT=$(grep "^- " pre-upgrade-snapshot-*/gnps.yaml | wc -l)
 
 ## Conclusion
 
-Securing Calico upgrades requires treating the process as a security-sensitive change: verify images with cosign, scan for CVEs before deploying, snapshot policy state before the upgrade for comparison afterward, and maintain a formal change management record. The most important security check is verifying that all network policies are still enforced after the upgrade — a policy regression during an upgrade could silently allow traffic that was previously blocked.
+Securing Calico upgrades requires treating the process as a security-sensitive change: verify images with cosign, scan for CVEs before deploying, snapshot policy state before the upgrade for comparison afterward, and maintain a formal change management record. The most important security check is verifying that all network policies are still enforced after the upgrade - a policy regression during an upgrade could silently allow traffic that was previously blocked.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, v-model, Custom Components, Two-way Binding, Props, Events, TypeScript
+Tags: Vue, V-model, Custom Components, Two-way Binding, Props, Events, TypeScript
 
 Description: A practical guide to implementing and troubleshooting v-model in Vue 3 custom components with examples and common pitfalls.
 

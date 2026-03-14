@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ibm, iks, kubernetes, installation, troubleshooting
+Tags: Calico, Kubernetes, Networking, Troubleshooting, IBM Kubernetes Service
 
 Description: A guide to diagnosing and resolving common issues when installing and running Calico on IBM Kubernetes Service (IKS) clusters.
 
@@ -125,7 +125,7 @@ kubectl exec <pod-1> -- curl http://<pod-2-ip>
 - Always use `ibmcloud ks` to configure `calicoctl` for IKS rather than manual configuration
 - Test custom policies in a development IKS cluster before applying to production
 - Open IBM support tickets for issues caused by IBM-managed Calico component failures
-- Check IKS cluster update notes before upgrading—Calico updates are managed by IBM
+- Check IKS cluster update notes before upgrading-Calico updates are managed by IBM
 
 ## Conclusion
 

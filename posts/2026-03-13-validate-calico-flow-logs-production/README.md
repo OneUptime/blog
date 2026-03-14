@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Validate that Calico flow logs are accurately capturing connection data in production by cross-checking flow records against application-level connection tests and verifying denied flows match policy expectations.
+Description: Validate that Calico flow logs are accurately capturing connection data in production by cross-checking flow records against application-level connection tests and verifying denied flows match...
 
 ---
 
 ## Introduction
 
-Validating flow log accuracy requires comparing what flow logs record against what you know happened. Generate a test connection, verify it appears in flow logs with the correct source, destination, and policy decision. Also verify that the aggregation level is correctly applied — per-flow logs should show individual connection records, per-pod aggregation should group them.
+Validating flow log accuracy requires comparing what flow logs record against what you know happened. Generate a test connection, verify it appears in flow logs with the correct source, destination, and policy decision. Also verify that the aggregation level is correctly applied - per-flow logs should show individual connection records, per-pod aggregation should group them.
 
 ## Step 1: Generate a Known Test Connection
 

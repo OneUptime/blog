@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AWS, ENI, IPAM
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to configure Cilium's AWS Elastic Network Interface (ENI) IPAM mode on Amazon EKS and self-managed Kubernetes on EC2, enabling native VPC routing without overlay encapsulation overhead.
 
@@ -10,9 +10,9 @@ Description: Learn how to configure Cilium's AWS Elastic Network Interface (ENI)
 
 ## Introduction
 
-Cilium's AWS ENI IPAM mode leverages Amazon Elastic Network Interfaces to assign pod IP addresses directly from your VPC's CIDR space. Unlike overlay-based IPAM modes that add encapsulation overhead, ENI IPAM enables pods to communicate using native VPC routing — pods get IP addresses that are routable within the VPC without any tunneling. This improves performance, enables direct integration with AWS security groups, and allows pods to be accessed directly via their VPC IPs from other AWS services.
+Cilium's AWS ENI IPAM mode leverages Amazon Elastic Network Interfaces to assign pod IP addresses directly from your VPC's CIDR space. Unlike overlay-based IPAM modes that add encapsulation overhead, ENI IPAM enables pods to communicate using native VPC routing - pods get IP addresses that are routable within the VPC without any tunneling. This improves performance, enables direct integration with AWS security groups, and allows pods to be accessed directly via their VPC IPs from other AWS services.
 
-In ENI IPAM mode, the Cilium Operator manages ENI lifecycle: it attaches secondary network interfaces to EC2 instances and pre-assigns secondary private IP addresses to those ENIs. When a pod is created, the Cilium Agent assigns one of the pre-allocated ENI IPs to the pod. AWS prefix delegation can dramatically increase the number of IPs available per ENI — a single /28 prefix provides 16 IPs from a single ENI attachment, enabling higher pod density on EC2 instances.
+In ENI IPAM mode, the Cilium Operator manages ENI lifecycle: it attaches secondary network interfaces to EC2 instances and pre-assigns secondary private IP addresses to those ENIs. When a pod is created, the Cilium Agent assigns one of the pre-allocated ENI IPs to the pod. AWS prefix delegation can dramatically increase the number of IPs available per ENI - a single /28 prefix provides 16 IPs from a single ENI attachment, enabling higher pod density on EC2 instances.
 
 This guide covers configuring Cilium's ENI IPAM mode, troubleshooting AWS-specific ENI allocation issues, and monitoring ENI utilization.
 

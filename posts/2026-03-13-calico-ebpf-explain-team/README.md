@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Team Communication, Networking, Performance
+Tags: Calico, Kubernetes, EBPF, CNI, Team Communication, Networking, Performance
 
 Description: A practical guide for explaining Calico's eBPF dataplane benefits to engineering teams without requiring deep Linux kernel expertise.
 
@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's eBPF dataplane benefits t
 
 ## Introduction
 
-eBPF is one of those technologies that sounds intimidating — "extended Berkeley Packet Filter" is not a phrase that communicates meaning to most engineers. Yet the practical benefits of Calico's eBPF dataplane are immediately relevant to any team running Kubernetes at scale: lower latency, better throughput, and fewer CPU cycles spent on networking.
+eBPF is one of those technologies that sounds intimidating - "extended Berkeley Packet Filter" is not a phrase that communicates meaning to most engineers. Yet the practical benefits of Calico's eBPF dataplane are immediately relevant to any team running Kubernetes at scale: lower latency, better throughput, and fewer CPU cycles spent on networking.
 
 Your challenge as the person who understands eBPF is to convey its value without turning a team meeting into a Linux kernel lecture. The key is to start from the problem (iptables scale), explain the solution mechanism at the right level of abstraction, and anchor everything in observable metrics.
 
@@ -35,7 +35,7 @@ The result is the same (allowed or denied), but the speed difference at scale is
 
 Developers care about latency and source IP preservation. Frame eBPF for them:
 
-> "With Calico eBPF enabled, when your service gets a request from an external client, the pod sees the original client IP — not a NAT'd internal IP. This means your access logs are accurate and IP-based rate limiting works correctly."
+> "With Calico eBPF enabled, when your service gets a request from an external client, the pod sees the original client IP - not a NAT'd internal IP. This means your access logs are accurate and IP-based rate limiting works correctly."
 
 Also useful: Calico eBPF mode replaces kube-proxy, which eliminates one layer of network address translation. Fewer NAT hops means lower latency for every request.
 
@@ -49,7 +49,7 @@ graph LR
 ```
 
 Key SRE talking points:
-- eBPF map updates are atomic — policy changes don't cause a brief iptables flush that can drop in-flight connections
+- eBPF map updates are atomic - policy changes don't cause a brief iptables flush that can drop in-flight connections
 - Felix (the Calico agent) still manages eBPF maps, so your existing Calico monitoring workflows still apply
 - You can inspect eBPF maps directly with `bpftool` for low-level debugging
 
@@ -57,19 +57,19 @@ Key SRE talking points:
 
 Managers care about risk and cost:
 
-> "Calico eBPF requires Linux kernel 5.3 or later. Our current node images run 5.15, so we are compatible. Enabling eBPF is a configuration change in the Calico operator — it does not require replacing nodes or reinstalling the CNI. The migration is reversible."
+> "Calico eBPF requires Linux kernel 5.3 or later. Our current node images run 5.15, so we are compatible. Enabling eBPF is a configuration change in the Calico operator - it does not require replacing nodes or reinstalling the CNI. The migration is reversible."
 
 The key risk message for managers: eBPF is not experimental. It is running in production at major cloud providers and has been a stable Calico feature since v3.13.
 
 ## What Not to Say
 
-- Avoid explaining BPF bytecode or verifier mechanics — it's accurate but not useful for most audiences
-- Don't frame eBPF as a replacement for Calico's networking model — it is a dataplane implementation detail, not a new product
-- Don't oversell the performance numbers without qualifying them — gains are most significant in clusters with hundreds of services and thousands of pods
+- Avoid explaining BPF bytecode or verifier mechanics - it's accurate but not useful for most audiences
+- Don't frame eBPF as a replacement for Calico's networking model - it is a dataplane implementation detail, not a new product
+- Don't oversell the performance numbers without qualifying them - gains are most significant in clusters with hundreds of services and thousands of pods
 
 ## Best Practices
 
-- Share a before/after latency measurement from a test cluster if possible — concrete data lands better than analogies
+- Share a before/after latency measurement from a test cluster if possible - concrete data lands better than analogies
 - Prepare a one-slide architecture diagram showing where eBPF hooks into the packet path
 - Run a lunch-and-learn demo showing `bpftool map list` to make eBPF tangible
 

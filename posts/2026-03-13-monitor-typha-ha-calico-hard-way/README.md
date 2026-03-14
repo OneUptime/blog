@@ -27,7 +27,7 @@ done
 
 ## Step 2: Configure ServiceMonitor for Per-Pod Scraping
 
-Standard ServiceMonitors scrape the Service endpoint — for per-pod metrics in a multi-replica deployment, use a PodMonitor.
+Standard ServiceMonitors scrape the Service endpoint - for per-pod metrics in a multi-replica deployment, use a PodMonitor.
 
 ```bash
 kubectl apply -f - <<EOF

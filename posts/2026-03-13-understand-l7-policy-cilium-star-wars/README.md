@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, L7 Policy, HTTP, Network Policy
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: Understand how Cilium's L7 HTTP-aware policy works in the Star Wars demo and why it is a fundamental advancement over connection-level network policy.
 
@@ -10,7 +10,7 @@ Description: Understand how Cilium's L7 HTTP-aware policy works in the Star Wars
 
 ## Introduction
 
-The L7 HTTP policy in the Cilium Star Wars demo represents the apex of the demonstration. Having established that L3/L4 policy can block unauthorized connections (no more `xwing` landings), the demo reveals the gap that remains: authorized connections can still access privileged endpoints. The `tiefighter`, cleared to land, can also trigger the Death Star's exhaust port — a catastrophic security failure that no traditional firewall can prevent.
+The L7 HTTP policy in the Cilium Star Wars demo represents the apex of the demonstration. Having established that L3/L4 policy can block unauthorized connections (no more `xwing` landings), the demo reveals the gap that remains: authorized connections can still access privileged endpoints. The `tiefighter`, cleared to land, can also trigger the Death Star's exhaust port - a catastrophic security failure that no traditional firewall can prevent.
 
 L7 HTTP policy fills this gap. By inspecting the HTTP method and path of requests made by already-authorized connections, Cilium can enforce application-level access control without deploying a sidecar. The `tiefighter` can POST to `/v1/request-landing` but not PUT to `/v1/exhaust-port`. This is precisely the policy that production API services need: not just "who can connect" but "what can they do once connected."
 
@@ -101,4 +101,4 @@ rules:
 
 ## Conclusion
 
-The L7 HTTP policy in the Cilium Star Wars demo closes the security gap that L3/L4 policy cannot address: application-level path control. By restricting HTTP methods and paths at the proxy level, Cilium provides the granular API access control that production microservices require. The demo's exhaust port scenario — a perfect metaphor for every privileged admin API endpoint in your cluster — shows exactly why this matters. Understanding L7 policy is understanding the complete Cilium security model.
+The L7 HTTP policy in the Cilium Star Wars demo closes the security gap that L3/L4 policy cannot address: application-level path control. By restricting HTTP methods and paths at the proxy level, Cilium provides the granular API access control that production microservices require. The demo's exhaust port scenario - a perfect metaphor for every privileged admin API endpoint in your cluster - shows exactly why this matters. Understanding L7 policy is understanding the complete Cilium security model.

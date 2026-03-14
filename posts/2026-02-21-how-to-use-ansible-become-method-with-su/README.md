@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Privilege Escalation, Linux, su
+Tags: Ansible, Privilege Escalation, Linux, Su
 
 Description: Configure Ansible to use su instead of sudo for privilege escalation on systems where sudo is unavailable
 

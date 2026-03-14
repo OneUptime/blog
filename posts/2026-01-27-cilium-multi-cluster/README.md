@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Multi-Cluster, Networking, ClusterMesh, Service Discovery, eBPF, DevOps
+Tags: Cilium, Kubernetes, Multi-Cluster, Networking, ClusterMesh, Service Discovery, EBPF, DevOps
 
 Description: A comprehensive guide to setting up Cilium ClusterMesh for multi-cluster Kubernetes networking, including service discovery, global services, network policies, and troubleshooting connectivity issues.
 

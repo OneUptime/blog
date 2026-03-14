@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, initramfs, Boot, Recovery, Linux, System Administration
+Tags: RHEL, Initramfs, Boot, Recovery, Linux, System Administration
 
 Description: Learn how to repair a broken initramfs image on RHEL when the system fails to boot due to a corrupted or missing initial RAM filesystem.
 

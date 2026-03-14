@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cilium, Network Policies, Multi-Cluster, eBPF
+Tags: Kubernetes, Cilium, Network Policies, Multi-Cluster, EBPF
 
 Description: Learn how to implement cross-cluster network policies using Cilium ClusterMesh for secure, performant service communication across multiple Kubernetes clusters.
 

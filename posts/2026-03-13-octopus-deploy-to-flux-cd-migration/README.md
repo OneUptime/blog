@@ -1,8 +1,8 @@
-# How to Migrate from Octopus Deploy to Flux CD
+# How to Migrate from Octopus Deploy to Flux CD - Migration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Octopus Deploy, Migration, GitOps, Kubernetes, CI/CD, Deployment
+Tags: Flux CD, Octopus Deploy, Migration, GitOps, Kubernetes, CI/CD, Deployments
 
 Description: Learn how to migrate from Octopus Deploy to Flux CD GitOps for Kubernetes workloads, covering tentacle removal, Helm chart migration, and environment promotion.
 
@@ -37,7 +37,7 @@ curl -H "X-Octopus-ApiKey: API-XXXXXXXX" \
 
 ## Step 2: Map Octopus Concepts to Flux
 
-```
+```plaintext
 Octopus Concept                 Flux CD Equivalent
 ──────────────────────────────  ───────────────────────────────
 Project                    ──►  GitRepository + set of Kustomizations
@@ -55,7 +55,7 @@ Runbooks                   ──►  Separate Kustomizations or Jobs
 
 **Octopus Helm Upgrade Step** (configuration):
 
-```
+```plaintext
 Chart: myapp
 Repository: https://charts.your-org.com
 Version: #{Octopus.Release.Number}

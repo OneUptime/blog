@@ -10,9 +10,9 @@ Description: Security hardening practices for Calico networking on AWS, combinin
 
 ## Introduction
 
-Securing Calico networking on AWS means leveraging both AWS network security controls (security groups, NACLs, VPC design) and Calico's network policy engine to create a defense-in-depth security model. Neither layer alone is sufficient — AWS security groups protect the node network boundary but can't enforce pod-level microsegmentation, while Calico policies can enforce pod-level rules but can't protect against VPC-level attacks.
+Securing Calico networking on AWS means leveraging both AWS network security controls (security groups, NACLs, VPC design) and Calico's network policy engine to create a defense-in-depth security model. Neither layer alone is sufficient - AWS security groups protect the node network boundary but can't enforce pod-level microsegmentation, while Calico policies can enforce pod-level rules but can't protect against VPC-level attacks.
 
-The combination of both layers — security groups for coarse-grained node access control and Calico policies for fine-grained pod-level enforcement — creates a robust security posture for Kubernetes workloads on AWS.
+The combination of both layers - security groups for coarse-grained node access control and Calico policies for fine-grained pod-level enforcement - creates a robust security posture for Kubernetes workloads on AWS.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ramfs, tmpfs, Comparison, Linux
+Tags: RHEL, Ramfs, Tmpfs, Comparison, Linux
 
 Description: Understand the differences between ramfs and tmpfs on RHEL, when to use each, and the practical implications for memory management.
 

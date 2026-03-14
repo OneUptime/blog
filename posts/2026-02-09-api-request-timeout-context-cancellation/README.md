@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, client-go, Error Handling
+Tags: Kubernetes, Client-go, Error Handling
 
 Description: Master timeout handling and context cancellation in Kubernetes client-go to build robust controllers that gracefully handle slow APIs, network issues, and long-running operations.
 

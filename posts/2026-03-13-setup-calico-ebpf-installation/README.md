@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation
+Tags: Calico, Kubernetes, Networking, EBPF, Installation
 
 Description: Install Calico with eBPF data plane enabled from the start, configuring all prerequisites before the first Calico pod runs for an optimal fresh-start deployment.
 

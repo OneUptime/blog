@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Python, API, Microservices, Protocol Buffers, RPC, asyncio, Client Development
+Tags: GRPC, Python, API, Microservices, Protocol Buffers, RPC, Asyncio, Client Development
 
 Description: A comprehensive guide to building production-ready gRPC clients in Python, covering synchronous and asynchronous patterns, interceptors, error handling, and best practices.
 

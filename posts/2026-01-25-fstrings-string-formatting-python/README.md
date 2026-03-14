@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, String, f-strings, Formatting, String Interpolation
+Tags: Python, String, F-strings, Formatting, String Interpolation
 
 Description: Master Python f-strings for clean, readable string formatting. Learn formatting specifications, expressions, alignment, and advanced techniques for producing well-formatted output.
 

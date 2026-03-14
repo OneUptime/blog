@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, k0s, kubernetes, troubleshooting, networking, cni
+Tags: Cilium, Kubernetes, K0s, EBPF
 
 Description: A guide to diagnosing and resolving Cilium networking issues on k0s Kubernetes clusters, covering k0s-specific CNI configuration and common failure modes.
 
@@ -142,7 +142,7 @@ kubectl exec -n k0s-test client -- wget -T 5 -qO- http://server.k0s-test.svc.clu
 
 ## Best Practices
 
-- Configure k0s with `provider: custom` networking before installing Cilium—changing CNI after deployment is disruptive
+- Configure k0s with `provider: custom` networking before installing Cilium-changing CNI after deployment is disruptive
 - Use the `cilium install` command with the `--set` flags to pass k0s-specific configuration
 - Always check k0s and Cilium version compatibility before upgrading either component
 - Validate connectivity using `cilium connectivity test` after every k0s cluster upgrade

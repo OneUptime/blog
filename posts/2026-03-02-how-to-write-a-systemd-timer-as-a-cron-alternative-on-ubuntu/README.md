@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Automation, Linux, Scheduling
+Tags: Ubuntu, Systemd, Automation, Linux, Scheduling
 
 Description: Replace cron jobs with systemd timers on Ubuntu for better logging, dependency management, and scheduling precision with practical examples.
 

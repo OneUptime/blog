@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of how Calico's VXLAN and IP-in-IP overl
 
 ## Introduction
 
-Understanding how L2 overlay encapsulation works at the packet level helps you debug cross-node connectivity issues and explain the networking behavior to your team. The observable artifacts — VXLAN interfaces, FDB entries, `tcpdump` captures — connect the conceptual model to reality.
+Understanding how L2 overlay encapsulation works at the packet level helps you debug cross-node connectivity issues and explain the networking behavior to your team. The observable artifacts - VXLAN interfaces, FDB entries, `tcpdump` captures - connect the conceptual model to reality.
 
 This post traces the complete packet journey for cross-node pod-to-pod traffic in both VXLAN and IP-in-IP modes, showing what you can observe at each stage.
 
@@ -67,7 +67,7 @@ sudo tcpdump -i vxlan.calico -n -c 5
 
 ## IP-in-IP Mode: Packet Journey
 
-IP-in-IP is simpler — no UDP header, just one IP header wrapping another:
+IP-in-IP is simpler - no UDP header, just one IP header wrapping another:
 
 ```mermaid
 graph LR
@@ -132,7 +132,7 @@ By comparing what appears at each layer, you can identify exactly where the pack
 ## Best Practices
 
 - Capture at the physical NIC level (`tcpdump -i eth0 udp port 4789`) to confirm encapsulated packets are being sent and received
-- Use the FDB entry count as a health metric — it should equal the number of other nodes in the cluster
+- Use the FDB entry count as a health metric - it should equal the number of other nodes in the cluster
 - When cross-node connectivity fails, always start with the physical NIC capture to confirm the underlay is working before investigating the overlay
 
 ## Conclusion

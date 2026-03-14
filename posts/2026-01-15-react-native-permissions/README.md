@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Permissions, iOS, Android, Privacy, Mobile Development
+Tags: React Native, Permissions, IOS, Android, Privacy, Mobile Development
 
 Description: Learn how to properly request and handle platform-specific permissions in React Native for camera, location, notifications, and more.
 

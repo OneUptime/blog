@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Canary, Ingress, Deployment
+Tags: Calico, Kubernetes, Canary, Ingress, Deployments
 
 Description: Diagnose canary rollout issues with Calico ingress gateway including traffic imbalances and routing failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Apache, Performance, Web Optimization, mod_pagespeed
+Tags: Ubuntu, Apache, Performance, Web Optimization, Mod_pagespeed
 
 Description: Install and configure Apache mod_pagespeed on Ubuntu to automatically optimize web page assets, reduce load times, and improve Core Web Vitals scores.
 

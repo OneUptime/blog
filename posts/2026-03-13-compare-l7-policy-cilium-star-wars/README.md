@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, network-policy, l7, http, star-wars-demo
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: Explore how Cilium enforces Layer 7 HTTP policies using the Star Wars demo, demonstrating method- and path-level API access control that goes beyond traditional firewalling.
 
@@ -10,7 +10,7 @@ Description: Explore how Cilium enforces Layer 7 HTTP policies using the Star Wa
 
 ## Introduction
 
-Layer 7 (L7) policies represent one of Cilium's most powerful differentiators. While traditional firewalls can only allow or block entire TCP connections, Cilium can inspect HTTP requests and make policy decisions based on the HTTP method, URL path, and headers — all without a sidecar proxy.
+Layer 7 (L7) policies represent one of Cilium's most powerful differentiators. While traditional firewalls can only allow or block entire TCP connections, Cilium can inspect HTTP requests and make policy decisions based on the HTTP method, URL path, and headers - all without a sidecar proxy.
 
 The Star Wars demo illustrates this perfectly. Even after restricting the Death Star to Empire ships using an L3/L4 policy, a TIE fighter can still destroy the Death Star by hitting the `/v1/exhaust-port` endpoint. An L7 HTTP policy closes this gap by allowing only specific HTTP methods and paths.
 
@@ -28,7 +28,7 @@ This post walks through Cilium's L7 policy capabilities in the Star Wars demo, e
 Show that the L3/L4 policy alone doesn't prevent access to dangerous endpoints.
 
 ```bash
-# TIE fighter can still hit the exhaust port — this is the gap L7 policy fixes
+# TIE fighter can still hit the exhaust port - this is the gap L7 policy fixes
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 
 # This returns: "Panic: deathstar exploded!"
@@ -81,11 +81,11 @@ Test that the allowed path works while the dangerous path is now blocked.
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 # Expected: Ship landed
 
-# Blocked: PUT to /v1/exhaust-port — now returns 403 Forbidden
+# Blocked: PUT to /v1/exhaust-port - now returns 403 Forbidden
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 # Expected: 403 Forbidden (policy violation, not a connection drop)
 
-# Still blocked: X-wing (org=alliance) — dropped at L3
+# Still blocked: X-wing (org=alliance) - dropped at L3
 kubectl exec xwing -- curl --max-time 5 -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 ```
 
@@ -120,7 +120,7 @@ kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg proxy stats
 - Be explicit about both `method` and `path` in L7 rules to prevent method confusion attacks
 - Test L7 policies with Hubble to confirm HTTP-level verdicts (403 vs connection drop)
 - Combine L3/L4 identity with L7 path rules for defense in depth
-- Remember that L7 policy adds slight latency due to proxy interception — measure it in your environment
+- Remember that L7 policy adds slight latency due to proxy interception - measure it in your environment
 
 ## Conclusion
 

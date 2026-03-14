@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, CRD, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A detailed reference guide to the CiliumNode CRD structure used for IPAM, including the spec and status fields, how to configure them, interpret IPAM state from CRDs, and troubleshoot CRD-level issues.
+Description: A detailed reference guide to the CiliumNode CRD structure used for IPAM, including the spec and status fields, how to configure them, interpret IPAM state from CRDs, and troubleshoot CRD-level...
 
 ---
 
@@ -213,4 +213,4 @@ watch -n60 "kubectl get ciliumnodes -o json | \
 
 ## Conclusion
 
-The CiliumNode CRD is the authoritative record of IPAM state for each node in a Cilium-managed cluster. Understanding its schema — particularly the distinction between `spec.ipam` (requested/configured parameters) and `status.ipam` (actual allocation state) — enables effective IPAM troubleshooting and monitoring. Regular validation that CRD state reflects actual pod networking state is a valuable operational check. When CRD state and actual state diverge, agent restarts are the standard recovery mechanism, triggering full reconciliation between the CRD state and running containers.
+The CiliumNode CRD is the authoritative record of IPAM state for each node in a Cilium-managed cluster. Understanding its schema - particularly the distinction between `spec.ipam` (requested/configured parameters) and `status.ipam` (actual allocation state) - enables effective IPAM troubleshooting and monitoring. Regular validation that CRD state reflects actual pod networking state is a valuable operational check. When CRD state and actual state diverge, agent restarts are the standard recovery mechanism, triggering full reconciliation between the CRD state and running containers.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, Logging, Centralized Logging, Linux
+Tags: RHEL, Rsyslog, Logging, Centralized Logging, Linux
 
 Description: Learn how to set up rsyslog on RHEL for centralized log collection, allowing you to aggregate logs from multiple servers into a single location for easier analysis and troubleshooting.
 

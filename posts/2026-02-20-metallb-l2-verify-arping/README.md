@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, arping, ARP, Layer 2, Debugging
+Tags: Kubernetes, MetalLB, Arping, ARP, Layer 2, Debugging
 
 Description: Learn how to use arping to verify that MetalLB Layer 2 advertisements are working correctly. This guide covers installation, usage, interpreting results, and common issues.
 

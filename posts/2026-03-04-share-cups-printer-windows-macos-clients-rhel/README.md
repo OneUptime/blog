@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, CUPS, Printer Sharing, Windows, macOS, Samba, Linux
+Tags: RHEL, CUPS, Printer Sharing, Windows, MacOS, Samba, Linux
 
 Description: Share printers from a RHEL CUPS server with Windows and macOS clients using IPP, Bonjour/mDNS, and Samba for cross-platform printing.
 

@@ -10,7 +10,7 @@ Description: Configure Flux CD on a multi-node MicroK8s HA cluster using Dqlite 
 
 ## Introduction
 
-MicroK8s is Canonical's lightweight Kubernetes distribution designed for developers and edge computing scenarios. Its HA mode uses Dqlite — a distributed SQLite database — for cluster state storage, providing a simpler HA story than etcd without an external database dependency. MicroK8s nodes communicate over a built-in peer-to-peer mesh, making HA cluster formation as simple as running a join command.
+MicroK8s is Canonical's lightweight Kubernetes distribution designed for developers and edge computing scenarios. Its HA mode uses Dqlite - a distributed SQLite database - for cluster state storage, providing a simpler HA story than etcd without an external database dependency. MicroK8s nodes communicate over a built-in peer-to-peer mesh, making HA cluster formation as simple as running a join command.
 
 Flux CD on a MicroK8s HA cluster gives you a fully GitOps-managed lightweight cluster that can run on Ubuntu servers, Raspberry Pis, or small VM fleets. MicroK8s's addon system handles common infrastructure components (DNS, storage, ingress) through simple enable commands, which can also be declared in Git and applied by Flux.
 

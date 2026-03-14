@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SSSD, tlog, Session Recording, Audit, Compliance
+Tags: RHEL, SSSD, Tlog, Session Recording, Audit, Compliance
 
 Description: Set up SSSD-integrated session recording with tlog on RHEL to record user terminal sessions for audit compliance and security monitoring.
 

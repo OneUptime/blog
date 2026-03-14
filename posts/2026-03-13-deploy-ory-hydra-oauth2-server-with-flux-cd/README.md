@@ -10,7 +10,7 @@ Description: Deploy Ory Hydra OAuth2 and OpenID Connect server to Kubernetes usi
 
 ## Introduction
 
-Ory Hydra is a certified OpenID Connect and OAuth2 server written in Go. Unlike Keycloak or Authentik, Hydra does not manage users or provide a login UI—instead, it delegates user authentication to your existing identity system and focuses solely on being a high-performance OAuth2 authorization server. This makes Hydra an excellent choice when you already have a user database and want to issue OAuth2 tokens without replacing your authentication infrastructure.
+Ory Hydra is a certified OpenID Connect and OAuth2 server written in Go. Unlike Keycloak or Authentik, Hydra does not manage users or provide a login UI-instead, it delegates user authentication to your existing identity system and focuses solely on being a high-performance OAuth2 authorization server. This makes Hydra an excellent choice when you already have a user database and want to issue OAuth2 tokens without replacing your authentication infrastructure.
 
 Hydra is cloud-native by design: it is stateless (state lives in PostgreSQL), supports horizontal scaling, and exposes Prometheus metrics out of the box. Flux CD manages the Hydra deployment and its PostgreSQL dependency declaratively, giving you a version-controlled OAuth2 infrastructure that can be upgraded with a pull request.
 
@@ -122,7 +122,7 @@ spec:
           id_token: 1h
           refresh_token: 720h   # 30 days
 
-        # Secrets — loaded from environment variables
+        # Secrets - loaded from environment variables
         secrets:
           system:
             - $(SECRETS_SYSTEM)
@@ -182,7 +182,7 @@ spec:
           - secretName: hydra-tls
             hosts:
               - hydra.example.com
-      # Admin endpoint — do NOT expose publicly
+      # Admin endpoint - do NOT expose publicly
       admin:
         enabled: false
 
@@ -254,7 +254,7 @@ curl https://hydra.example.com/.well-known/openid-configuration | jq .
 - Never expose the Hydra admin endpoint outside the cluster. Keep `ingress.admin.enabled: false` and access it via `kubectl port-forward`.
 - Use Hydra's `consent skip` feature for trusted first-party applications to avoid showing a consent screen.
 - Enable Jaeger or OpenTelemetry tracing in `hydra.config.tracing` to debug slow token exchange flows.
-- Rotate secrets by adding a new secret to the `secrets.system` array before removing the old one—Hydra supports multiple secrets for zero-downtime rotation.
+- Rotate secrets by adding a new secret to the `secrets.system` array before removing the old one-Hydra supports multiple secrets for zero-downtime rotation.
 - Use Ory Oathkeeper (API gateway) alongside Hydra for per-request token validation at the ingress layer.
 
 ## Conclusion

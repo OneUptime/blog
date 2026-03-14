@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, defer, Cleanup, Error Handling, Best Practices
+Tags: Go, Golang, Defer, Cleanup, Error Handling, Best Practices
 
 Description: Master Go's defer statement for cleanup, resource management, and error handling with proper understanding of evaluation timing and execution order.
 

@@ -10,7 +10,7 @@ Description: A guide to validating that Typha is correctly deployed, receiving F
 
 ## Introduction
 
-Validating Typha after deployment confirms that the fan-out layer is functioning correctly: Felix agents are connecting through Typha rather than directly to the API server, policy updates are being propagated to all nodes, and Typha's metrics reflect healthy operation. Validation is particularly important in hard way installations because misconfigured TLS or incorrect service names will cause Felix to fall back to direct API server connections — defeating the purpose of Typha without producing an obvious error.
+Validating Typha after deployment confirms that the fan-out layer is functioning correctly: Felix agents are connecting through Typha rather than directly to the API server, policy updates are being propagated to all nodes, and Typha's metrics reflect healthy operation. Validation is particularly important in hard way installations because misconfigured TLS or incorrect service names will cause Felix to fall back to direct API server connections - defeating the purpose of Typha without producing an obvious error.
 
 ## Step 1: Confirm Typha Deployment Is Running
 
@@ -29,7 +29,7 @@ kubectl logs -n calico-system deployment/calico-typha | grep -i "connection\|cli
 
 Expect lines like:
 
-```
+```plaintext
 New connection from 10.0.0.5:XXXXX, assigned client ID 1
 Sending snapshot to client ID 1
 ```
@@ -46,7 +46,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i "t
 
 Expect lines like:
 
-```
+```plaintext
 Connecting to Typha at calico-typha.calico-system.svc.cluster.local:5473
 Successfully connected to Typha
 ```
@@ -60,9 +60,9 @@ curl -s http://localhost:9093/metrics | grep typha_connections
 
 Key metrics:
 
-- `typha_connections_accepted` — total connections accepted
-- `typha_connections_active` — current active connections (should equal node count)
-- `typha_updates_sent` — total updates fanned out to Felix agents
+- `typha_connections_accepted` - total connections accepted
+- `typha_connections_active` - current active connections (should equal node count)
+- `typha_updates_sent` - total updates fanned out to Felix agents
 
 ## Step 5: Validate Policy Propagation
 

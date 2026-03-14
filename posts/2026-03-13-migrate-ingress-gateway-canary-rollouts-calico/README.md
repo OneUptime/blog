@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Canary, Ingress, Deployment
+Tags: Calico, Kubernetes, Canary, Ingress, Deployments
 
 Description: Safely adopt canary release strategies using Calico ingress gateway for safer production deployments.
 

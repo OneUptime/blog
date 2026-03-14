@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, F5 BIG-IP, iRules, Trace Context
+Tags: OpenTelemetry, F5 BIG-IP, IRules, Trace Context
 
 Description: Create F5 BIG-IP iRules that inject W3C traceparent headers into HTTP requests for integrating with OpenTelemetry distributed tracing.
 

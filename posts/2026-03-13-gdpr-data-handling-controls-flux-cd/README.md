@@ -40,7 +40,7 @@ metadata:
     compliance: gdpr
     data-residency: eu
   annotations:
-    gdpr.article: "Article 44 — Transfers subject to appropriate safeguards"
+    gdpr.article: "Article 44 - Transfers subject to appropriate safeguards"
     gdpr.region: "EU (eu-west-1)"
     gdpr.dpo: "dpo@example.com"
 data:
@@ -61,7 +61,7 @@ metadata:
     data-class: personal
     data-residency: eu
   annotations:
-    gdpr.article: "Article 5 — Principles of personal data processing"
+    gdpr.article: "Article 5 - Principles of personal data processing"
     gdpr.retention: "3-years"         # Retention period for DPA compliance
     gdpr.legal-basis: "consent"       # Legal basis for processing
     gdpr.controller: "Example Corp"
@@ -79,9 +79,9 @@ metadata:
   name: personal-data-processor
   namespace: personal-data
   annotations:
-    gdpr.control: "Article 5(1)(f) — Integrity and confidentiality"
+    gdpr.control: "Article 5(1)(f) - Integrity and confidentiality"
 rules:
-  # Minimal permissions — only what is necessary for the workload
+  # Minimal permissions - only what is necessary for the workload
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch"]
@@ -96,7 +96,7 @@ metadata:
   name: personal-data-egress-control
   namespace: personal-data
   annotations:
-    gdpr.control: "Article 44 — Cross-border transfer restriction"
+    gdpr.control: "Article 44 - Cross-border transfer restriction"
 spec:
   podSelector: {}
   policyTypes:
@@ -117,7 +117,7 @@ spec:
 
 ## Step 3: Implement Data Retention Controls
 
-GDPR Article 5(1)(e) — Storage Limitation requires personal data to be kept no longer than necessary. Manage retention labels and automated cleanup via GitOps:
+GDPR Article 5(1)(e) - Storage Limitation requires personal data to be kept no longer than necessary. Manage retention labels and automated cleanup via GitOps:
 
 ```yaml
 # apps/personal-data/base/retention-cronjob.yaml
@@ -127,7 +127,7 @@ metadata:
   name: personal-data-retention-cleanup
   namespace: personal-data
   annotations:
-    gdpr.control: "Article 5(1)(e) — Storage limitation"
+    gdpr.control: "Article 5(1)(e) - Storage limitation"
     gdpr.retention-period: "3 years"
 spec:
   # Run daily at 02:00 UTC
@@ -167,7 +167,7 @@ metadata:
   name: gdpr-audit-log
   namespace: flux-system
   annotations:
-    gdpr.control: "Article 30 — Records of processing activities"
+    gdpr.control: "Article 30 - Records of processing activities"
 spec:
   summary: "GDPR Audit: Change to personal data infrastructure"
   providerRef:
@@ -197,7 +197,7 @@ GDPR Article 17 (Right to Erasure) requires the ability to delete personal data 
 
 ```yaml
 # apps/personal-data/erasure/erasure-job-template.yaml
-# Template for GDPR erasure requests — instantiated per request via CI/CD
+# Template for GDPR erasure requests - instantiated per request via CI/CD
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -207,7 +207,7 @@ metadata:
     gdpr.operation: erasure
     gdpr.request-id: "TICKET-ID"
   annotations:
-    gdpr.article: "Article 17 — Right to erasure"
+    gdpr.article: "Article 17 - Right to erasure"
     gdpr.requested-at: "TIMESTAMP"
     gdpr.requestor: "DPO"
 spec:
@@ -233,7 +233,7 @@ spec:
                   key: user-id
 ```
 
-## Step 6: DPIA Support — Export Infrastructure Configuration
+## Step 6: DPIA Support - Export Infrastructure Configuration
 
 For Data Protection Impact Assessments, export your Flux configuration to show how personal data is handled:
 
@@ -268,10 +268,10 @@ echo "DPIA evidence exported to $OUTPUT_DIR"
 
 - Involve your Data Protection Officer in the review of any CODEOWNERS change that affects personal data namespaces.
 - Label every Kubernetes resource in personal data namespaces with GDPR metadata (`gdpr-scope`, `data-class`, `gdpr.retention`) to make DPIAs easier.
-- Never store real personal data in your Git repository — only configuration that governs how personal data is processed.
+- Never store real personal data in your Git repository - only configuration that governs how personal data is processed.
 - Test your erasure procedures regularly to confirm they work correctly before a real data subject request arrives.
 - Keep a register of processing activities (Article 30 record) that references specific Git commits and Kubernetes resources.
 
 ## Conclusion
 
-Flux CD GitOps makes GDPR compliance infrastructure changes explicit, reviewable, and auditable. Data residency is enforced through region-specific Kustomizations and NetworkPolicies in Git. Access is restricted via RBAC managed by Flux. Every change to personal data infrastructure is reviewed via PR and permanently recorded in Git — providing the accountability evidence that GDPR Article 5(2) requires organizations to demonstrate.
+Flux CD GitOps makes GDPR compliance infrastructure changes explicit, reviewable, and auditable. Data residency is enforced through region-specific Kustomizations and NetworkPolicies in Git. Access is restricted via RBAC managed by Flux. Every change to personal data infrastructure is reviewed via PR and permanently recorded in Git - providing the accountability evidence that GDPR Article 5(2) requires organizations to demonstrate.

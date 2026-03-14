@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fq_codel, QoS, Networking, Linux
+Tags: RHEL, Fq_codel, QoS, Networking, Linux
 
 Description: An in-depth look at fq_codel, the default queueing discipline on RHEL, explaining how it fights bufferbloat, ensures fairness between flows, and why it's a good default for most workloads.
 

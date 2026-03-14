@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Load Balancer, Kubernetes, Networking
+Tags: Istio, MTLS, Load Balancer, Kubernetes, Networking
 
 Description: Configure Istio mTLS correctly when your services sit behind external or internal load balancers, including TLS termination and passthrough scenarios.
 

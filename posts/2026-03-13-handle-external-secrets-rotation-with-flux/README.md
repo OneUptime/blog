@@ -12,7 +12,7 @@ Description: Manage automatic secret rotation with the External Secrets Operator
 
 Secret rotation is a critical security practice that reduces the blast radius of credential compromise. Rotating database passwords, API keys, and TLS certificates on a regular cadence means any leaked credential has a limited useful lifetime. The challenge in Kubernetes is ensuring that when secrets rotate in the external store, the applications consuming them pick up the new values without requiring redeployments or pod restarts.
 
-The External Secrets Operator, when configured correctly, handles the synchronization side of rotation automatically. But application-level rotation — ensuring pods reload the new credentials — requires additional coordination. Flux CD plays a role by managing the `ExternalSecret` configuration, but Kubernetes mechanisms like secret volume mounts with automatic propagation and Reloader-style controllers handle the application side.
+The External Secrets Operator, when configured correctly, handles the synchronization side of rotation automatically. But application-level rotation - ensuring pods reload the new credentials - requires additional coordination. Flux CD plays a role by managing the `ExternalSecret` configuration, but Kubernetes mechanisms like secret volume mounts with automatic propagation and Reloader-style controllers handle the application side.
 
 This guide covers configuring ESO for automatic rotation pickup, triggering pod restarts on secret changes, and integrating AWS Secrets Manager automatic rotation with ESO.
 
@@ -213,4 +213,4 @@ spec:
 
 ## Conclusion
 
-Automatic secret rotation becomes operationally manageable when ESO handles synchronization and tools like Reloader handle application-level reload. Managed through Flux CD, the entire rotation infrastructure — refresh intervals, Reloader annotations, and monitoring — is declared in Git and consistently applied, turning secret rotation from a fragile manual process into a reliable, automated capability.
+Automatic secret rotation becomes operationally manageable when ESO handles synchronization and tools like Reloader handle application-level reload. Managed through Flux CD, the entire rotation infrastructure - refresh intervals, Reloader annotations, and monitoring - is declared in Git and consistently applied, turning secret rotation from a fragile manual process into a reliable, automated capability.

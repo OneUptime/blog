@@ -10,7 +10,7 @@ Description: A step-by-step guide to using Calico labels effectively to create p
 
 ## Introduction
 
-Labels are the foundation of every Calico network policy. Without well-designed labels, your policies become brittle, hard to maintain, and prone to misconfiguration. Calico's selector syntax allows you to build rich, expressive rules that target specific workloads based on any combination of labels — but this power is only as good as the label strategy behind it.
+Labels are the foundation of every Calico network policy. Without well-designed labels, your policies become brittle, hard to maintain, and prone to misconfiguration. Calico's selector syntax allows you to build rich, expressive rules that target specific workloads based on any combination of labels - but this power is only as good as the label strategy behind it.
 
 Calico extends the standard Kubernetes label system with additional selectors for namespace labels, service account labels, and even custom Calico-specific metadata. The `projectcalico.org/v3` API's selector field supports boolean expressions, making it possible to write rules like "allow traffic from pods that are in the frontend tier AND have the environment=production label."
 

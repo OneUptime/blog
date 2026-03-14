@@ -1,10 +1,10 @@
-# How to Deploy ExternalDNS with Google Cloud DNS Provider via Flux CD
+# Deploy ExternalDNS with Google Cloud DNS Using Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ExternalDNS, Google Cloud DNS, DNS, Kubernetes, GitOps, Networking
+Tags: ExternalDNS, Google Cloud DNS, GKE, DNS, Flux CD, GitOps, Kubernetes, Networking
 
-Description: Learn how to deploy ExternalDNS with the Google Cloud DNS provider using Flux CD HelmRelease to automatically manage DNS records for Kubernetes services.
+Description: Deploy ExternalDNS configured for Google Cloud DNS on Kubernetes using Flux CD to automatically manage DNS records in Cloud DNS zones when Ingress and Service resources are created or deleted.
 
 ---
 

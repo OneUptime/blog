@@ -110,4 +110,4 @@ flowchart TD
 
 ## Conclusion
 
-Most label-related Calico policy failures come down to selector/label mismatches — typos, case sensitivity issues, or labels applied to pods but not to the Deployment template (which means new pods won't have them). Always verify labels on running pods AND on the Deployment spec, check namespace labels separately, and use `kubectl get pods -l` to confirm your selectors actually match what you expect.
+Most label-related Calico policy failures come down to selector/label mismatches - typos, case sensitivity issues, or labels applied to pods but not to the Deployment template (which means new pods won't have them). Always verify labels on running pods AND on the Deployment spec, check namespace labels separately, and use `kubectl get pods -l` to confirm your selectors actually match what you expect.

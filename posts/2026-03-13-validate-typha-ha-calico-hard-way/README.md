@@ -10,7 +10,7 @@ Description: A guide to validating Typha HA including replica distribution, fail
 
 ## Introduction
 
-Validating Typha HA confirms that the redundancy configuration actually provides the expected resilience. This requires more than checking that multiple replicas are running — it requires verifying that replicas are on different nodes, that connections are distributed, that failover is automatic when a replica fails, and that policy propagation continues uninterrupted during a failure. Each of these properties must be tested explicitly.
+Validating Typha HA confirms that the redundancy configuration actually provides the expected resilience. This requires more than checking that multiple replicas are running - it requires verifying that replicas are on different nodes, that connections are distributed, that failover is automatic when a replica fails, and that policy propagation continues uninterrupted during a failure. Each of these properties must be tested explicitly.
 
 ## Step 1: Validate Replica Placement
 
@@ -20,7 +20,7 @@ Confirm all Typha replicas are on different nodes.
 kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide | awk '{print $7}' | sort | uniq -d
 ```
 
-If this command produces output, two Typha replicas are on the same node — anti-affinity is not working correctly. Expected output: empty (no duplicates).
+If this command produces output, two Typha replicas are on the same node - anti-affinity is not working correctly. Expected output: empty (no duplicates).
 
 ## Step 2: Validate Zone Distribution (Multi-Zone Clusters)
 
@@ -51,7 +51,7 @@ done
 
 Connections should be within 20% of the expected per-replica count.
 
-## Step 4: Validate Failover — Policy Propagation Continues
+## Step 4: Validate Failover - Policy Propagation Continues
 
 This is the most important HA validation test.
 
@@ -102,7 +102,7 @@ During simulated maintenance (node drain), confirm PDB prevents Typha from going
 ```bash
 NODE=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o jsonpath='{.items[0].spec.nodeName}')
 
-# Attempt to drain the node — this should be blocked by PDB if it would violate minAvailable
+# Attempt to drain the node - this should be blocked by PDB if it would violate minAvailable
 kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --dry-run | grep typha
 ```
 
@@ -136,4 +136,4 @@ echo "Reconnection completed in $((END - START)) seconds"
 
 ## Conclusion
 
-Validating Typha HA requires testing replica placement (different nodes and zones), connection distribution balance, policy propagation continuity during a pod failure, PDB enforcement during maintenance, and reconnection time after a failure. These tests confirm that the HA configuration provides actual resilience — not just the appearance of it. Running these validation tests after initial HA setup and after significant cluster changes ensures the HA properties are maintained.
+Validating Typha HA requires testing replica placement (different nodes and zones), connection distribution balance, policy propagation continuity during a pod failure, PDB enforcement during maintenance, and reconnection time after a failure. These tests confirm that the HA configuration provides actual resilience - not just the appearance of it. Running these validation tests after initial HA setup and after significant cluster changes ensures the HA properties are maintained.

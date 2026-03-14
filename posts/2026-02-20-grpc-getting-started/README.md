@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Microservices, Protocol Buffers, RPC, Communication
+Tags: GRPC, Microservices, Protocol Buffers, RPC, Communication
 
 Description: A beginner's guide to gRPC for microservices communication including Protocol Buffers, service definitions, and streaming.
 

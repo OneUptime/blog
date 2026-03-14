@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Linux, Services, Administration
+Tags: Ubuntu, Systemd, Linux, Services, Administration
 
 Description: Learn the structure and syntax of systemd unit files on Ubuntu, covering the Unit, Service, Install, and other sections with practical examples for common service configurations.
 

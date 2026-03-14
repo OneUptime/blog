@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Podman, systemd, Unit Files, Linux
+Tags: RHEL, Podman, Systemd, Unit Files, Linux
 
 Description: Learn how to generate systemd unit files from running Podman containers on RHEL for automatic service management, startup on boot, and proper lifecycle handling.
 

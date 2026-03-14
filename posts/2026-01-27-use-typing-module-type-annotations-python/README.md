@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Type Hints, typing, Type Annotations, Static Analysis, mypy
+Tags: Python, Type Hints, Typing, Type Annotations, Static Analysis, Mypy
 
 Description: Master Python's typing module for better code quality. Learn how to use type hints, generics, protocols, and type guards to write safer, more maintainable code.
 

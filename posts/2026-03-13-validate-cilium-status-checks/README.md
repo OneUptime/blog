@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Status Checks, Validation, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to interpreting and validating Cilium status output, understanding what each component status means, and defining healthy vs. unhealthy states.
 
@@ -130,4 +130,4 @@ echo "=== All checks passed ==="
 
 ## Conclusion
 
-Validating Cilium status checks is an ongoing practice, not a one-time step. Establishing a baseline of what "healthy" means for your installation — specific pod counts, endpoint counts, connectivity test pass rates — gives you a foundation for automated monitoring and alerts. The validation script pattern shown here can be integrated into your infrastructure CI/CD pipeline, node startup validation, or periodic health checks.
+Validating Cilium status checks is an ongoing practice, not a one-time step. Establishing a baseline of what "healthy" means for your installation - specific pod counts, endpoint counts, connectivity test pass rates - gives you a foundation for automated monitoring and alerts. The validation script pattern shown here can be integrated into your infrastructure CI/CD pipeline, node startup validation, or periodic health checks.

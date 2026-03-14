@@ -1,10 +1,10 @@
-# Handle Terraform Module Dependencies with Flux
+# How to Handle Terraform Module Dependencies with Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Terraform, GitOps, Infrastructure as Code, Dependencies, Kubernetes
+Tags: Flux CD, Tofu Controller, Terraform, Dependencies, GitOps, Kubernetes
 
-Description: Learn how to manage Terraform module deployment ordering and dependencies using Flux CD's Kustomization dependsOn feature and the Terraform Controller.
+Description: Manage Terraform module dependencies in the Tofu Controller with Flux CD using output secrets and Kustomization ordering to ensure correct provisioning sequences.
 
 ---
 

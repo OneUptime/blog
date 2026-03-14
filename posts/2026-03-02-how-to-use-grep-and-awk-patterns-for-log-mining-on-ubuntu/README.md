@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Log Analysis, grep, awk
+Tags: Ubuntu, Linux, Log Analysis, Grep, Awk
 
 Description: A comprehensive guide to using grep and awk for log mining on Ubuntu, with practical patterns for extracting, filtering, and summarizing data from system and application logs.
 

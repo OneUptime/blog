@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Networking, Netplan, Cloud
+Tags: Ubuntu, Cloud-init, Networking, Netplan, Cloud
 
 Description: A detailed guide to configuring static IPs, DNS, VLANs, and bonding through cloud-init network configuration on Ubuntu instances.
 

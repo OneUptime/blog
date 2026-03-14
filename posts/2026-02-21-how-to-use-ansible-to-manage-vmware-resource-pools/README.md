@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Resource Pools, vSphere, Resource Management
+Tags: Ansible, VMware, Resource Pools, VSphere, Resource Management
 
 Description: Learn how to create and manage VMware resource pools with Ansible to control CPU and memory allocation for different workload tiers.
 

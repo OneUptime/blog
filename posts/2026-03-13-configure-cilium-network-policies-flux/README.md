@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Network Policy, Security, eBPF, Zero Trust
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Network Policy, Security, EBPF, Zero Trust
 
 Description: Manage Cilium Network Policy resources using Flux CD GitOps to enforce zero-trust network security with L3/L4/L7 policy controls.
 
@@ -12,7 +12,7 @@ Description: Manage Cilium Network Policy resources using Flux CD GitOps to enfo
 
 Cilium's CiliumNetworkPolicy extends Kubernetes NetworkPolicy with L7 awareness, identity-based filtering, DNS-based egress control, and cluster-level policies. Combined with eBPF enforcement at the kernel level, Cilium policies provide both high performance and rich expressiveness for zero-trust networking.
 
-Managing CiliumNetworkPolicy resources through Flux CD ensures your network security posture is version-controlled and auditable. Every policy change — adding a new allowed path or restricting egress to a new external API — goes through pull request review.
+Managing CiliumNetworkPolicy resources through Flux CD ensures your network security posture is version-controlled and auditable. Every policy change - adding a new allowed path or restricting egress to a new external API - goes through pull request review.
 
 This guide covers configuring CiliumNetworkPolicy resources using Flux CD for ingress, egress, L7 HTTP, and DNS-based policies.
 
@@ -245,12 +245,12 @@ kubectl exec -n cilium daemonset/cilium -- \
 
 ## Best Practices
 
-- Always include a DNS egress rule (`port 53 UDP/TCP`) in egress policies — without it, pods cannot resolve any service names or external hostnames.
-- Use `toFQDNs` for external API access rather than IP CIDRs — IPs for cloud services change frequently, but DNS names are stable.
-- Apply a `deny-all` policy per namespace first, then add explicit allows — this is the zero-trust approach and prevents unintended communication paths.
+- Always include a DNS egress rule (`port 53 UDP/TCP`) in egress policies - without it, pods cannot resolve any service names or external hostnames.
+- Use `toFQDNs` for external API access rather than IP CIDRs - IPs for cloud services change frequently, but DNS names are stable.
+- Apply a `deny-all` policy per namespace first, then add explicit allows - this is the zero-trust approach and prevents unintended communication paths.
 - Use Hubble's `hubble observe --verdict DROPPED` to debug policy issues in real-time before policies are finalized.
-- Prefer `CiliumNetworkPolicy` over standard Kubernetes `NetworkPolicy` when using Cilium — you get L7 HTTP rules, DNS filtering, and entity-based selectors that standard NetworkPolicy cannot provide.
+- Prefer `CiliumNetworkPolicy` over standard Kubernetes `NetworkPolicy` when using Cilium - you get L7 HTTP rules, DNS filtering, and entity-based selectors that standard NetworkPolicy cannot provide.
 
 ## Conclusion
 
-Managing Cilium Network Policies through Flux CD creates a GitOps-controlled, zero-trust network security layer for your Kubernetes cluster. Every access control decision — from L3 port filtering to L7 HTTP method restrictions to DNS-based egress control — is version-controlled, reviewed through pull requests, and automatically enforced at the kernel level via eBPF.
+Managing Cilium Network Policies through Flux CD creates a GitOps-controlled, zero-trust network security layer for your Kubernetes cluster. Every access control decision - from L3 port filtering to L7 HTTP method restrictions to DNS-based egress control - is version-controlled, reviewed through pull requests, and automatically enforced at the kernel level via eBPF.

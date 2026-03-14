@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: mTLS, Security, Microservices, TLS, Zero Trust
+Tags: MTLS, Security, Microservices, TLS, Zero Trust
 
 Description: Implement mutual TLS authentication for secure service-to-service communication in distributed systems.
 

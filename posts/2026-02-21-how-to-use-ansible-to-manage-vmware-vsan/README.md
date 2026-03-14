@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, vSAN, Storage, Hyper-Converged
+Tags: Ansible, VMware, VSAN, Storage, Hyper-Converged
 
 Description: Learn how to manage VMware vSAN storage clusters with Ansible for automated disk group creation, policy management, and monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Quotas, Linux
+Tags: RHEL, Ext4, Quotas, Linux
 
 Description: A practical guide to enabling user and group quotas on ext4 file systems in RHEL, covering setup, configuration, and verification of disk usage limits.
 

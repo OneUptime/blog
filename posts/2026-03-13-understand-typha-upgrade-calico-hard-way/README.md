@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Upgrades, CNI, Networking, Maintenance
+Tags: Calico, Typha, Kubernetes, Networking, Upgrade, Hard Way
 
-Description: Build a thorough understanding of the Typha upgrade process in a manifest-based Calico installation — including version compatibility matrices, upgrade ordering between Typha and Felix, and how to execute a safe upgrade with zero policy enforcement gaps.
+Description: Build a thorough understanding of the Typha upgrade process in a manifest-based Calico installation - including version compatibility matrices, upgrade ordering between Typha and Felix, and how to...
 
 ---
 
 ## Introduction
 
-Upgrading Calico "the hard way" means upgrading each component — Typha, Felix (calico-node), and calicoctl — by updating the container images in the respective Kubernetes resources. This gives you precise control over the upgrade sequence, but it also means you are responsible for getting the order right. Upgrading Felix before Typha, for example, creates a version skew window that may not be supported.
+Upgrading Calico "the hard way" means upgrading each component - Typha, Felix (calico-node), and calicoctl - by updating the container images in the respective Kubernetes resources. This gives you precise control over the upgrade sequence, but it also means you are responsible for getting the order right. Upgrading Felix before Typha, for example, creates a version skew window that may not be supported.
 
 This post covers the correct upgrade order, version compatibility requirements, the steps to upgrade Typha safely, and how to verify the upgrade succeeded.
 
@@ -60,7 +60,7 @@ echo "https://docs.tigera.io/calico/latest/release-notes/"
 
 For a Calico minor version upgrade (e.g., 3.26 to 3.27):
 
-```
+```plaintext
 1. Upgrade calicoctl CLI (out of band, no cluster impact)
 2. Upgrade Typha (rolling Deployment update)
 3. Upgrade calico-node DaemonSet (rolling DaemonSet update)
@@ -78,14 +78,14 @@ Update the Typha Deployment with the new image version:
 ```bash
 # Verify the new image tag exists before applying
 docker manifest inspect calico/typha:v3.27.0 2>/dev/null || \
-  echo "Image not found — verify tag"
+  echo "Image not found - verify tag"
 
 # Update Typha to the new version
 kubectl set image deployment/calico-typha \
   calico-typha=calico/typha:v3.27.0 \
   -n kube-system
 
-# Monitor the rolling update — each pod replacement takes ~45–60 seconds
+# Monitor the rolling update - each pod replacement takes ~45–60 seconds
 kubectl rollout status deployment/calico-typha -n kube-system --timeout=300s
 
 # Verify all pods are running the new version

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, containerd, Container Runtime, Configuration
+Tags: Kubernetes, Containerd, Container Runtime, Configuration
 
 Description: Learn how to configure containerd runtime options for Kubernetes clusters, including CRI plugin settings, runtime handlers, and performance tuning for optimal container execution.
 

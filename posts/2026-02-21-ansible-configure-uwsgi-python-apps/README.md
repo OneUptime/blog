@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, uWSGI, Python, WSGI, DevOps
+Tags: Ansible, UWSGI, Python, WSGI, DevOps
 
 Description: Configure uWSGI application server for Python web apps with Ansible including Emperor mode, vassals, and systemd integration.
 

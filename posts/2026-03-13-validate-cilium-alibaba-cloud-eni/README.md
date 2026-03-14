@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, alibaba-cloud, eni, kubernetes, networking, ipam
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
 
 Description: Learn how to validate Cilium's Alibaba Cloud ENI (Elastic Network Interface) IPAM mode, ensuring pod IPs are correctly allocated from VPC ENIs and that network connectivity is functioning properly.
 
@@ -96,7 +96,7 @@ kubectl logs dns-test && kubectl delete pod dns-test
 - Ensure ECS instance types support sufficient ENI secondary IPs for your pods-per-node target
 - Monitor ENI quota limits in your Alibaba Cloud account to prevent allocation failures
 - Use the `--eni-tags` Cilium option to tag ENIs for cost allocation and resource tracking
-- Size VPC subnets generously — ENI mode consumes one IP per pod from the VPC subnet
+- Size VPC subnets generously - ENI mode consumes one IP per pod from the VPC subnet
 - Enable the Cilium operator's ENI release mechanism to return IPs when pods are deleted
 
 ## Conclusion

@@ -10,7 +10,7 @@ Description: Deploy the Crossplane GCP provider using Flux CD GitOps to manage G
 
 ## Introduction
 
-The Crossplane GCP provider transforms your Kubernetes cluster into a Google Cloud control plane. Once deployed, you can create Cloud SQL instances, GCS buckets, GKE clusters, and VPCs by applying YAML manifests—the same way you deploy applications. Flux CD manages the provider lifecycle, ensuring the desired state is always reconciled against the live state of your cluster.
+The Crossplane GCP provider transforms your Kubernetes cluster into a Google Cloud control plane. Once deployed, you can create Cloud SQL instances, GCS buckets, GKE clusters, and VPCs by applying YAML manifests-the same way you deploy applications. Flux CD manages the provider lifecycle, ensuring the desired state is always reconciled against the live state of your cluster.
 
 Google Cloud Platform offers robust workload identity features that eliminate the need to manage service account key files. When running Crossplane on GKE, you can configure the provider to use Workload Identity, which binds a Kubernetes service account to a GCP service account automatically. This guide covers both approaches: service account key files for non-GKE environments and Workload Identity for GKE.
 

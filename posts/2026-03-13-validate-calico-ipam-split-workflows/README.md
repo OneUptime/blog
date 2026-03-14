@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Validation, Networking, IP Pools, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Systematically validate a completed Calico IPAM split — confirming IPAM consistency, correct pool assignment by node zone, allocation distribution, and that no pods are still using IPs from the deprecated source pool.
+Description: Systematically validate a completed Calico IPAM split - confirming IPAM consistency, correct pool assignment by node zone, allocation distribution, and that no pods are still using IPs from the...
 
 ---
 
 ## Introduction
 
-After completing an IPAM split, you need systematic proof that every aspect of the new configuration is working correctly. This is not just a quick `calicoctl ipam check` — it means verifying that each node draws IPs from the correct pool, that new pod allocations are going to the right sub-pool, and that no pods are still stranded on the original pool's CIDR range.
+After completing an IPAM split, you need systematic proof that every aspect of the new configuration is working correctly. This is not just a quick `calicoctl ipam check` - it means verifying that each node draws IPs from the correct pool, that new pod allocations are going to the right sub-pool, and that no pods are still stranded on the original pool's CIDR range.
 
 This post provides a complete validation checklist with the specific commands to execute each check.
 
@@ -34,7 +34,7 @@ The first check is always consistency:
 calicoctl ipam check
 
 # Expected output includes: "IPAM is consistent"
-# Any other output indicates a problem — do not proceed until this passes
+# Any other output indicates a problem - do not proceed until this passes
 ```
 
 If `calicoctl ipam check` reports inconsistencies, stop the validation and investigate using the troubleshoot post in this series.
@@ -207,10 +207,10 @@ echo "Results: $PASS passed, $FAIL failed"
 ## Best Practices
 
 - Re-run the full validation checklist at 1 hour, 24 hours, and 7 days post-split to catch deferred allocation problems.
-- Track the count of pods still on the original pool CIDR over time — it should decrease toward zero as pods are restarted.
+- Track the count of pods still on the original pool CIDR over time - it should decrease toward zero as pods are restarted.
 - Only delete the original pool when the count reaches zero and the 7-day check passes.
 - Store the validation output with your change management record as evidence that the split was completed correctly.
-- Validate in staging before production — run the same checklist on a staging cluster where you can correct mistakes more freely.
+- Validate in staging before production - run the same checklist on a staging cluster where you can correct mistakes more freely.
 
 ---
 

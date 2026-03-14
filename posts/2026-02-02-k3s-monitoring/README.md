@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Kubernetes, Monitoring, Prometheus, Grafana, Observability, Lightweight Kubernetes
+Tags: K3s, Kubernetes, Monitoring, Prometheus, Grafana, Observability, Lightweight Kubernetes
 
 Description: A practical guide to monitoring K3s clusters in production. Learn how to set up Prometheus, Grafana, and alerting for your lightweight Kubernetes environments.
 

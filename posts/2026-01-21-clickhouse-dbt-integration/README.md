@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, dbt, Analytics Engineering, Data Modeling, ELT, Data Transformation
+Tags: ClickHouse, Dbt, Analytics Engineering, Data Modeling, ELT, Data Transformation
 
 Description: A comprehensive guide to connecting ClickHouse to dbt for analytics engineering, covering adapter setup, model patterns, incremental materialization, and testing best practices.
 

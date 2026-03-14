@@ -10,7 +10,7 @@ Description: Deploy KEDA with cron-based scheduled scaling using Flux CD to pre-
 
 ## Introduction
 
-While most KEDA scalers react to real-time metrics, the Cron scaler takes a proactive approach — scaling workloads up before predicted traffic arrives and down after the busy period ends. This is ideal for workloads with predictable traffic patterns: business-hours APIs, scheduled batch processing, or services that see daily/weekly peak loads.
+While most KEDA scalers react to real-time metrics, the Cron scaler takes a proactive approach - scaling workloads up before predicted traffic arrives and down after the busy period ends. This is ideal for workloads with predictable traffic patterns: business-hours APIs, scheduled batch processing, or services that see daily/weekly peak loads.
 
 Combining the Cron scaler with reactive scalers (like Prometheus or Kafka) gives you a hybrid approach: pre-scale at known peak times and continue reacting to actual load beyond those predictions.
 
@@ -213,11 +213,11 @@ kubectl get deployment api-server -n app -o jsonpath='{.spec.replicas}'
 ## Best Practices
 
 - Use IANA timezone names (e.g., `America/New_York`, `Europe/London`) rather than UTC offsets in cron triggers so daylight saving time is handled automatically.
-- Combine cron with reactive scalers (Prometheus, Kafka) using multiple triggers — KEDA takes the maximum desired replicas across all active triggers.
+- Combine cron with reactive scalers (Prometheus, Kafka) using multiple triggers - KEDA takes the maximum desired replicas across all active triggers.
 - Set `minReplicaCount` to 0 for batch workloads that only run during scheduled windows; use `minReplicaCount: 1` for services that must be available 24/7 at reduced capacity.
 - Test cron schedules with KEDA's `--debug` logging before deploying to production to verify timezone and schedule correctness.
 - Use the cron trigger to pre-scale 15-30 minutes before anticipated peaks so pods are warmed and ready before traffic arrives.
 
 ## Conclusion
 
-KEDA's cron-based scaling managed through Flux CD provides predictable, schedule-driven capacity management with full GitOps auditability. Scheduled scaling windows are defined as code, reviewed in pull requests, and automatically applied — enabling your infrastructure to anticipate demand rather than just react to it.
+KEDA's cron-based scaling managed through Flux CD provides predictable, schedule-driven capacity management with full GitOps auditability. Scheduled scaling windows are defined as code, reviewed in pull requests, and automatically applied - enabling your infrastructure to anticipate demand rather than just react to it.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, xDS, Monitoring, Connection
+Tags: Istio, Istiod, XDS, Monitoring, Connection
 
 Description: How to monitor the number of xDS connections between Envoy proxies and istiod, detect connection issues, and set up alerts for connection anomalies.
 

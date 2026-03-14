@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, S3, Linux, s3fs-fuse
+Tags: AWS, S3, Linux, S3fs-fuse
 
 Description: Step-by-step guide to mounting an Amazon S3 bucket as a local file system using s3fs-fuse, covering installation, configuration, performance tuning, and common pitfalls.
 

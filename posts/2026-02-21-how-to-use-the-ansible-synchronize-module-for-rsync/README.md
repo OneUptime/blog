@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, DevOps, rsync, File Management
+Tags: Ansible, DevOps, Rsync, File Management
 
 Description: Learn how to use the Ansible synchronize module to efficiently sync files and directories between hosts using rsync with delta transfer support.
 

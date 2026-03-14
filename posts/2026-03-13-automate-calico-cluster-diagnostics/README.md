@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostics, Automation
 
-Description: Automate Calico cluster-wide diagnostic collection including TigeraStatus snapshots, IPAM consistency checks, and comprehensive calicoctl cluster diags bundles for incident response and periodic health verification.
+Description: Automate Calico cluster-wide diagnostic collection including TigeraStatus snapshots, IPAM consistency checks, and comprehensive calicoctl cluster diags bundles for incident response and periodic...
 
 ---
 

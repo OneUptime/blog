@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico networking problems on AWS, incl
 
 ## Introduction
 
-Calico networking issues on AWS often stem from the interaction between Calico's routing logic and AWS network primitives — security groups, VPC route tables, and the source/destination check setting. Problems that work perfectly in other environments may fail on AWS due to these cloud-specific constraints.
+Calico networking issues on AWS often stem from the interaction between Calico's routing logic and AWS network primitives - security groups, VPC route tables, and the source/destination check setting. Problems that work perfectly in other environments may fail on AWS due to these cloud-specific constraints.
 
 The most common AWS-specific failures involve cross-AZ traffic being dropped by security groups that don't allow encapsulation protocols, or by the source/destination check dropping packets with pod source IPs. This guide covers diagnosis and resolution of the most frequent Calico networking problems on AWS.
 

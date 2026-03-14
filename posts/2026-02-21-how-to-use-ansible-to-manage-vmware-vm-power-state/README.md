@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Power Management, vSphere, Automation
+Tags: Ansible, VMware, Power Management, VSphere, Automation
 
 Description: Learn how to control VMware virtual machine power states with Ansible including power on, shutdown, restart, suspend, and scheduled operations.
 

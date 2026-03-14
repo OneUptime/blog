@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Safely add NodeLocal DNSCache to an existing Calico cluster with a phased rollout that avoids disrupting live DNS resolution for running workloads.
 

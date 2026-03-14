@@ -10,7 +10,7 @@ Description: Learn how to configure Calico networking on a new K3s cluster for e
 
 ## Introduction
 
-K3s clusters deployed for edge and IoT workloads have specific networking requirements that differ from standard data center deployments. Configuring Calico correctly on K3s ensures that the networking layer matches the constraints of the edge environment — including limited bandwidth, specific CIDR ranges, and potential for cross-subnet routing.
+K3s clusters deployed for edge and IoT workloads have specific networking requirements that differ from standard data center deployments. Configuring Calico correctly on K3s ensures that the networking layer matches the constraints of the edge environment - including limited bandwidth, specific CIDR ranges, and potential for cross-subnet routing.
 
 K3s with Calico supports the same configuration API as other Kubernetes distributions, allowing you to use calicoctl to manage IP pools, Felix settings, and BGP configuration. However, K3s-specific considerations such as the embedded etcd or external datastore affect how Calico stores its state.
 

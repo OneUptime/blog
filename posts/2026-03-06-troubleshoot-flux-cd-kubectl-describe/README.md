@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Troubleshooting, kubectl, Kubernetes, GitOps, Debugging
+Tags: Flux CD, Troubleshooting, Kubectl, Kubernetes, GitOps, Debugging
 
 Description: Learn how to use kubectl describe to inspect Flux CD resources, interpret conditions and events, and quickly diagnose reconciliation failures.
 

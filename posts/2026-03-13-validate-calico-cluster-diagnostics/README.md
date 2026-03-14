@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostics, Validation
 
-Description: Validate cluster-wide Calico health by running comprehensive checks on TigeraStatus, IPAM consistency, cross-node connectivity, and policy enforcement to confirm the entire Calico installation is functioning correctly.
+Description: Validate cluster-wide Calico health by running comprehensive checks on TigeraStatus, IPAM consistency, cross-node connectivity, and policy enforcement to confirm the entire Calico installation is...
 
 ---
 
@@ -100,4 +100,4 @@ flowchart LR
 
 ## Conclusion
 
-Cluster validation runs five checks: TigeraStatus, pod health, IPAM consistency, IPAM utilization, and cross-node routing. The IPAM consistency check is the most important — `calicoctl ipam check` detects leaked IP allocations that won't appear in any other health signal until the cluster runs out of IPs. Run the validation script weekly in production and after any major change (Calico upgrade, node replacement, IPPool modification).
+Cluster validation runs five checks: TigeraStatus, pod health, IPAM consistency, IPAM utilization, and cross-node routing. The IPAM consistency check is the most important - `calicoctl ipam check` detects leaked IP allocations that won't appear in any other health signal until the cluster runs out of IPs. Run the validation script weekly in production and after any major change (Calico upgrade, node replacement, IPPool modification).

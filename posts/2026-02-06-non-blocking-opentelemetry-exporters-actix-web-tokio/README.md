@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, Actix-web, tokio, Non-Blocking, Async
+Tags: OpenTelemetry, Rust, Actix-web, Tokio, Non-Blocking, Async
 
 Description: Learn how to configure asynchronous, non-blocking OpenTelemetry exporters for Actix-web applications to maintain high performance and prevent request latency.
 

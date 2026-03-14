@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Debugging, Crash Analysis, Core Dumps
+Tags: Ubuntu, Systemd, Debugging, Crash Analysis, Core Dumps
 
 Description: Configure systemd-coredump to capture and analyze application crashes on Ubuntu, use coredumpctl to inspect dumps, and debug with GDB.
 

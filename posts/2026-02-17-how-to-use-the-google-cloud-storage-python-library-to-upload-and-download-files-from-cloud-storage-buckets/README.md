@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Storage, Python, google-cloud-storage, Google Cloud SDK
+Tags: GCP, Cloud Storage, Python, Google-cloud-storage, Google Cloud SDK
 
 Description: Learn how to use the google-cloud-storage Python library to upload, download, list, and manage files in GCP Cloud Storage buckets with practical code examples.
 

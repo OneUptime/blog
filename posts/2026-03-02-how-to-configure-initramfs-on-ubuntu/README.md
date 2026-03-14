@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kernel, Boot, System Administration, initramfs
+Tags: Ubuntu, Kernel, Boot, System Administration, Initramfs
 
 Description: Configure initramfs on Ubuntu to customize the early boot environment, add drivers, scripts, and control what loads before the root filesystem mounts.
 

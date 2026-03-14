@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, User Management, Security, useradd, usermod
+Tags: Linux, System Administration, User Management, Security, Useradd, Usermod
 
 Description: A comprehensive guide to managing Linux users with useradd and usermod commands, covering user creation, modification, group management, and security best practices.
 

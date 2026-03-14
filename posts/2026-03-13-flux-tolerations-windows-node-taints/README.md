@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, Tolerations, Node Taints, GitOps, Scheduling
+Tags: Flux CD, Kubernetes, Windows Containers, Tolerations, Node Taints, GitOps
 
 Description: Configure tolerations for Windows node taints in Flux CD deployments, preventing Linux workloads from scheduling on Windows nodes and ensuring correct placement.
 
@@ -10,7 +10,7 @@ Description: Configure tolerations for Windows node taints in Flux CD deployment
 
 ## Introduction
 
-Kubernetes node taints work in conjunction with tolerations to prevent workloads from scheduling on inappropriate nodes. Windows nodes in a Kubernetes cluster are typically tainted to prevent Linux containers from being scheduled on them — a Linux container cannot run on a Windows host OS. Without tolerations in your Windows workload manifests, pods will be stuck in `Pending` state indefinitely.
+Kubernetes node taints work in conjunction with tolerations to prevent workloads from scheduling on inappropriate nodes. Windows nodes in a Kubernetes cluster are typically tainted to prevent Linux containers from being scheduled on them - a Linux container cannot run on a Windows host OS. Without tolerations in your Windows workload manifests, pods will be stuck in `Pending` state indefinitely.
 
 The taint system serves a critical purpose in mixed clusters: Linux nodes should be the default for most workloads, and Windows nodes should only accept pods that explicitly declare they are Windows-compatible. Understanding and correctly configuring taints and tolerations is essential for stable mixed-cluster operation.
 
@@ -222,7 +222,7 @@ kubectl describe pod <pending-pod> -n <namespace> | grep -A 10 Events
 ## Best Practices
 
 - Apply the `os=windows:NoSchedule` taint to all Windows nodes immediately after provisioning.
-- Require tolerations explicitly in code review — do not rely on operators to notice missing tolerations.
+- Require tolerations explicitly in code review - do not rely on operators to notice missing tolerations.
 - Use a Kyverno policy to enforce that Windows-labeled deployments include the required toleration.
 - Test taint and toleration configuration by deploying to a staging cluster with Windows nodes first.
 - Document your cluster's specific taints in your repository's README so developers know what to tolerate.

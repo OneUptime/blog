@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Cluster Bootstrap, Kubernetes, etcd
+Tags: Talos Linux, Talosctl, Cluster Bootstrap, Kubernetes, Etcd
 
 Description: Learn how to use talosctl bootstrap to initialize a new Talos Linux Kubernetes cluster from scratch with step-by-step instructions
 

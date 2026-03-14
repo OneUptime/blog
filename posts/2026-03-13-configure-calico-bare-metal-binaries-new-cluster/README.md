@@ -10,7 +10,7 @@ Description: A guide to configuring Calico's network settings, BGP, and Felix wh
 
 ## Introduction
 
-When running Calico as native binaries on bare metal, configuration is managed through a combination of environment variables for the calico-node service and CRDs in the Kubernetes API for runtime behavior. Unlike the operator-based approach, you do not have an Installation CR — instead, you control startup behavior through the systemd unit file and ongoing behavior through `calicoctl`.
+When running Calico as native binaries on bare metal, configuration is managed through a combination of environment variables for the calico-node service and CRDs in the Kubernetes API for runtime behavior. Unlike the operator-based approach, you do not have an Installation CR - instead, you control startup behavior through the systemd unit file and ongoing behavior through `calicoctl`.
 
 This split configuration model gives you fine-grained control. You can set node-level configuration in environment variables on each node's service unit and apply cluster-wide configuration through Calico CRDs. Understanding which knobs belong where is the foundation of correctly configuring a binary-installed Calico deployment.
 

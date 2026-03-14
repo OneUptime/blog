@@ -1,10 +1,10 @@
-# Flux CD vs Rancher Fleet: Edge Computing Comparison
+# Flux CD vs Rancher Fleet: Edge Computing
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Rancher Fleet, Edge Computing, IoT, GitOps, Kubernetes, K3s, Disconnected
+Tags: Flux CD, Rancher Fleet, Edge Computing, GitOps, Kubernetes, IoT
 
-Description: Compare Flux CD and Rancher Fleet for edge computing deployments where clusters may have intermittent connectivity and strict resource constraints.
+Description: Compare Flux CD and Rancher Fleet for edge computing use cases, covering how each tool handles thousands of edge clusters with limited connectivity.
 
 ---
 

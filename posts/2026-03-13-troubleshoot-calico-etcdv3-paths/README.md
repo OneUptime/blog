@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Troubleshooting, Datastore
+Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Troubleshooting, Datastore
 
-Description: Diagnose and resolve issues related to Calico etcdv3 path data — including corrupted entries, missing paths, and data inconsistencies that cause policy or IPAM failures.
+Description: Diagnose and resolve issues related to Calico etcdv3 path data - including corrupted entries, missing paths, and data inconsistencies that cause policy or IPAM failures.
 
 ---
 
@@ -128,4 +128,4 @@ If data is under `/calico/` but Calico is configured to use `/custom-calico/`, u
 
 ## Conclusion
 
-Troubleshooting Calico etcdv3 paths requires cross-referencing raw etcd data with calicoctl output and Kubernetes state. The most common issues — IPAM leaks, stale host entries, and missing policy entries — each have specific diagnostic commands and calicoctl-based remediation. Always prefer calicoctl for data manipulation over direct etcdctl writes to avoid introducing new inconsistencies.
+Troubleshooting Calico etcdv3 paths requires cross-referencing raw etcd data with calicoctl output and Kubernetes state. The most common issues - IPAM leaks, stale host entries, and missing policy entries - each have specific diagnostic commands and calicoctl-based remediation. Always prefer calicoctl for data manipulation over direct etcdctl writes to avoid introducing new inconsistencies.

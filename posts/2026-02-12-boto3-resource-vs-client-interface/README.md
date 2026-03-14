@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, boto3, Python
+Tags: AWS, Boto3, Python
 
 Description: Understand the differences between Boto3 resource and client interfaces, when to use each, and how to combine them effectively in your AWS Python projects.
 

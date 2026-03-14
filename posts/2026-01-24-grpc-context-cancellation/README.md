@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Context, Cancellation, Go, Python, Timeout, Deadlines, Microservices
+Tags: GRPC, Context, Cancellation, Go, Python, Timeout, Deadlines, Microservices
 
 Description: A practical guide to handling context cancellation in gRPC services, covering client-side deadlines, server-side cancellation propagation, and graceful cleanup patterns.
 

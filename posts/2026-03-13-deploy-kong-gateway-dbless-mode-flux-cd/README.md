@@ -10,7 +10,7 @@ Description: Deploy Kong API Gateway in DB-less declarative configuration mode u
 
 ## Introduction
 
-Kong Gateway's DB-less mode is the ideal deployment model for GitOps workflows. Instead of storing configuration in PostgreSQL, Kong reads its routing rules, services, plugins, and consumers from a declarative YAML configuration file that you commit to Git. This eliminates the database as a runtime dependency, reduces operational complexity, and ensures that your API gateway configuration is fully version controlled — meaning every route change is a Git commit with an author, message, and diff.
+Kong Gateway's DB-less mode is the ideal deployment model for GitOps workflows. Instead of storing configuration in PostgreSQL, Kong reads its routing rules, services, plugins, and consumers from a declarative YAML configuration file that you commit to Git. This eliminates the database as a runtime dependency, reduces operational complexity, and ensures that your API gateway configuration is fully version controlled - meaning every route change is a Git commit with an author, message, and diff.
 
 The trade-off is that DB-less mode does not support features that require a database for coordination, such as the Kong Manager UI and some clustering features. For teams using GitOps, this trade-off is almost always worth it: you gain a simpler, more resilient gateway that is perfectly aligned with your Flux CD workflow.
 
@@ -286,7 +286,7 @@ spec:
 
 ## Best Practices
 
-- Store the Kong declarative configuration in a dedicated file within your Git repository; avoid embedding complex YAML inside a ConfigMap as a string — use Kustomize ConfigMapGenerator instead.
+- Store the Kong declarative configuration in a dedicated file within your Git repository; avoid embedding complex YAML inside a ConfigMap as a string - use Kustomize ConfigMapGenerator instead.
 - Use `configMapGenerator` in Kustomize to automatically update the ConfigMap hash when the Kong config changes, triggering pod restarts automatically.
 - Validate your Kong declarative config locally with `deck validate` before committing to Git to catch syntax errors before they reach production.
 - Version your API configuration using Git tags; when a routing change causes issues, `git revert` immediately rolls back the Kong configuration.
@@ -295,4 +295,4 @@ spec:
 
 ## Conclusion
 
-Kong Gateway in DB-less mode is the natural fit for GitOps workflows managed by Flux CD. Without a database dependency, Kong becomes a stateless, highly scalable API gateway where every configuration change is a Git commit. This model provides the configuration simplicity of a static reverse proxy with the power and extensibility of Kong's plugin ecosystem — all managed through the same GitOps workflows you use for your application deployments.
+Kong Gateway in DB-less mode is the natural fit for GitOps workflows managed by Flux CD. Without a database dependency, Kong becomes a stateless, highly scalable API gateway where every configuration change is a Git commit. This model provides the configuration simplicity of a static reverse proxy with the power and extensibility of Kong's plugin ecosystem - all managed through the same GitOps workflows you use for your application deployments.

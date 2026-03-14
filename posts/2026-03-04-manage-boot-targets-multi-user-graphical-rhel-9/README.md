@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Boot Targets, Linux, System Administration
+Tags: RHEL, Systemd, Boot Targets, Linux, System Administration
 
 Description: Learn how to manage systemd boot targets on RHEL, including switching between multi-user and graphical mode, using rescue and emergency targets, and understanding target dependencies.
 

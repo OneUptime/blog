@@ -12,7 +12,7 @@ Description: Manage IO fault injection experiments using Chaos Mesh and Flux CD 
 
 IO (Input/Output) failures are a category of infrastructure fault that applications often handle poorly. Slow disk writes, read errors, and file system faults can cause databases to corrupt data, log pipelines to back up, and stateful services to fail in non-obvious ways. IO chaos experiments expose these weaknesses in a controlled environment before they cause production incidents.
 
-Chaos Mesh's `IOChaos` CRD lets you inject latency into file system operations, simulate read/write errors, and corrupt file attributes — all targeting specific containers and file paths. Because `IOChaos` manifests are standard Kubernetes resources, Flux CD can manage them in Git just like any other workload configuration.
+Chaos Mesh's `IOChaos` CRD lets you inject latency into file system operations, simulate read/write errors, and corrupt file attributes - all targeting specific containers and file paths. Because `IOChaos` manifests are standard Kubernetes resources, Flux CD can manage them in Git just like any other workload configuration.
 
 This guide walks through configuring IO latency, IO errors, and file attribute faults using Chaos Mesh managed by Flux CD.
 

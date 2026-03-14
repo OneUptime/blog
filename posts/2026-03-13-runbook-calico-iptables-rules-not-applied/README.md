@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Runbook
+Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Runbook
 
 Description: On-call runbook for responding to Calico iptables rules not being applied on a node, including Felix health triage, chain verification, and targeted restart procedures.
 
@@ -65,7 +65,7 @@ ssh <node-name> "sudo fuser /run/xtables.lock 2>/dev/null && echo LOCK_HELD || e
 
 ## Solution
 
-**Primary fix — restart calico-node:**
+**Primary fix - restart calico-node:**
 
 ```bash
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node \

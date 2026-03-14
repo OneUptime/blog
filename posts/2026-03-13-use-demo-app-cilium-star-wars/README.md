@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Star Wars Demo, Tutorial
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A practical guide to deploying and interacting with the Star Wars demo application to explore Cilium's policy capabilities hands-on.
 
@@ -10,11 +10,11 @@ Description: A practical guide to deploying and interacting with the Star Wars d
 
 ## Introduction
 
-Using the Star Wars demo application effectively means understanding the sequence of steps that reveal each policy layer. The application is a teaching tool, and the way you interact with it — running `curl` commands from specific pods, watching which succeed and which are blocked — is the methodology. This guide walks you through each interaction point with the demo application, explaining what to observe at each stage.
+Using the Star Wars demo application effectively means understanding the sequence of steps that reveal each policy layer. The application is a teaching tool, and the way you interact with it - running `curl` commands from specific pods, watching which succeed and which are blocked - is the methodology. This guide walks you through each interaction point with the demo application, explaining what to observe at each stage.
 
 The goal is not just to run the demo but to develop intuitions you can carry into real environments. When you see the `xwing` get blocked, think about your unauthorized clients. When the `tiefighter` gets blocked from `/v1/exhaust-port`, think about your privileged admin APIs. The concrete commands here translate directly to debugging and designing policy in production.
 
-This guide is meant to be run interactively alongside your cluster. Do not skip steps — the sequence is designed to build understanding progressively.
+This guide is meant to be run interactively alongside your cluster. Do not skip steps - the sequence is designed to build understanding progressively.
 
 ## Prerequisites
 
@@ -41,10 +41,10 @@ kubectl get deployments,pods,services
 # Successful landing request from authorized Empire ship
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
-# Unauthorized access from Alliance ship (also works — no policy yet)
+# Unauthorized access from Alliance ship (also works - no policy yet)
 kubectl exec xwing -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
-# Dangerous exhaust port — open to anyone right now
+# Dangerous exhaust port - open to anyone right now
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 ```
 
@@ -107,4 +107,4 @@ kubectl delete CiliumNetworkPolicy rule1
 
 ## Conclusion
 
-Using the demo application interactively is the most effective way to internalize Cilium's policy model. Each command you run — the blocked `xwing`, the allowed `tiefighter`, the forbidden exhaust port — teaches a lesson about policy layers that static documentation cannot replicate. With these interactions fresh in mind, you are ready to design Cilium policies for your own production services.
+Using the demo application interactively is the most effective way to internalize Cilium's policy model. Each command you run - the blocked `xwing`, the allowed `tiefighter`, the forbidden exhaust port - teaches a lesson about policy layers that static documentation cannot replicate. With these interactions fresh in mind, you are ready to design Cilium policies for your own production services.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, CLI, Debugging, Kubernetes
+Tags: Istio, Istioctl, CLI, Debugging, Kubernetes
 
 Description: Practical guide to using istioctl commands for debugging, analyzing, and managing your Istio service mesh with real command examples and output explanations.
 

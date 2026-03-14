@@ -10,7 +10,7 @@ Description: Run chaos experiments as part of Flagger canary analysis gates mana
 
 ## Introduction
 
-Progressive delivery and chaos engineering are two practices that are even more powerful together. Flagger automates canary deployments by gradually shifting traffic to new releases while checking metrics and webhooks. Chaos experiments integrated as Flagger webhook gates mean that every new release is automatically tested for resilience — not just correctness — before it reaches 100% of traffic.
+Progressive delivery and chaos engineering are two practices that are even more powerful together. Flagger automates canary deployments by gradually shifting traffic to new releases while checking metrics and webhooks. Chaos experiments integrated as Flagger webhook gates mean that every new release is automatically tested for resilience - not just correctness - before it reaches 100% of traffic.
 
 Flux CD ties the two together: it manages both the Flagger installation and the canary configuration in Git, ensuring that your resilience gates are version-controlled and consistently applied across environments. If a chaos experiment reveals that a new release cannot handle pod kills or network latency, Flagger rolls back automatically.
 
@@ -218,4 +218,4 @@ spec:
 
 ## Conclusion
 
-Integrating chaos experiments into Flagger canary analysis creates a powerful resilience gate that validates every release under fault conditions before it reaches full production traffic. Managed by Flux CD, this entire workflow — from deployment to chaos to promotion decision — is declarative, reproducible, and auditable, making resilience a built-in property of your delivery pipeline rather than an afterthought.
+Integrating chaos experiments into Flagger canary analysis creates a powerful resilience gate that validates every release under fault conditions before it reaches full production traffic. Managed by Flux CD, this entire workflow - from deployment to chaos to promotion decision - is declarative, reproducible, and auditable, making resilience a built-in property of your delivery pipeline rather than an afterthought.

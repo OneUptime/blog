@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Diagnose and resolve common Cilium BGP session failures including stuck Active state, route advertisement issues, and peer connectivity problems.
 
@@ -34,10 +34,10 @@ cilium bgp peers | grep -v established
 ```
 
 Common states and their meanings:
-- `established` — session is up and routes are exchanged
-- `active` — Cilium is trying to connect; router not responding
-- `idle` — session is not being attempted; check policy
-- `connect` — TCP connection in progress
+- `established` - session is up and routes are exchanged
+- `active` - Cilium is trying to connect; router not responding
+- `idle` - session is not being attempted; check policy
+- `connect` - TCP connection in progress
 
 ## Step 2: Verify Policy and Node Selector
 

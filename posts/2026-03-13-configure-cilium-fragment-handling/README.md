@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, networking, ebpf, mtu, fragmentation
+Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
 
 Description: Learn how to configure Cilium's IP fragment handling and MTU settings to prevent packet loss and connectivity issues in environments where fragmentation occurs.
 
@@ -134,7 +134,7 @@ cilium config view | grep mss
 - Always set Cilium's MTU explicitly based on your network topology rather than relying on auto-detection
 - Enable fragment tracking when applying L4 policies to UDP-heavy workloads (DNS, video streaming, etc.)
 - Test cross-node large packet transfers after any MTU configuration change: `ping -M do -s 1400 <pod-ip>`
-- Monitor the `bpf_fragment_map` utilization — if it fills up, fragments will be dropped
+- Monitor the `bpf_fragment_map` utilization - if it fills up, fragments will be dropped
 - Coordinate MTU settings with cloud provider networking documentation (each cloud has different encapsulation overhead)
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Browser Testing, Performance Testing, Web Vitals, End-to-End Testing
+Tags: K6, Browser Testing, Performance Testing, Web Vitals, End-to-End Testing
 
 Description: Learn how to use k6 browser module to run real browser tests that measure Core Web Vitals and user experience metrics.
 

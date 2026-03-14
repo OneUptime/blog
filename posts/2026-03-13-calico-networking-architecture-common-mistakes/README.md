@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Architecture, CNI, Troubleshooting, Best Practices, Felix, Typha
 
-Description: Common architectural mistakes in Calico deployments — from under-resourced Felix pods to missing Typha at scale — and how to prevent and fix them.
+Description: Common architectural mistakes in Calico deployments - from under-resourced Felix pods to missing Typha at scale - and how to prevent and fix them.
 
 ---
 
 ## Introduction
 
-Architectural mistakes in Calico tend to be gradual — everything works at small scale, and the issues only manifest as the cluster grows. Typha not deployed at 50 nodes creates no problems. At 300 nodes, it brings the API server to its knees. This post focuses on the architectural mistakes that have the highest impact at scale.
+Architectural mistakes in Calico tend to be gradual - everything works at small scale, and the issues only manifest as the cluster grows. Typha not deployed at 50 nodes creates no problems. At 300 nodes, it brings the API server to its knees. This post focuses on the architectural mistakes that have the highest impact at scale.
 
 ## Prerequisites
 
@@ -82,7 +82,7 @@ The calico-node pod must use the host network namespace to program iptables rule
 
 **Symptom**: Felix logs errors about unable to access network interfaces. Policy enforcement stops working.
 
-**Fix**: Do not modify the calico-node pod spec — use the Calico operator or Installation resource to make configuration changes. Never directly patch the calico-node DaemonSet spec.
+**Fix**: Do not modify the calico-node pod spec - use the Calico operator or Installation resource to make configuration changes. Never directly patch the calico-node DaemonSet spec.
 
 ## Mistake 5: Ignoring Felix's Datastore Sync Lag
 
@@ -107,7 +107,7 @@ kubectl wait pod -n calico-system -l k8s-app=calico-node \
 - Enable Typha for any cluster with more than 50 nodes
 - Set explicit resource requests and limits on calico-node pods based on your node pod density
 - Deploy route reflectors in pairs on infrastructure nodes with taint preventing general workload scheduling
-- Never modify calico-node DaemonSet spec directly — use the Calico Installation operator resource
+- Never modify calico-node DaemonSet spec directly - use the Calico Installation operator resource
 
 ## Conclusion
 

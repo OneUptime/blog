@@ -10,7 +10,7 @@ Description: Resolve conflicts between HorizontalPodAutoscaler and Flux-managed 
 
 ## Introduction
 
-The most common day-two conflict in Flux-managed clusters is the replica count fight between HPA and Flux. The scenario is straightforward: you declare `replicas: 2` in a Deployment manifest managed by Flux, you create an HPA to scale that deployment between 2 and 20 replicas based on CPU usage, traffic spikes to 15 replicas — and then Flux reconciles and resets replicas back to 2.
+The most common day-two conflict in Flux-managed clusters is the replica count fight between HPA and Flux. The scenario is straightforward: you declare `replicas: 2` in a Deployment manifest managed by Flux, you create an HPA to scale that deployment between 2 and 20 replicas based on CPU usage, traffic spikes to 15 replicas - and then Flux reconciles and resets replicas back to 2.
 
 This conflict exists because Flux uses server-side apply to manage the `spec.replicas` field. When Flux owns that field and HPA writes a different value, the next Flux reconciliation overwrites HPA's work. The solution is to relinquish Flux's ownership of `spec.replicas` so HPA can manage it freely.
 
@@ -45,7 +45,7 @@ kubectl get deployment my-service -n team-alpha -o jsonpath='{.spec.replicas}'
 kubectl get deployment my-service -n team-alpha \
   -o jsonpath='{.metadata.managedFields}' | \
   jq '.[] | select(.manager == "gotk-sync-manager") | .fieldsV1."f:spec"'
-# Shows f:replicas — Flux owns this field
+# Shows f:replicas - Flux owns this field
 ```
 
 ## Step 2: Remove spec.replicas from the Deployment Manifest
@@ -76,7 +76,7 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
-  # replicas is intentionally omitted — HPA manages this field
+  # replicas is intentionally omitted - HPA manages this field
   selector:
     matchLabels:
       app: my-service
@@ -124,7 +124,7 @@ patches:
 ```bash
 # Verify the patch removes the field before committing
 kustomize build deploy/ | grep replicas
-# Should return nothing — spec.replicas is stripped
+# Should return nothing - spec.replicas is stripped
 ```
 
 ## Step 4: Configure the HPA Correctly
@@ -219,12 +219,12 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "HPA replica count differs from Deployment spec — possible Flux conflict"
+            summary: "HPA replica count differs from Deployment spec - possible Flux conflict"
 ```
 
 ## Best Practices
 
-- Always remove `spec.replicas` from Deployment manifests when HPA is in use — this is the canonical Kubernetes recommendation as well
+- Always remove `spec.replicas` from Deployment manifests when HPA is in use - this is the canonical Kubernetes recommendation as well
 - Define `minReplicas` in HPA to at least 2 to maintain high availability even during scale-down
 - Use the HPA `behavior` block to configure scale-down stabilization windows and prevent flapping
 - For Helm-based deployments, check if the chart sets `replicaCount` and override it to `null` in your values

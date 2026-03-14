@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, WiFi, hostapd, Security, Networking
+Tags: Ubuntu, WiFi, Hostapd, Security, Networking
 
 Description: Configure hostapd on Ubuntu for WPA2 Personal, WPA3 SAE, and WPA2/WPA3 transition mode, with proper security settings and cipher configuration for modern wireless networks.
 

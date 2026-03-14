@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, rsyslog, Logging, Linux, Monitoring
+Tags: Ansible, Rsyslog, Logging, Linux, Monitoring
 
 Description: Deploy a centralized rsyslog server with TLS encryption, log rotation, and client configuration using Ansible for unified log collection.
 

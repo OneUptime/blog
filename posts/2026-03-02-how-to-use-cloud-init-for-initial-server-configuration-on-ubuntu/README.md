@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Automation, DevOps, Cloud
+Tags: Ubuntu, Cloud-init, Automation, DevOps, Cloud
 
 Description: Use cloud-init on Ubuntu to automate first-boot server configuration including users, SSH keys, packages, and custom scripts across cloud and on-premise environments.
 

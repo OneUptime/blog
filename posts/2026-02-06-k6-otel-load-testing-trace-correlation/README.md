@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, k6, Load Testing, Distributed Tracing, Performance
+Tags: OpenTelemetry, K6, Load Testing, Distributed Tracing, Performance
 
 Description: Set up k6 load testing with OpenTelemetry output to correlate load test results with distributed traces for deep performance analysis.
 

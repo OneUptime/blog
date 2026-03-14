@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, LDAP, Authentication, Flux CD, GitOps, Kubernetes, Security
+Tags: Flux CD, Kubernetes, GitOps, Grafana, LDAP, Authentication, Observability, HelmRelease
 
-Description: Learn how to configure Grafana with LDAP authentication on Kubernetes using Flux CD. This guide covers LDAP configuration, Secrets management, and HelmRelease values for enterprise directory integration.
+Description: Learn how to configure Grafana with LDAP authentication on Kubernetes using Flux CD.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to configure Grafana with LDAP authentication on Kubernet
 
 Integrating Grafana with an LDAP directory such as Active Directory or OpenLDAP centralizes user management and removes the need for local accounts. Users log in with their existing corporate credentials, and group membership maps directly to Grafana roles.
 
-Managing LDAP credentials and the LDAP configuration file as Flux-reconciled Kubernetes Secrets ensures that sensitive data never sits in plain text in your cluster. Combined with a HelmRelease, the entire Grafana deployment—including its authentication configuration—lives in Git.
+Managing LDAP credentials and the LDAP configuration file as Flux-reconciled Kubernetes Secrets ensures that sensitive data never sits in plain text in your cluster. Combined with a HelmRelease, the entire Grafana deployment-including its authentication configuration-lives in Git.
 
 This guide shows how to structure the Flux resources, reference an LDAP config file from a Secret, and validate the integration end-to-end.
 
@@ -37,7 +37,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # LDAP bind password — encrypt this file with SOPS before committing
+  # LDAP bind password - encrypt this file with SOPS before committing
   bindPassword: "changeme"
   # Full ldap.toml configuration file mounted into the Grafana pod
   ldap.toml: |

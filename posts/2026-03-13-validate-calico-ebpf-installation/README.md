@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation, Validation
+Tags: Calico, Kubernetes, Networking, EBPF, Installation, Validation
 
 Description: Validate a fresh Calico eBPF installation by confirming BPF programs, service routing, DNS, pod connectivity, and network policy enforcement are all working correctly.
 
@@ -107,7 +107,7 @@ exit ${FAILURES}
 
 ## Expected Output
 
-```
+```plaintext
 === Calico eBPF Installation Validation ===
 
 --- Component Health ---

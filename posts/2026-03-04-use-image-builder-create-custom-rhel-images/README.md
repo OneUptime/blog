@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Custom Images, osbuild, System Administration, Linux
+Tags: RHEL, Image Builder, Custom Images, Osbuild, System Administration, Linux
 
 Description: A practical guide to using RHEL Image Builder for creating custom OS images across multiple output formats and deployment targets.
 

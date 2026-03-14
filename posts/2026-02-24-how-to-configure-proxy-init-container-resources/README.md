@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Init Containers, Resource Limits, Kubernetes, iptables
+Tags: Istio, Init Containers, Resource Limits, Kubernetes, Iptables
 
 Description: How to configure CPU and memory resources for the Istio init container that sets up iptables rules for traffic interception in the sidecar mesh.
 

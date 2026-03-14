@@ -223,4 +223,4 @@ spec:
 
 ## Conclusion
 
-Managing Karpenter NodePools and EC2NodeClasses through Flux CD ensures your node provisioning strategy is version-controlled and consistently applied. Changes to node configurations — instance types, disk sizes, expiry policies — become Git commits with full audit trails. This approach is particularly valuable when managing multiple clusters with different node requirements, as Flux can apply environment-specific NodePool configurations from a shared base with environment-specific overlays.
+Managing Karpenter NodePools and EC2NodeClasses through Flux CD ensures your node provisioning strategy is version-controlled and consistently applied. Changes to node configurations - instance types, disk sizes, expiry policies - become Git commits with full audit trails. This approach is particularly valuable when managing multiple clusters with different node requirements, as Flux can apply environment-specific NodePool configurations from a shared base with environment-specific overlays.

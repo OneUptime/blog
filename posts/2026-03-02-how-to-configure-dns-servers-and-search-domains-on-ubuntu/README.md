@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, Networking, systemd-resolved, Netplan
+Tags: Ubuntu, DNS, Networking, Systemd-resolved, Netplan
 
 Description: Configure DNS servers and search domains on Ubuntu using Netplan, systemd-resolved, and direct configuration methods for both desktop and server environments.
 

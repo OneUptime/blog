@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, kube-proxy, eBPF, Networking
+Tags: Cilium, Kubernetes, Kube-proxy, EBPF, Networking
 
 Description: Replace kube-proxy with Cilium's fully eBPF-based service implementation for better performance, higher scalability, and advanced load balancing features unavailable in iptables.
 
@@ -10,9 +10,9 @@ Description: Replace kube-proxy with Cilium's fully eBPF-based service implement
 
 ## Introduction
 
-kube-proxy is the default Kubernetes component responsible for implementing Services — it translates Service VIPs to pod IPs by programming iptables or IPVS rules on each node. While functional, iptables-based kube-proxy has well-documented scaling limitations: rules are evaluated linearly (O(n) per packet for n rules), updates require a full rule reload, and each Service adds rules that slow down all subsequent packet processing.
+kube-proxy is the default Kubernetes component responsible for implementing Services - it translates Service VIPs to pod IPs by programming iptables or IPVS rules on each node. While functional, iptables-based kube-proxy has well-documented scaling limitations: rules are evaluated linearly (O(n) per packet for n rules), updates require a full rule reload, and each Service adds rules that slow down all subsequent packet processing.
 
-Cilium's kube-proxy replacement implements the same Service abstraction using eBPF hash maps, achieving O(1) lookup time regardless of the number of Services or endpoints. The replacement is transparent to applications — they still use Kubernetes Service DNS names and VIPs — but the data plane is dramatically more efficient. Cilium's kube-proxy replacement also enables features that iptables cannot support, such as socket-level load balancing that intercepts connections before they even enter the network stack.
+Cilium's kube-proxy replacement implements the same Service abstraction using eBPF hash maps, achieving O(1) lookup time regardless of the number of Services or endpoints. The replacement is transparent to applications - they still use Kubernetes Service DNS names and VIPs - but the data plane is dramatically more efficient. Cilium's kube-proxy replacement also enables features that iptables cannot support, such as socket-level load balancing that intercepts connections before they even enter the network stack.
 
 This guide covers deploying Cilium without kube-proxy, verifying the replacement is working correctly, and validating the performance benefits.
 
@@ -91,7 +91,7 @@ cilium service get <service-id>
 
 ## Step 5: Socket-Level Load Balancing
 
-Cilium's kube-proxy replacement supports socket-level LB — load balancing happens at the connect() syscall before packets enter the network stack:
+Cilium's kube-proxy replacement supports socket-level LB - load balancing happens at the connect() syscall before packets enter the network stack:
 
 ```bash
 # Verify socket LB is enabled

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Echo, otelecho, Middleware, Tracing
+Tags: OpenTelemetry, Go, Echo, Otelecho, Middleware, Tracing
 
 Description: Implement comprehensive distributed tracing in Echo web applications using the otelecho middleware package for complete request visibility and performance monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, firewalld, Linux
+Tags: RHEL, Nftables, Firewalld, Linux
 
 Description: Understand how firewalld and nftables work together on RHEL, and learn how to configure firewall rules using both tools without conflicts.
 

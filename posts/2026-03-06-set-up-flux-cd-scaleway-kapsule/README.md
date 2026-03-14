@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Scaleway, kapsule, Kubernetes, GitOps, Container Registry, Cloud
+Tags: Flux CD, Scaleway, Kapsule, Kubernetes, GitOps, Container Registry, Cloud
 
 Description: A step-by-step guide to bootstrapping Flux CD on Scaleway Kapsule with Scaleway Container Registry integration and GitOps workflows.
 

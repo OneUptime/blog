@@ -10,7 +10,7 @@ Description: Compare progressive delivery capabilities in Flux CD with Flagger a
 
 ## Introduction
 
-Progressive delivery—canary releases, blue-green deployments, A/B testing—is the practice of gradually rolling out changes to reduce blast radius. Both Flux CD and ArgoCD have companion tools purpose-built for progressive delivery: Flagger for Flux CD and Argo Rollouts for ArgoCD. While both work independently of their parent GitOps tools, they integrate most naturally with their respective ecosystems.
+Progressive delivery-canary releases, blue-green deployments, A/B testing-is the practice of gradually rolling out changes to reduce blast radius. Both Flux CD and ArgoCD have companion tools purpose-built for progressive delivery: Flagger for Flux CD and Argo Rollouts for ArgoCD. While both work independently of their parent GitOps tools, they integrate most naturally with their respective ecosystems.
 
 This comparison examines both tools' progressive delivery capabilities, automation depth, metric analysis, and service mesh integration.
 

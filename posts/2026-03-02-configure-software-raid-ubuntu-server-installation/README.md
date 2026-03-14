@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, RAID, mdadm, Storage, High Availability
+Tags: Ubuntu, RAID, Mdadm, Storage, High Availability
 
 Description: Learn how to configure software RAID (mdadm) during Ubuntu Server installation, covering RAID 1, RAID 5, and RAID 10 configurations with practical setup and monitoring instructions.
 

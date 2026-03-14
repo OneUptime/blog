@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Node Management
+Tags: Kubernetes, Kubectl, Node Management
 
 Description: Master kubectl taint to dedicate nodes for specific workloads like GPU processing, databases, or high-priority applications, ensuring optimal resource utilization and workload isolation.
 

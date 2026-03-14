@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Ruby, rbenv, Development, Rails, Tutorial
+Tags: Ubuntu, Ruby, Rbenv, Development, Rails, Tutorial
 
 Description: Complete guide to installing and managing Ruby versions with rbenv on Ubuntu.
 

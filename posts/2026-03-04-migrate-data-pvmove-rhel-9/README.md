@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, pvmove, Data Migration, Linux
+Tags: RHEL, LVM, Pvmove, Data Migration, Linux
 
 Description: Use pvmove to live-migrate data between physical volumes in LVM on RHEL, enabling disk replacement and storage rebalancing without downtime.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Mobile Development, JavaScript, iOS, Android
+Tags: React Native, Mobile Development, JavaScript, IOS, Android
 
 Description: A step-by-step guide to setting up a React Native development environment on macOS and Windows, covering Xcode, Android Studio, and common troubleshooting steps.
 

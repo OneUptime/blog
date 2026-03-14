@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, containerd, Containers, Kubernetes, Container Runtime
+Tags: Ubuntu, Linux, Containerd, Containers, Kubernetes, Container Runtime
 
 Description: Install and configure containerd on Ubuntu as a standalone container runtime without Docker for Kubernetes and direct container management.
 

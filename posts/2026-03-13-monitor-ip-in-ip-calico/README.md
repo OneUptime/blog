@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, IP-in-IP, Encapsulation, Kubernetes, Networking, Monitoring, Overlay
 
-Description: Learn how to configure, monitor, and troubleshoot IP-in-IP encapsulation in Calico, understanding when to use it versus VXLAN or native routing, and how to detect performance issues caused by encapsulation overhead.
+Description: Learn how to configure, monitor, and troubleshoot IP-in-IP encapsulation in Calico, understanding when to use it versus VXLAN or native routing, and how to detect performance issues caused by...
 
 ---
 
 ## Introduction
 
-IP-in-IP (IPIP) is a network encapsulation protocol where an IP packet is wrapped inside another IP packet. Calico uses IPIP encapsulation to route pod traffic across nodes when direct routing is not possible — for example, when nodes are in different subnets and the underlying network does not support BGP route injection.
+IP-in-IP (IPIP) is a network encapsulation protocol where an IP packet is wrapped inside another IP packet. Calico uses IPIP encapsulation to route pod traffic across nodes when direct routing is not possible - for example, when nodes are in different subnets and the underlying network does not support BGP route injection.
 
 Calico supports two IPIP modes: `Always` (all pod traffic is encapsulated) and `CrossSubnet` (only traffic crossing subnet boundaries is encapsulated, with direct routing for same-subnet traffic). `CrossSubnet` mode provides better performance by avoiding encapsulation overhead for traffic between nodes in the same subnet.
 
@@ -22,7 +22,7 @@ This guide covers configuring IPIP encapsulation, monitoring IPIP tunnel health,
 - `calicoctl` v3.27+ installed
 - `kubectl` with admin access
 - Access to node interfaces for tunnel inspection
-- Network support for IP protocol 4 (IPIP) — some cloud providers block it
+- Network support for IP protocol 4 (IPIP) - some cloud providers block it
 
 ## Step 1: Check Current IPIP Configuration
 

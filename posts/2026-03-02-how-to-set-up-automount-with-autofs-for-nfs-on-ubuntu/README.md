@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, NFS, autofs, Networking, File Sharing
+Tags: Ubuntu, NFS, Autofs, Networking, File Sharing
 
 Description: Configure autofs on Ubuntu to automatically mount NFS shares on demand and unmount them after a period of inactivity, reducing resource usage and handling temporary server unavailability gracefully.
 

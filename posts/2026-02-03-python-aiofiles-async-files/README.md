@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, aiofiles, Async, File I/O, asyncio
+Tags: Python, Aiofiles, Async, File I/O, Asyncio
 
 Description: Learn how to perform async file operations in Python using aiofiles. This guide covers reading, writing, and managing files asynchronously for better performance.
 

@@ -25,18 +25,18 @@ Flux CD's GitOps model aligns naturally with SOC 2 requirements. Every change to
 
 | SOC 2 Common Criteria | Flux CD Control |
 |---|---|
-| CC6.1 — Logical access controls | Branch protection + CODEOWNERS |
-| CC6.2 — New access authorization | PR review requirement |
-| CC7.1 — System components monitoring | Flux health checks + alerting |
-| CC8.1 — Change management | GitOps PR workflow |
-| CC9.2 — Vendor and business partner management | HelmRepository with pinned versions |
+| CC6.1 - Logical access controls | Branch protection + CODEOWNERS |
+| CC6.2 - New access authorization | PR review requirement |
+| CC7.1 - System components monitoring | Flux health checks + alerting |
+| CC8.1 - Change management | GitOps PR workflow |
+| CC9.2 - Vendor and business partner management | HelmRepository with pinned versions |
 
 ## Step 2: Enforce Authorized Changes via Branch Protection
 
-Document this in your SOC 2 control evidence as "CC8.1 — Production changes require PR approval":
+Document this in your SOC 2 control evidence as "CC8.1 - Production changes require PR approval":
 
 ```yaml
-# The GitRepository Flux watches — production changes come ONLY from this branch
+# The GitRepository Flux watches - production changes come ONLY from this branch
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -45,7 +45,7 @@ metadata:
 spec:
   interval: 1m
   ref:
-    branch: main     # Protected branch — no direct push allowed
+    branch: main     # Protected branch - no direct push allowed
   url: ssh://git@github.com/your-org/fleet-infra
   secretRef:
     name: flux-system
@@ -56,7 +56,7 @@ Branch protection configuration (document the settings for SOC 2 evidence):
 - Dismiss stale reviews when new commits are pushed
 - Require review from Code Owners
 - Require status checks: `validate-flux-manifests`
-- Block direct pushes to `main` — including admins
+- Block direct pushes to `main` - including admins
 
 ## Step 3: Create an Immutable Audit Trail
 
@@ -134,7 +134,7 @@ data:
 
 SOC 2 CC6.3 requires separation of duties. Use CODEOWNERS to ensure no single person can approve their own changes:
 
-```
+```plaintext
 # .github/CODEOWNERS
 
 # Production infrastructure changes require platform team senior engineers
@@ -195,9 +195,9 @@ OUTPUT="compliance-reports/soc2-${REPORT_DATE}.md"
 mkdir -p compliance-reports
 
 cat > "$OUTPUT" << EOF
-# SOC 2 Change Management Evidence Report — ${REPORT_DATE}
+# SOC 2 Change Management Evidence Report - ${REPORT_DATE}
 
-## CC8.1 — Change Management
+## CC8.1 - Change Management
 
 ### All Production Changes (via Git log)
 $(git log --merges \
@@ -213,7 +213,7 @@ $(kubectl get events -n flux-system \
     --sort-by='.lastTimestamp' \
   | tail -50)
 
-## CC6.1 — Access Controls
+## CC6.1 - Access Controls
 Branch protection status: ENABLED
 Required reviewers: 2
 Admin bypass: DISABLED
@@ -226,7 +226,7 @@ echo "Report generated: $OUTPUT"
 
 ## Best Practices
 
-- Retain Git history indefinitely (or for at least 7 years for SOC 2 Type II) — configure your Git host to prevent force pushes that rewrite history.
+- Retain Git history indefinitely (or for at least 7 years for SOC 2 Type II) - configure your Git host to prevent force pushes that rewrite history.
 - Export Flux events to a SIEM or log management system with a minimum 1-year retention.
 - Run quarterly access reviews to ensure CODEOWNERS lists reflect current team membership.
 - Document each SOC 2 control in a controls matrix that maps the control requirement to the specific Flux/Git configuration that satisfies it.

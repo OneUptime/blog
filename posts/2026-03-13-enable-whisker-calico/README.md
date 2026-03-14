@@ -93,4 +93,4 @@ spec:
 
 ## Conclusion
 
-Enabling Whisker provides immediate network observability without requiring Prometheus, Grafana, or external logging infrastructure. The most valuable feature is the denied traffic view — it shows exactly which network policies are blocking which connections, making policy debugging significantly faster. Enable Whisker in staging first to understand the UI before relying on it in production incidents.
+Enabling Whisker provides immediate network observability without requiring Prometheus, Grafana, or external logging infrastructure. The most valuable feature is the denied traffic view - it shows exactly which network policies are blocking which connections, making policy debugging significantly faster. Enable Whisker in staging first to understand the UI before relying on it in production incidents.

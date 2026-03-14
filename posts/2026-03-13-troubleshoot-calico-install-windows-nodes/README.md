@@ -38,9 +38,9 @@ Get-Content C:\CalicoWindows\logs\felix.log -Tail 50
 ```
 
 Common Windows errors:
-- `The system cannot find the path specified` — installation path issue
-- `Access is denied` — PowerShell execution policy
-- `HNS failed` — Windows HNS service issue
+- `The system cannot find the path specified` - installation path issue
+- `Access is denied` - PowerShell execution policy
+- `HNS failed` - Windows HNS service issue
 
 ## Step 3: Verify Windows Features Are Enabled
 

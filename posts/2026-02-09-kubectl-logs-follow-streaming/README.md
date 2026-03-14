@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Logging, kubectl, Streaming, Debugging
+Tags: Kubernetes, Logging, Kubectl, Streaming, Debugging
 
 Description: Learn how to use kubectl logs --follow for real-time log streaming and monitoring of Kubernetes applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Platform Engineering, Cluster API, Multi-cluster
+Tags: Flux CD, Kubernetes, GitOps, Platform Engineering, Cluster API, Multi-Cluster
 
 Description: Use Flux CD to build a cluster-as-a-service platform that provisions and manages Kubernetes clusters for teams through GitOps workflows.
 

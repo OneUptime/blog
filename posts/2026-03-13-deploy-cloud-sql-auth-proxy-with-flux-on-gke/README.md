@@ -12,7 +12,7 @@ Description: Deploy the Cloud SQL Auth Proxy as a sidecar in GKE pods using Flux
 
 Cloud SQL Auth Proxy is the recommended way to connect applications running on Google Kubernetes Engine to Cloud SQL instances. It handles authentication automatically using IAM, encrypts all traffic, and eliminates the need to manage database credentials in your application code. The proxy runs as a sidecar container alongside your application pod and forwards database connections securely.
 
-Managing this sidecar pattern manually can become error-prone as your fleet of services grows. Flux CD provides a GitOps-driven approach where your desired state — including the proxy configuration — lives in Git and is continuously reconciled against your cluster. Any drift is automatically corrected, and every change is traceable through your commit history.
+Managing this sidecar pattern manually can become error-prone as your fleet of services grows. Flux CD provides a GitOps-driven approach where your desired state - including the proxy configuration - lives in Git and is continuously reconciled against your cluster. Any drift is automatically corrected, and every change is traceable through your commit history.
 
 In this guide you will bootstrap Flux CD on a GKE cluster, configure Workload Identity so the proxy can authenticate to Cloud SQL without static credentials, and deploy an application with the Cloud SQL Auth Proxy sidecar entirely through Git.
 
@@ -169,7 +169,7 @@ spec:
 ## Step 6: Commit and Verify Reconciliation
 
 ```bash
-# Push all manifests to Git — Flux will detect and apply them
+# Push all manifests to Git - Flux will detect and apply them
 git add clusters/my-gke-cluster/apps/cloudsql-proxy/
 git commit -m "feat: add Cloud SQL Auth Proxy sidecar for my-app"
 git push

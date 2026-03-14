@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Security, eBPF
+Tags: Cilium, Kubernetes, Network Policy, Security, EBPF
 
 Description: Use Cilium's explicit deny policies to block specific traffic flows even when other allow rules would otherwise permit them, enabling fine-grained security exceptions in complex policy hierarchies.
 
@@ -10,7 +10,7 @@ Description: Use Cilium's explicit deny policies to block specific traffic flows
 
 ## Introduction
 
-Standard Kubernetes NetworkPolicy uses a whitelist model — everything is denied unless explicitly allowed. Cilium supports this model and extends it with explicit deny rules that can override allow rules in the same or lower-priority policy tier. This is particularly useful when you have a broad allow rule (like "allow all traffic from the monitoring namespace") but need to carve out specific exceptions ("but never allow access to the database admin port, even from monitoring").
+Standard Kubernetes NetworkPolicy uses a whitelist model - everything is denied unless explicitly allowed. Cilium supports this model and extends it with explicit deny rules that can override allow rules in the same or lower-priority policy tier. This is particularly useful when you have a broad allow rule (like "allow all traffic from the monitoring namespace") but need to carve out specific exceptions ("but never allow access to the database admin port, even from monitoring").
 
 Cilium's deny rules are evaluated after all allow rules in the same policy. A deny rule for a specific combination of source, destination, and port will block traffic even if an allow rule would otherwise permit it. This allows you to compose policies where a broad allow rule handles the common case and targeted deny rules handle exceptions, without having to rewrite the entire allow rule with exclusions.
 
@@ -160,4 +160,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium's explicit deny policies add an important capability missing from standard Kubernetes NetworkPolicy: the ability to declare exceptions within a broader allow context. The `ingressDeny` and `egressDeny` fields in `CiliumNetworkPolicy` let you block specific traffic without rewriting entire allow rules. A deny rule always wins over an allow rule — use this predictable precedence to carve out security exceptions in broad policies, block cloud metadata endpoints cluster-wide, and prevent access to sensitive ports from monitoring or utility namespaces.
+Cilium's explicit deny policies add an important capability missing from standard Kubernetes NetworkPolicy: the ability to declare exceptions within a broader allow context. The `ingressDeny` and `egressDeny` fields in `CiliumNetworkPolicy` let you block specific traffic without rewriting entire allow rules. A deny rule always wins over an allow rule - use this predictable precedence to carve out security exceptions in broad policies, block cloud metadata endpoints cluster-wide, and prevent access to sensitive ports from monitoring or utility namespaces.

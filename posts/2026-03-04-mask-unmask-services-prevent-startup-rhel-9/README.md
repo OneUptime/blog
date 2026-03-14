@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Service Masking, Security, Linux
+Tags: RHEL, Systemd, Service Masking, Security, Linux
 
 Description: Learn how to use systemctl mask and unmask on RHEL to completely prevent services from starting, even by accident or as a dependency.
 

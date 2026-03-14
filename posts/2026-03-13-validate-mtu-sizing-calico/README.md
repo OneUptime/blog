@@ -54,7 +54,7 @@ kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1450 -t 10
 kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1500 -t 10
 ```
 
-Compare throughput across sizes — a significant drop indicates MTU misconfiguration.
+Compare throughput across sizes - a significant drop indicates MTU misconfiguration.
 
 ## Check for Fragmentation in Node Counters
 

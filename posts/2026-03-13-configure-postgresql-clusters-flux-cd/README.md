@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Database Configuration, CRDs
+Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Database Configuration, CRD
 
 Description: Configure PostgreSQL clusters using database operator CRDs managed by Flux CD for declarative, version-controlled database management.
 
@@ -10,7 +10,7 @@ Description: Configure PostgreSQL clusters using database operator CRDs managed 
 
 ## Introduction
 
-Once a PostgreSQL operator is installed on your Kubernetes cluster, the real power comes from managing PostgreSQL cluster configurations declaratively through CRDs. Whether you are using CloudNativePG, Zalando, CrunchyData PGO, or Percona's operator, the pattern is the same: describe your desired cluster state in a YAML file, commit it to Git, and let Flux apply it. Day-2 operations — scaling replicas, tuning PostgreSQL parameters, rotating passwords — all become pull requests.
+Once a PostgreSQL operator is installed on your Kubernetes cluster, the real power comes from managing PostgreSQL cluster configurations declaratively through CRDs. Whether you are using CloudNativePG, Zalando, CrunchyData PGO, or Percona's operator, the pattern is the same: describe your desired cluster state in a YAML file, commit it to Git, and let Flux apply it. Day-2 operations - scaling replicas, tuning PostgreSQL parameters, rotating passwords - all become pull requests.
 
 This post focuses on best practices for structuring PostgreSQL cluster CRDs in your Flux repository, covering parameter tuning, connection pooling configuration, user management, and rolling upgrade strategies across different operators.
 
@@ -24,7 +24,7 @@ This post focuses on best practices for structuring PostgreSQL cluster CRDs in y
 
 Organize database resources so each cluster is a separate directory, making it easy to apply changes per cluster:
 
-```
+```plaintext
 infrastructure/
   databases/
     postgres/

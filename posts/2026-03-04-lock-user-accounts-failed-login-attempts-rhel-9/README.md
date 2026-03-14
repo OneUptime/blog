@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Account Locking, faillock, Security, Linux
+Tags: RHEL, Account Locking, Faillock, Security, Linux
 
 Description: Configure RHEL to automatically lock user accounts after a specified number of failed login attempts using faillock, with guidance on monitoring and unlocking.
 

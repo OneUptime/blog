@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, UserDefaults, iOS, Data Persistence, Storage, Apple
+Tags: Swift, UserDefaults, IOS, Data Persistence, Storage, Apple
 
 Description: Learn how to use UserDefaults in Swift for storing simple data like user preferences, settings, and small pieces of information with practical examples and best practices.
 

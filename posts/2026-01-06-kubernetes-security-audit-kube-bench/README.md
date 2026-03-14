@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Compliance, CIS Benchmark, kube-bench, DevOps
+Tags: Kubernetes, Security, Compliance, CIS Benchmark, Kube-bench, DevOps
 
 Description: A practical guide to auditing Kubernetes cluster security using kube-bench, interpreting results, and fixing common CIS benchmark failures.
 

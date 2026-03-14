@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Network Monitoring, nload, System Administration
+Tags: Ubuntu, Networking, Network Monitoring, Nload, System Administration
 
 Description: Learn how to install and use nload on Ubuntu to monitor incoming and outgoing network traffic in real-time, with graphs, statistics, and device switching for server bandwidth analysis.
 

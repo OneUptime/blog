@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, JupyterHub, Data Science, HelmRelease, Notebooks
+Tags: Flux CD, Kubernetes, GitOps, JupyterHub, Data Science, HelmRelease, Notebook
 
 Description: Learn how to deploy JupyterHub multi-user notebook server to Kubernetes using Flux CD HelmRelease for a GitOps-managed data science platform.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Session Management, logind, Linux
+Tags: Ubuntu, Systemd, Session Management, Logind, Linux
 
 Description: Configure systemd-logind on Ubuntu to manage user sessions, control power key behavior, set idle timeouts, manage seat access, and handle multi-user environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, kubernetes, static-ips, testing, production-readiness
+Tags: Calico, IPAM, Kubernetes, Static-ip, Testing, Production-readiness
 
 Description: A pre-production testing guide for validating static pod IP assignment in Calico, ensuring your configuration is reliable before deploying to production workloads.
 
@@ -10,7 +10,7 @@ Description: A pre-production testing guide for validating static pod IP assignm
 
 ## Introduction
 
-Assigning static IP addresses to pods is a common requirement for stateful workloads, legacy integrations, and compliance-driven environments. However, static IP configurations can introduce subtle failures that only manifest under specific conditions—such as pod restarts, node failures, or IPAM state corruption.
+Assigning static IP addresses to pods is a common requirement for stateful workloads, legacy integrations, and compliance-driven environments. However, static IP configurations can introduce subtle failures that only manifest under specific conditions-such as pod restarts, node failures, or IPAM state corruption.
 
 Testing static pod IP assignment before moving to production is essential to identify and resolve these edge cases. A thorough pre-production test covers IP assignment, persistence across restarts, conflict detection, and behavior during node failures.
 

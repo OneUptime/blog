@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, TLS Version, Security, Compliance
+Tags: Istio, MTLS, TLS Version, Security, Compliance
 
 Description: How to configure the minimum TLS version for mutual TLS connections in Istio to meet security compliance requirements like PCI DSS.
 

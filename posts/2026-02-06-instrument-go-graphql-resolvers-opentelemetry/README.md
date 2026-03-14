@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, GraphQL, Resolvers, Tracing, gqlgen
+Tags: OpenTelemetry, Go, GraphQL, Resolvers, Tracing, Gqlgen
 
 Description: Implement comprehensive OpenTelemetry instrumentation for GraphQL resolvers to trace queries, mutations, field resolvers, and data loaders with context propagation.
 

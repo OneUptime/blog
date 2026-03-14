@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Transient Units, Linux
+Tags: RHEL, Systemd, System Administration, Transient Units, Linux
 
 Description: Learn how to use systemd Transient Units with systemd-run on RHEL with step-by-step instructions, configuration examples, and best practices.
 

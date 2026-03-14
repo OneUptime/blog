@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, image-automation, Go-Template, Commit-Message, GitOps, Kubernetes
+Tags: Flux, Image-automation, Go-Template, Commit-Message, GitOps, Kubernetes
 
 Description: Learn how to use Go template syntax to customize Flux ImageUpdateAutomation commit messages with dynamic content about changed images.
 

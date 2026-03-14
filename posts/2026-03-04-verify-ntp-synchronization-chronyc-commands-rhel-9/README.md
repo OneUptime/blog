@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, chronyc, NTP, Verification, Linux
+Tags: RHEL, Chronyc, NTP, Verification, Linux
 
 Description: A comprehensive reference for using chronyc commands on RHEL to verify, monitor, and analyze NTP time synchronization status.
 

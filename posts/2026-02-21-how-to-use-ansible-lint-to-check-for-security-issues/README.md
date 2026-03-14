@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Security, DevOps, Automation
+Tags: Ansible, Ansible-lint, Security, DevOps, Automation
 
 Description: Learn how to use ansible-lint security rules to catch vulnerabilities, hardcoded credentials, and risky patterns in your Ansible playbooks before they reach production.
 

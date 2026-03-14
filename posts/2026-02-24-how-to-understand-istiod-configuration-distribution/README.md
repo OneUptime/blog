@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, xDS, Configuration, Envoy
+Tags: Istio, Istiod, XDS, Configuration, Envoy
 
 Description: A deep look at how istiod distributes configuration to Envoy proxies via xDS, including the push pipeline, incremental updates, and how to verify configuration delivery.
 

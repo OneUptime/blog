@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL, Python, pyodbc, SQLAlchemy, Database, Azure, Programming
+Tags: Azure SQL, Python, Pyodbc, SQLAlchemy, Database, Azure, Programming
 
 Description: A practical guide to connecting to Azure SQL Database from Python using pyodbc, SQLAlchemy, and managed identity authentication.
 

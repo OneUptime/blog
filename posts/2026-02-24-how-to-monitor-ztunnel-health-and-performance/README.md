@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ztunnel, Monitoring, Ambient Mesh, Prometheus, Kubernetes
+Tags: Istio, Ztunnel, Monitoring, Ambient Mesh, Prometheus, Kubernetes
 
 Description: Learn how to monitor ztunnel health and performance in Istio ambient mode using metrics, logs, and dashboards for production observability.
 

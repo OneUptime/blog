@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Parallel Builds, CI/CD, Build Optimization, waitFor
+Tags: GCP, Cloud Build, Parallel Builds, CI/CD, Build Optimization, WaitFor
 
 Description: Master the waitFor and id fields in Cloud Build to run build steps in parallel and cut your CI/CD pipeline execution time significantly.
 

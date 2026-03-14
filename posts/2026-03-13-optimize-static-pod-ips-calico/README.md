@@ -2,19 +2,19 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, kubernetes, ipam, static-ip, networking, stateful
+Tags: Calico, Kubernetes, IPAM, Static-ip, Networking, Stateful
 
-Description: Learn how to configure and optimize static IP addresses for Kubernetes pods using Calico IPAM, covering pool design, reservation strategies, and operational patterns for maintaining IP stability across pod restarts. This guide is designed for teams running stateful workloads with strict IP requirements.
+Description: Learn how to configure and optimize static IP addresses for Kubernetes pods using Calico IPAM, covering pool design, reservation strategies, and operational patterns for maintaining IP stability...
 
 ---
 
 ## Introduction
 
-Static pod IPs are a common requirement in environments where Kubernetes workloads must integrate with external systems that use IP-based access controls — firewalls, legacy databases, audit systems, and compliance tooling. Calico IPAM's annotation-based static IP assignment makes this possible while keeping networking declarative and Kubernetes-native.
+Static pod IPs are a common requirement in environments where Kubernetes workloads must integrate with external systems that use IP-based access controls - firewalls, legacy databases, audit systems, and compliance tooling. Calico IPAM's annotation-based static IP assignment makes this possible while keeping networking declarative and Kubernetes-native.
 
 Unlike static IPs in traditional VM environments, Kubernetes pods are ephemeral and may be rescheduled. This creates unique challenges: if a pod is evicted and recreated, you need to ensure the same IP is available on the new node. Proper block affinity planning and IP reservation are critical to making static IPs work reliably across restarts.
 
-This guide covers the full lifecycle — from pool design to pod annotation to monitoring — so your stateful workloads always come up with the expected address.
+This guide covers the full lifecycle - from pool design to pod annotation to monitoring - so your stateful workloads always come up with the expected address.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ spec:
   cidr: 10.48.100.0/24
   # Disable NAT for this pool since IPs are tracked externally
   natOutgoing: true
-  # Disable auto-allocation — IPs must be explicitly requested
+  # Disable auto-allocation - IPs must be explicitly requested
   disabled: false
   nodeSelector: "all()"
 ```
@@ -92,7 +92,7 @@ spec:
       labels:
         app: kafka
       annotations:
-        # Request a specific IP — update per replica via an init container or external webhook
+        # Request a specific IP - update per replica via an init container or external webhook
         cni.projectcalico.org/ipAddrs: '["10.48.100.10"]'
     spec:
       containers:
@@ -125,4 +125,4 @@ calicoctl ipam release --ip=10.48.100.10
 
 ## Conclusion
 
-Static pod IPs with Calico IPAM provide a reliable bridge between cloud-native Kubernetes workloads and IP-based legacy systems. With proper pool design, reservations, and lifecycle management, you can guarantee IP stability across pod restarts and rescheduling events. Treat static IP assignments as first-class infrastructure — document them, monitor them, and automate their lifecycle.
+Static pod IPs with Calico IPAM provide a reliable bridge between cloud-native Kubernetes workloads and IP-based legacy systems. With proper pool design, reservations, and lifecycle management, you can guarantee IP stability across pod restarts and rescheduling events. Treat static IP assignments as first-class infrastructure - document them, monitor them, and automate their lifecycle.

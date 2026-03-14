@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Error, Generic, any, interface, Types
+Tags: Go, Golang, Error, Generic, Any, Interface, Types
 
 Description: Learn how to fix 'cannot use X as type any' errors in Go when working with generics, interfaces, and the any type alias.
 

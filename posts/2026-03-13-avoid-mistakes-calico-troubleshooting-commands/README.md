@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Avoid common mistakes when using Calico troubleshooting commands including running write commands accidentally, misreading calicoctl node status output, and using outdated calicoctl versions against newer clusters.
+Description: Avoid common mistakes when using Calico troubleshooting commands including running write commands accidentally, misreading calicoctl node status output, and using outdated calicoctl versions...
 
 ---
 
@@ -98,4 +98,4 @@ mindmap
 
 ## Conclusion
 
-The highest-risk mistake is running `calicoctl delete` or `calicoctl ipam release` when a read command was intended — these are irreversible without a backup. Always default to `calicoctl get` for diagnostics, and require a second person to approve any write operation during an incident. The second most impactful mistake is treating `calicoctl node status` as cluster-wide when it only reflects one node's perspective. Run it on multiple nodes before concluding that BGP is globally healthy.
+The highest-risk mistake is running `calicoctl delete` or `calicoctl ipam release` when a read command was intended - these are irreversible without a backup. Always default to `calicoctl get` for diagnostics, and require a second person to approve any write operation during an incident. The second most impactful mistake is treating `calicoctl node status` as cluster-wide when it only reflects one node's perspective. Run it on multiple nodes before concluding that BGP is globally healthy.

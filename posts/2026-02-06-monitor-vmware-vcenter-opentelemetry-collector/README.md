@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, VMware, vCenter, vSphere, Virtualization, Metrics, Observability
+Tags: OpenTelemetry, Collector, VMware, VCenter, VSphere, Virtualization, Metrics, Observability
 
 Description: Learn how to monitor VMware vCenter and ESXi hosts using the OpenTelemetry Collector vCenter receiver to track VM performance, resource usage, and cluster health.
 

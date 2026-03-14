@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, stress-ng, Performance Testing, Linux, Benchmarking
+Tags: RHEL, Stress-ng, Performance Testing, Linux, Benchmarking
 
 Description: Learn how to install and use stress-ng on RHEL to perform CPU and memory stress tests, helping you validate system stability under load.
 

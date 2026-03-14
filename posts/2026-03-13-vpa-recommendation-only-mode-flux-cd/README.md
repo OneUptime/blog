@@ -1,10 +1,10 @@
-# How to Configure VPA in Recommendation-Only Mode with Flux CD
+# VPA Recommendation Only Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, VPA, Vertical Pod Autoscaler, Autoscaling, Kubernetes, GitOps, Right-Sizing
+Tags: Flux CD, VPA, Kubernetes, Resource Management, GitOps
 
-Description: Learn how to configure Vertical Pod Autoscaler in recommendation-only mode for right-sizing insights without automatic pod eviction using Flux CD.
+Description: Learn how to use Vertical Pod Autoscaler in Recommendation-Only mode with Flux CD to get resource sizing insights without automatic pod evictions, enabling informed GitOps-based resource updates.
 
 ---
 

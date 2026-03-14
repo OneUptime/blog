@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, vGPU, Virtualization, KVM, NVIDIA
+Tags: Ubuntu, VGPU, Virtualization, KVM, NVIDIA
 
 Description: Guide to setting up NVIDIA vGPU technology on Ubuntu to share a physical GPU across multiple virtual machines, covering licensing, host configuration, and guest VM setup.
 

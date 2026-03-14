@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, k0s, Linux
+Tags: RHEL, Kubernetes, Containers, K0s, Linux
 
 Description: Learn how to install k0s Kubernetes Distribution on RHEL with step-by-step instructions, configuration examples, and best practices.
 

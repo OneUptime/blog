@@ -112,7 +112,7 @@ kubectl describe node <candidate-node> | grep -A10 "Conditions:\|Taints:"
 
 If all nodes have Typha pods due to anti-affinity, remove the `required` anti-affinity temporarily.
 
-## Issue 5: Slow Failover — Felix Takes Too Long to Reconnect
+## Issue 5: Slow Failover - Felix Takes Too Long to Reconnect
 
 **Symptom:** After a Typha pod failure, Felix agents take >60 seconds to reconnect.
 

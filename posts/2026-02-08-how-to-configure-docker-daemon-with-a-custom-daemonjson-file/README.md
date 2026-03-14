@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Configuration, daemon.json, Linux, DevOps, Containers, Logging, Storage, Networking
+Tags: Docker, Configuration, Daemon.json, Linux, DevOps, Containers, Logging, Storage, Networking
 
 Description: A comprehensive guide to configuring the Docker daemon through the daemon.json file, covering logging, storage, networking, security, and performance tuning options.
 

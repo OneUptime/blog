@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Troubleshooting, Best Practices, kube-proxy
+Tags: Calico, Kubernetes, Services, CNI, Troubleshooting, Best Practices, Kube-proxy
 
 Description: Common service networking mistakes in Calico environments, from ClusterIP policy mismatches to kube-proxy conflicts with eBPF mode.
 
@@ -10,7 +10,7 @@ Description: Common service networking mistakes in Calico environments, from Clu
 
 ## Introduction
 
-Service networking mistakes in Calico environments tend to be subtle — connectivity appears to work but policies are not enforced as intended, or source IPs are not what the application expects. The most dangerous mistakes are those where the service is reachable but the security policy is silently bypassed.
+Service networking mistakes in Calico environments tend to be subtle - connectivity appears to work but policies are not enforced as intended, or source IPs are not what the application expects. The most dangerous mistakes are those where the service is reachable but the security policy is silently bypassed.
 
 This post covers the most common service-related mistakes in Calico deployments, with diagnostic commands and concrete fixes for each.
 
@@ -107,10 +107,10 @@ Compare with your external network CIDR. Any overlap is a problem.
 ## Best Practices
 
 - Always write NetworkPolicy using pod label selectors, never ClusterIP ranges
-- Disable kube-proxy before enabling Calico eBPF — never run both simultaneously
+- Disable kube-proxy before enabling Calico eBPF - never run both simultaneously
 - Document your service CIDR alongside your pod CIDR and node CIDR at cluster creation time
 - Monitor endpoint object lag with `kubectl get endpoints` during high-churn deployments
 
 ## Conclusion
 
-Service networking mistakes in Calico are often silent — incorrect policies that appear to work or source IPs that are not what the application expects. The most common issues are ClusterIP-based policy mismatches, kube-proxy and eBPF conflicts, SNAT surprises for NodePort services, stale endpoints, and CIDR overlaps. Addressing each of these with the right policy selectors, dataplane consistency, and CIDR planning prevents the majority of service-related incidents.
+Service networking mistakes in Calico are often silent - incorrect policies that appear to work or source IPs that are not what the application expects. The most common issues are ClusterIP-based policy mismatches, kube-proxy and eBPF conflicts, SNAT surprises for NodePort services, stale endpoints, and CIDR overlaps. Addressing each of these with the right policy selectors, dataplane consistency, and CIDR planning prevents the majority of service-related incidents.

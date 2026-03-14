@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Troubleshooting
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Troubleshooting
 
 Description: Diagnose and fix common TLS certificate issues that prevent Calico components from authenticating to etcd, including expiry, SAN mismatches, and chain-of-trust failures.
 
@@ -10,7 +10,7 @@ Description: Diagnose and fix common TLS certificate issues that prevent Calico 
 
 ## Introduction
 
-TLS certificate issues are among the most disruptive failures in Calico etcd deployments. When a certificate expires or is misconfigured, Calico components fail to connect to etcd, which cascades into policy programming failures, IP allocation errors, and eventually cluster networking outages. The error messages — typically "x509: certificate has expired" or "tls: failed to verify certificate" — point to the problem category but require investigation to identify the specific cause.
+TLS certificate issues are among the most disruptive failures in Calico etcd deployments. When a certificate expires or is misconfigured, Calico components fail to connect to etcd, which cascades into policy programming failures, IP allocation errors, and eventually cluster networking outages. The error messages - typically "x509: certificate has expired" or "tls: failed to verify certificate" - point to the problem category but require investigation to identify the specific cause.
 
 This guide covers the most common certificate-related failures in Calico etcd deployments and provides step-by-step diagnosis and resolution procedures.
 

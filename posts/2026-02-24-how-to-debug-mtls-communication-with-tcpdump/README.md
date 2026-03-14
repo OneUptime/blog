@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, tcpdump, Debugging, Kubernetes
+Tags: Istio, MTLS, Tcpdump, Debugging, Kubernetes
 
 Description: Use tcpdump and other network tools to debug mTLS communication issues between services in an Istio service mesh at the packet level.
 

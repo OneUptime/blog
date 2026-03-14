@@ -10,9 +10,9 @@ Description: A guide to verifying Calico networking for virtual machines on Red 
 
 ## Introduction
 
-Verifying Calico networking on RHEL-based OpenStack follows the same logical workflow as Ubuntu — check Felix health, verify workload endpoints, test VM connectivity — but adds RHEL-specific checks: SELinux audit logs for policy denials, firewalld rules for BGP traffic, and iptables-nft vs iptables-legacy compatibility confirmation.
+Verifying Calico networking on RHEL-based OpenStack follows the same logical workflow as Ubuntu - check Felix health, verify workload endpoints, test VM connectivity - but adds RHEL-specific checks: SELinux audit logs for policy denials, firewalld rules for BGP traffic, and iptables-nft vs iptables-legacy compatibility confirmation.
 
-RHEL's SELinux is the most common source of silent failures in Calico deployments — Felix may appear to be running but unable to manage iptables rules if SELinux denials are blocking it. Checking the SELinux audit log is an essential verification step on RHEL.
+RHEL's SELinux is the most common source of silent failures in Calico deployments - Felix may appear to be running but unable to manage iptables rules if SELinux denials are blocking it. Checking the SELinux audit log is an essential verification step on RHEL.
 
 ## Prerequisites
 

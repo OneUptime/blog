@@ -155,4 +155,4 @@ flowchart LR
 
 ## Conclusion
 
-Setting up Calico in FIPS mode requires alignment at every layer: FIPS-enabled OS kernel, FIPS-compliant Kubernetes, FIPS-enabled Calico images, and the operator's `fipsMode: Enabled` setting. Each layer must be properly configured for the system to be genuinely FIPS compliant — partial enablement creates a false sense of compliance. After setup, always verify using cryptographic audit tools that all inter-component communications use only FIPS-approved algorithms.
+Setting up Calico in FIPS mode requires alignment at every layer: FIPS-enabled OS kernel, FIPS-compliant Kubernetes, FIPS-enabled Calico images, and the operator's `fipsMode: Enabled` setting. Each layer must be properly configured for the system to be genuinely FIPS compliant - partial enablement creates a false sense of compliance. After setup, always verify using cryptographic audit tools that all inter-component communications use only FIPS-approved algorithms.

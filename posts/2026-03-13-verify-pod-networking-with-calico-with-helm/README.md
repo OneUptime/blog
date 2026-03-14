@@ -10,7 +10,7 @@ Description: Learn how to verify Calico pod networking is fully operational afte
 
 ## Introduction
 
-After installing Calico via Helm with the Tigera Operator, verification must cover both the Operator's health and the Calico networking components it manages. The Helm installation introduces additional components — the Tigera Operator and Calico's APIServer — that are not present in the manifest-based installation, and these must be verified in addition to the standard Calico checks.
+After installing Calico via Helm with the Tigera Operator, verification must cover both the Operator's health and the Calico networking components it manages. The Helm installation introduces additional components - the Tigera Operator and Calico's APIServer - that are not present in the manifest-based installation, and these must be verified in addition to the standard Calico checks.
 
 The Tigera Operator provides a `tigerastatus` CRD that gives a unified view of Calico component health. This is the primary verification resource for Helm-based Calico installations. Alongside this, standard pod connectivity checks and calicoctl status queries confirm that networking is operational end-to-end.
 

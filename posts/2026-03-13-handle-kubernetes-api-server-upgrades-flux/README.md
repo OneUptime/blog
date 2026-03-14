@@ -10,7 +10,7 @@ Description: Safely upgrade the Kubernetes API server in a Flux-managed cluster 
 
 ## Introduction
 
-Kubernetes API server upgrades are one of the most consequential operations in cluster management. The API server is the central control plane component — Flux's controllers, all Kubernetes controllers, and all operator tools depend on it. During an upgrade, the API server may be briefly unavailable, API versions may be deprecated, and CRDs may need migration.
+Kubernetes API server upgrades are one of the most consequential operations in cluster management. The API server is the central control plane component - Flux's controllers, all Kubernetes controllers, and all operator tools depend on it. During an upgrade, the API server may be briefly unavailable, API versions may be deprecated, and CRDs may need migration.
 
 Flux CD has specific behaviors during API server upgrades that you need to understand: its controllers will retry with backoff when the API server is unavailable, deprecated API versions in your Git manifests will cause reconciliation failures, and the upgrade itself should ideally be performed with Flux temporarily suspended to prevent reconciliation noise during the sensitive upgrade window.
 
@@ -123,11 +123,11 @@ echo "Flux suspended. Proceeding with API server upgrade."
 The upgrade process varies by cluster setup. For kubeadm:
 
 ```bash
-# For kubeadm clusters — upgrade control plane
+# For kubeadm clusters - upgrade control plane
 kubeadm upgrade plan v1.30.0
 kubeadm upgrade apply v1.30.0
 
-# For managed clusters (EKS, GKE, AKS) — use the provider CLI
+# For managed clusters (EKS, GKE, AKS) - use the provider CLI
 # EKS example:
 aws eks update-cluster-version \
   --name my-cluster \
@@ -212,10 +212,10 @@ flux get all --all-namespaces | grep "False"
 - Always upgrade the API version in Git manifests before the cluster upgrade, not after
 - Run `pluto detect-all-in-cluster` weekly as part of your normal operations to catch deprecations early
 - Test the upgrade in a staging cluster with the same Flux configuration before production
-- Upgrade one minor version at a time — do not skip versions (e.g., 1.27 → 1.28 → 1.29, not 1.27 → 1.29)
+- Upgrade one minor version at a time - do not skip versions (e.g., 1.27 → 1.28 → 1.29, not 1.27 → 1.29)
 - Keep Flux version within the supported range for your Kubernetes version (check Flux's compatibility matrix)
 - After resuming, monitor Flux reconciliation logs for any remaining API version errors
 
 ## Conclusion
 
-Kubernetes API server upgrades require careful coordination with Flux to avoid reconciliation failures caused by deprecated API versions. By checking for deprecated APIs in Git manifests before the upgrade, suspending Flux during the upgrade window, and resuming in dependency order afterward, you can perform major Kubernetes version upgrades with confidence. The GitOps model actually makes upgrades safer — your manifests are in Git, deprecation scanning tools can check them automatically, and the audit trail documents every step of the upgrade process.
+Kubernetes API server upgrades require careful coordination with Flux to avoid reconciliation failures caused by deprecated API versions. By checking for deprecated APIs in Git manifests before the upgrade, suspending Flux during the upgrade window, and resuming in dependency order afterward, you can perform major Kubernetes version upgrades with confidence. The GitOps model actually makes upgrades safer - your manifests are in Git, deprecation scanning tools can check them automatically, and the audit trail documents every step of the upgrade process.

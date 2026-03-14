@@ -12,7 +12,7 @@ Description: Deploy local-path-provisioner for local node storage on Kubernetes 
 
 The `local-path-provisioner` from Rancher dynamically provisions PersistentVolumes using local directories on Kubernetes nodes. Unlike `hostPath` volumes which require manual management, `local-path-provisioner` provides automatic PV creation and cleanup through a StorageClass. It is the default storage class in K3s and is popular for development clusters, single-node setups, and edge deployments where distributed storage is overkill.
 
-Deploying `local-path-provisioner` through Flux CD gives you GitOps-managed local storage configuration — including the storage base path, reclaimPolicy, and cleanup behavior.
+Deploying `local-path-provisioner` through Flux CD gives you GitOps-managed local storage configuration - including the storage base path, reclaimPolicy, and cleanup behavior.
 
 ## Prerequisites
 
@@ -255,9 +255,9 @@ kubectl describe pv $(kubectl get pvc local-path-test -o jsonpath='{.spec.volume
 
 - Use `volumeBindingMode: WaitForFirstConsumer` to ensure volumes are provisioned on the same node where the pod will run.
 - Use `local-path` for development and edge clusters where distributed storage is not justified, but not for production HA deployments.
-- Set `reclaimPolicy: Retain` for data you cannot afford to lose — `Delete` removes the directory immediately on PVC deletion.
+- Set `reclaimPolicy: Retain` for data you cannot afford to lose - `Delete` removes the directory immediately on PVC deletion.
 - Specify per-node paths in the ConfigMap to direct volumes to dedicated disks on storage-class nodes.
-- Avoid using `local-path-provisioner` for StatefulSets that need to migrate between nodes — volumes are node-local and don't follow pods.
+- Avoid using `local-path-provisioner` for StatefulSets that need to migrate between nodes - volumes are node-local and don't follow pods.
 
 ## Conclusion
 

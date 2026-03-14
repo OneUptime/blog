@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Fluentd, Log Aggregation, journald, Linux
+Tags: RHEL, Fluentd, Log Aggregation, Journald, Linux
 
 Description: Learn how to configure Fluentd to Forward journald Logs on RHEL with step-by-step instructions, configuration examples, and best practices.
 

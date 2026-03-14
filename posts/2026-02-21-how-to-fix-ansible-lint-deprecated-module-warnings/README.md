@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Deprecation, Module Migration
+Tags: Ansible, Ansible-lint, Deprecation, Module Migration
 
 Description: Learn how to identify and replace deprecated Ansible modules with their modern equivalents to keep your playbooks compatible with current versions.
 

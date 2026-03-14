@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Health Checking, Kubernetes, Service Mesh
+Tags: Istio, GRPC, Health Checking, Kubernetes, Service Mesh
 
 Description: A practical guide to setting up gRPC health checking with Istio, covering the gRPC health protocol, Kubernetes probes, and Envoy integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt Cloud, CI/CD, Service Accounts, DevOps
+Tags: GCP, BigQuery, Dbt Cloud, CI/CD, Service Accounts, DevOps
 
 Description: A complete guide to setting up dbt Cloud with BigQuery using service account authentication, configuring environments, and building CI/CD pipelines for automated testing and deployment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linkerd, mTLS, Kubernetes, Service Mesh, Security, Zero Trust, Microservices
+Tags: Linkerd, MTLS, Kubernetes, Service Mesh, Security, Zero Trust, Microservices
 
 Description: A practical guide to implementing mutual TLS (mTLS) with Linkerd for secure service-to-service communication in Kubernetes.
 

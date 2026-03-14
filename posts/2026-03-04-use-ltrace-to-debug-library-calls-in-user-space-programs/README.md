@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ltrace, Debugging, Linux
+Tags: RHEL, Ltrace, Debugging, Linux
 
 Description: Learn how to use ltrace to Debug Library Calls in User-Space Programs on RHEL with step-by-step instructions, configuration examples, and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Flask, Python, Gunicorn, Deployment
+Tags: Flux CD, Kubernetes, GitOps, Flask, Python, Gunicorn, Deployments
 
 Description: Deploy a Python Flask application to Kubernetes using Flux CD, with Gunicorn as the production WSGI server and GitOps-driven configuration management.
 
@@ -145,7 +145,7 @@ spec:
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10
-          # Graceful shutdown — give Gunicorn time to finish in-flight requests
+          # Graceful shutdown - give Gunicorn time to finish in-flight requests
           lifecycle:
             preStop:
               exec:

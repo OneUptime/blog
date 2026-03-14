@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: SigNoz, Observability, OpenTelemetry, Flux CD, GitOps, Kubernetes, Metrics, Logs, Traces
+Tags: Flux CD, Kubernetes, GitOps, SigNoz, Observability, OpenTelemetry, Metrics, Tracing, Logging
 
-Description: Deploy SigNoz, the open-source full-stack observability platform, on Kubernetes using Flux CD. This guide covers the SigNoz Helm chart configuration, ClickHouse storage setup, and GitOps-managed observability pipeline.
+Description: Deploy SigNoz, the open-source full-stack observability platform, on Kubernetes using Flux CD.
 
 ---
 
@@ -89,7 +89,7 @@ spec:
         otlpGrpc: 4317
         otlpHttp: 4318
 
-    # ClickHouse storage — the core storage engine for all signals
+    # ClickHouse storage - the core storage engine for all signals
     clickhouse:
       enabled: true
       replicaCount: 1
@@ -181,8 +181,8 @@ spec:
 - Start with `replicaCount: 1` for ClickHouse in development and increase to 3 for production HA.
 - Use SigNoz's built-in retention configuration to set TTLs on metrics, traces, and logs independently.
 - Instrument all microservices with the same `OTEL_SERVICE_NAME` convention so the service map renders correctly.
-- Monitor ClickHouse's own metrics—query latency and insert throughput—to detect storage bottlenecks early.
+- Monitor ClickHouse's own metrics-query latency and insert throughput-to detect storage bottlenecks early.
 
 ## Conclusion
 
-SigNoz deployed via Flux CD provides a unified, open-source observability platform without the operational complexity of managing separate systems for metrics, logs, and traces. The entire deployment—from ClickHouse storage sizing to ingress configuration—lives in Git, making your observability stack fully reproducible and auditable.
+SigNoz deployed via Flux CD provides a unified, open-source observability platform without the operational complexity of managing separate systems for metrics, logs, and traces. The entire deployment-from ClickHouse storage sizing to ingress configuration-lives in Git, making your observability stack fully reproducible and auditable.

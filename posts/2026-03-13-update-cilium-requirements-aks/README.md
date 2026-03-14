@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, aks, azure, kubernetes, requirements, cni, upgrade
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Learn how to review and update Cilium's system requirements on Azure Kubernetes Service (AKS), ensuring your cluster meets all prerequisites before installing or upgrading Cilium.
 
@@ -10,7 +10,7 @@ Description: Learn how to review and update Cilium's system requirements on Azur
 
 ## Introduction
 
-Azure Kubernetes Service (AKS) has specific networking configurations that affect Cilium's requirements. AKS clusters can run with Azure CNI, kubenet, or Azure CNI Overlay — each with different compatibility profiles for Cilium. Before installing or upgrading Cilium on AKS, you must verify that your cluster configuration, node OS, and Kubernetes version meet Cilium's requirements.
+Azure Kubernetes Service (AKS) has specific networking configurations that affect Cilium's requirements. AKS clusters can run with Azure CNI, kubenet, or Azure CNI Overlay - each with different compatibility profiles for Cilium. Before installing or upgrading Cilium on AKS, you must verify that your cluster configuration, node OS, and Kubernetes version meet Cilium's requirements.
 
 AKS also introduces Azure-specific constraints: the network policy engine used, the node image (Ubuntu or Azure Linux), and the Kubernetes version all affect which Cilium features are available. AKS clusters running Azure CNI Powered by Cilium have a different requirements profile than clusters where Cilium is installed as an overlay.
 

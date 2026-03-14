@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, DNS, dnsmasq, Linux
+Tags: RHEL, DNS, Dnsmasq, Linux
 
 Description: Learn how to set Up dnsmasq as a Lightweight DNS Forwarder and DHCP Server on RHEL with step-by-step instructions, configuration examples, and best practices.
 

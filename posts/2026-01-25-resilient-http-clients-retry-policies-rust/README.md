@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, HTTP Client, Retry, Resilience, reqwest
+Tags: Rust, HTTP Client, Retry, Resilience, Reqwest
 
 Description: Learn how to build production-ready HTTP clients in Rust with retry policies, exponential backoff, and circuit breakers using reqwest and custom middleware.
 

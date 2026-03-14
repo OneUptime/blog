@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Network Policies
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Network Policies
 
 Description: A practical guide to testing Kubernetes and Calico network policies on an on-premises cluster to validate that traffic isolation is working as intended.
 

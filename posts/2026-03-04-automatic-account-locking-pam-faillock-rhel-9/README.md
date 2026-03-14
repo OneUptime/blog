@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pam_faillock, Account Locking, Security, Linux
+Tags: RHEL, Pam_faillock, Account Locking, Security, Linux
 
 Description: Step-by-step guide to configuring pam_faillock on RHEL for automatic account lockout after failed login attempts, including how to unlock accounts and exclude specific users.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Neptune, Graph Database, Analytics, openCypher, Data Analysis
+Tags: AWS, Neptune, Graph Database, Analytics, OpenCypher, Data Analysis
 
 Description: Learn how to use Neptune Analytics for fast graph analytics queries on large datasets without managing database infrastructure.
 

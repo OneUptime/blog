@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, mTLS
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, MTLS
 
 Description: Deploy and manage Istio using the IstioOperator CRD with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
 
@@ -10,7 +10,7 @@ Description: Deploy and manage Istio using the IstioOperator CRD with Flux CD fo
 
 ## Introduction
 
-Istio is the most widely adopted service mesh for Kubernetes, providing mTLS, traffic management, observability, and policy enforcement as infrastructure features. Managing Istio's lifecycle — installation, upgrades, and configuration — has historically been complex. The IstioOperator CRD provides a declarative way to describe the desired Istio installation, and Flux CD can manage this CRD through GitOps.
+Istio is the most widely adopted service mesh for Kubernetes, providing mTLS, traffic management, observability, and policy enforcement as infrastructure features. Managing Istio's lifecycle - installation, upgrades, and configuration - has historically been complex. The IstioOperator CRD provides a declarative way to describe the desired Istio installation, and Flux CD can manage this CRD through GitOps.
 
 Using Flux to manage the IstioOperator gives you version-controlled Istio configuration, automatic reconciliation if the installation drifts, and a clear upgrade path via pull requests.
 
@@ -219,4 +219,4 @@ istioctl proxy-status
 
 ## Conclusion
 
-Deploying Istio via Helm charts managed by Flux CD gives you a declarative, GitOps-native service mesh deployment. Every component — from base CRDs to the ingress gateway — is version-controlled and continuously reconciled, making Istio upgrades, configuration changes, and incident rollbacks straightforward operations within your standard GitOps workflow.
+Deploying Istio via Helm charts managed by Flux CD gives you a declarative, GitOps-native service mesh deployment. Every component - from base CRDs to the ingress gateway - is version-controlled and continuously reconciled, making Istio upgrades, configuration changes, and incident rollbacks straightforward operations within your standard GitOps workflow.

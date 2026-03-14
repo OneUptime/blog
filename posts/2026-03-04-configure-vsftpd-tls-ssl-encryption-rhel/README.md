@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, vsftpd, FTP, TLS, SSL, Encryption, Security, Linux
+Tags: RHEL, Vsftpd, FTP, TLS, SSL, Encryption, Security, Linux
 
 Description: Secure vsftpd on RHEL by enabling TLS/SSL encryption to protect FTP credentials and file transfers from eavesdropping.
 

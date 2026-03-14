@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Profiling, Performance, Optimization, cProfile, line_profiler
+Tags: Python, Profiling, Performance, Optimization, CProfile, Line_profiler
 
 Description: Learn to identify performance bottlenecks in Python code using cProfile, line_profiler, and timeit. Understand where your code spends time and how to optimize it.
 

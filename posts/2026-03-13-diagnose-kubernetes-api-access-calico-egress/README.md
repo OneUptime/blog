@@ -10,7 +10,7 @@ Description: Diagnose Kubernetes API server access failures caused by Calico egr
 
 ## Introduction
 
-Calico egress policies blocking access to the Kubernetes API server are a particularly disruptive failure mode because they prevent pods from interacting with the control plane. Workloads that use the Kubernetes API — including operators, service accounts, init containers, and sidecar proxies — fail silently or with confusing error messages that do not immediately suggest a network policy problem.
+Calico egress policies blocking access to the Kubernetes API server are a particularly disruptive failure mode because they prevent pods from interacting with the control plane. Workloads that use the Kubernetes API - including operators, service accounts, init containers, and sidecar proxies - fail silently or with confusing error messages that do not immediately suggest a network policy problem.
 
 The Kubernetes API server is typically accessible at the `kubernetes` Service IP in the `default` namespace (port 443) or directly on the control plane node IPs (port 6443). When a Calico egress policy blocks outbound traffic from pods to these destinations, API calls return connection refused or timeout errors.
 

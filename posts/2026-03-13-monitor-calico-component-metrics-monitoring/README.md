@@ -10,7 +10,7 @@ Description: Monitor the health of your Calico metrics collection pipeline itsel
 
 ## Introduction
 
-Meta-monitoring — monitoring the monitoring system — is essential for Calico observability. If your Prometheus scrapes for Felix metrics start failing, you lose visibility into network health without any warning. By monitoring the metrics pipeline itself, you detect observability gaps before they leave you blind during an incident.
+Meta-monitoring - monitoring the monitoring system - is essential for Calico observability. If your Prometheus scrapes for Felix metrics start failing, you lose visibility into network health without any warning. By monitoring the metrics pipeline itself, you detect observability gaps before they leave you blind during an incident.
 
 ## Prerequisites
 

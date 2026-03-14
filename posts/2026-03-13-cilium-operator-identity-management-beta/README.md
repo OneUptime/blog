@@ -1,8 +1,8 @@
-# Enable Identity Management by Cilium Operator (Beta): Configure, Troubleshoot, Validate, and Monitor
+# Enable Identity Management by Cilium Operator (Beta)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Identity Management, Cilium Operator, Beta
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to enable and configure the Cilium Operator's identity management mode (Beta), which centralizes identity allocation in the Operator to reduce API server load and improve scalability.
 
@@ -10,7 +10,7 @@ Description: Learn how to enable and configure the Cilium Operator's identity ma
 
 ## Introduction
 
-In standard Cilium deployments, each Cilium Agent participates in identity allocation — creating, updating, and garbage collecting CiliumIdentity resources. At large scale, this distributed allocation creates significant API server load as hundreds of agents simultaneously reconcile identity state. The Cilium Operator Identity Management feature (currently in Beta) addresses this by centralizing all identity lifecycle management in the Cilium Operator, reducing the number of API server writes and providing a single authoritative source for identity state.
+In standard Cilium deployments, each Cilium Agent participates in identity allocation - creating, updating, and garbage collecting CiliumIdentity resources. At large scale, this distributed allocation creates significant API server load as hundreds of agents simultaneously reconcile identity state. The Cilium Operator Identity Management feature (currently in Beta) addresses this by centralizing all identity lifecycle management in the Cilium Operator, reducing the number of API server writes and providing a single authoritative source for identity state.
 
 When Operator Identity Management is enabled, Cilium Agents become consumers of identity information rather than producers. The Operator watches for pod label changes, computes new identities, creates CiliumIdentity CRDs, and garbage collects stale identities. Agents simply watch these CRDs and update their local eBPF maps accordingly. This separation of concerns improves scalability and makes identity state easier to reason about and debug.
 

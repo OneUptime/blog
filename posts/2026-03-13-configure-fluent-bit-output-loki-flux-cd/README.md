@@ -10,7 +10,7 @@ Description: Configure Fluent Bit to forward Kubernetes logs to Grafana Loki usi
 
 ## Introduction
 
-Grafana Loki's lightweight label-based indexing makes it an attractive log backend for teams already using Prometheus and Grafana. Rather than running Promtail on every node, you can use Fluent Bit — which you may already have deployed — to ship logs to Loki using its native HTTP push API. This avoids running two separate agents and gives you Fluent Bit's powerful filter and transformation capabilities alongside Loki's cost-effective storage.
+Grafana Loki's lightweight label-based indexing makes it an attractive log backend for teams already using Prometheus and Grafana. Rather than running Promtail on every node, you can use Fluent Bit - which you may already have deployed - to ship logs to Loki using its native HTTP push API. This avoids running two separate agents and gives you Fluent Bit's powerful filter and transformation capabilities alongside Loki's cost-effective storage.
 
 Configuring the Fluent Bit-to-Loki path through Flux CD ensures that label schemas, tenant IDs, and authentication settings are version-controlled and consistently applied across clusters. A wrong label cardinality decision (a common Loki pitfall) is caught in code review rather than discovered after indexes explode.
 
@@ -225,4 +225,4 @@ Open Grafana Explore, select the Loki datasource, and run `{job="fluent-bit", na
 
 ## Conclusion
 
-Fluent Bit's native Loki output plugin, managed through a Flux HelmRelease, gives you a lean and efficient path from Kubernetes logs to a queryable Loki instance. By keeping the label schema in Git, your team can review and approve changes to the log taxonomy before they hit production — preventing the cardinality issues that are Loki's most common operational headache.
+Fluent Bit's native Loki output plugin, managed through a Flux HelmRelease, gives you a lean and efficient path from Kubernetes logs to a queryable Loki instance. By keeping the label schema in Git, your team can review and approve changes to the log taxonomy before they hit production - preventing the cardinality issues that are Loki's most common operational headache.

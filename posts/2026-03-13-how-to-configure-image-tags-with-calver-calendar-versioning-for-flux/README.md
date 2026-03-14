@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Calver, image-automation, ImagePolicy, Versioning, GitOps, Kubernetes
+Tags: Flux, Calver, Image-automation, ImagePolicy, Versioning, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track container image tags that follow Calendar Versioning (CalVer) schemes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Linux, Disk Management, System Administration, Storage, fdisk, parted
+Tags: Linux, Disk Management, System Administration, Storage, Fdisk, Parted
 
 Description: A comprehensive guide to disk partitioning in Linux using fdisk and parted, including creating, resizing, and managing partitions for both MBR and GPT disks.
 

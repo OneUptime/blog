@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, API Server, Lab, Testing, Validation, calicoctl, kubectl
+Tags: Calico, Kubernetes, API Server, CNI, Lab
 
 Description: Step-by-step validation tests for the Calico API server in a lab cluster, confirming API registration, resource management, validation, and RBAC enforcement.
 
@@ -172,7 +172,7 @@ kubectl scale deployment calico-apiserver -n calico-system --replicas=0
 
 # Verify policy enforcement still works (Felix doesn't need API server for enforcement)
 kubectl exec test-client -- wget --timeout=5 -qO- http://$(kubectl get pod test-server -o jsonpath='{.status.podIP}')
-# Expected: timeout (enforcement still active — Felix doesn't use API server for enforcement)
+# Expected: timeout (enforcement still active - Felix doesn't use API server for enforcement)
 
 # Restore API server
 kubectl scale deployment calico-apiserver -n calico-system --replicas=2
@@ -195,8 +195,8 @@ kubectl scale deployment calico-apiserver -n calico-system --replicas=2
 
 - Run RBAC validation after any role changes to confirm permissions are correctly configured
 - Test API server failure resilience annually to confirm your team knows enforcement is independent of the API server
-- Monitor API server pod health as a separate metric from Felix health — they have independent failure modes
+- Monitor API server pod health as a separate metric from Felix health - they have independent failure modes
 
 ## Conclusion
 
-Calico API server validation covers pod health, API registration, CRUD operations, input validation, RBAC enforcement, and failure resilience. The most important validation is the last one — confirming that policy enforcement continues when the API server is unavailable. This test confirms that the API server is in the management path, not the enforcement path, which is the correct separation of concerns.
+Calico API server validation covers pod health, API registration, CRUD operations, input validation, RBAC enforcement, and failure resilience. The most important validation is the last one - confirming that policy enforcement continues when the API server is unavailable. This test confirms that the API server is in the management path, not the enforcement path, which is the correct separation of concerns.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Context Propagation, Environment Variables, Distributed Tracing, CI/CD, Batch Jobs, subprocess
+Tags: OpenTelemetry, Context Propagation, Environment Variables, Distributed Tracing, CI/CD, Batch Jobs, Subprocess
 
 Description: Learn how to use environment variables to propagate OpenTelemetry trace context to subprocesses, scripts, batch jobs, and CI/CD pipelines.
 

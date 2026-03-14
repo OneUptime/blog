@@ -1,4 +1,4 @@
-# How to Test Network Policies with Calico on Self-Managed Google Compute Engine Kubernetes
+# How to Test Network Policies with Calico on GCE Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on Google Compute Engine (GCE) runs Calico as a full CNI with access to all Calico features — unlike GKE where Calico operates in policy-only mode. GCE's networking infrastructure is VPC-based, and Calico can use IPIP encapsulation across GCE instances in different subnets, or route traffic directly using GCE routes for pod CIDRs.
+Self-managed Kubernetes on Google Compute Engine (GCE) runs Calico as a full CNI with access to all Calico features - unlike GKE where Calico operates in policy-only mode. GCE's networking infrastructure is VPC-based, and Calico can use IPIP encapsulation across GCE instances in different subnets, or route traffic directly using GCE routes for pod CIDRs.
 
 Testing network policies on self-managed GCE Kubernetes validates the complete Calico policy stack. GCE's firewall rules and VPC networking coexist with Calico's iptables rules, providing defense-in-depth security. Testing confirms that Calico policies are enforced independently of GCE firewall rules, preventing lateral movement between pods even within the same VPC.
 

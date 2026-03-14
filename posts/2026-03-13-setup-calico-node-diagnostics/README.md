@@ -93,4 +93,4 @@ kubectl debug node/"${PROBLEM_NODE}" --image=alpine -it -- \
 
 ## Conclusion
 
-Calico node diagnostics start with identifying the affected node, finding its calico-node pod, and then checking Felix health, BGP state, and the node's iptables rules in sequence. The `calicoctl node diags` command collects a comprehensive bundle of all these signals automatically. For pod connectivity issues isolated to one node, Felix health and BGP state are the first things to check — they cover 90% of single-node Calico failures.
+Calico node diagnostics start with identifying the affected node, finding its calico-node pod, and then checking Felix health, BGP state, and the node's iptables rules in sequence. The `calicoctl node diags` command collects a comprehensive bundle of all these signals automatically. For pod connectivity issues isolated to one node, Felix health and BGP state are the first things to check - they cover 90% of single-node Calico failures.

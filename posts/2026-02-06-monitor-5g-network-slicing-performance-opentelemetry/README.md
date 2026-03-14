@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, 5G, Network Slicing, eMBB, URLLC, mMTC
+Tags: OpenTelemetry, 5G, Network Slicing, EMBB, URLLC, MMTC
 
 Description: Monitor 5G network slicing performance for eMBB, URLLC, and mMTC service types using OpenTelemetry metrics and traces.
 

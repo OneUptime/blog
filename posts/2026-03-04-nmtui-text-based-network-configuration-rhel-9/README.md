@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nmtui, Network Configuration, Linux
+Tags: RHEL, Nmtui, Network Configuration, Linux
 
 Description: Learn how to use nmtui, the text-based user interface for NetworkManager, to configure network connections on RHEL without memorizing nmcli syntax.
 

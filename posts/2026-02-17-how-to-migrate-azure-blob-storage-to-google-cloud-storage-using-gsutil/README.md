@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, Azure Blob Storage, gsutil, Data Migration, Cloud Migration
+Tags: GCP, Google Cloud Storage, Azure Blob Storage, Gsutil, Data Migration, Cloud Migration
 
 Description: A practical walkthrough for migrating data from Azure Blob Storage to Google Cloud Storage using gsutil, including authentication setup, large-scale transfers, and validation.
 

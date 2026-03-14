@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Networking, Dataplane, Performance
+Tags: Calico, Kubernetes, EBPF, CNI, Networking, Dataplane, Performance
 
 Description: A deep dive into how Calico uses eBPF as a high-performance dataplane, replacing iptables for packet processing in Kubernetes clusters.
 
@@ -45,7 +45,7 @@ graph LR
 
 2. **eBPF maps**: Calico uses kernel eBPF maps (hash tables and LPM tries) to store connection state, policy rules, and routing information. These maps are updated by the control plane (Felix) when configuration changes.
 
-3. **XDP (eXpress Data Path)**: For host endpoints, Calico can optionally attach eBPF programs at the XDP hook, which runs even before the kernel network stack processes the packet — enabling very high performance DDoS mitigation.
+3. **XDP (eXpress Data Path)**: For host endpoints, Calico can optionally attach eBPF programs at the XDP hook, which runs even before the kernel network stack processes the packet - enabling very high performance DDoS mitigation.
 
 ## Key Performance Advantages
 
@@ -69,11 +69,11 @@ kubectl patch installation.operator.tigera.io default \
 
 ## Best Practices
 
-- Always test eBPF on your specific kernel version in a lab before enabling in production — some kernel versions have known eBPF bugs
-- Monitor kernel memory usage when enabling eBPF — eBPF maps consume kernel memory proportional to cluster size
-- Keep kube-proxy disabled after enabling eBPF mode — running both simultaneously causes policy enforcement conflicts
+- Always test eBPF on your specific kernel version in a lab before enabling in production - some kernel versions have known eBPF bugs
+- Monitor kernel memory usage when enabling eBPF - eBPF maps consume kernel memory proportional to cluster size
+- Keep kube-proxy disabled after enabling eBPF mode - running both simultaneously causes policy enforcement conflicts
 - Use `calicoctl node status` to verify the eBPF dataplane is active on all nodes after enabling
 
 ## Conclusion
 
-Calico's eBPF dataplane provides a fundamentally more scalable packet processing model than iptables by leveraging kernel-space programs and hash map lookups. The key benefits — O(1) connection lookups, kube-proxy replacement, DSR, and preserved source IP — make eBPF mode the preferred dataplane for high-performance production clusters running Kubernetes 1.20+ on modern Linux kernels.
+Calico's eBPF dataplane provides a fundamentally more scalable packet processing model than iptables by leveraging kernel-space programs and hash map lookups. The key benefits - O(1) connection lookups, kube-proxy replacement, DSR, and preserved source IP - make eBPF mode the preferred dataplane for high-performance production clusters running Kubernetes 1.20+ on modern Linux kernels.

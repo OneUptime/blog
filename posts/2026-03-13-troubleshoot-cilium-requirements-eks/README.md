@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, EKS, Kubernetes, Networking, Troubleshooting
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
 Description: A practical guide to verifying and troubleshooting Cilium installation requirements on Amazon EKS, covering node IAM roles, kernel versions, and VPC CNI compatibility.
 

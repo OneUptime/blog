@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Error, Permissions, npm, Linux
+Tags: NodeJS, Error, Permissions, Npm, Linux
 
 Description: Learn how to diagnose and fix EACCES permission denied errors in Node.js when installing packages, writing files, or running scripts.
 

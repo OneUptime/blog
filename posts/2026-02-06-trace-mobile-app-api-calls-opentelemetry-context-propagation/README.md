@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Mobile, API Calls, Context Propagation, iOS, Android
+Tags: OpenTelemetry, Mobile, API Calls, Context Propagation, IOS, Android
 
 Description: Master distributed tracing across mobile and backend services using OpenTelemetry context propagation to track complete request flows, correlate errors.
 

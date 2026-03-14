@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, kubectl, Kubernetes, Configuration, DevOps
+Tags: Istio, Kubectl, Kubernetes, Configuration, DevOps
 
 Description: A practical guide to applying, updating, and managing Istio configuration resources using kubectl commands and best practices for production workflows.
 

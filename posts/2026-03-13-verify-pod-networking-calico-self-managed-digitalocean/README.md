@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DigitalOcean, Pod Networking, Self-Managed
+Tags: Calico, Kubernetes, Networking, Verification, DigitalOcean, Self-Managed
 
 Description: Learn how to verify Calico pod networking on a self-managed Kubernetes cluster running on DigitalOcean Droplets, including firewall rule configuration and overlay mode selection.
 
@@ -59,7 +59,7 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
 ```
 
 ```yaml
-# ippool-do-vxlan.yaml — recommended VXLAN config for DigitalOcean
+# ippool-do-vxlan.yaml - recommended VXLAN config for DigitalOcean
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:

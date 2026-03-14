@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, artifactgenerator, Helm, GitOps, Kubernetes, Monorepo
+Tags: Flux, Fluxcd, Artifactgenerator, Helm, GitOps, Kubernetes, Monorepo
 
 Description: Learn how to use the Flux 2.8 ArtifactGenerator to extract Helm charts from monorepos and Git repositories for efficient reconciliation.
 

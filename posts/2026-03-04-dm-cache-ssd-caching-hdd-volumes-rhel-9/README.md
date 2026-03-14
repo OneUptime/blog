@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dm-cache, SSD, Caching, Linux
+Tags: RHEL, Dm-cache, SSD, Caching, Linux
 
 Description: Learn how to use dm-cache on RHEL to accelerate HDD storage with SSD caching, combining HDD capacity with SSD speed.
 

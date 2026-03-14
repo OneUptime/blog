@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, direnv, Development, Shell, Environment
+Tags: Ubuntu, Direnv, Development, Shell, Environment
 
 Description: Learn how to install and configure direnv on Ubuntu to automatically load and unload project-specific environment variables when you change directories.
 

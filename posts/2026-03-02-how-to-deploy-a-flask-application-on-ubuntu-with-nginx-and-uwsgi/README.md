@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Flask, uWSGI, NGINX, Python
+Tags: Ubuntu, Flask, UWSGI, NGINX, Python
 
 Description: Deploy a production Flask application on Ubuntu using uWSGI as the application server and Nginx as the reverse proxy, with systemd socket activation for reliability.
 

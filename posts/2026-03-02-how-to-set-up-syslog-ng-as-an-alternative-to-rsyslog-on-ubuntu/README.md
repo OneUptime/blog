@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, syslog-ng, System Administration, Syslog
+Tags: Ubuntu, Logging, Syslog-ng, System Administration, Syslog
 
 Description: Install and configure syslog-ng on Ubuntu as a powerful alternative to rsyslog, with flexible log routing, filtering, parsing, and remote forwarding capabilities.
 

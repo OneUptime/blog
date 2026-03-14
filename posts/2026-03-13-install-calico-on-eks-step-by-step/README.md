@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, EKS, AWS, Kubernetes, Networking, Network Policy, CNI
+Tags: Calico, Kubernetes, Networking, CNI, Installation, EKS, AWS
 
 Description: Step-by-step guide to installing Calico on Amazon EKS, covering both Calico as a full CNI replacement for the VPC CNI and as a network policy engine.
 
@@ -168,7 +168,7 @@ kubectl exec -it other-pod -n production -- curl --max-time 5 http://api-service
 
 ## Best Practices
 
-- For EKS, keep the VPC CNI and use Calico for policy enforcement only — full CNI replacement complicates VPC integration
+- For EKS, keep the VPC CNI and use Calico for policy enforcement only - full CNI replacement complicates VPC integration
 - Use Calico `GlobalNetworkPolicy` for cluster-wide baseline rules (node-to-pod communication, health checks)
 - Enable Calico's eBPF dataplane for better performance on EKS with large workloads
 - Use AWS Security Groups in conjunction with Calico policies for defense-in-depth network security

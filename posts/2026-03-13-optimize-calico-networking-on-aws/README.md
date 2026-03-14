@@ -12,7 +12,7 @@ Description: Performance optimization techniques for Calico networking on AWS, i
 
 Calico networking on AWS has several performance optimization opportunities that are specific to the AWS environment. Cross-AZ encapsulation adds overhead and cost; IPAM block sizing affects how efficiently IP addresses are allocated; and the choice between iptables and eBPF dataplanes has significant throughput implications on modern EC2 instance types with Linux kernel 5.3+.
 
-Optimization on AWS also has a cost dimension — cross-AZ data transfer is billed per GB, so reducing unnecessary cross-AZ pod traffic directly reduces infrastructure costs. This guide covers both performance and cost optimizations for Calico on AWS.
+Optimization on AWS also has a cost dimension - cross-AZ data transfer is billed per GB, so reducing unnecessary cross-AZ pod traffic directly reduces infrastructure costs. This guide covers both performance and cost optimizations for Calico on AWS.
 
 ## Prerequisites
 

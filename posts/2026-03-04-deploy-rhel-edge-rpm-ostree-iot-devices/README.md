@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Edge, rpm-ostree, IoT
+Tags: RHEL, Edge, Rpm-ostree, IoT
 
 Description: Deploy RHEL for Edge with rpm-ostree on IoT devices for immutable updates.
 

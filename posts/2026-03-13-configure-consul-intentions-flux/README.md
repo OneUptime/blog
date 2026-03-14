@@ -10,7 +10,7 @@ Description: Manage Consul Connect service-to-service intentions using Flux CD G
 
 ## Introduction
 
-Consul Intentions define which services are allowed to communicate with each other in a Consul Connect service mesh. They operate at the identity level — using cryptographically verified service identities rather than IP addresses — to enforce a zero-trust communication model. When a service tries to establish a connection, Consul checks whether an intention exists permitting that connection before allowing the Envoy proxy to forward it.
+Consul Intentions define which services are allowed to communicate with each other in a Consul Connect service mesh. They operate at the identity level - using cryptographically verified service identities rather than IP addresses - to enforce a zero-trust communication model. When a service tries to establish a connection, Consul checks whether an intention exists permitting that connection before allowing the Envoy proxy to forward it.
 
 Managing Intentions through Flux CD ensures your service communication policy is version-controlled. Adding a new service dependency or revoking an existing permission is a pull request, giving security teams a clear record of every authorization change.
 
@@ -215,11 +215,11 @@ kubectl exec -n consul consul-server-0 -- \
 
 ## Best Practices
 
-- Start with a `deny-all` wildcard intention and explicitly allow only the service-to-service paths you need — this enforces zero-trust from day one.
+- Start with a `deny-all` wildcard intention and explicitly allow only the service-to-service paths you need - this enforces zero-trust from day one.
 - Use L7 intentions with HTTP permissions for sensitive endpoints like admin APIs, restricting by both source service and HTTP method/path.
 - Allow Prometheus scraping via intentions scoped to the `/metrics` path so your monitoring stack can function without opening broad access.
 - Name ServiceIntentions resources after the destination service (e.g., `api-service-intentions`) for clarity when listing with `kubectl get serviceintentions`.
-- Test intention changes in a staging namespace before applying to production — a missing intention can silently break service communication if ACLs are in `deny` mode.
+- Test intention changes in a staging namespace before applying to production - a missing intention can silently break service communication if ACLs are in `deny` mode.
 
 ## Conclusion
 

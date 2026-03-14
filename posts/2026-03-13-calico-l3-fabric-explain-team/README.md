@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's L3 BGP routing fabric to 
 
 ## Introduction
 
-Explaining BGP and L3 routing to teams unfamiliar with network routing protocols is challenging. BGP has a reputation for complexity — and while full BGP configuration is indeed complex, the way Calico uses BGP is conceptually simple: each node advertises "I have pods in this IP range" and learns which other nodes have pods in other IP ranges.
+Explaining BGP and L3 routing to teams unfamiliar with network routing protocols is challenging. BGP has a reputation for complexity - and while full BGP configuration is indeed complex, the way Calico uses BGP is conceptually simple: each node advertises "I have pods in this IP range" and learns which other nodes have pods in other IP ranges.
 
 This post gives you the explanations, analogies, and live commands to make Calico's BGP mode comprehensible to developers, SREs, and managers alike.
 
@@ -57,7 +57,7 @@ Show the routing table and say: "These routes are exactly the phone book entries
 
 Developers care about whether their application behavior changes. For BGP mode:
 
-> "Your pods have the same IP addresses as in overlay mode. The difference is how traffic gets between nodes. In BGP mode, there's no extra wrapping — the packet goes directly from Node 1 to Node 2 with your pod's IP as the source. This means your application gets a few microseconds less latency, and large file transfers are faster because there's no overhead reducing the effective packet size."
+> "Your pods have the same IP addresses as in overlay mode. The difference is how traffic gets between nodes. In BGP mode, there's no extra wrapping - the packet goes directly from Node 1 to Node 2 with your pod's IP as the source. This means your application gets a few microseconds less latency, and large file transfers are faster because there's no overhead reducing the effective packet size."
 
 The key developer benefit: lower latency and full MTU available for application payloads.
 
@@ -82,7 +82,7 @@ Key points for network engineers:
 
 For SREs managing large clusters:
 
-> "In a small cluster, every node tells every other node about its pods. In a large cluster, this creates too many connections — 100 nodes × 100 peers = 10,000 BGP sessions. Route reflectors solve this. A few dedicated nodes ('reflectors') collect route announcements from all other nodes and re-announce them to everyone. The reflector is like a postal sorting center — it receives all mail and redistributes it."
+> "In a small cluster, every node tells every other node about its pods. In a large cluster, this creates too many connections - 100 nodes × 100 peers = 10,000 BGP sessions. Route reflectors solve this. A few dedicated nodes ('reflectors') collect route announcements from all other nodes and re-announce them to everyone. The reflector is like a postal sorting center - it receives all mail and redistributes it."
 
 Identify route reflectors in the cluster:
 ```bash

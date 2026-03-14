@@ -14,7 +14,7 @@ Kubernetes infrastructure costs can spiral out of control without proper visibil
 
 Flux CD provides the GitOps foundation for deploying and managing Kubecost as code. By defining your Kubecost installation in a Git repository, you get full audit trails, consistent deployments across environments, and the ability to roll back configuration changes instantly. This combination of Kubecost and Flux CD gives your team both cost visibility and operational confidence.
 
-In this guide, you will deploy Kubecost into a Kubernetes cluster using Flux CD HelmRelease. You will configure persistent storage for cost data retention, set up namespace-level cost allocation, and expose the Kubecost UI through an Ingress resource — all managed declaratively through Git.
+In this guide, you will deploy Kubecost into a Kubernetes cluster using Flux CD HelmRelease. You will configure persistent storage for cost data retention, set up namespace-level cost allocation, and expose the Kubecost UI through an Ingress resource - all managed declaratively through Git.
 
 ## Prerequisites
 
@@ -184,12 +184,12 @@ Expected output shows the HelmRelease in a `Ready` state with `Applied revision`
 
 ## Best Practices
 
-- Enable RBAC on the Kubecost UI — never expose cost data without authentication, as it reveals your infrastructure topology.
+- Enable RBAC on the Kubecost UI - never expose cost data without authentication, as it reveals your infrastructure topology.
 - Set a cost retention period aligned with your billing cycle; 30 days ensures you can reconcile Kubecost reports with actual cloud invoices.
 - Use Kubecost's namespace labels feature to map costs to teams; define label conventions in a shared ConfigMap managed by Flux.
 - Schedule weekly cost reports using Kubecost's Actions feature and distribute to engineering leads.
 - Store Kubecost Helm values in a separate Secret for any API tokens and reference them with `valuesFrom` in the HelmRelease.
-- Monitor Kubecost's own resource usage — it can be memory-intensive in large clusters; adjust limits accordingly.
+- Monitor Kubecost's own resource usage - it can be memory-intensive in large clusters; adjust limits accordingly.
 
 ## Conclusion
 

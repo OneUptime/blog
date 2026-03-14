@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, XDP, Networking, Linux, Monitoring, Performance
+Tags: EBPF, XDP, Networking, Linux, Monitoring, Performance
 
 Description: Learn how to use eBPF and XDP for high-performance network traffic monitoring and analysis.
 

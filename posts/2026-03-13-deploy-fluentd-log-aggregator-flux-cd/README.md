@@ -227,7 +227,7 @@ kubectl exec -n logging -it deploy/kibana -- \
 - Always enable file-based buffering (`@type file`) rather than memory buffers for Fluentd so logs survive pod restarts.
 - Use `overflow_action block` only when you cannot afford to lose logs; otherwise use `drop_oldest_chunk` to prevent memory exhaustion.
 - Run at least two Fluentd replicas with a Kubernetes Service in front so a single pod restart does not interrupt log flow.
-- Version your Fluentd configuration in Git and avoid embedding secrets in the ConfigMap — use External Secrets or Sealed Secrets.
+- Version your Fluentd configuration in Git and avoid embedding secrets in the ConfigMap - use External Secrets or Sealed Secrets.
 - Add Prometheus metrics using the `fluent-plugin-prometheus` gem and scrape Fluentd's `/metrics` endpoint.
 
 ## Conclusion

@@ -12,7 +12,7 @@ Description: Configure Fluent Bit to archive Kubernetes logs to AWS S3 using Flu
 
 Shipping logs to AWS S3 is a common requirement for long-term retention and compliance. S3 offers virtually unlimited storage at low cost, and logs stored there can be queried with Amazon Athena, processed with AWS Glue, or ingested into a SIEM. Fluent Bit's S3 output plugin writes log chunks directly to S3 in a configurable format (JSON Lines, Parquet via AWS Kinesis Firehose, etc.) with built-in upload buffering and retry logic.
 
-Managing the S3 output configuration through Flux CD ensures that bucket names, IAM role annotations, and upload intervals are version-controlled. AWS IAM credentials are injected via IRSA (IAM Roles for Service Accounts) or environment variables from Kubernetes Secrets — never stored in plaintext in Git.
+Managing the S3 output configuration through Flux CD ensures that bucket names, IAM role annotations, and upload intervals are version-controlled. AWS IAM credentials are injected via IRSA (IAM Roles for Service Accounts) or environment variables from Kubernetes Secrets - never stored in plaintext in Git.
 
 This guide configures Fluent Bit's S3 output plugin as a Flux HelmRelease on an EKS cluster using IRSA for credential-free authentication.
 
@@ -263,4 +263,4 @@ kubectl logs -n logging daemonset/fluent-bit --tail=50 | grep "s3"
 
 ## Conclusion
 
-Fluent Bit's S3 output plugin, managed through a Flux HelmRelease with IRSA authentication, delivers a production-ready log archival pipeline with minimal operational overhead. Logs are automatically compressed, partitioned by date, and uploaded to S3 where they can be queried for compliance, debugging, or security analysis. Every configuration parameter — bucket name, prefix pattern, upload interval — is a Git-reviewed change, keeping your archival pipeline as well-governed as the rest of your infrastructure.
+Fluent Bit's S3 output plugin, managed through a Flux HelmRelease with IRSA authentication, delivers a production-ready log archival pipeline with minimal operational overhead. Logs are automatically compressed, partitioned by date, and uploaded to S3 where they can be queried for compliance, debugging, or security analysis. Every configuration parameter - bucket name, prefix pattern, upload interval - is a Git-reviewed change, keeping your archival pipeline as well-governed as the rest of your infrastructure.

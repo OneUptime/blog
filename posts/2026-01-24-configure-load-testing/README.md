@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Performance, Testing, Load Testing, k6, JMeter, Locust, DevOps, CI/CD, Scalability
+Tags: Performance, Testing, Load Testing, K6, JMeter, Locust, DevOps, CI/CD, Scalability
 
 Description: A practical guide to configuring load testing for web applications using k6, Locust, and Artillery, including realistic scenarios, CI/CD integration, and result analysis.
 

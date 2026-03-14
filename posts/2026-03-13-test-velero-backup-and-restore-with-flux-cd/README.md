@@ -10,7 +10,7 @@ Description: Test Velero backup and restore procedures in a Flux CD managed clus
 
 ## Introduction
 
-A backup strategy that is never tested is not a backup strategy—it is a false sense of security. Backup systems fail in subtle ways: credentials expire, storage quotas are hit, new resource types are excluded, or application data is not consistent at snapshot time. Regular restore testing is the only way to know that your backups will work when you need them.
+A backup strategy that is never tested is not a backup strategy-it is a false sense of security. Backup systems fail in subtle ways: credentials expire, storage quotas are hit, new resource types are excluded, or application data is not consistent at snapshot time. Regular restore testing is the only way to know that your backups will work when you need them.
 
 Testing Velero backups in a Flux CD managed cluster requires a systematic approach that validates both the backup completeness and the restore procedure, including how it interacts with Flux's reconciliation. This guide covers a complete backup testing workflow including pre-backup validation, post-restore validation, and automated test scheduling.
 
@@ -270,7 +270,7 @@ spec:
 - Run restore tests on a schedule, not just after incidents. Weekly automated restore tests catch failures before they become disasters.
 - Test restores to a separate namespace or cluster when possible. Restoring to the same namespace where Flux is running the application risks confusing the test with production.
 - Validate data integrity, not just pod availability. Pods starting up does not mean the PV data was correctly restored.
-- Include restore testing in your team's disaster recovery runbook. Time yourself running through the procedure—if it takes longer than your RTO, optimize it.
+- Include restore testing in your team's disaster recovery runbook. Time yourself running through the procedure-if it takes longer than your RTO, optimize it.
 - Alert on backup failures within 30 minutes of the scheduled backup time. A missed backup should be treated with the same urgency as an application alert.
 
 ## Conclusion

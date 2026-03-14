@@ -10,7 +10,7 @@ Description: Recover from accidental CRD deletion in a Flux-managed cluster, res
 
 ## Introduction
 
-CustomResourceDefinitions (CRDs) are the extension points that make Kubernetes so powerful. Flux CD itself depends on CRDs for every resource it manages — GitRepository, Kustomization, HelmRelease, and more. Accidentally deleting a CRD does not just remove the definition; it cascades to delete every custom resource of that type across all namespaces. This is a cluster-wide event that can break dozens of workloads simultaneously.
+CustomResourceDefinitions (CRDs) are the extension points that make Kubernetes so powerful. Flux CD itself depends on CRDs for every resource it manages - GitRepository, Kustomization, HelmRelease, and more. Accidentally deleting a CRD does not just remove the definition; it cascades to delete every custom resource of that type across all namespaces. This is a cluster-wide event that can break dozens of workloads simultaneously.
 
 Recovery from CRD deletion requires understanding two separate problems: restoring the CRD schema itself, and restoring the custom resource instances that were deleted when the CRD disappeared. Flux can help with both, but the order of operations matters critically.
 
@@ -62,7 +62,7 @@ flux bootstrap github \
 kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
 ```
 
-After CRDs are restored, Flux's controllers will restart and begin reading custom resources again. Resources that were deleted along with the CRDs will be missing — Flux will recreate them from Git.
+After CRDs are restored, Flux's controllers will restart and begin reading custom resources again. Resources that were deleted along with the CRDs will be missing - Flux will recreate them from Git.
 
 ## Step 3: Restore Third-Party CRDs Managed by Flux
 
@@ -94,7 +94,7 @@ spec:
 flux reconcile kustomization cert-manager-crds --with-source
 ```
 
-Note `prune: false` on CRD Kustomizations — this prevents Flux from ever automatically deleting CRDs, which would be catastrophic.
+Note `prune: false` on CRD Kustomizations - this prevents Flux from ever automatically deleting CRDs, which would be catastrophic.
 
 ## Step 4: Restore Custom Resource Instances
 
@@ -163,7 +163,7 @@ spec:
 
 ## Best Practices
 
-- Set `prune: false` on all Kustomizations that manage CRDs — automatic CRD pruning is almost never desired.
+- Set `prune: false` on all Kustomizations that manage CRDs - automatic CRD pruning is almost never desired.
 - Store CRD manifests in Git so Flux can restore them automatically after deletion.
 - Use Velero or etcd snapshots as a secondary backup for custom resources not in Git.
 - Apply RBAC restrictions limiting who can delete CRDs in production clusters.

@@ -67,7 +67,7 @@ spec:
         name: csi-driver-nfs
         namespace: flux-system
   values:
-    # Controller (Deployment) — manages PV lifecycle
+    # Controller (Deployment) - manages PV lifecycle
     controller:
       replicas: 2
       resources:
@@ -86,7 +86,7 @@ spec:
             cpu: "200m"
             memory: "200Mi"
 
-    # Node DaemonSet — performs the actual NFS mount on each node
+    # Node DaemonSet - performs the actual NFS mount on each node
     node:
       resources:
         livenessProbe:
@@ -118,7 +118,7 @@ spec:
 ```yaml
 # infrastructure/storage/csi-nfs/storageclasses.yaml
 
-# Primary NFS StorageClass — default for RWX workloads
+# Primary NFS StorageClass - default for RWX workloads
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -281,11 +281,11 @@ kubectl run nfs-test --image=busybox --rm -it --restart=Never \
 
 ## Best Practices
 
-- Install `nfs-common` (Debian) or `nfs-utils` (RHEL) on all cluster nodes before deploying the driver — the CSI node DaemonSet requires NFS utilities on the host to perform mounts.
+- Install `nfs-common` (Debian) or `nfs-utils` (RHEL) on all cluster nodes before deploying the driver - the CSI node DaemonSet requires NFS utilities on the host to perform mounts.
 - Use `volumeBindingMode: Immediate` for NFS StorageClasses since NFS volumes are not zone-affine and do not require `WaitForFirstConsumer`.
-- Set `reclaimPolicy: Retain` for production data StorageClasses — with `Delete`, the entire NFS subdirectory is removed when the PVC is deleted.
+- Set `reclaimPolicy: Retain` for production data StorageClasses - with `Delete`, the entire NFS subdirectory is removed when the PVC is deleted.
 - Use the `nfsvers=4.1` mount option for production to benefit from NFSv4.1 features including parallel NFS (pNFS) and better locking semantics.
-- Monitor the CSI controller and node DaemonSet pods for mount errors — NFS mount failures appear in the node DaemonSet logs and as `FailedMount` events on pods.
+- Monitor the CSI controller and node DaemonSet pods for mount errors - NFS mount failures appear in the node DaemonSet logs and as `FailedMount` events on pods.
 
 ## Conclusion
 

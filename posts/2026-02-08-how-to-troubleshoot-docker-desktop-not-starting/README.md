@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Troubleshooting, macOS, Windows, Linux, DevOps
+Tags: Docker, Docker Desktop, Troubleshooting, MacOS, Windows, Linux, DevOps
 
 Description: Fix Docker Desktop startup failures on macOS, Windows, and Linux with step-by-step troubleshooting for common issues.
 

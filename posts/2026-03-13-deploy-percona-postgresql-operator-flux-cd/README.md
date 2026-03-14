@@ -251,4 +251,4 @@ kubectl exec -n postgres cluster1-instance1-0 -- \
 
 ## Conclusion
 
-The Percona PostgreSQL Operator deployed via Flux CD provides a mature, enterprise-grade PostgreSQL management platform with automated HA, connection pooling, and backup management built in. Every aspect of the cluster configuration — topology, backup schedules, PostgreSQL parameters — is version-controlled in Git and applied automatically by Flux. This makes your database infrastructure as reproducible and auditable as your application deployments.
+The Percona PostgreSQL Operator deployed via Flux CD provides a mature, enterprise-grade PostgreSQL management platform with automated HA, connection pooling, and backup management built in. Every aspect of the cluster configuration - topology, backup schedules, PostgreSQL parameters - is version-controlled in Git and applied automatically by Flux. This makes your database infrastructure as reproducible and auditable as your application deployments.

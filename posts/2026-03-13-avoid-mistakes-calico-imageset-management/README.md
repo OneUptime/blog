@@ -10,7 +10,7 @@ Description: Identify and avoid the most common mistakes when managing Calico Im
 
 ## Introduction
 
-Calico ImageSet management has several sharp edges that catch even experienced Kubernetes operators. The most dangerous mistakes are silent failures — the operator appears to accept your ImageSet without errors, but continues using the old images or falls back to public registry pulls. Understanding why these failures happen silently and how to avoid them saves hours of debugging during critical upgrade windows.
+Calico ImageSet management has several sharp edges that catch even experienced Kubernetes operators. The most dangerous mistakes are silent failures - the operator appears to accept your ImageSet without errors, but continues using the old images or falls back to public registry pulls. Understanding why these failures happen silently and how to avoid them saves hours of debugging during critical upgrade windows.
 
 The common mistakes fall into three categories: incorrect resource configuration (wrong naming, missing fields, format errors), registry setup problems (authentication, network access, image path mismatches), and operational process errors (applying ImageSet without verifying operator pickup, skipping validation). This guide covers each category with concrete examples of wrong vs. correct approaches.
 

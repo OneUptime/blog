@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, requirements, cni, system-requirements, bare-metal
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: A comprehensive guide to checking and updating Cilium's system requirements on generic (self-managed) Kubernetes clusters, covering kernel version, Linux distribution, and network configuration prerequisites.
+Description: A comprehensive guide to checking and updating Cilium's system requirements on generic (self-managed) Kubernetes clusters, covering kernel version, Linux distribution, and network configuration...
 
 ---
 
 ## Introduction
 
-Generic Kubernetes clusters — those not managed by a cloud provider (bare metal, on-premises VMs, private cloud) — provide maximum flexibility for Cilium configuration but also require the most thorough requirements verification. Unlike managed services that ensure baseline compatibility, self-managed clusters may run a wide variety of Linux distributions, kernel versions, and storage configurations.
+Generic Kubernetes clusters - those not managed by a cloud provider (bare metal, on-premises VMs, private cloud) - provide maximum flexibility for Cilium configuration but also require the most thorough requirements verification. Unlike managed services that ensure baseline compatibility, self-managed clusters may run a wide variety of Linux distributions, kernel versions, and storage configurations.
 
 Cilium's requirements for generic Kubernetes span multiple layers: the Linux kernel must support specific eBPF program types, the container runtime must mount the eBPF filesystem, network interfaces must be configurable, and the Kubernetes version must be within the supported compatibility window.
 

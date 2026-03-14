@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, Migration, GitOps, Kubernetes, Infrastructure as Code
+Tags: Flux CD, Tofu Controller, Terraform, Migration, GitOps, Kubernetes
 
 Description: Migrate existing Terraform workloads from CLI-based execution to the Tofu Controller with Flux CD for GitOps-native infrastructure management.
 
@@ -10,7 +10,7 @@ Description: Migrate existing Terraform workloads from CLI-based execution to th
 
 ## Introduction
 
-Many teams start their Terraform journey with CI/CD pipelines that run `terraform apply` imperatively. While this provides basic automation, it lacks the continuous reconciliation and drift detection that GitOps offers. Migrating to the Tofu Controller transforms Terraform from a deployment tool into a continuously reconciling controller—similar to moving from manual `kubectl apply` to Kubernetes deployments.
+Many teams start their Terraform journey with CI/CD pipelines that run `terraform apply` imperatively. While this provides basic automation, it lacks the continuous reconciliation and drift detection that GitOps offers. Migrating to the Tofu Controller transforms Terraform from a deployment tool into a continuously reconciling controller-similar to moving from manual `kubectl apply` to Kubernetes deployments.
 
 The migration path is non-destructive. Existing Terraform state is preserved and imported into the Tofu Controller without reprovisioning resources. The migration involves three phases: preparing the Kubernetes environment, importing existing state, and configuring the Tofu Controller to manage the resources going forward.
 
@@ -159,7 +159,7 @@ kubectl get terraform production-vpc -n flux-system --watch
 ```
 
 Expected output after successful state import:
-```
+```plaintext
 NAME             READY   STATUS                          AGE
 production-vpc   False   Plan: 0 to add, 0 to change, 0 to destroy   2m
 ```

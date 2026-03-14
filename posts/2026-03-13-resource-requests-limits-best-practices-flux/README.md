@@ -202,7 +202,7 @@ jobs:
 - Always set both requests and limits; pods with only requests but no limits receive Burstable QoS and can be evicted under memory pressure.
 - Use the same value for CPU requests and limits only when you need Guaranteed QoS; for most web services, CPU throttling is preferable to OOMKills.
 - Regularly audit namespace quotas with `kubectl describe resourcequota -A` and adjust based on actual usage data from Kubecost or OpenCost.
-- Apply LimitRanges before deploying applications — once pods are running without resources, restarting them to apply defaults can cause brief outages.
+- Apply LimitRanges before deploying applications - once pods are running without resources, restarting them to apply defaults can cause brief outages.
 - Use Kyverno or OPA Gatekeeper as a complement to LimitRanges to enforce that all manifests explicitly specify resources rather than relying on defaults.
 - Tag all ResourceQuotas and LimitRanges with team and cost-center labels to enable chargeback reporting.
 

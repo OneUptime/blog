@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Spring Boot, gRPC, Azure Container Apps, Java, Docker, Microservices, Containerization
+Tags: Spring Boot, GRPC, Azure Container Apps, Java, Docker, Microservices, Containerization
 
 Description: Learn how to build a Spring Boot gRPC service and deploy it to Azure Container Apps for scalable, containerized microservice communication.
 

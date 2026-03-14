@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Security, Service Mesh, Kubernetes, Zero Trust
+Tags: Istio, MTLS, Security, Service Mesh, Kubernetes, Zero Trust
 
 Description: A complete guide to enabling and configuring mutual TLS in Istio for secure service communication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Cron Jobs, cron.yaml, Scheduling, Background Tasks
+Tags: GCP, App Engine, Cron Jobs, Cron.yaml, Scheduling, Background Tasks
 
 Description: Learn how to set up scheduled background tasks in App Engine using cron.yaml to run reports, clean up data, send emails, and perform recurring maintenance.
 

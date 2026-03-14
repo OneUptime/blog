@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Zones, Security, Linux
+Tags: RHEL, Firewalld, Zones, Security, Linux
 
 Description: A beginner-friendly guide to understanding and configuring firewalld zones on RHEL, covering zone concepts, interface assignment, and basic service management.
 

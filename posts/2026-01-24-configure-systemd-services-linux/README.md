@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, systemd, Services, Init System, Process Management, DevOps
+Tags: Linux, System Administration, Systemd, Services, Init System, Process Management, DevOps
 
 Description: A comprehensive guide to creating, configuring, and managing systemd services in Linux, including unit files, dependencies, resource limits, and troubleshooting.
 

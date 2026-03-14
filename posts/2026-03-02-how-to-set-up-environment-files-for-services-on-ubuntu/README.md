@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Configuration Management, DevOps, Linux
+Tags: Ubuntu, Systemd, Configuration Management, DevOps, Linux
 
 Description: Learn how to configure environment files for systemd services on Ubuntu, separating configuration from service definitions and managing sensitive values securely.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, LoadBalancer, MetalLB, Bare Metal, Networking, kube-vip, PureLB, OpenELB
+Tags: Kubernetes, LoadBalancer, MetalLB, Bare Metal, Networking, Kube-vip, PureLB, OpenELB
 
 Description: Running Kubernetes on bare metal or on-premises? Learn how to expose services with LoadBalancer type using MetalLB, kube-vip, PureLB, and other alternatives for production-ready load balancing.
 

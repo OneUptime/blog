@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Renovate, Dependency Updates, Automation
+Tags: Flux CD, GitOps, Kubernetes, Renovate, Dependency updates, Automation
 
 Description: Automate dependency updates in your Flux CD GitOps repository using Renovate bot to keep Helm chart versions, container images, and Flux itself up to date with minimal manual effort.
 
@@ -12,7 +12,7 @@ Description: Automate dependency updates in your Flux CD GitOps repository using
 
 Keeping dependencies up to date is one of the most important and tedious aspects of running a production Kubernetes platform. Helm charts release new versions, container base images accumulate CVEs, and Flux itself ships new features and security fixes. Without automation, teams fall behind and end up with large, risky update batches rather than small, safe incremental updates.
 
-Renovate is an open-source dependency update tool that scans your repository for version references, checks for new versions, and opens pull requests with the updates. When integrated with a Flux CD repository, Renovate opens PRs that update Helm chart versions, HelmRepository references, and container image tags — and your normal GitOps review workflow handles the rest.
+Renovate is an open-source dependency update tool that scans your repository for version references, checks for new versions, and opens pull requests with the updates. When integrated with a Flux CD repository, Renovate opens PRs that update Helm chart versions, HelmRepository references, and container image tags - and your normal GitOps review workflow handles the rest.
 
 This guide covers configuring Renovate for a Flux CD repository, setting appropriate update schedules and grouping, and integrating with your PR review process.
 
@@ -118,7 +118,7 @@ spec:
 ```
 
 Renovate opens a PR like:
-```
+```plaintext
 chore(deps): update helm release cert-manager to v1.15.0
 ```
 
@@ -141,7 +141,7 @@ For container images updated by Renovate (rather than Flux Image Automation), co
 }
 ```
 
-Alternatively, use Flux Image Update Automation for images and Renovate for Helm charts — a common combination:
+Alternatively, use Flux Image Update Automation for images and Renovate for Helm charts - a common combination:
 
 ```yaml
 # infrastructure/image-automation/policy.yaml
@@ -239,11 +239,11 @@ gh pr list --author "renovate[bot]" --label "patch" \
 ## Best Practices
 
 - Group related dependencies (all Flux components, all monitoring stack charts) so they update together and testing is coherent.
-- Never configure `automerge: true` for production cluster Kustomization paths — always require human review for production changes.
+- Never configure `automerge: true` for production cluster Kustomization paths - always require human review for production changes.
 - Review Renovate's dependency dashboard issue (it creates one automatically) weekly to handle blocked updates and pin exceptions.
 - Add the `CHANGELOG` URL to Renovate's PR template so reviewers can quickly assess the impact of an update without leaving the PR.
 - Test major version updates in a staging environment before merging to the production branch.
 
 ## Conclusion
 
-Integrating Renovate with a Flux CD repository automates the most tedious part of platform maintenance — keeping chart versions and image tags current. Renovate handles the discovery and PR creation; your existing review and CI workflow handles the quality gate; Flux handles the cluster reconciliation. The result is a platform that stays up to date with minimal manual effort, and every update is tracked in Git history with a clear audit trail.
+Integrating Renovate with a Flux CD repository automates the most tedious part of platform maintenance - keeping chart versions and image tags current. Renovate handles the discovery and PR creation; your existing review and CI workflow handles the quality gate; Flux handles the cluster reconciliation. The result is a platform that stays up to date with minimal manual effort, and every update is tracked in Git history with a clear audit trail.

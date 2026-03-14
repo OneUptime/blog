@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, phpIPAM, IPAM, Network
+Tags: Ansible, PhpIPAM, IPAM, Network
 
 Description: Integrate Ansible with phpIPAM for automated IP address allocation and management during server provisioning.
 

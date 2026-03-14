@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, when Clause, Boolean Logic, Playbook
+Tags: Ansible, Conditional, When Clause, Boolean Logic, Playbook
 
 Description: Learn how to combine multiple conditions using AND and OR logic in Ansible when clauses for precise task control.
 

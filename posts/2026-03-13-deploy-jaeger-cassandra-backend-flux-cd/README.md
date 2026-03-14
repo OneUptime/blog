@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Jaeger, Cassandra, Distributed Tracing, Flux CD, GitOps, Kubernetes, Observability
+Tags: Flux CD, Kubernetes, GitOps, Jaeger, Cassandra, Distributed Tracing, Observability
 
-Description: Deploy Jaeger with a Cassandra storage backend on Kubernetes using Flux CD for production-grade distributed tracing with persistent span storage. This guide covers schema initialization, StatefulSet configuration, and GitOps best practices.
+Description: Deploy Jaeger with a Cassandra storage backend on Kubernetes using Flux CD for production-grade distributed tracing with persistent span storage.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Deploy Jaeger with a Cassandra storage backend on Kubernetes using 
 
 Cassandra is one of Jaeger's original supported storage backends and excels at high write throughput for trace data. Its wide-column data model maps naturally to Jaeger's span index patterns, and its peer-to-peer architecture avoids single points of failure.
 
-When running Jaeger at scale—thousands of services generating millions of spans per minute—Cassandra's horizontal write scalability outperforms alternatives. Deploying both Cassandra and Jaeger via Flux CD ensures the entire tracing stack is version-controlled, from schema initialization jobs to collector replica counts.
+When running Jaeger at scale-thousands of services generating millions of spans per minute-Cassandra's horizontal write scalability outperforms alternatives. Deploying both Cassandra and Jaeger via Flux CD ensures the entire tracing stack is version-controlled, from schema initialization jobs to collector replica counts.
 
 This guide deploys Cassandra using the Bitnami Helm chart and Jaeger using the Jaeger Operator with Cassandra storage configured.
 
@@ -57,7 +57,7 @@ spec:
   values:
     # 3-node ring for production; use 1 for dev/test
     replicaCount: 3
-    # Set the Cassandra superuser password — override with a Secret in production
+    # Set the Cassandra superuser password - override with a Secret in production
     dbUser:
       user: cassandra
       existingSecret: cassandra-credentials
@@ -91,7 +91,7 @@ metadata:
   namespace: observability
 type: Opaque
 stringData:
-  # Cassandra superuser password — encrypt with SOPS before committing
+  # Cassandra superuser password - encrypt with SOPS before committing
   cassandra-password: "changeme-in-production"
 ```
 

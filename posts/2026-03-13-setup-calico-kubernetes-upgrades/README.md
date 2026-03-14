@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Operations
+Tags: Calico, Kubernetes, Networking, Upgrade, Operations
 
 Description: A step-by-step guide to upgrading Calico on Kubernetes clusters using the Tigera Operator, ensuring zero network downtime and policy continuity during version transitions.
 
@@ -10,7 +10,7 @@ Description: A step-by-step guide to upgrading Calico on Kubernetes clusters usi
 
 ## Introduction
 
-Upgrading Calico on Kubernetes is a controlled process that the Tigera Operator manages automatically when you update the Installation resource or ImageSet. Understanding how the operator performs rolling upgrades — updating one node at a time while maintaining network connectivity on others — allows you to plan maintenance windows, set appropriate expectations, and know when to intervene if something goes wrong.
+Upgrading Calico on Kubernetes is a controlled process that the Tigera Operator manages automatically when you update the Installation resource or ImageSet. Understanding how the operator performs rolling upgrades - updating one node at a time while maintaining network connectivity on others - allows you to plan maintenance windows, set appropriate expectations, and know when to intervene if something goes wrong.
 
 Calico upgrades are required when a new Calico version adds important bug fixes, security patches, or new features. The upgrade process should always be tested in a non-production cluster first, with a complete validation run before proceeding to production.
 

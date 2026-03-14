@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dpkg, Package Management, System Administration, Debian
+Tags: Ubuntu, Dpkg, Package Management, System Administration, Debian
 
 Description: Learn how to use dpkg to install, remove, query, and manage .deb packages on Ubuntu, including working with downloaded packages, verifying integrity, and querying the package database.
 

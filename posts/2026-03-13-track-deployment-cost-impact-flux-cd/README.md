@@ -10,7 +10,7 @@ Description: Track the cost impact of deployments managed by Flux CD by correlat
 
 ## Introduction
 
-Every deployment has a cost impact. Scaling up replicas, changing resource requests, or adding a new service all affect your cluster's resource consumption and your cloud bill. Without connecting deployment events to cost data, engineers make changes without understanding their financial implications — and FinOps teams are left investigating cost spikes after the fact.
+Every deployment has a cost impact. Scaling up replicas, changing resource requests, or adding a new service all affect your cluster's resource consumption and your cloud bill. Without connecting deployment events to cost data, engineers make changes without understanding their financial implications - and FinOps teams are left investigating cost spikes after the fact.
 
 Flux CD emits detailed events for every reconciliation. By connecting these events to cost monitoring tools like Kubecost or OpenCost, you can build a deployment cost tracking system that notifies teams when a deployment causes a significant cost increase. This shifts cost awareness left in the development process, where changes are cheapest to reverse.
 
@@ -243,9 +243,9 @@ kubectl get pods -n backend -o json | jq '.items[].spec.containers[].resources'
 - Set cost regression alert thresholds based on your typical deployment-to-deployment variance; 30% is a starting point but may need tuning for your workloads.
 - Require cost annotations on all Deployment and StatefulSet resources as part of your Kyverno policies, making cost awareness part of the development workflow.
 - Review the Flux notification history alongside cost monitoring data in a weekly FinOps review meeting to catch gradual cost drift before it becomes a spike.
-- Store cost snapshots in a time-series database or object storage for 90-day trend analysis — hourly snapshots to ephemeral logs are lost when pods restart.
+- Store cost snapshots in a time-series database or object storage for 90-day trend analysis - hourly snapshots to ephemeral logs are lost when pods restart.
 - Include a cost impact estimate in pull request descriptions for changes that modify resource requests, replicas, or add new services.
 
 ## Conclusion
 
-Connecting Flux CD deployment events to cost tracking gives your team real-time visibility into the financial impact of every change. By combining Flux notifications, cost baseline annotations, and Prometheus alerting rules, you create a system that catches cost regressions at deployment time rather than at billing time — shifting financial accountability left into the engineering workflow where it belongs.
+Connecting Flux CD deployment events to cost tracking gives your team real-time visibility into the financial impact of every change. By combining Flux notifications, cost baseline annotations, and Prometheus alerting rules, you create a system that catches cost regressions at deployment time rather than at billing time - shifting financial accountability left into the engineering workflow where it belongs.

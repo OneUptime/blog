@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Virtualization, libvirt, QEMU, Linux
+Tags: RHEL, KVM, Virtualization, Libvirt, QEMU, Linux
 
 Description: Learn how to enable and install KVM virtualization on RHEL, including checking hardware support, installing packages, and verifying the hypervisor is running.
 

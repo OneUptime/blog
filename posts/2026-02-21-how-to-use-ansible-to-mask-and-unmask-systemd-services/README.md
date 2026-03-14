@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Security, Linux, Service Management
+Tags: Ansible, Systemd, Security, Linux, Service Management
 
 Description: Learn how to use Ansible to mask and unmask systemd services to prevent accidental or unauthorized service starts on your Linux servers.
 

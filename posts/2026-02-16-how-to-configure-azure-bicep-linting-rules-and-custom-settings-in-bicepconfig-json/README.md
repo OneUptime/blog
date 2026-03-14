@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bicep, Linting, bicepconfig.json, Infrastructure as Code, Code Quality, Best Practices
+Tags: Azure, Bicep, Linting, Bicepconfig.json, Infrastructure as Code, Code Quality, Best Practices
 
 Description: Configure Azure Bicep linting rules and custom settings in bicepconfig.json to enforce coding standards and catch infrastructure issues before deployment.
 

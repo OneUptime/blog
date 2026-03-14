@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Cluster Health, Monitoring, talosctl
+Tags: Talos Linux, Kubernetes, Cluster Health, Monitoring, Talosctl
 
 Description: Learn how to use talosctl health to monitor and validate the health of your Talos Linux cluster, including all checks it performs.
 

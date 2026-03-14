@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Inventory, group_vars, DevOps, Best Practices
+Tags: Ansible, Inventory, Group_vars, DevOps, Best Practices
 
 Description: A complete guide to organizing Ansible group variables using the group_vars directory structure with file splitting, vault integration, and production-ready layouts.
 

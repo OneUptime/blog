@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Service Management, System Administration, Kubernetes
+Tags: Talos Linux, Talosctl, Service Management, System Administration, Kubernetes
 
 Description: Learn how to use talosctl services to list, inspect, and manage system services running on your Talos Linux nodes
 

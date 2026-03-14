@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Performance Testing, Load Testing, k6, Artillery, DevOps
+Tags: GitHub Actions, CI/CD, Performance Testing, Load Testing, K6, Artillery, DevOps
 
 Description: Learn how to set up automated performance testing in GitHub Actions using k6, Artillery, and Lighthouse to catch performance regressions before they reach production.
 

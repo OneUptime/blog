@@ -1,10 +1,10 @@
-# Flux CD vs PipeCD: GitOps Tool Comparison
+# Flux CD vs PipeCD: GitOps Comparison
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, PipeCD, GitOps, Kubernetes, CI/CD, Comparison, Progressive Delivery
+Tags: Flux CD, PipeCD, GitOps, Kubernetes, CD, Comparison
 
-Description: Compare Flux CD and PipeCD for Kubernetes GitOps deployments, covering architecture, progressive delivery, multi-platform support, and operational experience.
+Description: A comprehensive comparison of Flux CD and PipeCD as GitOps tools, covering architecture, features, and use cases for Kubernetes continuous delivery.
 
 ---
 

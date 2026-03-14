@@ -213,7 +213,7 @@ spec:
 # Apply all Kustomizations
 kubectl apply -f clusters/production/apps/
 
-# Watch the reconciliation order — database and redis first
+# Watch the reconciliation order - database and redis first
 flux get kustomizations --watch
 
 # Manually verify the order by checking Ready conditions
@@ -230,7 +230,7 @@ flux resume kustomization database
 
 - Always define `healthChecks` on Kustomizations that are listed as dependencies, otherwise `wait: true` does not validate actual readiness
 - Keep dependency chains as shallow as possible to minimize cascading delays
-- Avoid circular dependencies — Flux will detect and report them as an error
+- Avoid circular dependencies - Flux will detect and report them as an error
 - Cross-namespace `dependsOn` works by specifying `namespace` alongside the `name` field
 - Test your dependency graph by rebuilding in a staging cluster from scratch
 - Document your dependency graph in a Mermaid diagram in your repository's README

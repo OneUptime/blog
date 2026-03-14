@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CRI-O, Troubleshooting, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: A practical troubleshooting guide for the most common issues encountered when running Cilium with CRI-O, including CNI invocation failures, network namespace errors, and SELinux-related problems.
 
@@ -203,4 +203,4 @@ kubectl -n kube-system logs ds/cilium --since=1h | grep -i "crio\|runtime" | tai
 
 ## Conclusion
 
-CRI-O and Cilium work reliably together when configured correctly, but specific edge cases require targeted fixes. SELinux policies on RHEL and OpenShift are the most common blocker — audit2allow is your friend for generating precise SELinux policies rather than disabling SELinux enforcement. Ensuring Cilium's node initialization taint is correctly configured prevents the race condition where CRI-O attempts to create pods before Cilium is ready to handle CNI calls. Regular monitoring of pod creation success rates and CRI-O logs provides early warning of integration issues before they impact production workloads.
+CRI-O and Cilium work reliably together when configured correctly, but specific edge cases require targeted fixes. SELinux policies on RHEL and OpenShift are the most common blocker - audit2allow is your friend for generating precise SELinux policies rather than disabling SELinux enforcement. Ensuring Cilium's node initialization taint is correctly configured prevents the race condition where CRI-O attempts to create pods before Cilium is ready to handle CNI calls. Regular monitoring of pod creation success rates and CRI-O logs provides early warning of integration issues before they impact production workloads.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Counter, increase(), Metrics, Time Series, Monitoring, Observability
+Tags: Prometheus, PromQL, Counter, Increase(), Metrics, Time Series, Monitoring, Observability
 
 Description: Learn how to calculate cumulative increase over time in Prometheus using the increase() function, subqueries, and recording rules.
 

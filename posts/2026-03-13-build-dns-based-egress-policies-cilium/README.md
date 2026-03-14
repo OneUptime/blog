@@ -1,8 +1,8 @@
-# How to Build DNS-Based Egress Policies in Cilium Without Breaking External Access
+# How to Build DNS-Based Egress Policies in Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, DNS, Egress, Network Policy, Security, eBPF
+Tags: Cilium, Kubernetes, DNS, Egress, Network Policy, Security, EBPF
 
 Description: Build precise DNS-based egress policies in Cilium that allow traffic to specific external domains while blocking all other outbound connections.
 

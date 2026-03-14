@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, systemd-boot, UEFI, Boot Loader, Kubernetes
+Tags: Talos Linux, Systemd-boot, UEFI, Boot Loader, Kubernetes
 
 Description: A guide to understanding and configuring systemd-boot as the boot loader for Talos Linux on UEFI systems.
 

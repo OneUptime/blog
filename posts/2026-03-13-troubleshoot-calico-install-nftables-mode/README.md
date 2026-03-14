@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Troubleshooting
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Troubleshooting
 
 Description: A diagnostic guide for resolving Calico installation and policy enforcement failures when running in nftables mode.
 
@@ -12,7 +12,7 @@ Description: A diagnostic guide for resolving Calico installation and policy enf
 
 Calico in nftables mode has several unique failure modes: nftables kernel module not loaded, conflict with legacy iptables rules left by kube-proxy or other tools, nftables version incompatibility with Felix's expected table structure, and distribution-specific differences in how nftables is packaged and configured.
 
-The key diagnostic tool for nftables mode is the `nft` command — using it to inspect what Calico has programmed in the kernel, comparing against what should be there based on the NetworkPolicy resources. This guide covers the most common nftables-specific Calico failures.
+The key diagnostic tool for nftables mode is the `nft` command - using it to inspect what Calico has programmed in the kernel, comparing against what should be there based on the NetworkPolicy resources. This guide covers the most common nftables-specific Calico failures.
 
 ## Prerequisites
 
@@ -98,9 +98,9 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -iE "nft|n
 ```
 
 Common errors:
-- `nftables backend not supported` — kernel version too old
-- `failed to create table` — permission issue
-- `nft: command not found` — nftables not installed on node
+- `nftables backend not supported` - kernel version too old
+- `failed to create table` - permission issue
+- `nft: command not found` - nftables not installed on node
 
 ## Conclusion
 

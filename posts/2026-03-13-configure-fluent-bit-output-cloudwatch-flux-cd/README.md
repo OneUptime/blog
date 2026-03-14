@@ -261,7 +261,7 @@ aws logs tail /eks/my-eks-cluster/containers --follow --region us-east-1
 ## Best Practices
 
 - Use `log_stream_template` to create descriptive stream names like `namespace.pod.container` for easy filtering in the CloudWatch console.
-- Set `log_retention_days` in the plugin rather than managing retention separately — this ensures new log groups get the right retention policy automatically.
+- Set `log_retention_days` in the plugin rather than managing retention separately - this ensures new log groups get the right retention policy automatically.
 - Use IRSA with least-privilege policies rather than node instance profile permissions, so only Fluent Bit can write to CloudWatch.
 - Monitor CloudWatch Logs costs using AWS Cost Explorer. High-cardinality log streams can generate significant API costs.
 - Enable CloudWatch Contributor Insights on your log groups to automatically detect top contributors to log volume.

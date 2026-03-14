@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Status, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to read and interpret Cilium's IPAM status fields in CiliumNode objects, diagnose status inconsistencies, and use IPAM status information for operational monitoring and capacity planning.
 

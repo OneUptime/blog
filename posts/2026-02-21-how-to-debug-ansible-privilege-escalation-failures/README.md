@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Privilege Escalation, Security
+Tags: Ansible, Sudo, Privilege Escalation, Security
 
 Description: Learn how to diagnose and fix Ansible privilege escalation failures including sudo permission errors, password prompts, and become method issues.
 

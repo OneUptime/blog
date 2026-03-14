@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CRD, Validation, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: A practical guide to validating Cilium Custom Resource Definitions including policy syntax checking, schema enforcement, dry-run testing, and automated validation pipelines for CiliumNetworkPolicies.
 
@@ -12,7 +12,7 @@ Description: A practical guide to validating Cilium Custom Resource Definitions 
 
 CRD validation in Cilium is the process of ensuring that CiliumNetworkPolicy and related custom resources conform to their defined schemas before being applied to the cluster. This validation layer prevents malformed policies from being persisted in etcd, where they could cause unexpected networking behavior or agent crashes when processed by Cilium agents.
 
-Kubernetes enforces CRD schema validation at the API server level using OpenAPI v3 schemas embedded in the CRD definitions. Cilium's CRDs include detailed schemas that validate field types, required fields, enum values, and structural constraints. Beyond basic schema validation, Cilium policies have semantic requirements — for example, an ingress rule must reference valid port protocols, and L7 HTTP rules require the port to be TCP.
+Kubernetes enforces CRD schema validation at the API server level using OpenAPI v3 schemas embedded in the CRD definitions. Cilium's CRDs include detailed schemas that validate field types, required fields, enum values, and structural constraints. Beyond basic schema validation, Cilium policies have semantic requirements - for example, an ingress rule must reference valid port protocols, and L7 HTTP rules require the port to be TCP.
 
 This guide covers how to configure CRD validation, diagnose validation errors, validate policies before applying them, and integrate validation into your CI/CD pipeline.
 
@@ -193,4 +193,4 @@ kubectl get cnp -A -o json | jq -r \
 
 ## Conclusion
 
-CRD validation is your first line of defense against misconfigured Cilium network policies. The server-side dry run capability allows you to test policies against the live cluster schema without any risk of applying them. Integrating schema validation into your CI/CD pipeline catches syntax errors before they reach production. Remember that CRD schema validation covers structural correctness but not semantic policy intent — always combine schema validation with Cilium's policy trace tool to verify that your policies express the intended access control logic.
+CRD validation is your first line of defense against misconfigured Cilium network policies. The server-side dry run capability allows you to test policies against the live cluster schema without any risk of applying them. Integrating schema validation into your CI/CD pipeline catches syntax errors before they reach production. Remember that CRD schema validation covers structural correctness but not semantic policy intent - always combine schema validation with Cilium's policy trace tool to verify that your policies express the intended access control logic.

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, monitoring, status, health, troubleshooting
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to run and interpret Cilium status checks using the cilium CLI and kubectl, covering agent health, eBPF map status, endpoint status, and common indicators of configuration problems. This guide helps operators quickly assess the health of their Cilium deployment.
+Description: Learn how to run and interpret Cilium status checks using the cilium CLI and kubectl, covering agent health, eBPF map status, endpoint status, and common indicators of configuration problems.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to run and interpret Cilium status checks using the ciliu
 
 Operational confidence in your Cilium deployment requires more than checking that pods are running. Cilium agents can appear healthy while internally having issues with eBPF map loading, IPsec configuration, Hubble relay connectivity, or endpoint programming. The `cilium status` command and related diagnostics provide a deep view into the actual health of the CNI stack.
 
-Understanding what a healthy Cilium status looks like — and what warning signs to watch for — is essential for on-call engineers and platform teams managing Cilium in production. This guide walks through every major status check, explains what each component reports, and provides commands for drilling into specific areas.
+Understanding what a healthy Cilium status looks like - and what warning signs to watch for - is essential for on-call engineers and platform teams managing Cilium in production. This guide walks through every major status check, explains what each component reports, and provides commands for drilling into specific areas.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ cilium status --verbose
 ```
 
 A healthy output looks like:
-```
+```plaintext
     /¯¯\
  /¯¯\__/¯¯\    Cilium:             OK
  \__/¯¯\__/    Operator:           OK
@@ -122,10 +122,10 @@ hubble observe --verdict DROPPED --last 50
 ## Best Practices
 
 - Add `cilium status --wait` to cluster provisioning automation as a readiness gate
-- Monitor endpoint count via Prometheus — unexpected drops indicate CNI issues
+- Monitor endpoint count via Prometheus - unexpected drops indicate CNI issues
 - Set up alerts for any Cilium component reporting a non-OK status
 - Run `cilium status` before and after any network policy change to confirm no regressions
-- Check `cilium bpf map list` when experiencing connection issues — near-full maps cause drops
+- Check `cilium bpf map list` when experiencing connection issues - near-full maps cause drops
 - Use `cilium monitor` during incident investigations to trace specific flows
 
 ## Conclusion

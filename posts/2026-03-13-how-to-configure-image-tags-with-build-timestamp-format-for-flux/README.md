@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, image-automation, ImagePolicy, Timestamp, GitOps, Kubernetes
+Tags: Flux, Image-automation, ImagePolicy, Timestamp, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track container image tags that use build timestamps for chronological ordering.
 

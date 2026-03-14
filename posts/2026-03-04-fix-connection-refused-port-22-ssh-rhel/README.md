@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SSH, Troubleshooting, Firewall, sshd
+Tags: RHEL, SSH, Troubleshooting, Firewall, Sshd
 
 Description: Diagnose and resolve 'Connection refused' errors when attempting SSH connections to port 22 on RHEL systems.
 

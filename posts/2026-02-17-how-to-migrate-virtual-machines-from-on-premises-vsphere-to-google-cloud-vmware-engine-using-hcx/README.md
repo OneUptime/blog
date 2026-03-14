@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, VMware Engine, HCX, VM Migration, vSphere
+Tags: GCP, VMware Engine, HCX, VM Migration, VSphere
 
 Description: Migrate virtual machines from on-premises VMware vSphere environments to Google Cloud VMware Engine using VMware HCX for seamless workload mobility.
 

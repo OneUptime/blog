@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, TLS, Security, Logging, Linux
+Tags: RHEL, Rsyslog, TLS, Security, Logging, Linux
 
 Description: Learn how to secure your centralized logging infrastructure by configuring rsyslog to forward and receive logs over TLS-encrypted connections on RHEL.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, CIS, oscap, Reporting, Linux
+Tags: RHEL, CIS, Oscap, Reporting, Linux
 
 Description: Generate professional CIS compliance reports for RHEL using oscap, including HTML reports, XML results, and custom reporting for audit purposes.
 

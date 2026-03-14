@@ -35,7 +35,7 @@ kubectl expose pod server --port=80 -n policy-test
 
 ## Step 2: Deploy Test Clients
 
-Deploy two clients — one that should be allowed and one that should be denied.
+Deploy two clients - one that should be allowed and one that should be denied.
 
 ```bash
 kubectl run allowed-client --image=busybox --labels="app=allowed-client" \
@@ -73,13 +73,13 @@ kubectl apply -f network-policy.yaml
 
 ## Step 4: Run Connectivity Tests
 
-Test the allowed client — this should succeed.
+Test the allowed client - this should succeed.
 
 ```bash
 kubectl exec -n policy-test allowed-client -- wget -qO- --timeout=5 http://server
 ```
 
-Test the denied client — this should time out or be refused.
+Test the denied client - this should time out or be refused.
 
 ```bash
 kubectl exec -n policy-test denied-client -- wget -qO- --timeout=5 http://server || echo "Connection denied as expected"

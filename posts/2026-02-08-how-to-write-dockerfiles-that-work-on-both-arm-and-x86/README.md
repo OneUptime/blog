@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, ARM, x86, Multi-Architecture, BuildKit, DevOps, Cross-Platform
+Tags: Docker, Dockerfile, ARM, X86, Multi-Architecture, BuildKit, DevOps, Cross-Platform
 
 Description: A practical guide to writing Dockerfiles that build and run on both ARM64 and x86_64 architectures using Docker Buildx.
 

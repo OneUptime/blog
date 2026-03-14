@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, containerd, Container Runtime, Architecture, Kubernetes, Containers, CRI
+Tags: Docker, Containerd, Container Runtime, Architecture, Kubernetes, Containers, CRI
 
 Description: Explore the containerd architecture that powers Docker's container management, including its role as an industry-standard container runtime.
 

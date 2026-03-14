@@ -10,7 +10,7 @@ Description: Deploy Kubeless serverless framework to Kubernetes using Flux CD to
 
 ## Introduction
 
-Kubeless is a Kubernetes-native serverless framework that leverages Kubernetes primitives directly — functions are deployed as Kubernetes Deployments with a CRD layer on top. This approach makes Kubeless extremely lightweight with minimal overhead, and functions inherit all Kubernetes features including RBAC, network policies, and horizontal pod autoscaling.
+Kubeless is a Kubernetes-native serverless framework that leverages Kubernetes primitives directly - functions are deployed as Kubernetes Deployments with a CRD layer on top. This approach makes Kubeless extremely lightweight with minimal overhead, and functions inherit all Kubernetes features including RBAC, network policies, and horizontal pod autoscaling.
 
 By managing Kubeless through Flux CD, both the framework and the functions deployed on it are fully version-controlled. Function updates flow through your Git repository, and the cluster state is continuously reconciled.
 
@@ -221,7 +221,7 @@ curl -X POST http://localhost:8080 \
 ## Best Practices
 
 - Use `prune: false` on the Kubeless CRD Kustomization to prevent Flux from accidentally deleting CRDs when manifest files are reorganized.
-- For production functions, avoid inline source code in the Function spec — instead build and push a container image and reference it in `spec.deployment`.
+- For production functions, avoid inline source code in the Function spec - instead build and push a container image and reference it in `spec.deployment`.
 - Set explicit CPU and memory requests and limits on function deployments to avoid resource contention with other cluster workloads.
 - Use Kubeless's `CronJobTrigger` CRD to define scheduled function invocations declaratively in Git alongside your HTTP triggers.
 - Monitor function invocation metrics via the built-in Prometheus endpoint on each function service for visibility into latency and error rates.

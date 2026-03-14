@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, artifactgenerator, GitOps, Kubernetes, Automation, Helm, Kustomize
+Tags: Flux CD, Artifactgenerator, GitOps, Kubernetes, Automation, Helm, Kustomize
 
 Description: Learn how to use the ArtifactGenerator resource in Flux CD to dynamically generate artifacts from multiple sources and streamline your GitOps pipelines.
 

@@ -10,7 +10,7 @@ Description: Deploy KEDA with Azure Service Bus trigger using Flux CD to scale K
 
 ## Introduction
 
-Azure Service Bus is Microsoft's enterprise messaging service, offering queues, topics, and subscriptions for reliable cloud messaging. When running workloads on AKS or connecting Kubernetes to Azure-native services, the KEDA Azure Service Bus scaler enables automatic worker scaling based on message count — scaling out when messages accumulate and back to zero when the queue is empty.
+Azure Service Bus is Microsoft's enterprise messaging service, offering queues, topics, and subscriptions for reliable cloud messaging. When running workloads on AKS or connecting Kubernetes to Azure-native services, the KEDA Azure Service Bus scaler enables automatic worker scaling based on message count - scaling out when messages accumulate and back to zero when the queue is empty.
 
 Managing this scaling configuration through Flux CD means Service Bus connection strings, scaling thresholds, and namespace configuration are all version-controlled. Any change to autoscaling behavior flows through a pull request with a clear audit trail.
 
@@ -215,11 +215,11 @@ spec:
 
 ## Best Practices
 
-- Use Azure Workload Identity on AKS instead of connection strings — it eliminates secrets from Git and enables automatic credential rotation.
+- Use Azure Workload Identity on AKS instead of connection strings - it eliminates secrets from Git and enables automatic credential rotation.
 - Set `messageCount` based on your worker throughput so each replica clears its share of messages within your SLA window.
 - Use dead-letter queue monitoring (Azure Monitor alerts on DLQ depth) alongside KEDA scaling to detect messages that consistently fail processing.
 - Set `terminationGracePeriodSeconds` to exceed your maximum message lock duration so workers finish processing before termination during scale-down.
-- For Service Bus Premium tier, take advantage of sessions — combine KEDA scaling with Azure Service Bus sessions for ordered, per-entity message processing.
+- For Service Bus Premium tier, take advantage of sessions - combine KEDA scaling with Azure Service Bus sessions for ordered, per-entity message processing.
 
 ## Conclusion
 

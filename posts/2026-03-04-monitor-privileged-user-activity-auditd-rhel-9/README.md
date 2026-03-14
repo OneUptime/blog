@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Privileged Users, Monitoring, Security, Compliance, Linux
+Tags: RHEL, Auditd, Privileged Users, Monitoring, Security, Compliance, Linux
 
 Description: Set up auditd on RHEL to monitor and log all activities by privileged users, including root actions, sudo usage, and administrative commands.
 

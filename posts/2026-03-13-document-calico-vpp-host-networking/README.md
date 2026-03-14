@@ -10,7 +10,7 @@ Description: How to create operational documentation for Calico VPP host network
 
 ## Introduction
 
-Calico VPP is significantly more complex to operate than standard Calico. VPP takes ownership of physical NICs, requires specialized hardware configuration (hugepages, isolated CPUs), and has failure modes that can leave nodes without network connectivity. Comprehensive documentation is critical for teams operating VPP in production — especially for on-call engineers who may need to respond to VPP failures without deep VPP expertise.
+Calico VPP is significantly more complex to operate than standard Calico. VPP takes ownership of physical NICs, requires specialized hardware configuration (hugepages, isolated CPUs), and has failure modes that can leave nodes without network connectivity. Comprehensive documentation is critical for teams operating VPP in production - especially for on-call engineers who may need to respond to VPP failures without deep VPP expertise.
 
 Good VPP documentation covers the hardware requirements that must be met before deployment, the configuration decisions made and why, performance baselines for anomaly detection, and step-by-step runbooks for common operational tasks and incident response.
 

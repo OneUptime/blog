@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Automation, Linux, Monitoring
+Tags: Ubuntu, Systemd, Automation, Linux, Monitoring
 
 Description: Use systemd path units on Ubuntu to monitor filesystem changes and automatically trigger services or scripts when files or directories are created, modified, or deleted.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, parted, Resize, Partitioning, Linux
+Tags: RHEL, Parted, Resize, Partitioning, Linux
 
 Description: Learn how to safely resize partitions using parted on RHEL, covering both growing and shrinking operations while preserving your data.
 

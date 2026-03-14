@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Labels, Pruning, Garbage-Collection, Kubernetes
+Tags: Flux, Fluxcd, GitOps, Labels, Pruning, Garbage-Collection, Kubernetes
 
 Description: Learn how to use Kubernetes labels strategically to prevent Flux from pruning specific resources during garbage collection.
 

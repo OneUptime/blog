@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, vmware, esxi, kubernetes, networking, on-premises
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
 Description: A practical guide to validating Cilium CNI on Kubernetes clusters running on Broadcom VMware ESXi, covering eBPF compatibility, networking requirements, and connectivity validation.
 
@@ -76,7 +76,7 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=50 | \
 
 ## Step 4: Validate MTU Configuration
 
-VMware virtual networking and Cilium both affect MTU — misconfiguration causes silent packet drops.
+VMware virtual networking and Cilium both affect MTU - misconfiguration causes silent packet drops.
 
 ```bash
 # Check MTU on node network interfaces
@@ -111,7 +111,7 @@ kubectl exec pod-a -- ping -c 4 $POD_B_IP
 
 - Always validate kernel version compatibility before deploying Cilium on ESXi guest VMs
 - Set MTU conservatively (1450) to account for ESXi virtual networking overhead when using encapsulation
-- Use Cilium's native routing mode with BGP if your vSwitch supports it — it avoids encapsulation overhead
+- Use Cilium's native routing mode with BGP if your vSwitch supports it - it avoids encapsulation overhead
 - Document vSwitch security policy settings and include them in your ESXi host provisioning runbooks
 - Enable Hubble for observability so you can quickly correlate Cilium drops with vSwitch issues
 

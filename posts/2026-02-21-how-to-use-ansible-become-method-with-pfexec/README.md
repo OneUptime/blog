@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Solaris, pfexec, Privilege Escalation, RBAC
+Tags: Ansible, Solaris, Pfexec, Privilege Escalation, RBAC
 
 Description: Configure Ansible to use pfexec for privilege escalation on Oracle Solaris and illumos-based systems with RBAC
 

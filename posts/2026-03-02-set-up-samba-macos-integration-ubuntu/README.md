@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, macOS, File Sharing, SMB
+Tags: Ubuntu, Samba, MacOS, File Sharing, SMB
 
 Description: Configure Samba on Ubuntu for seamless macOS integration including Spotlight search support, Time Machine backup, and proper permissions for mixed Mac/Linux environments.
 

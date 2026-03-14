@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, gVisor, Container Security, Kubernetes, Sandboxing
+Tags: Talos Linux, GVisor, Container Security, Kubernetes, Sandboxing
 
 Description: Learn how to install and configure gVisor as a container runtime on Talos Linux for sandboxed workload execution and enhanced container security.
 

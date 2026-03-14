@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cron, crontab, Scheduling, Linux, Automation
+Tags: RHEL, Cron, Crontab, Scheduling, Linux, Automation
 
 Description: A hands-on guide to creating, editing, and managing cron jobs on RHEL, covering crontab syntax, special scheduling strings, user vs root crontabs, and common pitfalls.
 

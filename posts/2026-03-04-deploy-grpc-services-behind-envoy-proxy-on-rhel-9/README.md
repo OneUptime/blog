@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, gRPC, Envoy, Proxy, Microservices, Linux
+Tags: RHEL, GRPC, Envoy, Proxy, Microservices, Linux
 
 Description: Learn how to deploy gRPC services behind Envoy proxy on RHEL, covering HTTP/2 configuration, gRPC routing, load balancing, health checking, and TLS termination for gRPC traffic.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, rkhunter, Rootkit, Security, Malware Detection, Tutorial
+Tags: Ubuntu, Rkhunter, Rootkit, Security, Malware Detection, Tutorial
 
 Description: Complete guide to installing and configuring rkhunter for rootkit detection on Ubuntu.
 

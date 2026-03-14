@@ -108,4 +108,4 @@ kubectl get events -A | grep -i "networkpolicy\|globalnetworkpolicy" | tail -10
 
 ## Conclusion
 
-Operationalizing Calico metrics monitoring transforms raw metrics into actionable intelligence. By defining clear alert ownership, establishing metrics retention policies, maintaining dashboard review processes, and creating runbooks for common alert scenarios, you ensure the monitoring investment provides ongoing value. Define SLOs for the monitoring pipeline itself — if your observability has 95% availability, you're operating blind 5% of the time, which may not be acceptable for a production cluster.
+Operationalizing Calico metrics monitoring transforms raw metrics into actionable intelligence. By defining clear alert ownership, establishing metrics retention policies, maintaining dashboard review processes, and creating runbooks for common alert scenarios, you ensure the monitoring investment provides ongoing value. Define SLOs for the monitoring pipeline itself - if your observability has 95% availability, you're operating blind 5% of the time, which may not be acceptable for a production cluster.

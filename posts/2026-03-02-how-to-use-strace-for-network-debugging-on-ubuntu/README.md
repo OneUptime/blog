@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, strace, Network Debugging, System Calls, Troubleshooting
+Tags: Ubuntu, Strace, Network Debugging, System Calls, Troubleshooting
 
 Description: Learn how to use strace on Ubuntu to trace network-related system calls, diagnose connectivity problems, and debug applications making unexpected network connections.
 

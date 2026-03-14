@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, kubeadm, Containers, Linux
+Tags: RHEL, Kubernetes, Kubeadm, Containers, Linux
 
 Description: Install Kubernetes on RHEL using kubeadm, including prerequisites, cluster initialization, and worker node setup.
 

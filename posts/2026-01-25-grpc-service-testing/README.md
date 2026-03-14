@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: gRPC, Testing, Protocol Buffers, Microservices, DevOps
+Tags: GRPC, Testing, Protocol Buffers, Microservices, DevOps
 
 Description: Learn to test gRPC services effectively, including unary calls, streaming, error handling, interceptors, and load testing with proper Protocol Buffer validation.
 

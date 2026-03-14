@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Tor, Privacy, Security, Networking
+Tags: Ubuntu, ToR, Privacy, Security, Networking
 
 Description: Learn how to configure Tor hidden services on Ubuntu to host websites and services accessible only via .onion addresses with strong anonymity.
 

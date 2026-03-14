@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Keyboard Layout, System Administration, localectl, Console
+Tags: Ubuntu, Keyboard Layout, System Administration, Localectl, Console
 
 Description: Configure keyboard layout on Ubuntu Server for both the console and X11 environments, including setting up non-US layouts, key mappings, and resolving layout issues over SSH.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Performance Testing, Load Testing, Stress Testing, k6, Artillery, Monitoring, DevOps, Scalability
+Tags: Performance Testing, Load Testing, Stress Testing, K6, Artillery, Monitoring, DevOps, Scalability
 
 Description: A practical guide to implementing performance testing with tools like k6 and Artillery, including load testing patterns, metrics collection, and CI/CD integration.
 

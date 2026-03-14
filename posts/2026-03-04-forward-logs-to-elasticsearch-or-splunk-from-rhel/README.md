@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Elasticsearch, Splunk, rsyslog, Logging, Log Forwarding
+Tags: RHEL, Elasticsearch, Splunk, Rsyslog, Logging, Log Forwarding
 
 Description: Configure RHEL to forward system logs to Elasticsearch or Splunk using rsyslog modules, enabling centralized log analysis and visualization.
 

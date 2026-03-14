@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Resource Management
+Tags: Kubernetes, Kubelet, Resource Management
 
 Description: Learn how to configure kubelet systemReserved and kubeReserved settings to protect system daemons and Kubernetes components from resource starvation, ensuring node stability under heavy pod load.
 

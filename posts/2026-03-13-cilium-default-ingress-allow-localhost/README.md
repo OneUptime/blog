@@ -1,16 +1,16 @@
-# Cilium Default Ingress Allow from Local Host: Configure, Troubleshoot, Validate, and Monitor
+# Cilium Default Ingress Allow from Local Host
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Network Policy
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Understand Cilium's default behavior of allowing ingress traffic from the local host, how to configure this behavior, troubleshoot unexpected allow/deny decisions, and validate your policy configuration.
+Description: Understand Cilium's default behavior of allowing ingress traffic from the local host, how to configure this behavior, troubleshoot unexpected allow/deny decisions, and validate your policy...
 
 ---
 
 ## Introduction
 
-Cilium has a specific default behavior regarding traffic originating from the local host (the Kubernetes node itself): by default, ingress traffic from the node to any pod is allowed, even when network policies are applied. This behavior exists to ensure that Kubernetes liveness and readiness probes — which originate from the kubelet on the node — always reach pods regardless of network policy configuration. Without this default, misconfigured policies could prevent health checks from working, causing cascading pod restarts.
+Cilium has a specific default behavior regarding traffic originating from the local host (the Kubernetes node itself): by default, ingress traffic from the node to any pod is allowed, even when network policies are applied. This behavior exists to ensure that Kubernetes liveness and readiness probes - which originate from the kubelet on the node - always reach pods regardless of network policy configuration. Without this default, misconfigured policies could prevent health checks from working, causing cascading pod restarts.
 
 This default allow rule is applied implicitly and does not appear in your CiliumNetworkPolicies. It can be surprising when debugging policy enforcement because traffic from the node will always be allowed even when you expect it to be blocked. Understanding this behavior is critical for security-sensitive deployments where you want to enforce strict isolation, including from the host.
 

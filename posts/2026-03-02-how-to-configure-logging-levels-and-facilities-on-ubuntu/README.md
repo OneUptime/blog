@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, rsyslog, Syslog, System Administration
+Tags: Ubuntu, Logging, Rsyslog, Syslog, System Administration
 
 Description: Understand and configure syslog facilities and severity levels on Ubuntu to control what gets logged, where it goes, and how to filter log messages effectively.
 

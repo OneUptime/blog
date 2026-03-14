@@ -10,9 +10,9 @@ Description: A diagnostic guide for resolving Calico VPP installation failures o
 
 ## Introduction
 
-Troubleshooting Calico VPP on OpenShift combines the VPP-specific failure modes (hugepages, DPDK binding, VPP startup errors) with OpenShift-specific issues (SCC violations, MCO configuration failures, RHCOS-specific kernel parameters). The MCO layer adds diagnostic complexity — MCO configuration failures may not be immediately visible in pod logs, requiring inspection of the MachineConfigPool status.
+Troubleshooting Calico VPP on OpenShift combines the VPP-specific failure modes (hugepages, DPDK binding, VPP startup errors) with OpenShift-specific issues (SCC violations, MCO configuration failures, RHCOS-specific kernel parameters). The MCO layer adds diagnostic complexity - MCO configuration failures may not be immediately visible in pod logs, requiring inspection of the MachineConfigPool status.
 
-RHCOS's immutable OS model means you cannot make ad-hoc OS changes to fix issues — all OS-level fixes must go through MCO. This is the correct approach for production reliability, but it adds time to the diagnostic-fix loop compared to mutable Linux distributions.
+RHCOS's immutable OS model means you cannot make ad-hoc OS changes to fix issues - all OS-level fixes must go through MCO. This is the correct approach for production reliability, but it adds time to the diagnostic-fix loop compared to mutable Linux distributions.
 
 ## Prerequisites
 

@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Troubleshooting, Networking, IP Pools, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Diagnose and resolve the most common Calico IPAM split failures — from pods getting IPs from the wrong pool to IPAM inconsistencies that appear after a split — using calicoctl diagnostic commands.
+Description: Diagnose and resolve the most common Calico IPAM split failures - from pods getting IPs from the wrong pool to IPAM inconsistencies that appear after a split - using calicoctl diagnostic commands.
 
 ---
 
 ## Introduction
 
-IPAM splits are largely irreversible once pods are running on the new sub-pools. When something goes wrong — pods failing to get IPs, `calicoctl ipam check` reporting inconsistency, or pods landing on the wrong sub-pool — you need to diagnose the problem quickly and precisely before attempting any corrective action.
+IPAM splits are largely irreversible once pods are running on the new sub-pools. When something goes wrong - pods failing to get IPs, `calicoctl ipam check` reporting inconsistency, or pods landing on the wrong sub-pool - you need to diagnose the problem quickly and precisely before attempting any corrective action.
 
 This post covers the diagnostic commands and remediation steps for each common IPAM split failure mode.
 
@@ -118,7 +118,7 @@ metadata:
 spec:
   # Use a separate CIDR not overlapping with existing pools
   cidr: 10.2.0.0/16
-  # No nodeSelector — available to all nodes
+  # No nodeSelector - available to all nodes
   ipipMode: Never
   vxlanMode: Always
   blockSize: 26
@@ -180,17 +180,17 @@ calicoctl patch ippool default-ipv4-ippool \
 
 ## Best Practices
 
-- When diagnosing IPAM issues, always run `calicoctl ipam check` first — it identifies the category of problem before you investigate individual symptoms.
+- When diagnosing IPAM issues, always run `calicoctl ipam check` first - it identifies the category of problem before you investigate individual symptoms.
 - Never delete an IP pool to "fix" an inconsistency; deleting a pool with active allocations makes the situation worse.
 - Keep the pre-split IPAM state snapshot (`calicoctl ipam show --show-blocks` output) as a reference during troubleshooting.
 - If you cannot determine the root cause of an inconsistency, re-enable the original pool and engage Calico support before proceeding.
-- Use `kubectl describe pod` to find the exact error message from the Calico IP allocation driver — this is the fastest path to identifying the specific failure mode.
+- Use `kubectl describe pod` to find the exact error message from the Calico IP allocation driver - this is the fastest path to identifying the specific failure mode.
 
 ---
 
 ## Conclusion
 
-IPAM split troubleshooting always starts with `calicoctl ipam check` and ends with verifying that new pod allocations go to the correct pool. The most common problems — wrong node label, exhausted pool, missing pool for unlabeled nodes — all have straightforward diagnostic commands and clear remediation steps. Avoid deleting resources until you understand exactly what went wrong.
+IPAM split troubleshooting always starts with `calicoctl ipam check` and ends with verifying that new pod allocations go to the correct pool. The most common problems - wrong node label, exhausted pool, missing pool for unlabeled nodes - all have straightforward diagnostic commands and clear remediation steps. Avoid deleting resources until you understand exactly what went wrong.
 
 ---
 

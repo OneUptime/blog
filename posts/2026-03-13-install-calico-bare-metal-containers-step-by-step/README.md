@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing Calico as the CNI plugin on a Ku
 
 ## Introduction
 
-Bare metal Kubernetes clusters running containerized workloads get the best performance when paired with a CNI plugin that can operate without encapsulation overhead. Calico is purpose-built for this use case — it can route pod traffic natively using BGP, eliminating VXLAN or IPIP tunneling and delivering bare-metal-level network performance to containers.
+Bare metal Kubernetes clusters running containerized workloads get the best performance when paired with a CNI plugin that can operate without encapsulation overhead. Calico is purpose-built for this use case - it can route pod traffic natively using BGP, eliminating VXLAN or IPIP tunneling and delivering bare-metal-level network performance to containers.
 
 Installing Calico on bare metal with containers follows the same core operator-based workflow as other environments, but the configuration choices differ. You will typically want to disable overlay encapsulation, configure BGP to your physical switches, and tune the MTU to match your NIC's maximum frame size.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Testing
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Testing
 
 Description: Validate Calico service account-based network policies using real traffic tests to confirm workload identity controls are enforced correctly.
 

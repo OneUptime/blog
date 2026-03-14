@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Release Automation, CI/CD, DevOps, Semantic Versioning, Changelog, npm, Docker
+Tags: GitHub Actions, Release Automation, CI/CD, DevOps, Semantic Versioning, Changelog, Npm, Docker
 
 Description: A practical guide to automating software releases with GitHub Actions, covering semantic versioning, changelog generation, multi-platform artifact publishing, and production deployment workflows.
 

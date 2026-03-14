@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, IDE, VS Code, DevOps
+Tags: Ansible, Ansible-lint, IDE, VS Code, DevOps
 
 Description: Set up ansible-lint integration with VS Code, Vim, and other IDEs to get real-time linting feedback while writing Ansible playbooks.
 

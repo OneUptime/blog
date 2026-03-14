@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, Secret Scanning, gitleaks, Git, CI/CD, DevSecOps, Credential Management
+Tags: Security, Secret Scanning, Gitleaks, Git, CI/CD, DevSecOps, Credential Management
 
 Description: Learn how to use gitleaks to detect hardcoded secrets, API keys, and credentials in your Git repositories before they become security incidents.
 

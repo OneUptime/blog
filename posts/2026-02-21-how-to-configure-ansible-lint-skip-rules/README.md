@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Configuration, Code Quality
+Tags: Ansible, Ansible-lint, Configuration, Code Quality
 
 Description: Learn all the ways to skip ansible-lint rules including configuration file options, inline noqa comments, and per-task skip strategies.
 

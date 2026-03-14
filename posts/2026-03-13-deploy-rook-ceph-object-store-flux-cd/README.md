@@ -12,7 +12,7 @@ Description: Deploy Rook-Ceph object storage with S3-compatible API on Kubernete
 
 Rook is a cloud-native storage orchestrator that turns distributed storage systems like Ceph into self-managing, self-healing storage services. Ceph's object store provides an S3-compatible API (via RADOS Gateway), making it a drop-in replacement for AWS S3 in on-premises or air-gapped environments.
 
-Deploying Rook-Ceph through Flux CD gives you GitOps control over your storage cluster — from the number of OSD nodes and replication factor to object store configuration and bucket policies. The Rook operator is available as a Helm chart, and storage clusters are defined through `CephCluster` and `CephObjectStore` CRDs.
+Deploying Rook-Ceph through Flux CD gives you GitOps control over your storage cluster - from the number of OSD nodes and replication factor to object store configuration and bucket policies. The Rook operator is available as a Helm chart, and storage clusters are defined through `CephCluster` and `CephObjectStore` CRDs.
 
 ## Prerequisites
 
@@ -272,7 +272,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Best Practices
 
-- Run 3 Ceph monitors (`mon.count: 3`) for quorum — never run 2 or 4.
+- Run 3 Ceph monitors (`mon.count: 3`) for quorum - never run 2 or 4.
 - Use erasure coding (`erasureCoded: dataChunks: 2, codingChunks: 1`) for the data pool to reduce storage overhead compared to 3-way replication.
 - Use the Ceph dashboard for visual monitoring but configure Prometheus metrics via `monitoring.enabled: true` for alerting.
 - Apply node taints (`rook-ceph/cluster=my-cluster:NoSchedule`) to storage nodes to prevent application workloads from competing with Ceph for CPU and memory.

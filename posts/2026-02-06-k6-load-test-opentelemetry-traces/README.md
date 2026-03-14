@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, k6, Load Testing, Performance, Distributed Tracing
+Tags: OpenTelemetry, K6, Load Testing, Performance, Distributed Tracing
 
 Description: Learn how to connect k6 load test results with OpenTelemetry traces to pinpoint the exact root cause of performance bottlenecks.
 

@@ -37,7 +37,7 @@ The key principle is address space separation: pod CIDR, node subnet, and servic
 
 **Prevention 1: Standard CIDR allocation plan**
 
-```
+```plaintext
 # Example multi-cluster CIDR plan
 # Cluster 1 (Production):
 #   Node subnet:    10.10.0.0/16

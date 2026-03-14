@@ -10,7 +10,7 @@ Description: Avoid the most common pitfalls when migrating Calico from manifest 
 
 ## Introduction
 
-The Calico operator migration has several well-known failure patterns that operators encounter repeatedly. Most of these mistakes are avoidable with proper preparation and understanding of how the Tigera Operator's migration logic works. The most dangerous mistake is assuming that because the migration completed without errors, the configuration was preserved correctly — without validation, subtle mismatches can go unnoticed until they cause a production incident.
+The Calico operator migration has several well-known failure patterns that operators encounter repeatedly. Most of these mistakes are avoidable with proper preparation and understanding of how the Tigera Operator's migration logic works. The most dangerous mistake is assuming that because the migration completed without errors, the configuration was preserved correctly - without validation, subtle mismatches can go unnoticed until they cause a production incident.
 
 This guide catalogs the most common mistakes with concrete examples of what goes wrong and how to avoid each pitfall.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Machine Configuration, Patching, DevOps
+Tags: Talos Linux, Talosctl, Machine Configuration, Patching, DevOps
 
 Description: A detailed walkthrough of using the talosctl machineconfig patch command to modify Talos Linux configurations offline before applying them to your cluster.
 

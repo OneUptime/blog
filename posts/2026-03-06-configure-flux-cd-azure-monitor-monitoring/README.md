@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, Azure, azure-monitor, container-insights, Monitoring, Kubernetes, Prometheus, Grafana
+Tags: Flux-cd, Azure, Azure-monitor, Container-insights, Monitoring, Kubernetes, Prometheus, Grafana
 
 Description: Learn how to monitor Flux CD deployments using Azure Monitor Container Insights, custom metrics, and alerting for GitOps reconciliation health.
 

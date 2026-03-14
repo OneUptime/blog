@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, rsyslog, Logging, Linux, System Administration
+Tags: RHEL, Journald, Rsyslog, Logging, Linux, System Administration
 
 Description: A practical guide to managing system logs on RHEL using journalctl for querying systemd journal entries and rsyslog for traditional log file management, rotation, and remote logging.
 

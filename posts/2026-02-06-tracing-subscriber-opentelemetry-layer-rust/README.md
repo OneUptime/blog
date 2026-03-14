@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rust, tracing-subscriber, Layer, Logging, Tracing
+Tags: OpenTelemetry, Rust, Tracing-subscriber, Layer, Logging, Tracing
 
 Description: Master the configuration of tracing-subscriber with OpenTelemetry layers to create powerful observability pipelines in Rust applications.
 

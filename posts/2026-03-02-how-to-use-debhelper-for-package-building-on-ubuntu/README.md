@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Packaging, Debian, debhelper, Development
+Tags: Ubuntu, Packaging, Debian, Debhelper, Development
 
 Description: Master debhelper for streamlined Debian package building on Ubuntu. Covers dh command sequences, overrides, add-ons, and best practices for maintainable packaging.
 

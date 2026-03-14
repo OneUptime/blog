@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Envoy Gateway, API Gateway, HelmRelease, Gateway API, Envoy
+Tags: Flux CD, Kubernetes, GitOps, Envoy Gateway, API Gateway, HelmRelease, Gateway API
 
 Description: Deploy the Kubernetes Envoy Gateway using Flux CD HelmRelease to implement the Kubernetes Gateway API specification with Envoy proxy as the data plane.
 
@@ -10,7 +10,7 @@ Description: Deploy the Kubernetes Envoy Gateway using Flux CD HelmRelease to im
 
 ## Introduction
 
-Envoy Gateway is an open-source Kubernetes Gateway API implementation built on Envoy proxy and maintained under the EnvoyProxy project. It implements the Kubernetes Gateway API specification — the next generation of Kubernetes network routing — providing a standardized, extensible model for managing ingress, traffic routing, and service mesh entry points that works across different gateway implementations.
+Envoy Gateway is an open-source Kubernetes Gateway API implementation built on Envoy proxy and maintained under the EnvoyProxy project. It implements the Kubernetes Gateway API specification - the next generation of Kubernetes network routing - providing a standardized, extensible model for managing ingress, traffic routing, and service mesh entry points that works across different gateway implementations.
 
 Unlike proprietary gateway CRDs, Gateway API is a Kubernetes SIG project with broad ecosystem support. Routing configurations written for Envoy Gateway are largely portable to other Gateway API implementations like Contour, Istio, and others. This portability, combined with Envoy's proven performance and Flux CD's GitOps management, makes Envoy Gateway an excellent choice for platform teams building for the long term.
 

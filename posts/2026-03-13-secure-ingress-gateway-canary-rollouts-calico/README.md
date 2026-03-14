@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Canary, Ingress, Deployment
+Tags: Calico, Kubernetes, Canary, Ingress, Deployments
 
 Description: Secure canary deployments with Calico by ensuring new service versions maintain security policies before receiving production traffic.
 

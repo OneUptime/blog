@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, Combine, iOS, Reactive Programming, Publishers
+Tags: Swift, Combine, IOS, Reactive Programming, Publishers
 
 Description: Learn how to use Apple's Combine framework to build reactive iOS applications with publishers, subscribers, and operators for handling asynchronous events.
 

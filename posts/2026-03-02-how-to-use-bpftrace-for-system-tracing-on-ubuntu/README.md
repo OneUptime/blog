@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, bpftrace, eBPF, Performance, Observability
+Tags: Ubuntu, Bpftrace, EBPF, Performance, Observability
 
 Description: A practical guide to using bpftrace for system tracing on Ubuntu, covering one-liners, custom scripts, probes, and real-world performance analysis scenarios.
 

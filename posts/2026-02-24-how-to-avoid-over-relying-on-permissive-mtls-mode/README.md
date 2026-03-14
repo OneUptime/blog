@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Security, Kubernetes, Zero Trust
+Tags: Istio, MTLS, Security, Kubernetes, Zero Trust
 
 Description: Why staying in Istio permissive mTLS mode is a security risk and how to plan a migration to strict mode with minimal disruption to production services.
 

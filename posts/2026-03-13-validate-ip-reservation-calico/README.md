@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, ip-reservation, kubernetes, networking, ip-management
+Tags: Calico, IPAM, Ip-reservation, Kubernetes, Networking, Ip-management
 
 Description: Learn how to validate Calico's IP reservation functionality, ensuring that specific IP addresses are correctly reserved from allocation and cannot be assigned to pods.
 
@@ -58,7 +58,7 @@ For finer-grained reservation of specific IPs within an active pool.
 # This uses calicoctl to allocate the IP with a specific handle
 calicoctl ipam release --ip=10.244.1.1 2>/dev/null || true
 calicoctl ipam allocate --ip=10.244.1.1 --handle="reserved-gateway-ip" \
-  --note="Infrastructure gateway — do not allocate to pods"
+  --note="Infrastructure gateway - do not allocate to pods"
 
 # Verify the reservation
 calicoctl ipam show --show-handles | grep "reserved-gateway-ip"

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Logging, Troubleshooting
 
-Description: Diagnose and resolve common Calico log collection problems including missing logs from calico-node pods, high log volume causing pipeline saturation, and log shipper failures in the calico-system namespace.
+Description: Diagnose and resolve common Calico log collection problems including missing logs from calico-node pods, high log volume causing pipeline saturation, and log shipper failures in the calico-system...
 
 ---
 

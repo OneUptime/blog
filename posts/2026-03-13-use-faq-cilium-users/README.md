@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, faq, kubernetes, networking, community, troubleshooting
+Tags: Cilium, FAQ, Troubleshooting, Kubernetes
 
 Description: A practical guide to applying the Cilium FAQ to real operational scenarios, with actionable steps for resolving the most frequently encountered Cilium issues in production environments.
 
@@ -12,7 +12,7 @@ Description: A practical guide to applying the Cilium FAQ to real operational sc
 
 The Cilium FAQ is most valuable when you know how to apply its answers to your specific situation. Many operators read FAQ entries but struggle to map generic answers to their particular environment, Kubernetes distribution, or use case. This guide bridges that gap by taking the most impactful FAQ topics and showing exactly how to apply them in practice.
 
-Production Cilium operators encounter a predictable set of recurring questions: connectivity failures after policy application, performance regressions after kernel updates, unexpected pod-to-pod communication failures, and issues with Hubble observability. Each has a clear diagnostic path and resolution — but that path requires knowing which commands to run and how to interpret their output.
+Production Cilium operators encounter a predictable set of recurring questions: connectivity failures after policy application, performance regressions after kernel updates, unexpected pod-to-pod communication failures, and issues with Hubble observability. Each has a clear diagnostic path and resolution - but that path requires knowing which commands to run and how to interpret their output.
 
 This guide provides practical, step-by-step application of Cilium FAQ answers to real operational scenarios.
 
@@ -139,9 +139,9 @@ kubectl run svc-test --image=busybox --rm -it --restart=Never -- \
 - Keep a runbook with the Cilium FAQ scenarios most relevant to your environment
 - Use `cilium sysdump` as the first step for any Cilium issue you can't immediately diagnose
 - Follow the Cilium Slack `#general` channel for new FAQ entries as they emerge from the community
-- Document every production Cilium issue you encounter and how it was resolved — your team's FAQ
+- Document every production Cilium issue you encounter and how it was resolved - your team's FAQ
 - Run `cilium connectivity test` after every change to catch regressions early
 
 ## Conclusion
 
-The Cilium FAQ becomes genuinely useful when you can apply it to your specific operational scenario with the right diagnostic commands. By understanding the diagnostic path for the most common issues — policy-related drops, kernel compatibility, performance, and Hubble visibility — you can resolve most Cilium issues rapidly without escalation. Each resolved issue adds to your team's operational knowledge base for future reference.
+The Cilium FAQ becomes genuinely useful when you can apply it to your specific operational scenario with the right diagnostic commands. By understanding the diagnostic path for the most common issues - policy-related drops, kernel compatibility, performance, and Hubble visibility - you can resolve most Cilium issues rapidly without escalation. Each resolved issue adds to your team's operational knowledge base for future reference.

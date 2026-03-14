@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Use Cilium's BGP auto-discovery features to automatically detect peers and configure BGP sessions without manual per-node peer address configuration.
 

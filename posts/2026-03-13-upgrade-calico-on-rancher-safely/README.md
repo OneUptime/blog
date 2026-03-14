@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, rancher, rke2, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, Rancher, CNI
 
 Description: A comprehensive guide to safely upgrading Calico on Rancher-managed Kubernetes clusters (RKE and RKE2), with Rancher-specific pre-upgrade checks and rolling upgrade procedures.
 
@@ -136,8 +136,8 @@ calicoctl get networkpolicies -A
 - Prefer upgrading Calico through Rancher's managed upgrade workflow for RKE2 clusters
 - Test Calico upgrades on a Rancher dev cluster with the same RKE2 version first
 - Notify Rancher admin team before performing manual Calico upgrades on operator-managed clusters
-- Watch Rancher's cluster state in the UI throughout the upgrade — it should remain Active
-- If Rancher shows cluster as Unavailable during upgrade, wait — it typically recovers
+- Watch Rancher's cluster state in the UI throughout the upgrade - it should remain Active
+- If Rancher shows cluster as Unavailable during upgrade, wait - it typically recovers
 
 ## Conclusion
 

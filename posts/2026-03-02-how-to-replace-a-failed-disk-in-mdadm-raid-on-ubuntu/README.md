@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, RAID, mdadm, Storage, Disk Management
+Tags: Ubuntu, RAID, Mdadm, Storage, Disk Management
 
 Description: Step-by-step procedure for safely removing a failed disk from an mdadm RAID array on Ubuntu and replacing it with a new drive without data loss.
 

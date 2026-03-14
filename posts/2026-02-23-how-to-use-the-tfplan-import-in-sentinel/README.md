@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, HashiCorp, tfplan, Infrastructure as Code
+Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Tfplan, Infrastructure as Code
 
 Description: Learn how to use the tfplan/v2 import in Sentinel to inspect planned Terraform changes and write policies that validate resources before they are applied.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, Troubleshooting, CNI, Networking, Debugging
 
-Description: Diagnose and resolve the most common Typha problems in a manifest-based Calico deployment — Felix reconnection loops, TLS handshake failures, connection imbalances, and Typha pods that fail to start.
+Description: Diagnose and resolve the most common Typha problems in a manifest-based Calico deployment - Felix reconnection loops, TLS handshake failures, connection imbalances, and Typha pods that fail to start.
 
 ---
 
@@ -39,9 +39,9 @@ kubectl describe pod -n kube-system -l k8s-app=calico-typha
 
 Common pod status issues and their causes:
 
-- `Pending` — the scheduler cannot place the pod, often due to strict anti-affinity with not enough distinct nodes available
-- `CrashLoopBackOff` — Typha is starting but crashing; check logs immediately
-- `ContainerCreating` — waiting on a Secret mount, usually TLS credentials that have not been created yet
+- `Pending` - the scheduler cannot place the pod, often due to strict anti-affinity with not enough distinct nodes available
+- `CrashLoopBackOff` - Typha is starting but crashing; check logs immediately
+- `ContainerCreating` - waiting on a Secret mount, usually TLS credentials that have not been created yet
 
 ---
 
@@ -66,7 +66,7 @@ kubectl get svc calico-typha -n kube-system
 kubectl get endpoints calico-typha -n kube-system
 
 # Error: "certificate verify failed" or "tls: bad certificate"
-# Cause: mTLS misconfiguration — verify Felix and Typha share the same CA
+# Cause: mTLS misconfiguration - verify Felix and Typha share the same CA
 kubectl get secret calico-typha-tls -n kube-system -o yaml | grep ca.crt | head -1
 kubectl get secret calico-felix-tls -n kube-system -o yaml | grep ca.crt | head -1
 
@@ -154,7 +154,7 @@ kubectl auth can-i list networkpolicies --all-namespaces \
 When Typha appears stuck and logs show no progress, a rolling restart forces clean reconnections:
 
 ```bash
-# Rolling restart — replaces pods one at a time, maintaining availability
+# Rolling restart - replaces pods one at a time, maintaining availability
 kubectl rollout restart deployment/calico-typha -n kube-system
 
 # Monitor the rollout until all new pods are ready
@@ -175,7 +175,7 @@ kubectl rollout status deployment/calico-typha -n kube-system
 
 ## Conclusion
 
-Most Typha problems fall into three categories: pods not starting (scheduling or Secret issues), Felix unable to connect (TLS, Service, or firewall issues), and performance degradation (connection imbalance or API server latency). Working through each category systematically — pod status, Felix logs, TLS certificate validation, and metrics — quickly narrows down the root cause.
+Most Typha problems fall into three categories: pods not starting (scheduling or Secret issues), Felix unable to connect (TLS, Service, or firewall issues), and performance degradation (connection imbalance or API server latency). Working through each category systematically - pod status, Felix logs, TLS certificate validation, and metrics - quickly narrows down the root cause.
 
 ---
 

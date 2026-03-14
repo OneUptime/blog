@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, kubernetes, ipam, blockaffinity, networking, ip-management
+Tags: Calico, Kubernetes, IPAM, BlockAffinity, Networking, Ip-management
 
 Description: Understand and configure Calico's BlockAffinity resource, which controls how IP address blocks are assigned to nodes and affects IPAM efficiency and BGP route advertisement.
 
@@ -10,7 +10,7 @@ Description: Understand and configure Calico's BlockAffinity resource, which con
 
 ## Introduction
 
-Calico's IPAM system assigns IP addresses to pods by dividing the IP pool into fixed-size blocks and assigning those blocks to nodes. The `BlockAffinity` resource represents the relationship between a node and a specific IP block — it tracks which blocks a node "owns" and which are borrowed or borrowed from it.
+Calico's IPAM system assigns IP addresses to pods by dividing the IP pool into fixed-size blocks and assigning those blocks to nodes. The `BlockAffinity` resource represents the relationship between a node and a specific IP block - it tracks which blocks a node "owns" and which are borrowed or borrowed from it.
 
 Understanding BlockAffinity is essential for diagnosing IPAM issues, optimizing IP utilization, and understanding why certain routes are advertised via BGP. Misconfigured or stale BlockAffinity entries can cause IP address exhaustion, routing issues, and pod scheduling failures.
 
@@ -46,7 +46,7 @@ Configure the block size that determines how many IPs are in each block assigned
 
 ```yaml
 # ippool-block-size.yaml
-# IPPool with a /26 block size — each node gets 62 usable IPs per block
+# IPPool with a /26 block size - each node gets 62 usable IPs per block
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -151,11 +151,11 @@ calicoctl get blockaffinities -o wide | grep "zone"
 
 ## Best Practices
 
-- Choose block size based on your average pod density — too large wastes IPs, too small causes frequent borrowing
+- Choose block size based on your average pod density - too large wastes IPs, too small causes frequent borrowing
 - Monitor `calico_ipam_blocks_per_node` Prometheus metric to detect imbalanced allocations
 - Clean up stale BlockAffinity entries from deleted nodes to reclaim IP space
 - Use node selectors on IP pools to align addressing with your network topology
-- Avoid changing block size on live pools — migrate to a new pool instead
+- Avoid changing block size on live pools - migrate to a new pool instead
 
 ## Conclusion
 

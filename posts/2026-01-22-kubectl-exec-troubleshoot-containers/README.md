@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Troubleshooting, Debugging, DevOps
+Tags: Kubernetes, Kubectl, Troubleshooting, Debugging, DevOps
 
 Description: A practical guide to using kubectl exec for debugging running containers, including interactive sessions, running commands, accessing multi-container pods, and common troubleshooting scenarios.
 

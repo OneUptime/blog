@@ -10,7 +10,7 @@ Description: Apply Calico network policy concepts to real Kubernetes traffic sce
 
 ## Introduction
 
-Network policy concepts become meaningful when applied to real traffic. Understanding how Felix evaluates policies for a specific packet — which policies match, in what order, and what decision results — is the foundation for both debugging connectivity issues and writing correct policies.
+Network policy concepts become meaningful when applied to real traffic. Understanding how Felix evaluates policies for a specific packet - which policies match, in what order, and what decision results - is the foundation for both debugging connectivity issues and writing correct policies.
 
 This post maps four real traffic scenarios to their policy evaluation paths, showing which policies apply, how selectors match, and what the final allow/deny decision looks like.
 
@@ -46,7 +46,7 @@ A payment service pod communicates with a database pod. The database has a deny-
 3. CalicNetworkPolicy `deny-all`: Deny (catch-all)
 
 **Evaluation for traffic from payment service**:
-```
+```plaintext
 1. security-baseline: evaluates source selector - no match → Pass to next
 2. allow-payment-service: source app=payment-service matches → Allow
 3. Evaluation stops - first match wins

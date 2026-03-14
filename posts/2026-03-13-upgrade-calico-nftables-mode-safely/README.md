@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Upgrade
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Upgrade
 
 Description: A safe upgrade procedure for Calico when running in nftables mode on a Kubernetes cluster.
 
@@ -10,7 +10,7 @@ Description: A safe upgrade procedure for Calico when running in nftables mode o
 
 ## Introduction
 
-Upgrading Calico in nftables mode follows the same operator-managed rolling upgrade process as iptables mode. The nftables-specific consideration is that new Calico versions may change the structure of nftables tables — adding new tables, changing chain names, or modifying rule order. nftables' atomic transaction model means these changes apply cleanly without partial rule states, but they can briefly interrupt existing connections if rules are completely reprogrammed on a node.
+Upgrading Calico in nftables mode follows the same operator-managed rolling upgrade process as iptables mode. The nftables-specific consideration is that new Calico versions may change the structure of nftables tables - adding new tables, changing chain names, or modifying rule order. nftables' atomic transaction model means these changes apply cleanly without partial rule states, but they can briefly interrupt existing connections if rules are completely reprogrammed on a node.
 
 The upgrade procedure should include verifying that nftables tables are correctly structured after the upgrade, as new Calico versions may expect a different table layout than the previous version.
 

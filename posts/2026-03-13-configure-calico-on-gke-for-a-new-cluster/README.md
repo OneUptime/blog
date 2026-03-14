@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gke, google-cloud, kubernetes, networking, cni
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, GKE, Google Cloud
 
 Description: A guide to deploying Calico on a new Google Kubernetes Engine cluster, enabling advanced network policy capabilities beyond GKE's native Dataplane V2.
 
@@ -79,7 +79,7 @@ kind: Installation
 metadata:
   name: default
 spec:
-  # Use GKE native networking — Calico acts as policy-only engine
+  # Use GKE native networking - Calico acts as policy-only engine
   cni:
     type: GKE
   calicoNetwork:
@@ -159,10 +159,10 @@ kubectl run test --image=busybox --rm -it -- nslookup kubernetes.default
 
 ## Best Practices
 
-- Use GKE Standard clusters (not Autopilot) — Calico requires DaemonSet deployment which isn't supported on Autopilot
+- Use GKE Standard clusters (not Autopilot) - Calico requires DaemonSet deployment which isn't supported on Autopilot
 - Disable GKE's built-in network policy before installing Calico to avoid conflicts
 - Match Calico's pod CIDR configuration to GKE's `--cluster-ipv4-cidr` setting
-- Use node auto-provisioning carefully — new node pools must be compatible with Calico's DaemonSet
+- Use node auto-provisioning carefully - new node pools must be compatible with Calico's DaemonSet
 - Monitor Calico with GKE's built-in Cloud Monitoring by exporting Calico's Prometheus metrics
 
 ## Conclusion

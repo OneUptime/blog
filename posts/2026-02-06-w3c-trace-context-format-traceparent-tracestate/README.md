@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, W3C Trace Context, Distributed Tracing, traceparent, tracestate, Context Propagation
+Tags: OpenTelemetry, W3C Trace Context, Distributed Tracing, Traceparent, Tracestate, Context Propagation
 
 Description: Learn how the W3C Trace Context standard works, including the traceparent and tracestate headers, and how OpenTelemetry uses them for distributed trace propagation.
 

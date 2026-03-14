@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, image-automation, Pull-Requests, GitOps, GitHub, Kubernetes
+Tags: Flux, Image-automation, Pull-Requests, GitOps, GitHub, Kubernetes
 
 Description: Learn how to configure Flux image automation to create pull requests for image tag updates instead of committing directly to the main branch.
 
@@ -106,7 +106,7 @@ jobs:
             ### Changes
             ```diff
             ${{ steps.changes.outputs.diff }}
-            ```
+            ```plaintext
 
             ### Review Checklist
             - [ ] Verify image versions are expected

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, C++, gRPC, Services, Tracing, Microservices
+Tags: OpenTelemetry, C++, GRPC, Services, Tracing, Microservices
 
 Description: Learn how to add OpenTelemetry instrumentation to C++ gRPC services, including client and server interceptors, context propagation, and distributed tracing across microservices.
 

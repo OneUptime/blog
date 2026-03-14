@@ -192,7 +192,7 @@ spec:
 - Never create wildcard IAM policies (`"Action": "*"` or `"Resource": "*"`). Each policy should grant only the specific actions on specific resources required by the workload.
 - Prefer IRSA for all Kubernetes workloads running on EKS over long-lived IAM user credentials. IRSA eliminates secrets management and is more secure.
 - Organize IAM resources under `infrastructure/iam/policies/`, `infrastructure/iam/roles/`, and `infrastructure/iam/users/` to keep them discoverable.
-- Enable `prune: true` for IAM Kustomizations unlike databases—orphaned IAM roles and policies are a security risk and should be cleaned up automatically.
+- Enable `prune: true` for IAM Kustomizations unlike databases-orphaned IAM roles and policies are a security risk and should be cleaned up automatically.
 - Review IAM policy changes in pull requests with a security-focused reviewer. Consider requiring mandatory review for any PR modifying the `infrastructure/iam/` path.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Parallels Desktop, macOS, Virtualization, Kubernetes
+Tags: Talos Linux, Parallels Desktop, MacOS, Virtualization, Kubernetes
 
 Description: A step-by-step guide to installing and running Talos Linux on Parallels Desktop for macOS, covering image preparation, VM creation, and cluster bootstrapping.
 

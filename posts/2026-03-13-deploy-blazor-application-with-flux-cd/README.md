@@ -10,9 +10,9 @@ Description: Deploy a Blazor WebAssembly application to Kubernetes using Flux CD
 
 ## Introduction
 
-Blazor WebAssembly compiles your C# code to WebAssembly that runs directly in the browser, without a JavaScript framework. Like React or Vue SPAs, the output is a set of static files — HTML, CSS, JavaScript bootstrap, and `.wasm` binaries — that can be served by any web server. Blazor Server, by contrast, runs on ASP.NET Core and requires a persistent server process.
+Blazor WebAssembly compiles your C# code to WebAssembly that runs directly in the browser, without a JavaScript framework. Like React or Vue SPAs, the output is a set of static files - HTML, CSS, JavaScript bootstrap, and `.wasm` binaries - that can be served by any web server. Blazor Server, by contrast, runs on ASP.NET Core and requires a persistent server process.
 
-This guide focuses on Blazor WebAssembly (WASM), the statically servable variant. The deployment pattern is similar to React and Vue: build the app, copy the output into an Nginx container, and serve. The unique consideration is that Blazor WASM bundles include `.wasm` files that must be served with the correct `application/wasm` MIME type, and the files can be large — compression is important.
+This guide focuses on Blazor WebAssembly (WASM), the statically servable variant. The deployment pattern is similar to React and Vue: build the app, copy the output into an Nginx container, and serve. The unique consideration is that Blazor WASM bundles include `.wasm` files that must be served with the correct `application/wasm` MIME type, and the files can be large - compression is important.
 
 Flux CD manages the entire lifecycle, from the initial deployment to automated image updates when your CI pipeline produces new builds.
 
@@ -26,7 +26,7 @@ Flux CD manages the entire lifecycle, from the initial deployment to automated i
 ## Step 1: Publish and Containerize the Blazor WASM Application
 
 ```dockerfile
-# Dockerfile — build with .NET SDK, serve with Nginx
+# Dockerfile - build with .NET SDK, serve with Nginx
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
 WORKDIR /app
 
@@ -53,7 +53,7 @@ CMD ["nginx", "-g", "daemon off;"]
 ```
 
 ```nginx
-# nginx.conf — Blazor WASM requires correct MIME types and SPA routing
+# nginx.conf - Blazor WASM requires correct MIME types and SPA routing
 server {
     listen 80;
     root /usr/share/nginx/html;
@@ -75,7 +75,7 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    # SPA fallback — route all unmatched requests to index.html
+    # SPA fallback - route all unmatched requests to index.html
     location / {
         try_files $uri $uri/ /index.html;
         # index.html should not be cached
@@ -294,7 +294,7 @@ kubectl port-forward -n my-blazor-app svc/my-blazor-app 8080:80
 ## Best Practices
 
 - Always configure Nginx to serve `.wasm` files with `Content-Type: application/wasm`. Without this, some browsers will refuse to compile the module.
-- Enable gzip and pre-compressed Brotli (`.br` files) for Blazor WASM bundles — uncompressed WASM can be several megabytes.
+- Enable gzip and pre-compressed Brotli (`.br` files) for Blazor WASM bundles - uncompressed WASM can be several megabytes.
 - Use `appsettings.Production.json` mounted from a ConfigMap for runtime configuration so API base URLs and feature flags can differ per environment without rebuilding the image.
 - Set aggressive caching headers on fingerprinted static assets (`.wasm`, `.js`, `.css`) but use `no-cache` on `index.html` to ensure users always get the latest version.
 - Consider Blazor's lazy loading feature for large assemblies to reduce the initial download size.

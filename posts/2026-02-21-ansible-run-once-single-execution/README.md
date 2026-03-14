@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, run_once, Task Execution, Playbook Patterns
+Tags: Ansible, Run_once, Task Execution, Playbook Patterns
 
 Description: Use the Ansible run_once directive to execute a task on only one host while applying the result to all hosts in the play for efficient operations.
 

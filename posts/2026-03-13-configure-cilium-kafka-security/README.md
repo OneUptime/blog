@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Kafka, Security, L7 Policy, eBPF
+Tags: Cilium, Kubernetes, Kafka, Security, L7 Policy, EBPF
 
-Description: Secure Kafka workloads in Kubernetes using Cilium L7 network policies to control which producers and consumers can access specific topics.
+Description: Use Cilium L7 network policies to control which producers and consumers can access specific Kafka topics in Kubernetes.
 
 ---
 

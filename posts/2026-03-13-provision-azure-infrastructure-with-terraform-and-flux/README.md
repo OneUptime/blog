@@ -10,7 +10,7 @@ Description: Provision Azure infrastructure using Terraform via the Tofu Control
 
 ## Introduction
 
-Provisioning Azure infrastructure through the Tofu Controller and Flux brings GitOps principles to Terraform on Azure. Resource groups, virtual networks, AKS clusters, and Azure SQL databases all become continuously reconciled Kubernetes resources. When infrastructure drifts from the desired state—whether from manual console changes or failed partial updates—the Tofu Controller detects and corrects the drift automatically.
+Provisioning Azure infrastructure through the Tofu Controller and Flux brings GitOps principles to Terraform on Azure. Resource groups, virtual networks, AKS clusters, and Azure SQL databases all become continuously reconciled Kubernetes resources. When infrastructure drifts from the desired state-whether from manual console changes or failed partial updates-the Tofu Controller detects and corrects the drift automatically.
 
 The Azure Terraform provider (`hashicorp/azurerm`) is one of the most comprehensive cloud providers available, covering virtually every Azure service. This guide provisions a production-grade Azure environment including a Resource Group, Virtual Network, AKS cluster, and Azure SQL database, chaining them together using Terraform output secrets.
 

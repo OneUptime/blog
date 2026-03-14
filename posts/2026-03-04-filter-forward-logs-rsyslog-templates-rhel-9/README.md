@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, Logging, Templates, Linux
+Tags: RHEL, Rsyslog, Logging, Templates, Linux
 
 Description: Learn how to use rsyslog templates and filter conditions to selectively forward and format log messages on RHEL for targeted log management.
 

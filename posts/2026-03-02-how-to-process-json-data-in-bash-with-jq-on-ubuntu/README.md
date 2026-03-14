@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Bash, jq, JSON, Scripting
+Tags: Ubuntu, Bash, Jq, JSON, Scripting
 
 Description: Learn how to use jq to parse, filter, transform, and generate JSON data in Bash scripts on Ubuntu, with practical API response and config file examples.
 

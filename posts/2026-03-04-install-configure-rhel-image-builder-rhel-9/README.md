@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Custom Images, osbuild
+Tags: RHEL, Image Builder, Custom Images, Osbuild
 
 Description: Install and configure RHEL Image Builder on RHEL 9 for custom OS images.
 

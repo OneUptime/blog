@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, timecmp, Time Comparison, Conditional Logic, Infrastructure as Code
+Tags: Terraform, Timecmp, Time Comparison, Conditional Logic, Infrastructure as Code
 
 Description: Learn how to use Terraform's timecmp function to compare timestamps for maintenance windows, certificate expiry checks, and conditional infrastructure deployments.
 

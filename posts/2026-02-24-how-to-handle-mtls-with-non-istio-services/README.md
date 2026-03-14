@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Non-Mesh Services, Migration, Kubernetes
+Tags: Istio, MTLS, Non-Mesh Services, Migration, Kubernetes
 
 Description: Strategies for handling communication between Istio mesh services using mTLS and services that are not part of the mesh.
 

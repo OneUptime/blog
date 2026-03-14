@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Logging
 
-Description: Avoid the most common mistakes in Calico log collection including leaving Debug logging enabled, collecting logs from only one node, ignoring log rotation limits, and not including CRD state alongside component logs.
+Description: Avoid the most common mistakes in Calico log collection including leaving Debug logging enabled, collecting logs from only one node, ignoring log rotation limits, and not including CRD state...
 
 ---
 
@@ -112,4 +112,4 @@ logcli query '{namespace="calico-system", container="calico-node"}' \
 
 ## Conclusion
 
-The most operationally damaging log collection mistake is leaving Debug logging enabled — it silently saturates log pipelines and can cause log shippers to drop messages from other critical systems. The most diagnostically damaging mistake is collecting logs from only one node when a multi-node interaction is causing the issue. Build the `--prefix=true` flag and multi-pod collection into all standard log collection procedures, and treat Debug logging as a short-duration diagnostic tool with a mandatory revert step.
+The most operationally damaging log collection mistake is leaving Debug logging enabled - it silently saturates log pipelines and can cause log shippers to drop messages from other critical systems. The most diagnostically damaging mistake is collecting logs from only one node when a multi-node interaction is causing the issue. Build the `--prefix=true` flag and multi-pod collection into all standard log collection procedures, and treat Debug logging as a short-duration diagnostic tool with a mandatory revert step.

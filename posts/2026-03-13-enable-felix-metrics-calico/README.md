@@ -10,7 +10,7 @@ Description: Enable Felix Prometheus metrics on port 9091 to collect per-node ne
 
 ## Introduction
 
-Felix metrics provide the deepest per-node view of Calico's network policy enforcement. Enabling them requires a FelixConfiguration change to expose the metrics port, and a ServiceMonitor or Prometheus scrape configuration to collect them. Felix metrics include iptables rule counts, policy calculation times, dataplane errors, and BGP session state — covering the full operational health of the Calico data plane.
+Felix metrics provide the deepest per-node view of Calico's network policy enforcement. Enabling them requires a FelixConfiguration change to expose the metrics port, and a ServiceMonitor or Prometheus scrape configuration to collect them. Felix metrics include iptables rule counts, policy calculation times, dataplane errors, and BGP session state - covering the full operational health of the Calico data plane.
 
 ## Key Commands
 

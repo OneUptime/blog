@@ -10,7 +10,7 @@ Description: A guide to testing Calico network policies on a bare metal Kubernet
 
 ## Introduction
 
-Testing network policies on a bare metal Calico cluster validates that your security posture is correctly enforced at the pod level. Because bare metal clusters often serve performance-sensitive workloads — databases, caches, and compute-intensive services — network policy testing must not only confirm that policies block unwanted traffic, but also that policy enforcement does not introduce latency for allowed traffic.
+Testing network policies on a bare metal Calico cluster validates that your security posture is correctly enforced at the pod level. Because bare metal clusters often serve performance-sensitive workloads - databases, caches, and compute-intensive services - network policy testing must not only confirm that policies block unwanted traffic, but also that policy enforcement does not introduce latency for allowed traffic.
 
 Calico programs network policies into iptables or the eBPF dataplane depending on your configuration. Testing policies explicitly confirms that the programming succeeded and that the dataplane behavior matches your intent. Both standard Kubernetes NetworkPolicy resources and Calico's own GlobalNetworkPolicy CRDs should be tested.
 

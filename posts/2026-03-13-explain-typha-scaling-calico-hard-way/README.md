@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, Networking, CNI, Scaling
 
-Description: Understand what Calico Typha is and why it matters for large Kubernetes clusters. This post explains the architecture, data flow, and scaling model of Typha when configuring Calico without an operator.
+Description: Understand what Calico Typha is and why it matters for large Kubernetes clusters.
 
 ---
 
@@ -14,7 +14,7 @@ When Kubernetes clusters grow beyond a few dozen nodes, the default Calico archi
 
 Typha solves this problem by acting as a fan-out cache between Felix agents and the Kubernetes API server. Instead of each Felix instance watching the API server directly, they all connect to a small pool of Typha pods. Typha holds a single watch connection per resource type and broadcasts updates to all connected Felix agents.
 
-This post explains the Typha architecture, when to enable it, and how it fits into a "hard way" Calico deployment — meaning you configure Typha manually without relying on the Calico Operator.
+This post explains the Typha architecture, when to enable it, and how it fits into a "hard way" Calico deployment - meaning you configure Typha manually without relying on the Calico Operator.
 
 ---
 
@@ -31,7 +31,7 @@ This post explains the Typha architecture, when to enable it, and how it fits in
 
 Without Typha, every Felix agent connects directly to the Kubernetes API server:
 
-```
+```plaintext
 Felix (node-1) --> kube-apiserver
 Felix (node-2) --> kube-apiserver
 Felix (node-3) --> kube-apiserver
@@ -47,7 +47,7 @@ Each Felix instance watches several resource types including `NetworkPolicy`, `H
 
 Typha inserts a caching layer:
 
-```
+```plaintext
 Felix (node-1) --> Typha pod --> kube-apiserver
 Felix (node-2) --> Typha pod
 Felix (node-3) --> Typha pod
@@ -125,7 +125,7 @@ calicoctl apply -f felixconfiguration-typha.yaml
 
 ## Conclusion
 
-Typha is a critical scaling component for large Calico deployments. By understanding the architecture — a single API server watch fan-out to many Felix agents — you can make informed decisions about when to enable it and how many replicas to run. In subsequent posts in this series, you will deploy, configure, secure, and monitor Typha entirely from scratch without relying on the Calico Operator.
+Typha is a critical scaling component for large Calico deployments. By understanding the architecture - a single API server watch fan-out to many Felix agents - you can make informed decisions about when to enable it and how many replicas to run. In subsequent posts in this series, you will deploy, configure, secure, and monitor Typha entirely from scratch without relying on the Calico Operator.
 
 ---
 

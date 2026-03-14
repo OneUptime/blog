@@ -10,9 +10,9 @@ Description: Deploy a Next.js application with server-side rendering to Kubernet
 
 ## Introduction
 
-Next.js applications differ from static React SPAs in an important way: they include a Node.js server that handles server-side rendering, API routes, and image optimization. This means you cannot simply serve the build output with Nginx — you need to run a Node.js process inside your container. Fortunately, Next.js's standalone output mode produces a self-contained server bundle that is easy to containerize efficiently.
+Next.js applications differ from static React SPAs in an important way: they include a Node.js server that handles server-side rendering, API routes, and image optimization. This means you cannot simply serve the build output with Nginx - you need to run a Node.js process inside your container. Fortunately, Next.js's standalone output mode produces a self-contained server bundle that is easy to containerize efficiently.
 
-Running Next.js on Kubernetes with Flux CD gives you the reliability of GitOps — every configuration change goes through Git, every rollback is a revert — plus the ability to scale the SSR server independently based on traffic. Flux continuously ensures your cluster matches your declared state, so deployments are consistent across environments.
+Running Next.js on Kubernetes with Flux CD gives you the reliability of GitOps - every configuration change goes through Git, every rollback is a revert - plus the ability to scale the SSR server independently based on traffic. Flux continuously ensures your cluster matches your declared state, so deployments are consistent across environments.
 
 This guide covers the Next.js standalone Docker build, Kubernetes manifest design, and the full Flux pipeline including automatic image updates.
 
@@ -59,7 +59,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# Production runtime image — uses only the standalone output
+# Production runtime image - uses only the standalone output
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production

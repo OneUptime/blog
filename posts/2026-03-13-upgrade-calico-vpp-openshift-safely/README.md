@@ -77,4 +77,4 @@ oc exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
 
 ## Conclusion
 
-Safely upgrading Calico VPP on OpenShift requires reviewing whether OS-level changes are needed (and applying them via MCO if so), then upgrading the Calico control plane and VPP components in sequence. The MCO update step — which may cause node reboots — is the most time-consuming part and must be accounted for in the maintenance window planning.
+Safely upgrading Calico VPP on OpenShift requires reviewing whether OS-level changes are needed (and applying them via MCO if so), then upgrading the Calico control plane and VPP components in sequence. The MCO update step - which may cause node reboots - is the most time-consuming part and must be accounted for in the maintenance window planning.

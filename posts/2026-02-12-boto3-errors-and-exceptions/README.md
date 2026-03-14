@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, boto3, Python, Error Handling
+Tags: AWS, Boto3, Python, Error Handling
 
 Description: A practical guide to handling Boto3 errors and exceptions in Python, covering client exceptions, service errors, retry strategies, and best practices.
 

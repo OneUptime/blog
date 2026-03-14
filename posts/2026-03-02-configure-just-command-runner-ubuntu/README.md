@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, just, Command Runner, Automation, Development
+Tags: Ubuntu, Just, Command Runner, Automation, Development
 
 Description: Install and configure the just command runner on Ubuntu, write justfiles for project automation, and use just's powerful recipes, variables, and settings.
 

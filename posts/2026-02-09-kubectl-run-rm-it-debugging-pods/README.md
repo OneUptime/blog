@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging
+Tags: Kubernetes, Kubectl, Debugging
 
 Description: Master kubectl run with --rm and -it flags to create temporary debugging pods that automatically clean up after use, perfect for network troubleshooting and cluster exploration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, installation, helm, kubernetes, automation, cni, networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to automate a production-ready Cilium installation using Helm and the Cilium CLI, with configuration management through GitOps and post-install validation steps.
 
@@ -55,7 +55,7 @@ cluster:
 ipam:
   mode: "kubernetes"               # Use Kubernetes node CIDR allocation
 
-# KubeProxy replacement — enables Cilium's eBPF-based kube-proxy replacement
+# KubeProxy replacement - enables Cilium's eBPF-based kube-proxy replacement
 kubeProxyReplacement: true
 
 # Kubernetes API server address (required when kubeProxyReplacement is true)
@@ -212,7 +212,7 @@ cilium version
 
 ## Best Practices
 
-- Always pin Cilium to a specific chart version in production — never use `latest` or floating version ranges.
+- Always pin Cilium to a specific chart version in production - never use `latest` or floating version ranges.
 - Use `--atomic` in Helm installs to automatically roll back if the installation fails.
 - Store your values file in Git and manage it through a GitOps workflow (Flux or ArgoCD).
 - Run `cilium connectivity test` as part of the post-install pipeline to validate the CNI before scheduling application workloads.

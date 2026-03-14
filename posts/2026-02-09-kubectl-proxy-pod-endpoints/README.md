@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, API, Proxy, Debugging
+Tags: Kubernetes, Kubectl, API, Proxy, Debugging
 
 Description: Learn how to use kubectl proxy to access pod HTTP endpoints through the Kubernetes API server for secure debugging and testing.
 

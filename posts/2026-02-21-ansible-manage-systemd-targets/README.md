@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Linux, Server Administration
+Tags: Ansible, Systemd, Linux, Server Administration
 
 Description: Learn how to use Ansible to manage systemd targets across your Linux fleet for consistent boot behavior and service grouping.
 

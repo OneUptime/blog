@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Traefik, Kubernetes, Ingresses, TLS, DevOps, Load Balancing, Middleware
+Tags: K3s, Traefik, Kubernetes, Ingresses, TLS, DevOps, Load Balancing, Middleware
 
 Description: A comprehensive guide to using Traefik as the default ingress controller in K3s, covering IngressRoutes, TLS configuration, middleware, and advanced routing patterns.
 

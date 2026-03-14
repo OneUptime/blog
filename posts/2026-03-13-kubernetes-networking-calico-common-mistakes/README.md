@@ -10,7 +10,7 @@ Description: The most common Kubernetes networking mistakes in Calico environmen
 
 ## Introduction
 
-Most Kubernetes networking incidents in Calico environments are caused by a small set of recurring mistakes: IP pool exhaustion, misconfigured encapsulation, BGP peering failures, and overlapping CIDRs. These mistakes are not exotic — they happen in well-run organizations because networking configuration is set at cluster creation and rarely revisited until something breaks.
+Most Kubernetes networking incidents in Calico environments are caused by a small set of recurring mistakes: IP pool exhaustion, misconfigured encapsulation, BGP peering failures, and overlapping CIDRs. These mistakes are not exotic - they happen in well-run organizations because networking configuration is set at cluster creation and rarely revisited until something breaks.
 
 This post catalogs the mistakes with the highest blast radius and provides both prevention strategies and diagnostic procedures so you can fix them quickly when they occur.
 
@@ -27,7 +27,7 @@ The most painful networking mistake is discovering your IP pool is full when a n
 **Prevention**: Monitor IPAM allocation proactively:
 ```bash
 calicoctl ipam show
-# Watch the "Utilization" column — alert at 80%
+# Watch the "Utilization" column - alert at 80%
 ```
 
 **Fix**: Add a new non-overlapping IP pool:
@@ -90,7 +90,7 @@ In BGP mode, if a node restarts and does not re-establish its BGP sessions promp
 **Diagnosis**:
 ```bash
 calicoctl node status
-# Check BGP session state — should show "Established"
+# Check BGP session state - should show "Established"
 ```
 
 **Fix**: Ensure BIRD (Calico's BGP daemon) is healthy:
@@ -114,7 +114,7 @@ calicoctl patch ippool default-ipv4-ippool \
 
 - Monitor IPAM utilization via Prometheus (Calico Felix exposes IPAM metrics) and alert at 75%
 - Document your pool CIDR, node CIDR, service CIDR, and all external CIDRs in a network diagram before cluster creation
-- Set MTU explicitly in your Calico installation manifest — never rely on auto-detection in production
+- Set MTU explicitly in your Calico installation manifest - never rely on auto-detection in production
 - Test BGP session recovery by simulating a node restart in your lab before production rollout
 
 ## Conclusion

@@ -10,7 +10,7 @@ Description: Fix liveness and readiness probe failures caused by Calico NetworkP
 
 ## Introduction
 
-Fixing health check failures caused by Calico NetworkPolicies requires adding an ipBlock ingress allow rule that covers the node subnet, enabling kubelet probe traffic to reach the pod. Because kubelet probes originate from the node's primary IP address (not from a pod), podSelector and namespaceSelector rules are insufficient — only an ipBlock rule that covers the node's IP will allow probe traffic.
+Fixing health check failures caused by Calico NetworkPolicies requires adding an ipBlock ingress allow rule that covers the node subnet, enabling kubelet probe traffic to reach the pod. Because kubelet probes originate from the node's primary IP address (not from a pod), podSelector and namespaceSelector rules are insufficient - only an ipBlock rule that covers the node's IP will allow probe traffic.
 
 This fix must be applied to every namespace where pods with health checks are subject to a default-deny ingress policy. The node CIDR used in the ipBlock must cover all node IPs in the cluster, or the fix will only work for pods on nodes within the covered range.
 
@@ -137,4 +137,4 @@ flowchart TD
 
 ## Conclusion
 
-Fixing health check failures from Calico NetworkPolicies requires adding an ipBlock ingress allow for the node CIDR covering the probe port. Since kubelet probes come from the node IP rather than from a pod, namespace and pod selectors are ineffective — only ipBlock rules can allow this traffic.
+Fixing health check failures from Calico NetworkPolicies requires adding an ipBlock ingress allow for the node CIDR covering the probe port. Since kubelet probes come from the node IP rather than from a pod, namespace and pod selectors are ineffective - only ipBlock rules can allow this traffic.

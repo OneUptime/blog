@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Security, Kubernetes, Service Mesh, Troubleshooting
+Tags: Istio, MTLS, Security, Kubernetes, Service Mesh, Troubleshooting
 
 Description: Quick and practical methods to verify mutual TLS status and encryption between services in your Istio service mesh.
 

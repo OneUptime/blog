@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, iOS, App Launch, Performance, Span
+Tags: OpenTelemetry, Swift, IOS, App Launch, Performance, Span
 
 Description: Track and optimize iOS app launch performance using OpenTelemetry spans to measure cold starts, warm starts, and initialization phases for better user experience.
 

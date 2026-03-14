@@ -227,4 +227,4 @@ curl http://<ollama-svc-ip>:11434/v1/chat/completions \
 
 ## Conclusion
 
-Deploying Ollama with Flux CD on Kubernetes combines the simplicity of Ollama's model management with the reliability of GitOps. Your team gets a private, GPU-accelerated LLM API with all configuration changes version-controlled, auditable, and automatically reconciled — a practical foundation for internal AI tooling.
+Deploying Ollama with Flux CD on Kubernetes combines the simplicity of Ollama's model management with the reliability of GitOps. Your team gets a private, GPU-accelerated LLM API with all configuration changes version-controlled, auditable, and automatically reconciled - a practical foundation for internal AI tooling.

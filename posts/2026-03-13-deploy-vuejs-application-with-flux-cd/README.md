@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Vue.js, JavaScript, SPA, Nginx
+Tags: Flux CD, Kubernetes, GitOps, Vue.js, JavaScript, SPA, NGINX
 
 Description: Deploy a Vue.js application to Kubernetes using Flux CD GitOps workflow, with Nginx serving and runtime environment variable injection.
 
@@ -26,7 +26,7 @@ This guide covers containerizing a Vue.js (Vite) application, writing the Kubern
 ## Step 1: Containerize the Vue.js Application
 
 ```dockerfile
-# Dockerfile — multi-stage: build with Node, serve with Nginx
+# Dockerfile - multi-stage: build with Node, serve with Nginx
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -45,7 +45,7 @@ CMD ["nginx", "-g", "daemon off;"]
 ```
 
 ```nginx
-# nginx.conf — handles Vue Router history mode
+# nginx.conf - handles Vue Router history mode
 server {
     listen 80;
     root /usr/share/nginx/html;
@@ -278,7 +278,7 @@ kubectl port-forward -n my-vue-app svc/my-vue-app 8080:80
 
 - Load the `config.js` file in your `index.html` before any bundled JavaScript so `window.APP_CONFIG` is available when the Vue app initializes: `<script src="/config.js"></script>`.
 - Use `vite.config.js` `base` option if deploying to a subpath rather than the root domain.
-- Configure Nginx `gzip_comp_level` conservatively (level 4-6) — higher levels increase CPU usage without proportional size reduction.
+- Configure Nginx `gzip_comp_level` conservatively (level 4-6) - higher levels increase CPU usage without proportional size reduction.
 - Use a `PodDisruptionBudget` to ensure at least one replica is always available during node maintenance.
 - For multi-environment deployments, use Kustomize overlays to swap the ConfigMap `config.js` content per environment.
 

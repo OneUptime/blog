@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fdisk, Partitioning, Storage, Linux
+Tags: RHEL, Fdisk, Partitioning, Storage, Linux
 
 Description: A practical guide to partitioning new disks using fdisk on RHEL, covering MBR partition tables, primary and extended partitions, and filesystem creation.
 

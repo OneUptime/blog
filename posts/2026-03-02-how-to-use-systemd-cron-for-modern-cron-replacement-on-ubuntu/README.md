@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Cron, Automation, System Administration
+Tags: Ubuntu, Systemd, Cron, Automation, System Administration
 
 Description: Learn how to use systemd-cron on Ubuntu as a modern replacement for traditional cron, leveraging systemd timer syntax and service units for reliable job scheduling.
 

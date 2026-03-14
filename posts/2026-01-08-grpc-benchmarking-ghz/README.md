@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Benchmarking, ghz, Load Testing, Performance, Testing, CI/CD, Metrics
+Tags: GRPC, Benchmarking, Ghz, Load Testing, Performance, Testing, CI/CD, Metrics
 
 Description: Learn how to use ghz to benchmark gRPC services, run load tests, interpret results, and integrate performance testing into your CI/CD pipeline.
 

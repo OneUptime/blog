@@ -1,10 +1,10 @@
-# Upgrade Calico on AKS Safely
+# How to Upgrade Calico on AKS Safely
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aks, azure, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, AKS, Azure
 
-Description: A step-by-step guide to safely upgrading Calico on Azure Kubernetes Service, with pre-upgrade checks, rolling upgrade procedures, and post-upgrade validation to minimize disruption.
+Description: Safely upgrade Calico network policies on Azure Kubernetes Service with minimal workload disruption.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, kube-proxy, Networking
+Tags: Calico, Kubernetes, EBPF, Kube-proxy, Networking
 
 Description: Diagnose service routing failures when Calico eBPF replaces kube-proxy.
 

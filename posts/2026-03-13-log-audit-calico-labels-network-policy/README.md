@@ -10,7 +10,7 @@ Description: Set up comprehensive logging and auditing for Calico label-based ne
 
 ## Introduction
 
-Auditing label-based network policies requires two layers of visibility: tracking traffic decisions made by your policies, and tracking changes to the labels that determine policy scope. A pod that gets mislabeled in production might silently bypass security controls or trigger unexpected denials — and without proper logging, these changes are invisible.
+Auditing label-based network policies requires two layers of visibility: tracking traffic decisions made by your policies, and tracking changes to the labels that determine policy scope. A pod that gets mislabeled in production might silently bypass security controls or trigger unexpected denials - and without proper logging, these changes are invisible.
 
 Calico's `Log` action captures policy-level traffic decisions. Kubernetes API server audit logs capture label changes on pods and deployments. Together, they give you a complete audit trail: what labels exist, what policies they triggered, and what traffic was allowed or denied as a result.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cron, systemd Timers, Scheduling, Linux, Automation
+Tags: RHEL, Cron, Systemd Timers, Scheduling, Linux, Automation
 
 Description: A practical comparison of cron and systemd timers on RHEL, with examples of both approaches for scheduling recurring tasks, plus guidance on when to use each.
 

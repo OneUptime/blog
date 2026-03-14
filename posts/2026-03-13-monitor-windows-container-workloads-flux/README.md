@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, Monitoring, Prometheus, Grafana, GitOps, Observability
+Tags: Flux CD, Kubernetes, Windows Containers, Monitoring, Prometheus, Grafana, GitOps
 
 Description: Set up monitoring for Windows container workloads deployed by Flux CD, covering Windows-specific metrics, log collection, and alerting.
 
@@ -10,7 +10,7 @@ Description: Set up monitoring for Windows container workloads deployed by Flux 
 
 ## Introduction
 
-Monitoring Windows containers in Kubernetes requires adapting the standard Linux-focused observability stack to account for Windows-specific metrics, event sources, and monitoring agents. Many popular monitoring tools — including the kube-prometheus-stack — have added Windows support, but require specific configuration to work correctly with Windows nodes.
+Monitoring Windows containers in Kubernetes requires adapting the standard Linux-focused observability stack to account for Windows-specific metrics, event sources, and monitoring agents. Many popular monitoring tools - including the kube-prometheus-stack - have added Windows support, but require specific configuration to work correctly with Windows nodes.
 
 Flux CD manages the monitoring stack itself through GitOps, ensuring that monitoring components are consistently deployed alongside the workloads they observe. This guide covers deploying Windows-compatible monitoring agents via Flux, configuring Prometheus to scrape Windows metrics, collecting Windows Event Log entries with Fluent Bit, and building Grafana dashboards that accurately represent Windows workload health.
 
@@ -353,12 +353,12 @@ spec:
 ## Best Practices
 
 - Deploy `windows-exporter` as a DaemonSet targeting Windows nodes to get per-node metrics.
-- Use the Windows-specific Fluent Bit image — the Linux image will not run on Windows nodes.
+- Use the Windows-specific Fluent Bit image - the Linux image will not run on Windows nodes.
 - Configure IIS-specific metrics collection (requests per second, application pool state) for web workloads.
-- Set `scrapeTimeout` generously in ServiceMonitors — Windows metrics collection can be slower than Linux.
+- Set `scrapeTimeout` generously in ServiceMonitors - Windows metrics collection can be slower than Linux.
 - Build separate Grafana dashboards for Windows workloads with Windows-specific metrics panels.
 - Monitor Windows Event Log for application crashes and service failures alongside container stdout/stderr.
 
 ## Conclusion
 
-Monitoring Windows container workloads with Flux CD requires deploying Windows-specific monitoring agents — `windows-exporter` and Windows Fluent Bit — alongside the workloads they observe. By managing the monitoring stack through the same GitOps workflow as the applications, Flux ensures monitoring is consistently deployed and configured. Windows-specific Prometheus metrics, event log collection, and targeted alerting rules give you comprehensive visibility into the health of your Windows workload portfolio.
+Monitoring Windows container workloads with Flux CD requires deploying Windows-specific monitoring agents - `windows-exporter` and Windows Fluent Bit - alongside the workloads they observe. By managing the monitoring stack through the same GitOps workflow as the applications, Flux ensures monitoring is consistently deployed and configured. Windows-specific Prometheus metrics, event log collection, and targeted alerting rules give you comprehensive visibility into the health of your Windows workload portfolio.

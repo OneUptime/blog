@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, mTLS, Certificate Management, Security Migration
+Tags: Istio, TLS, MTLS, Certificate Management, Security Migration
 
 Description: Migrate from self-managed TLS certificate infrastructure to Istio automatic mTLS, eliminating manual cert rotation, custom CA management, and per-service TLS configuration.
 

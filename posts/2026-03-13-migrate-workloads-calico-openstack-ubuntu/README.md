@@ -101,4 +101,4 @@ Verify VMs receive Calico-assigned IPs and are reachable.
 
 ## Conclusion
 
-Migrating from OVS to Calico in Ubuntu OpenStack requires a full VM shutdown, OVS cleanup, Calico plugin installation, network recreation, and VM restart. The migration window must account for all these steps plus verification. While disruptive, the result — BGP-routed flat networking without overlay tunnels — provides better performance and simpler operation for large OpenStack deployments.
+Migrating from OVS to Calico in Ubuntu OpenStack requires a full VM shutdown, OVS cleanup, Calico plugin installation, network recreation, and VM restart. The migration window must account for all these steps plus verification. While disruptive, the result - BGP-routed flat networking without overlay tunnels - provides better performance and simpler operation for large OpenStack deployments.

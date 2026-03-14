@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, Swift, iOS, Mobile Development, Apple
+Tags: AWS, Amplify, Swift, IOS, Mobile Development, Apple
 
 Description: Integrate AWS Amplify with your Swift iOS application to add authentication, APIs, storage, and push notifications using native Swift APIs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Scala, sbt, Build, JVM
+Tags: Scala, Sbt, Build, JVM
 
 Description: A comprehensive guide to using sbt (Simple Build Tool) for Scala and Java project build management, covering project setup, dependency management, multi-project builds, custom tasks, plugins.
 

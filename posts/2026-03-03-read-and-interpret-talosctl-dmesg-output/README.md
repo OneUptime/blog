@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, dmesg, Debugging, Kernel Logs, Linux, Kubernetes
+Tags: Talos Linux, Talosctl, Dmesg, Debugging, Kernel Logs, Linux, Kubernetes
 
 Description: Learn how to read and interpret talosctl dmesg output to diagnose kernel-level issues on your Talos Linux nodes effectively.
 

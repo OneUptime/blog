@@ -10,7 +10,7 @@ Description: Common egress configuration mistakes in Calico deployments and how 
 
 ## Introduction
 
-Egress policy mistakes in Calico are uniquely painful because they often manifest as intermittent connectivity failures — workloads that reach some external endpoints but not others, or that worked last week but broke when an external API changed its IP address. These failures are not immediately obvious as network policy issues.
+Egress policy mistakes in Calico are uniquely painful because they often manifest as intermittent connectivity failures - workloads that reach some external endpoints but not others, or that worked last week but broke when an external API changed its IP address. These failures are not immediately obvious as network policy issues.
 
 This post covers the five most common egress mistakes, including the one mistake that breaks almost every first-time egress policy implementation: forgetting to allow DNS egress.
 
@@ -73,7 +73,7 @@ egress:
 
 ## Mistake 4: Egress Gateway Not Covering All Namespaces
 
-When deploying egress gateways, teams sometimes configure them only for specific namespaces and forget that other namespaces still use node SNAT. This creates inconsistent source IPs — some traffic comes from the gateway IP, some from node IPs — breaking external firewall rules.
+When deploying egress gateways, teams sometimes configure them only for specific namespaces and forget that other namespaces still use node SNAT. This creates inconsistent source IPs - some traffic comes from the gateway IP, some from node IPs - breaking external firewall rules.
 
 **Symptom**: External service receives requests from multiple different source IPs, some of which are not in the allowlist.
 

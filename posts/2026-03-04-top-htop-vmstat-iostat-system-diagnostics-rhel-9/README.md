@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, top, htop, vmstat, iostat
+Tags: RHEL, Top, Htop, Vmstat, Iostat
 
 Description: Use top, htop, vmstat, and iostat on RHEL 9 for real-time system diagnostics.
 

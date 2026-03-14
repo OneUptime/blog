@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LUKS, Block Device Encryption, dm-crypt, Security, Linux
+Tags: RHEL, LUKS, Block Device Encryption, Dm-crypt, Security, Linux
 
 Description: Encrypt individual block devices like data disks and partitions with LUKS on RHEL to protect sensitive data stored on specific volumes.
 

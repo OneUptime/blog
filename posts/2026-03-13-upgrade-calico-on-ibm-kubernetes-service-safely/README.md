@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ibm, iks, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, IBM Kubernetes Service
 
 Description: A guide to safely upgrading Calico on IBM Kubernetes Service (IKS), including IBM Cloud-specific prerequisites, the upgrade procedure, and validation steps to ensure network continuity.
 
@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on IBM Kubernetes Service (IKS),
 
 IBM Kubernetes Service (IKS) integrates Calico as the default CNI and network policy engine, making it central to all cluster networking. IKS manages Calico through its own lifecycle, but operators can also install newer Calico versions alongside the IBM-managed components for advanced features.
 
-Upgrading Calico on IKS requires understanding the relationship between IBM's managed Calico integration and any additional Calico resources you've deployed. IBM Cloud's network infrastructure — including its VLAN-based networking and LoadBalancer integration — must remain compatible with the Calico version being deployed.
+Upgrading Calico on IKS requires understanding the relationship between IBM's managed Calico integration and any additional Calico resources you've deployed. IBM Cloud's network infrastructure - including its VLAN-based networking and LoadBalancer integration - must remain compatible with the Calico version being deployed.
 
 This guide covers safe Calico upgrade procedures for IKS, including the IBM Cloud-specific considerations for managed vs self-managed Calico components and how to coordinate with IKS cluster version upgrades.
 

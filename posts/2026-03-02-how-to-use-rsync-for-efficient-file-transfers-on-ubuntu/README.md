@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, rsync, File Transfer, Backup, Linux
+Tags: Ubuntu, Rsync, File Transfer, Backup, Linux
 
 Description: Master rsync for efficient file transfers and synchronization on Ubuntu, covering local and remote transfers, common options, bandwidth limiting, and practical backup workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Logging, talosctl, Troubleshooting
+Tags: Talos Linux, Kubernetes, Logging, Talosctl, Troubleshooting
 
 Description: Learn how to use talosctl logs to view and analyze service logs on Talos Linux nodes for effective troubleshooting.
 

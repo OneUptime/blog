@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostics
 
-Description: Avoid common mistakes in Calico cluster diagnostics including skipping calicoctl cluster diags before remediation, misreading TigeraStatus, ignoring IPAM utilization trends, and treating all cluster issues as node-level problems.
+Description: Avoid common mistakes in Calico cluster diagnostics including skipping calicoctl cluster diags before remediation, misreading TigeraStatus, ignoring IPAM utilization trends, and treating all...
 
 ---
 
@@ -112,4 +112,4 @@ calicoctl ipam check
 
 ## Conclusion
 
-Cluster-level Calico diagnostic mistakes are preventable with three habits: always collect `calicoctl cluster diags` before any remediation action, pair TigeraStatus checks with IPAM checks as a routine, and monitor IPAM utilization with alerts at 85% and 95% thresholds. The IPAM blind spot is the most dangerous — it's the only major Calico failure mode that doesn't appear in TigeraStatus and is entirely avoidable with a simple weekly check.
+Cluster-level Calico diagnostic mistakes are preventable with three habits: always collect `calicoctl cluster diags` before any remediation action, pair TigeraStatus checks with IPAM checks as a routine, and monitor IPAM utilization with alerts at 85% and 95% thresholds. The IPAM blind spot is the most dangerous - it's the only major Calico failure mode that doesn't appear in TigeraStatus and is entirely avoidable with a simple weekly check.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Liveness Probe, Kubernetes, Security
+Tags: Istio, MTLS, Liveness Probe, Kubernetes, Security
 
 Description: Solve liveness probe failures caused by Istio mTLS STRICT mode, with detailed explanations of probe rewriting and alternative approaches.
 

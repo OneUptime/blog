@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, connectivity, testing, kubernetes, networking, validation
+Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
 
 Description: A comprehensive guide to running and interpreting the Cilium connectivity test suite, covering test scenarios, failure diagnosis, and integrating tests into your CI/CD pipeline.
 
@@ -12,7 +12,7 @@ Description: A comprehensive guide to running and interpreting the Cilium connec
 
 The `cilium connectivity test` command is Cilium's built-in end-to-end test suite that validates all aspects of cluster networking from a single command. It deploys test pods, runs dozens of connectivity scenarios covering pod-to-pod, pod-to-service, DNS, egress, and network policy enforcement, and reports pass/fail results with detailed diagnostics for any failures.
 
-Running the connectivity test is the most comprehensive way to validate a Cilium installation and should be performed after every cluster provisioning, Cilium upgrade, or significant configuration change. The test suite catches issues that might not surface with basic health checks—such as asymmetric routing, DNS misconfigurations, and policy enforcement gaps.
+Running the connectivity test is the most comprehensive way to validate a Cilium installation and should be performed after every cluster provisioning, Cilium upgrade, or significant configuration change. The test suite catches issues that might not surface with basic health checks-such as asymmetric routing, DNS misconfigurations, and policy enforcement gaps.
 
 This guide explains how to run the connectivity test suite, interpret results, diagnose failures, and automate testing.
 

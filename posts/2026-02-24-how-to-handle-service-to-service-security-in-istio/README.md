@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Service Security, Zero Trust, Kubernetes, Authorization
+Tags: Istio, MTLS, Service Security, Zero Trust, Kubernetes, Authorization
 
 Description: How to secure service-to-service communication in Istio with mutual TLS, authorization policies, and identity-based access control.
 

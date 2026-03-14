@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, i3, Window Manager, Tiling, Tutorial
+Tags: Ubuntu, I3, Window Manager, Tiling, Tutorial
 
 Description: Complete guide to installing and configuring i3 tiling window manager on Ubuntu.
 

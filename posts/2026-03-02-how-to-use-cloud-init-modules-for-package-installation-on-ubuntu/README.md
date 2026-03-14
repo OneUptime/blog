@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Packages, APT, Automation
+Tags: Ubuntu, Cloud-init, Packages, APT, Automation
 
 Description: Learn how to use cloud-init modules to install packages, add repositories, manage apt sources, and handle package configuration on Ubuntu cloud instances.
 

@@ -1,4 +1,4 @@
-# calicoctl Command Guide
+# calicoctl Command Guide - Troubleshoot Delete
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

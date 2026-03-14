@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Error Handling, thiserror, anyhow, Best Practices
+Tags: Rust, Error Handling, Thiserror, Anyhow, Best Practices
 
 Description: A practical guide to designing clean error types in Rust using thiserror for libraries and anyhow for applications, with real-world patterns and examples.
 

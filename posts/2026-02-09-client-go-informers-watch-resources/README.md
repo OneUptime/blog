@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, client-go, Informers, Go
+Tags: Kubernetes, Client-go, Informers, Go
 
 Description: Learn how to use client-go informers to efficiently watch and cache Kubernetes resources with event handlers for building controllers and operators.
 

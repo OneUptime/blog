@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, DNS, CoreDNS, kube-dns, Networking, Troubleshooting, GCP
+Tags: GKE, Kubernetes, DNS, CoreDNS, Kube-dns, Networking, Troubleshooting, GCP
 
 Description: A practical guide to diagnosing and fixing DNS resolution failures in GKE clusters, covering both kube-dns and CoreDNS configurations and common failure modes.
 

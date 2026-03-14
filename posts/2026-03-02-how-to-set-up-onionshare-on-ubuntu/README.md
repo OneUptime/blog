@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Tor, Privacy, OnionShare, Security
+Tags: Ubuntu, ToR, Privacy, OnionShare, Security
 
 Description: Learn how to install and use OnionShare on Ubuntu to securely share files, host websites, and communicate anonymously over the Tor network.
 

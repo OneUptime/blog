@@ -89,4 +89,4 @@ flowchart TD
 
 ## Conclusion
 
-Calico VPP troubleshooting requires using VPP-native tools instead of standard Linux networking commands. The most important tools are `vppctl show interface` (interface state), `vppctl show error` (packet drop counters), and `vppctl trace add/show` (per-packet trace). VPP error counters are particularly valuable — they show exactly which VPP node dropped packets and why, pointing directly to the root cause without needing to analyze individual packet traces.
+Calico VPP troubleshooting requires using VPP-native tools instead of standard Linux networking commands. The most important tools are `vppctl show interface` (interface state), `vppctl show error` (packet drop counters), and `vppctl trace add/show` (per-packet trace). VPP error counters are particularly valuable - they show exactly which VPP node dropped packets and why, pointing directly to the root cause without needing to analyze individual packet traces.

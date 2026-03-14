@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Disk Inspection, System Administration, Kubernetes
+Tags: Talos Linux, Talosctl, Disk Inspection, System Administration, Kubernetes
 
 Description: A complete guide to using the talosctl get disks command to inspect disk information on Talos Linux nodes, including output interpretation and practical use cases.
 

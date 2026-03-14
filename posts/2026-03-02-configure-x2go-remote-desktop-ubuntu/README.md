@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, x2go, Remote Desktop, XFCE, SSH
+Tags: Ubuntu, X2go, Remote Desktop, XFCE, SSH
 
 Description: Set up x2go server on Ubuntu to provide fast, SSH-tunneled remote desktop sessions, ideal for running graphical applications over low-bandwidth connections.
 

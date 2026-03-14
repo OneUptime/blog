@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Architecture, CNI, Felix, BIRD, Typha, confd
+Tags: Calico, Kubernetes, Architecture, CNI, Felix, BIRD, Typha, Confd
 
-Description: A deep dive into Calico's architectural components — Felix, BIRD, confd, Typha, and the Calico API server — and how they work together to implement Kubernetes networking.
+Description: A deep dive into Calico's architectural components - Felix, BIRD, confd, Typha, and the Calico API server - and how they work together to implement Kubernetes networking.
 
 ---
 
 ## Introduction
 
-Calico is not a single binary — it is a system of cooperating components, each with a specific role in the networking architecture. Understanding what each component does, how they communicate, and what happens when one fails is essential for operating Calico in production and diagnosing networking incidents effectively.
+Calico is not a single binary - it is a system of cooperating components, each with a specific role in the networking architecture. Understanding what each component does, how they communicate, and what happens when one fails is essential for operating Calico in production and diagnosing networking incidents effectively.
 
 The core Calico components are Felix (the node agent), BIRD (the BGP daemon), confd (the configuration renderer), Typha (the fanout proxy for the datastore), and the CNI plugin. Each runs in a specific context and has specific failure modes.
 
@@ -60,7 +60,7 @@ BIRD (Bird Internet Routing Daemon) handles BGP routing in Calico. It runs insid
 - Learns routes from peers and makes them available for Felix to program
 - Maintains BGP session state with all configured peers
 
-BIRD is optional — it is only required when using BGP routing mode. In VXLAN or IP-in-IP mode, BIRD is not involved in pod routing.
+BIRD is optional - it is only required when using BGP routing mode. In VXLAN or IP-in-IP mode, BIRD is not involved in pod routing.
 
 ```bash
 # Check BIRD status via Felix
@@ -103,9 +103,9 @@ The CNI plugin runs as a binary on each node, not as a pod.
 
 ## Best Practices
 
-- Monitor all Calico components via Prometheus metrics — Felix, Typha, and BIRD each expose metrics
+- Monitor all Calico components via Prometheus metrics - Felix, Typha, and BIRD each expose metrics
 - Enable Typha when your cluster exceeds 100 nodes to reduce API server load
-- Set appropriate resource limits on calico-node pods — Felix and BIRD are sensitive to CPU and memory constraints during policy churn
+- Set appropriate resource limits on calico-node pods - Felix and BIRD are sensitive to CPU and memory constraints during policy churn
 
 ## Conclusion
 

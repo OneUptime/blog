@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, journald, Logging, systemd, Linux
+Tags: Ansible, Journald, Logging, Systemd, Linux
 
 Description: Learn how to configure systemd-journald with Ansible to manage log storage, retention, forwarding, and disk usage across your Linux infrastructure.
 

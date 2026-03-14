@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Backup, rsnapshot, Linux
+Tags: Ansible, Backup, Rsnapshot, Linux
 
 Description: Configure automated rsnapshot backups across your Linux servers using Ansible for space-efficient incremental system backups.
 

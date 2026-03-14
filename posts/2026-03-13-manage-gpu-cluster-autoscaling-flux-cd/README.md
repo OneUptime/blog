@@ -209,4 +209,4 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 ## Conclusion
 
-Managing GPU cluster autoscaling with Flux CD gives your ML platform team a cost-efficient, reproducible approach to GPU capacity management. Autoscaling policies are version-controlled, scale events are traceable, and changes flow through the same GitOps pipeline as your application deployments — eliminating the manual work of resizing GPU node pools and reducing idle GPU costs significantly.
+Managing GPU cluster autoscaling with Flux CD gives your ML platform team a cost-efficient, reproducible approach to GPU capacity management. Autoscaling policies are version-controlled, scale events are traceable, and changes flow through the same GitOps pipeline as your application deployments - eliminating the manual work of resizing GPU node pools and reducing idle GPU costs significantly.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-nspawn, Containers, Virtualization, systemd
+Tags: RHEL, Systemd-nspawn, Containers, Virtualization, Systemd
 
 Description: Boot a complete RHEL system with full systemd init inside a systemd-nspawn container, including service management and networking.
 

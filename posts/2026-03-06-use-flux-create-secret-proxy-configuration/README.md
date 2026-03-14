@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, Proxy, Secrets, Configuration, GitOps, Kubernetes, Networking, Enterprise
+Tags: Flux, Fluxcd, Proxy, Secrets, Configuration, GitOps, Kubernetes, Networking, Enterprise
 
 Description: A practical guide to configuring proxy settings for Flux using the flux create secret proxy command in enterprise environments.
 

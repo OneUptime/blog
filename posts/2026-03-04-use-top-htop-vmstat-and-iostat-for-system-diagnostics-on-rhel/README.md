@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, top, htop, vmstat, iostat, System Diagnostics, Performance
+Tags: RHEL, Top, Htop, Vmstat, Iostat, System Diagnostics, Performance
 
 Description: Use essential RHEL command-line tools including top, htop, vmstat, and iostat to diagnose CPU, memory, and disk I/O performance issues in real time.
 

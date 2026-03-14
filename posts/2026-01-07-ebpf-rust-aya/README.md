@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Rust, Aya, Programming, Linux, Cloud Native
+Tags: EBPF, Rust, Aya, Programming, Linux, Cloud Native
 
 Description: A guide to developing eBPF programs in Rust using the Aya framework for safe, efficient code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, vsftpd, FTP, Chroot, Security, Linux
+Tags: RHEL, Vsftpd, FTP, Chroot, Security, Linux
 
 Description: Configure vsftpd chroot jails on RHEL to restrict FTP users to specific directories, preventing them from browsing the entire filesystem.
 

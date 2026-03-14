@@ -10,7 +10,7 @@ Description: Deploy Knative Eventing for event-driven architecture using Flux CD
 
 ## Introduction
 
-Knative Eventing provides a Kubernetes-native eventing infrastructure built on the CloudEvents specification. It enables loosely coupled event producers and consumers through Brokers, Triggers, Channels, and Subscriptions — making it straightforward to build event-driven microservices that scale independently.
+Knative Eventing provides a Kubernetes-native eventing infrastructure built on the CloudEvents specification. It enables loosely coupled event producers and consumers through Brokers, Triggers, Channels, and Subscriptions - making it straightforward to build event-driven microservices that scale independently.
 
 Managing Knative Eventing through Flux CD ensures the eventing infrastructure and your application's event topology are both version-controlled. Adding a new event source or subscriber becomes a pull request, not a manual `kubectl apply` command.
 
@@ -203,11 +203,11 @@ kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
 ## Best Practices
 
 - Always configure a dead-letter sink on Brokers so undeliverable events are captured for debugging rather than silently dropped.
-- Use CloudEvents attribute filters in Triggers to route events precisely — avoid catch-all triggers that process every event in a busy broker.
+- Use CloudEvents attribute filters in Triggers to route events precisely - avoid catch-all triggers that process every event in a busy broker.
 - Use `dependsOn` in Flux Kustomizations to ensure the Broker is ready before creating Triggers and Sources that depend on it.
 - Apply `prune: false` on CRD and operator Kustomizations to prevent Flux from deleting Knative infrastructure on accidental manifest removal.
 - Use ApiServerSource to react to Kubernetes API events, enabling powerful internal automation workflows driven by cluster state changes.
 
 ## Conclusion
 
-Knative Eventing deployed and managed through Flux CD gives teams a production-grade event-driven platform on Kubernetes where the entire event topology — brokers, triggers, and sources — is defined in Git. Adding new event consumers is a pull request, and the cluster automatically wires up the event flow on reconciliation.
+Knative Eventing deployed and managed through Flux CD gives teams a production-grade event-driven platform on Kubernetes where the entire event topology - brokers, triggers, and sources - is defined in Git. Adding new event consumers is a pull request, and the cluster automatically wires up the event flow on reconciliation.

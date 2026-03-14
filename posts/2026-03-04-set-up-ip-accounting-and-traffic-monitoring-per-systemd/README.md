@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Monitoring, Linux
+Tags: RHEL, Systemd, Monitoring, Linux
 
 Description: Step-by-step guide on set up ip accounting and traffic monitoring per systemd service using Red Hat Enterprise Linux 9.
 

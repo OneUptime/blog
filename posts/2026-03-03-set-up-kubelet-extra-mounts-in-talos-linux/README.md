@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubelet, Kubernetes, Storage, Volume Mounts
+Tags: Talos Linux, Kubelet, Kubernetes, Storage, Volume Mounts
 
 Description: Learn how to configure kubelet extra mounts in Talos Linux to expose host paths and devices to containers running on your nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, eBPF, Native Routing, Kubernetes, Networking, Monitoring, Performance
+Tags: Calico, EBPF, Native Routing, Kubernetes, Networking, Monitoring, Performance
 
 Description: Learn how to monitor Calico in native routing mode with the eBPF data plane, including route health verification, eBPF program monitoring, and performance metrics for overlay-free pod networking.
 
@@ -167,7 +167,7 @@ kubectl apply -f native-routing-ebpf-alerts.yaml
 
 ## Best Practices
 
-- Use native routing mode only when all nodes are on the same L3 network — it will not work across NAT boundaries without BGP
+- Use native routing mode only when all nodes are on the same L3 network - it will not work across NAT boundaries without BGP
 - Monitor the kernel routing table size on large clusters as native routing adds one route per node
 - Enable Calico's auto-routing mode which automatically selects native routing where possible and falls back to VXLAN
 - Test failover scenarios where a node goes down and verify that routes are withdrawn from other nodes promptly

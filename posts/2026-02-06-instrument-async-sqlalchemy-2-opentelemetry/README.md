@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SQLAlchemy, Async, Python, Database, asyncio
+Tags: OpenTelemetry, SQLAlchemy, Async, Python, Database, Asyncio
 
 Description: Complete guide to instrumenting async SQLAlchemy 2.0 applications with OpenTelemetry for tracing asynchronous database operations and monitoring performance in modern Python applications.
 

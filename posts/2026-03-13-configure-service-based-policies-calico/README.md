@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Security
+Tags: Calico, Kubernetes, Network Policy, Services, Security
 
 Description: A step-by-step guide to configuring Calico network policies that target Kubernetes Services for fine-grained traffic control.
 
@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring Calico network policies that ta
 
 ## Introduction
 
-Service-based network policies let you write rules that reference Kubernetes Services rather than individual pod selectors. This is powerful because services are the stable abstraction in Kubernetes — pods come and go, but services persist. Calico's `projectcalico.org/v3` supports targeting services in egress rules, enabling policies like "allow traffic to the payment-service Service only."
+Service-based network policies let you write rules that reference Kubernetes Services rather than individual pod selectors. This is powerful because services are the stable abstraction in Kubernetes - pods come and go, but services persist. Calico's `projectcalico.org/v3` supports targeting services in egress rules, enabling policies like "allow traffic to the payment-service Service only."
 
 Calico's service-aware policies work with the Kubernetes Service object to automatically track the pods behind the service. When pods are added or removed from a service's endpoint set, the network policy updates automatically without any policy changes.
 

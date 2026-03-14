@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Troubleshooting, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: A comprehensive troubleshooting guide for Cilium IPAM allocation errors, covering IP exhaustion, stale allocations, CIDR misconfiguration, and recovery procedures to restore pod IP assignment.
 

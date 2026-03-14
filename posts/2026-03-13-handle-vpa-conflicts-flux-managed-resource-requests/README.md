@@ -10,7 +10,7 @@ Description: Resolve conflicts between VerticalPodAutoscaler and Flux-managed re
 
 ## Introduction
 
-Vertical Pod Autoscaler (VPA) automatically adjusts container CPU and memory requests based on observed usage — a powerful tool for rightsizing workloads and reducing cluster waste. But VPA conflicts with GitOps in a fundamental way: Flux declares specific resource requests in Git, VPA modifies them at runtime, and Flux reconciles them back to the Git-declared values on the next cycle. The result is containers that are never correctly rightsized and VPA recommendations that are perpetually ignored.
+Vertical Pod Autoscaler (VPA) automatically adjusts container CPU and memory requests based on observed usage - a powerful tool for rightsizing workloads and reducing cluster waste. But VPA conflicts with GitOps in a fundamental way: Flux declares specific resource requests in Git, VPA modifies them at runtime, and Flux reconciles them back to the Git-declared values on the next cycle. The result is containers that are never correctly rightsized and VPA recommendations that are perpetually ignored.
 
 Unlike the HPA conflict (where removing `spec.replicas` is the clean fix), the VPA conflict requires a more nuanced approach because resource requests are often important to define explicitly for scheduling purposes. The solution depends on which VPA update mode you use and what level of automation you want.
 
@@ -41,7 +41,7 @@ kubectl describe vpa my-service -n team-alpha
 kubectl get deployment my-service -n team-alpha \
   -o jsonpath='{.spec.template.spec.containers[0].resources}'
 # {"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}
-# These are the Git-declared values — VPA recommendations are ignored
+# These are the Git-declared values - VPA recommendations are ignored
 
 # Check VPA status
 kubectl get vpa my-service -n team-alpha -o jsonpath='{.status.conditions}'
@@ -122,7 +122,7 @@ spec:
           memory: 1Gi
 ```
 
-In Initial mode, VPA modifies the pod spec at admission time, not the Deployment spec. Flux owns the Deployment's resource fields but VPA overrides them at pod creation time through a mutating webhook — no conflict.
+In Initial mode, VPA modifies the pod spec at admission time, not the Deployment spec. Flux owns the Deployment's resource fields but VPA overrides them at pod creation time through a mutating webhook - no conflict.
 
 ## Step 4: Build a GitOps Workflow for VPA Recommendations
 
@@ -229,14 +229,14 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Container {{ $labels.container }} OOMKilled — check VPA recommendations"
+            summary: "Container {{ $labels.container }} OOMKilled - check VPA recommendations"
 ```
 
 ## Best Practices
 
 - Always start with VPA in `Off` mode to collect recommendations for 7-14 days before considering Auto mode
 - Use `minAllowed` and `maxAllowed` in the VPA resource policy to bound the recommendations within acceptable ranges
-- Never use VPA Auto or Recreate mode alongside Flux without carefully testing the interaction — use Off or Initial mode
+- Never use VPA Auto or Recreate mode alongside Flux without carefully testing the interaction - use Off or Initial mode
 - The VPA + HPA combination requires special handling: do not use VPA on the same metric that HPA scales on
 - Schedule a weekly review of VPA recommendations and open PRs to update resource requests in Git
 - Monitor OOM events and CPU throttling metrics to identify containers where current Git-declared requests are too low

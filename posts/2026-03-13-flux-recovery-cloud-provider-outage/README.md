@@ -12,7 +12,7 @@ Description: Design Flux CD setups to withstand cloud provider outages using mul
 
 Cloud provider outages are rare but impactful. AWS us-east-1, GCP us-central1, and Azure East US have all experienced significant outages that took down thousands of applications. Teams that treated "in the cloud" as equivalent to "highly available" learned painful lessons. True resilience requires designing for cloud provider failure as a first-class scenario.
 
-Flux CD is uniquely well-positioned to help with cloud provider resilience because the desired state of your entire infrastructure lives in Git — outside any single cloud provider. When a region or provider fails, Flux can bootstrap a replacement cluster in a different region or provider and reconcile it to the same state within minutes.
+Flux CD is uniquely well-positioned to help with cloud provider resilience because the desired state of your entire infrastructure lives in Git - outside any single cloud provider. When a region or provider fails, Flux can bootstrap a replacement cluster in a different region or provider and reconcile it to the same state within minutes.
 
 This guide covers designing your Flux repository for multi-region resilience, implementing active-passive failover, and automating recovery when a cloud provider experiences an outage.
 
@@ -28,7 +28,7 @@ This guide covers designing your Flux repository for multi-region resilience, im
 
 Organize your Git repository so cluster-specific configuration is isolated from shared infrastructure definitions.
 
-```
+```plaintext
 clusters/
   aws-us-east-1/          # Primary cluster
     flux-system/
@@ -198,7 +198,7 @@ time bash promote-standby.sh aws-us-west-2
 
 ## Best Practices
 
-- Never store secrets exclusively in a single cloud provider's secret manager — use cross-region replication.
+- Never store secrets exclusively in a single cloud provider's secret manager - use cross-region replication.
 - Keep warm standby costs low with reduced replica counts managed by Flux overlays.
 - Practice failover drills quarterly so the procedure is documented and tested, not improvised.
 - Use GitOps for DNS and load balancer configuration so failover state is version-controlled.
@@ -207,4 +207,4 @@ time bash promote-standby.sh aws-us-west-2
 
 ## Conclusion
 
-Cloud provider outages are survivable with the right architecture. Flux CD's Git-based model means your cluster state definition is inherently multi-cloud — it lives in Git, not in any single provider. By maintaining a warm standby cluster, automating DNS-based failover, and practicing the promotion procedure, you can achieve sub-15-minute RTO even for complete regional failures.
+Cloud provider outages are survivable with the right architecture. Flux CD's Git-based model means your cluster state definition is inherently multi-cloud - it lives in Git, not in any single provider. By maintaining a warm standby cluster, automating DNS-based failover, and practicing the promotion procedure, you can achieve sub-15-minute RTO even for complete regional failures.

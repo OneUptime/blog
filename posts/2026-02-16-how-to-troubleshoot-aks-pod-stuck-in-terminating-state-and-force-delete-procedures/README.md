@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Troubleshooting, Pods, Terminating, kubectl, Azure
+Tags: AKS, Kubernetes, Troubleshooting, Pods, Terminating, Kubectl, Azure
 
 Description: A practical guide to diagnosing why AKS pods get stuck in Terminating state and the safe procedures for force-deleting them when necessary.
 

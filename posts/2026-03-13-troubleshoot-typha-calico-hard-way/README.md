@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving common Typha issues in a manual
 
 ## Introduction
 
-Typha failures in hard way installations are typically caused by TLS misconfiguration (most common), RBAC permission gaps, or resource exhaustion. The symptoms often appear as slow policy propagation rather than a hard failure — Felix continues operating with stale state if Typha is unavailable, masking the underlying issue until a policy change fails to take effect.
+Typha failures in hard way installations are typically caused by TLS misconfiguration (most common), RBAC permission gaps, or resource exhaustion. The symptoms often appear as slow policy propagation rather than a hard failure - Felix continues operating with stale state if Typha is unavailable, masking the underlying issue until a policy change fails to take effect.
 
 ## Issue 1: Felix Cannot Connect to Typha
 
@@ -140,4 +140,4 @@ kubectl scale deployment calico-typha -n calico-system --replicas=$REPLICAS
 
 ## Conclusion
 
-Typha troubleshooting in hard way installations follows a layered approach: confirm the Typha pod is running and its Service has endpoints, verify TLS certificates are valid and signed by the same CA, check RBAC permissions for Typha's service account, and monitor Prometheus metrics for update rate and connection counts. The most frequent root cause is TLS misconfiguration — verifying CA cert consistency between the Typha and Felix secrets resolves the majority of connection failures.
+Typha troubleshooting in hard way installations follows a layered approach: confirm the Typha pod is running and its Service has endpoints, verify TLS certificates are valid and signed by the same CA, check RBAC permissions for Typha's service account, and monitor Prometheus metrics for update rate and connection counts. The most frequent root cause is TLS misconfiguration - verifying CA cert consistency between the Typha and Felix secrets resolves the majority of connection failures.

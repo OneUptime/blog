@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Security
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Security
 
 Description: Apply OpenShift-specific security controls during Calico upgrades, including SCC validation, OCP audit logging, and coordinating with Red Hat's security advisory process.
 
@@ -97,4 +97,4 @@ flowchart TD
 
 ## Conclusion
 
-Securing Calico upgrades on OpenShift requires checking for relevant Red Hat Security Advisories, auditing SCC permissions before and after to detect privilege changes, reviewing OCP audit logs for unexpected changes, and validating image pull sources. The most important security check is comparing SCC permissions before and after — any broadening of privileges (new `allowPrivileged: true` or new capability additions) should trigger a security review before the upgrade is accepted.
+Securing Calico upgrades on OpenShift requires checking for relevant Red Hat Security Advisories, auditing SCC permissions before and after to detect privilege changes, reviewing OCP audit logs for unexpected changes, and validating image pull sources. The most important security check is comparing SCC permissions before and after - any broadening of privileges (new `allowPrivileged: true` or new capability additions) should trigger a security review before the upgrade is accepted.

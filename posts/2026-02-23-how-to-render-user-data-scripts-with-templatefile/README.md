@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, templatefile, User Data, Cloud Init, AWS, Infrastructure as Code
+Tags: Terraform, Templatefile, User Data, Cloud Init, AWS, Infrastructure as Code
 
 Description: Learn how to use Terraform's templatefile function to render dynamic user data scripts for EC2 instances and other cloud VMs with variable substitution.
 

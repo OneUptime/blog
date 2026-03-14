@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, CiliumNetworkPolicy, Network Policy
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A comprehensive overview of how CiliumNetworkPolicy is structured and how it achieves identity-based L3/L4/L7 enforcement in the Star Wars demo.
 
@@ -10,11 +10,11 @@ Description: A comprehensive overview of how CiliumNetworkPolicy is structured a
 
 ## Introduction
 
-The policy in the Cilium Star Wars demo is not just a configuration file — it is a concrete expression of the zero-trust networking principle applied to a Kubernetes workload. Understanding the policy means understanding how `CiliumNetworkPolicy` is structured, how the API differs from standard `NetworkPolicy`, and how the combination of `endpointSelector`, `fromEndpoints`, and `toPorts.rules.http` creates a layered security boundary that addresses connection-level and application-level concerns simultaneously.
+The policy in the Cilium Star Wars demo is not just a configuration file - it is a concrete expression of the zero-trust networking principle applied to a Kubernetes workload. Understanding the policy means understanding how `CiliumNetworkPolicy` is structured, how the API differs from standard `NetworkPolicy`, and how the combination of `endpointSelector`, `fromEndpoints`, and `toPorts.rules.http` creates a layered security boundary that addresses connection-level and application-level concerns simultaneously.
 
 The Star Wars demo uses two policy files: one for L3/L4 (`sw_l3_l4_policy.yaml`) and one that upgrades to L7 (`sw_l3_l4_l7_policy.yaml`). Both target the same `deathstar` endpoint, but the second adds HTTP method and path awareness. Understanding both is essential for understanding how Cilium's policy language evolves from connection control to application control.
 
-The policy resource is also where Cilium's identity model becomes concrete. The `matchLabels` selectors in the policy are translated into security identity lookups in the eBPF data plane. Every label you put on a pod is a potential selector in a future policy rule — understanding this encourages disciplined label hygiene in production.
+The policy resource is also where Cilium's identity model becomes concrete. The `matchLabels` selectors in the policy are translated into security identity lookups in the eBPF data plane. Every label you put on a pod is a potential selector in a future policy rule - understanding this encourages disciplined label hygiene in production.
 
 ## Prerequisites
 
@@ -109,4 +109,4 @@ kubectl exec -n kube-system ds/cilium -- cilium policy get
 
 ## Conclusion
 
-The `CiliumNetworkPolicy` resource in the Star Wars demo is a precise expression of access control that operates at two layers simultaneously: L3/L4 for connection control and L7 for HTTP semantic control. Understanding its structure — the selector hierarchy, the port specification, the HTTP rules extension — gives you the vocabulary to write production policies for your own microservices. Every production service with an API should have a policy that looks very much like this one.
+The `CiliumNetworkPolicy` resource in the Star Wars demo is a precise expression of access control that operates at two layers simultaneously: L3/L4 for connection control and L7 for HTTP semantic control. Understanding its structure - the selector hierarchy, the port specification, the HTTP rules extension - gives you the vocabulary to write production policies for your own microservices. Every production service with an API should have a policy that looks very much like this one.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, replace Function, String Sanitization, Input Validation, Infrastructure as Code
+Tags: Terraform, Replace Function, String Sanitization, Input Validation, Infrastructure as Code
 
 Description: Learn how to use Terraform's replace function for string sanitization including removing special characters, normalizing inputs, and enforcing naming conventions.
 

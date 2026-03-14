@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Docker, Podman, Containers, Linux
+Tags: RHEL, Firewalld, Docker, Podman, Containers, Linux
 
 Description: How to make firewalld work correctly with Docker and Podman on RHEL, covering port publishing, network conflicts, and zone configurations for container workloads.
 

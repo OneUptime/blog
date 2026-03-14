@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Encryption, mTLS, TLS, Security
+Tags: Istio, Encryption, MTLS, TLS, Security
 
 Description: Complete guide to implementing end-to-end encryption in Istio from external clients through the ingress gateway to backend services.
 

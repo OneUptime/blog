@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Process Management, System Administration, ps, kill, Troubleshooting
+Tags: Linux, Process Management, System Administration, Ps, Kill, Troubleshooting
 
 Description: Learn how to effectively monitor, manage, and terminate processes in Linux using ps and kill commands with practical examples and best practices.
 

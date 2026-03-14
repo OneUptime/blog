@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, iPXE, Network Boot, Kubernetes, Bare Metal
+Tags: Talos Linux, IPXE, Network Boot, Kubernetes, Bare Metal
 
 Description: A detailed guide to deploying Talos Linux on bare metal servers using iPXE for flexible network-based provisioning.
 

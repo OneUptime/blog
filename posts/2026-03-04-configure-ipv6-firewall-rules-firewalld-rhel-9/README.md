@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, IPv6, firewalld, Security, Linux
+Tags: RHEL, IPv6, Firewalld, Security, Linux
 
 Description: A practical guide to configuring firewalld rules specifically for IPv6 traffic on RHEL, covering rich rules, ICMPv6 handling, zone-based policies, and security best practices.
 

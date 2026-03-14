@@ -10,7 +10,7 @@ Description: Fix Calico pod CIDR conflicts by replacing overlapping IP pools, re
 
 ## Introduction
 
-Fixing a Calico pod CIDR conflict requires replacing the conflicting IP pool with one using a non-overlapping CIDR. Because this affects running pods — they currently have IP addresses from the conflicting pool — the fix must be performed as a migration: disable the old pool, allow Calico to assign IPs from the new pool as pods are rescheduled, and eventually remove the old pool once no pods are using it.
+Fixing a Calico pod CIDR conflict requires replacing the conflicting IP pool with one using a non-overlapping CIDR. Because this affects running pods - they currently have IP addresses from the conflicting pool - the fix must be performed as a migration: disable the old pool, allow Calico to assign IPs from the new pool as pods are rescheduled, and eventually remove the old pool once no pods are using it.
 
 This process requires pod rescheduling, which means a brief disruption for each workload as pods are deleted and recreated with IPs from the new CIDR. For most workloads, this is handled transparently by Kubernetes Deployments.
 

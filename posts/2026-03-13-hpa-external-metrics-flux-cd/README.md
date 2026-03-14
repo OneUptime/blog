@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HPA, External Metrics, SQS, CloudWatch, Kubernetes, Autoscaling, GitOps
+Tags: Flux CD, HPA, External Metrics, Kubernetes, Autoscaling, SQS, Datadog
 
 Description: Learn how to configure Kubernetes HPA with external metrics from cloud services like AWS SQS, Google Pub/Sub, and Azure Service Bus using Flux CD.
 
@@ -10,7 +10,7 @@ Description: Learn how to configure Kubernetes HPA with external metrics from cl
 
 ## Introduction
 
-External metrics HPA allows Kubernetes to scale based on metrics from sources outside the cluster—like AWS SQS queue depth, Google Pub/Sub backlog, or Azure Service Bus message count. The Kubernetes External Metrics API requires an adapter that bridges cloud service metrics to Kubernetes. KEDA is the most popular solution for this, but Prometheus Adapter can also bridge external metrics when using Prometheus with cloud exporters.
+External metrics HPA allows Kubernetes to scale based on metrics from sources outside the cluster-like AWS SQS queue depth, Google Pub/Sub backlog, or Azure Service Bus message count. The Kubernetes External Metrics API requires an adapter that bridges cloud service metrics to Kubernetes. KEDA is the most popular solution for this, but Prometheus Adapter can also bridge external metrics when using Prometheus with cloud exporters.
 
 ## Prerequisites
 

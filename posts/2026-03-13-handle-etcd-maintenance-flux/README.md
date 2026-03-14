@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, etcd, Cluster Operations, Database Maintenance
+Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, Etcd, Cluster Operations, Database Maintenance
 
 Description: Perform etcd maintenance operations in a Flux-managed cluster including compaction, defragmentation, and backup/restore while maintaining GitOps integrity.
 
@@ -10,7 +10,7 @@ Description: Perform etcd maintenance operations in a Flux-managed cluster inclu
 
 ## Introduction
 
-etcd is the distributed key-value store that holds the entire state of your Kubernetes cluster, including all Flux-managed resources, their statuses, and the managed field metadata that enables Flux's drift correction. When etcd becomes fragmented, grows too large, or needs maintenance, the performance of the entire cluster degrades — including Flux's ability to reconcile resources efficiently.
+etcd is the distributed key-value store that holds the entire state of your Kubernetes cluster, including all Flux-managed resources, their statuses, and the managed field metadata that enables Flux's drift correction. When etcd becomes fragmented, grows too large, or needs maintenance, the performance of the entire cluster degrades - including Flux's ability to reconcile resources efficiently.
 
 etcd maintenance in a Flux-managed cluster requires understanding the interaction between etcd operations and Flux's reconciliation loop. During operations like defragmentation, etcd has brief unavailability windows that Flux's controllers handle with backoff retries. During backup and restore, Flux must be suspended to prevent reconciliation from interfering with the restore operation.
 
@@ -67,7 +67,7 @@ echo "Current revision: $REVISION"
 # Compact to the current revision (removes historical data)
 etcdctl compact $REVISION --endpoints=$ETCD_ENDPOINTS
 
-# Note: This does not immediately free disk space — defragmentation does that
+# Note: This does not immediately free disk space - defragmentation does that
 echo "Compaction complete at revision $REVISION"
 ```
 
@@ -248,12 +248,12 @@ echo "etcd maintenance complete. All systems nominal."
 
 ## Best Practices
 
-- Monitor etcd DB size weekly — set an alert at 4GB (the default 8GB quota allows headroom for response)
+- Monitor etcd DB size weekly - set an alert at 4GB (the default 8GB quota allows headroom for response)
 - Schedule compaction and defragmentation monthly if you have high write rates (many reconciliations)
 - Always compress and upload etcd snapshots to off-cluster storage immediately after creation
 - Test backup restoration in a separate cluster annually to verify your backup is actually recoverable
 - Configure etcd's `--auto-compaction-mode` and `--auto-compaction-retention` for automatic compaction
-- Never defragment all etcd members simultaneously — always do one at a time starting with followers
+- Never defragment all etcd members simultaneously - always do one at a time starting with followers
 
 ## Conclusion
 

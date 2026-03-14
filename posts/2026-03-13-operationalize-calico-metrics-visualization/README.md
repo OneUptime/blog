@@ -10,7 +10,7 @@ Description: Build operational processes around Calico Grafana dashboards includ
 
 ## Introduction
 
-Operationalizing Calico visualization means integrating dashboards into your team's daily workflows: using them for morning health checks, capacity planning reviews, on-call incident response, and post-incident analysis. Without these workflows, dashboards become shelfware that nobody looks at until there's a crisis — at which point unfamiliarity with the dashboards slows incident response.
+Operationalizing Calico visualization means integrating dashboards into your team's daily workflows: using them for morning health checks, capacity planning reviews, on-call incident response, and post-incident analysis. Without these workflows, dashboards become shelfware that nobody looks at until there's a crisis - at which point unfamiliarity with the dashboards slows incident response.
 
 ## Daily Health Check Workflow
 

@@ -10,7 +10,7 @@ Description: Use Calico Whisker to investigate pod connectivity issues, identify
 
 ## Introduction
 
-Whisker's primary value is in troubleshooting network policy issues. The denied traffic view shows exactly which source pod was trying to connect to which destination, which policy denied it, and when. This information typically takes 30+ minutes to gather manually through logs — Whisker surfaces it in seconds through a visual interface.
+Whisker's primary value is in troubleshooting network policy issues. The denied traffic view shows exactly which source pod was trying to connect to which destination, which policy denied it, and when. This information typically takes 30+ minutes to gather manually through logs - Whisker surfaces it in seconds through a visual interface.
 
 ## Key Operations
 
@@ -43,7 +43,7 @@ flowchart LR
 
 ## Common Whisker Queries
 
-```
+```plaintext
 # In Whisker UI - common investigation patterns:
 
 # Find all denied connections to a service:
@@ -61,4 +61,4 @@ flowchart LR
 
 ## Conclusion
 
-Whisker provides the fastest path to understanding Calico network policy behavior in a running cluster. The denied traffic view replaces hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns — this ensures the observability pipeline is functioning correctly before you rely on it during an incident.
+Whisker provides the fastest path to understanding Calico network policy behavior in a running cluster. The denied traffic view replaces hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns - this ensures the observability pipeline is functioning correctly before you rely on it during an incident.

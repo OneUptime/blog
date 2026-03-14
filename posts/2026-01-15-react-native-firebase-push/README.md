@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Firebase, Push Notifications, FCM, iOS, Android, Mobile Development
+Tags: React Native, Firebase, Push Notifications, FCM, IOS, Android, Mobile Development
 
 Description: Learn how to implement push notifications in React Native using Firebase Cloud Messaging (FCM) for iOS and Android.
 

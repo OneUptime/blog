@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, tRPC, TypeScript, Node.js, RPC, Tracing
+Tags: OpenTelemetry, TRPC, TypeScript, Node.js, RPC, Tracing
 
 Description: Learn how to instrument tRPC procedures with OpenTelemetry to gain full visibility into your end-to-end type-safe API calls, from client requests to server responses.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Benchmarking, eBPF, Networking
+Tags: Cilium, Kubernetes, Performance, Benchmarking, EBPF, Networking
 
 Description: Benchmark Cilium CNI performance using netperf and iperf3 to measure TCP throughput, request/response rates, and latency across different datapath configurations.
 
@@ -10,7 +10,7 @@ Description: Benchmark Cilium CNI performance using netperf and iperf3 to measur
 
 ## Introduction
 
-Benchmarking Cilium CNI performance helps operators understand the networking overhead in their cluster and compare different configuration options—tunneling versus native routing, encryption on versus off, kube-proxy replacement versus kube-proxy. These measurements guide infrastructure decisions and help identify performance regressions after upgrades.
+Benchmarking Cilium CNI performance helps operators understand the networking overhead in their cluster and compare different configuration options-tunneling versus native routing, encryption on versus off, kube-proxy replacement versus kube-proxy. These measurements guide infrastructure decisions and help identify performance regressions after upgrades.
 
 Cilium's eBPF datapath is designed for high performance, and with kube-proxy replacement and XDP enabled, it can achieve near-native network speeds. Understanding the baseline performance of your specific configuration is the first step to optimization.
 

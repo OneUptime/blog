@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kernel Panic, Boot, Troubleshooting, GRUB, initramfs
+Tags: RHEL, Kernel Panic, Boot, Troubleshooting, GRUB, Initramfs
 
 Description: Fix the 'VFS: Unable to mount root fs' kernel panic on RHEL, which prevents the system from booting by failing to locate or mount the root filesystem.
 

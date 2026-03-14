@@ -12,7 +12,7 @@ Description: Deploy Pomerium identity-aware access proxy to Kubernetes using Flu
 
 Pomerium is an open-source, identity-aware access proxy that implements zero-trust network access for internal applications and services. Rather than relying on a VPN or network perimeter, Pomerium evaluates every request against identity provider claims, group memberships, and configurable policies before forwarding it to the upstream service. Users authenticate once and gain seamless access to authorized applications.
 
-Pomerium integrates natively with major identity providers—Google Workspace, Okta, Azure AD, GitHub, GitLab, Keycloak, Dex—and exposes a powerful policy language for fine-grained access control. Combined with Flux CD, your entire access proxy configuration—routes, policies, and identity provider settings—is version-controlled in Git, making access control as auditable as your application code.
+Pomerium integrates natively with major identity providers-Google Workspace, Okta, Azure AD, GitHub, GitLab, Keycloak, Dex-and exposes a powerful policy language for fine-grained access control. Combined with Flux CD, your entire access proxy configuration-routes, policies, and identity provider settings-is version-controlled in Git, making access control as auditable as your application code.
 
 This guide deploys Pomerium using the official Helm chart with a GitHub identity provider and multiple protected routes.
 
@@ -84,7 +84,7 @@ spec:
     config:
       # All Pomerium routes are managed in this policy block
       policy:
-        # Protect Grafana — only GitHub org members can access
+        # Protect Grafana - only GitHub org members can access
         - from: https://grafana.example.com
           to: http://grafana.monitoring.svc.cluster.local:3000
           policy:
@@ -94,7 +94,7 @@ spec:
                       - my-org/platform-team
                       - my-org/devops-team
 
-        # Protect the Kubernetes Dashboard — require 2FA (if IdP supports it)
+        # Protect the Kubernetes Dashboard - require 2FA (if IdP supports it)
         - from: https://dashboard.example.com
           to: https://kubernetes-dashboard.kube-system.svc.cluster.local
           policy:
@@ -138,7 +138,7 @@ spec:
     redis:
       enabled: true
 
-    # Ingress — Pomerium handles TLS itself
+    # Ingress - Pomerium handles TLS itself
     ingress:
       enabled: true
       secretName: pomerium-tls    # Wildcard cert for *.example.com
@@ -234,7 +234,7 @@ sequenceDiagram
 
 ## Best Practices
 
-- Store all policy in Git via the `config.policy` block in Helm values—never apply policy changes manually via the Pomerium console.
+- Store all policy in Git via the `config.policy` block in Helm values-never apply policy changes manually via the Pomerium console.
 - Use `allowed_domains` instead of `github_teams` when you want to restrict access to a company email domain rather than a specific team.
 - Enable `pass_identity_headers: true` on routes to forward verified user identity headers (`X-Pomerium-Jwt-Assertion`) to upstream services.
 - Use Redis persistence (`databroker.storage.type: redis`) for high-availability session storage across Pomerium pod restarts.
@@ -242,4 +242,4 @@ sequenceDiagram
 
 ## Conclusion
 
-Pomerium is now deployed on Kubernetes and managed by Flux CD. Your internal applications are protected by identity-aware, zero-trust access policies that are version-controlled in Git. Adding a new protected route or tightening an existing policy is a pull request—making access control as reviewable and auditable as application code changes.
+Pomerium is now deployed on Kubernetes and managed by Flux CD. Your internal applications are protected by identity-aware, zero-trust access policies that are version-controlled in Git. Adding a new protected route or tightening an existing policy is a pull request-making access control as reviewable and auditable as application code changes.

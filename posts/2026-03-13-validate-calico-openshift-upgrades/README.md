@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Validation
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Validation
 
 Description: Validate Calico upgrades on OpenShift by checking OCP-specific components including cluster operators, SCC bindings, and network operator compatibility alongside standard Calico validation.
 

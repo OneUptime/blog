@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BGP, Communities, no-advertise
+Tags: Kubernetes, MetalLB, BGP, Communities, No-advertise
 
 Description: Learn how to use the well-known no-advertise BGP community with MetalLB to prevent routes from being propagated beyond your direct BGP peers.
 

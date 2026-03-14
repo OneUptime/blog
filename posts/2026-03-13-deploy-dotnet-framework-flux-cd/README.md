@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, .NET Framework, GitOps, Legacy Applications, WCF
+Tags: Flux CD, Kubernetes, Windows Containers, .NET Framework, GitOps, Legacy Applications
 
 Description: Deploy legacy .NET Framework applications in Windows containers to Kubernetes using Flux CD, with configuration management and health monitoring.
 
@@ -10,7 +10,7 @@ Description: Deploy legacy .NET Framework applications in Windows containers to 
 
 ## Introduction
 
-The .NET Framework — versions 4.x and below — is a Windows-only runtime that powers millions of enterprise applications: WCF services, Web Forms applications, WPF backends, and legacy class libraries that cannot easily migrate to .NET 6+. Running these applications in Windows containers on Kubernetes provides the operational benefits of containerization — consistent environments, scalable deployments, rolling updates — without requiring application rewrites.
+The .NET Framework - versions 4.x and below - is a Windows-only runtime that powers millions of enterprise applications: WCF services, Web Forms applications, WPF backends, and legacy class libraries that cannot easily migrate to .NET 6+. Running these applications in Windows containers on Kubernetes provides the operational benefits of containerization - consistent environments, scalable deployments, rolling updates - without requiring application rewrites.
 
 Flux CD treats .NET Framework applications identically to any other containerized workload. The GitOps workflow remains the same: manifests in Git, Flux reconciles them onto Windows nodes. The differences are in the container images (Windows Server Core base required) and the operational characteristics (slower startup, larger image sizes, Windows-specific health check URLs).
 
@@ -270,13 +270,13 @@ kubectl logs wcf-service-xxx -n windows-workloads --tail=50
 
 ## Best Practices
 
-- Use the WCF-specific base image (`mcr.microsoft.com/dotnet/framework/wcf`) rather than the generic servercore image — it includes all required WCF components.
-- Set `initialDelaySeconds` to 120+ for .NET Framework applications — JIT compilation on first request significantly increases startup time.
-- Configure session state to use Redis or SQL Server for Web Forms apps with multiple replicas — in-memory session breaks with more than 1 replica.
-- Use Sealed Secrets for database connection strings — never put credentials in ConfigMaps or deployment environment variables.
+- Use the WCF-specific base image (`mcr.microsoft.com/dotnet/framework/wcf`) rather than the generic servercore image - it includes all required WCF components.
+- Set `initialDelaySeconds` to 120+ for .NET Framework applications - JIT compilation on first request significantly increases startup time.
+- Configure session state to use Redis or SQL Server for Web Forms apps with multiple replicas - in-memory session breaks with more than 1 replica.
+- Use Sealed Secrets for database connection strings - never put credentials in ConfigMaps or deployment environment variables.
 - Enable .NET Framework crash dump collection by mounting a host path volume and configuring WER (Windows Error Reporting).
 - Implement a dedicated health endpoint (`/health`) in your application rather than relying on the main page for health checks.
 
 ## Conclusion
 
-.NET Framework applications are first-class citizens in a Flux CD-managed Kubernetes cluster. While they require Windows nodes and Windows-specific container images, the GitOps workflow is identical to any other workload. The main operational considerations — longer startup times, Windows-specific session state, and framework-specific health endpoints — are all addressable through Kubernetes configuration, and that configuration lives in Git where Flux can manage it.
+.NET Framework applications are first-class citizens in a Flux CD-managed Kubernetes cluster. While they require Windows nodes and Windows-specific container images, the GitOps workflow is identical to any other workload. The main operational considerations - longer startup times, Windows-specific session state, and framework-specific health endpoints - are all addressable through Kubernetes configuration, and that configuration lives in Git where Flux can manage it.

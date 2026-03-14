@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Migration, DevOps
+Tags: Ansible, Ansible-navigator, Migration, DevOps
 
 Description: Step-by-step migration guide from ansible-playbook to ansible-navigator, covering command translations, configuration changes, and workflow adjustments.
 

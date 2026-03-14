@@ -12,7 +12,7 @@ Description: Deploy SonarQube code quality analysis server to Kubernetes using F
 
 SonarQube is the leading open-source platform for continuous inspection of code quality. It performs static analysis across 30+ programming languages, detecting bugs, vulnerabilities, and code smells before they reach production. Running SonarQube on Kubernetes gives your engineering team a scalable, always-available code quality gate.
 
-Flux CD brings GitOps principles to Kubernetes, meaning your entire SonarQube deployment—from Helm values to configuration—lives in Git. Every change is auditable, rollbacks are trivial, and drift between your declared state and the running cluster is automatically corrected.
+Flux CD brings GitOps principles to Kubernetes, meaning your entire SonarQube deployment-from Helm values to configuration-lives in Git. Every change is auditable, rollbacks are trivial, and drift between your declared state and the running cluster is automatically corrected.
 
 In this guide you will use Flux CD's `HelmRelease` and `HelmRepository` custom resources to deploy SonarQube Community Edition from the official Helm chart, wire it to a dedicated PostgreSQL instance, and configure a persistent volume for analysis data.
 
@@ -188,7 +188,7 @@ Once the pod reports `SonarQube is operational`, open `https://sonarqube.example
 
 ## Best Practices
 
-- Store secrets using Sealed Secrets or External Secrets Operator—never commit plaintext credentials to Git.
+- Store secrets using Sealed Secrets or External Secrets Operator-never commit plaintext credentials to Git.
 - Set `sonarqube.properties` overrides via `sonarProperties` in the Helm values to tune ES heap and web settings.
 - Enable `podDisruptionBudget` in the Helm values to protect SonarQube during node maintenance.
 - Use a `StorageClass` that supports `ReadWriteOnce` with high IOPS for the SonarQube data volume.
@@ -196,4 +196,4 @@ Once the pod reports `SonarQube is operational`, open `https://sonarqube.example
 
 ## Conclusion
 
-You now have a fully GitOps-managed SonarQube deployment on Kubernetes. Every configuration change—whether a new Helm value, a resource limit adjustment, or a version bump—flows through a Git pull request, giving your team full auditability and one-command rollback capabilities via `flux reconcile`. Pair SonarQube's quality gates with your CI pipelines to enforce code standards automatically on every commit.
+You now have a fully GitOps-managed SonarQube deployment on Kubernetes. Every configuration change-whether a new Helm value, a resource limit adjustment, or a version bump-flows through a Git pull request, giving your team full auditability and one-command rollback capabilities via `flux reconcile`. Pair SonarQube's quality gates with your CI pipelines to enforce code standards automatically on every commit.

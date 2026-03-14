@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ltrace, Debugging, Tracing, System Administration
+Tags: Ubuntu, Ltrace, Debugging, Tracing, System Administration
 
 Description: Learn how to use ltrace on Ubuntu to trace library calls made by applications, identify bottlenecks, and debug library-level behavior including cryptography and network functions.
 

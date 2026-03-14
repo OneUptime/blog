@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Troubleshooting, Debugging, eBPF
+Tags: Cilium, Kubernetes, Troubleshooting, Debugging, EBPF
 
 Description: Enable and analyze Cilium debug logs to investigate data plane issues, policy calculation problems, and control plane errors that are not visible in standard log levels.
 
@@ -10,7 +10,7 @@ Description: Enable and analyze Cilium debug logs to investigate data plane issu
 
 ## Introduction
 
-Cilium's standard log output at the `info` level is optimized for production — it logs significant state changes, errors, and important events without flooding storage systems. But when debugging complex issues like intermittent connectivity failures, subtle policy misconfigurations, or race conditions during endpoint creation, the info-level logs often don't contain enough detail to pinpoint the root cause. Cilium's debug logging fills this gap with detailed subsystem-level output.
+Cilium's standard log output at the `info` level is optimized for production - it logs significant state changes, errors, and important events without flooding storage systems. But when debugging complex issues like intermittent connectivity failures, subtle policy misconfigurations, or race conditions during endpoint creation, the info-level logs often don't contain enough detail to pinpoint the root cause. Cilium's debug logging fills this gap with detailed subsystem-level output.
 
 Cilium organizes its debug logging into subsystems that can be enabled independently: `datapath` logs eBPF program loading and map operations, `policy` logs the detailed computation of endpoint policies, `kvstore` logs interactions with etcd, `k8s` logs Kubernetes API event processing, and `bgp` logs BGP control plane state changes. You can enable specific subsystems without flooding all channels, focusing the debug output on the area of interest.
 
@@ -140,4 +140,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium debug logging is a powerful diagnostic tool that should be used selectively and disabled promptly after investigation. The subsystem-level verbosity controls (`debug-verbose=policy,datapath`) let you focus on the relevant area without overwhelming your log infrastructure. For real-time eBPF-level event capture, `cilium monitor --type drop` is often more useful than log parsing because it captures events at the eBPF level with zero sampling. Always remember to disable debug logging after your investigation — the volume can be substantial and will impact Cilium agent performance.
+Cilium debug logging is a powerful diagnostic tool that should be used selectively and disabled promptly after investigation. The subsystem-level verbosity controls (`debug-verbose=policy,datapath`) let you focus on the relevant area without overwhelming your log infrastructure. For real-time eBPF-level event capture, `cilium monitor --type drop` is often more useful than log parsing because it captures events at the eBPF level with zero sampling. Always remember to disable debug logging after your investigation - the volume can be substantial and will impact Cilium agent performance.

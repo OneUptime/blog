@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, GKE, Google Cloud, Kubernetes, Networking, Migration, Network Policy
+Tags: Calico, Kubernetes, Networking, Migration, GKE, Google Cloud
 
 Description: Learn how to enable Calico network policy on Google Kubernetes Engine (GKE) and migrate workloads to benefit from advanced network policy enforcement beyond GKE's default Calico integration.
 
@@ -10,7 +10,7 @@ Description: Learn how to enable Calico network policy on Google Kubernetes Engi
 
 ## Introduction
 
-Google Kubernetes Engine offers Calico as a network policy provider through its "Network Policy" feature, which enables Kubernetes NetworkPolicy enforcement powered by Calico. While GKE's built-in Calico integration handles standard Kubernetes NetworkPolicy, teams requiring Calico's extended features — such as GlobalNetworkPolicy, FQDN-based policies, or Calico IPAM — need to carefully plan their approach.
+Google Kubernetes Engine offers Calico as a network policy provider through its "Network Policy" feature, which enables Kubernetes NetworkPolicy enforcement powered by Calico. While GKE's built-in Calico integration handles standard Kubernetes NetworkPolicy, teams requiring Calico's extended features - such as GlobalNetworkPolicy, FQDN-based policies, or Calico IPAM - need to carefully plan their approach.
 
 For most GKE users, the recommended path is to enable GKE's built-in network policy support (which uses Calico under the hood) and then use standard Kubernetes NetworkPolicy objects alongside Calico CRDs where available. This gives you Calico's enforcement engine with GKE's managed upgrade path.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, context.Context, Propagation, Best Practices
+Tags: OpenTelemetry, Go, Context.Context, Propagation, Best Practices
 
 Description: Master context propagation in Go applications using OpenTelemetry to maintain trace continuity across function calls, goroutines, and service boundaries.
 

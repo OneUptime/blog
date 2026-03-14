@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
 
 Description: Optimize Calico sidecar acceleration for high-throughput service mesh deployments by tuning eBPF settings and service mesh configuration.
 
@@ -12,7 +12,7 @@ Description: Optimize Calico sidecar acceleration for high-throughput service me
 
 Calico's sidecar acceleration feature uses eBPF to optimize traffic flows in service mesh environments. When pods use sidecar proxies like Envoy, network packets traverse multiple kernel networking layers. Calico eBPF can identify these patterns and apply fast-path processing that reduces the overhead introduced by sidecar interception.
 
-This is one of the most impactful performance optimizations available for microservices architectures that have adopted service meshes — latency improvements of 30-50% are achievable for high-frequency inter-service calls.
+This is one of the most impactful performance optimizations available for microservices architectures that have adopted service meshes - latency improvements of 30-50% are achievable for high-frequency inter-service calls.
 
 ## Prerequisites
 

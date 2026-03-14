@@ -10,7 +10,7 @@ Description: A guide to migrating workloads from OVN-Kubernetes to Calico on Ope
 
 ## Introduction
 
-Migrating an OpenShift Hosted Control Plane cluster from OVN-Kubernetes to Calico involves the same core steps as a standard OpenShift migration, but the isolation between the hosted cluster and the management cluster means you can perform the migration without affecting other hosted clusters on the same management infrastructure. This is one of HCP's key operational advantages — tenant clusters can be independently upgraded or reconfigured.
+Migrating an OpenShift Hosted Control Plane cluster from OVN-Kubernetes to Calico involves the same core steps as a standard OpenShift migration, but the isolation between the hosted cluster and the management cluster means you can perform the migration without affecting other hosted clusters on the same management infrastructure. This is one of HCP's key operational advantages - tenant clusters can be independently upgraded or reconfigured.
 
 The migration affects only the worker nodes in the hosted cluster's data plane. The management cluster continues to run normally throughout, and sibling hosted clusters are completely unaffected. However, all workloads in the migrated hosted cluster will have their pod IPs changed during the migration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Logging, Audit
+Tags: Calico, Kubernetes, Network Policy, Services, Logging, Audit
 
 Description: Log and Audit Calico service-based network policies to track service-level traffic decisions.
 

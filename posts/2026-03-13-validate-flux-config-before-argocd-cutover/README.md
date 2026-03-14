@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, Migration, Validation, GitOps, Kubernetes, Cutover
+Tags: Flux, ArgoCD, GitOps, Kubernetes, Migration, Validation
 
 Description: Learn how to thoroughly validate Flux CD configuration before switching production traffic management from ArgoCD to Flux CD to ensure a safe cutover.
 
@@ -10,7 +10,7 @@ Description: Learn how to thoroughly validate Flux CD configuration before switc
 
 ## Introduction
 
-The cutover moment—when you disable ArgoCD for an application and Flux CD becomes the sole manager—is the highest-risk point in any migration. A thorough validation process before this step prevents production incidents caused by misconfigured Flux resources, missing secrets, or incorrect path references.
+The cutover moment-when you disable ArgoCD for an application and Flux CD becomes the sole manager-is the highest-risk point in any migration. A thorough validation process before this step prevents production incidents caused by misconfigured Flux resources, missing secrets, or incorrect path references.
 
 This guide provides a comprehensive validation checklist and automation scripts to validate Flux configuration before cutover.
 

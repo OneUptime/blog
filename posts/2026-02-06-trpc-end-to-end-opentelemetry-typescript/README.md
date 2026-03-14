@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, tRPC, TypeScript, Monorepo
+Tags: OpenTelemetry, TRPC, TypeScript, Monorepo
 
 Description: Set up end-to-end OpenTelemetry tracing for tRPC procedures in a TypeScript monorepo covering both client and server spans.
 

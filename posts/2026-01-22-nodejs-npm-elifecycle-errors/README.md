@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, Debugging, PackageManager, JavaScript
+Tags: NodeJS, Npm, Debugging, PackageManager, JavaScript
 
 Description: Learn how to diagnose and fix npm ELIFECYCLE errors including script failures, missing dependencies, permission issues, and corrupted caches with practical solutions.
 

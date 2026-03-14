@@ -12,7 +12,7 @@ Description: Diagnose DNS failures caused by Calico NetworkPolicies by testing D
 
 Calico NetworkPolicies blocking DNS is one of the most impactful misconfigurations in a Kubernetes cluster because DNS failure cascades into failures across every service that depends on name resolution. When a default-deny egress policy is applied without an explicit allow for UDP port 53 to CoreDNS, all pods in the affected namespace lose the ability to resolve service names.
 
-The symptoms are often misleading — pods may report "connection refused" or "no such host" errors that look like application failures or service outages. The DNS layer needs to be specifically tested to distinguish DNS blocking from other connectivity issues.
+The symptoms are often misleading - pods may report "connection refused" or "no such host" errors that look like application failures or service outages. The DNS layer needs to be specifically tested to distinguish DNS blocking from other connectivity issues.
 
 ## Symptoms
 

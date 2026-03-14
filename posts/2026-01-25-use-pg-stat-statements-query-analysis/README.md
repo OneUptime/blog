@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Performance, Query Analysis, pg_stat_statements, Monitoring, Optimization
+Tags: PostgreSQL, Database, Performance, Query Analysis, Pg_stat_statements, Monitoring, Optimization
 
 Description: Learn how to use pg_stat_statements to identify slow queries and optimize PostgreSQL performance. This guide covers setup, analysis queries, and performance tuning strategies.
 

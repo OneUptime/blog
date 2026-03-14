@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API, kubectl
+Tags: Kubernetes, API, Kubectl
 
 Description: Master the kubectl get --raw command to directly query Kubernetes API endpoints, access metrics, inspect discovery information, and debug API server behavior without additional tools.
 

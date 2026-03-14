@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, WiFi, Networking, nmcli, Security
+Tags: Ubuntu, WiFi, Networking, Nmcli, Security
 
 Description: Learn how to connect to hidden WiFi networks (SSIDs not broadcast) on Ubuntu using nmcli, wpa_supplicant, and Netplan from both the command line and GUI.
 

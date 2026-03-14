@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Scaling, app.yaml, Performance, Configuration
+Tags: GCP, App Engine, Scaling, App.yaml, Performance, Configuration
 
 Description: Learn how to tune App Engine app.yaml scaling settings to balance instance count, cost, and latency for your application's specific traffic patterns.
 

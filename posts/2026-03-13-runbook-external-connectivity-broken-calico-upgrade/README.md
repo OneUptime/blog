@@ -10,7 +10,7 @@ Description: On-call runbook for responding to external connectivity failures af
 
 ## Introduction
 
-This runbook guides on-call engineers through responding to external connectivity failures caused by Calico upgrades. External connectivity loss is a high-severity incident because it affects all pod-initiated outbound traffic — API calls, database connections, and egress webhooks all fail simultaneously.
+This runbook guides on-call engineers through responding to external connectivity failures caused by Calico upgrades. External connectivity loss is a high-severity incident because it affects all pod-initiated outbound traffic - API calls, database connections, and egress webhooks all fail simultaneously.
 
 The response focuses on quickly identifying whether the issue stems from a recent Calico upgrade and then applying the appropriate targeted fix. In most cases, re-enabling natOutgoing or completing an interrupted upgrade restores connectivity within minutes.
 
@@ -23,7 +23,7 @@ The response focuses on quickly identifying whether the issue stems from a recen
 ## Root Causes
 
 - natOutgoing disabled or changed during upgrade
-- Calico upgrade incomplete — mixed versions on nodes
+- Calico upgrade incomplete - mixed versions on nodes
 - iptables MASQUERADE rules missing post-upgrade
 
 ## Diagnosis Steps
@@ -70,27 +70,27 @@ ssh <node-name> "sudo iptables -t nat -L POSTROUTING -n | grep MASQUERADE"
 
 ## Solution
 
-**If natOutgoing disabled — restore it:**
+**If natOutgoing disabled - restore it:**
 
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
   --patch='{"spec":{"natOutgoing":true}}'
 ```
 
-**If mixed versions — complete the upgrade:**
+**If mixed versions - complete the upgrade:**
 
 ```bash
 kubectl rollout restart daemonset calico-node -n kube-system
 kubectl rollout status daemonset calico-node -n kube-system --timeout=300s
 ```
 
-**If iptables rules missing — restart calico-node:**
+**If iptables rules missing - restart calico-node:**
 
 ```bash
 kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
-**Emergency rollback — restore from backup:**
+**Emergency rollback - restore from backup:**
 
 ```bash
 # If issue persists and you have pre-upgrade backup

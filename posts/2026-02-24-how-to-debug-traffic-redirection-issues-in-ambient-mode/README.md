@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, Traffic Redirection, ztunnel, Networking
+Tags: Istio, Ambient Mode, Traffic Redirection, Ztunnel, Networking
 
 Description: Step-by-step troubleshooting for traffic redirection problems in Istio ambient mode when pods bypass or fail to reach ztunnel.
 

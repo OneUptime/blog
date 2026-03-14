@@ -10,7 +10,7 @@ Description: Validate that Calico component metrics are correctly flowing into P
 
 ## Introduction
 
-Validating Calico metrics monitoring means confirming not just that Prometheus has targets configured, but that actual metric data is flowing and covers the expected metric families. A commonly missed validation step is confirming that metrics from ALL nodes are present — if a ServiceMonitor has a selector that misses some pods, you'll have partial data without obvious errors.
+Validating Calico metrics monitoring means confirming not just that Prometheus has targets configured, but that actual metric data is flowing and covers the expected metric families. A commonly missed validation step is confirming that metrics from ALL nodes are present - if a ServiceMonitor has a selector that misses some pods, you'll have partial data without obvious errors.
 
 ## Prerequisites
 

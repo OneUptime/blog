@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gcloud CLI, Installation, Configuration, Google Cloud
+Tags: GCP, Gcloud CLI, Installation, Configuration, Google Cloud
 
 Description: Step-by-step instructions for installing and configuring the Google Cloud gcloud CLI on macOS, Linux, and Windows, with authentication and project setup.
 

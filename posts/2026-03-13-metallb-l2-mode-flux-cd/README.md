@@ -1,10 +1,10 @@
-# How to Deploy MetalLB with L2 Mode via Flux CD
+# MetalLB L2 Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, MetalLB, L2, Layer 2, Load Balancer, Kubernetes, GitOps, Bare Metal
+Tags: MetalLB, L2, ARP, Flux-cd, GitOps, Kubernetes, Load-balancer, Bare-metal
 
-Description: Learn how to deploy MetalLB in Layer 2 mode using Flux CD for simple, ARP-based load balancing on bare metal or on-premises Kubernetes clusters.
+Description: Learn how to deploy and configure MetalLB in Layer 2 (ARP) mode on bare-metal Kubernetes using Flux CD, providing simple load balancer IP assignment without a dedicated router.
 
 ---
 

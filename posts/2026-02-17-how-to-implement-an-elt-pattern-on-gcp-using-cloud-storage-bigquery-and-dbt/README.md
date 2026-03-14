@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, ELT, Cloud Storage, Data Engineering, Data Transformation
+Tags: GCP, BigQuery, Dbt, ELT, Cloud Storage, Data Engineering, Data Transformation
 
 Description: A practical guide to building an ELT data pipeline on GCP where data is extracted to Cloud Storage, loaded into BigQuery, and transformed using dbt for analytics-ready output.
 

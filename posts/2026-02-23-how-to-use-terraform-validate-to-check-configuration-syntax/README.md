@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Validation, terraform validate, Syntax, DevOps, Infrastructure as Code
+Tags: Terraform, Validation, Terraform validate, Syntax, DevOps, Infrastructure as Code
 
 Description: Learn how to use terraform validate to catch configuration errors early including syntax checks, type validation, and integration with CI/CD pipelines.
 

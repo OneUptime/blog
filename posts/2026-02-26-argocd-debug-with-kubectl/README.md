@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, kubectl, Troubleshooting
+Tags: ArgoCD, GitOps, Kubernetes, Kubectl, Troubleshooting
 
 Description: Learn how to use kubectl commands to debug ArgoCD issues when the CLI and UI are unavailable, including inspecting resources, checking events, and examining pod states.
 

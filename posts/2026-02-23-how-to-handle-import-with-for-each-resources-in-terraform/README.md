@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Import, for_each, State Management, Infrastructure as Code
+Tags: Terraform, Import, For_each, State Management, Infrastructure as Code
 
 Description: Learn how to import existing cloud resources into Terraform configurations that use for_each, including proper addressing and common pitfalls.
 

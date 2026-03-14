@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Security, Password Hashing, bcrypt, Infrastructure as Code
+Tags: Terraform, DevOps, Security, Password Hashing, Bcrypt, Infrastructure as Code
 
 Description: Learn how to use Terraform's bcrypt function to securely hash passwords for use in infrastructure provisioning and user account configuration.
 

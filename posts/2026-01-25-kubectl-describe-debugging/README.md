@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Troubleshooting, DevOps
+Tags: Kubernetes, Kubectl, Debugging, Troubleshooting, DevOps
 
 Description: Master the kubectl describe command for debugging Kubernetes resources, understanding events, diagnosing scheduling failures, and interpreting status conditions effectively.
 

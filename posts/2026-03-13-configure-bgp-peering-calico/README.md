@@ -60,7 +60,7 @@ calicoctl node status
 
 Expected output shows each node with `Established` state:
 
-```
+```plaintext
 Calico process is running.
 
 IPv4 BGP status

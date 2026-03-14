@@ -10,7 +10,7 @@ Description: Manage Istio ServiceEntry resources for external services using Flu
 
 ## Introduction
 
-Istio's ServiceEntry extends the service mesh's service registry to include external services — APIs, databases, SaaS platforms, and other systems outside the Kubernetes cluster. Once registered, external services benefit from the same Istio features: mTLS, retries, circuit breaking, timeouts, and observability, along with controlled egress routing.
+Istio's ServiceEntry extends the service mesh's service registry to include external services - APIs, databases, SaaS platforms, and other systems outside the Kubernetes cluster. Once registered, external services benefit from the same Istio features: mTLS, retries, circuit breaking, timeouts, and observability, along with controlled egress routing.
 
 Managing ServiceEntry resources through Flux CD means your external service registrations are version-controlled. Adding a new third-party API dependency or changing egress routing for an existing service goes through pull request review.
 
@@ -231,7 +231,7 @@ kubectl logs -n production deploy/payment-service -c istio-proxy \
 
 ## Best Practices
 
-- Enable `REGISTRY_ONLY` outbound traffic policy as a security baseline — it forces teams to declare all external dependencies via ServiceEntry, creating an auditable egress registry.
+- Enable `REGISTRY_ONLY` outbound traffic policy as a security baseline - it forces teams to declare all external dependencies via ServiceEntry, creating an auditable egress registry.
 - Apply DestinationRules with connection pool limits and circuit breaking for external APIs to prevent a slow or failing third-party from cascading into your services.
 - Use VirtualService retries with `retryOn: "5xx,connect-failure"` for idempotent external API calls to handle transient failures automatically.
 - Group ServiceEntries by domain ownership (e.g., `payment-service-entries.yaml`, `email-service-entries.yaml`) rather than in a single file to make ownership and review clear.
@@ -239,4 +239,4 @@ kubectl logs -n production deploy/payment-service -c istio-proxy \
 
 ## Conclusion
 
-Managing Istio ServiceEntry resources through Flux CD creates an auditable, version-controlled registry of all external service dependencies. Security and platform teams gain visibility into egress traffic, can enforce REGISTRY_ONLY egress policies, and can apply retry, circuit-breaking, and timeout policies to external services — all through the GitOps pull request workflow.
+Managing Istio ServiceEntry resources through Flux CD creates an auditable, version-controlled registry of all external service dependencies. Security and platform teams gain visibility into egress traffic, can enforce REGISTRY_ONLY egress policies, and can apply retry, circuit-breaking, and timeout policies to external services - all through the GitOps pull request workflow.

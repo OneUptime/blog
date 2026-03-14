@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Certificate-Based Access, mTLS, API Security, Zero Trust
+Tags: GCP, Certificate-Based Access, MTLS, API Security, Zero Trust
 
 Description: Learn how to configure certificate-based access (CBA) for Google Cloud APIs to enforce mutual TLS authentication and strengthen your zero-trust security posture.
 

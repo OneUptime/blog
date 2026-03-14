@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, PeerAuthentication, Kubernetes, Workload Security
+Tags: Istio, MTLS, PeerAuthentication, Kubernetes, Workload Security
 
 Description: How to target specific workloads with PeerAuthentication policies in Istio using label selectors for fine-grained mTLS control.
 

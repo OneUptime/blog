@@ -10,7 +10,7 @@ Description: A guide to migrating OpenShift workloads from standard Calico to th
 
 ## Introduction
 
-Migrating OpenShift workloads from standard Calico to Calico VPP is a data plane migration — the Calico control plane, network policies, and IP addressing remain unchanged. The migration replaces the iptables or eBPF packet processing path with VPP's user-space processing pipeline. This is a lower-risk migration than a full CNI replacement because the network policy model, pod IPs, and service discovery are all preserved.
+Migrating OpenShift workloads from standard Calico to Calico VPP is a data plane migration - the Calico control plane, network policies, and IP addressing remain unchanged. The migration replaces the iptables or eBPF packet processing path with VPP's user-space processing pipeline. This is a lower-risk migration than a full CNI replacement because the network policy model, pod IPs, and service discovery are all preserved.
 
 On OpenShift, the migration requires additional preparation: configuring hugepages through MCO (which triggers node reboots), applying the VPP SCC, and deploying the VPP manifests alongside the existing Calico installation. The VPP components start processing traffic on each node as they become ready, with only brief connectivity disruption during the VPP handoff.
 

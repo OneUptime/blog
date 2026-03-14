@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, IBM POWER, ppc64el, Installation, Enterprise
+Tags: Ubuntu, IBM POWER, Ppc64el, Installation, Enterprise
 
 Description: Learn how to install Ubuntu Server on IBM POWER8, POWER9, and POWER10 systems using ppc64el architecture, covering PowerVM, OpenFirmware boot, and PowerNV bare metal.
 

@@ -12,7 +12,7 @@ Description: Manage Google Cloud Armor security policies via BackendConfig CRDs 
 
 Google Cloud Armor is a managed Web Application Firewall (WAF) and DDoS protection service that integrates directly with GKE through BackendConfig custom resources. By attaching a Cloud Armor security policy to a GKE Ingress backend, you can enforce IP allowlists, rate limiting, OWASP rules, and geographic restrictions at the Google network edge before traffic ever reaches your pods.
 
-Managing security policies manually creates audit gaps and makes rollback difficult. Flux CD solves this by treating Cloud Armor BackendConfig manifests as code — every policy change goes through a Git pull request, is reviewed, and is automatically applied to the cluster. If a bad rule causes an outage, reverting is as simple as reverting a Git commit.
+Managing security policies manually creates audit gaps and makes rollback difficult. Flux CD solves this by treating Cloud Armor BackendConfig manifests as code - every policy change goes through a Git pull request, is reviewed, and is automatically applied to the cluster. If a bad rule causes an outage, reverting is as simple as reverting a Git commit.
 
 This guide covers creating a Cloud Armor security policy in GCP, referencing it from a Kubernetes BackendConfig resource, attaching it to an Ingress, and managing the entire lifecycle through Flux CD.
 

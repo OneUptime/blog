@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Testing
+Tags: Calico, Kubernetes, Network Policy, Services, Testing
 
 Description: Test Calico service-based network policies test with real traffic to confirm traffic control is enforced correctly.
 

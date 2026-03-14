@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Productivity
+Tags: Kubernetes, Kubectl, Productivity
 
 Description: Set up kubectl autocompletion for Bash and Zsh to increase productivity with tab completion for commands, resources, and namespaces. Includes installation, configuration, and troubleshooting.
 

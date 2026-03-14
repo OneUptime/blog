@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Endpoint Health, Observability, eBPF
+Tags: Cilium, Kubernetes, Endpoint Health, Observability, EBPF
 
 Description: Monitor and troubleshoot Cilium endpoint health states to ensure pod network configurations are correctly applied and diagnose endpoints stuck in non-ready states.
 
@@ -144,4 +144,4 @@ stateDiagram-v2
 
 ## Conclusion
 
-Cilium endpoint health is the ground-truth indicator of whether pod networking is correctly configured. The endpoint state machine — waiting-for-identity → regenerating → ready — must complete successfully for every pod. Monitor the ratio of ready endpoints to total endpoints via Prometheus alerts, and investigate any endpoint stuck in `not-ready` or `waiting-for-identity` states immediately. The `cilium endpoint log` command gives you the detailed error history for any endpoint, which almost always points directly to the root cause, whether a kvstore connectivity issue, a policy compilation error, or a BPF map programming failure.
+Cilium endpoint health is the ground-truth indicator of whether pod networking is correctly configured. The endpoint state machine - waiting-for-identity → regenerating → ready - must complete successfully for every pod. Monitor the ratio of ready endpoints to total endpoints via Prometheus alerts, and investigate any endpoint stuck in `not-ready` or `waiting-for-identity` states immediately. The `cilium endpoint log` command gives you the detailed error history for any endpoint, which almost always points directly to the root cause, whether a kvstore connectivity issue, a policy compilation error, or a BPF map programming failure.

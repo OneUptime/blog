@@ -1,4 +1,4 @@
-# calicoctl Command Guide
+# calicoctl Command Guide - Validate Get
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

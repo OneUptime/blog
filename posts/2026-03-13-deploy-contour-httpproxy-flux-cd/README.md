@@ -10,7 +10,7 @@ Description: Deploy Contour ingress controller and manage HTTPProxy resources us
 
 ## Introduction
 
-Contour is a Kubernetes ingress controller that uses Envoy as the data plane and exposes its own CRD called HTTPProxy for advanced routing. HTTPProxy extends standard Kubernetes Ingress with capabilities including multi-team TLS certificate delegation, weighted backend routing, per-route timeout and retry policies, and inclusion-based routing across namespace boundaries — all without the annotation sprawl of traditional ingress controllers.
+Contour is a Kubernetes ingress controller that uses Envoy as the data plane and exposes its own CRD called HTTPProxy for advanced routing. HTTPProxy extends standard Kubernetes Ingress with capabilities including multi-team TLS certificate delegation, weighted backend routing, per-route timeout and retry policies, and inclusion-based routing across namespace boundaries - all without the annotation sprawl of traditional ingress controllers.
 
 Contour's multi-team model is especially valuable in GitOps environments: a platform team can manage the root HTTPProxy resources and TLS configuration through one Flux Kustomization, while application teams manage their own child HTTPProxy routing resources in separate namespaces through another Kustomization. This separation of concerns maps perfectly onto team-based GitOps workflows.
 
@@ -263,10 +263,10 @@ kubectl exec -n projectcontour deployment/contour -- contour cli routes --port=8
 - Use HTTPProxy inclusion to delegate routing authority to application teams while maintaining platform-level TLS control; this prevents application teams from misconfiguring TLS.
 - Set explicit `timeoutPolicy` and `retryPolicy` on all routes rather than relying on Envoy's defaults; application-specific timeout requirements vary significantly.
 - Use `TLSCertificateDelegation` to share certificates from a central namespace rather than duplicating certificates across namespaces.
-- Monitor HTTPProxy status fields — Contour reports detailed error messages when a proxy is misconfigured, making debugging straightforward.
+- Monitor HTTPProxy status fields - Contour reports detailed error messages when a proxy is misconfigured, making debugging straightforward.
 - Use the `WeightedLeastRequest` load balancing strategy for APIs with variable response times; it naturally routes to faster backends.
 - Configure health checks on all HTTPProxy backend services to prevent Envoy from routing to unhealthy pods before Kubernetes updates the Endpoints.
 
 ## Conclusion
 
-Contour with HTTPProxy, deployed through Flux CD, provides a multi-team-friendly ingress architecture where platform and application concerns are cleanly separated. The inclusion model lets platform teams manage root routing and TLS while application teams control their own routes — all within a GitOps workflow that keeps every routing decision auditable and reproducible.
+Contour with HTTPProxy, deployed through Flux CD, provides a multi-team-friendly ingress architecture where platform and application concerns are cleanly separated. The inclusion model lets platform teams manage root routing and TLS while application teams control their own routes - all within a GitOps workflow that keeps every routing decision auditable and reproducible.

@@ -109,4 +109,4 @@ kubectl delete service backend -n production
 
 ## Conclusion
 
-Validating Calico NetworkPolicy resources requires a four-step process: verify the policy specification is correct, confirm selectors match the intended pods, check Felix has programmed the policy, and test actual traffic behavior for both allowed and denied scenarios. Always test both positive and negative cases — a policy that allows intended traffic but doesn't deny unintended traffic is misconfigured.
+Validating Calico NetworkPolicy resources requires a four-step process: verify the policy specification is correct, confirm selectors match the intended pods, check Felix has programmed the policy, and test actual traffic behavior for both allowed and denied scenarios. Always test both positive and negative cases - a policy that allows intended traffic but doesn't deny unintended traffic is misconfigured.

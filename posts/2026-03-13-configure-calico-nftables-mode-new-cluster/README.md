@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Configuration
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Configuration
 
 Description: A guide to configuring Calico's Felix, IP pools, and network settings when running in nftables mode.
 
@@ -12,7 +12,7 @@ Description: A guide to configuring Calico's Felix, IP pools, and network settin
 
 Configuring Calico in nftables mode for a new cluster involves the same Calico CRD-based configuration as iptables mode, with the key addition of ensuring all Felix configuration is compatible with the nftables backend. Some Felix configuration parameters have nftables-specific equivalents or behaviors that differ from iptables. Understanding these differences ensures your configuration is correct from the start.
 
-nftables mode also interacts differently with kube-proxy — if kube-proxy is still running in iptables mode, there can be conflicts. Many clusters running Calico in nftables mode also switch kube-proxy to nftables mode or disable it entirely when using Calico's eBPF dataplane.
+nftables mode also interacts differently with kube-proxy - if kube-proxy is still running in iptables mode, there can be conflicts. Many clusters running Calico in nftables mode also switch kube-proxy to nftables mode or disable it entirely when using Calico's eBPF dataplane.
 
 ## Prerequisites
 
@@ -116,4 +116,4 @@ kubectl delete namespace nft-test
 
 ## Conclusion
 
-Configuring Calico in nftables mode requires ensuring Felix is set to the `nft` backend, aligning kube-proxy's mode, and verifying that nftables tables are created correctly by Felix. Network policy configuration is identical to iptables mode — the difference is purely in the underlying packet filtering framework, not in how policies are expressed or managed.
+Configuring Calico in nftables mode requires ensuring Felix is set to the `nft` backend, aligning kube-proxy's mode, and verifying that nftables tables are created correctly by Felix. Network policy configuration is identical to iptables mode - the difference is purely in the underlying packet filtering framework, not in how policies are expressed or managed.

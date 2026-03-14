@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Performance, useMemo, useCallback, Optimization, TypeScript
+Tags: React Native, Performance, UseMemo, UseCallback, Optimization, TypeScript
 
 Description: Learn how to effectively use useMemo and useCallback hooks to optimize React Native performance and prevent unnecessary re-renders.
 

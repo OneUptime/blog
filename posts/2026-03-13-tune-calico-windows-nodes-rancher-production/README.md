@@ -10,7 +10,7 @@ Description: A guide to performance-tuning Calico on Windows nodes in a Rancher-
 
 ## Introduction
 
-Production tuning for Calico on Windows nodes in Rancher-managed clusters follows the same Windows-specific tuning parameters as non-Rancher deployments, with the additional consideration that some tuning changes — particularly those that modify the Installation CR — should be reviewed to ensure they don't conflict with Rancher's cluster lifecycle management. Rancher may overwrite Installation CR changes during cluster upgrades if those changes are not compatible with Rancher's expected configuration.
+Production tuning for Calico on Windows nodes in Rancher-managed clusters follows the same Windows-specific tuning parameters as non-Rancher deployments, with the additional consideration that some tuning changes - particularly those that modify the Installation CR - should be reviewed to ensure they don't conflict with Rancher's cluster lifecycle management. Rancher may overwrite Installation CR changes during cluster upgrades if those changes are not compatible with Rancher's expected configuration.
 
 To avoid conflicts, prefer making configuration changes through `calicoctl` (for Felix and IP pool settings) rather than patching the Installation CR directly, unless you have confirmed that Rancher will not revert those changes.
 

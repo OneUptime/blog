@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, pip, Package Management, Virtual Environments, Dependencies
+Tags: Python, Pip, Package Management, Virtual Environments, Dependencies
 
 Description: Learn how to use pip to install, update, and manage Python packages. This guide covers virtual environments, requirements files, and best practices for dependency management.
 

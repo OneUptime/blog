@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Artifact Registry, Python, pip, Package Management, DevOps
+Tags: GCP, Artifact Registry, Python, Pip, Package Management, DevOps
 
 Description: Set up a private Python package repository in Google Artifact Registry for hosting internal pip packages with secure authentication and access control.
 

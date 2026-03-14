@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Configuration Management
+Tags: Kubernetes, Kubectl, Configuration Management
 
 Description: Learn how to merge multiple kubeconfig files into a single unified configuration, eliminating the need to switch between config files when managing multiple Kubernetes clusters.
 

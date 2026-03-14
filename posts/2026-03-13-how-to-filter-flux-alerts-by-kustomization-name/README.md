@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, Kustomization, Alerts, GitOps, Kubernetes, Notification-Controller
+Tags: Flux, Fluxcd, Kustomization, Alerts, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that only trigger for specific Kustomization resources by name, reducing notification noise in your GitOps workflow.
 

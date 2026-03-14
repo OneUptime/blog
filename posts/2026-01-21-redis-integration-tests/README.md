@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Testing, Integration Tests, Python, Node.js, Testcontainers, pytest
+Tags: Redis, Testing, Integration Tests, Python, Node.js, Testcontainers, Pytest
 
 Description: A comprehensive guide to writing integration tests with Redis, covering test containers, fixtures, isolation strategies, and best practices for reliable testing.
 

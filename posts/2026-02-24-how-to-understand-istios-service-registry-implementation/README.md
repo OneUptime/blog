@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Registry, Architecture, Kubernetes, xDS
+Tags: Istio, Service Registry, Architecture, Kubernetes, XDS
 
 Description: A deep look at how Istio's service registry works internally, from Kubernetes API watches to xDS configuration pushes to Envoy proxies.
 

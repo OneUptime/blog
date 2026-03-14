@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Replication, Disaster Recovery, rsync
+Tags: Ubuntu, Backup, Replication, Disaster Recovery, Rsync
 
 Description: Configure cross-site backup replication on Ubuntu to maintain synchronized copies of your backups across geographically separated locations using rsync and automation.
 

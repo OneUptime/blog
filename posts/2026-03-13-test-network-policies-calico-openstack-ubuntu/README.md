@@ -12,7 +12,7 @@ Description: A guide to testing Calico network policy enforcement for OpenStack 
 
 In OpenStack, network policy for virtual machines is typically managed through Security Groups, which are implemented as iptables rules by the compute agent. With Calico as the Neutron backend, Security Groups are implemented by Felix rather than the standard Neutron agent. This provides consistent policy enforcement across both VM and Kubernetes workloads in deployments that use Calico for both.
 
-Testing Calico's enforcement of OpenStack Security Group policies is similar to testing Kubernetes NetworkPolicy — you deploy test VMs, configure Security Groups, and verify that allowed and denied connections behave correctly. The additional layer is verifying that Felix has correctly translated the Security Group rules into its iptables or eBPF rules.
+Testing Calico's enforcement of OpenStack Security Group policies is similar to testing Kubernetes NetworkPolicy - you deploy test VMs, configure Security Groups, and verify that allowed and denied connections behave correctly. The additional layer is verifying that Felix has correctly translated the Security Group rules into its iptables or eBPF rules.
 
 ## Prerequisites
 
@@ -84,4 +84,4 @@ calicoctl get workloadendpoint -A -o yaml | grep -A10 "policy"
 
 ## Conclusion
 
-Testing Calico's enforcement of OpenStack Security Group policies on Ubuntu verifies that Felix correctly translates Security Group rules into iptables rules that control VM-level traffic. The testing workflow — adding and removing Security Group rules and verifying connectivity changes — confirms that the Neutron-to-Calico policy translation is working correctly in real time.
+Testing Calico's enforcement of OpenStack Security Group policies on Ubuntu verifies that Felix correctly translates Security Group rules into iptables rules that control VM-level traffic. The testing workflow - adding and removing Security Group rules and verifying connectivity changes - confirms that the Neutron-to-Calico policy translation is working correctly in real time.

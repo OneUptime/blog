@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, systemd, Linux, Production, Service Management, DevOps
+Tags: Docker, Systemd, Linux, Production, Service Management, DevOps
 
 Description: Integrate Docker containers with systemd for proper service ordering, dependency management, and system-level lifecycle control.
 

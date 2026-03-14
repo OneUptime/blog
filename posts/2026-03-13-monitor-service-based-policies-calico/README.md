@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Monitoring
+Tags: Calico, Kubernetes, Network Policy, Services, Monitoring
 
 Description: Monitor Calico service-based network policies to track service access patterns and policy effectiveness.
 

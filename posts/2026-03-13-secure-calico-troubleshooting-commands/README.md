@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting, Security
 
-Description: Secure access to Calico troubleshooting commands by implementing least-privilege RBAC for calicoctl, audit logging diagnostic command runs, and preventing destructive commands during read-only diagnostic sessions.
+Description: Secure access to Calico troubleshooting commands by implementing least-privilege RBAC for calicoctl, audit logging diagnostic command runs, and preventing destructive commands during read-only...
 
 ---
 

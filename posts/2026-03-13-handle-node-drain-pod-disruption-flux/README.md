@@ -28,7 +28,7 @@ This guide covers the complete workflow for draining nodes in a Flux-managed clu
 PodDisruptionBudgets must be deployed by Flux before you need them. Check that all critical workloads have PDBs.
 
 ```yaml
-# deploy/pdb.yaml — in the application's Git repository
+# deploy/pdb.yaml - in the application's Git repository
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -41,7 +41,7 @@ spec:
   # Allow at most 1 pod to be unavailable at any time
   # (ensures 2-pod deployments stay at 1 during drain)
   maxUnavailable: 1
-  # Alternative: minAvailable: 2 — ensures at least 2 pods always running
+  # Alternative: minAvailable: 2 - ensures at least 2 pods always running
 ```
 
 Verify PDBs are deployed:
@@ -91,7 +91,7 @@ echo "All Flux Kustomizations are healthy. Proceeding with drain."
 Cordoning prevents new pods from being scheduled on the node while allowing existing pods to continue running.
 
 ```bash
-# Cordon the node — no new pods will be scheduled here
+# Cordon the node - no new pods will be scheduled here
 kubectl cordon $NODE
 
 # Verify the node is cordoned
@@ -125,7 +125,7 @@ kubectl get pods --all-namespaces \
 flux get kustomizations --all-namespaces -w &
 
 # Flux will detect pod disruptions and may show reconciling status
-# This is normal — Flux is waiting for the deployment to stabilize
+# This is normal - Flux is waiting for the deployment to stabilize
 
 # Check if any Kustomization is stuck waiting for health checks
 flux get kustomizations --all-namespaces | grep -v "True"
@@ -165,7 +165,7 @@ kubectl get node $NODE
 # STATUS: Ready
 
 # Flux will not immediately move pods back to this node
-# Kubernetes only rescheduled displaced pods — it doesn't rebalance
+# Kubernetes only rescheduled displaced pods - it doesn't rebalance
 # For rebalancing, consider the Descheduler tool or pod disruptions
 
 # Force Flux to reconcile and verify cluster state
@@ -180,7 +180,7 @@ kubectl get pods --all-namespaces \
   --field-selector spec.nodeName=$NODE \
   -o wide | grep -v DaemonSet
 
-# Check PDB status — a PDB might be preventing eviction
+# Check PDB status - a PDB might be preventing eviction
 kubectl get pdb --all-namespaces -o wide
 
 # If a PDB is too restrictive (minAvailable too high for current replicas)
@@ -199,12 +199,12 @@ flux reconcile kustomization my-service -n team-alpha
 ## Best Practices
 
 - Always add PDBs to production Deployments in Git before you ever need to drain nodes
-- Use `maxUnavailable: 1` rather than `minAvailable: N` when possible — it automatically adapts to replica count changes
+- Use `maxUnavailable: 1` rather than `minAvailable: N` when possible - it automatically adapts to replica count changes
 - Cordon before draining to prevent scheduling new pods that would immediately be disrupted
-- Monitor Flux health checks during drain — if a Kustomization goes unhealthy during drain, investigate before proceeding
+- Monitor Flux health checks during drain - if a Kustomization goes unhealthy during drain, investigate before proceeding
 - For clusters with many nodes, drain one node at a time, verifying health between each drain
 - Use the Kubernetes Descheduler after maintenance to rebalance pods across nodes
 
 ## Conclusion
 
-Node draining in Flux-managed clusters is straightforward when PodDisruptionBudgets are correctly configured and deployed through GitOps. Flux continues to reconcile during the drain process — this is expected behavior. By ensuring PDBs exist in Git, verifying cluster health before starting, and following the cordon-drain-verify-uncordon sequence, you can drain nodes safely with confidence that Flux is maintaining cluster state throughout the process.
+Node draining in Flux-managed clusters is straightforward when PodDisruptionBudgets are correctly configured and deployed through GitOps. Flux continues to reconcile during the drain process - this is expected behavior. By ensuring PDBs exist in Git, verifying cluster health before starting, and following the cordon-drain-verify-uncordon sequence, you can drain nodes safely with confidence that Flux is maintaining cluster state throughout the process.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, SIEM, Security, Logging, Linux
+Tags: RHEL, Rsyslog, SIEM, Security, Logging, Linux
 
 Description: Learn how to configure rsyslog on RHEL to forward system and application logs to a SIEM platform for security monitoring and threat detection.
 

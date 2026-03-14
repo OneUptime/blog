@@ -10,7 +10,7 @@ Description: A safe procedure for upgrading Calico on an Ubuntu OpenStack deploy
 
 ## Introduction
 
-Upgrading Calico in an Ubuntu OpenStack deployment requires upgrading the Calico Neutron plugin on the controller and the Felix agent on all compute nodes. The compute node upgrades are the most sensitive — restarting Felix on a compute node causes a brief interruption in policy enforcement for VMs on that node. During the restart, existing network connections are maintained (iptables rules persist), but new policy changes are not applied until Felix restarts successfully.
+Upgrading Calico in an Ubuntu OpenStack deployment requires upgrading the Calico Neutron plugin on the controller and the Felix agent on all compute nodes. The compute node upgrades are the most sensitive - restarting Felix on a compute node causes a brief interruption in policy enforcement for VMs on that node. During the restart, existing network connections are maintained (iptables rules persist), but new policy changes are not applied until Felix restarts successfully.
 
 Upgrading compute nodes one at a time and verifying VM connectivity on each node before proceeding to the next is the safest approach.
 

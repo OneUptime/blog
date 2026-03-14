@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, SR-IOV, Network Operator, Kubernetes, High Performance Networking, GitOps, NFV
+Tags: Flux-cd, Sriov, Kubernetes, Networking, GitOps, High-Performance
 
 Description: Learn how to deploy and configure the SR-IOV Network Operator using Flux CD GitOps for hardware-accelerated networking in Kubernetes.
 
@@ -231,4 +231,4 @@ spec:
 
 ## Conclusion
 
-The SR-IOV Network Operator deployed via Flux CD automates the complex task of virtual function creation and management across Kubernetes nodes. Managing SR-IOV policies and network resources through GitOps ensures that hardware configurations are reproducible and auditable—critical for telco and NFV workloads that depend on deterministic network performance.
+The SR-IOV Network Operator deployed via Flux CD automates the complex task of virtual function creation and management across Kubernetes nodes. Managing SR-IOV policies and network resources through GitOps ensures that hardware configurations are reproducible and auditable-critical for telco and NFV workloads that depend on deterministic network performance.

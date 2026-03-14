@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, mTLS, Policy Precedence, Security
+Tags: Istio, PeerAuthentication, MTLS, Policy Precedence, Security
 
 Description: A clear explanation of how Istio resolves PeerAuthentication policy precedence across mesh, namespace, and workload levels.
 

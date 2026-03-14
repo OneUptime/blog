@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Machine Learning, Edge AI, GitOps, ONNX, TensorFlow Lite, Model Deployment
+Tags: Flux CD, Kubernetes, Machine Learning, Edge AI, GitOps, ONNX
 
 Description: Deploy machine learning models to edge devices using Flux CD, with versioned model artifacts, automated rollout, and rollback capabilities.
 
@@ -10,7 +10,7 @@ Description: Deploy machine learning models to edge devices using Flux CD, with 
 
 ## Introduction
 
-Machine learning inference at the edge is one of the fastest-growing areas in industrial and consumer technology — computer vision for quality control, predictive maintenance from sensor data, and natural language processing in kiosk applications all benefit from inference running locally rather than round-tripping to the cloud. Managing ML model versions at scale is, however, genuinely hard.
+Machine learning inference at the edge is one of the fastest-growing areas in industrial and consumer technology - computer vision for quality control, predictive maintenance from sensor data, and natural language processing in kiosk applications all benefit from inference running locally rather than round-tripping to the cloud. Managing ML model versions at scale is, however, genuinely hard.
 
 Models need to be versioned, tested, deployed to specific hardware configurations, monitored for accuracy drift, and rolled back when performance degrades. Flux CD provides exactly the GitOps infrastructure needed to manage this lifecycle. By packaging models as OCI artifacts alongside their inference server configuration, you can treat model deployments with the same rigor as application code deployments.
 
@@ -262,7 +262,7 @@ spec:
 ## Best Practices
 
 - Version models with semantic versioning and store version metadata in OCI artifact annotations.
-- Use blue-green deployment for model updates — inference continuity is critical for edge applications.
+- Use blue-green deployment for model updates - inference continuity is critical for edge applications.
 - Test new model versions against a held-out validation dataset before routing production traffic.
 - Monitor inference latency and accuracy metrics post-deployment to catch model drift.
 - Use Flux's `semver` constraint on OCIRepository to auto-update within a safe version range.

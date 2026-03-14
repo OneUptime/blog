@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, containerd, Logging, Container Metrics
+Tags: OpenTelemetry, Containerd, Logging, Container Metrics
 
 Description: Collect containerd runtime logs and container lifecycle metrics using the OpenTelemetry Collector with filelog and Prometheus receivers.
 

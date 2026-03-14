@@ -101,4 +101,4 @@ curl -s http://localhost:9091/metrics | grep felix_
 
 ## Conclusion
 
-Production tuning of binary-installed Calico on bare metal combines CRD-level settings — encapsulation removal, eBPF enablement — with systemd environment variable tuning and OS sysctl optimization. The direct access to the process environment that binary installation provides makes it straightforward to iterate on these settings and verify their effect through journalctl and the Prometheus metrics endpoint.
+Production tuning of binary-installed Calico on bare metal combines CRD-level settings - encapsulation removal, eBPF enablement - with systemd environment variable tuning and OS sysctl optimization. The direct access to the process environment that binary installation provides makes it straightforward to iterate on these settings and verify their effect through journalctl and the Prometheus metrics endpoint.

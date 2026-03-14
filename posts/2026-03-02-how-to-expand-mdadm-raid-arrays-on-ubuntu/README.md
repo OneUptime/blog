@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, RAID, Storage, mdadm, Disk Management
+Tags: Ubuntu, RAID, Storage, Mdadm, Disk Management
 
 Description: Expand an existing mdadm software RAID array on Ubuntu by adding disks or replacing smaller disks with larger ones to increase available storage capacity.
 

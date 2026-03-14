@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Services, systemctl, Linux
+Tags: RHEL, Systemd, Services, Systemctl, Linux
 
 Description: Learn how to list, filter, and inspect systemd services and their states on RHEL using systemctl, with practical examples for daily sysadmin work.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, k0s, Kubernetes, Service Mesh, Zero Friction Kubernetes
+Tags: Istio, K0s, Kubernetes, Service Mesh, Zero Friction Kubernetes
 
 Description: Learn how to install and configure Istio service mesh on k0s, the zero-friction Kubernetes distribution from Mirantis.
 

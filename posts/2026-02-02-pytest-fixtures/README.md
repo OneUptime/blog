@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: pytest, Python, Testing, Fixtures
+Tags: Pytest, Python, Testing, Fixtures
 
 Description: A comprehensive guide to mastering pytest fixtures for Python testing, covering fixture creation, scopes, parametrization, factory patterns.
 

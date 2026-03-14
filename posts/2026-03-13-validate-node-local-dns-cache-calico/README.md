@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Validate that NodeLocal DNSCache is working correctly with Calico by testing cache hit rates, DNS resolution latency, and network policy enforcement.
 

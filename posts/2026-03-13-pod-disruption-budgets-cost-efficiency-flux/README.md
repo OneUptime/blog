@@ -10,7 +10,7 @@ Description: Use PodDisruptionBudgets managed by Flux CD to balance cost efficie
 
 ## Introduction
 
-PodDisruptionBudgets (PDBs) are a Kubernetes mechanism that limits how many pods of a deployment can be simultaneously unavailable during voluntary disruptions — node drains, cluster upgrades, and Cluster Autoscaler scale-downs. Without PDBs, voluntary disruptions can take down more pods than your application can tolerate. With overly strict PDBs, Cluster Autoscaler cannot efficiently consolidate workloads onto fewer nodes, costing you money on idle capacity.
+PodDisruptionBudgets (PDBs) are a Kubernetes mechanism that limits how many pods of a deployment can be simultaneously unavailable during voluntary disruptions - node drains, cluster upgrades, and Cluster Autoscaler scale-downs. Without PDBs, voluntary disruptions can take down more pods than your application can tolerate. With overly strict PDBs, Cluster Autoscaler cannot efficiently consolidate workloads onto fewer nodes, costing you money on idle capacity.
 
 Getting PDB configuration right is essential for both availability and cost. A PDB that allows Cluster Autoscaler to drain nodes efficiently enables better bin-packing, reduced node count, and significant compute savings. Combined with spot instance usage, well-configured PDBs are a critical component of a cost-efficient Kubernetes platform.
 
@@ -225,13 +225,13 @@ spec:
 
 ## Best Practices
 
-- Never set `minAvailable: "100%"` on services with only one replica — this makes the pod completely undrainable and blocks all Cluster Autoscaler scale-downs on the hosting node.
+- Never set `minAvailable: "100%"` on services with only one replica - this makes the pod completely undrainable and blocks all Cluster Autoscaler scale-downs on the hosting node.
 - For single-replica services that must not be disrupted, accept that they will block node drains; use this sparingly and only for truly critical, irreplaceable services.
 - Scale up replicas to at least 3 before setting `minAvailable: 2`; a 2-replica service with `minAvailable: 2` behaves like `100%` and blocks all drains.
-- Test PDB behavior during cluster upgrades — this is when strict PDBs most commonly cause prolonged upgrade windows and increased costs.
+- Test PDB behavior during cluster upgrades - this is when strict PDBs most commonly cause prolonged upgrade windows and increased costs.
 - Review PDB configurations whenever you change replica counts; a PDB that was appropriate for 10 replicas may be too strict or too loose for 3.
 - Use `maxUnavailable` instead of `minAvailable` for small replica counts where percentage-based values round unexpectedly.
 
 ## Conclusion
 
-Pod Disruption Budgets are the bridge between high availability and cost efficiency in Kubernetes. Managed through Flux CD, they become part of your GitOps workflow — reviewed in pull requests, applied consistently, and audited programmatically. The right PDB configuration allows Cluster Autoscaler to aggressively consolidate workloads and drain underutilized nodes, turning idle compute into realized savings without compromising the availability your users depend on.
+Pod Disruption Budgets are the bridge between high availability and cost efficiency in Kubernetes. Managed through Flux CD, they become part of your GitOps workflow - reviewed in pull requests, applied consistently, and audited programmatically. The right PDB configuration allows Cluster Autoscaler to aggressively consolidate workloads and drain underutilized nodes, turning idle compute into realized savings without compromising the availability your users depend on.

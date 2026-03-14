@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, iptables, IPVS, Load Balancing, Networking
+Tags: Kubernetes, Debugging, Iptables, IPVS, Load Balancing, Networking
 
 Description: Master debugging techniques for Kubernetes service load balancing using iptables and IPVS inspection tools to troubleshoot connectivity issues and understand traffic flow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Resource Control, Memory Management, System Administration
+Tags: Ubuntu, Systemd, Resource Control, Memory Management, System Administration
 
 Description: Configure systemd resource control directives on Ubuntu to limit memory, CPU, and I/O usage for services using MemoryMax, CPUQuota, and cgroup-based controls.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gce, google-cloud, kubernetes, self-managed, cni, networking
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, GCE, Google Cloud, Self-Managed
 
 Description: A guide to deploying Calico on a self-managed Kubernetes cluster running on Google Compute Engine, with network configuration optimized for GCE's VPC networking.
 
@@ -12,7 +12,7 @@ Description: A guide to deploying Calico on a self-managed Kubernetes cluster ru
 
 Google Compute Engine (GCE) provides a flexible infrastructure for self-managed Kubernetes clusters. Unlike GKE which comes with managed networking, GCE VMs give you full control over the CNI plugin and networking configuration.
 
-Calico on GCE can leverage GCE's native routing capabilities. Because GCE VPCs support custom static routes, you can configure Calico without encapsulation by advertising pod CIDRs as GCE routes — eliminating the overlay networking overhead. Alternatively, VXLAN encapsulation works seamlessly when you don't have permission to manage GCE routes.
+Calico on GCE can leverage GCE's native routing capabilities. Because GCE VPCs support custom static routes, you can configure Calico without encapsulation by advertising pod CIDRs as GCE routes - eliminating the overlay networking overhead. Alternatively, VXLAN encapsulation works seamlessly when you don't have permission to manage GCE routes.
 
 This guide covers both approaches: encapsulated Calico for simplicity and non-encapsulated Calico with GCE route programming for performance.
 
@@ -57,7 +57,7 @@ CONTROL_PLANE_INSTANCE="k8s-control-plane"
 WORKER_INSTANCES=("k8s-worker-1" "k8s-worker-2")
 ZONE="us-central1-a"
 
-# GCE VMs have IP forwarding disabled by default — enable it for Kubernetes
+# GCE VMs have IP forwarding disabled by default - enable it for Kubernetes
 # This is done when creating the instance (--can-ip-forward flag)
 # Or can be enabled on existing instances via:
 gcloud compute instances describe $CONTROL_PLANE_INSTANCE \
@@ -79,7 +79,7 @@ gcloud compute instances create k8s-control-plane \
 Bootstrap the control plane with kubeadm.
 
 ```bash
-# On the control plane VM — initialize with pod CIDR
+# On the control plane VM - initialize with pod CIDR
 INTERNAL_IP=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip" \
   -H "Metadata-Flavor: Google")
 
@@ -99,7 +99,7 @@ Deploy Calico with VXLAN encapsulation for simplicity, or without for performanc
 
 ```yaml
 # calico-gce-installation.yaml
-# Calico for self-managed GCE — using VXLAN for simplicity
+# Calico for self-managed GCE - using VXLAN for simplicity
 apiVersion: operator.tigera.io/v1
 kind: Installation
 metadata:
@@ -151,7 +151,7 @@ gcloud compute routes create pod-route-worker-1 \
 
 ## Best Practices
 
-- Enable IP forwarding (`--can-ip-forward`) on all GCE instances at creation time — it cannot be changed later
+- Enable IP forwarding (`--can-ip-forward`) on all GCE instances at creation time - it cannot be changed later
 - Use VXLAN for simpler deployments and GCE static routes for latency-sensitive workloads
 - Apply GCE firewall rules before initializing the cluster to ensure node join succeeds
 - Tag your GCE instances with a cluster tag and use it in firewall rules for maintainability

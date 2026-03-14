@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Active Directory, SSSD, realmd, Linux
+Tags: RHEL, Active Directory, SSSD, Realmd, Linux
 
 Description: A step-by-step guide to joining a RHEL system to an Active Directory domain using realmd and SSSD, including prerequisites, domain discovery, join process, and login configuration.
 

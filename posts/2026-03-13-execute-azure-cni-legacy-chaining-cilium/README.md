@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Azure, Azure CNI, CNI Chaining, AKS, Kubernetes, Networking, Security
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Learn how to chain Cilium onto Azure CNI (legacy mode) on Azure Kubernetes Service to enhance network policy enforcement with eBPF while retaining Azure VNet IP addressing for pods.
 
@@ -12,13 +12,13 @@ Description: Learn how to chain Cilium onto Azure CNI (legacy mode) on Azure Kub
 
 Azure CNI (legacy mode) assigns pods VNet IP addresses directly, enabling direct routing within Azure VNet without NAT or overlays. While effective for connectivity, Azure CNI's native network policy implementation has limitations in terms of granularity and observability.
 
-Chaining Cilium onto Azure CNI gives AKS clusters eBPF-based L3/L4/L7 network policy enforcement, Hubble flow observability, and transparent mTLS—while Azure CNI continues to manage VNet IP allocation and basic pod connectivity.
+Chaining Cilium onto Azure CNI gives AKS clusters eBPF-based L3/L4/L7 network policy enforcement, Hubble flow observability, and transparent mTLS-while Azure CNI continues to manage VNet IP allocation and basic pod connectivity.
 
 ## Prerequisites
 
 - AKS cluster with Azure CNI (legacy) configured
 - `kubectl`, `cilium`, and `helm` CLIs installed
-- Node access (nodes must support eBPF — Linux kernel 5.4+ on AKS nodes)
+- Node access (nodes must support eBPF - Linux kernel 5.4+ on AKS nodes)
 
 ## Step 1: Verify Azure CNI Configuration
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, iptables, Migration, Linux
+Tags: RHEL, Nftables, Iptables, Migration, Linux
 
 Description: A practical guide to migrating your firewall rules from the legacy iptables framework to nftables on RHEL, covering tool usage, rule translation, and validation.
 

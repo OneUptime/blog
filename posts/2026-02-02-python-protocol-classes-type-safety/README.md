@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Type Safety, Protocol, typing, Static Analysis
+Tags: Python, Type Safety, Protocol, Typing, Static Analysis
 
 Description: Learn how to use Python's Protocol classes for structural subtyping, enabling duck typing with static type checking for more robust and maintainable code.
 

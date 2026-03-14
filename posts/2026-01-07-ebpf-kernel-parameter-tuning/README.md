@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Linux, Kernel, Performance, Tuning, Configuration
+Tags: EBPF, Linux, Kernel, Performance, Tuning, Configuration
 
 Description: Learn how to optimize kernel settings for better eBPF program performance.
 

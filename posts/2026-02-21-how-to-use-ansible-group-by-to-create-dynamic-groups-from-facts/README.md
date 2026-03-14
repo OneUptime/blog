@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Dynamic Inventory, group_by, Configuration Management
+Tags: Ansible, Dynamic Inventory, Group_by, Configuration Management
 
 Description: Learn how to use the Ansible group_by module to create dynamic host groups based on gathered facts during playbook execution.
 

@@ -1,10 +1,10 @@
-# How to Deploy ExternalDNS with CloudFlare DNS Provider via Flux CD
+# Deploy ExternalDNS with Cloudflare Using Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ExternalDNS, CloudFlare DNS, DNS, Kubernetes, GitOps, Networking
+Tags: ExternalDNS, Cloudflare, DNS, Flux CD, GitOps, Kubernetes, Networking
 
-Description: Learn how to deploy ExternalDNS with the CloudFlare DNS provider using Flux CD HelmRelease to automatically manage DNS records for Kubernetes services.
+Description: Deploy ExternalDNS configured for Cloudflare on Kubernetes using Flux CD to automatically create and manage DNS records in Cloudflare zones when Ingress and Service resources are created.
 
 ---
 

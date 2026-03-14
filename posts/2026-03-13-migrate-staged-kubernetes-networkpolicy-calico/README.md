@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Staged Policies, Kubernetes
+Tags: Calico, Kubernetes, Network Policy, Staged Policies
 
 Description: Migrate existing network policies to Staged Kubernetes NetworkPolicy in Calico without disruption.
 

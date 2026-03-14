@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, Caching, Performance, node-cache, Backend
+Tags: NodeJS, Caching, Performance, Node-cache, Backend
 
 Description: Implement fast in-memory caching in Node.js applications using node-cache with TTL support, automatic cleanup, and practical usage patterns.
 

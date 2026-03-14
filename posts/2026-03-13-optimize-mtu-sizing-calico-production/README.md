@@ -10,7 +10,7 @@ Description: Optimize Calico MTU sizing for production by enabling jumbo frames,
 
 ## Introduction
 
-MTU optimization in Calico production environments can yield significant performance improvements. When network infrastructure supports jumbo frames (MTU 9000), enabling them for Kubernetes workloads dramatically increases throughput by reducing the number of packets needed to transfer large volumes of data — an important consideration for data-intensive workloads like machine learning, video processing, or large database queries.
+MTU optimization in Calico production environments can yield significant performance improvements. When network infrastructure supports jumbo frames (MTU 9000), enabling them for Kubernetes workloads dramatically increases throughput by reducing the number of packets needed to transfer large volumes of data - an important consideration for data-intensive workloads like machine learning, video processing, or large database queries.
 
 On standard 1500-byte MTU networks, the focus is on minimizing encapsulation overhead by choosing the right data plane. VXLAN has 50 bytes of overhead, IP-in-IP has 20 bytes, and native BGP routing has zero overhead. The right choice depends on your network capabilities and performance requirements.
 

@@ -102,7 +102,7 @@ Treat network policy like application code:
 - Use GlobalNetworkPolicy for all cluster-wide baseline rules (health checks, DNS, known-bad CIDRs)
 - Apply deny-all NetworkPolicy to each namespace at creation time
 - For Enterprise, use tiers to separate platform baselines from application-layer policies
-- Never apply policy changes directly to production — always test in staging first
+- Never apply policy changes directly to production - always test in staging first
 
 ## Conclusion
 

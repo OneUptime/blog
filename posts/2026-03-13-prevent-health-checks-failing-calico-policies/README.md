@@ -138,4 +138,4 @@ flowchart LR
 
 ## Conclusion
 
-Preventing health check failures from Calico NetworkPolicies requires including a node CIDR ipBlock in every ingress policy template. The kubelet probe model — where probes come from the node rather than from pods — makes this a non-negotiable element of any default-deny ingress policy. A cluster-wide GlobalNetworkPolicy for kubelet probes provides a safety net for all namespaces.
+Preventing health check failures from Calico NetworkPolicies requires including a node CIDR ipBlock in every ingress policy template. The kubelet probe model - where probes come from the node rather than from pods - makes this a non-negotiable element of any default-deny ingress policy. A cluster-wide GlobalNetworkPolicy for kubelet probes provides a safety net for all namespaces.

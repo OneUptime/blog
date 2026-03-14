@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, restorecon, Security, Linux
+Tags: RHEL, SELinux, Restorecon, Security, Linux
 
 Description: Master the restorecon command on RHEL to fix incorrect SELinux file labels and restore them to their policy-defined defaults.
 

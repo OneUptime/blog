@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Azure, AKS, Azure CNI, Cilium, Networking, eBPF, Network Policy
+Tags: Flux, Kubernetes, GitOps, Azure, AKS, Azure CNI, Cilium, Networking, EBPF, Network Policy
 
 Description: Learn how to set up Flux CD on an AKS cluster using Azure CNI powered by Cilium for advanced networking, eBPF-based network policies, and observability.
 

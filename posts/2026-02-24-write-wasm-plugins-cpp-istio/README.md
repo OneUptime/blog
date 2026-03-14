@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, C++, Envoy, proxy-wasm
+Tags: Istio, WebAssembly, C++, Envoy, Proxy-wasm
 
 Description: Writing WebAssembly plugins for Istio in C++ using the proxy-wasm C++ SDK, covering project setup, API usage, and compilation workflow.
 

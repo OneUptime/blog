@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IPVS, kube-proxy, Kubernetes, Networking, Monitoring, Load Balancing
+Tags: Calico, IPVS, Kube-proxy, Kubernetes, Networking, Monitoring, Load Balancing
 
 Description: Learn how to monitor Calico in environments using IPVS-mode kube-proxy, including service routing health, IPVS table consistency, and performance metrics for high-scale Kubernetes clusters.
 
@@ -164,7 +164,7 @@ kubectl apply -f ipvs-monitoring-rules.yaml
 
 - Set `strictARP: true` in the kube-proxy ConfigMap when using IPVS mode to prevent ARP flooding
 - Increase `nf_conntrack_max` on nodes with high service traffic when using IPVS + Calico
-- Monitor kube-proxy sync duration — slow IPVS sync indicates service routing delays
+- Monitor kube-proxy sync duration - slow IPVS sync indicates service routing delays
 - Use Calico eBPF mode as an alternative to IPVS + iptables for even better performance at scale
 - Configure OneUptime service endpoint monitors to validate that IPVS load balancing is distributing traffic correctly
 

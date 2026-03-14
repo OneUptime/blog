@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-nspawn, Containers, Virtualization, Linux
+Tags: RHEL, Systemd-nspawn, Containers, Virtualization, Linux
 
 Description: Use systemd-nspawn to create lightweight containers on RHEL without needing Docker or Podman, leveraging built-in systemd capabilities.
 

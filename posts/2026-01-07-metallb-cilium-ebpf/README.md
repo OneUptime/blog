@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, Cilium, eBPF, Kubernetes, Load Balancing, Networking, Performance
+Tags: MetalLB, Cilium, EBPF, Kubernetes, Load Balancing, Networking, Performance
 
 Description: Learn how to integrate MetalLB with Cilium for eBPF-based load balancing combining MetalLB announcements with Cilium datapath.
 

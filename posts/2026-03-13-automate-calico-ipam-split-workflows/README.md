@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Networking, Automation, IP Pools, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Automate Calico IPAM pool splitting operations with scripts that validate pre-split conditions, execute the split, and verify post-split IPAM consistency — reducing human error in large clusters.
+Description: Automate Calico IPAM pool splitting operations with scripts that validate pre-split conditions, execute the split, and verify post-split IPAM consistency - reducing human error in large clusters.
 
 ---
 
@@ -180,7 +180,7 @@ calicoctl ipam show --show-blocks
 
 - Always run `calicoctl ipam check` before and after every split; it is the definitive test of IPAM consistency.
 - Never delete the source pool until all allocations from it have been released (all pods using it have been restarted onto sub-pool addresses).
-- Use `disabled: true` on the source pool rather than deleting it immediately — this prevents new allocations while preserving the record of existing ones.
+- Use `disabled: true` on the source pool rather than deleting it immediately - this prevents new allocations while preserving the record of existing ones.
 - Test the split script in a staging cluster before running it in production.
 - Store the split plan (source CIDR, sub-CIDRs, node selectors) in version control alongside the cluster configuration.
 

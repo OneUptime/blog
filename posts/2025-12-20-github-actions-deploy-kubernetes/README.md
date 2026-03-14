@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Kubernetes, CI/CD, Deployments, GitOps, Helm, kubectl
+Tags: GitHub Actions, Kubernetes, CI/CD, Deployments, GitOps, Helm, Kubectl
 
 Description: Learn how to deploy applications to Kubernetes clusters from GitHub Actions, including kubectl configuration, Helm deployments, GitOps with ArgoCD, and best practices for secure.
 

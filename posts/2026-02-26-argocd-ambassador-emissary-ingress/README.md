@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Emissary-Ingress, Networking
+Tags: ArgoCD, GitOps, Kubernetes, Emissary-ingress, Networking
 
 Description: Learn how to expose ArgoCD through Ambassador/Emissary-Ingress with proper gRPC routing, TLS termination, and authentication filters.
 

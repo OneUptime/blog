@@ -10,7 +10,7 @@ Description: A diagnostic guide for identifying and fixing common Calico binary 
 
 ## Introduction
 
-Binary-installed Calico on bare metal has a different set of failure modes than container-based deployments. The calico-node process runs directly on the host, which means OS-level issues — missing library dependencies, incorrect file permissions, and systemd configuration errors — become the primary troubleshooting surface. The Kubernetes API still provides information about workload endpoint state, but the root causes live in the OS.
+Binary-installed Calico on bare metal has a different set of failure modes than container-based deployments. The calico-node process runs directly on the host, which means OS-level issues - missing library dependencies, incorrect file permissions, and systemd configuration errors - become the primary troubleshooting surface. The Kubernetes API still provides information about workload endpoint state, but the root causes live in the OS.
 
 Understanding how to move between `journalctl`, `systemctl`, and `calicoctl` to triangulate issues is the core skill for troubleshooting binary-installed Calico. This guide walks through the most common failures and their resolutions.
 
@@ -28,9 +28,9 @@ sudo journalctl -u calico-node -n 100 --no-pager
 ```
 
 Common errors in the log:
-- `exec format error` — wrong binary architecture (use `amd64` vs `arm64`)
-- `permission denied on /opt/cni/bin` — CNI directory permissions issue
-- `connection refused` — cannot reach the Kubernetes API
+- `exec format error` - wrong binary architecture (use `amd64` vs `arm64`)
+- `permission denied on /opt/cni/bin` - CNI directory permissions issue
+- `connection refused` - cannot reach the Kubernetes API
 
 ## Step 2: Verify Binary Architecture and Permissions
 

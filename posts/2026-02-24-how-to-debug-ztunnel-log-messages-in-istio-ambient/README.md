@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, ztunnel, Debugging, Troubleshooting
+Tags: Istio, Ambient Mode, Ztunnel, Debugging, Troubleshooting
 
 Description: A hands-on guide to understanding and debugging ztunnel log messages in Istio ambient mode deployments.
 

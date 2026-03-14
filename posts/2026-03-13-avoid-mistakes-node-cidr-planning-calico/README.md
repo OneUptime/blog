@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, node-cidr, ipam, kubernetes, networking, planning
+Tags: Calico, Node-cidr, IPAM, Kubernetes, Networking, Planning
 
 Description: Learn how to plan your Kubernetes node CIDR and pod CIDR correctly when using Calico, avoiding the overlaps, sizing errors, and topology mismatches that cause routing and IP allocation failures.
 
@@ -26,7 +26,7 @@ Mistakes in CIDR planning often only surface at scale: when you try to add more 
 The first step is a complete CIDR inventory. All ranges must be non-overlapping.
 
 ```bash
-# CIDR planning worksheet — fill in your values before creating the cluster
+# CIDR planning worksheet - fill in your values before creating the cluster
 cat << 'EOF'
 === CIDR Planning Worksheet ===
 
@@ -59,8 +59,8 @@ Size each CIDR based on your cluster's maximum scale requirements.
 ```bash
 # Node CIDR sizing calculation
 PLANNED_MAX_NODES=100
-# A /24 provides 254 usable IPs — sufficient for 100 nodes
-# A /22 provides 1,022 usable IPs — for 500+ node clusters
+# A /24 provides 254 usable IPs - sufficient for 100 nodes
+# A /22 provides 1,022 usable IPs - for 500+ node clusters
 # Rule: Node CIDR should accommodate max_nodes * 2 for replacement headroom
 echo "For ${PLANNED_MAX_NODES} nodes:"
 echo "  Minimum node CIDR: /$(python3 -c \"import math; print(32 - math.ceil(math.log2(${PLANNED_MAX_NODES} * 2)))\")"
@@ -164,7 +164,7 @@ python3 scripts/validate-cidrs.py
 
 ## Best Practices
 
-- Complete CIDR planning before cluster provisioning — none of these settings can be changed without full cluster recreation.
+- Complete CIDR planning before cluster provisioning - none of these settings can be changed without full cluster recreation.
 - Always involve your network team in CIDR planning to account for VPN routes, on-premises connectivity, and future expansions.
 - Reserve at least 20% of each CIDR range for future growth and rolling update overhead.
 - Document your CIDR allocation decisions in a network allocation register that is updated when new clusters are created.
@@ -172,4 +172,4 @@ python3 scripts/validate-cidrs.py
 
 ## Conclusion
 
-Node CIDR planning is a pre-provisioning decision with permanent consequences — misconfigured CIDRs require cluster recreation to fix. By completing a CIDR inventory, sizing each range for planned maximum scale, validating non-overlap programmatically, and documenting your allocation decisions, you avoid the class of networking failures that only appear when clusters grow or when connectivity to on-premises resources is needed.
+Node CIDR planning is a pre-provisioning decision with permanent consequences - misconfigured CIDRs require cluster recreation to fix. By completing a CIDR inventory, sizing each range for planned maximum scale, validating non-overlap programmatically, and documenting your allocation decisions, you avoid the class of networking failures that only appear when clusters grow or when connectivity to on-premises resources is needed.

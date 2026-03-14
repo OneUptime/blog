@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Logging, Disk Management, Linux
+Tags: Ubuntu, Systemd, Logging, Disk Management, Linux
 
 Description: Manage and reclaim disk space used by systemd journal logs on Ubuntu, including size limits, time-based rotation, vacuum commands, and persistent configuration.
 

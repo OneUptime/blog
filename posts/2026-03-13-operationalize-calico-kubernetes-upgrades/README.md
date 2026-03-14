@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Operations
+Tags: Calico, Kubernetes, Networking, Upgrade, Operations
 
 Description: Build a sustainable operational process for regular Calico upgrades including upgrade scheduling, team readiness, runbooks, and continuous improvement workflows.
 
@@ -108,4 +108,4 @@ EOF
 
 ## Conclusion
 
-Operationalizing Calico upgrades through a quarterly cadence, readiness checks, standard runbooks, and experience logging transforms upgrades from unpredictable events into routine maintenance. The upgrade experience log is particularly valuable — it captures institutional knowledge about what goes wrong and how to prevent it, building team expertise over time. Treat upgrade issues as learning opportunities and update the runbook immediately after each upgrade while the experience is fresh.
+Operationalizing Calico upgrades through a quarterly cadence, readiness checks, standard runbooks, and experience logging transforms upgrades from unpredictable events into routine maintenance. The upgrade experience log is particularly valuable - it captures institutional knowledge about what goes wrong and how to prevent it, building team expertise over time. Treat upgrade issues as learning opportunities and update the runbook immediately after each upgrade while the experience is fresh.

@@ -1,4 +1,4 @@
-# How to Validate Resolution of Health Check Failures After Enabling Calico Policies
+# How to Validate Resolution of Health Check Failures with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -109,4 +109,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating health check failure resolution requires confirming pod readiness, absence of new probe failure events, stable restart counts, and removal of the emergency policy after permanent fix is in place. Check all probe port types — liveness and readiness may use different ports and both need to be allowed.
+Validating health check failure resolution requires confirming pod readiness, absence of new probe failure events, stable restart counts, and removal of the emergency policy after permanent fix is in place. Check all probe port types - liveness and readiness may use different ports and both need to be allowed.

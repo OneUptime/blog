@@ -10,9 +10,9 @@ Description: Set up monitoring for Calico host endpoint selector drift to detect
 
 ## Introduction
 
-Calico host endpoint selectors are dynamic — they re-evaluate whenever node or HostEndpoint labels change. This dynamism is powerful, but it also means that label changes made for unrelated reasons (such as a deployment pipeline adding a new label) can inadvertently change which policies apply to which nodes. Monitoring for selector drift is essential for maintaining a stable and expected security posture.
+Calico host endpoint selectors are dynamic - they re-evaluate whenever node or HostEndpoint labels change. This dynamism is powerful, but it also means that label changes made for unrelated reasons (such as a deployment pipeline adding a new label) can inadvertently change which policies apply to which nodes. Monitoring for selector drift is essential for maintaining a stable and expected security posture.
 
-Selector drift can manifest as sudden security policy changes without anyone intentionally modifying policy. For example, if a node label used in a selector is removed during an upgrade operation, the associated policy stops being enforced on that node — potentially opening a security gap that isn't immediately obvious.
+Selector drift can manifest as sudden security policy changes without anyone intentionally modifying policy. For example, if a node label used in a selector is removed during an upgrade operation, the associated policy stops being enforced on that node - potentially opening a security gap that isn't immediately obvious.
 
 This guide covers how to monitor for selector-related changes and alert on unexpected policy-to-endpoint mapping changes.
 

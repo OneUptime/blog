@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Architecture, CNI, Traffic Flows, Felix, BIRD, Networking
 
-Description: A walkthrough of how Calico's architectural components — Felix, BIRD, Typha, and the CNI plugin — interact for real Kubernetes traffic scenarios.
+Description: A walkthrough of how Calico's architectural components - Felix, BIRD, Typha, and the CNI plugin - interact for real Kubernetes traffic scenarios.
 
 ---
 
 ## Introduction
 
-Understanding Calico's architecture in the abstract is useful — but seeing how Felix, BIRD, Typha, and the CNI plugin interact for a specific traffic event makes the architecture concrete. This post traces three real events through the architecture: a new pod being created, a network policy being applied, and a cross-node packet being routed.
+Understanding Calico's architecture in the abstract is useful - but seeing how Felix, BIRD, Typha, and the CNI plugin interact for a specific traffic event makes the architecture concrete. This post traces three real events through the architecture: a new pod being created, a network policy being applied, and a cross-node packet being routed.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ Understanding Calico's architecture in the abstract is useful — but seeing how
 
 ## Event 1: New Pod Creation
 
-This is the most complete architecture walkthrough — it involves every component:
+This is the most complete architecture walkthrough - it involves every component:
 
 ```mermaid
 sequenceDiagram
@@ -130,4 +130,4 @@ Without Typha, the single etcd write would generate N simultaneous API server wa
 
 ## Conclusion
 
-Calico's architecture processes real traffic events through a well-defined component pipeline: CNI plugin for pod setup, Typha+Felix for policy propagation, BIRD+Felix for BGP route distribution. Each event has observable artifacts — host routes, iptables rules, WorkloadEndpoints, BGP routes — that confirm the architecture is functioning correctly. Tracing these artifacts during normal operation builds the intuition needed to diagnose anomalies during incidents.
+Calico's architecture processes real traffic events through a well-defined component pipeline: CNI plugin for pod setup, Typha+Felix for policy propagation, BIRD+Felix for BGP route distribution. Each event has observable artifacts - host routes, iptables rules, WorkloadEndpoints, BGP routes - that confirm the architecture is functioning correctly. Tracing these artifacts during normal operation builds the intuition needed to diagnose anomalies during incidents.

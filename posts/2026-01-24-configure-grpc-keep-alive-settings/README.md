@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Keep-Alive, Connection Management, Performance, Networking
+Tags: GRPC, Keep-Alive, Connection Management, Performance, Networking
 
 Description: Learn how to configure gRPC keep-alive settings to maintain persistent connections, detect dead connections, and optimize network performance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, go build, go install, Compilation, CLI Tools, Binary
+Tags: Go, Golang, Go build, Go install, Compilation, CLI Tools, Binary
 
 Description: Learn the differences between go build and go install commands, when to use each, and how they interact with modules and the Go toolchain.
 

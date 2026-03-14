@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Property-Based Testing, Testing, QuickCheck, fast-check, Hypothesis, Test Automation
+Tags: Property-Based Testing, Testing, QuickCheck, Fast-check, Hypothesis, Test Automation
 
 Description: Learn how to implement property-based testing to automatically generate test cases and discover edge cases that example-based tests miss.
 

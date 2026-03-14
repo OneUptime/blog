@@ -10,9 +10,9 @@ Description: Implement automated resource right-sizing recommendations in Flux C
 
 ## Introduction
 
-Resource right-sizing — setting CPU and memory requests to match actual workload consumption — is one of the most impactful ongoing cost optimizations in Kubernetes. Studies consistently show that Kubernetes clusters are overprovisioned by 50-80% on average, meaning teams pay for two to five times the compute they actually use. The challenge is not identifying overprovisioned workloads; tools like Goldilocks and VPA do that well. The challenge is systematically applying those recommendations back into your manifests.
+Resource right-sizing - setting CPU and memory requests to match actual workload consumption - is one of the most impactful ongoing cost optimizations in Kubernetes. Studies consistently show that Kubernetes clusters are overprovisioned by 50-80% on average, meaning teams pay for two to five times the compute they actually use. The challenge is not identifying overprovisioned workloads; tools like Goldilocks and VPA do that well. The challenge is systematically applying those recommendations back into your manifests.
 
-Flux CD's GitOps model provides the perfect integration point for right-sizing automation. By combining VPA recommendations with automated pull requests, you create a workflow where resource optimizations flow from runtime data through code review and into production — maintaining the safety and auditability of GitOps while capturing the efficiency benefits of automated right-sizing.
+Flux CD's GitOps model provides the perfect integration point for right-sizing automation. By combining VPA recommendations with automated pull requests, you create a workflow where resource optimizations flow from runtime data through code review and into production - maintaining the safety and auditability of GitOps while capturing the efficiency benefits of automated right-sizing.
 
 This guide implements a right-sizing automation pipeline using VPA, Goldilocks, and a custom reconciliation script that generates pull requests with resource updates for your Flux-managed workloads.
 
@@ -257,9 +257,9 @@ gh pr list --label right-sizing
 
 ## Best Practices
 
-- Always require human review of right-sizing pull requests before merging — automated recommendations can occasionally be too aggressive if workloads had unusual traffic during the measurement period.
+- Always require human review of right-sizing pull requests before merging - automated recommendations can occasionally be too aggressive if workloads had unusual traffic during the measurement period.
 - Apply recommendations to staging first; monitor for 48 hours before promoting to production to catch memory pressure issues that only manifest under real traffic.
-- Set a minimum threshold for recommendation changes — only open a PR if the recommended values differ from current settings by more than 20% to avoid noise.
+- Set a minimum threshold for recommendation changes - only open a PR if the recommended values differ from current settings by more than 20% to avoid noise.
 - Use the "lower bound" VPA recommendation rather than "target" for memory limits; target recommendations can be too close to peak usage, risking OOMKills.
 - Include the VPA measurement window in the PR description so reviewers know whether the data reflects typical traffic or an anomaly.
 - Archive right-sizing PRs in a changelog to build a record of savings achieved over time.

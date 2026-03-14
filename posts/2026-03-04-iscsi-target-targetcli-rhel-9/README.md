@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, targetcli, Storage, SAN, Linux
+Tags: RHEL, ISCSI, Targetcli, Storage, SAN, Linux
 
 Description: Set up an iSCSI target on RHEL using targetcli to share block storage over the network for SAN-like functionality.
 

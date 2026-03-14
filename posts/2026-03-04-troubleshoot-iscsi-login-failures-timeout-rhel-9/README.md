@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, Troubleshooting, Networking, Storage, Linux
+Tags: RHEL, ISCSI, Troubleshooting, Networking, Storage, Linux
 
 Description: Diagnose and fix common iSCSI login failures and timeout issues on RHEL, including network problems, CHAP errors, and configuration mismatches.
 

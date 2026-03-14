@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, ansible_os_family, Cross-Platform, Configuration Management
+Tags: Ansible, Conditional, Ansible_os_family, Cross-Platform, Configuration Management
 
 Description: Learn how to use ansible_os_family in when clauses to write cross-platform Ansible playbooks that work across Linux distributions.
 

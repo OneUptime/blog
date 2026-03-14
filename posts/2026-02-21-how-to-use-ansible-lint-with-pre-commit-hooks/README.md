@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Pre-Commit, Git Hooks
+Tags: Ansible, Ansible-lint, Pre-Commit, Git Hooks
 
 Description: Set up ansible-lint as a pre-commit hook to automatically check your Ansible code for issues before every commit using the pre-commit framework.
 

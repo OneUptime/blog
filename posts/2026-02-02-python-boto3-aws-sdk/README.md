@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, AWS, boto3, Cloud, DevOps
+Tags: Python, AWS, Boto3, Cloud, DevOps
 
 Description: Learn how to use boto3, the AWS SDK for Python, to manage cloud resources including S3, EC2, Lambda, and more with practical code examples.
 

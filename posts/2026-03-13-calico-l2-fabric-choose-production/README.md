@@ -12,7 +12,7 @@ Description: A decision framework for selecting the right L2 interconnect mode (
 
 For production Kubernetes clusters in cloud environments, the L2 interconnect choice is between VXLAN, IP-in-IP, and CrossSubnet modes. The choice affects both performance (encapsulation overhead) and compatibility (whether your underlay network supports the required protocols).
 
-Getting this decision wrong at cluster creation is expensive to fix — changing the encapsulation mode requires a brief period of traffic disruption and careful orchestration. This post provides a decision framework to get it right the first time.
+Getting this decision wrong at cluster creation is expensive to fix - changing the encapsulation mode requires a brief period of traffic disruption and careful orchestration. This post provides a decision framework to get it right the first time.
 
 ## Prerequisites
 
@@ -108,7 +108,7 @@ spec:
 
 - Validate your underlay protocol support in a lab before committing to a mode for production
 - For multi-AZ deployments, always evaluate CrossSubnet to reduce intra-AZ encapsulation overhead
-- Set MTU explicitly in the Calico Installation resource — do not rely on auto-detection
+- Set MTU explicitly in the Calico Installation resource - do not rely on auto-detection
 - Document your encapsulation mode, MTU setting, and the rationale in your cluster runbook
 
 ## Conclusion

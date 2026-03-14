@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pam_pwquality, Passwords, Security, Linux
+Tags: RHEL, Pam_pwquality, Passwords, Security, Linux
 
 Description: Configure pam_pwquality on RHEL to enforce strong password complexity requirements including length, character classes, and dictionary checks.
 

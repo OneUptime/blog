@@ -10,7 +10,7 @@ Description: Monitor for Calico policies blocking kube-dns using CoreDNS metrics
 
 ## Introduction
 
-Monitoring for Calico blocking kube-dns requires cluster-wide DNS availability as a primary service level indicator. When kube-dns is blocked, DNS fails for every namespace simultaneously — this pattern is detectable by monitoring DNS success rates from multiple test points.
+Monitoring for Calico blocking kube-dns requires cluster-wide DNS availability as a primary service level indicator. When kube-dns is blocked, DNS fails for every namespace simultaneously - this pattern is detectable by monitoring DNS success rates from multiple test points.
 
 ## Symptoms
 

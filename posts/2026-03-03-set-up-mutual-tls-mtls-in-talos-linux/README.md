@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, mTLS, TLS, Security, Encryption
+Tags: Talos Linux, MTLS, TLS, Security, Encryption
 
 Description: Learn how to configure and manage mutual TLS authentication in Talos Linux for securing all communication between cluster components and clients.
 

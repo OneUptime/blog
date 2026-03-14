@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Scheduler, Cron, Automation, gcloud
+Tags: GCP, Cloud Scheduler, Cron, Automation, Gcloud
 
 Description: Learn how to create and manage cron jobs in Google Cloud Scheduler using both the Google Cloud Console and the gcloud CLI with practical examples.
 

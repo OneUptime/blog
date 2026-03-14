@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, gVisor, Container Security, Sandboxing, Runtime
+Tags: Kubernetes, GVisor, Container Security, Sandboxing, Runtime
 
 Description: Learn how to deploy gVisor sandboxed containers in Kubernetes to provide strong isolation for untrusted workloads using application kernel technology without the overhead of full virtualization.
 

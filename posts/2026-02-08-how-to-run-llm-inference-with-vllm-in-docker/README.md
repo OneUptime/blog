@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, vLLM, LLM, Machine Learning, AI, Inference, GPU, Containers
+Tags: Docker, VLLM, LLM, Machine Learning, AI, Inference, GPU, Containers
 
 Description: A practical guide to deploying vLLM for high-throughput LLM inference inside Docker containers with GPU support
 

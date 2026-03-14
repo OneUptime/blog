@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Artifact Registry, npm, Node.js, Package Management, DevOps
+Tags: GCP, Artifact Registry, Npm, Node.js, Package Management, DevOps
 
 Description: Set up a private npm registry in Google Artifact Registry for hosting and managing your internal Node.js packages with GCP authentication.
 

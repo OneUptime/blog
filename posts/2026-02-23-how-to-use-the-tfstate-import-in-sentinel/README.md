@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, HashiCorp, tfstate, State Management
+Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Tfstate, State Management
 
 Description: Learn how to use the tfstate/v2 import in Sentinel to inspect current Terraform state and write policies based on existing infrastructure resources.
 

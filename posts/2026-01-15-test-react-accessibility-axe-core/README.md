@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Accessibility, axe-core, Testing, A11y, Automation
+Tags: React, Accessibility, Axe-core, Testing, A11y, Automation
 
 Description: Learn how to integrate axe-core into your React testing workflow for automated accessibility testing, including Jest setup, component testing, and CI/CD integration.
 

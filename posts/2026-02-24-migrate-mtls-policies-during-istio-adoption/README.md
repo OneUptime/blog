@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Security, Kubernetes, Migration
+Tags: Istio, MTLS, Security, Kubernetes, Migration
 
 Description: A practical walkthrough for migrating to Istio mTLS policies safely, from permissive mode to strict enforcement without breaking service communication.
 

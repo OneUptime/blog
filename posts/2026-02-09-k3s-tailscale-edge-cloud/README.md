@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, k3s, Tailscale
+Tags: Kubernetes, K3s, Tailscale
 
 Description: Learn how to connect K3s edge clusters to cloud infrastructure using Tailscale VPN, enabling secure zero-trust networking without complex firewall rules or public IP requirements.
 

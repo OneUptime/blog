@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Logging, Structured Logging, Observability, JSON, slog
+Tags: Go, Golang, Logging, Structured Logging, Observability, JSON, Slog
 
 Description: Learn how to implement structured logging in Go using the standard slog package and popular libraries like zerolog and zap for better observability.
 

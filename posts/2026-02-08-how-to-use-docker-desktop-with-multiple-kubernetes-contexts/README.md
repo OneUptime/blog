@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Kubernetes, kubectl, Context, DevOps, K8s
+Tags: Docker, Docker Desktop, Kubernetes, Kubectl, Context, DevOps, K8s
 
 Description: Manage multiple Kubernetes clusters from Docker Desktop by switching between contexts for local, staging, and production.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, CNI Chaining, Kubernetes, Networking, eBPF, Security, Migration
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
 
-Description: Understand CNI chaining with Cilium — what it is, when to use it, and how to configure Cilium as a secondary CNI plugin on top of any primary CNI for enhanced network policy enforcement and observability.
+Description: Understand CNI chaining with Cilium - what it is, when to use it, and how to configure Cilium as a secondary CNI plugin on top of any primary CNI for enhanced network policy enforcement and...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Understand CNI chaining with Cilium — what it is, when to use it,
 
 CNI (Container Network Interface) chaining allows multiple CNI plugins to run in sequence when a pod is created. The primary CNI handles IP allocation and basic network connectivity; secondary plugins add capabilities on top of that foundation. Cilium's chaining mode makes it a secondary plugin, adding eBPF-based policy enforcement and observability without replacing the existing CNI.
 
-This pattern is particularly useful for teams that want to adopt Cilium's advanced features incrementally—without the risk and operational overhead of a full CNI migration during which all nodes must be restarted. It's also the recommended approach for managed Kubernetes services (EKS, AKS, GKE) where the primary CNI is managed by the cloud provider.
+This pattern is particularly useful for teams that want to adopt Cilium's advanced features incrementally-without the risk and operational overhead of a full CNI migration during which all nodes must be restarted. It's also the recommended approach for managed Kubernetes services (EKS, AKS, GKE) where the primary CNI is managed by the cloud provider.
 
 ## Prerequisites
 

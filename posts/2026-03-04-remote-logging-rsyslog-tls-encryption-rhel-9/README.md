@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, TLS, Logging, Linux
+Tags: RHEL, Rsyslog, TLS, Logging, Linux
 
 Description: Set up remote logging with rsyslog and TLS encryption on RHEL 9 for secure log transmission.
 

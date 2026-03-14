@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Kubernetes, Troubleshooting, Control Plane
+Tags: Talos Linux, Etcd, Kubernetes, Troubleshooting, Control Plane
 
 Description: A complete guide to diagnosing and fixing etcd startup failures on Talos Linux control plane nodes, from common misconfigurations to data corruption recovery.
 

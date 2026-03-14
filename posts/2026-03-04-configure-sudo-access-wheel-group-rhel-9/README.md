@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, Wheel Group, Security, Linux
+Tags: RHEL, Sudo, Wheel Group, Security, Linux
 
 Description: Learn how to grant and manage sudo privileges on RHEL using the wheel group, the standard approach for delegating administrative access.
 

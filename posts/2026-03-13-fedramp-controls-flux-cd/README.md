@@ -64,10 +64,10 @@ FedRAMP CM-3 requires a formal change control process. Configure it in Git:
 **Change Request Number**: CR-YYYY-NNNN (from your change management system)
 
 **Control Impact Analysis** (CM-4):
-- [ ] CM — Configuration Management
-- [ ] AC — Access Control
-- [ ] AU — Audit and Accountability
-- [ ] SI — System and Information Integrity
+- [ ] CM - Configuration Management
+- [ ] AC - Access Control
+- [ ] AU - Audit and Accountability
+- [ ] SI - System and Information Integrity
 - [ ] Other: ___
 
 **Security Impact Analysis**:
@@ -84,7 +84,7 @@ _Describe impact on system security posture and NIST 800-53 controls_
 - [ ] Regression testing completed
 
 **Rollback Procedure** (CP-10):
-`git revert <SHA>` — describe additional steps if needed
+`git revert <SHA>` - describe additional steps if needed
 
 **POAM Reference** (if applicable):
 ```
@@ -93,7 +93,7 @@ _Describe impact on system security posture and NIST 800-53 controls_
 
 FedRAMP CM-5 requires explicit access restrictions for configuration changes. Implement with branch protection and CODEOWNERS:
 
-```
+```plaintext
 # .github/CODEOWNERS
 
 # FedRAMP system configuration requires ISSO and ISSO Deputy approval
@@ -201,7 +201,7 @@ metadata:
   annotations:
     fedramp.control: "CA-7 Continuous Monitoring, SI-4 Information System Monitoring"
 spec:
-  summary: "FedRAMP ALERT: Configuration drift detected — immediate investigation required"
+  summary: "FedRAMP ALERT: Configuration drift detected - immediate investigation required"
   providerRef:
     name: fedramp-audit-siem
   eventSeverity: error

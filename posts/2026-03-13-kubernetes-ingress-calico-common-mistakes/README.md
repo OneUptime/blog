@@ -12,7 +12,7 @@ Description: The most common Calico ingress policy mistakes, from broken health 
 
 Ingress policy mistakes in Calico fall into two categories: policies that block too much (breaking legitimate traffic) and policies that allow too much (creating security gaps). Both are common, and both are preventable with proper policy design and testing.
 
-The most dangerous category is allowing too much — teams sometimes write policies that appear restrictive but contain selector mistakes that make them effectively open. This post covers the most common mistakes in both categories.
+The most dangerous category is allowing too much - teams sometimes write policies that appear restrictive but contain selector mistakes that make them effectively open. This post covers the most common mistakes in both categories.
 
 ## Prerequisites
 
@@ -81,14 +81,14 @@ kubectl get networkpolicy -o json | \
 A common mistake is using `namespaceSelector` alone in a `from` clause, thinking it selects specific pods from that namespace. In reality, `namespaceSelector` alone selects ALL pods in the matching namespaces.
 
 ```yaml
-# This is wrong — allows ALL pods from the frontend namespace
+# This is wrong - allows ALL pods from the frontend namespace
 ingress:
 - from:
   - namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: frontend
 
-# This is correct — allows only pods with app=frontend from that namespace
+# This is correct - allows only pods with app=frontend from that namespace
 ingress:
 - from:
   - namespaceSelector:

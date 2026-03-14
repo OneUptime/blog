@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Data Pipeline, ELT, Data Warehouse, dbt
+Tags: Data Pipeline, ELT, Data Warehouse, Dbt
 
 Description: Learn to create ELT pipeline design for modern data warehousing with transformation in the target system.
 

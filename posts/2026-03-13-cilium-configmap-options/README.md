@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, ConfigMap, Configuration, eBPF
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: An in-depth reference guide for Cilium's ConfigMap options, explaining each key configuration parameter, how to set them correctly, troubleshoot misconfigurations, and monitor their effects.
 
@@ -12,7 +12,7 @@ Description: An in-depth reference guide for Cilium's ConfigMap options, explain
 
 The `cilium-config` ConfigMap in the `kube-system` namespace is the primary mechanism through which Cilium agents receive their runtime configuration. Every Cilium agent reads this ConfigMap at startup and watches it for changes. While Helm chart values provide the primary interface for setting these options, understanding the underlying ConfigMap keys gives you deeper control and visibility into how Cilium behaves.
 
-The ConfigMap contains dozens of options spanning networking mode, security policy, eBPF program settings, monitoring, IPAM, and performance tuning. Some options have complex interdependencies — for example, enabling kube-proxy replacement requires correctly setting `k8s-api-server` and disabling any existing kube-proxy DaemonSet. Incorrect options can cause silent failures or hard-to-debug networking issues.
+The ConfigMap contains dozens of options spanning networking mode, security policy, eBPF program settings, monitoring, IPAM, and performance tuning. Some options have complex interdependencies - for example, enabling kube-proxy replacement requires correctly setting `k8s-api-server` and disabling any existing kube-proxy DaemonSet. Incorrect options can cause silent failures or hard-to-debug networking issues.
 
 This guide provides practical guidance on the most important ConfigMap options, how to set them, diagnose related issues, validate effective values, and monitor for unexpected changes.
 
@@ -202,4 +202,4 @@ helm get values cilium -n kube-system 2>/dev/null | diff - <(kubectl -n kube-sys
 
 ## Conclusion
 
-The `cilium-config` ConfigMap is the single source of truth for Cilium's runtime behavior. Managing it exclusively through Helm charts ensures that all changes are tracked, auditable, and reproducible. Understanding the key configuration categories — networking, policy, eBPF, IPAM, and feature flags — allows you to tune Cilium for your specific workload and environment. Regularly audit the effective configuration across all Cilium agents to detect drift and ensure consistent behavior across your cluster nodes.
+The `cilium-config` ConfigMap is the single source of truth for Cilium's runtime behavior. Managing it exclusively through Helm charts ensures that all changes are tracked, auditable, and reproducible. Understanding the key configuration categories - networking, policy, eBPF, IPAM, and feature flags - allows you to tune Cilium for your specific workload and environment. Regularly audit the effective configuration across all Cilium agents to detect drift and ensure consistent behavior across your cluster nodes.

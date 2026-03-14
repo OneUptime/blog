@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, CI/CD, GitHub Actions, GitLab CI, Performance Testing, DevOps
+Tags: K6, CI/CD, GitHub Actions, GitLab CI, Performance Testing, DevOps
 
 Description: Learn how to integrate k6 load tests into your CI/CD pipeline with practical examples for GitHub Actions, GitLab CI, and Jenkins.
 

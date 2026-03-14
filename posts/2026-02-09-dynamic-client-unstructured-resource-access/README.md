@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, client-go, Dynamic Client
+Tags: Kubernetes, Client-go, Dynamic Client
 
 Description: Learn how to use the dynamic client in client-go to interact with any Kubernetes resource without compile-time type definitions, enabling flexible runtime resource manipulation.
 

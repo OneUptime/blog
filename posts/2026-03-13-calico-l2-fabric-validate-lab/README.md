@@ -10,7 +10,7 @@ Description: Step-by-step validation tests for Calico's L2 overlay fabric (VXLAN
 
 ## Introduction
 
-Validating L2 overlay fabric means confirming that encapsulation is working correctly: packets are being encapsulated with the right outer headers, VXLAN FDB entries are programmed, and the MTU is set correctly for the encapsulation mode. Connectivity tests alone are not sufficient — you can have connectivity with incorrect MTU settings that only fail for large packets.
+Validating L2 overlay fabric means confirming that encapsulation is working correctly: packets are being encapsulated with the right outer headers, VXLAN FDB entries are programmed, and the MTU is set correctly for the encapsulation mode. Connectivity tests alone are not sufficient - you can have connectivity with incorrect MTU settings that only fail for large packets.
 
 This guide provides a complete validation suite for VXLAN and IP-in-IP modes in a lab cluster.
 
@@ -148,7 +148,7 @@ kubectl exec pod-a -- wget -qO- http://$(kubectl get pod pod-b -o jsonpath='{.st
 
 - Run MTU validation after any node image update that might change the base MTU
 - Keep `tcpdump` captures of normal encapsulated traffic as a reference for troubleshooting
-- Monitor VXLAN FDB entry count via Prometheus — a missing entry means a node's pods are unreachable
+- Monitor VXLAN FDB entry count via Prometheus - a missing entry means a node's pods are unreachable
 
 ## Conclusion
 

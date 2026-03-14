@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PTP, linuxptp, Time Synchronization, Networking
+Tags: RHEL, PTP, Linuxptp, Time Synchronization, Networking
 
 Description: Set up PTP time synchronization on RHEL using the linuxptp package to achieve sub-microsecond clock accuracy for applications requiring precise timing.
 

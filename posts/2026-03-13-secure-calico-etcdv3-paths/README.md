@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Security, Hardening
+Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Security, Hardening
 
 Description: Security best practices for protecting Calico etcdv3 path data, including access controls, encryption, and preventing unauthorized modification of network policy data.
 
@@ -28,7 +28,7 @@ Each Calico component should only be able to write to the paths it actually need
 |-----------|---------------|-----------------|
 | Felix | `/calico/v1/host/`, `/calico/felix/v1/` | `/calico/v1/policy/`, `/calico/v1/config/` |
 | CNI | `/calico/v1/ipam/`, `/calico/v1/host/` | `/calico/v1/config/` |
-| API Server | `/calico/v1/` (all) | — |
+| API Server | `/calico/v1/` (all) | - |
 
 ```bash
 # Verify Felix cannot write to policy paths

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Formatting, terraform fmt, Code Style, DevOps, Infrastructure as Code
+Tags: Terraform, Formatting, Terraform fmt, Code Style, DevOps, Infrastructure as Code
 
 Description: Learn how to use terraform fmt to automatically format your Terraform code for consistency including recursive formatting, CI/CD integration, and editor setup.
 

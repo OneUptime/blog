@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, Dependency Injection, iOS, Architecture, Design Pattern, Testing, SOLID
+Tags: Swift, Dependency Injection, IOS, Architecture, Design Pattern, Testing, SOLID
 
 Description: Learn how to implement dependency injection in Swift for cleaner, more testable iOS applications.
 

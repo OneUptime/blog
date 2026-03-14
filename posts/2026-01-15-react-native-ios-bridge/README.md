@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, iOS, Native Module, Bridge, Swift, Objective-C, Mobile Development
+Tags: React Native, IOS, Native Module, Bridge, Swift, Objective-C, Mobile Development
 
 Description: Learn how to create native iOS modules and bridge them to React Native for accessing native iOS functionality.
 

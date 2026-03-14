@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, find, Shell, File Management
+Tags: Ubuntu, Linux, Find, Shell, File Management
 
 Description: Master the find command on Ubuntu with advanced filters for file type, size, permissions, timestamps, and executing actions on matched files safely and efficiently.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, DevOps, Code Quality
+Tags: Ansible, Ansible-lint, DevOps, Code Quality
 
 Description: Learn how to use ansible-lint to find and fix deprecated syntax in your Ansible playbooks before upgrading to newer Ansible versions.
 

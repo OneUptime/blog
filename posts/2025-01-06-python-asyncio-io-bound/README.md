@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, asyncio, Async, Performance, Concurrency, FastAPI, I/O, Asynchronous Programming
+Tags: Python, Asyncio, Async, Performance, Concurrency, FastAPI, I/O, Asynchronous Programming
 
 Description: Learn how to use Python's asyncio effectively for I/O-bound workloads. This guide covers async patterns, common pitfalls, and best practices for building high-performance async applications.
 

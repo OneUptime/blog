@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration Validation, Troubleshooting, Kubernetes, istioctl
+Tags: Istio, Configuration Validation, Troubleshooting, Kubernetes, Istioctl
 
 Description: Diagnose and resolve Istio configuration validation errors including schema failures, conflicting resources, and webhook rejections.
 

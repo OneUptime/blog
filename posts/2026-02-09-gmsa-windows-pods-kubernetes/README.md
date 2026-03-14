@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, gMSA, Active Directory, Authentication, Security
+Tags: Kubernetes, Windows, GMSA, Active Directory, Authentication, Security
 
 Description: Learn how to configure Group Managed Service Accounts for Windows containers on Kubernetes to enable Active Directory authentication without managing passwords.
 

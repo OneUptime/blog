@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsync, Backup, Linux
+Tags: RHEL, Rsync, Backup, Linux
 
 Description: Use rsync for efficient incremental backups on RHEL.
 

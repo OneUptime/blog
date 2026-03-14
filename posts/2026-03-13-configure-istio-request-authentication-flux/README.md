@@ -12,7 +12,7 @@ Description: Manage Istio RequestAuthentication resources for JWT validation usi
 
 Istio's RequestAuthentication resource configures JSON Web Token (JWT) validation at the proxy level, offloading authentication from your application code to the service mesh. When a request arrives with a JWT, Istio validates the signature against the configured JWKS URI before forwarding the request to your service.
 
-Managing RequestAuthentication resources through Flux CD ensures your JWT issuer configuration, JWKS endpoints, and token location settings are version-controlled. Changes to authentication configuration — such as adding a new identity provider — go through the same pull request process as application code.
+Managing RequestAuthentication resources through Flux CD ensures your JWT issuer configuration, JWKS endpoints, and token location settings are version-controlled. Changes to authentication configuration - such as adding a new identity provider - go through the same pull request process as application code.
 
 This guide covers configuring Istio RequestAuthentication for multiple JWT providers using Flux CD.
 
@@ -83,7 +83,7 @@ spec:
 
 ## Step 3: Combine with AuthorizationPolicy for Enforcement
 
-RequestAuthentication alone does not reject unauthenticated requests — it only validates tokens when present. Pair with AuthorizationPolicy to enforce authentication:
+RequestAuthentication alone does not reject unauthenticated requests - it only validates tokens when present. Pair with AuthorizationPolicy to enforce authentication:
 
 ```yaml
 # clusters/my-cluster/istio-auth/require-jwt-policy.yaml
@@ -185,10 +185,10 @@ kubectl logs -n production deploy/api-service -c istio-proxy \
 ## Best Practices
 
 - Use `forwardOriginalToken: true` to pass the validated JWT to your application so it can extract claims without re-validating the signature.
-- Always pair `RequestAuthentication` with `AuthorizationPolicy` — the former validates tokens, but only the latter rejects requests without valid tokens.
+- Always pair `RequestAuthentication` with `AuthorizationPolicy` - the former validates tokens, but only the latter rejects requests without valid tokens.
 - Create a separate `AuthorizationPolicy` to allow unauthenticated access to health check endpoints, preventing liveness probe failures on authenticated services.
 - Cache the JWKS response by placing a caching proxy in front of your JWKS URI if your OIDC provider has rate limits on the JWKS endpoint.
-- Rotate OIDC provider configurations by adding a new `jwtRules` entry, deploying, then removing the old one — this ensures zero-downtime provider migrations.
+- Rotate OIDC provider configurations by adding a new `jwtRules` entry, deploying, then removing the old one - this ensures zero-downtime provider migrations.
 
 ## Conclusion
 

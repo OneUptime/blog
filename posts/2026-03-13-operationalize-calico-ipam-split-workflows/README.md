@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Networking, Operations, IP Pools, CNI, Runbook
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Turn Calico IPAM pool splits from ad-hoc procedures into repeatable, auditable operations — with change management templates, a step-by-step runbook, rollback procedures, and post-split verification checklists.
+Description: Turn Calico IPAM pool splits from ad-hoc procedures into repeatable, auditable operations - with change management templates, a step-by-step runbook, rollback procedures, and post-split...
 
 ---
 
@@ -71,37 +71,37 @@ Store this runbook in your team wiki and link to it from the change request:
 ```markdown
 # IPAM Split Runbook
 
-### Step 1 — Pre-split consistency check
+### Step 1 - Pre-split consistency check
 calicoctl ipam check
 Expected: "IPAM is consistent"
 Stop if: any inconsistency reported
 
-### Step 2 — Record current state
+### Step 2 - Record current state
 calicoctl ipam show --show-blocks > ipam-pre-split-$(date +%Y%m%d).txt
 calicoctl get ippool -o yaml > ippools-pre-split-$(date +%Y%m%d).yaml
 
-### Step 3 — Apply sub-pool definitions
+### Step 3 - Apply sub-pool definitions
 calicoctl apply -f ippool-zone-a.yaml
 calicoctl apply -f ippool-zone-b.yaml
 calicoctl get ippool  # Confirm both sub-pools appear
 
-### Step 4 — Disable source pool
+### Step 4 - Disable source pool
 calicoctl patch ippool <source-pool-name> --patch '{"spec":{"disabled":true}}'
 
-### Step 5 — Apply node labels
+### Step 5 - Apply node labels
 kubectl label nodes <zone-a-nodes> zone=zone-a
 kubectl label nodes <zone-b-nodes> zone=zone-b
 
-### Step 6 — Post-split consistency check
+### Step 6 - Post-split consistency check
 calicoctl ipam check
 Expected: "IPAM is consistent"
 
-### Step 7 — Verify new allocations go to correct sub-pools
+### Step 7 - Verify new allocations go to correct sub-pools
 # Restart a test pod and confirm its IP is in the expected sub-pool CIDR
 kubectl delete pod <test-pod> -n <namespace>
 kubectl get pod <test-pod> -n <namespace> -o jsonpath='{.status.podIP}'
 
-### Step 8 — Record post-split state
+### Step 8 - Record post-split state
 calicoctl ipam show --show-blocks > ipam-post-split-$(date +%Y%m%d).txt
 ```
 
@@ -178,10 +178,10 @@ echo "Rollback complete."
 ## Best Practices
 
 - Never perform an IPAM split without a written rollback procedure that has been reviewed by at least one other engineer.
-- Run all split steps from a bastion or jump host with a stable connection — a disconnected terminal mid-split can leave the cluster in a partial state.
+- Run all split steps from a bastion or jump host with a stable connection - a disconnected terminal mid-split can leave the cluster in a partial state.
 - Save pre-split and post-split state snapshots (`calicoctl ipam show --show-blocks`) to a persistent store for audit purposes.
 - Test the rollback procedure in staging before performing the production split.
-- Schedule the post-split source pool deletion as a separate change request, not as part of the initial split — this gives time to detect any issues before making the change permanent.
+- Schedule the post-split source pool deletion as a separate change request, not as part of the initial split - this gives time to detect any issues before making the change permanent.
 
 ---
 

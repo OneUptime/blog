@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Troubleshooting, Observability
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A practical guide to interpreting and resolving Cilium status check failures, covering agent health, endpoint sync issues, and common error conditions.
 
@@ -37,9 +37,9 @@ kubectl -n kube-system exec -it ds/cilium -- cilium status --verbose
 ```
 
 Key fields to check:
-- `KV-Store`: Should show `Ok` — failures here mean etcd/CRD connectivity issues
-- `Kubernetes`: Should show `Ok` — failures indicate API server connectivity problems
-- `BPF Maps`: Should show `Ok` — failures indicate filesystem or memory issues
+- `KV-Store`: Should show `Ok` - failures here mean etcd/CRD connectivity issues
+- `Kubernetes`: Should show `Ok` - failures indicate API server connectivity problems
+- `BPF Maps`: Should show `Ok` - failures indicate filesystem or memory issues
 - `Controller Status`: Shows count of failing controllers (should be 0)
 
 ## Step 2: Diagnose Controller Failures
@@ -66,7 +66,7 @@ Cilium endpoints represent individual pod network interfaces. Endpoints stuck in
 Inspect endpoint health across the cluster:
 
 ```bash
-# List all endpoints and their state — look for endpoints not in "ready" state
+# List all endpoints and their state - look for endpoints not in "ready" state
 kubectl -n kube-system exec -it ds/cilium -- cilium endpoint list
 
 # Get detailed state for a specific endpoint (replace <endpoint-id> with actual ID)

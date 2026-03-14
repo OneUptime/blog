@@ -12,7 +12,7 @@ Description: Enable Terraform drift detection using the Tofu Controller with Flu
 
 Infrastructure drift occurs when the actual state of cloud resources diverges from their desired configuration. This happens when engineers make emergency changes directly in the cloud console, when cloud provider updates modify resource attributes, or when automated processes modify resource tags or settings. Without drift detection, these changes accumulate silently and eventually cause incidents.
 
-The Tofu Controller provides continuous drift detection as a core feature. On each reconciliation interval, it runs `terraform plan` against the actual cloud state and compares the result to the Terraform state file. If drift is detected, it generates a plan and—depending on the `approvePlan` setting—either notifies the team or corrects the drift automatically.
+The Tofu Controller provides continuous drift detection as a core feature. On each reconciliation interval, it runs `terraform plan` against the actual cloud state and compares the result to the Terraform state file. If drift is detected, it generates a plan and-depending on the `approvePlan` setting-either notifies the team or corrects the drift automatically.
 
 This guide covers configuring drift detection, setting appropriate intervals, alerting on drift, and making exceptions for intended drift.
 

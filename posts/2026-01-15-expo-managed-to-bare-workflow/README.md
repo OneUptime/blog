@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Expo, Migration, Bare Workflow, Mobile Development, iOS, Android
+Tags: React Native, Expo, Migration, Bare Workflow, Mobile Development, IOS, Android
 
 Description: A step-by-step guide to migrating your Expo managed workflow project to bare workflow for more native control and customization.
 

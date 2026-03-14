@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, API Gateway, Microservices, HelmRelease, Backend Services
+Tags: Flux CD, Kubernetes, GitOps, API Gateway, Microservices, HelmRelease, Backend Service
 
 Description: Learn how to deploy an API gateway alongside backend microservices using Flux CD with proper dependency ordering and configuration.
 
@@ -272,7 +272,7 @@ curl http://$GATEWAY_IP/api/new-route/health
 
 ## Best Practices
 
-- Use DB-less Kong mode for GitOps compatibility — all routing rules live in Git
+- Use DB-less Kong mode for GitOps compatibility - all routing rules live in Git
 - Always set `dependsOn` on the gateway pointing to all backend services
 - Configure `readinessProbe` on backend services so Flux health checks accurately reflect readiness
 - Keep Kong configuration in a versioned ConfigMap or use the Kong Ingress Controller with Ingress resources

@@ -10,7 +10,7 @@ Description: Learn how to safely operate ArgoCD and Flux CD in parallel during a
 
 ## Introduction
 
-The safest approach to migrating from ArgoCD to Flux CD is a gradual, parallel operation period where both tools run simultaneously in the same cluster but manage different applications. This allows teams to build confidence in Flux CD's behavior, establish runbooks, and validate configuration before the final cutover—without any risk of production outage.
+The safest approach to migrating from ArgoCD to Flux CD is a gradual, parallel operation period where both tools run simultaneously in the same cluster but manage different applications. This allows teams to build confidence in Flux CD's behavior, establish runbooks, and validate configuration before the final cutover-without any risk of production outage.
 
 The critical rule is: ArgoCD and Flux must never manage the same Kubernetes resources simultaneously. This guide explains how to enforce that boundary safely.
 

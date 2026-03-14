@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Documentation, Operations
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Documentation, Operations
 
 Description: A guide to creating comprehensive operational documentation for Calico etcd TLS certificate generation and lifecycle management to support operator workflows.
 
@@ -117,4 +117,4 @@ Document each step for generating a new certificate from scratch:
 
 ## Conclusion
 
-Documenting Calico etcd certificate generation creates operational resilience — the ability to respond quickly and correctly to certificate-related incidents regardless of who is on call. Maintain the certificate inventory table, keep procedures up-to-date in version control, and test the emergency rotation runbook quarterly to ensure it works as documented.
+Documenting Calico etcd certificate generation creates operational resilience - the ability to respond quickly and correctly to certificate-related incidents regardless of who is on call. Maintain the certificate inventory table, keep procedures up-to-date in version control, and test the emergency rotation runbook quarterly to ensure it works as documented.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Performance, Optimization
 
 Description: Performance optimization techniques for the Calico CNI plugin to reduce pod startup time, improve IPAM allocation efficiency, and minimize CNI execution overhead.
 
@@ -10,7 +10,7 @@ Description: Performance optimization techniques for the Calico CNI plugin to re
 
 ## Introduction
 
-The Calico CNI plugin runs synchronously during pod startup — if it's slow, pod startup latency increases proportionally. In clusters with high pod churn (CI/CD pipelines, batch jobs), CNI performance directly affects throughput. Optimizations focus on reducing IPAM lookup time, minimizing Kubernetes API calls during CNI execution, and ensuring CNI configuration is always available on nodes.
+The Calico CNI plugin runs synchronously during pod startup - if it's slow, pod startup latency increases proportionally. In clusters with high pod churn (CI/CD pipelines, batch jobs), CNI performance directly affects throughput. Optimizations focus on reducing IPAM lookup time, minimizing Kubernetes API calls during CNI execution, and ensuring CNI configuration is always available on nodes.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ vs. etcd mode which requires direct etcd connections for each CNI invocation.
 
 ## Optimization 2: Right-Size IPAM Block Size
 
-Larger IPAM blocks mean fewer allocation operations per node. When a block is exhausted, Calico allocates a new one — a relatively expensive operation:
+Larger IPAM blocks mean fewer allocation operations per node. When a block is exhausted, Calico allocates a new one - a relatively expensive operation:
 
 ```bash
 # Check current block size

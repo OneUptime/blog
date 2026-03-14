@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Cloud Images, cloud-init, Infrastructure, Packer
+Tags: Ubuntu, Cloud Images, Cloud-init, Infrastructure, Packer
 
 Description: Learn how to customize Ubuntu cloud images for deployment using tools like virt-customize, cloud-localds, and Packer to create pre-baked images for faster instance startup.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NGINX, Flask, uWSGI, Python, Reverse Proxy, DevOps
+Tags: NGINX, Flask, UWSGI, Python, Reverse Proxy, DevOps
 
 Description: Learn how to set up Nginx as a reverse proxy for Flask applications using uWSGI, including socket configuration, performance tuning, and production deployment best practices.
 

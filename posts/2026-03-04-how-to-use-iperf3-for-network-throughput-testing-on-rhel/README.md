@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iperf3, Network, Throughput Testing, Performance
+Tags: RHEL, Iperf3, Network, Throughput Testing, Performance
 
 Description: Learn how to use iperf3 on RHEL to measure network bandwidth and throughput between two hosts.
 

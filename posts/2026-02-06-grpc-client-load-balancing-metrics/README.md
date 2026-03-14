@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Load Balancing, Client Metrics
+Tags: OpenTelemetry, GRPC, Load Balancing, Client Metrics
 
 Description: Monitor gRPC client-side load balancing decisions with OpenTelemetry metrics to detect imbalanced traffic and unhealthy backends.
 

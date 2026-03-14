@@ -10,7 +10,7 @@ Description: A guide to testing Calico network policy enforcement on bare metal 
 
 ## Introduction
 
-Testing network policies in a binary-managed Calico deployment on bare metal follows the same policy semantics as any other Calico installation, but the binary management layer adds the ability to run policy tests as part of automated playbooks. You can encode your policy test scenarios as Ansible tasks that deploy test pods, verify connectivity, and report results — all without manual intervention.
+Testing network policies in a binary-managed Calico deployment on bare metal follows the same policy semantics as any other Calico installation, but the binary management layer adds the ability to run policy tests as part of automated playbooks. You can encode your policy test scenarios as Ansible tasks that deploy test pods, verify connectivity, and report results - all without manual intervention.
 
 This automation-first approach to policy testing is particularly valuable for bare metal clusters where changes are infrequent but must be thoroughly validated. Embedding tests in your change management pipeline ensures policies are verified every time the Calico configuration is updated.
 

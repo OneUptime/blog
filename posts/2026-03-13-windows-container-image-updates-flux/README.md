@@ -10,7 +10,7 @@ Description: Automate Windows container image updates using Flux image automatio
 
 ## Introduction
 
-Windows container images are significantly larger than their Linux counterparts — a Windows Server Core IIS image can be 6-8GB, while a comparable Linux NGINX image is under 200MB. This size difference has significant implications for how you manage image updates: pulls take longer, rolling updates take more time, and registry storage costs are higher.
+Windows container images are significantly larger than their Linux counterparts - a Windows Server Core IIS image can be 6-8GB, while a comparable Linux NGINX image is under 200MB. This size difference has significant implications for how you manage image updates: pulls take longer, rolling updates take more time, and registry storage costs are higher.
 
 Flux CD's image automation system can automatically update Windows container image tags in Git when new images are published, following the same GitOps workflow as Linux workloads. However, the automation configuration needs adjustment for Windows-specific timing constraints and image pull behavior.
 
@@ -220,13 +220,13 @@ kubectl get events -n windows-workloads --field-selector reason=Pulling
 
 ## Best Practices
 
-- Use `imagePullPolicy: IfNotPresent` for Windows workloads — avoid re-pulling the same 6-8GB image unnecessarily.
+- Use `imagePullPolicy: IfNotPresent` for Windows workloads - avoid re-pulling the same 6-8GB image unnecessarily.
 - Set `progressDeadlineSeconds` to at least 600 (10 minutes) for Windows deployments to account for image pull time.
 - Configure `maxSurge: 1, maxUnavailable: 0` for rolling updates to avoid overloading Windows nodes with simultaneous pulls.
-- Use semver ranges in ImagePolicy to control automatic update scope — avoid `>=0.0.0` which would auto-apply major versions.
+- Use semver ranges in ImagePolicy to control automatic update scope - avoid `>=0.0.0` which would auto-apply major versions.
 - Pre-pull Windows images onto nodes during maintenance windows rather than at deployment time.
-- Monitor registry storage costs — Windows images have large layer sizes that add up quickly with many versions.
+- Monitor registry storage costs - Windows images have large layer sizes that add up quickly with many versions.
 
 ## Conclusion
 
-Flux image automation for Windows containers follows the same GitOps workflow as Linux workloads but requires tuning for the realities of large image sizes and slower startup times. With appropriate timeouts, conservative rolling update settings, and `IfNotPresent` pull policies, Windows image updates roll out reliably without manual intervention. The complete automation loop — detect new image, commit to Git, reconcile to cluster — works identically for Windows and Linux workloads once the timing parameters are correctly set.
+Flux image automation for Windows containers follows the same GitOps workflow as Linux workloads but requires tuning for the realities of large image sizes and slower startup times. With appropriate timeouts, conservative rolling update settings, and `IfNotPresent` pull policies, Windows image updates roll out reliably without manual intervention. The complete automation loop - detect new image, commit to Git, reconcile to cluster - works identically for Windows and Linux workloads once the timing parameters are correctly set.

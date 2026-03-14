@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, mTLS, Security, Kubernetes
+Tags: Istio, Ambient Mode, MTLS, Security, Kubernetes
 
 Description: Practical methods to verify that mutual TLS is working correctly in Istio ambient mode including log analysis, traffic inspection, and policy checks.
 

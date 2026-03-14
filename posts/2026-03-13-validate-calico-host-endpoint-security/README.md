@@ -10,7 +10,7 @@ Description: Learn how to validate that your Calico host endpoint security polic
 
 ## Introduction
 
-After configuring Calico host endpoint security, validating that policies behave as intended is critical before rolling them out cluster-wide. A misconfigured host endpoint policy can inadvertently block legitimate cluster traffic — including API server communication, kubelet health checks, or even SSH access — rendering nodes inaccessible.
+After configuring Calico host endpoint security, validating that policies behave as intended is critical before rolling them out cluster-wide. A misconfigured host endpoint policy can inadvertently block legitimate cluster traffic - including API server communication, kubelet health checks, or even SSH access - rendering nodes inaccessible.
 
 Validation involves verifying that HostEndpoint resources are active, that associated GlobalNetworkPolicy objects are programmed into the kernel via iptables or eBPF, and that traffic tests confirm the expected allow and deny behavior. This systematic approach catches errors early and builds confidence in your security posture.
 
@@ -33,7 +33,7 @@ calicoctl get hostendpoints -o wide
 
 Expected output:
 
-```
+```plaintext
 NAME           NODE    INTERFACE   IPS           PROFILES
 node1-eth0     node1   eth0        10.0.1.10     []
 node2-eth0     node2   eth0        10.0.1.11     []

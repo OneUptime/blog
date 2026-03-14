@@ -10,7 +10,7 @@ Description: Incorporate automated chaos testing into the Flux CD GitOps pipelin
 
 ## Introduction
 
-Chaos testing is most valuable when it runs automatically — triggered by deployments, scheduled on a cadence, and integrated with your alerting and promotion workflows. Without automation, chaos experiments are run infrequently and only by specialists who remember to run them. With automation, every new deployment is systematically tested for resilience before reaching production.
+Chaos testing is most valuable when it runs automatically - triggered by deployments, scheduled on a cadence, and integrated with your alerting and promotion workflows. Without automation, chaos experiments are run infrequently and only by specialists who remember to run them. With automation, every new deployment is systematically tested for resilience before reaching production.
 
 Flux CD provides the reconciliation engine that keeps your cluster in sync with Git. By combining Flux's event-driven model with Chaos Mesh experiments and Kubernetes Jobs, you can build a fully automated chaos testing pipeline where deployments automatically trigger resilience validation, results are reported, and rollbacks happen without human intervention.
 
@@ -27,7 +27,7 @@ This guide covers building an automated chaos testing pipeline using Flux CD ima
 
 Organize your repository so chaos experiments live alongside application definitions and are applied in dependency order.
 
-```
+```plaintext
 clusters/
   my-cluster/
     apps/

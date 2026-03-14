@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Ansible, System Roles, Automation, Linux
+Tags: RHEL, Systemd, Ansible, System Roles, Automation, Linux
 
 Description: Learn how to use RHEL System Roles to automate systemd service management across your fleet. This guide covers enabling, disabling, and deploying custom unit files with Ansible.
 

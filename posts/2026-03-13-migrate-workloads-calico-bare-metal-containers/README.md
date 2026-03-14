@@ -91,4 +91,4 @@ Proceed through remaining nodes sequentially.
 
 ## Conclusion
 
-Migrating containerized workloads to Calico on bare metal requires coordinating the CNI swap with your physical network team, removing the old CNI cleanly, installing Calico with the correct IP pool configuration, and cycling pods node by node. The physical network coordination — especially for BGP peering — is the key additional step compared to cloud-based migrations.
+Migrating containerized workloads to Calico on bare metal requires coordinating the CNI swap with your physical network team, removing the old CNI cleanly, installing Calico with the correct IP pool configuration, and cycling pods node by node. The physical network coordination - especially for BGP peering - is the key additional step compared to cloud-based migrations.

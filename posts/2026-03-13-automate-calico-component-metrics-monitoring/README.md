@@ -10,7 +10,7 @@ Description: Automate the complete setup of Calico metrics collection, ServiceMo
 
 ## Introduction
 
-Manually configuring Calico metrics monitoring for each new cluster is error-prone and creates inconsistency between environments. Automating the full observability stack — from FelixConfiguration changes to ServiceMonitor creation to Grafana dashboard provisioning — ensures every cluster has identical monitoring from day one.
+Manually configuring Calico metrics monitoring for each new cluster is error-prone and creates inconsistency between environments. Automating the full observability stack - from FelixConfiguration changes to ServiceMonitor creation to Grafana dashboard provisioning - ensures every cluster has identical monitoring from day one.
 
 The automation approach uses GitOps to manage all monitoring configuration as code, with Helm values overrides for cluster-specific settings like namespace and label selectors.
 
@@ -22,7 +22,7 @@ The automation approach uses GitOps to manage all monitoring configuration as co
 
 ## GitOps Repository Structure
 
-```
+```plaintext
 observability/
 ├── calico/
 │   ├── felixconfiguration-metrics.yaml

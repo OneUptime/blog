@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, syslog-ng, Linux, System Administration
+Tags: Ubuntu, Logging, Syslog-ng, Linux, System Administration
 
 Description: Learn how to configure syslog-ng on Ubuntu for advanced log routing, filtering, and forwarding with support for multiple sources, filters, and destinations including files, TCP/UDP, and databases.
 

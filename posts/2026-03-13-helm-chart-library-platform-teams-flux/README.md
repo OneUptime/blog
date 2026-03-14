@@ -10,7 +10,7 @@ Description: Build and manage a Helm chart library for platform teams using Flux
 
 ## Introduction
 
-Helm remains the dominant packaging format for Kubernetes applications, and for good reason: it handles templating, versioning, and dependency management in a single tool. But raw Helm charts from upstream repositories are often too generic — they expose hundreds of values and require deep Kubernetes knowledge to configure correctly. Platform teams can add value by building a library of opinionated Helm charts that encode organizational defaults and expose only the values developers need.
+Helm remains the dominant packaging format for Kubernetes applications, and for good reason: it handles templating, versioning, and dependency management in a single tool. But raw Helm charts from upstream repositories are often too generic - they expose hundreds of values and require deep Kubernetes knowledge to configure correctly. Platform teams can add value by building a library of opinionated Helm charts that encode organizational defaults and expose only the values developers need.
 
 Flux CD's HelmRelease and HelmRepository resources bring this chart library into the GitOps model. The platform team publishes charts to an internal Helm repository, and Flux deploys them continuously. Developers configure their workloads through a small, curated values interface rather than writing raw Kubernetes manifests.
 
@@ -25,7 +25,7 @@ This guide walks through building an internal Helm chart library, hosting it, an
 
 ## Step 1: Design the Chart Library Structure
 
-```
+```plaintext
 helm-charts/
 ├── charts/
 │   ├── platform-app/         # Generic application chart
@@ -162,7 +162,7 @@ spec:
 
 ## Step 3: Publish the Chart Library via OCI
 
-Use OCI registries to host Helm charts — they support immutability and access control natively.
+Use OCI registries to host Helm charts - they support immutability and access control natively.
 
 ```yaml
 # .github/workflows/release-charts.yml

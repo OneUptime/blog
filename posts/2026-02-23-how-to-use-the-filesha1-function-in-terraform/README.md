@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, filesha1 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA1
+Tags: Terraform, Filesha1 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA1
 
 Description: Learn how to use the filesha1 function in Terraform to compute SHA-1 hashes of local files for content addressing, versioning, and change detection in infrastructure configurations.
 

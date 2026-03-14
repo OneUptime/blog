@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, tar, Archiving, Shell
+Tags: Ubuntu, Linux, Tar, Archiving, Shell
 
 Description: Learn how to use the tar command on Ubuntu to create archives, compress files with gzip and bzip2, extract archives, and automate backup workflows.
 

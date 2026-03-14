@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, gRPC, Error Handling, API, Microservices
+Tags: Go, GRPC, Error Handling, API, Microservices
 
 Description: Master gRPC error handling in Go with proper status codes, rich error details, and robust client-side error handling patterns.
 

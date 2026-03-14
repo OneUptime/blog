@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cockpit, Logs, journald, Linux
+Tags: RHEL, Cockpit, Logs, Journald, Linux
 
 Description: Learn how to browse, filter, and analyze system logs through the Cockpit web console on RHEL, using severity levels, time ranges, and service-based filtering.
 

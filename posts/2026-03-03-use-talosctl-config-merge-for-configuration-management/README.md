@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Configuration, Cluster Management, DevOps
+Tags: Talos Linux, Talosctl, Configuration, Cluster Management, DevOps
 
 Description: Learn how to use talosctl config merge to combine and manage multiple Talos Linux cluster configurations efficiently
 

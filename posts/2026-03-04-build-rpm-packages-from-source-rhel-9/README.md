@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RPM, rpmbuild, Package Building, Linux
+Tags: RHEL, RPM, Rpmbuild, Package Building, Linux
 
 Description: A practical walkthrough of building RPM packages from source on RHEL, covering spec files, rpmbuild, source RPMs, and using mock for clean build environments.
 

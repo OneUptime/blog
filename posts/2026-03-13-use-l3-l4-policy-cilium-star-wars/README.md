@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, Tutorial
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: Step-by-step guide to applying and testing L3/L4 network policies in the Cilium Star Wars demo, with verification and troubleshooting commands.
 
@@ -100,4 +100,4 @@ kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/
 
 ## Conclusion
 
-Applying the L3/L4 policy in the Cilium Star Wars demo is straightforward but impactful. In a single command, you establish the boundary between authorized and unauthorized access at the network level. The verification and observation commands in this guide give you confidence that the policy is working as intended. The remaining gap — HTTP path-level control — motivates the progression to L7 policy in the next step.
+Applying the L3/L4 policy in the Cilium Star Wars demo is straightforward but impactful. In a single command, you establish the boundary between authorized and unauthorized access at the network level. The verification and observation commands in this guide give you confidence that the policy is working as intended. The remaining gap - HTTP path-level control - motivates the progression to L7 policy in the next step.

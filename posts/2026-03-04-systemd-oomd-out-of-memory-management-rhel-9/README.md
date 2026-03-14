@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, OOM, Memory Management, Linux
+Tags: RHEL, Systemd, OOM, Memory Management, Linux
 
 Description: Learn how to configure systemd-oomd on RHEL for proactive out-of-memory killing before the kernel OOM killer intervenes.
 

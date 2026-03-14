@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, etcd, Performance
+Tags: Kubernetes, Etcd, Performance
 
 Description: Learn how to diagnose and fix Kubernetes API server timeout errors caused by etcd latency spikes, including performance tuning and infrastructure optimization strategies.
 

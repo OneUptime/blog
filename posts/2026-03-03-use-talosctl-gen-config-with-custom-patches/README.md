@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Configuration, Kubernetes, Automation
+Tags: Talos Linux, Talosctl, Configuration, Kubernetes, Automation
 
 Description: Master the talosctl gen config command with custom patches to generate tailored Talos Linux cluster configurations efficiently.
 

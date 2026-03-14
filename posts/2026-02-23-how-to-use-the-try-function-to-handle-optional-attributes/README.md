@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, try Function, Error Handling, HCL, Infrastructure as Code, Optional Attributes
+Tags: Terraform, Try Function, Error Handling, HCL, Infrastructure as Code, Optional Attributes
 
 Description: Learn how to use the try function in Terraform to safely handle optional attributes and avoid errors when accessing nested values that might not exist.
 

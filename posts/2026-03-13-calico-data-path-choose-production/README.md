@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Production, iptables, eBPF, VPP, Decision Framework
+Tags: Calico, Kubernetes, Data Path, CNI, Production, Iptables, EBPF, VPP, Decision Framework
 
 Description: A decision framework for selecting between Calico's iptables, eBPF, and VPP dataplane options for production Kubernetes deployments.
 
@@ -75,7 +75,7 @@ graph TD
 
 VPP (available via Calico VPP) is a high-performance userspace networking framework. It bypasses the kernel entirely for packet processing and provides dramatically higher throughput than either iptables or eBPF mode. However, it requires dedicated hardware, specialized operational knowledge, and is typically used only in telco and HPC environments.
 
-**Note**: VPP is not part of Calico Open Source — it requires the Calico VPP integration maintained separately.
+**Note**: VPP is not part of Calico Open Source - it requires the Calico VPP integration maintained separately.
 
 ## Production Dataplane Checklist
 
@@ -105,7 +105,7 @@ The migration is reversible: re-enable kube-proxy and switch the Installation re
 - Choose the dataplane at cluster creation and document the decision and rationale in your runbook
 - Do not change dataplanes in production without a full lab validation cycle first
 - For eBPF, ensure node image updates include the required kernel version before migration
-- Monitor Felix's `felix_int_dataplane_addr_msg_batch_size` metric — large batches indicate the dataplane is falling behind
+- Monitor Felix's `felix_int_dataplane_addr_msg_batch_size` metric - large batches indicate the dataplane is falling behind
 
 ## Conclusion
 

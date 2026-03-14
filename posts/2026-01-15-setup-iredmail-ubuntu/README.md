@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, iRedMail, Mail Server, Email, Tutorial
+Tags: Ubuntu, IRedMail, Mail Server, Email, Tutorial
 
 Description: Complete guide to setting up iRedMail all-in-one mail server solution on Ubuntu.
 

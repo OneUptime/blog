@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, iDRAC, iLO, Remote Management, Server Administration
+Tags: Ubuntu, IDRAC, ILO, Remote Management, Server Administration
 
 Description: A guide to configuring Dell iDRAC and HPE iLO for out-of-band remote access on Ubuntu servers, covering initial setup, network configuration, and common management tasks.
 

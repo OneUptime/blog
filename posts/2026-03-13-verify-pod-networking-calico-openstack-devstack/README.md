@@ -92,4 +92,4 @@ openstack security group rule create --protocol icmp verify-sg
 
 ## Conclusion
 
-Verifying Calico in DevStack confirms the core networking components (Felix, etcd, BIRD) are working, that VMs receive IPs and create workload endpoints, and that security group policies are enforced. DevStack verification is a fast iteration loop for development — changes to the networking-calico code can be tested in minutes with a DevStack re-run.
+Verifying Calico in DevStack confirms the core networking components (Felix, etcd, BIRD) are working, that VMs receive IPs and create workload endpoints, and that security group policies are enforced. DevStack verification is a fast iteration loop for development - changes to the networking-calico code can be tested in minutes with a DevStack re-run.

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Specification, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A complete reference to the Cilium IPAM specification including all configuration parameters, pre-allocation settings, cloud provider-specific options, and how to tune IPAM behavior for different deployment scenarios.
+Description: A complete reference to the Cilium IPAM specification including all configuration parameters, pre-allocation settings, cloud provider-specific options, and how to tune IPAM behavior for different...
 
 ---
 
@@ -213,4 +213,4 @@ EOF
 
 ## Conclusion
 
-The Cilium IPAM specification provides extensive tunability for different deployment scenarios and workload patterns. Pre-allocation settings directly impact pod startup latency — higher values reduce latency at the cost of temporarily reserving more IPs. The min-allocate and max-allocate thresholds prevent both IP starvation and runaway consumption. Cloud provider IPAM modes have additional specification options that leverage platform-specific capabilities like AWS prefix delegation for dramatic increases in IPs per node. Validate that your IPAM specification settings are reflected in actual CiliumNode status to ensure the configuration is taking effect.
+The Cilium IPAM specification provides extensive tunability for different deployment scenarios and workload patterns. Pre-allocation settings directly impact pod startup latency - higher values reduce latency at the cost of temporarily reserving more IPs. The min-allocate and max-allocate thresholds prevent both IP starvation and runaway consumption. Cloud provider IPAM modes have additional specification options that leverage platform-specific capabilities like AWS prefix delegation for dramatic increases in IPs per node. Validate that your IPAM specification settings are reflected in actual CiliumNode status to ensure the configuration is taking effect.

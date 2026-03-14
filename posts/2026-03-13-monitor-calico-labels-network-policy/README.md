@@ -10,7 +10,7 @@ Description: Monitor the effectiveness and impact of Calico label-based network 
 
 ## Introduction
 
-Monitoring label-based network policies means tracking two interrelated dimensions: the health of your label taxonomy (are all pods correctly labeled?) and the effectiveness of your policies (are they matching the right pods and making the right traffic decisions?). Both require ongoing attention because Kubernetes is dynamic — deployments update, new services are added, and labels can drift from their intended state.
+Monitoring label-based network policies means tracking two interrelated dimensions: the health of your label taxonomy (are all pods correctly labeled?) and the effectiveness of your policies (are they matching the right pods and making the right traffic decisions?). Both require ongoing attention because Kubernetes is dynamic - deployments update, new services are added, and labels can drift from their intended state.
 
 Calico's Prometheus metrics expose policy evaluation data, and Kubernetes provides pod label metrics through kube-state-metrics. Together, you can build dashboards that show label coverage, policy match rates, and traffic trends over time.
 

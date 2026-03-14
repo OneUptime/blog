@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Web Scraping, reqwest, Scraper, HTML Parsing, Async
+Tags: Rust, Web Scraping, Reqwest, Scraper, HTML Parsing, Async
 
 Description: A practical guide to building high-performance web scrapers in Rust using reqwest and scraper crates.
 

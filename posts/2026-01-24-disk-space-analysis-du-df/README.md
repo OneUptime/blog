@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Disk Space, du, df, Storage, Troubleshooting
+Tags: Linux, System Administration, Disk Space, Du, Df, Storage, Troubleshooting
 
 Description: A practical guide to analyzing and managing disk space on Linux systems using the du and df commands with real-world examples and troubleshooting techniques.
 

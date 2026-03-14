@@ -10,7 +10,7 @@ Description: Manage Cluster API MachineHealthCheck resources using Flux CD to en
 
 ## Introduction
 
-MachineHealthCheck (MHC) is Cluster API's mechanism for detecting and remediating unhealthy nodes. When a node fails a health check—because it becomes NotReady, enters an Unknown state, or loses connectivity—the MHC controller deletes the corresponding Machine object. CAPI's MachineDeployment then creates a replacement node automatically, restoring the desired node count.
+MachineHealthCheck (MHC) is Cluster API's mechanism for detecting and remediating unhealthy nodes. When a node fails a health check-because it becomes NotReady, enters an Unknown state, or loses connectivity-the MHC controller deletes the corresponding Machine object. CAPI's MachineDeployment then creates a replacement node automatically, restoring the desired node count.
 
 This self-healing capability is one of the most valuable features of Cluster API. Without it, a dead node requires manual detection and remediation. With a properly configured MachineHealthCheck managed by Flux, unhealthy nodes are replaced within minutes without human intervention.
 

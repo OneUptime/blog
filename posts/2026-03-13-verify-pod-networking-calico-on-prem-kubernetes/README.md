@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Verification
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Verification
 
 Description: A systematic guide to verifying that Calico pod networking is functioning correctly on an on-premises Kubernetes cluster.
 

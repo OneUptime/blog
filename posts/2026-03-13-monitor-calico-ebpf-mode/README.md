@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Monitoring, Performance
+Tags: Calico, Kubernetes, Networking, EBPF, Monitoring, Performance
 
 Description: Set up comprehensive monitoring for Calico eBPF mode, tracking BPF program health, network performance metrics, and detecting eBPF-specific failures.
 
@@ -156,4 +156,4 @@ chmod +x monitor-ebpf-latency.sh
 
 ## Conclusion
 
-Monitoring Calico eBPF mode requires tracking both the operational status of BPF programs (are they loaded and running on every node?) and the health metrics exposed via Felix Prometheus metrics (map utilization, execution errors, NAT table sizes). The `felix_bpf_enabled` metric is your primary health indicator — if it drops to 0 on any node, Felix has fallen back to iptables mode and you've lost the performance benefits of eBPF. Set up alerts for BPF mode transitions and BPF map capacity to detect issues before they impact production workloads.
+Monitoring Calico eBPF mode requires tracking both the operational status of BPF programs (are they loaded and running on every node?) and the health metrics exposed via Felix Prometheus metrics (map utilization, execution errors, NAT table sizes). The `felix_bpf_enabled` metric is your primary health indicator - if it drops to 0 on any node, Felix has fallen back to iptables mode and you've lost the performance benefits of eBPF. Set up alerts for BPF mode transitions and BPF map capacity to detect issues before they impact production workloads.

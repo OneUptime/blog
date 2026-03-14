@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, inotify, File Monitoring, Automation, Tutorial
+Tags: Ubuntu, Inotify, File Monitoring, Automation, Tutorial
 
 Description: Complete guide to using inotifywait for real-time file system monitoring on Ubuntu.
 

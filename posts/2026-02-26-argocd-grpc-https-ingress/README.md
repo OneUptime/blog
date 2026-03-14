@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, gRPC, Networking
+Tags: ArgoCD, GitOps, Kubernetes, GRPC, Networking
 
 Description: Master configuring ArgoCD ingress to handle both gRPC for the CLI and HTTPS for the web UI simultaneously with various ingress controllers.
 

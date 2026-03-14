@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, API, gRPC, Kubernetes, Infrastructure Management
+Tags: Talos Linux, API, GRPC, Kubernetes, Infrastructure Management
 
 Description: Explore how the API-driven management model in Talos Linux replaces SSH and shell access for operating Kubernetes nodes.
 

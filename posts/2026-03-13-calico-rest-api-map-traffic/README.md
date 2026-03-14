@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, Traffic Flows, Automation, Network Policy
+Tags: Calico, Kubernetes, REST API, CNI, Traffic Flows
 
-Description: How Calico REST API calls map to real Kubernetes traffic scenarios — from CI/CD policy management to dynamic policy enforcement in response to cluster events.
+Description: How Calico REST API calls map to real Kubernetes traffic scenarios - from CI/CD policy management to dynamic policy enforcement in response to cluster events.
 
 ---
 
 ## Introduction
 
-The Calico REST API's impact on real Kubernetes traffic is indirect — REST API calls manage configuration, and that configuration determines how traffic flows. Mapping REST API interactions to traffic scenarios helps you understand the chain from "API call made" to "traffic allowed or blocked."
+The Calico REST API's impact on real Kubernetes traffic is indirect - REST API calls manage configuration, and that configuration determines how traffic flows. Mapping REST API interactions to traffic scenarios helps you understand the chain from "API call made" to "traffic allowed or blocked."
 
 This post traces four real scenarios where REST API calls directly affect traffic behavior.
 
@@ -135,7 +135,7 @@ if [ $(echo "$UTILIZATION > 80" | bc) -eq 1 ]; then
     }' \
     $APISERVER/apis/projectcalico.org/v3/ippools
 
-  echo "New IP pool added — new pods will now use the expansion pool"
+  echo "New IP pool added - new pods will now use the expansion pool"
 fi
 ```
 
@@ -183,4 +183,4 @@ Every REST API resource management call affects real traffic within seconds thro
 
 ## Conclusion
 
-REST API calls map to real traffic changes through the Typha→Felix→dataplane propagation chain. Automation that manages policies via the REST API has immediate (sub-second) traffic impact. Understanding this chain — and the fact that automation failures can leave policies in a partially-applied state — motivates proper error handling, idempotency, and rollback capabilities in any production Calico automation built on the REST API.
+REST API calls map to real traffic changes through the Typha→Felix→dataplane propagation chain. Automation that manages policies via the REST API has immediate (sub-second) traffic impact. Understanding this chain - and the fact that automation failures can leave policies in a partially-applied state - motivates proper error handling, idempotency, and rollback capabilities in any production Calico automation built on the REST API.

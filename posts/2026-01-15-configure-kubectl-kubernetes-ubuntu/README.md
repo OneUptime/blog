@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, kubectl, Kubernetes, K8s, DevOps, Tutorial
+Tags: Ubuntu, Kubectl, Kubernetes, K8s, DevOps, Tutorial
 
 Description: Complete guide to installing and configuring kubectl for Kubernetes cluster management on Ubuntu.
 

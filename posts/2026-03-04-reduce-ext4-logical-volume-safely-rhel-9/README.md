@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, ext4, Reduce, Linux
+Tags: RHEL, LVM, Ext4, Reduce, Linux
 
 Description: Safely reduce an ext4 logical volume on RHEL by shrinking the filesystem first, then reducing the LV, without data loss.
 

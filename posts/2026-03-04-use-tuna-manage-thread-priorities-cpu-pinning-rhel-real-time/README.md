@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Real-Time, tuna, CPU Pinning, Thread Priority, Performance, Linux
+Tags: RHEL, Real-Time, Tuna, CPU Pinning, Thread Priority, Performance, Linux
 
 Description: Use the tuna utility on RHEL to manage thread scheduling priorities, pin processes to specific CPUs, and move IRQs away from real-time cores.
 

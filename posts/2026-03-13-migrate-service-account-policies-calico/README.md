@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Migration
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Migration
 
 Description: Migrate from label-based or namespace-scoped Calico policies to service account-based policies for stronger workload identity controls.
 
@@ -101,4 +101,4 @@ flowchart TD
 
 ## Conclusion
 
-Migrating to service account-based Calico policies strengthens your security posture by tying network access to RBAC-controlled identity. The migration requires careful coordination — service accounts must exist and be assigned to workloads before you can enforce SA-based policies. Run both old and new policies in parallel during the transition, verify that SA-based policies are working correctly, then remove the label-based ones. The end result is a more tamper-resistant network access control system.
+Migrating to service account-based Calico policies strengthens your security posture by tying network access to RBAC-controlled identity. The migration requires careful coordination - service accounts must exist and be assigned to workloads before you can enforce SA-based policies. Run both old and new policies in parallel during the transition, verify that SA-based policies are working correctly, then remove the label-based ones. The end result is a more tamper-resistant network access control system.

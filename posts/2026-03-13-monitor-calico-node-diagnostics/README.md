@@ -109,4 +109,4 @@ flowchart LR
 
 ## Conclusion
 
-Node-level Calico monitoring requires two data sources: Felix Prometheus metrics for per-node health signals and kube-state-metrics for DaemonSet pod readiness. The most critical alert is `CalicoNodePodNotRunning` — a missing calico-node pod means one node has no network policy enforcement and pods on that node may have connectivity issues. Combine this with the Felix dataplane failures alert to catch iptables programming errors before they cause visible outages.
+Node-level Calico monitoring requires two data sources: Felix Prometheus metrics for per-node health signals and kube-state-metrics for DaemonSet pod readiness. The most critical alert is `CalicoNodePodNotRunning` - a missing calico-node pod means one node has no network policy enforcement and pods on that node may have connectivity issues. Combine this with the Felix dataplane failures alert to catch iptables programming errors before they cause visible outages.

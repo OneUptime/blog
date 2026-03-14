@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Full-Text Search, tsvector, tsquery, Search, Text Analysis
+Tags: PostgreSQL, Full-Text Search, Tsvector, Tsquery, Search, Text Analysis
 
 Description: A comprehensive guide to implementing full-text search in PostgreSQL using tsvector, tsquery, and GIN indexes, covering configuration, ranking, highlighting, and advanced search features.
 

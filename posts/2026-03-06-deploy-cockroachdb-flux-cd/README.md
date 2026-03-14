@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, CockroachDB, Kubernetes, Database, GitOps, Distributed SQL, newSQL, Cloud-Native
+Tags: Flux CD, CockroachDB, Kubernetes, Database, GitOps, Distributed SQL, NewSQL, Cloud-Native
 
 Description: A practical guide to deploying CockroachDB distributed SQL database on Kubernetes using Flux CD for GitOps-managed database infrastructure.
 

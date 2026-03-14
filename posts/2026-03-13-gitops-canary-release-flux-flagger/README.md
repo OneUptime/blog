@@ -67,7 +67,7 @@ spec:
 
 ## Step 2: Configure the Primary Deployment
 
-Flagger takes over management of a Deployment when it creates a `Canary` resource. Keep the Deployment definition simple — Flagger will manage the traffic routing:
+Flagger takes over management of a Deployment when it creates a `Canary` resource. Keep the Deployment definition simple - Flagger will manage the traffic routing:
 
 ```yaml
 # apps/my-app/base/deployment.yaml
@@ -235,8 +235,8 @@ kubectl logs -n production -l app=my-app-canary --tail=100
 - Use real user traffic metrics (request-success-rate, p99 latency) rather than synthetic health checks as the primary gate for promotion.
 - Configure Slack or PagerDuty webhooks in Flagger so the on-call engineer is notified of both successful promotions and rollbacks.
 - Test the canary configuration in staging with an artificially degraded version to confirm that automatic rollback triggers correctly.
-- Set `maxWeight: 50` initially — limiting canary exposure to 50% means a bad release affects at most half of traffic before rollback.
+- Set `maxWeight: 50` initially - limiting canary exposure to 50% means a bad release affects at most half of traffic before rollback.
 
 ## Conclusion
 
-Combining Flux CD with Flagger creates a progressive delivery pipeline where every Git commit to a new image tag triggers a careful, metrics-driven rollout. Flux handles the GitOps layer (ensuring the declared state matches the cluster), while Flagger handles the progressive delivery layer (safely shifting traffic based on real metrics). The result is automated canary releases with automatic rollback — giving you the speed of continuous delivery with the safety of gradual exposure.
+Combining Flux CD with Flagger creates a progressive delivery pipeline where every Git commit to a new image tag triggers a careful, metrics-driven rollout. Flux handles the GitOps layer (ensuring the declared state matches the cluster), while Flagger handles the progressive delivery layer (safely shifting traffic based on real metrics). The result is automated canary releases with automatic rollback - giving you the speed of continuous delivery with the safety of gradual exposure.

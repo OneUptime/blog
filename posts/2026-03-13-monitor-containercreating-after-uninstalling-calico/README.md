@@ -10,7 +10,7 @@ Description: Monitor for pods stuck in ContainerCreating during or after Calico 
 
 ## Introduction
 
-During Calico CNI removal, monitoring ContainerCreating pod counts provides real-time visibility into whether pod scheduling is functioning. A rising ContainerCreating count indicates that new pods are not able to get network configuration — a direct sign that the CNI layer is broken.
+During Calico CNI removal, monitoring ContainerCreating pod counts provides real-time visibility into whether pod scheduling is functioning. A rising ContainerCreating count indicates that new pods are not able to get network configuration - a direct sign that the CNI layer is broken.
 
 Setting up monitoring before the migration begins ensures you have a dashboard and alerts ready when the removal happens. This is especially important for automated migrations where the removal is scripted and may proceed faster than manual oversight can track.
 

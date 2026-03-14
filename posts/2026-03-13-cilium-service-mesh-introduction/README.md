@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Service Mesh, eBPF, Networking
+Tags: Cilium, Kubernetes, Service Mesh, EBPF, Networking
 
 Description: Learn how Cilium Service Mesh replaces sidecar-based meshes with eBPF-powered L7 visibility, mTLS, and traffic management without injecting proxy containers into every pod.
 
@@ -12,7 +12,7 @@ Description: Learn how Cilium Service Mesh replaces sidecar-based meshes with eB
 
 Traditional service meshes like Istio and Linkerd operate by injecting a sidecar proxy (usually Envoy) into every pod. While effective, this approach adds per-pod resource overhead, increases latency due to the extra network hops through the sidecar, and complicates troubleshooting by introducing another process in the data path. Cilium Service Mesh takes a fundamentally different approach: eBPF programs running in the Linux kernel handle most traffic management tasks without any sidecar injection.
 
-Cilium Service Mesh builds on the same eBPF foundation as Cilium's base networking. For L3/L4 policies and visibility, no proxy is needed at all — eBPF handles everything in the kernel. For L7 features like HTTP header manipulation, gRPC load balancing, and mTLS termination, Cilium injects a per-node Envoy proxy shared across all pods on the node, dramatically reducing the resource overhead compared to per-pod sidecars.
+Cilium Service Mesh builds on the same eBPF foundation as Cilium's base networking. For L3/L4 policies and visibility, no proxy is needed at all - eBPF handles everything in the kernel. For L7 features like HTTP header manipulation, gRPC load balancing, and mTLS termination, Cilium injects a per-node Envoy proxy shared across all pods on the node, dramatically reducing the resource overhead compared to per-pod sidecars.
 
 The result is a service mesh with the observability and security features of Istio at a fraction of the CPU and memory cost, with lower latency and simpler architecture. This guide introduces Cilium Service Mesh, its architecture, and how to enable its key features.
 
@@ -104,4 +104,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium Service Mesh delivers the core capabilities of a traditional service mesh — L7 traffic management, mutual TLS, and rich observability — using eBPF to avoid the overhead of per-pod sidecars. For most L3/L4 use cases, no proxy is involved at all. The per-node shared Envoy proxy handles L7 cases with far less resource overhead than per-pod injection. This architecture makes Cilium Service Mesh an excellent choice for performance-sensitive applications and resource-constrained clusters.
+Cilium Service Mesh delivers the core capabilities of a traditional service mesh - L7 traffic management, mutual TLS, and rich observability - using eBPF to avoid the overhead of per-pod sidecars. For most L3/L4 use cases, no proxy is involved at all. The per-node shared Envoy proxy handles L7 cases with far less resource overhead than per-pod injection. This architecture makes Cilium Service Mesh an excellent choice for performance-sensitive applications and resource-constrained clusters.

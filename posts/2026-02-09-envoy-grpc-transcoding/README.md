@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, gRPC, REST, API Gateway, Protocol
+Tags: Envoy, GRPC, REST, API Gateway, Protocol
 
 Description: Learn how to use Envoy's gRPC transcoding filter to expose gRPC services as RESTful APIs, enabling seamless integration between HTTP/JSON clients and gRPC backends.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, CI/CD, Traditional CD, Push-Based, Pull-Based, Kubernetes, DevOps
+Tags: Flux CD, GitOps, CI/CD, DevOps, Kubernetes, Continuous Delivery
 
 Description: Compare GitOps with Flux CD against traditional push-based CI/CD pipelines, with guidance on when each approach is the right choice for Kubernetes deployments.
 
@@ -10,7 +10,7 @@ Description: Compare GitOps with Flux CD against traditional push-based CI/CD pi
 
 ## Introduction
 
-GitOps and traditional CI/CD are not mutually exclusive; they are complementary approaches that solve different parts of the software delivery problem. Traditional CI/CD—push-based pipelines using Jenkins, GitHub Actions, or similar—excels at building, testing, and publishing artifacts. GitOps with Flux CD excels at reconciling cluster state with declared configuration in Git.
+GitOps and traditional CI/CD are not mutually exclusive; they are complementary approaches that solve different parts of the software delivery problem. Traditional CI/CD-push-based pipelines using Jenkins, GitHub Actions, or similar-excels at building, testing, and publishing artifacts. GitOps with Flux CD excels at reconciling cluster state with declared configuration in Git.
 
 The key distinction is who initiates the deployment: in push-based CD, the CI system pushes changes to the cluster; in GitOps with Flux CD, the cluster pulls from Git. This seemingly simple difference has significant operational implications.
 

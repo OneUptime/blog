@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Scheduling, at Command, Automation
+Tags: Ubuntu, Scheduling, At Command, Automation
 
 Description: Learn how to use the at command on Ubuntu to schedule one-time tasks that run in the future, with practical examples of time specifications and job management.
 

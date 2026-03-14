@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, HelmRelease, Helm, Alerts, GitOps, Kubernetes, Notification-Controller
+Tags: Flux, Fluxcd, HelmRelease, Helm, Alerts, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts scoped to specific HelmRelease resources, so you only receive notifications for the Helm charts that matter.
 

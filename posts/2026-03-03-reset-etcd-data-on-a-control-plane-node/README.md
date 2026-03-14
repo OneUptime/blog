@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Control Plane, Kubernetes, Cluster Recovery
+Tags: Talos Linux, Etcd, Control Plane, Kubernetes, Cluster Recovery
 
 Description: A detailed guide to resetting etcd data on Talos Linux control plane nodes, including safe removal, recovery from corruption, and rebuilding etcd membership.
 

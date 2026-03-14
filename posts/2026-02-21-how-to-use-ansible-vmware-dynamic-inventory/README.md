@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Dynamic Inventory, vSphere, Automation
+Tags: Ansible, VMware, Dynamic Inventory, VSphere, Automation
 
 Description: Learn how to set up and configure the Ansible VMware dynamic inventory plugin to automatically discover VMs and build inventory from vCenter.
 

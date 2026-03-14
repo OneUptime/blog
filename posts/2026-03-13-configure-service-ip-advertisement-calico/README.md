@@ -10,7 +10,7 @@ Description: Configure Calico to advertise Kubernetes service ClusterIPs and Loa
 
 ## Introduction
 
-Calico can advertise Kubernetes service IP addresses — both ClusterIPs and LoadBalancer IPs — via BGP, making them reachable from outside the cluster without NodePort services or external load balancers. This feature is particularly valuable in on-premises or bare-metal environments where cloud load balancers are unavailable and you want cleaner external access to Kubernetes services.
+Calico can advertise Kubernetes service IP addresses - both ClusterIPs and LoadBalancer IPs - via BGP, making them reachable from outside the cluster without NodePort services or external load balancers. This feature is particularly valuable in on-premises or bare-metal environments where cloud load balancers are unavailable and you want cleaner external access to Kubernetes services.
 
 When service advertisement is configured, Calico watches the Kubernetes API for service changes and automatically adds or removes BGP advertisements as services are created, modified, or deleted. The advertisement happens from all nodes that have an established BGP session, providing redundancy and high availability.
 

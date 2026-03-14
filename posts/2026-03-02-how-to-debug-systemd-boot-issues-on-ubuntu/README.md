@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Boot, Troubleshooting
+Tags: Ubuntu, Systemd, Boot, Troubleshooting
 
 Description: A practical guide to diagnosing slow boot times and failed units during the Ubuntu startup process using systemd-analyze and journalctl.
 

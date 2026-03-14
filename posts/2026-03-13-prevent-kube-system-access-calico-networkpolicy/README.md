@@ -10,9 +10,9 @@ Description: Policy design patterns and namespace onboarding practices that ensu
 
 ## Introduction
 
-Preventing kube-system access failures from Calico NetworkPolicies requires building kube-system allow rules into the standard namespace policy template used across your organization. This is not a one-time fix — it must be part of the default policy set applied to every new namespace.
+Preventing kube-system access failures from Calico NetworkPolicies requires building kube-system allow rules into the standard namespace policy template used across your organization. This is not a one-time fix - it must be part of the default policy set applied to every new namespace.
 
-The key insight is that kube-system provides cluster-wide infrastructure services (DNS, metrics, admission webhooks) that every application namespace must be able to reach. Treating these as baseline network requirements — as fundamental as outbound internet access — ensures they are never accidentally omitted.
+The key insight is that kube-system provides cluster-wide infrastructure services (DNS, metrics, admission webhooks) that every application namespace must be able to reach. Treating these as baseline network requirements - as fundamental as outbound internet access - ensures they are never accidentally omitted.
 
 This guide establishes a namespace bootstrapping pattern that includes kube-system access from day one.
 

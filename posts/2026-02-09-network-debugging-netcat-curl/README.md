@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, Debugging, netcat, curl
+Tags: Kubernetes, Networking, Debugging, Netcat, Curl
 
 Description: Learn how to use netcat and curl for network debugging in Kubernetes pods to troubleshoot connectivity, test services, and diagnose network issues.
 

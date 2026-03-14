@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, mTLS, Security
+Tags: ArgoCD, GitOps, Kubernetes, MTLS, Security
 
 Description: Learn how to implement and manage mutual TLS configuration across your Kubernetes cluster using ArgoCD and GitOps workflows for consistent security enforcement.
 

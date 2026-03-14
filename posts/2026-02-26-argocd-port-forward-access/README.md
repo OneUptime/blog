@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, kubectl, Networking
+Tags: ArgoCD, GitOps, Kubernetes, Kubectl, Networking
 
 Description: Learn how to access the ArgoCD web UI and API through kubectl port-forward for development, debugging, and when no ingress is available.
 

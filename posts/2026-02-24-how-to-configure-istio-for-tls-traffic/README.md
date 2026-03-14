@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, mTLS, Service Mesh, Kubernetes, Security
+Tags: Istio, TLS, MTLS, Service Mesh, Kubernetes, Security
 
 Description: A complete guide to configuring Istio for TLS traffic including TLS origination, passthrough, termination, and mutual TLS settings for secure service communication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Connection Refused, Networking, Debugging, Kubernetes, Load Balancing, Troubleshooting
+Tags: GRPC, Connection Refused, Networking, Debugging, Kubernetes, Load Balancing, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing 'Connection Refused' errors in gRPC services, covering network configuration, DNS resolution, firewall rules, and common deployment issues.
 

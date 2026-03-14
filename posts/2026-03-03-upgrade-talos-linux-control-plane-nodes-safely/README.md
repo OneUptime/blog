@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Control Plane, Upgrade, etcd, High Availability
+Tags: Talos Linux, Kubernetes, Control Plane, Upgrade, Etcd, High Availability
 
 Description: A detailed guide to safely upgrading Talos Linux control plane nodes while maintaining cluster availability and etcd quorum.
 

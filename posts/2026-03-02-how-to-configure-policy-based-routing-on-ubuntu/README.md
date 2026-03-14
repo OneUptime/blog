@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Routing, Policy-Based Routing, iproute2
+Tags: Ubuntu, Networking, Routing, Policy-Based Routing, Iproute2
 
 Description: Learn how to configure policy-based routing on Ubuntu using iproute2 rules and multiple routing tables for advanced traffic control scenarios.
 

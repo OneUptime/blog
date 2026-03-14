@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Microservices, Architecture, Distributed Systems, gRPC
+Tags: Rust, Microservices, Architecture, Distributed Systems, GRPC
 
 Description: A practical guide to building microservices in Rust with service communication, configuration, and deployment patterns.
 

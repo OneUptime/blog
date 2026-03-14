@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dm-writecache, Caching, Linux
+Tags: RHEL, Dm-writecache, Caching, Linux
 
 Description: Learn how to set up dm-writecache on RHEL to accelerate write-intensive workloads by directing writes to fast SSD or persistent memory devices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, Protobuf, Export, gRPC, HTTP, Troubleshooting, Serialization
+Tags: OpenTelemetry, OTLP, Protobuf, Export, GRPC, HTTP, Troubleshooting, Serialization
 
 Description: Learn how to diagnose and fix invalid protobuf serialization errors when exporting telemetry data via OTLP in OpenTelemetry SDKs and Collector.
 

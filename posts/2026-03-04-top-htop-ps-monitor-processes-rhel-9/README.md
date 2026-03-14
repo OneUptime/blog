@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Monitoring, Processes, top, htop, ps, Linux, System Administration
+Tags: RHEL, Monitoring, Processes, Top, Htop, Ps, Linux, System Administration
 
 Description: Learn how to use top, htop, and ps to monitor system processes on RHEL and identify resource-consuming applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Source, Dependencies, depends_on, Infrastructure as Code
+Tags: Terraform, Data Source, Dependencies, Depends_on, Infrastructure as Code
 
 Description: Learn how to use the depends_on meta-argument with Terraform data sources to control execution order and avoid race conditions during infrastructure provisioning.
 

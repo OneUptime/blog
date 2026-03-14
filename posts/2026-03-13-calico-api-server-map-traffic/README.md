@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, API Server, Kubernetes, Networking, Traffic Flows, Architecture
+Tags: Calico, Kubernetes, API Server, CNI, Traffic Flows
 
 Description: Understand how management traffic flows through the Calico API server and how to trace API requests from kubectl to the Calico datastore using practical diagnostic commands.
 
@@ -10,7 +10,7 @@ Description: Understand how management traffic flows through the Calico API serv
 
 ## Introduction
 
-The Calico API server sits in the management plane, not the data plane. This means traffic flowing through it is management traffic — API requests from kubectl, CI pipelines, and admission webhooks — not pod-to-pod networking traffic. Understanding this distinction prevents a common misconception that the API server affects pod connectivity.
+The Calico API server sits in the management plane, not the data plane. This means traffic flowing through it is management traffic - API requests from kubectl, CI pipelines, and admission webhooks - not pod-to-pod networking traffic. Understanding this distinction prevents a common misconception that the API server affects pod connectivity.
 
 When an operator runs `kubectl get globalnetworkpolicies`, that request travels from the client through the Kubernetes API server, which proxies it to the Calico API server pod, which reads from the Calico datastore and returns the result. This entire chain is the management traffic path.
 
@@ -126,11 +126,11 @@ kubectl delete globalnetworkpolicies.projectcalico.org traffic-path-test
 
 ## Best Practices
 
-- Keep the calico-apiserver Service IP stable — changes require updating the APIService registration
+- Keep the calico-apiserver Service IP stable - changes require updating the APIService registration
 - Monitor APIService availability as the primary signal for API server health
 - Ensure network policies protecting the calico-apiserver namespace allow ingress from the Kubernetes API server
 - Use `kubectl get apiservice v3.projectcalico.org` as your first diagnostic step when `kubectl get` on Calico resources fails
 
 ## Conclusion
 
-The Calico API server handles management traffic only — it is not in the path for pod networking. Traffic flows from kubectl through the Kubernetes API server (authentication, authorization, routing) to the Calico API server pod, then to the datastore. Mapping this path helps you design correct network policies, debug authentication failures, and quickly locate bottlenecks in the management plane.
+The Calico API server handles management traffic only - it is not in the path for pod networking. Traffic flows from kubectl through the Kubernetes API server (authentication, authorization, routing) to the Calico API server pod, then to the datastore. Mapping this path helps you design correct network policies, debug authentication failures, and quickly locate bottlenecks in the management plane.

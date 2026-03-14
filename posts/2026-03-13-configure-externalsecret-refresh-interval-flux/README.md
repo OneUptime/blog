@@ -26,7 +26,7 @@ This guide covers setting appropriate refresh intervals for different secret typ
 
 The `refreshInterval` is a duration string. ESO computes the next sync time by adding the interval to the last successful sync timestamp. If a sync fails (e.g., network error), ESO retries with exponential backoff but does not reset the refresh interval clock.
 
-```
+```plaintext
 Duration formats:
   1h         = 1 hour
   30m        = 30 minutes

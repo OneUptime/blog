@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, logrotate, Logging, Linux
+Tags: RHEL, Logrotate, Logging, Linux
 
 Description: Set up and customize log rotation with logrotate on RHEL to manage disk space.
 

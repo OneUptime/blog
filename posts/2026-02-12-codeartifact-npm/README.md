@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeArtifact, npm, Node.js, DevOps
+Tags: AWS, CodeArtifact, Npm, Node.js, DevOps
 
 Description: Configure npm to use AWS CodeArtifact as a private registry for publishing and installing packages, including authentication, scopes, and CI/CD setup.
 

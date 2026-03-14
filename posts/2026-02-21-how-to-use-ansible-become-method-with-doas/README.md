@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, doas, OpenBSD, Privilege Escalation, Security
+Tags: Ansible, Doas, OpenBSD, Privilege Escalation, Security
 
 Description: Configure Ansible to use doas for privilege escalation on OpenBSD and other systems that prefer doas over sudo
 

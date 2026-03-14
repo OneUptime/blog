@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Special Variables, playbook_dir, role_path, Best Practices
+Tags: Ansible, Special Variables, Playbook_dir, Role_path, Best Practices
 
 Description: Learn how to use Ansible special variables like playbook_dir and role_path to write portable and maintainable automation code.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Storage, Disk I/O, Performance, Linux, Monitoring
+Tags: EBPF, Storage, Disk I/O, Performance, Linux, Monitoring
 
 Description: A guide to using eBPF for detailed disk I/O analysis and latency troubleshooting.
 

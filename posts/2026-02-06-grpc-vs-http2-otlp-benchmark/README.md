@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, gRPC vs HTTP, Performance Benchmarking
+Tags: OpenTelemetry, OTLP, GRPC vs HTTP, Performance Benchmarking
 
 Description: Benchmark OTLP gRPC versus HTTP/2 export performance using the OpenTelemetry Collector internal metrics to pick the right protocol.
 

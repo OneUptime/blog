@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Infrastructure Provisioning, vSphere, Automation
+Tags: Ansible, VMware, Infrastructure Provisioning, VSphere, Automation
 
 Description: Automate end-to-end VMware infrastructure provisioning with Ansible from VM creation to network configuration and storage assignment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, OCI Artifacts, Bandwidth, Registry
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Oci artifacts, Bandwidth
 
 Description: Use OCI artifacts to minimize bandwidth for edge deployments with Flux, replacing Git cloning with efficient artifact-based manifest delivery.
 
@@ -10,9 +10,9 @@ Description: Use OCI artifacts to minimize bandwidth for edge deployments with F
 
 ## Introduction
 
-OCI (Open Container Initiative) artifacts are a powerful but underused feature of Flux CD. Originally designed for container images, the OCI registry format can store any type of artifact — including Kubernetes manifests, Helm charts, and Kustomize directories. Flux's OCIRepository source type can pull these artifacts from any OCI-compatible registry.
+OCI (Open Container Initiative) artifacts are a powerful but underused feature of Flux CD. Originally designed for container images, the OCI registry format can store any type of artifact - including Kubernetes manifests, Helm charts, and Kustomize directories. Flux's OCIRepository source type can pull these artifacts from any OCI-compatible registry.
 
-For edge deployments, OCI artifacts offer two major advantages over traditional Git-based sources. First, an OCI artifact containing your manifests is typically 1-10MB, compared to a full Git repository clone that may be 50-500MB — a dramatic bandwidth reduction. Second, OCI registry infrastructure is designed for high-throughput, geographically distributed deployments and typically handles pull caching better than Git hosting platforms.
+For edge deployments, OCI artifacts offer two major advantages over traditional Git-based sources. First, an OCI artifact containing your manifests is typically 1-10MB, compared to a full Git repository clone that may be 50-500MB - a dramatic bandwidth reduction. Second, OCI registry infrastructure is designed for high-throughput, geographically distributed deployments and typically handles pull caching better than Git hosting platforms.
 
 This guide covers the complete workflow: packaging manifests as OCI artifacts in CI/CD, configuring Flux to consume them at edge clusters, and setting up a pull-through cache for bandwidth efficiency.
 
@@ -27,7 +27,7 @@ This guide covers the complete workflow: packaging manifests as OCI artifacts in
 
 Flux OCI artifacts follow a specific layer structure:
 
-```
+```plaintext
 OCI Artifact (my-registry/fleet/edge-apps:v1.2.3)
 ├── Layer 1: Manifest metadata (annotations)
 │   ├── source URL
@@ -272,7 +272,7 @@ spec:
 - Use artifact signing with cosign to prevent unauthorized manifest injection.
 - Split infrastructure and application manifests into separate artifacts with different update frequencies.
 - Pin edge clusters to a `semver` range rather than `latest` for controlled rollouts.
-- Monitor artifact pull success rates — a failed pull does not break the cluster but delays updates.
+- Monitor artifact pull success rates - a failed pull does not break the cluster but delays updates.
 - Use a local pull-through cache for sites with very limited internet bandwidth.
 
 ## Conclusion

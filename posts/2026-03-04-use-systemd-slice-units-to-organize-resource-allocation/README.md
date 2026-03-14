@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Resource Management, Linux
+Tags: RHEL, Systemd, System Administration, Resource Management, Linux
 
 Description: Learn how to use systemd Slice Units to Organize Resource Allocation on RHEL with step-by-step instructions, configuration examples, and best practices.
 

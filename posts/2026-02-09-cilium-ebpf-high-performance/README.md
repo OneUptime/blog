@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cilium, eBPF, Networking, Performance
+Tags: Kubernetes, Cilium, EBPF, Networking, Performance
 
 Description: Learn how to deploy and configure Cilium with eBPF for high-performance Kubernetes networking, achieving kernel-level packet processing with minimal overhead and advanced observability.
 

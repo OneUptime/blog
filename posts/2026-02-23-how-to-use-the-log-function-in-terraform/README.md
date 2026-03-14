@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, log Function, Math, HCL, Infrastructure as Code, Numeric Functions, Logarithm
+Tags: Terraform, Log Function, Math, HCL, Infrastructure as Code, Numeric Functions, Logarithm
 
 Description: Learn how to use the log function in Terraform to calculate logarithms for subnet sizing, capacity planning, and other infrastructure calculations.
 

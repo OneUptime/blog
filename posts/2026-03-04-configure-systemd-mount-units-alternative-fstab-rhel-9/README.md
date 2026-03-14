@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Mount Units, fstab, Storage, Linux
+Tags: RHEL, Systemd, Mount Units, Fstab, Storage, Linux
 
 Description: Learn how to use systemd mount and automount units on RHEL as a flexible alternative to traditional /etc/fstab entries.
 

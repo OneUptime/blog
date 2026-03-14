@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, SwiftUI, View Lifecycle, Custom Spans, iOS
+Tags: OpenTelemetry, Swift, SwiftUI, View Lifecycle, Custom Spans, IOS
 
 Description: Instrument SwiftUI view lifecycle events with OpenTelemetry custom spans to understand view rendering performance and user navigation patterns in your iOS app.
 

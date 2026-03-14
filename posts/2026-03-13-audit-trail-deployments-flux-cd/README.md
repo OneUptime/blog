@@ -12,7 +12,7 @@ Description: Use Git history and Flux CD events together to create a complete, t
 
 An audit trail for deployments must answer four questions: what changed, when it changed, who authorized the change, and what was the outcome. In a GitOps workflow with Flux CD, these questions have clear answers: what changed is in the Git diff, when it changed is in the commit timestamp, who authorized it is in the PR approval record, and the outcome is in the Flux reconciliation events.
 
-The challenge is collecting and retaining this information in a form that auditors can query. Git history provides the change and authorization record, but Flux events — which record reconciliation outcomes — live in Kubernetes and are ephemeral by default. To create a complete audit trail you need to export Flux events to a persistent storage system that retains them for the required period.
+The challenge is collecting and retaining this information in a form that auditors can query. Git history provides the change and authorization record, but Flux events - which record reconciliation outcomes - live in Kubernetes and are ephemeral by default. To create a complete audit trail you need to export Flux events to a persistent storage system that retains them for the required period.
 
 This guide shows how to export Flux events, combine them with Git history to create deployment records, and query the combined audit trail for compliance evidence.
 
@@ -35,7 +35,7 @@ metadata:
   name: audit-log
   namespace: flux-system
 spec:
-  type: generic        # Generic webhook — compatible with any HTTP endpoint
+  type: generic        # Generic webhook - compatible with any HTTP endpoint
   address: https://log-ingestion.example.com/flux-events
   secretRef:
     name: audit-webhook-secret
@@ -59,10 +59,10 @@ spec:
 ```
 
 Each event sent by Flux includes:
-- `involvedObject.name` — which Kustomization or HelmRelease changed
-- `reason` — ReconciliationSucceeded, ReconciliationFailed, etc.
-- `message` — what revision was applied
-- `lastTimestamp` — when it happened
+- `involvedObject.name` - which Kustomization or HelmRelease changed
+- `reason` - ReconciliationSucceeded, ReconciliationFailed, etc.
+- `message` - what revision was applied
+- `lastTimestamp` - when it happened
 
 ## Step 2: Enrich Events with Git Commit Metadata
 
@@ -223,7 +223,7 @@ spec:
 ```mermaid
 flowchart TD
     A[Developer opens PR] -->|Commit SHA, author, timestamp| Git[Git Repository]
-    A --> PR[PR Review — approval recorded]
+    A --> PR[PR Review - approval recorded]
     PR --> Merge[Merge to main]
     Merge --> Flux[Flux detects new commit]
     Flux -->|Reconciliation event: who/what/when/outcome| K8sEvents[Kubernetes Events]
@@ -235,12 +235,12 @@ flowchart TD
 
 ## Best Practices
 
-- Set Kubernetes event retention to a long TTL using `--event-ttl` flag on the API server, or export events immediately — they expire in 1 hour by default.
+- Set Kubernetes event retention to a long TTL using `--event-ttl` flag on the API server, or export events immediately - they expire in 1 hour by default.
 - Retain the exported event log for at least as long as your compliance framework requires (typically 1-7 years).
-- Include the Flux event SHA (the reconciled revision) in your audit records — this allows you to reconstruct exactly what was running at any point in time.
+- Include the Flux event SHA (the reconciled revision) in your audit records - this allows you to reconstruct exactly what was running at any point in time.
 - Test your audit trail completeness quarterly by selecting a random past deployment and verifying you can reconstruct the full change record (what, when, who, outcome).
 - Use Git tags to mark significant baselines (quarterly releases, security patches) so they are easy to find in audit queries.
 
 ## Conclusion
 
-A complete deployment audit trail for Flux CD requires two sources: Git history (for authorization and change records) and Flux events (for reconciliation outcomes). By exporting Flux events to a persistent store, enriching them with Git commit metadata, and combining both sources into a unified query interface, you can answer every question an auditor might ask about any deployment that has ever occurred in your cluster — with evidence derived entirely from your normal GitOps workflow.
+A complete deployment audit trail for Flux CD requires two sources: Git history (for authorization and change records) and Flux events (for reconciliation outcomes). By exporting Flux events to a persistent store, enriching them with Git commit metadata, and combining both sources into a unified query interface, you can answer every question an auditor might ask about any deployment that has ever occurred in your cluster - with evidence derived entirely from your normal GitOps workflow.

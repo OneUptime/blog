@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Requirements, eBPF, Networking, kubeadm
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive guide to checking all Cilium requirements on a generic Kubernetes cluster (kubeadm, k3s, or bare metal), covering kernel, BPF, and networking prerequisites.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to checking all Cilium requirements on a gene
 
 ## Introduction
 
-Installing Cilium on a generic Kubernetes cluster — one created with kubeadm, k3s, or directly on bare metal — requires checking a broader set of prerequisites than managed cloud clusters. Without the managed node image standardization of EKS or AKS, you have more control but also more responsibility. Kernel versions, BPF filesystem mount, iptables/nftables configuration, and IPAM planning all require explicit verification.
+Installing Cilium on a generic Kubernetes cluster - one created with kubeadm, k3s, or directly on bare metal - requires checking a broader set of prerequisites than managed cloud clusters. Without the managed node image standardization of EKS or AKS, you have more control but also more responsibility. Kernel versions, BPF filesystem mount, iptables/nftables configuration, and IPAM planning all require explicit verification.
 
 This guide covers every requirement check for generic Kubernetes deployments. It is applicable to kubeadm-initialized clusters, k3s clusters, RKE2 installations, and bare metal Kubernetes. The checks are organized from most likely to cause installation failure (kernel version, BPF mount) to less common but important prerequisites (IPAM CIDR planning, kube-proxy configuration for replacement mode).
 

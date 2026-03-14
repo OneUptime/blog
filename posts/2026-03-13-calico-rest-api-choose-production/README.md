@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, Production, Decision Framework, Automation, calicoctl
+Tags: Calico, Kubernetes, REST API, CNI, Production
 
 Description: A decision framework for determining when to use Calico's REST API versus calicoctl or kubectl for production automation, with guidance on authentication and RBAC.
 
@@ -10,7 +10,7 @@ Description: A decision framework for determining when to use Calico's REST API 
 
 ## Introduction
 
-Choosing to use the Calico REST API directly in production should be a deliberate decision, not a default. Most automation scenarios are better served by wrapping `kubectl` or `calicoctl` commands rather than calling the REST API directly. However, for specific use cases — custom controllers, API gateways, complex conditional logic — the REST API is the right tool.
+Choosing to use the Calico REST API directly in production should be a deliberate decision, not a default. Most automation scenarios are better served by wrapping `kubectl` or `calicoctl` commands rather than calling the REST API directly. However, for specific use cases - custom controllers, API gateways, complex conditional logic - the REST API is the right tool.
 
 ## Prerequisites
 
@@ -27,9 +27,9 @@ Use the REST API when:
 - **Performance requirements**: You need to watch many resources simultaneously with a single connection (watch stream)
 
 Do NOT use the REST API when:
-- `kubectl apply -f` meets your needs (use it instead — it's simpler and more robust)
+- `kubectl apply -f` meets your needs (use it instead - it's simpler and more robust)
 - You are writing shell scripts (use `kubectl` or `calicoctl` commands instead)
-- You need BGP status or IPAM inspection (these require `calicoctl` — no REST API equivalent)
+- You need BGP status or IPAM inspection (these require `calicoctl` - no REST API equivalent)
 
 ## Production Authentication Strategy
 
@@ -115,7 +115,7 @@ Production REST API clients must handle these error codes:
 ## Best Practices
 
 - Use Kubernetes client libraries (kubernetes-client, controller-runtime) instead of raw HTTP in production
-- Never use long-lived tokens — generate short-lived tokens per automation run
+- Never use long-lived tokens - generate short-lived tokens per automation run
 - Implement circuit breakers and retries for 429 and 503 responses
 - Log all API calls with the resource name and action for audit purposes
 

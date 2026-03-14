@@ -1,10 +1,10 @@
-# Configure Prometheus Recording Rules with Flux CD
+# How to Configure Prometheus Recording Rules with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, prometheus, recording-rules, monitoring, kubernetes, gitops, performance
+Tags: Flux CD, Kubernetes, GitOps, Prometheus, Recording Rules, PrometheusRule, Observability
 
-Description: Learn how to create and manage Prometheus recording rules using Flux CD to pre-compute expensive queries and improve dashboard and alerting performance.
+Description: Manage Prometheus recording rules as code using Flux CD GitOps to pre-compute expensive queries, improve dashboard performance, and create reusable metric aggregations.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, k0s, k0sctl, Kubernetes, Networking, eBPF, CNI
+Tags: Cilium, Kubernetes, K0s, EBPF
 
 Description: Step-by-step guide to installing Cilium on k0s Kubernetes clusters using k0sctl for eBPF-powered networking and network policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, tokio, TCP, Protocol, Networking
+Tags: Rust, Tokio, TCP, Protocol, Networking
 
 Description: A practical guide to implementing custom TCP protocols in Rust using Tokio's codec framework, covering framing strategies, encoder/decoder patterns, and production-ready connection handling.
 

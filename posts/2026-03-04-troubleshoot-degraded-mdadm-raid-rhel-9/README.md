@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID, mdadm, Troubleshooting, Linux
+Tags: RHEL, RAID, Mdadm, Troubleshooting, Linux
 
 Description: A systematic approach to diagnosing and fixing degraded mdadm RAID arrays on RHEL, covering common failure scenarios and recovery steps.
 

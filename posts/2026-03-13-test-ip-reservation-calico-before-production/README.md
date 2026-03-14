@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, ip-reservation, kubernetes, networking, testing
+Tags: Calico, IPAM, Ip-reservation, Kubernetes, Networking, Testing
 
 Description: Learn how to configure and validate Calico IP address reservation to protect specific IP ranges from pod allocation, ensuring critical service IPs and reserved addresses remain available.
 
@@ -10,7 +10,7 @@ Description: Learn how to configure and validate Calico IP address reservation t
 
 ## Introduction
 
-Calico's IPAM allows you to reserve specific IP addresses within your pod CIDR ranges so they cannot be allocated to pods. This is important when specific IPs within the pod CIDR range are used by other services — for example, a gateway IP, a load balancer VIP, or a monitoring service that other systems depend on with a hardcoded IP address.
+Calico's IPAM allows you to reserve specific IP addresses within your pod CIDR ranges so they cannot be allocated to pods. This is important when specific IPs within the pod CIDR range are used by other services - for example, a gateway IP, a load balancer VIP, or a monitoring service that other systems depend on with a hardcoded IP address.
 
 Without explicit IP reservation, Calico may allocate these IPs to pods, causing address conflicts that are difficult to diagnose. Testing IP reservation before production confirms that reserved addresses are consistently protected across node restarts, pod churn, and IPAM block reallocation events.
 
@@ -140,10 +140,10 @@ calicoctl ipam show --show-blocks | grep -A5 "192.168.0.1"
 
 ## Best Practices
 
-- Create IP reservations before deploying any workloads to a new cluster — retroactively adding reservations does not reclaim already-allocated IPs
+- Create IP reservations before deploying any workloads to a new cluster - retroactively adding reservations does not reclaim already-allocated IPs
 - Reserve entire /29 or larger ranges for services that may scale (e.g., monitoring infrastructure) rather than individual /32 addresses
 - Document reserved IPs alongside their purpose in your platform runbook to explain why the range appears unused
-- Monitor the ratio of reserved IPs to total pool size — excessive reservations reduce pod capacity without warning
+- Monitor the ratio of reserved IPs to total pool size - excessive reservations reduce pod capacity without warning
 - Test reservation behavior after Calico upgrades since IPAM behavior can change between versions
 - Include reserved IP validation in your cluster provisioning automation to catch misconfiguration immediately
 

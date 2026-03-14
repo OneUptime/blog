@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, itertools, Combinations, Mathematics, Data Processing
+Tags: Python, Itertools, Combinations, Mathematics, Data Processing
 
 Description: Learn how to generate Cartesian products in Python using itertools.product for creating all combinations of elements from multiple iterables.
 

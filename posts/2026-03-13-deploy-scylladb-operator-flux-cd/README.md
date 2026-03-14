@@ -206,7 +206,7 @@ kubectl exec -n scylla scylla-us-east-1-rack-1-0 -- cqlsh -e \
 ## Best Practices
 
 - Enable `cpuset: true` and use dedicated nodes with CPU taints (`scylla-dedicated: NoSchedule`) so ScyllaDB's CPU pinning works correctly.
-- Use local NVMe storage rather than network block storage — ScyllaDB's performance is extremely sensitive to storage latency.
+- Use local NVMe storage rather than network block storage - ScyllaDB's performance is extremely sensitive to storage latency.
 - Set replication factor to 3 (`NetworkTopologyStrategy`) for all production keyspaces.
 - Deploy Scylla Manager alongside the operator for automated repair and backup scheduling.
 - Monitor ScyllaDB with the Grafana dashboards from the ScyllaDB Monitoring Stack for latency, throughput, and compaction metrics.

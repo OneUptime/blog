@@ -10,7 +10,7 @@ Description: Monitor the health of your Calico Grafana dashboards to detect brok
 
 ## Introduction
 
-Monitoring your Calico dashboards' health ensures that the visualization layer remains a reliable operational tool. Broken dashboards discovered during an incident — when you need them most — significantly increase time to resolution.
+Monitoring your Calico dashboards' health ensures that the visualization layer remains a reliable operational tool. Broken dashboards discovered during an incident - when you need them most - significantly increase time to resolution.
 
 ## Dashboard Health Monitoring
 

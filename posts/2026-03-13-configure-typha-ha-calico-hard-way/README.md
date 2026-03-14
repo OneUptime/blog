@@ -149,4 +149,4 @@ done
 
 ## Conclusion
 
-Configuring Typha HA goes beyond adding replicas — it requires topology spread constraints for even placement, connection rebalancing for post-failure recovery, appropriate Felix reconnect timeouts, graceful termination periods for rolling updates, and a rolling update strategy that maintains minimum replica availability. Together these configurations ensure that Typha HA provides actual resilience rather than just theoretical redundancy.
+Configuring Typha HA goes beyond adding replicas - it requires topology spread constraints for even placement, connection rebalancing for post-failure recovery, appropriate Felix reconnect timeouts, graceful termination periods for rolling updates, and a rolling update strategy that maintains minimum replica availability. Together these configurations ensure that Typha HA provides actual resilience rather than just theoretical redundancy.

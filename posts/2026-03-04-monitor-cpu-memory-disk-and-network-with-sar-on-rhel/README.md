@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sar, sysstat, Performance Monitoring, CPU, Memory, Disk, Network
+Tags: RHEL, Sar, Sysstat, Performance Monitoring, CPU, Memory, Disk, Network
 
 Description: Use sar from the sysstat package on RHEL to collect and review historical system performance data for CPU, memory, disk I/O, and network activity.
 

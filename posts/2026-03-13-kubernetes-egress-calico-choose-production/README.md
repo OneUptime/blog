@@ -56,9 +56,9 @@ Choose between three default egress postures:
 
 | Posture | Implementation | Risk Level |
 |---|---|---|
-| Allow all (default) | No egress policy applied | High — any pod can reach any destination |
-| Allow by exception | Deny-all default, explicit allow per workload | Medium — requires all egress to be declared |
-| Block all | Global deny-all with no exceptions by default | Low — requires all egress to be explicitly authorized |
+| Allow all (default) | No egress policy applied | High - any pod can reach any destination |
+| Allow by exception | Deny-all default, explicit allow per workload | Medium - requires all egress to be declared |
+| Block all | Global deny-all with no exceptions by default | Low - requires all egress to be explicitly authorized |
 
 For production, "allow by exception" is the recommended starting point. It requires workload teams to declare their egress requirements explicitly while still being operationally manageable for teams adopting egress control gradually.
 
@@ -73,10 +73,10 @@ If deploying egress gateways (Enterprise), plan the gateway topology:
 
 ## Best Practices
 
-- Never rely on node IP allowlisting for external services in clusters that autoscale — new nodes bring new IPs
+- Never rely on node IP allowlisting for external services in clusters that autoscale - new nodes bring new IPs
 - Implement egress policy incrementally: start by observing traffic (flow logs), then build allow rules, then apply deny-all default
 - For egress gateways, use Calico's `EgressGatewayPolicy` resource to bind namespaces to specific gateway pools
-- Test egress policy enforcement after every node pool upgrade — new node images can sometimes reset iptables or eBPF state
+- Test egress policy enforcement after every node pool upgrade - new node images can sometimes reset iptables or eBPF state
 
 ## Conclusion
 

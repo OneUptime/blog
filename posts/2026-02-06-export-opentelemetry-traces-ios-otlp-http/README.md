@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, iOS, OTLP, HTTP, Exporter, Mobile
+Tags: OpenTelemetry, Swift, IOS, OTLP, HTTP, Exporter, Mobile
 
 Description: Configure the OTLP HTTP exporter to send OpenTelemetry traces from your iOS app to a backend collector for storage, analysis, and visualization in production.
 

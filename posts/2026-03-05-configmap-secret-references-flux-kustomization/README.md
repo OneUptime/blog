@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, ConfigMap, Secrets, substituteFrom
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, ConfigMap, Secrets, SubstituteFrom
 
 Description: Learn how to reference ConfigMaps and Secrets in Flux Kustomization resources to inject configuration and sensitive data into your deployments via post-build variable substitution.
 

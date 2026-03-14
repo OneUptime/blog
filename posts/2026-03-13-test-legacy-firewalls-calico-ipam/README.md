@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, firewall, kubernetes, networking, testing, compatibility
+Tags: Calico, IPAM, Firewall, Kubernetes, Networking, Testing, Compatibility
 
-Description: Learn how to validate Calico IPAM compatibility with legacy firewalls that have static rules for pod CIDRs, ensuring that IP address changes do not break firewall policies when pods move between nodes.
+Description: Learn how to validate Calico IPAM compatibility with legacy firewalls that have static rules for pod CIDRs, ensuring that IP address changes do not break firewall policies when pods move between...
 
 ---
 
@@ -143,7 +143,7 @@ cat static-ip-rules.txt
 - Provide the firewall team with the complete list of Calico IPAM CIDRs (not individual pod IPs) when requesting firewall rules
 - Use separate IP pools for different sensitivity levels so firewall rules can be applied at the pool CIDR granularity
 - Run `calicoctl get ippools` and share the output with the firewall team before any new workload is onboarded
-- Include pod IP range changes in your change management process — adding a new IP pool requires firewall rule updates
+- Include pod IP range changes in your change management process - adding a new IP pool requires firewall rule updates
 - Periodically scan firewall rules for static pod IPs that will break after pod restarts
 - Document the complete set of Calico IPAM CIDRs in your network architecture documentation for firewall teams
 

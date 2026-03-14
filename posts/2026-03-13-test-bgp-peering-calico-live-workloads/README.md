@@ -68,7 +68,7 @@ kubectl exec ${POD1} -- ping -i 0.2 ${POD2_IP} &
 kubectl drain node-1 --ignore-daemonsets --delete-emptydir-data
 ```
 
-Observe how long the ping latency spikes or drops packets — this is your BGP convergence time.
+Observe how long the ping latency spikes or drops packets - this is your BGP convergence time.
 
 ## Test BGP Session Restart
 

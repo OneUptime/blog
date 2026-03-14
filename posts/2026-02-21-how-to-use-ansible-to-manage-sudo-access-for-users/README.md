@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, sudo, Linux Administration
+Tags: Ansible, Security, Sudo, Linux Administration
 
 Description: Learn how to manage sudo privileges across your infrastructure with Ansible, including sudoers files, group-based access, and command restrictions.
 

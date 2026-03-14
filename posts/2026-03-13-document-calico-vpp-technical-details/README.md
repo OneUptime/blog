@@ -10,7 +10,7 @@ Description: How to document Calico VPP's technical architecture, internal confi
 
 ## Introduction
 
-VPP technical documentation bridges the knowledge gap between VPP experts who designed the deployment and engineers who must maintain and troubleshoot it. VPP's internal architecture — node graphs, buffer pools, ACL hash tables, DPDK queue management — requires documentation that goes beyond "run this command" to explain why specific parameters were chosen and what the consequences of changing them are.
+VPP technical documentation bridges the knowledge gap between VPP experts who designed the deployment and engineers who must maintain and troubleshoot it. VPP's internal architecture - node graphs, buffer pools, ACL hash tables, DPDK queue management - requires documentation that goes beyond "run this command" to explain why specific parameters were chosen and what the consequences of changing them are.
 
 This documentation is especially valuable for on-call engineers responding to performance anomalies and for capacity planning teams deciding whether to expand the deployment.
 

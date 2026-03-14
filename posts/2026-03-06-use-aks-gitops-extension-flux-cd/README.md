@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, Azure, AKS, GitOps, Kubernetes, azure-arc, Extensions
+Tags: Flux-cd, Azure, AKS, GitOps, Kubernetes, Azure-arc, Extensions
 
 Description: A comprehensive guide to using the AKS GitOps extension for built-in Flux CD support, covering installation, configuration, and management through Azure CLI.
 

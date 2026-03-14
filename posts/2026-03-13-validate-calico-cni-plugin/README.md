@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Validation
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Validation
 
 Description: How to validate the Calico CNI plugin configuration to ensure pods receive correct IP addresses, have proper network connectivity, and CNI policy enforcement is active.
 

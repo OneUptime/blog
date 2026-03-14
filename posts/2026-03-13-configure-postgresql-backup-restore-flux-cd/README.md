@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, pgBackRest
+Tags: Flux CD, Kubernetes, GitOps, PostgreSQL, Backup, Restore, CloudNativePG, PgBackRest
 
 Description: Configure PostgreSQL backup and restore using operator CRDs and Flux CD for automated, GitOps-managed database disaster recovery.
 
@@ -229,7 +229,7 @@ spec:
 ## Best Practices
 
 - Test your restore procedure in a non-production environment at least monthly to verify backups are valid and the process works.
-- Use `retentionPolicy: "30d"` but also verify the actual S3 bucket contents — retention is applied on the next scheduled backup run.
+- Use `retentionPolicy: "30d"` but also verify the actual S3 bucket contents - retention is applied on the next scheduled backup run.
 - Enable WAL compression with `gzip` and encryption with `AES256` for all production backups to save costs and meet security requirements.
 - Store backup credentials in SealedSecrets and rotate them quarterly.
 - Use Flux `dependsOn` to ensure the ScheduledBackup resource is only created after the Cluster is healthy.
@@ -237,4 +237,4 @@ spec:
 
 ## Conclusion
 
-PostgreSQL backup and restore configuration managed through Flux CD CRDs gives you reproducible, auditable disaster recovery. ScheduledBackups, retention policies, and restore procedures are all described in Git. When disaster strikes, restoring from backup is as simple as committing a recovery cluster spec and letting Flux apply it — no ad-hoc commands, no guessing about configuration parameters. This is the true promise of GitOps for stateful workloads.
+PostgreSQL backup and restore configuration managed through Flux CD CRDs gives you reproducible, auditable disaster recovery. ScheduledBackups, retention policies, and restore procedures are all described in Git. When disaster strikes, restoring from backup is as simple as committing a recovery cluster spec and letting Flux apply it - no ad-hoc commands, no guessing about configuration parameters. This is the true promise of GitOps for stateful workloads.

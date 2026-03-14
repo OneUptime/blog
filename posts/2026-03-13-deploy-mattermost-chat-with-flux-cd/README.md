@@ -202,4 +202,4 @@ Navigate to `https://chat.example.com` and log in as the admin user.
 
 ## Conclusion
 
-Mattermost is now deployed on Kubernetes and fully managed by Flux CD. Your team gets a self-hosted, privacy-respecting collaboration platform, and your operations team gets a fully auditable, GitOps-managed deployment. Configuration changes—from SMTP settings to resource limits—flow through Git pull requests and are applied by Flux automatically.
+Mattermost is now deployed on Kubernetes and fully managed by Flux CD. Your team gets a self-hosted, privacy-respecting collaboration platform, and your operations team gets a fully auditable, GitOps-managed deployment. Configuration changes-from SMTP settings to resource limits-flow through Git pull requests and are applied by Flux automatically.

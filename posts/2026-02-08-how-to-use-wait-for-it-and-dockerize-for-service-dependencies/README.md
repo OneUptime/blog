@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, wait-for-it, dockerize, Service Dependencies, Startup Order, Networking
+Tags: Docker, Docker Compose, Wait-for-it, Dockerize, Service Dependencies, Startup Order, Networking
 
 Description: Manage Docker service startup dependencies using wait-for-it and dockerize to ensure services are ready before your application starts.
 

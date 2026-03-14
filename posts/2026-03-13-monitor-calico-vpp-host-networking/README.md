@@ -10,7 +10,7 @@ Description: Set up monitoring for Calico VPP host networking using VPP metrics,
 
 ## Introduction
 
-Monitoring Calico VPP requires tracking metrics that are unique to the VPP dataplane — vector size statistics, DPDK interface counters, hugepage utilization, and VPP worker thread health. These metrics are not available through standard Linux networking tools or the Felix metrics that apply to the kernel dataplane.
+Monitoring Calico VPP requires tracking metrics that are unique to the VPP dataplane - vector size statistics, DPDK interface counters, hugepage utilization, and VPP worker thread health. These metrics are not available through standard Linux networking tools or the Felix metrics that apply to the kernel dataplane.
 
 VPP exposes a rich set of performance counters through its native metrics API, which can be integrated with Prometheus via the VPP stats exporter. Combined with Calico's own agent metrics, this provides comprehensive observability into the VPP dataplane health.
 
@@ -121,7 +121,7 @@ groups:
 
 Key panels for a VPP health dashboard:
 
-```
+```plaintext
 # Throughput panel
 rate(vpp_if_combined_bytes[5m])
 

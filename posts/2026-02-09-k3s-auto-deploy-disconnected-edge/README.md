@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, k3s, Edge Computing
+Tags: Kubernetes, K3s, Edge Computing
 
 Description: Learn how to configure K3s to automatically deploy manifests from local directories at disconnected edge locations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AWS, Security, IMDS, Network Policy, eBPF
+Tags: Cilium, Kubernetes, AWS, Security, IMDS, Network Policy, EBPF
 
 Description: Use Cilium network policies to control and secure access to the AWS EC2 Instance Metadata Service (IMDS) endpoint from pods running on EKS.
 
@@ -10,7 +10,7 @@ Description: Use Cilium network policies to control and secure access to the AWS
 
 ## Introduction
 
-The AWS EC2 Instance Metadata Service (IMDS) endpoint at 169.254.169.254 provides sensitive information including IAM credentials, instance configuration, and user data. On EKS clusters, every pod that can reach this endpoint can potentially access the node's IAM role credentials—a significant security risk.
+The AWS EC2 Instance Metadata Service (IMDS) endpoint at 169.254.169.254 provides sensitive information including IAM credentials, instance configuration, and user data. On EKS clusters, every pod that can reach this endpoint can potentially access the node's IAM role credentials-a significant security risk.
 
 Cilium can enforce fine-grained policies controlling which pods can access the IMDS endpoint. Combined with IMDSv2 enforcement at the EC2 level, Cilium policies provide defense-in-depth for metadata service access.
 

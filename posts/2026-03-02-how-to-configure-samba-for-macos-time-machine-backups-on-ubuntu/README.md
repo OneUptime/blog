@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, macOS, Time Machine, Networking
+Tags: Ubuntu, Samba, MacOS, Time Machine, Networking
 
 Description: Learn how to configure a Samba share on Ubuntu to act as a Time Machine backup destination for macOS devices on your local network.
 

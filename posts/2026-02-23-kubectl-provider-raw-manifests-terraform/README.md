@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, kubectl, YAML, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Kubectl, YAML, Infrastructure as Code, DevOps
 
 Description: Learn how to use the kubectl Terraform provider to apply raw YAML manifests, handle CRDs, and manage resources not natively supported by the Kubernetes provider.
 

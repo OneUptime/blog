@@ -225,4 +225,4 @@ curl -X POST http://mlflow.internal.example.com/api/2.0/mlflow/model-versions/tr
 
 ## Conclusion
 
-Deploying an MLflow model registry with Flux CD establishes a governed, version-controlled foundation for your ML model lifecycle. The registry infrastructure itself is managed as code, ensuring consistency across environments and making it easy to upgrade, back up, and audit every aspect of your ML platform — from experiment tracking to production model promotion.
+Deploying an MLflow model registry with Flux CD establishes a governed, version-controlled foundation for your ML model lifecycle. The registry infrastructure itself is managed as code, ensuring consistency across environments and making it easy to upgrade, back up, and audit every aspect of your ML platform - from experiment tracking to production model promotion.

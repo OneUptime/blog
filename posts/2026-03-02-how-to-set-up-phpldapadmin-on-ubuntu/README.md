@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LDAP, phpLDAPadmin, Web Administration, Directory Services
+Tags: Ubuntu, LDAP, PhpLDAPadmin, Web Administration, Directory Services
 
 Description: Install and configure phpLDAPadmin on Ubuntu to get a browser-based interface for managing OpenLDAP directories, users, and groups.
 

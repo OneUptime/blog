@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Cilium, Kubernetes, Networking, CNI, Cloud Native
+Tags: EBPF, Cilium, Kubernetes, Networking, CNI, Cloud Native
 
 Description: A complete guide to deploying Cilium CNI for high-performance, eBPF-based Kubernetes networking.
 

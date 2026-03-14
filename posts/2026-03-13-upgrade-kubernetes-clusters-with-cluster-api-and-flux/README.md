@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cluster-api, flux, gitops, kubernetes, upgrade, automation, infrastructure
+Tags: Flux CD, Cluster API, CAPI, Kubernetes Upgrades, GitOps, Multi-Cluster
 
-Description: Learn how to automate Kubernetes cluster upgrades using Cluster API and Flux CD, enabling GitOps-driven cluster lifecycle management where a version change in Git triggers safe, rolling cluster upgrades.
+Description: Learn how to automate Kubernetes cluster upgrades using Cluster API and Flux CD, enabling GitOps-driven cluster lifecycle management where a version change in Git triggers safe, rolling cluster...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to automate Kubernetes cluster upgrades using Cluster API
 
 Cluster API (CAPI) and Flux CD together create a powerful GitOps platform for Kubernetes cluster lifecycle management. Where Cluster API provides the declarative API for provisioning and upgrading clusters, Flux provides the reconciliation engine that watches Git for changes and applies them to running infrastructure.
 
-When combined, a Kubernetes version change in a Git repository automatically triggers a controlled rolling upgrade of the cluster managed by Cluster API — including control plane rolling updates, machine deployment rollouts, and CNI compatibility verification. This approach eliminates manual kubectl operations for upgrades and creates an auditable, repeatable upgrade process.
+When combined, a Kubernetes version change in a Git repository automatically triggers a controlled rolling upgrade of the cluster managed by Cluster API - including control plane rolling updates, machine deployment rollouts, and CNI compatibility verification. This approach eliminates manual kubectl operations for upgrades and creates an auditable, repeatable upgrade process.
 
 This guide demonstrates how to set up and execute Kubernetes cluster upgrades using the Cluster API + Flux combination, including the GitOps workflow for version bumps and the monitoring approach for upgrade progress.
 
@@ -42,7 +42,7 @@ graph TD
 Configure Flux to watch the cluster definition repository.
 
 ```yaml
-# flux-capi-gitrepository.yaml — Flux GitRepository for cluster definitions
+# flux-capi-gitrepository.yaml - Flux GitRepository for cluster definitions
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -58,7 +58,7 @@ spec:
 ```
 
 ```yaml
-# flux-capi-kustomization.yaml — Flux Kustomization for workload clusters
+# flux-capi-kustomization.yaml - Flux Kustomization for workload clusters
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -84,7 +84,7 @@ spec:
 Create a cluster definition with explicit Kubernetes version.
 
 ```yaml
-# clusters/production/cluster.yaml — CAPI cluster with pinned version
+# clusters/production/cluster.yaml - CAPI cluster with pinned version
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
@@ -112,7 +112,7 @@ metadata:
   namespace: capi-clusters
 spec:
   replicas: 3
-  # Pin Kubernetes version — changing this in Git triggers upgrade
+  # Pin Kubernetes version - changing this in Git triggers upgrade
   version: v1.29.0
   machineTemplate:
     infrastructureRef:
@@ -196,4 +196,4 @@ kubectl --kubeconfig production-kubeconfig.yaml run upgrade-test \
 
 ## Conclusion
 
-Combining Cluster API and Flux CD creates a GitOps-native cluster upgrade workflow where version changes in Git automatically trigger controlled, rolling Kubernetes upgrades. This approach provides auditability, repeatability, and rollback capability through Git history — all without manual kubectl operations. The key operational insight is that cluster upgrades become a pull request merge rather than an operational procedure, integrating cluster lifecycle management into standard software delivery workflows.
+Combining Cluster API and Flux CD creates a GitOps-native cluster upgrade workflow where version changes in Git automatically trigger controlled, rolling Kubernetes upgrades. This approach provides auditability, repeatability, and rollback capability through Git history - all without manual kubectl operations. The key operational insight is that cluster upgrades become a pull request merge rather than an operational procedure, integrating cluster lifecycle management into standard software delivery workflows.

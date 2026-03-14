@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, etcd, Cluster Recovery
+Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Etcd, Cluster Recovery
 
 Description: Recover Flux state after catastrophic etcd data loss by combining etcd backup restoration with Flux's Git-based reconciliation.
 
@@ -10,7 +10,7 @@ Description: Recover Flux state after catastrophic etcd data loss by combining e
 
 ## Introduction
 
-etcd is the heart of Kubernetes — every resource object, configuration, and cluster state is stored there. When etcd data is lost, whether through hardware failure, operator error, or a corrupted snapshot, the entire cluster loses its state. Pods keep running on nodes thanks to the kubelet's local cache, but the API server can no longer serve requests, and the cluster cannot be managed.
+etcd is the heart of Kubernetes - every resource object, configuration, and cluster state is stored there. When etcd data is lost, whether through hardware failure, operator error, or a corrupted snapshot, the entire cluster loses its state. Pods keep running on nodes thanks to the kubelet's local cache, but the API server can no longer serve requests, and the cluster cannot be managed.
 
 Recovering from etcd data loss is a multi-stage process. The first stage is restoring the etcd cluster itself, either from a snapshot or by rebuilding. The second stage, where Flux CD shines, is restoring the cluster's workload state. Because every desired resource is stored in Git, Flux can reconcile the cluster back to its last committed state once the API server is available again.
 
@@ -173,8 +173,8 @@ spec:
 
 - Take etcd snapshots every 1-6 hours and store them in geographically separate object storage.
 - Test etcd snapshot restoration quarterly in a non-production environment.
-- Set up Prometheus alerts for etcd size, latency, and leader changes — etcd degradation often precedes data loss.
-- Use Flux's Git history as a secondary source of truth — even without an etcd snapshot, a fresh bootstrap can restore all workloads.
+- Set up Prometheus alerts for etcd size, latency, and leader changes - etcd degradation often precedes data loss.
+- Use Flux's Git history as a secondary source of truth - even without an etcd snapshot, a fresh bootstrap can restore all workloads.
 - Document the etcd restore procedure and store it outside the cluster (in your runbook wiki, not a ConfigMap).
 - Run etcd on dedicated nodes with fast NVMe storage to reduce the risk of I/O-related corruption.
 

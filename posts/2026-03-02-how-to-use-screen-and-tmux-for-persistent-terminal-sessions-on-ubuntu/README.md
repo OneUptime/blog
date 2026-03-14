@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, screen, Terminal, Remote Administration
+Tags: Ubuntu, Tmux, Screen, Terminal, Remote Administration
 
 Description: Learn how to use screen and tmux to create persistent terminal sessions on Ubuntu that survive disconnections and allow you to run multiple windows in a single SSH session.
 

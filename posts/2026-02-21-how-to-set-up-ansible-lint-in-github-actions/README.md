@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, GitHub Actions, CI/CD
+Tags: Ansible, Ansible-lint, GitHub Actions, CI/CD
 
 Description: Configure GitHub Actions to run ansible-lint on every push and pull request with caching, collection dependencies, and SARIF reporting.
 

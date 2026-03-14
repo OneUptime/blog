@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Services, Troubleshooting, Linux
+Tags: RHEL, Systemd, Services, Troubleshooting, Linux
 
 Description: Diagnose and fix systemd service startup failures on RHEL by reading journal logs, checking unit files, and resolving common configuration issues.
 

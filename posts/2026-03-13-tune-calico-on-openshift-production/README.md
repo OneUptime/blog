@@ -10,7 +10,7 @@ Description: A guide to performance-tuning Calico for production workloads on Op
 
 ## Introduction
 
-Tuning Calico for production on OpenShift requires working within OpenShift's constraints. OpenShift uses specific kernel parameters, Security Context Constraints, and may run on RHEL CoreOS nodes where some advanced kernel features — such as certain eBPF program types — require careful compatibility checking before enabling.
+Tuning Calico for production on OpenShift requires working within OpenShift's constraints. OpenShift uses specific kernel parameters, Security Context Constraints, and may run on RHEL CoreOS nodes where some advanced kernel features - such as certain eBPF program types - require careful compatibility checking before enabling.
 
 Despite these constraints, significant performance improvements are available: correct MTU settings for the overlay network, Felix timer tuning for lower policy convergence latency, and IPAM block optimization for dense clusters. These are safe to apply in any OpenShift environment.
 

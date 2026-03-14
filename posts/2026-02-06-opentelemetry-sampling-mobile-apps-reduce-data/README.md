@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Mobile, Sampling, iOS, Android, Data Volume
+Tags: OpenTelemetry, Mobile, Sampling, IOS, Android, Data Volume
 
 Description: Learn how to implement effective OpenTelemetry sampling strategies for mobile applications to reduce telemetry costs while maintaining visibility into critical user experiences and performance issues.
 

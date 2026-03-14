@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Data Plane, Certificates, mTLS, Security, Monitoring
+Tags: Istio, Data Plane, Certificates, MTLS, Security, Monitoring
 
 Description: How to monitor and troubleshoot TLS certificate status in Istio's data plane including expiration checks, rotation verification, and SDS debugging.
 

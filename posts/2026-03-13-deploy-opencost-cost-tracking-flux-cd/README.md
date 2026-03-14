@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, OpenCost, Cost Management, FinOps, HelmRelease, Prometheus
+Tags: Flux CD, Kubernetes, GitOps, Opencost, Cost Management, FinOps, HelmRelease, Prometheus
 
 Description: Deploy OpenCost open-source Kubernetes cost monitoring using Flux CD to track and allocate cluster spending across namespaces, teams, and workloads.
 
@@ -12,9 +12,9 @@ Description: Deploy OpenCost open-source Kubernetes cost monitoring using Flux C
 
 OpenCost is the open-source, vendor-neutral standard for measuring and allocating Kubernetes infrastructure costs. Born as a CNCF sandbox project, it integrates directly with your existing Prometheus installation and provides a clean API and UI for understanding where your cloud spend is going. Unlike proprietary solutions, OpenCost gives you full control over your cost data without vendor lock-in.
 
-Deploying OpenCost through Flux CD means your cost monitoring infrastructure is treated identically to your application workloads — version controlled, peer reviewed, and automatically reconciled. When your team updates pricing configurations or allocation rules, those changes flow through Git with full traceability.
+Deploying OpenCost through Flux CD means your cost monitoring infrastructure is treated identically to your application workloads - version controlled, peer reviewed, and automatically reconciled. When your team updates pricing configurations or allocation rules, those changes flow through Git with full traceability.
 
-This guide walks you through deploying OpenCost alongside Prometheus in your cluster using Flux CD HelmRelease resources. You will configure cloud provider pricing, namespace cost allocation, and the OpenCost UI — all as declarative manifests committed to Git.
+This guide walks you through deploying OpenCost alongside Prometheus in your cluster using Flux CD HelmRelease resources. You will configure cloud provider pricing, namespace cost allocation, and the OpenCost UI - all as declarative manifests committed to Git.
 
 ## Prerequisites
 

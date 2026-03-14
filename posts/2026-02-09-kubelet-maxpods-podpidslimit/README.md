@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Capacity Planning
+Tags: Kubernetes, Kubelet, Capacity Planning
 
 Description: Learn how to configure kubelet maxPods and podPidsLimit settings to control node capacity, prevent resource exhaustion, and optimize pod density based on node size and workload characteristics.
 

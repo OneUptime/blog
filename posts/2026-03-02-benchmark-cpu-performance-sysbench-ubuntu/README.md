@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Performance, Benchmarking, sysbench, SysAdmin
+Tags: Ubuntu, Performance, Benchmarking, Sysbench, SysAdmin
 
 Description: Learn how to install and use sysbench to benchmark CPU, memory, and I/O performance on Ubuntu for baseline testing and server comparison.
 

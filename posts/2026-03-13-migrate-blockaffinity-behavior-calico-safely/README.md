@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, blockaffinity, kubernetes, migration, networking, ip-management
+Tags: Calico, IPAM, BlockAffinity, Kubernetes, Migration, Networking, Ip-management
 
 Description: Learn how to safely migrate and manage Calico's BlockAffinity behavior when changing IPAM configurations or migrating between Calico versions.
 
@@ -10,7 +10,7 @@ Description: Learn how to safely migrate and manage Calico's BlockAffinity behav
 
 ## Introduction
 
-Calico's IPAM system allocates IP addresses to pods using blocks—subnets carved from IP pools and assigned to specific nodes. The BlockAffinity resource represents the relationship between a node and its assigned IP blocks. When migrating IPAM configurations, changing block sizes, or moving between IP pools, understanding and correctly managing BlockAffinity is essential to prevent IP address conflicts and routing failures.
+Calico's IPAM system allocates IP addresses to pods using blocks-subnets carved from IP pools and assigned to specific nodes. The BlockAffinity resource represents the relationship between a node and its assigned IP blocks. When migrating IPAM configurations, changing block sizes, or moving between IP pools, understanding and correctly managing BlockAffinity is essential to prevent IP address conflicts and routing failures.
 
 Misconfigured or stale BlockAffinity resources can cause pods to receive duplicate IPs, routes to be advertised incorrectly, or IPAM to run out of allocatable addresses prematurely. A systematic migration approach ensures block affinities are consistent with actual allocations.
 

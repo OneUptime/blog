@@ -20,7 +20,7 @@ Flux CD manages the Authelia deployment, configuration, and secret references de
 
 - Kubernetes cluster (v1.26+) with Flux CD bootstrapped
 - ingress-nginx Ingress controller
-- Redis (for session storage) — included in the Helm chart
+- Redis (for session storage) - included in the Helm chart
 - `flux` and `kubectl` CLIs configured
 
 ## Step 1: Create Namespace and Secrets
@@ -81,7 +81,7 @@ data:
       period: 30
       skew: 1
 
-    # Authentication backend — using file for simplicity
+    # Authentication backend - using file for simplicity
     authentication_backend:
       file:
         path: /config/users_database.yml
@@ -103,7 +103,7 @@ data:
         host: authelia-redis-master
         port: 6379
 
-    # Regulation — lock out brute-force attempts
+    # Regulation - lock out brute-force attempts
     regulation:
       max_retries: 3
       find_time: 2m
@@ -119,7 +119,7 @@ data:
       filesystem:
         filename: /tmp/notification.txt
 
-    # Access control — who can access what
+    # Access control - who can access what
     access_control:
       default_policy: deny
       rules:
@@ -137,7 +137,7 @@ data:
 ## Step 4: Create the Users Database Secret
 
 ```bash
-# Generate password hash (argon2id) — install argon2 CLI first
+# Generate password hash (argon2id) - install argon2 CLI first
 # echo -n "UserPassword1!" | argon2 salt -id -v 19 -m 16 -t 2 -p 1 -l 32 -e
 
 kubectl create secret generic authelia-users \
@@ -255,7 +255,7 @@ metadata:
 - Migrate from SQLite to PostgreSQL storage (`storage.postgres`) before going to production for reliability and query performance.
 - Enable SMTP notifications so Authelia can send password reset and 2FA enrollment emails.
 - Use LDAP as the authentication backend (`authentication_backend.ldap`) to integrate with corporate directories.
-- Configure `regulation` settings carefully—too aggressive a ban policy can lock out legitimate users.
+- Configure `regulation` settings carefully-too aggressive a ban policy can lock out legitimate users.
 - Store the `users_database.yml` in a Sealed Secret and update it via Git when adding new users.
 
 ## Conclusion

@@ -124,4 +124,4 @@ spec:
 
 ## Conclusion
 
-Automating Calico log collection with the bundle script ensures that every support ticket includes the same consistent set of logs and CRD state. The temporary debug script with auto-reversion prevents engineers from forgetting to revert log levels after troubleshooting — a common cause of log pipeline saturation. For long-term operational maturity, the CronJob approach maintains a rolling hourly archive that lets you review Calico behavior up to 24 hours before an incident.
+Automating Calico log collection with the bundle script ensures that every support ticket includes the same consistent set of logs and CRD state. The temporary debug script with auto-reversion prevents engineers from forgetting to revert log levels after troubleshooting - a common cause of log pipeline saturation. For long-term operational maturity, the CronJob approach maintains a rolling hourly archive that lets you review Calico behavior up to 24 hours before an incident.

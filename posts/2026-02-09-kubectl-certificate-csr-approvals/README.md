@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Security
+Tags: Kubernetes, Kubectl, Security
 
 Description: Master kubectl certificate commands to manage Certificate Signing Requests in Kubernetes, including CSR approval, denial, and troubleshooting for secure cluster certificate management.
 

@@ -10,9 +10,9 @@ Description: Deploy Sonatype Nexus Repository Manager to Kubernetes using Flux C
 
 ## Introduction
 
-Sonatype Nexus Repository Manager is the industry-standard artifact repository for storing, organizing, and distributing binaries—Maven JARs, npm packages, Docker images, PyPI packages, and more. Running Nexus on Kubernetes centralizes artifact management for all your teams and pipelines in a single, highly available service.
+Sonatype Nexus Repository Manager is the industry-standard artifact repository for storing, organizing, and distributing binaries-Maven JARs, npm packages, Docker images, PyPI packages, and more. Running Nexus on Kubernetes centralizes artifact management for all your teams and pipelines in a single, highly available service.
 
-With Flux CD managing the deployment, your Nexus configuration is version-controlled in Git. HelmRelease resources track the official chart, and Flux's reconciliation loop ensures your running instance always matches the declared state. Any drift—caused by manual `kubectl` edits or node restarts—is automatically corrected.
+With Flux CD managing the deployment, your Nexus configuration is version-controlled in Git. HelmRelease resources track the official chart, and Flux's reconciliation loop ensures your running instance always matches the declared state. Any drift-caused by manual `kubectl` edits or node restarts-is automatically corrected.
 
 This guide walks you through deploying Nexus OSS (open-source edition) using the Sonatype Helm chart, configuring persistent storage, and exposing Nexus through an Ingress controller.
 
@@ -170,7 +170,7 @@ flux reconcile kustomization nexus --with-source
 ## Best Practices
 
 - Store the admin password and any proxy credentials in Sealed Secrets or Vault, never in plain Git.
-- Use a dedicated `StorageClass` backed by fast storage (SSD) for the Nexus data volume—artifact uploads are I/O intensive.
+- Use a dedicated `StorageClass` backed by fast storage (SSD) for the Nexus data volume-artifact uploads are I/O intensive.
 - Enable the `nexus.scripts.allowCreation` flag only during initial setup; disable it afterward for security.
 - Configure a `PodDisruptionBudget` if running the paid HA edition to protect against simultaneous node drains.
 - Set up Nexus IQ Server integration (if licensed) via Helm values to enable component lifecycle management.

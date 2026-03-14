@@ -153,7 +153,7 @@ spec:
 
 ## Step 4: Operational Considerations
 
-**Flagger**: Zero manifest changes required to adopt canary—you continue using standard Deployments. Flagger manages the traffic splitting automatically. Ideal for teams that want to add progressive delivery without rearchitecting their manifests.
+**Flagger**: Zero manifest changes required to adopt canary-you continue using standard Deployments. Flagger manages the traffic splitting automatically. Ideal for teams that want to add progressive delivery without rearchitecting their manifests.
 
 **Argo Rollouts**: Requires migrating Deployment resources to Rollout CRDs. This is a larger migration effort but provides more explicit control via the step-based strategy definition.
 
@@ -167,4 +167,4 @@ spec:
 
 ## Conclusion
 
-Flagger and Argo Rollouts are both excellent progressive delivery solutions. Flagger's strength is in its automation—once configured, it manages the entire canary lifecycle without per-release intervention. Argo Rollouts' strength is in explicit control and a dedicated UI plugin. Teams using Flux CD will typically reach for Flagger; ArgoCD teams will use Argo Rollouts. Both are valid choices when configured with appropriate metric thresholds.
+Flagger and Argo Rollouts are both excellent progressive delivery solutions. Flagger's strength is in its automation-once configured, it manages the entire canary lifecycle without per-release intervention. Argo Rollouts' strength is in explicit control and a dedicated UI plugin. Teams using Flux CD will typically reach for Flagger; ArgoCD teams will use Argo Rollouts. Both are valid choices when configured with appropriate metric thresholds.

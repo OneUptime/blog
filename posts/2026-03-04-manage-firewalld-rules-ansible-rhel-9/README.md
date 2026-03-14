@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, firewalld, Security, Automation, Linux
+Tags: RHEL, Ansible, Firewalld, Security, Automation, Linux
 
 Description: Use Ansible to manage firewalld zones, services, ports, and rich rules across your RHEL servers for consistent network security.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Jaeger, Elasticsearch, Distributed Tracing, Flux CD, GitOps, Kubernetes, Observability
+Tags: Flux CD, Kubernetes, GitOps, Jaeger, Elasticsearch, Distributed Tracing, Observability
 
-Description: Deploy Jaeger with Elasticsearch as a persistent storage backend on Kubernetes using Flux CD. This guide covers index management, rollover configuration, and production-ready GitOps patterns for distributed tracing.
+Description: Deploy Jaeger with Elasticsearch as a persistent storage backend on Kubernetes using Flux CD.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Deploy Jaeger with Elasticsearch as a persistent storage backend on
 
 Elasticsearch is one of the most popular storage backends for Jaeger in production environments, providing full-text search over span tags, rich aggregation for dependency graphs, and well-understood operational tooling. Jaeger uses daily index rollover to manage storage growth and supports index lifecycle management (ILM) for automatic retention enforcement.
 
-Deploying both Elasticsearch and Jaeger via Flux CD ensures your entire tracing stack—from index templates to collector scaling—is managed declaratively. Storage configuration changes, retention updates, and scaling events all flow through Git.
+Deploying both Elasticsearch and Jaeger via Flux CD ensures your entire tracing stack-from index templates to collector scaling-is managed declaratively. Storage configuration changes, retention updates, and scaling events all flow through Git.
 
 This guide deploys Elasticsearch using the Elastic Helm chart and Jaeger using the Jaeger Operator with Elasticsearch storage.
 
@@ -62,7 +62,7 @@ spec:
     # 3-node cluster for production quorum
     replicas: 3
     minimumMasterNodes: 2
-    # Allocate JVM heap — set to ~50% of container memory
+    # Allocate JVM heap - set to ~50% of container memory
     esJavaOpts: "-Xmx2g -Xms2g"
     resources:
       requests:
@@ -97,7 +97,7 @@ metadata:
   namespace: observability
 type: Opaque
 stringData:
-  # Elasticsearch username and password for Jaeger — encrypt with SOPS
+  # Elasticsearch username and password for Jaeger - encrypt with SOPS
   ES_USERNAME: "jaeger"
   ES_PASSWORD: "changeme-in-production"
 ```
@@ -183,4 +183,4 @@ spec:
 
 ## Conclusion
 
-Jaeger with Elasticsearch provides a searchable, scalable distributed tracing backend that integrates well with existing Elasticsearch operations knowledge. Flux CD keeps the entire stack—Elasticsearch cluster sizing, Jaeger retention, and collector scaling—version-controlled and automatically reconciled.
+Jaeger with Elasticsearch provides a searchable, scalable distributed tracing backend that integrates well with existing Elasticsearch operations knowledge. Flux CD keeps the entire stack-Elasticsearch cluster sizing, Jaeger retention, and collector scaling-version-controlled and automatically reconciled.

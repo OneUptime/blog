@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kernel, Linux, System Administration, sysfs
+Tags: Ubuntu, Kernel, Linux, System Administration, Sysfs
 
 Description: Learn how to read and write kernel parameters using sysfs and procfs on Ubuntu to inspect hardware, tune performance, and configure kernel behavior at runtime.
 

@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico networking problems on IBM Cloud
 
 ## Introduction
 
-Calico troubleshooting on IBM Cloud has unique aspects compared to other platforms. On IKS, IBM manages a set of Calico GlobalNetworkPolicies that must not be removed or overridden — doing so can break cluster networking in subtle ways. On self-managed clusters on IBM Cloud VPC, the troubleshooting process is similar to other cloud providers but requires IBM Cloud-specific tools for VPC inspection.
+Calico troubleshooting on IBM Cloud has unique aspects compared to other platforms. On IKS, IBM manages a set of Calico GlobalNetworkPolicies that must not be removed or overridden - doing so can break cluster networking in subtle ways. On self-managed clusters on IBM Cloud VPC, the troubleshooting process is similar to other cloud providers but requires IBM Cloud-specific tools for VPC inspection.
 
 This guide covers the most common Calico networking failures on IBM Cloud and their resolutions.
 
@@ -149,4 +149,4 @@ calicoctl get nodes
 
 ## Conclusion
 
-Troubleshooting Calico on IBM Cloud requires awareness of IBM's managed policy structure on IKS — custom policies must use order numbers that don't conflict with IBM's managed policies. For self-managed clusters on IBM Cloud VPC, VPC security group rules are the first thing to check for cross-zone failures. Always back up Calico configuration before IKS upgrades to enable quick recovery if IBM's upgrade process modifies policy configuration.
+Troubleshooting Calico on IBM Cloud requires awareness of IBM's managed policy structure on IKS - custom policies must use order numbers that don't conflict with IBM's managed policies. For self-managed clusters on IBM Cloud VPC, VPC security group rules are the first thing to check for cross-zone failures. Always back up Calico configuration before IKS upgrades to enable quick recovery if IBM's upgrade process modifies policy configuration.

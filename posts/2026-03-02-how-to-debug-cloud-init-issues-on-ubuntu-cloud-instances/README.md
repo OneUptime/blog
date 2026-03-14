@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Debugging, Cloud, Troubleshooting
+Tags: Ubuntu, Cloud-init, Debugging, Cloud, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing cloud-init failures on Ubuntu cloud instances, covering log analysis, common errors, and testing strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, macOS, Memory, CPU, Performance, Resource Limits
+Tags: Docker, Docker Desktop, MacOS, Memory, CPU, Performance, Resource Limits
 
 Description: Configure Docker Desktop memory and CPU limits on macOS to balance container performance with host system responsiveness.
 

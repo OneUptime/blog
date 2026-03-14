@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Concurrency, sync.Map, Mutex, Performance
+Tags: Go, Concurrency, Sync.Map, Mutex, Performance
 
 Description: A practical guide to choosing between sync.Map and regular maps protected by mutex in Go, with benchmarks and real-world use cases to help you pick the right tool for your concurrency needs.
 

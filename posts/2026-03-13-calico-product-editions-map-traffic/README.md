@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, CNI, Networking, Traffic Flows, Network Policy, eBPF
+Tags: Calico, Kubernetes, CNI, Networking, Traffic Flows, Network Policy, EBPF
 
 Description: Apply your knowledge of Calico editions to real Kubernetes traffic scenarios, understanding what each edition can observe, control, and report on for actual cluster traffic flows.
 
@@ -12,7 +12,7 @@ Description: Apply your knowledge of Calico editions to real Kubernetes traffic 
 
 Understanding Calico editions at an abstract level is useful, but the real test is mapping edition capabilities to the actual traffic flows in your cluster. What can Open Source see? What can Enterprise report on? What does Calico Cloud block that Open Source cannot?
 
-This post walks through three representative Kubernetes traffic scenarios and shows how each Calico edition handles them — from visibility to enforcement. The goal is to connect the theoretical edition comparison to the operational reality of running workloads.
+This post walks through three representative Kubernetes traffic scenarios and shows how each Calico edition handles them - from visibility to enforcement. The goal is to connect the theoretical edition comparison to the operational reality of running workloads.
 
 Each scenario represents a class of traffic you will encounter in any production cluster: internal pod-to-pod, external egress, and service mesh interaction.
 
@@ -81,13 +81,13 @@ graph LR
     AppTier -->|Evaluated second| Default[Default Tier]
 ```
 
-In Open Source, all policies are evaluated in a single flat namespace — there is no enforcement of policy authorship boundaries between teams.
+In Open Source, all policies are evaluated in a single flat namespace - there is no enforcement of policy authorship boundaries between teams.
 
 ## Best Practices
 
 - Map your most critical traffic flows to edition capabilities before making a purchase decision
 - For each flow, document whether you need enforcement only (Open Source) or visibility + compliance (Cloud/Enterprise)
-- Use FQDN policy (Cloud/Enterprise) for all external API egress — IP-based allowlists for external APIs are operationally unmaintainable
+- Use FQDN policy (Cloud/Enterprise) for all external API egress - IP-based allowlists for external APIs are operationally unmaintainable
 - Test each scenario in the lab before assuming feature availability in production
 
 ## Conclusion

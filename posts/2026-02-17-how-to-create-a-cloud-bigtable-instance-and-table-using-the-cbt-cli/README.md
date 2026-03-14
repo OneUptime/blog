@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, cbt CLI, NoSQL, Database
+Tags: GCP, Cloud Bigtable, Cbt CLI, NoSQL, Database
 
 Description: A step-by-step guide to creating and managing Cloud Bigtable instances, tables, and column families using the cbt command-line tool.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Production, eBPF, kube-proxy, Decision Framework
+Tags: Calico, Kubernetes, Services, CNI, Production, EBPF, Kube-proxy, Decision Framework
 
 Description: A decision framework for choosing between kube-proxy and Calico eBPF service routing, and for configuring service types correctly for production Kubernetes workloads.
 
@@ -94,7 +94,7 @@ The service CIDR (set at cluster creation via `--service-cluster-ip-range`) cann
 - For clusters with 50+ services, enable Calico eBPF to eliminate kube-proxy DNAT overhead
 - Use `externalTrafficPolicy: Local` or Calico eBPF DSR for any service that needs accurate client IPs in application logs
 - Apply a `ClusterIP: None` (headless) configuration for stateful workloads (databases, message queues) where pods need direct addressing
-- Monitor service endpoint counts — services with zero endpoints are silently unreachable
+- Monitor service endpoint counts - services with zero endpoints are silently unreachable
 
 ## Conclusion
 

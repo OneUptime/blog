@@ -78,8 +78,8 @@ oc describe pod -n calico-system -l k8s-app=calico-node
 ```
 
 OpenShift-specific errors include:
-- `unable to create new container: insufficient privileges` — SCC issue
-- `failed to read /sys/kernel` — missing privileged access
+- `unable to create new container: insufficient privileges` - SCC issue
+- `failed to read /sys/kernel` - missing privileged access
 
 ## Step 6: Verify IP Pool Alignment
 

@@ -58,7 +58,7 @@ CALICOVPP_INTERFACES:
 - rxQueueSize: 4096 = Handles 10G burst without overflow
 - rxMode: adaptive = Best balance for mixed low/high load
 - vfio-pci = Required for IOMMU protection
-```
+```plaintext
 
 ## Documentation Component 3: Uplink Change Procedure
 
@@ -92,7 +92,7 @@ CALICOVPP_INTERFACES:
 7. Run traffic test before uncordoning
 8. Uncordon: kubectl uncordon <node>
 9. Update this documentation
-```
+```plaintext
 
 ## Documentation Component 4: Recovery Procedure
 
@@ -112,8 +112,10 @@ Use out-of-band console (IPMI/iDRAC/cloud console)
    dhclient eth0  # Or configure static IP
 5. Now you can SSH to the node normally
 6. Fix the VPP configuration before restarting
-```
+```plaintext
 
 ## Conclusion
 
-Documenting Calico VPP uplink configuration requires capturing hardware details (NIC model, PCI address, driver version), configuration rationale, a risk-aware change procedure with out-of-band access as a prerequisite, and an emergency recovery procedure. The out-of-band access requirement must be prominently documented — teams that skip this step are one uplink misconfiguration away from a node that requires data center or cloud provider intervention to recover.
+Documenting Calico VPP uplink configuration requires capturing hardware details (NIC model, PCI address, driver version), configuration rationale, a risk-aware change procedure with out-of-band access as a prerequisite, and an emergency recovery procedure. The out-of-band access requirement must be prominently documented - teams that skip this step are one uplink misconfiguration away from a node that requires data center or cloud provider intervention to recover.
+
+```

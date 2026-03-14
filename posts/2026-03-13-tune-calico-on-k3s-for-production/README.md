@@ -10,7 +10,7 @@ Description: Apply production-grade Calico tuning on K3s clusters for edge and I
 
 ## Introduction
 
-K3s is increasingly used in production edge deployments where resources are constrained but reliability requirements are high. Tuning Calico for production on K3s requires balancing performance with resource efficiency — setting appropriate MTU values, reducing unnecessary logging overhead, and configuring Felix parameters for the specific hardware and network environment of your edge nodes.
+K3s is increasingly used in production edge deployments where resources are constrained but reliability requirements are high. Tuning Calico for production on K3s requires balancing performance with resource efficiency - setting appropriate MTU values, reducing unnecessary logging overhead, and configuring Felix parameters for the specific hardware and network environment of your edge nodes.
 
 Production K3s deployments often run on ARM-based hardware or low-power x86 systems. Calico's eBPF data plane is particularly well-suited for these environments when the kernel version supports it (5.14+), providing better performance than iptables with lower overhead. However, traditional iptables mode remains the most compatible option for diverse edge hardware.
 

@@ -1,4 +1,4 @@
-# How to Validate Resolution of Kubernetes API Access Problems with Calico Egress Policy
+# How to Validate Resolution of Kubernetes API Access with Calico Egress
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -117,4 +117,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating Kubernetes API access restoration requires confirming the network path, operator recovery, and removal of the emergency policy in favor of a permanent fix. Operators in backoff state need a restart to reconnect — this step is frequently overlooked when teams focus only on the network validation.
+Validating Kubernetes API access restoration requires confirming the network path, operator recovery, and removal of the emergency policy in favor of a permanent fix. Operators in backoff state need a restart to reconnect - this step is frequently overlooked when teams focus only on the network validation.

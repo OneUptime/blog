@@ -10,7 +10,7 @@ Description: Alert on configuration drift detected by Flux CD to identify unauth
 
 ## Introduction
 
-Configuration drift occurs when the actual state of your cluster diverges from the desired state declared in Git. Drift can happen through manual `kubectl` commands, misconfigured automation, or bugs in other controllers that modify resources. For compliance frameworks — SOC 2, HIPAA, PCI DSS, FedRAMP — drift represents an unauthorized change that must be detected, investigated, and remediated.
+Configuration drift occurs when the actual state of your cluster diverges from the desired state declared in Git. Drift can happen through manual `kubectl` commands, misconfigured automation, or bugs in other controllers that modify resources. For compliance frameworks - SOC 2, HIPAA, PCI DSS, FedRAMP - drift represents an unauthorized change that must be detected, investigated, and remediated.
 
 Flux CD continuously compares cluster state to Git state. When drift is detected, Flux either corrects it automatically (if `prune: true` is set) or marks the Kustomization as drifted. Both cases generate events that can trigger alerts. This guide shows how to configure drift detection sensitivity, set up alerting, and build a compliance response workflow for drift events.
 
@@ -47,7 +47,7 @@ spec:
   path: ./apps/production
 
   # Force: true allows Flux to overwrite fields managed by other controllers
-  # Use with caution — only enable if needed
+  # Use with caution - only enable if needed
   force: false
 
   # Health checks run after reconciliation to verify the cluster state
@@ -202,7 +202,7 @@ flux describe kustomization <name>
 
 # Diff Git state vs cluster state
 flux diff kustomization <name>
-```
+```plaintext
 
 ## Step 2: Investigate the Cause
 - Was the change made intentionally (forgotten to commit to Git)?
@@ -211,15 +211,15 @@ flux diff kustomization <name>
 
 ## Step 3: Remediate
 ```bash
-# Option A: Accept the change — commit it to Git so Flux considers it desired
+# Option A: Accept the change - commit it to Git so Flux considers it desired
 git add <changed-file>
 git commit -m "sync: reconcile drift in <resource> (cause: <reason>)"
 
-# Option B: Reject the change — force Flux to restore Git state
+# Option B: Reject the change - force Flux to restore Git state
 flux reconcile kustomization <name> --force
 
 # Option C: Open a security incident if the change was unauthorized
-```
+```plaintext
 
 ## Step 4: Document
 - File an incident ticket with the drift details
@@ -239,7 +239,7 @@ MONTH=$(date +%Y-%m)
 OUTPUT="compliance-reports/drift-report-$MONTH.md"
 
 cat > "$OUTPUT" << EOF
-# Configuration Drift Report — $MONTH
+# Configuration Drift Report - $MONTH
 Generated: $(date -u)
 
 ## Drift Events This Month
@@ -256,7 +256,7 @@ kubectl get events -n flux-system \
   >> "$OUTPUT"
 
 echo "Drift report: $OUTPUT"
-```
+```plaintext
 
 ## Step 6: Tune Drift Sensitivity per Environment
 
@@ -268,7 +268,7 @@ Different environments need different drift sensitivity:
 spec:
   interval: 2m      # Check frequently
   prune: true       # Auto-remove unauthorized resources
-  force: false      # Don't force-overwrite — prefer alerting
+  force: false      # Don't force-overwrite - prefer alerting
 
 # Staging: moderate drift detection
 # clusters/staging/apps/app.yaml
@@ -276,16 +276,16 @@ spec:
   interval: 10m
   prune: true
 
-# Development: permissive — allow manual experimentation
+# Development: permissive - allow manual experimentation
 # clusters/development/apps/app.yaml
 spec:
   interval: 30m
-  prune: false     # Don't auto-remove in dev — developers may be experimenting
-```
+  prune: false     # Don't auto-remove in dev - developers may be experimenting
+```plaintext
 
 ## Best Practices
 
-- Treat every drift alert as a potential security event until proven otherwise — unauthorized changes to production cluster resources are a serious concern.
+- Treat every drift alert as a potential security event until proven otherwise - unauthorized changes to production cluster resources are a serious concern.
 - Correlate drift events with access logs to determine who made the change outside of GitOps.
 - Use `prune: true` in production for most resources, but be careful with stateful resources (PersistentVolumeClaims, Secrets) where accidental pruning is destructive.
 - Set up a Slack channel specifically for drift alerts so they have high visibility and are not lost in general platform noise.
@@ -294,3 +294,5 @@ spec:
 ## Conclusion
 
 Flux CD drift detection provides a continuous monitoring capability that is essential for compliance frameworks requiring configuration integrity controls. By combining Flux's automatic drift correction with alert notifications and a structured response runbook, you can detect unauthorized changes within minutes, remediate them quickly, and produce drift event reports that demonstrate your configuration management controls are functioning effectively.
+
+```

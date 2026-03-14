@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, openshift, redhat, kubernetes, requirements, cni, scc
+Tags: Cilium, Kubernetes, OpenShift, EBPF
 
 Description: A guide to verifying and updating Cilium's system requirements on Red Hat OpenShift, including Security Context Constraints, kernel compatibility, and OVN-Kubernetes migration considerations.
 
@@ -12,7 +12,7 @@ Description: A guide to verifying and updating Cilium's system requirements on R
 
 Red Hat OpenShift adds several layers of security and operational constraints beyond standard Kubernetes that affect Cilium's requirements. OpenShift's Security Context Constraints (SCCs), default CNI (OVN-Kubernetes), and RHCOS (Red Hat CoreOS) node images all introduce specific prerequisites for running Cilium.
 
-OpenShift's strong security posture means Cilium's privileged DaemonSet requires explicit SCC configuration — a step that doesn't exist on standard Kubernetes. Additionally, migrating from OVN-Kubernetes to Cilium requires careful planning around the cluster network operator and RHCOS kernel compatibility.
+OpenShift's strong security posture means Cilium's privileged DaemonSet requires explicit SCC configuration - a step that doesn't exist on standard Kubernetes. Additionally, migrating from OVN-Kubernetes to Cilium requires careful planning around the cluster network operator and RHCOS kernel compatibility.
 
 This guide covers all prerequisites for running Cilium on OpenShift, including SCC setup, kernel verification, and the cluster-level network changes needed before Cilium installation.
 
@@ -59,7 +59,7 @@ oc get network.config cluster -o yaml
 Cilium's DaemonSet requires privileged access. Create the appropriate SCC.
 
 ```yaml
-# cilium-scc.yaml — Security Context Constraint for Cilium
+# cilium-scc.yaml - Security Context Constraint for Cilium
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:

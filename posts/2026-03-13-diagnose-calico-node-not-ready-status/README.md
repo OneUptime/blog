@@ -102,4 +102,4 @@ After identifying the specific issue, apply the targeted fix. For calico-node Cr
 
 ## Conclusion
 
-Node NotReady status related to Calico is traced by examining the calico-node pod on the affected node, checking Felix logs, and verifying CNI binary presence. The calico-node pod health is the primary indicator — its specific failure mode determines the correct fix path.
+Node NotReady status related to Calico is traced by examining the calico-node pod on the affected node, checking Felix logs, and verifying CNI binary presence. The calico-node pod health is the primary indicator - its specific failure mode determines the correct fix path.

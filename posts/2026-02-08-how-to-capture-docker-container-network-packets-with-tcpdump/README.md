@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, tcpdump, Debugging, Containers, DevOps
+Tags: Docker, Networking, Tcpdump, Debugging, Containers, DevOps
 
 Description: Learn how to capture and analyze network packets from Docker containers using tcpdump for troubleshooting and debugging.
 

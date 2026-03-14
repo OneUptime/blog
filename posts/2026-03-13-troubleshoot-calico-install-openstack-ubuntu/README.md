@@ -40,9 +40,9 @@ sudo tail -100 /var/log/neutron/neutron-server.log | grep -iE "error|calico"
 ```
 
 Common Neutron-Calico errors:
-- `Failed to connect to etcd` — etcd endpoint wrong
-- `Calico mechanism driver not found` — package not installed
-- `Invalid IP pool CIDR` — IP pool misconfiguration
+- `Failed to connect to etcd` - etcd endpoint wrong
+- `Calico mechanism driver not found` - package not installed
+- `Invalid IP pool CIDR` - IP pool misconfiguration
 
 ## Step 3: Check Felix Logs on Compute Nodes
 

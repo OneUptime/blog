@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, filemd5 Function, File Systems, HCL, Infrastructure as Code, Hashing, MD5
+Tags: Terraform, Filemd5 Function, File Systems, HCL, Infrastructure as Code, Hashing, MD5
 
 Description: Learn how to use the filemd5 function in Terraform to compute MD5 hashes of local files for S3 ETags, change detection, and content verification.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, firewalld, Firewall, Security, RHEL
+Tags: Ansible, Firewalld, Firewall, Security, RHEL
 
 Description: Learn how to manage firewalld zones, services, and rules with Ansible on RHEL, CentOS, and Fedora systems for consistent firewall automation.
 

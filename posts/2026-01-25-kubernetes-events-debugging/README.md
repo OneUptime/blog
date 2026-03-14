@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Events, Debugging, Troubleshooting, kubectl, DevOps
+Tags: Kubernetes, Events, Debugging, Troubleshooting, Kubectl, DevOps
 
 Description: Learn how to use Kubernetes events effectively for debugging cluster issues. This guide covers viewing events, filtering by resource, understanding event types, and setting up event-based alerting.
 

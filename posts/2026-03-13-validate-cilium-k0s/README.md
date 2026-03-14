@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, k0s, kubernetes, networking, cni, lightweight
+Tags: Cilium, Kubernetes, K0s, EBPF
 
 Description: Learn how to validate Cilium CNI on k0s Kubernetes clusters, covering installation verification, networking checks, and connectivity testing specific to the k0s distribution.
 
@@ -77,7 +77,7 @@ kubectl -n kube-system get pods
 
 # Check that the kube-proxy DaemonSet is absent (if using Cilium's replacement)
 kubectl -n kube-system get daemonset kube-proxy 2>/dev/null || \
-  echo "kube-proxy absent — Cilium replacement active"
+  echo "kube-proxy absent - Cilium replacement active"
 ```
 
 ## Step 3: Validate Cilium Installation

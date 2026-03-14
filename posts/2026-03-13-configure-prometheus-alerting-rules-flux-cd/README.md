@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, prometheus, alerting, monitoring, kubernetes, gitops
+Tags: Flux CD, Kubernetes, GitOps, Prometheus, Alerting, PrometheusRule, Observability
 
 Description: Learn how to manage Prometheus alerting rules as code using Flux CD, enabling GitOps-driven alert management with automatic reconciliation and version control.
 
@@ -10,7 +10,7 @@ Description: Learn how to manage Prometheus alerting rules as code using Flux CD
 
 ## Introduction
 
-Prometheus alerting rules define the conditions under which your monitoring system fires alerts to operators. Managing these rules as code in Git, deployed through Flux CD, ensures they are reviewed, versioned, and consistently applied—eliminating the risk of misconfigured or undocumented alerts in production.
+Prometheus alerting rules define the conditions under which your monitoring system fires alerts to operators. Managing these rules as code in Git, deployed through Flux CD, ensures they are reviewed, versioned, and consistently applied-eliminating the risk of misconfigured or undocumented alerts in production.
 
 When you store Prometheus rules in Git and use Flux to deploy them via PrometheusRule custom resources, any changes go through your standard pull request workflow. This means alert changes are reviewed by teammates before they affect production, and you can instantly roll back a flawed alert rule by reverting a commit.
 

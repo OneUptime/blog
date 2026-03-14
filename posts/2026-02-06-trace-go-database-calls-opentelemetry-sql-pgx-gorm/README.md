@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, database/sql, pgx, GORM, Database Tracing
+Tags: OpenTelemetry, Go, Database/sql, Pgx, GORM, Database Tracing
 
 Description: Complete guide to instrumenting Go database operations with OpenTelemetry across database/sql, pgx, and GORM for visibility into query performance and execution patterns.
 

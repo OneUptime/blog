@@ -254,9 +254,9 @@ kubectl exec -n seaweedfs seaweedfs-master-0 -- \
 
 ## Best Practices
 
-- Run 3 Master replicas with Raft consensus for production HA — single-master deployments lose metadata on crash.
+- Run 3 Master replicas with Raft consensus for production HA - single-master deployments lose metadata on crash.
 - Set `garbage_threshold: 0.3` to automatically reclaim disk space from deleted files when 30% of a volume is garbage.
-- Use `leveldb2` as the Filer metadata backend for large file counts — it outperforms the default backend at millions of files.
+- Use `leveldb2` as the Filer metadata backend for large file counts - it outperforms the default backend at millions of files.
 - Configure replication (`replication: "001"` for 1 copy, `"010"` for 2 copies in different racks) based on your resilience requirements.
 - Separate master, volume server, and filer on dedicated nodes for production to avoid resource contention.
 

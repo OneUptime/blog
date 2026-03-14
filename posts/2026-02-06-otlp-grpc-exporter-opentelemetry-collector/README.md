@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, OTLP, gRPC, Exporter, Configuration
+Tags: OpenTelemetry, Collector, OTLP, GRPC, Exporter, Configuration
 
 Description: Master the configuration of the OTLP gRPC exporter in the OpenTelemetry Collector for reliable telemetry data transmission to observability backends.
 

@@ -94,4 +94,4 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
 
 ## Conclusion
 
-Calico datastore locking is a migration-specific tool that should only be active for the duration of the import phase of an etcd-to-Kubernetes datastore migration — typically 2-5 minutes. The lock window should be planned during a low-traffic period since no new network policies will be enforced during this time. Prepare the complete migration procedure in advance, test it in a staging environment, and execute it as a single continuous operation to minimize the lock duration.
+Calico datastore locking is a migration-specific tool that should only be active for the duration of the import phase of an etcd-to-Kubernetes datastore migration - typically 2-5 minutes. The lock window should be planned during a low-traffic period since no new network policies will be enforced during this time. Prepare the complete migration procedure in advance, test it in a staging environment, and execute it as a single continuous operation to minimize the lock duration.

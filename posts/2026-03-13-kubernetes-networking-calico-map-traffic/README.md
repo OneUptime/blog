@@ -10,7 +10,7 @@ Description: A concrete walkthrough of real Kubernetes traffic flows in a Calico
 
 ## Introduction
 
-Kubernetes networking concepts — pod IPs, service CIDRs, BGP routes — become meaningful when you trace a real packet through the system. Mapping these flows to what you can actually observe on nodes and in Calico resources transforms networking from theory into a debuggable system.
+Kubernetes networking concepts - pod IPs, service CIDRs, BGP routes - become meaningful when you trace a real packet through the system. Mapping these flows to what you can actually observe on nodes and in Calico resources transforms networking from theory into a debuggable system.
 
 This post traces five real traffic scenarios through a Calico cluster, showing what happens at each hop, which Calico component is responsible, and what you can observe to verify the behavior. Each scenario builds on the previous one in complexity.
 
@@ -51,7 +51,7 @@ graph LR
     vethB --> PodB[Pod B\n192.168.1.5]
 ```
 
-On the same node, traffic flows through veth pairs in the host network namespace. No encapsulation is used — it's direct kernel forwarding. Felix programs the route: `192.168.1.5 dev veth-pod-b scope link`.
+On the same node, traffic flows through veth pairs in the host network namespace. No encapsulation is used - it's direct kernel forwarding. Felix programs the route: `192.168.1.5 dev veth-pod-b scope link`.
 
 ```bash
 # Verify on the node:
@@ -118,4 +118,4 @@ sudo iptables -t nat -L CALICO-MASQ -n
 
 ## Conclusion
 
-Mapping real traffic flows to Calico components — veth pairs, VXLAN tunnels, iptables DNAT rules, eBPF service maps — gives you a concrete mental model for debugging networking issues. Each flow is traceable from source to destination through observable artifacts on the node. Building this traceability into your team's troubleshooting workflow transforms networking incidents from mysterious to diagnosable.
+Mapping real traffic flows to Calico components - veth pairs, VXLAN tunnels, iptables DNAT rules, eBPF service maps - gives you a concrete mental model for debugging networking issues. Each flow is traceable from source to destination through observable artifacts on the node. Building this traceability into your team's troubleshooting workflow transforms networking incidents from mysterious to diagnosable.

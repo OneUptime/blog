@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, requirements, prerequisites, kubeadm, on-premises
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A universal guide to validating system requirements for running Cilium on any Kubernetes cluster, covering kernel requirements, system configuration, and Kubernetes API server settings.
 
@@ -12,7 +12,7 @@ Description: A universal guide to validating system requirements for running Cil
 
 Whether you are deploying Cilium on a bare metal cluster, a VM-based cluster built with kubeadm, or a specialized Kubernetes distribution, there is a core set of system requirements that must be met for Cilium to function correctly. These requirements span the Linux kernel, system configuration, network interface settings, and Kubernetes API server flags.
 
-Unlike managed Kubernetes services that abstract infrastructure concerns, generic Kubernetes deployments give you full control—and full responsibility—for meeting these requirements. Understanding and validating each requirement before deploying Cilium prevents the trial-and-error debugging that often accompanies CNI failures.
+Unlike managed Kubernetes services that abstract infrastructure concerns, generic Kubernetes deployments give you full control-and full responsibility-for meeting these requirements. Understanding and validating each requirement before deploying Cilium prevents the trial-and-error debugging that often accompanies CNI failures.
 
 This guide provides a comprehensive requirements checklist for generic Kubernetes deployments, applicable to kubeadm clusters, Cluster API, and any custom Kubernetes setup.
 

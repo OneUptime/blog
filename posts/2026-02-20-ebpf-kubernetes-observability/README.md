@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, Kubernetes, Observability, Networking, Security
+Tags: EBPF, Kubernetes, Observability, Networking, Security
 
 Description: Learn how eBPF enables deep Kubernetes observability for networking, security, and performance monitoring without code changes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Disk Management, Troubleshooting, Storage, df, du, Monitoring
+Tags: Linux, System Administration, Disk Management, Troubleshooting, Storage, Df, Du, Monitoring
 
 Description: A practical guide to diagnosing and resolving disk full errors in Linux, including finding large files, cleaning up safely, and preventing future issues.
 

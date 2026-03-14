@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, APT, Package Management, dpkg, System Administration
+Tags: Ubuntu, APT, Package Management, Dpkg, System Administration
 
 Description: Learn multiple methods to find which Ubuntu package provides a specific file, binary, or library - both for installed files and packages not yet on your system.
 

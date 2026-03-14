@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Pacemaker, hacluster, Authentication, Cluster, Security, Linux
+Tags: RHEL, Pacemaker, Hacluster, Authentication, Cluster, Security, Linux
 
 Description: Learn how to configure cluster node authentication using the hacluster account on RHEL for secure Pacemaker cluster communication.
 

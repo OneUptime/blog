@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Configure Cilium's cluster-wide BGP settings using CiliumBGPClusterConfig to define BGP instances, peer references, and advertisement policies at scale.
 
@@ -12,7 +12,7 @@ Description: Configure Cilium's cluster-wide BGP settings using CiliumBGPCluster
 
 Cilium v1.16 introduced `CiliumBGPClusterConfig`, a cluster-scoped resource that provides a more scalable and modular approach to BGP configuration compared to the original `CiliumBGPPeeringPolicy`. Instead of embedding peer configuration directly in the peering policy, the new model separates cluster topology (which nodes peer with which routers) from peer parameters (timers, authentication, address families), enabling reuse across hundreds of nodes.
 
-The `CiliumBGPClusterConfig` resource defines BGP instances at the cluster level and references `CiliumBGPNodeConfig` (auto-generated per node) and `CiliumBGPPeerConfig` objects. This separation follows the same principle as Kubernetes Ingress controllers — the cluster admin defines the policy, and the operator handles instance-level details. For large clusters with many nodes and peers, this dramatically reduces configuration duplication.
+The `CiliumBGPClusterConfig` resource defines BGP instances at the cluster level and references `CiliumBGPNodeConfig` (auto-generated per node) and `CiliumBGPPeerConfig` objects. This separation follows the same principle as Kubernetes Ingress controllers - the cluster admin defines the policy, and the operator handles instance-level details. For large clusters with many nodes and peers, this dramatically reduces configuration duplication.
 
 This guide walks through a complete BGP cluster configuration using the newer API, from defining the cluster config to validating per-node BGP instance state.
 

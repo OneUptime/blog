@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, loop_control, Automation
+Tags: Ansible, Loops, Loop_control, Automation
 
 Description: Learn how to use index_var in Ansible loop_control to access the current loop index for numbered resources, sequential operations, and more.
 

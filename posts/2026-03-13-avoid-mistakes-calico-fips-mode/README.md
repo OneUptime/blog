@@ -10,7 +10,7 @@ Description: Identify and avoid common pitfalls when deploying Calico in FIPS mo
 
 ## Introduction
 
-FIPS mode in Calico has several common failure patterns that leave organizations believing they are FIPS-compliant when they are not. The most dangerous mistakes involve partial enablement — some components or nodes are FIPS-enabled while others are not — creating a false compliance posture that can fail audits or leave security gaps.
+FIPS mode in Calico has several common failure patterns that leave organizations believing they are FIPS-compliant when they are not. The most dangerous mistakes involve partial enablement - some components or nodes are FIPS-enabled while others are not - creating a false compliance posture that can fail audits or leave security gaps.
 
 Understanding these mistakes is particularly important because FIPS-related failures can be silent: the cluster continues to function normally even when non-FIPS algorithms are being used. A comprehensive understanding of what each FIPS configuration element controls helps you avoid gaps in your compliance posture.
 

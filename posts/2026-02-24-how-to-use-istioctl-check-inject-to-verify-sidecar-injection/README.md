@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar Injection, istioctl, Kubernetes, Service Mesh
+Tags: Istio, Sidecar Injection, Istioctl, Kubernetes, Service Mesh
 
 Description: A practical guide to using istioctl check-inject to troubleshoot and verify automatic sidecar injection for your Kubernetes workloads.
 

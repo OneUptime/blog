@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Automation, Linux, DevOps
+Tags: Ansible, Sudo, Automation, Linux, DevOps
 
 Description: Set up passwordless sudo for Ansible automation to run playbooks without interactive password prompts
 

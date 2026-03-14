@@ -10,7 +10,7 @@ Description: Detect and manage idle Kubernetes resources using Flux CD, covering
 
 ## Introduction
 
-Idle resources — deployments running with near-zero traffic, namespaces created for testing and forgotten, jobs that completed weeks ago — are a silent cost drain in Kubernetes clusters. Flux CD's GitOps model actually helps with idle resource management: if a resource is not in Git, it should not be in the cluster.
+Idle resources - deployments running with near-zero traffic, namespaces created for testing and forgotten, jobs that completed weeks ago - are a silent cost drain in Kubernetes clusters. Flux CD's GitOps model actually helps with idle resource management: if a resource is not in Git, it should not be in the cluster.
 
 This post covers strategies for detecting idle resources, using Flux's `prune` feature to remove resources not in Git, and building automated workflows to flag and remove genuinely idle workloads.
 
@@ -163,7 +163,7 @@ metadata:
 
 ## Best Practices
 
-- Enable `prune: true` on all Flux Kustomizations — it is the most important GitOps hygiene setting
+- Enable `prune: true` on all Flux Kustomizations - it is the most important GitOps hygiene setting
 - Schedule weekly idle resource reports and assign a rotation to review them
 - Use namespace-level ResourceQuotas to limit idle resource waste even when pruning is not immediate
 - Implement a PR-based review process for any new namespace creation to prevent namespace sprawl

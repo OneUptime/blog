@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cilium, Service Mesh, Kubernetes, eBPF, mTLS, Observability, Hubble, Load Balancing, Sidecar-Free
+Tags: Cilium, Service Mesh, Kubernetes, EBPF, MTLS, Observability, Hubble, Load Balancing, Sidecar-Free
 
 Description: A comprehensive guide to implementing Cilium Service Mesh in Kubernetes, covering sidecar-free architecture, mTLS encryption, load balancing, and observability with Hubble.
 

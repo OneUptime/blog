@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, abs Function, Math, HCL, Infrastructure as Code, Numeric Functions
+Tags: Terraform, Abs Function, Math, HCL, Infrastructure as Code, Numeric Functions
 
 Description: Learn how to use the abs function in Terraform to get the absolute value of a number and apply it in practical infrastructure configuration scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Node.js, Configuration, tsconfig, JavaScript, Backend Development
+Tags: TypeScript, Node.js, Configuration, Tsconfig, JavaScript, Backend Development
 
 Description: A comprehensive guide to setting up and configuring TypeScript for Node.js projects, covering tsconfig options, module systems, and best practices for production applications.
 

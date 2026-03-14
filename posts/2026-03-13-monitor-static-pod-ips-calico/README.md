@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Static IPs, Monitoring, Networking, StatefulSet
+Tags: Calico, Kubernetes, IPAM, Static IP, Monitoring, Networking, StatefulSets
 
 Description: Learn how to monitor static pod IP assignments in Calico to ensure that pods maintain consistent IP addresses across restarts, which is critical for stateful workloads.
 
@@ -12,7 +12,7 @@ Description: Learn how to monitor static pod IP assignments in Calico to ensure 
 
 Static pod IPs are essential for stateful workloads like databases, message brokers, and applications that are referenced by IP in external firewall rules or DNS configurations. Calico supports static IP assignment through pod annotations, but ensuring these assignments persist across pod restarts and node migrations requires active monitoring.
 
-Without monitoring, a pod restart might silently receive a different IP—especially if the originally assigned IP was claimed by another workload during downtime. This breaks external connectivity and can cause data loss in clustered applications that rely on peer IP addresses.
+Without monitoring, a pod restart might silently receive a different IP-especially if the originally assigned IP was claimed by another workload during downtime. This breaks external connectivity and can cause data loss in clustered applications that rely on peer IP addresses.
 
 This guide covers how to monitor static pod IP assignments in Calico and alert on unexpected IP changes.
 

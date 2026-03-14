@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Ambassador, Emissary-ingress, Mapping, API Gateway, Routing
+Tags: Flux CD, Kubernetes, GitOps, Ambassador, Emissary-ingress, Mapping, API Gateway
 
 Description: Manage Ambassador Mapping resources for API routing using Flux CD GitOps, covering path routing, header-based routing, canary releases, and traffic splitting.
 
@@ -10,7 +10,7 @@ Description: Manage Ambassador Mapping resources for API routing using Flux CD G
 
 ## Introduction
 
-Ambassador Mappings are the core routing primitive in Ambassador Edge Stack. A Mapping defines the relationship between an incoming request (matched by host, path, headers, or other criteria) and an upstream service. Unlike Kubernetes Ingress resources, Ambassador Mappings provide rich routing capabilities including header-based routing, canary deployments, traffic weighting, and gRPC proxying — all expressed as Kubernetes CRDs.
+Ambassador Mappings are the core routing primitive in Ambassador Edge Stack. A Mapping defines the relationship between an incoming request (matched by host, path, headers, or other criteria) and an upstream service. Unlike Kubernetes Ingress resources, Ambassador Mappings provide rich routing capabilities including header-based routing, canary deployments, traffic weighting, and gRPC proxying - all expressed as Kubernetes CRDs.
 
 Managing Mappings through Flux CD makes API routing a first-class GitOps concern. When a new service needs an API endpoint, a developer adds a Mapping YAML file to the Git repository, opens a pull request, and after review, Flux CD automatically applies the routing rule. Route changes are auditable, reversible, and consistent across environments.
 
@@ -219,7 +219,7 @@ flux get kustomization ambassador-mappings
 
 - Group related Mappings in the same file rather than creating one file per Mapping; this makes the routing intent clearer and reduces file proliferation.
 - Use Mapping `precedence` field to define explicit ordering when multiple Mappings match the same prefix; higher precedence values win.
-- Implement canary releases incrementally — start at 1% and increase by 5-10% increments with monitoring between each step.
+- Implement canary releases incrementally - start at 1% and increase by 5-10% increments with monitoring between each step.
 - Add `cors` configuration to Mappings that serve browser-based clients rather than relying on a global CORS setting; this gives per-route control.
 - Use `retry_policy` in Mappings for idempotent endpoints to automatically retry failed upstream requests.
 - Monitor per-Mapping error rates through Ambassador's Prometheus metrics to identify routing issues before they affect all traffic.

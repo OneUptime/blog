@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, net/http, otelhttp, HTTP, Standard Library
+Tags: OpenTelemetry, Go, Net/http, Otelhttp, HTTP, Standard Library
 
 Description: Learn how to add OpenTelemetry instrumentation to standard library net/http handlers using otelhttp for automatic tracing and metrics collection.
 

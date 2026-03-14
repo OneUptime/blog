@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, grep, Shell, Text Processing
+Tags: Ubuntu, Linux, Grep, Shell, Text Processing
 
 Description: Master the grep command on Ubuntu with practical examples covering regex patterns, file search, context lines, color output, and combining grep with other tools.
 

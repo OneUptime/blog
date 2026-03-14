@@ -144,7 +144,7 @@ metadata:
   name: kube-bench
   namespace: compliance
   annotations:
-    description: "CIS Kubernetes Benchmark scan — runs weekly"
+    description: "CIS Kubernetes Benchmark scan - runs weekly"
 spec:
   schedule: "0 4 * * 0"    # Every Sunday at 04:00 UTC
   jobTemplate:
@@ -348,12 +348,12 @@ spec:
 
 ## Best Practices
 
-- Block PRs that introduce images with CRITICAL CVEs by setting `--exit-code 1` in the CI Trivy scan — never allow known critical vulnerabilities into your GitOps repository.
+- Block PRs that introduce images with CRITICAL CVEs by setting `--exit-code 1` in the CI Trivy scan - never allow known critical vulnerabilities into your GitOps repository.
 - Run kube-bench monthly at minimum, and within 48 hours of any Kubernetes version upgrade.
-- Treat Falco `WARNING` priority alerts as security incidents requiring investigation — do not let them accumulate without review.
+- Treat Falco `WARNING` priority alerts as security incidents requiring investigation - do not let them accumulate without review.
 - Archive compliance scan reports for the retention period required by your compliance framework.
-- Use `--ignore-unfixed` in Trivy to focus on vulnerabilities that have available patches — this reduces noise from theoretical vulnerabilities without available fixes.
+- Use `--ignore-unfixed` in Trivy to focus on vulnerabilities that have available patches - this reduces noise from theoretical vulnerabilities without available fixes.
 
 ## Conclusion
 
-Automated compliance scanning integrated with Flux CD creates a continuous assurance loop: new deployments are scanned before reaching Git, running workloads are scanned by in-cluster operators, and runtime behavior is monitored by Falco. All scanning tools are managed by Flux, so the scanning configuration is itself version-controlled and auditable. The result is a compliance posture that is actively monitored rather than periodically assessed — providing much stronger assurance that your cluster meets its compliance obligations at any point in time.
+Automated compliance scanning integrated with Flux CD creates a continuous assurance loop: new deployments are scanned before reaching Git, running workloads are scanned by in-cluster operators, and runtime behavior is monitored by Falco. All scanning tools are managed by Flux, so the scanning configuration is itself version-controlled and auditable. The result is a compliance posture that is actively monitored rather than periodically assessed - providing much stronger assurance that your cluster meets its compliance obligations at any point in time.

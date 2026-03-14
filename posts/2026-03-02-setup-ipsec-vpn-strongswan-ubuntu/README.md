@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, VPN, IPsec, strongSwan, Networking
+Tags: Ubuntu, VPN, IPsec, StrongSwan, Networking
 
 Description: Complete guide to configuring an IPsec VPN server using strongSwan on Ubuntu, including certificate setup, IKEv2 configuration, and client compatibility.
 

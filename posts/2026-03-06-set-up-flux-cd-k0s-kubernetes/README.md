@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, k0s, Kubernetes, GitOps, Continuous Delivery, Lightweight Kubernetes
+Tags: Flux CD, K0s, Kubernetes, GitOps, Continuous Delivery, Lightweight Kubernetes
 
 Description: A practical guide to installing and configuring Flux CD on k0s, the lightweight Kubernetes distribution by Mirantis.
 

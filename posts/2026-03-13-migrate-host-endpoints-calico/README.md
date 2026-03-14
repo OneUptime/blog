@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Host Endpoints, Security
+Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
 Description: Migrate existing host firewall rules to Calico host endpoint policies for unified management.
 

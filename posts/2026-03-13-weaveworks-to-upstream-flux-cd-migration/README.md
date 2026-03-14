@@ -1,10 +1,10 @@
-# How to Migrate from Weaveworks to Upstream Flux CD
+# Weaveworks to Upstream Flux CD Migration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Weaveworks, Migration, GitOps, Kubernetes, Open Source, Enterprise
+Tags: Flux CD, GitOps, Migration, Weaveworks, Kubernetes
 
-Description: Learn how to migrate from Weaveworks enterprise Flux (Weave GitOps) to upstream open-source Flux CD following Weaveworks' wind-down.
+Description: Learn how to migrate from Weaveworks Flux v1 to upstream CNCF Flux CD v2, preserving your GitOps workflows while adopting the modern multi-tenant, multi-cluster Flux architecture.
 
 ---
 
@@ -45,7 +45,7 @@ flux get sources git -A
 
 ## Step 2: Understand What Survives the Migration
 
-```
+```plaintext
 Weave GitOps Feature             Migration Path
 ───────────────────────────────  ────────────────────────────────
 Flux CDs (Kustomization, etc.)   Keep as-is - upstream compatible

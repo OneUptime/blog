@@ -10,7 +10,7 @@ Description: Validate producer, consumer, and mixed GAMMA configuration types in
 
 ## Introduction
 
-Validating GAMMA configuration types ensures that the intended ownership model—whether producer-controlled, consumer-controlled, or mixed—is correctly enforced in the eBPF datapath. Each type requires slightly different validation steps.
+Validating GAMMA configuration types ensures that the intended ownership model-whether producer-controlled, consumer-controlled, or mixed-is correctly enforced in the eBPF datapath. Each type requires slightly different validation steps.
 
 For producer routes, validation confirms that traffic to the Service is routed according to the producer's rules regardless of which consumer sends it. For consumer routes, validation confirms that only the intended consumer's traffic is affected by the routing policy.
 

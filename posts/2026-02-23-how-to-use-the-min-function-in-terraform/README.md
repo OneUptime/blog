@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, min Function, Math, HCL, Infrastructure as Code, Numeric Functions
+Tags: Terraform, Min Function, Math, HCL, Infrastructure as Code, Numeric Functions
 
 Description: Learn how to use the min function in Terraform to find the smallest number from a set of values and enforce upper limits in infrastructure configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, veth, Network Namespaces, Linux
+Tags: RHEL, Veth, Network Namespaces, Linux
 
 Description: Learn how to use virtual Ethernet (veth) pairs to connect network namespaces on RHEL, including direct connections, bridge-based topologies, and multi-namespace networks.
 

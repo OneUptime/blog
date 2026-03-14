@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Post-Build, Variable Substitution, substituteFrom
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Post-Build, Variable Substitution, SubstituteFrom
 
 Description: Learn how to use spec.postBuild.substituteFrom in Flux Kustomizations to load substitution variables from ConfigMaps and Secrets for flexible multi-environment deployments.
 

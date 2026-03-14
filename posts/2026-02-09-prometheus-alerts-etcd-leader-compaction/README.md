@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Prometheus, etcd
+Tags: Kubernetes, Prometheus, Etcd
 
 Description: Learn how to build Prometheus alerts that monitor etcd leader elections, detect excessive leader changes, and track database compaction lag to maintain stable Kubernetes cluster operations.
 

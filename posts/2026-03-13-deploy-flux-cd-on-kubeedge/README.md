@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, KubeEdge, Kubernetes, Edge Computing, GitOps, IoT, Edge-Cloud
+Tags: Flux CD, KubeEdge, Kubernetes, Edge Computing, GitOps, IoT
 
 Description: Set up Flux CD with KubeEdge for edge-cloud collaboration, managing workloads across both cloud and edge nodes from a single GitOps repository.
 
@@ -10,7 +10,7 @@ Description: Set up Flux CD with KubeEdge for edge-cloud collaboration, managing
 
 ## Introduction
 
-KubeEdge extends Kubernetes to edge environments by running a lightweight edge agent (EdgeCore) on edge devices that communicates with a cloud-side component (CloudCore). This architecture enables Kubernetes-native management of edge devices even with unreliable connectivity — EdgeCore caches workload state locally so pods keep running even when the connection to the cloud is severed.
+KubeEdge extends Kubernetes to edge environments by running a lightweight edge agent (EdgeCore) on edge devices that communicates with a cloud-side component (CloudCore). This architecture enables Kubernetes-native management of edge devices even with unreliable connectivity - EdgeCore caches workload state locally so pods keep running even when the connection to the cloud is severed.
 
 Integrating Flux CD with KubeEdge creates a powerful GitOps-driven edge computing platform. Flux runs in the cloud-side Kubernetes cluster and reconciles workload definitions that KubeEdge then distributes to edge nodes. This gives you Git as the single source of truth for both cloud and edge workloads.
 
@@ -44,7 +44,7 @@ kubectl describe node edge-device-001 | grep -A5 Labels
 
 ## Step 2: Repository Structure for Edge-Cloud Separation
 
-```
+```plaintext
 clusters/
   cloud/
     flux-system/
@@ -233,7 +233,7 @@ spec:
 ## Best Practices
 
 - Use `nodeSelector: node-role.kubernetes.io/edge: ""` for all edge-targeted workloads to prevent them from scheduling on cloud nodes.
-- Set `imagePullPolicy: IfNotPresent` on edge deployments — EdgeCore caches images locally for offline operation.
+- Set `imagePullPolicy: IfNotPresent` on edge deployments - EdgeCore caches images locally for offline operation.
 - Store DeviceModel and DeviceInstance resources in Git for full GitOps coverage of device configuration.
 - Use separate namespaces for cloud workloads and edge workloads for clear separation and RBAC.
 - Monitor KubeEdge CloudCore metrics to track edge node connectivity rates.

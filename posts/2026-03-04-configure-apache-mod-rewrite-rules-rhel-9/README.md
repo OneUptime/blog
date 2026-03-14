@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Apache, mod_rewrite, URL Rewriting, Linux
+Tags: RHEL, Apache, Mod_rewrite, URL Rewriting, Linux
 
 Description: A hands-on guide to writing mod_rewrite rules for URL rewriting, redirects, and clean URLs on Apache httpd in RHEL.
 

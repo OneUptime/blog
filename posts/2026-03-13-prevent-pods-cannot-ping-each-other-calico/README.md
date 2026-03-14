@@ -122,7 +122,7 @@ kubectl delete pod node-a-pod node-b-pod
 
 Create a connectivity matrix:
 
-```
+```plaintext
 Service A -> Service B: TCP 8080
 Service A -> DNS: UDP 53
 Service B -> Database: TCP 5432

@@ -1,8 +1,8 @@
-# How to  Calico on OpenStack Upgrades
+# How to  Calico on OpenStack Upgrades - Avoid
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Avoid OpenStack-specific Calico upgrade mistakes including Neutron ML2 driver incompatibilities and etcd cluster conflicts.
 

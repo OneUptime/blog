@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API Server, Network Troubleshooting, Debugging, kubectl
+Tags: Kubernetes, API Server, Network Troubleshooting, Debugging, Kubectl
 
 Description: Learn how to diagnose and fix network connectivity issues with the Kubernetes API server using practical troubleshooting techniques and tools.
 

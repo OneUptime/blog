@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Operations
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Operations
 
 Description: Build operational processes for regular Calico upgrades on OpenShift, coordinating with OCP upgrade cycles and Red Hat support requirements.
 
@@ -10,7 +10,7 @@ Description: Build operational processes for regular Calico upgrades on OpenShif
 
 ## Introduction
 
-Operationalizing Calico upgrades on OpenShift requires coordinating with Red Hat's OpenShift release calendar. OCP releases follow a predictable cadence (minor versions every 4-6 months, z-stream patches monthly), and Calico upgrades should be scheduled to follow OCP stability windows — after OCP z-stream patches have been running for 2+ weeks without issues.
+Operationalizing Calico upgrades on OpenShift requires coordinating with Red Hat's OpenShift release calendar. OCP releases follow a predictable cadence (minor versions every 4-6 months, z-stream patches monthly), and Calico upgrades should be scheduled to follow OCP stability windows - after OCP z-stream patches have been running for 2+ weeks without issues.
 
 ## OCP-Calico Upgrade Coordination Calendar
 

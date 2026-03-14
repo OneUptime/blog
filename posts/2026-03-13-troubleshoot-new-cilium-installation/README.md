@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Installation, Troubleshooting, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A comprehensive troubleshooting guide for issues that arise during a fresh Cilium installation, from DaemonSet failures to network connectivity problems.
 

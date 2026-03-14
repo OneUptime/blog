@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Traefik, Middleware, Rate Limiting, Authentication, Headers, Request Transformation
+Tags: Flux CD, Kubernetes, GitOps, Traefik, Middleware, Rate Limiting, Authentication
 
 Description: Manage Traefik Middleware resources for request transformation, rate limiting, and authentication using Flux CD GitOps to create reusable, composable API gateway policies.
 
@@ -289,4 +289,4 @@ spec:
 
 ## Conclusion
 
-Traefik Middleware managed through Flux CD creates a centralized, auditable library of API gateway policies. Security headers, rate limiting, and authentication are defined once, reviewed once, and referenced across all routes — ensuring consistent protection without per-service configuration duplication. The GitOps model means every policy change is traceable, reviewable, and instantly reversible.
+Traefik Middleware managed through Flux CD creates a centralized, auditable library of API gateway policies. Security headers, rate limiting, and authentication are defined once, reviewed once, and referenced across all routes - ensuring consistent protection without per-service configuration duplication. The GitOps model means every policy change is traceable, reviewable, and instantly reversible.

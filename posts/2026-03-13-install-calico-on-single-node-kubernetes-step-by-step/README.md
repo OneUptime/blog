@@ -1,10 +1,10 @@
-# Install Calico on Single-Node Kubernetes Step by Step
+# How to Install Calico on Single-Node Kubernetes Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Single-Node, Development, Testing, CNI
+Tags: Calico, Kubernetes, Networking, CNI, Installation, Single-Node
 
-Description: Step-by-step guide to installing Calico on a single-node Kubernetes cluster for development, testing, and learning network policies.
+Description: A step-by-step guide to installing Calico on a single-node bare-metal or VM Kubernetes cluster bootstrapped with kubeadm.
 
 ---
 

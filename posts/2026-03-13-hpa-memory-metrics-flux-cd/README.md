@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HPA, Memory, Autoscaling, Kubernetes, GitOps, Horizontal Pod Autoscaler
+Tags: Flux CD, HPA, Memory Metrics, Kubernetes, Autoscaling, Resource Management
 
 Description: Learn how to manage Kubernetes Horizontal Pod Autoscaler with memory utilization targets using Flux CD GitOps for memory-based pod autoscaling.
 
@@ -10,7 +10,7 @@ Description: Learn how to manage Kubernetes Horizontal Pod Autoscaler with memor
 
 ## Introduction
 
-While CPU-based HPA is common, some workloads—like JVM applications, in-memory databases, or batch processors—are memory-bound rather than CPU-bound. Memory-based HPA scales pod replicas when average memory utilization exceeds a target percentage. Managing memory-based HPA through Flux CD ensures scaling policies are consistent and auditable.
+While CPU-based HPA is common, some workloads-like JVM applications, in-memory databases, or batch processors-are memory-bound rather than CPU-bound. Memory-based HPA scales pod replicas when average memory utilization exceeds a target percentage. Managing memory-based HPA through Flux CD ensures scaling policies are consistent and auditable.
 
 ## Prerequisites
 

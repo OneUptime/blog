@@ -10,7 +10,7 @@ Description: Validate that calico-node has recovered after eviction with pod hea
 
 ## Introduction
 
-Validating calico-node eviction recovery requires confirming the pod is running, the node pressure has cleared, the system-node-critical priority class is applied, and networking is functioning correctly. The priority class verification is the most critical post-incident validation — without it, the pod will be evicted again on the next pressure event.
+Validating calico-node eviction recovery requires confirming the pod is running, the node pressure has cleared, the system-node-critical priority class is applied, and networking is functioning correctly. The priority class verification is the most critical post-incident validation - without it, the pod will be evicted again on the next pressure event.
 
 ## Symptoms
 

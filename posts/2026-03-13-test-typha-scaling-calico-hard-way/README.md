@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Testing, CNI, Networking, Reliability
+Tags: Calico, Typha, Kubernetes, Networking, Scaling, Testing, Hard Way
 
-Description: Validate that your manually configured Typha deployment correctly serves Felix connections, survives pod restarts without network disruption, and enforces network policies consistently during rolling updates.
+Description: Validate that your manually configured Typha deployment correctly serves Felix connections, survives pod restarts without network disruption, and enforces network policies consistently during...
 
 ---
 
 ## Introduction
 
-Deploying Typha is not enough — you need to verify that it works correctly under the conditions your production cluster encounters. This means confirming that Felix agents connect through Typha rather than directly to the API server, that policy updates propagate to all nodes, and that Typha pod restarts do not create enforcement gaps.
+Deploying Typha is not enough - you need to verify that it works correctly under the conditions your production cluster encounters. This means confirming that Felix agents connect through Typha rather than directly to the API server, that policy updates propagate to all nodes, and that Typha pod restarts do not create enforcement gaps.
 
 This post provides a set of repeatable test procedures for each of these scenarios.
 
@@ -71,7 +71,7 @@ Apply a deny policy through Typha and confirm it takes effect:
 
 ```yaml
 # deny-all-test.yaml
-# Deny-all ingress policy — validates Typha is distributing policies to Felix
+# Deny-all ingress policy - validates Typha is distributing policies to Felix
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -187,7 +187,7 @@ All three metric families must be present and non-zero after at least 5 minutes 
 
 - Run the network policy enforcement test after every Typha configuration change to confirm Felix is still receiving updates.
 - Include the pod restart resilience test in your cluster upgrade runbook to catch regressions before they reach production.
-- Test scaling down (from 3 to 2 replicas) as well — the Felix agents connected to the removed pod must reconnect gracefully to the remaining replicas.
+- Test scaling down (from 3 to 2 replicas) as well - the Felix agents connected to the removed pod must reconnect gracefully to the remaining replicas.
 - Use a dedicated test namespace for all Typha validation tests to avoid polluting production policy state.
 - Automate these tests in your CI/CD pipeline so they run on every Calico version upgrade.
 

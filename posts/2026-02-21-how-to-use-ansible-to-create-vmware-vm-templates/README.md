@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Templates, vSphere, Golden Image
+Tags: Ansible, VMware, Templates, VSphere, Golden Image
 
 Description: Learn how to create and manage VMware VM templates with Ansible for standardized, repeatable virtual machine deployments across your environment.
 

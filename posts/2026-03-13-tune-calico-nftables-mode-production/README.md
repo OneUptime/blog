@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Performance, Production
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Performance, Production
 
 Description: A guide to tuning Calico's nftables mode for production performance and stability.
 
@@ -12,7 +12,7 @@ Description: A guide to tuning Calico's nftables mode for production performance
 
 Calico in nftables mode has different performance characteristics than iptables mode. nftables' atomic rule update model means policy changes take effect in a single transaction rather than a series of individual iptables commands. This reduces policy update latency and eliminates the brief inconsistency window that can occur with complex iptables policy updates.
 
-Production tuning for nftables mode focuses on the same Felix parameters as iptables mode — refresh intervals, route table management, and resource allocation — but also includes nftables-specific kernel tuning to handle large policy sets efficiently.
+Production tuning for nftables mode focuses on the same Felix parameters as iptables mode - refresh intervals, route table management, and resource allocation - but also includes nftables-specific kernel tuning to handle large policy sets efficiently.
 
 ## Prerequisites
 
@@ -102,4 +102,4 @@ Policy application should complete in under 1 second in nftables mode.
 
 ## Conclusion
 
-Tuning Calico in nftables mode for production combines Felix interval tuning (identical to iptables mode) with nftables-specific kernel parameters for connection tracking and set management. nftables' atomic update model provides better baseline performance for policy updates than iptables, and the Prometheus metrics — particularly `felix_int_dataplane_apply_time_seconds` — are the key indicators of nftables performance under production load.
+Tuning Calico in nftables mode for production combines Felix interval tuning (identical to iptables mode) with nftables-specific kernel parameters for connection tracking and set management. nftables' atomic update model provides better baseline performance for policy updates than iptables, and the Prometheus metrics - particularly `felix_int_dataplane_apply_time_seconds` - are the key indicators of nftables performance under production load.

@@ -10,9 +10,9 @@ Description: Security hardening for Calico networking on IBM Cloud, leveraging I
 
 ## Introduction
 
-Securing Calico networking on IBM Cloud benefits from both IBM's built-in security controls and Calico's fine-grained policy model. IBM Cloud IKS includes a set of managed Calico policies that establish a security baseline — these are designed to ensure cluster components can communicate while blocking unauthorized traffic. Your custom policies extend this baseline with application-specific microsegmentation.
+Securing Calico networking on IBM Cloud benefits from both IBM's built-in security controls and Calico's fine-grained policy model. IBM Cloud IKS includes a set of managed Calico policies that establish a security baseline - these are designed to ensure cluster components can communicate while blocking unauthorized traffic. Your custom policies extend this baseline with application-specific microsegmentation.
 
-IBM Cloud VPC's security groups provide node-level access control, while Calico network policies enforce pod-level rules. Understanding how these layers interact — and ensuring custom policies don't conflict with IBM's managed policies — is the foundation of a secure IBM Cloud Kubernetes deployment.
+IBM Cloud VPC's security groups provide node-level access control, while Calico network policies enforce pod-level rules. Understanding how these layers interact - and ensuring custom policies don't conflict with IBM's managed policies - is the foundation of a secure IBM Cloud Kubernetes deployment.
 
 ## Prerequisites
 
@@ -129,4 +129,4 @@ ibmcloud ks cluster feature disable public-service-endpoint --cluster my-cluster
 
 ## Conclusion
 
-Securing Calico on IBM Cloud requires working within IBM's managed policy structure — custom policies should use order numbers above 5000 to avoid conflicting with IBM's baseline. The combination of IBM Cloud VPC security groups for node-level access control, Calico policies for pod-level microsegmentation, IBM Cloud Security Advisor for threat detection, and private API endpoints creates a strong defense-in-depth security posture for Kubernetes workloads on IBM Cloud.
+Securing Calico on IBM Cloud requires working within IBM's managed policy structure - custom policies should use order numbers above 5000 to avoid conflicting with IBM's baseline. The combination of IBM Cloud VPC security groups for node-level access control, Calico policies for pod-level microsegmentation, IBM Cloud Security Advisor for threat detection, and private API endpoints creates a strong defense-in-depth security posture for Kubernetes workloads on IBM Cloud.

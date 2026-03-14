@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dnsmasq, hostapd, DHCP, Networking
+Tags: Ubuntu, Dnsmasq, Hostapd, DHCP, Networking
 
 Description: Configure dnsmasq to provide DHCP and DNS services for a hostapd WiFi access point on Ubuntu, with static leases, multiple subnets, and DNS customization.
 

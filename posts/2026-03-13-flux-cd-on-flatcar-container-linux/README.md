@@ -10,7 +10,7 @@ Description: Bootstrap Flux CD on Flatcar Container Linux for immutable infrastr
 
 ## Introduction
 
-Flatcar Container Linux is the community continuation of CoreOS Container Linux — an immutable, auto-updating operating system designed specifically for running containers. It boots from a read-only partition, receives atomic OS updates via the Omaha update protocol, and provides a minimal, purpose-built environment for container runtimes. Its combination of immutability and automatic updates makes it an excellent foundation for long-lived Kubernetes nodes.
+Flatcar Container Linux is the community continuation of CoreOS Container Linux - an immutable, auto-updating operating system designed specifically for running containers. It boots from a read-only partition, receives atomic OS updates via the Omaha update protocol, and provides a minimal, purpose-built environment for container runtimes. Its combination of immutability and automatic updates makes it an excellent foundation for long-lived Kubernetes nodes.
 
 Deploying Flux CD on Flatcar creates a fully GitOps-managed immutable infrastructure stack. The OS manages its own updates independently, while Flux manages Kubernetes workloads. Together, both layers are declarative: Flatcar's `Ignition` configuration handles OS provisioning, and Flux handles everything that runs on top of Kubernetes.
 

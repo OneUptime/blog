@@ -1,10 +1,10 @@
-# How to Deploy Submariner for Multi-Cluster Networking with Flux CD
+# Submariner Multi-Cluster Networking with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Submariner, Multi-Cluster, Networking, Kubernetes, GitOps, Service Discovery
+Tags: Submariner, Flux-cd, Multi-Cluster, Kubernetes, Networking, GitOps
 
-Description: Learn how to deploy Submariner for cross-cluster Pod and Service connectivity using Flux CD GitOps for multi-cluster Kubernetes networking.
+Description: Deploy and manage Submariner's multi-cluster overlay network using Flux CD, enabling direct pod and service connectivity across Kubernetes clusters without modifying the underlying network...
 
 ---
 

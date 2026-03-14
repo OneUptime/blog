@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Traefik, IngressRoute, API Gateway, Routing, CRD
+Tags: Flux CD, Kubernetes, GitOps, Traefik, IngressRoute, API Gateway, Routing
 
 Description: Manage Traefik IngressRoute CRD resources for advanced HTTP routing using Flux CD GitOps, covering path matching, header routing, and service load balancing.
 
@@ -10,7 +10,7 @@ Description: Manage Traefik IngressRoute CRD resources for advanced HTTP routing
 
 ## Introduction
 
-Traefik's IngressRoute CRD extends the standard Kubernetes Ingress resource with much richer routing capabilities. While Kubernetes Ingress supports only basic host and path matching, IngressRoute supports complex route expressions using Traefik's routing DSL, header-based matching, query parameter routing, service weighting for canary deployments, and middleware attachment — all in a clean, expressive YAML format.
+Traefik's IngressRoute CRD extends the standard Kubernetes Ingress resource with much richer routing capabilities. While Kubernetes Ingress supports only basic host and path matching, IngressRoute supports complex route expressions using Traefik's routing DSL, header-based matching, query parameter routing, service weighting for canary deployments, and middleware attachment - all in a clean, expressive YAML format.
 
 Managing IngressRoute resources through Flux CD gives your team a GitOps-first approach to API routing. Route changes are pull requests, production routing is the state of your Git repository, and rollbacks are simple git reverts. This guide covers the key IngressRoute patterns you need for production API management.
 
@@ -256,7 +256,7 @@ flux get kustomization backend-routing
 
 - Use explicit `priority` values on all routes rather than relying on rule complexity for ordering; explicit priorities make routing behavior predictable when multiple rules could match.
 - Prefer IngressRoute over the standard Kubernetes Ingress resource when you need header routing, traffic weighting, or middleware composition; these features are not available in standard Ingress.
-- Store IngressRoute resources in the same directory as the application they route to rather than in a centralized routing directory — this makes the relationship between services and routes obvious.
+- Store IngressRoute resources in the same directory as the application they route to rather than in a centralized routing directory - this makes the relationship between services and routes obvious.
 - Avoid wildcard host matching (`HostRegexp`) in production unless necessary; explicit host matching is more predictable and easier to audit.
 - Use Traefik's `ServersTransport` CRD to configure TLS between Traefik and upstream services when your backends also use HTTPS.
 - Monitor route changes through Traefik's API (`/api/rawdata`) when debugging routing issues; it shows the live routing table as Traefik sees it.

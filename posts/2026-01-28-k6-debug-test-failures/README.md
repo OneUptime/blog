@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Debugging, Troubleshooting, Performance Testing, DevOps
+Tags: K6, Debugging, Troubleshooting, Performance Testing, DevOps
 
 Description: Learn systematic approaches to diagnose and fix k6 test failures, from script errors to threshold violations and unexpected server behavior.
 

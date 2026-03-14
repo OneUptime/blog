@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: gRPC, Service Discovery, Microservices, DevOps, Kubernetes, API
+Tags: GRPC, Service Discovery, Microservices, DevOps, Kubernetes, API
 
 Description: Learn how to implement gRPC reflection to enable dynamic service discovery, allowing clients to query available services and methods at runtime without pre-compiled protobuf definitions.
 

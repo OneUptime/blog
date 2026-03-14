@@ -273,4 +273,4 @@ kubectl exec -n mongodb -it my-mongodb-0 -- \
 
 ## Conclusion
 
-The MongoDB Community Operator deployed via Flux CD provides a straightforward path to running MongoDB replica sets on Kubernetes with SCRAM authentication, TLS, and rolling upgrades — all managed declaratively. For teams with straightforward MongoDB requirements who don't need sharding or integrated backup management, this operator offers the cleanest API and the simplest operational model. Combined with Flux CD, your MongoDB clusters are fully described in Git and automatically reconciled.
+The MongoDB Community Operator deployed via Flux CD provides a straightforward path to running MongoDB replica sets on Kubernetes with SCRAM authentication, TLS, and rolling upgrades - all managed declaratively. For teams with straightforward MongoDB requirements who don't need sharding or integrated backup management, this operator offers the cleanest API and the simplest operational model. Combined with Flux CD, your MongoDB clusters are fully described in Git and automatically reconciled.

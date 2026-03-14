@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Pilot, Service Discovery, xDS, Envoy
+Tags: Istio, Pilot, Service Discovery, XDS, Envoy
 
 Description: A deep look at Pilot-Discovery in Istio, the component responsible for service discovery and configuration distribution to Envoy sidecar proxies.
 

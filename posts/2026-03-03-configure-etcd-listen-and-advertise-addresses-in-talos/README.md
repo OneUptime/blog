@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Networking, Kubernetes, Cluster Configuration
+Tags: Talos Linux, Etcd, Networking, Kubernetes, Cluster Configuration
 
 Description: Learn how to configure etcd listen and advertise addresses in Talos Linux for proper cluster communication and multi-network setups.
 

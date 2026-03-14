@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Traffic Flows, Networking, iptables, eBPF
+Tags: Calico, Kubernetes, Data Path, CNI, Traffic Flows, Networking, Iptables, EBPF
 
 Description: A packet-level walkthrough of how real Kubernetes traffic flows through Calico's data path, showing the processing stages for same-node, cross-node, and external traffic.
 
@@ -130,7 +130,7 @@ sudo iptables -L cali-fw-<iface> -n -v  # Egress policy count
 sudo iptables -L cali-tw-<iface2> -n -v  # Ingress policy count on dest node
 ```
 
-If a count is 0 at a stage, the packet is not reaching that stage — look earlier in the path for the drop.
+If a count is 0 at a stage, the packet is not reaching that stage - look earlier in the path for the drop.
 
 ## Best Practices
 

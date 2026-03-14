@@ -10,7 +10,7 @@ Description: Monitor for Kubernetes probe failures caused by Calico NetworkPolic
 
 ## Introduction
 
-Monitoring for health check failures caused by Calico NetworkPolicies requires tracking pod readiness state, probe failure events, and pod restart rates at the namespace level. When a NetworkPolicy change blocks kubelet probe traffic, multiple pods in the affected namespace will transition to NotReady simultaneously — this correlated failure pattern is a strong signal that a policy change is the root cause rather than an application issue.
+Monitoring for health check failures caused by Calico NetworkPolicies requires tracking pod readiness state, probe failure events, and pod restart rates at the namespace level. When a NetworkPolicy change blocks kubelet probe traffic, multiple pods in the affected namespace will transition to NotReady simultaneously - this correlated failure pattern is a strong signal that a policy change is the root cause rather than an application issue.
 
 Prometheus kube-state-metrics exposes the pod readiness and container restart count metrics needed to build these alerts. Combining them with a Kubernetes event watch for probe failures provides fast detection and useful context for diagnosis.
 

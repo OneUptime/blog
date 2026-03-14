@@ -10,7 +10,7 @@ Description: Deploy Teleport zero-trust access platform to Kubernetes using Flux
 
 ## Introduction
 
-Teleport is a zero-trust access platform that provides secure, audited access to servers (SSH), Kubernetes clusters, databases (PostgreSQL, MySQL, MongoDB), internal web applications, and Windows desktops—all through a single unified proxy. Every session is recorded, every access decision is logged, and certificates replace long-lived SSH keys, dramatically reducing the attack surface of your infrastructure.
+Teleport is a zero-trust access platform that provides secure, audited access to servers (SSH), Kubernetes clusters, databases (PostgreSQL, MySQL, MongoDB), internal web applications, and Windows desktops-all through a single unified proxy. Every session is recorded, every access decision is logged, and certificates replace long-lived SSH keys, dramatically reducing the attack surface of your infrastructure.
 
 Running Teleport on Kubernetes with Flux CD gives you a declaratively managed access control plane. When your team grows and you need to add a new database resource, update access roles, or integrate a new SSO provider, those changes go through Git pull requests. Flux applies them automatically, keeping your access infrastructure in sync with your declared state.
 

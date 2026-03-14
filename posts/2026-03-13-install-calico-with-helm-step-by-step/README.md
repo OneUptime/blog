@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Helm, Kubernetes, CNI, Networking, Installation
+Tags: Calico, Kubernetes, Networking, CNI, Installation, Helm
 
 Description: Step-by-step guide to installing Calico on Kubernetes using Helm charts for declarative, version-pinned installations.
 
@@ -180,12 +180,12 @@ spec:
 
 ## Best Practices
 
-- Always pin to a specific Calico version in Helm installs — never use floating versions in production
+- Always pin to a specific Calico version in Helm installs - never use floating versions in production
 - Store Helm values in Git and use Flux HelmRelease for GitOps-managed Calico lifecycle
-- Test Helm upgrades in staging before production — Calico upgrades require node-level changes
+- Test Helm upgrades in staging before production - Calico upgrades require node-level changes
 - Use `helm diff` (helm-diff plugin) to preview changes before applying upgrades
 - Back up Calico CRD data with `calicoctl export` before major version upgrades
 
 ## Conclusion
 
-Installing Calico with Helm provides a clean, version-controlled, and upgrade-friendly alternative to raw manifest installation. When combined with Flux CD's HelmRelease, it becomes fully GitOps-managed — ensuring your Calico version and configuration are always declared in Git. This approach is recommended for teams already using Helm as their primary Kubernetes package management tool.
+Installing Calico with Helm provides a clean, version-controlled, and upgrade-friendly alternative to raw manifest installation. When combined with Flux CD's HelmRelease, it becomes fully GitOps-managed - ensuring your Calico version and configuration are always declared in Git. This approach is recommended for teams already using Helm as their primary Kubernetes package management tool.

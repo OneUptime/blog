@@ -1,10 +1,10 @@
-# Flux CD vs Rancher Fleet: Multi-Cluster Management Comparison
+# Flux CD vs Rancher Fleet: Multi-Cluster Management
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Rancher Fleet, Multi-Cluster, GitOps, Kubernetes, Fleet Management, Comparison
+Tags: Flux CD, Rancher Fleet, Multi-Cluster, GitOps, Kubernetes, Fleet Management
 
-Description: Compare Flux CD and Rancher Fleet for multi-cluster GitOps management, covering architecture, scalability, and operational characteristics.
+Description: Compare Flux CD and Rancher Fleet for multi-cluster Kubernetes management, covering architecture, cluster registration, and application deployment patterns.
 
 ---
 

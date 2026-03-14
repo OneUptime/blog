@@ -12,7 +12,7 @@ Description: A guide to using Ansible to orchestrate migration of bare metal Kub
 
 Migrating from a container-based CNI to binary-managed Calico on bare metal, when orchestrated with Ansible, becomes a repeatable and auditable process rather than a set of manual steps. Ansible handles the binary installation, CNI configuration replacement, and service management across all nodes, while also providing a rollback mechanism through its built-in handlers and backup tasks.
 
-The migration playbook is the key artifact — it should be tested in a staging environment before running against production nodes. A well-written migration playbook can be re-run safely if interrupted partway through, because Ansible's idempotent model ensures already-migrated nodes are not disrupted on a second run.
+The migration playbook is the key artifact - it should be tested in a staging environment before running against production nodes. A well-written migration playbook can be re-run safely if interrupted partway through, because Ansible's idempotent model ensures already-migrated nodes are not disrupted on a second run.
 
 This guide covers Ansible-orchestrated migration to binary-managed Calico on bare metal.
 

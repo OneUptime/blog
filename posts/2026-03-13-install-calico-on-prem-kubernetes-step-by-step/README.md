@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Installation
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Installation
 
 Description: A complete step-by-step guide to installing Calico as the CNI plugin on a self-hosted, on-premises Kubernetes cluster.
 
@@ -10,7 +10,7 @@ Description: A complete step-by-step guide to installing Calico as the CNI plugi
 
 ## Introduction
 
-Installing Calico on an on-premises Kubernetes cluster gives you full control over pod networking, network policy enforcement, and BGP routing. Unlike managed cloud Kubernetes offerings, on-prem clusters require you to handle every layer of the network stack yourself — from the physical switch configuration to the CNI plugin.
+Installing Calico on an on-premises Kubernetes cluster gives you full control over pod networking, network policy enforcement, and BGP routing. Unlike managed cloud Kubernetes offerings, on-prem clusters require you to handle every layer of the network stack yourself - from the physical switch configuration to the CNI plugin.
 
 Calico is a natural fit for on-prem deployments because it supports BGP peering with physical routers, eliminating the need for overlay networks and reducing latency. It also supports pure iptables and eBPF dataplanes, giving you flexibility based on your kernel version and performance requirements.
 

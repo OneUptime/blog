@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Restic, Backup, rest-server, Self-Hosted, Deduplication
+Tags: Docker, Restic, Backup, Rest-server, Self-Hosted, Deduplication
 
 Description: Deploy the Restic REST server in Docker to host a centralized backup repository for multiple machines using Restic.
 

@@ -12,7 +12,7 @@ Description: Deploy Knative Serving for serverless workloads using Flux CD HelmR
 
 Knative Serving is a Kubernetes extension that adds serverless capabilities including automatic scale-to-zero, request-driven autoscaling, and traffic splitting for blue/green and canary deployments. It abstracts away Deployments, Services, and Ingress into a simple `Service` resource that manages the full application lifecycle.
 
-Managing Knative through Flux CD ensures the platform components — CRDs, controller, and networking layer — are consistently deployed and version-controlled. Application teams can then deploy Knative Services through the same GitOps pipeline, giving you end-to-end auditability from platform to workload.
+Managing Knative through Flux CD ensures the platform components - CRDs, controller, and networking layer - are consistently deployed and version-controlled. Application teams can then deploy Knative Services through the same GitOps pipeline, giving you end-to-end auditability from platform to workload.
 
 This guide covers deploying Knative Serving with Kourier as the networking layer using Flux CD HelmRelease.
 
@@ -225,11 +225,11 @@ curl http://hello-world.default.<your-domain>
 ## Best Practices
 
 - Use `dependsOn` in Flux Kustomizations to ensure CRDs are applied before the operator and services that depend on them.
-- Set `prune: false` for CRD Kustomizations — Flux should never delete CRDs as that would destroy all custom resources.
+- Set `prune: false` for CRD Kustomizations - Flux should never delete CRDs as that would destroy all custom resources.
 - Configure the Knative autoscaler targets per-service rather than globally to tune scale-to-zero behavior for each workload's latency requirements.
 - Use traffic splitting in Knative Services for canary rollouts: define named revisions and set traffic weights in your Git-managed Service spec.
 - Monitor cold start latency with Prometheus and configure `minScale: 1` for latency-sensitive services that cannot tolerate scale-from-zero delays.
 
 ## Conclusion
 
-Deploying Knative Serving through Flux CD gives your platform team a GitOps-managed serverless layer on Kubernetes. Application teams can deploy scale-to-zero workloads through pull requests, and the entire Knative platform — from CRDs to networking — is continuously reconciled against your Git repository.
+Deploying Knative Serving through Flux CD gives your platform team a GitOps-managed serverless layer on Kubernetes. Application teams can deploy scale-to-zero workloads through pull requests, and the entire Knative platform - from CRDs to networking - is continuously reconciled against your Git repository.

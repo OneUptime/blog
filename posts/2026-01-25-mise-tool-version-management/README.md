@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: mise, Version Management, Developer Experience, DevOps, Tooling
+Tags: Mise, Version Management, Developer Experience, DevOps, Tooling
 
 Description: Learn how to use mise (formerly rtx) to manage multiple runtime versions across projects, replacing tools like nvm, pyenv, and rbenv with a single, fast solution.
 

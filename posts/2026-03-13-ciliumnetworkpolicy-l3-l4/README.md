@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, eBPF, Security
+Tags: Cilium, Kubernetes, Network Policy, EBPF, Security
 
 Description: Master CiliumNetworkPolicy for L3 and L4 traffic control, using endpoint selectors, CIDR-based rules, namespace selectors, and port-level policies to secure Kubernetes workloads.
 
@@ -150,4 +150,4 @@ flowchart TD
 
 ## Conclusion
 
-`CiliumNetworkPolicy` extends standard Kubernetes NetworkPolicy with CIDR ranges, Cilium entities, port ranges, and richer label selectors — all enforced at line rate by eBPF. The entity selectors are particularly useful for allowing access to `kube-apiserver` or internet destinations without managing explicit CIDR lists. Start with endpoint-selector policies for pod-to-pod segmentation, then add CIDR and entity rules for external connectivity, building up your security posture incrementally.
+`CiliumNetworkPolicy` extends standard Kubernetes NetworkPolicy with CIDR ranges, Cilium entities, port ranges, and richer label selectors - all enforced at line rate by eBPF. The entity selectors are particularly useful for allowing access to `kube-apiserver` or internet destinations without managing explicit CIDR lists. Start with endpoint-selector policies for pod-to-pod segmentation, then add CIDR and entity rules for external connectivity, building up your security posture incrementally.

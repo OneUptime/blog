@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, terraform destroy, Infrastructure as Code, DevOps, Cleanup
+Tags: Terraform, Terraform destroy, Infrastructure as Code, DevOps, Cleanup
 
 Description: Learn how to safely destroy infrastructure with terraform destroy including partial destruction, safeguards, and best practices for different environments.
 

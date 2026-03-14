@@ -100,4 +100,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating node Ready recovery requires confirming node status, calico-node pod health, BGP peer state, pod scheduling capability, and cross-node connectivity. BGP reconvergence may take a few minutes after calico-node recovers — allow time for this before confirming the node is fully operational.
+Validating node Ready recovery requires confirming node status, calico-node pod health, BGP peer state, pod scheduling capability, and cross-node connectivity. BGP reconvergence may take a few minutes after calico-node recovers - allow time for this before confirming the node is fully operational.

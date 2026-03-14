@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Log Rotation, Remote Logging, Security, Linux
+Tags: RHEL, Auditd, Log Rotation, Remote Logging, Security, Linux
 
 Description: Set up audit log rotation and remote log forwarding on RHEL to manage disk space and ensure audit data is preserved on a central log server.
 

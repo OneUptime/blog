@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, Auto-Apply, GitOps, Kubernetes, Automation
+Tags: Flux CD, Tofu Controller, Terraform, Auto-Apply, GitOps, Kubernetes
 
 Description: Enable automatic Terraform plan application using the Tofu Controller with Flux CD for fully automated GitOps-driven infrastructure provisioning.
 
@@ -12,7 +12,7 @@ Description: Enable automatic Terraform plan application using the Tofu Controll
 
 Auto-apply is the GitOps-native way to operate Terraform. When a change is merged to the main branch, Flux detects it, the Tofu Controller generates a plan, and if the plan succeeds, the changes are applied automatically without human intervention. This removes the CI/CD Terraform pipeline entirely and replaces it with a continuously reconciling controller.
 
-Auto-apply works best for infrastructure that changes frequently, has well-tested modules, and where the blast radius of an error is limited. For non-production environments, development infrastructure, or stateless resources like S3 bucket policies, auto-apply delivers rapid iteration cycles. Combined with Flux's GitOps branching strategy, merges to main are the only mechanism that changes infrastructure—no ad-hoc `terraform apply` commands that bypass review.
+Auto-apply works best for infrastructure that changes frequently, has well-tested modules, and where the blast radius of an error is limited. For non-production environments, development infrastructure, or stateless resources like S3 bucket policies, auto-apply delivers rapid iteration cycles. Combined with Flux's GitOps branching strategy, merges to main are the only mechanism that changes infrastructure-no ad-hoc `terraform apply` commands that bypass review.
 
 This guide covers configuring auto-apply with appropriate safeguards including drift detection intervals, health checks, and automatic rollback patterns.
 

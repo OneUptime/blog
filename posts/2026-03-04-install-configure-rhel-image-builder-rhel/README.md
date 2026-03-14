@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, composer-cli, osbuild, System Administration, Linux
+Tags: RHEL, Image Builder, Composer-cli, Osbuild, System Administration, Linux
 
 Description: Install and configure RHEL Image Builder (osbuild-composer) to create custom RHEL images for bare metal, virtual machines, and cloud deployments.
 

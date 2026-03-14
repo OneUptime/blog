@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Native UI, ViewManager, iOS, Android, Custom Components, Mobile Development
+Tags: React Native, Native UI, ViewManager, IOS, Android, Custom Components, Mobile Development
 
 Description: Learn how to create native UI components in React Native for custom platform-specific views and controls.
 

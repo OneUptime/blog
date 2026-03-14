@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, dnsmasq, DNS, DHCP, Network, Tutorial
+Tags: Ubuntu, Dnsmasq, DNS, DHCP, Network, Tutorial
 
 Description: Complete guide to setting up dnsmasq for local DNS and DHCP services on Ubuntu.
 

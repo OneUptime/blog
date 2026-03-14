@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NFS, fstab, Persistent, Linux
+Tags: RHEL, NFS, Fstab, Persistent, Linux
 
 Description: Configure NFS shares to mount automatically at boot using /etc/fstab on RHEL, with proper options for reliability and performance.
 

@@ -105,4 +105,4 @@ team=observability] -->|Allowed: metrics ports| A
 
 ## Conclusion
 
-Namespace-based policies in Calico provide a clean organizational layer for cluster security. By labeling namespaces with meaningful metadata and writing policies that reference those labels, you create dynamic isolation that scales as your cluster grows. New namespaces get isolation automatically when you apply the right labels — no per-namespace policy changes required.
+Namespace-based policies in Calico provide a clean organizational layer for cluster security. By labeling namespaces with meaningful metadata and writing policies that reference those labels, you create dynamic isolation that scales as your cluster grows. New namespaces get isolation automatically when you apply the right labels - no per-namespace policy changes required.

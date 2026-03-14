@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Password Reuse, pam_pwhistory, Security, Linux
+Tags: RHEL, Password Reuse, Pam_pwhistory, Security, Linux
 
 Description: Configure RHEL to prevent users from recycling old passwords using pam_pwhistory and pam_unix, with compliance-focused examples.
 

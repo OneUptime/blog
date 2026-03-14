@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, docker image prune, Images, Cleanup, Disk Space, Filter, Maintenance
+Tags: Docker, Docker image prune, Images, Cleanup, Disk Space, Filter, Maintenance
 
 Description: Master docker image prune with filters to reclaim disk space while keeping the images you actually need.
 

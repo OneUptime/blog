@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DevOps, Dependencies, npm, pip, Go, Maven, Security, Dependency Management
+Tags: DevOps, Dependencies, Npm, Pip, Go, Maven, Security, Dependency Management
 
 Description: Learn how to handle dependency conflicts, security vulnerabilities, and version management across different package ecosystems.
 

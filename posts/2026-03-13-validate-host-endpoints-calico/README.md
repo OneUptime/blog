@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Host Endpoints, Security
+Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
 Description: Build a validation framework for Calico host endpoint policies before deploying to production nodes.
 

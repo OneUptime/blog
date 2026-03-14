@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Validation, Datastore
+Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Validation, Datastore
 
 Description: How to validate Calico etcdv3 path contents to ensure data consistency between the etcd datastore and actual cluster state across networking, policy, and IPAM data.
 
@@ -10,7 +10,7 @@ Description: How to validate Calico etcdv3 path contents to ensure data consiste
 
 ## Introduction
 
-Calico's etcdv3 datastore is the source of truth for all network configuration in clusters using the etcd backend. Validation of etcdv3 paths ensures that the data stored in etcd accurately reflects the intended cluster state — that all policies present in etcd are valid, that IPAM records correspond to actual running workloads, and that host entries exist for all active nodes.
+Calico's etcdv3 datastore is the source of truth for all network configuration in clusters using the etcd backend. Validation of etcdv3 paths ensures that the data stored in etcd accurately reflects the intended cluster state - that all policies present in etcd are valid, that IPAM records correspond to actual running workloads, and that host entries exist for all active nodes.
 
 Data inconsistencies between etcd and the cluster state can cause silent failures: Felix may program stale policies, IP allocations may conflict, or host endpoints may reference nodes that no longer exist. Systematic path validation helps detect these inconsistencies before they cause operational problems.
 
@@ -119,4 +119,4 @@ calicoctl get felixconfiguration default -o yaml
 
 ## Conclusion
 
-Validating Calico etcdv3 paths involves cross-referencing etcd contents with Kubernetes cluster state to detect orphaned entries, missing records, and count mismatches. Regular validation — ideally automated as a scheduled job — ensures that the etcd datastore remains a consistent and accurate representation of your cluster's network configuration. Address discrepancies with calicoctl rather than direct etcd manipulation to maintain data integrity.
+Validating Calico etcdv3 paths involves cross-referencing etcd contents with Kubernetes cluster state to detect orphaned entries, missing records, and count mismatches. Regular validation - ideally automated as a scheduled job - ensures that the etcd datastore remains a consistent and accurate representation of your cluster's network configuration. Address discrepancies with calicoctl rather than direct etcd manipulation to maintain data integrity.

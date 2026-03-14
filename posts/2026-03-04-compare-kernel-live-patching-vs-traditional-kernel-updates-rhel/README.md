@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kernel, Live Patching, kpatch, System Administration
+Tags: RHEL, Kernel, Live Patching, Kpatch, System Administration
 
 Description: A practical comparison between kernel live patching (kpatch) and traditional kernel updates on RHEL, covering when to use each approach and the trade-offs involved.
 

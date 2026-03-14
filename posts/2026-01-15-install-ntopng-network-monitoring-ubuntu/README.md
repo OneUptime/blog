@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ntopng, Network Monitoring, Ubuntu, Traffic Analysis, NetFlow, sFlow, Network Security, InfluxDB, SNMP
+Tags: Ntopng, Network Monitoring, Ubuntu, Traffic Analysis, NetFlow, SFlow, Network Security, InfluxDB, SNMP
 
 Description: A complete guide to installing, configuring, and using ntopng for comprehensive network traffic monitoring and analysis on Ubuntu systems.
 

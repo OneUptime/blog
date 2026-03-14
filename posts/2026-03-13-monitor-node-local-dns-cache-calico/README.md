@@ -208,7 +208,7 @@ calicoctl get globalnetworkpolicies | grep dns
 ## Best Practices
 
 - Always create Calico policies allowing DNS before applying other restrictive policies
-- Monitor the NodeLocal DNSCache cache hit rate — a low hit rate may indicate TTL configuration issues
+- Monitor the NodeLocal DNSCache cache hit rate - a low hit rate may indicate TTL configuration issues
 - Set the NodeLocal DNSCache memory limit high enough to maintain a warm cache (default 70Mi is often too low)
 - Use Calico's high-priority policy ordering for DNS allow rules so they take effect before namespace-level deny policies
 - Monitor DNS query latency with OneUptime by checking response times for service discovery endpoints

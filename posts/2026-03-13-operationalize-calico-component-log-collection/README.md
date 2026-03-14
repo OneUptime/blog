@@ -10,7 +10,7 @@ Description: Build operational processes for Calico log collection including log
 
 ## Introduction
 
-Operationalizing Calico log collection means defining clear procedures for routine operations (log level changes, retention policy reviews) and incident operations (bundle collection, gap analysis). Without documented procedures, engineers under pressure during incidents make ad-hoc decisions — enabling Debug logging without a timeout, collecting logs from only one node, or forgetting to include CRD state alongside component logs.
+Operationalizing Calico log collection means defining clear procedures for routine operations (log level changes, retention policy reviews) and incident operations (bundle collection, gap analysis). Without documented procedures, engineers under pressure during incidents make ad-hoc decisions - enabling Debug logging without a timeout, collecting logs from only one node, or forgetting to include CRD state alongside component logs.
 
 ## Log Level Change Procedure
 
@@ -105,4 +105,4 @@ flowchart TD
 
 ## Conclusion
 
-Operationalizing Calico log collection requires documented procedures that engineers can follow under pressure during incidents. The most important operational control is the Debug log level procedure with mandatory revert — this single document prevents the most common log collection problem (pipeline saturation from forgotten Debug logging). Run the incident bundle script quarterly to ensure it works before you need it in a real incident.
+Operationalizing Calico log collection requires documented procedures that engineers can follow under pressure during incidents. The most important operational control is the Debug log level procedure with mandatory revert - this single document prevents the most common log collection problem (pipeline saturation from forgotten Debug logging). Run the incident bundle script quarterly to ensure it works before you need it in a real incident.

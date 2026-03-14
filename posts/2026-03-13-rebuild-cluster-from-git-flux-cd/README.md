@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Cluster Rebuild, DevOps
+Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Cluster rebuild, DevOps
 
 Description: Restore a complete Kubernetes cluster from a Git repository using Flux CD, achieving full infrastructure recovery with minimal manual intervention.
 
@@ -12,7 +12,7 @@ Description: Restore a complete Kubernetes cluster from a Git repository using F
 
 One of the most compelling promises of GitOps is that your entire cluster state is stored in Git, making cluster recovery a repeatable, auditable process rather than a stressful fire drill. With Flux CD, rebuilding a cluster from scratch becomes a matter of bootstrapping Flux and letting it reconcile your desired state from your repository.
 
-When disaster strikes — whether it is accidental deletion, cloud provider failure, or a corrupted control plane — having a well-structured GitOps repository means your cluster can be restored to its last known good state. Every Deployment, ConfigMap, Secret reference, and HelmRelease is defined in code, and Flux knows exactly how to apply them.
+When disaster strikes - whether it is accidental deletion, cloud provider failure, or a corrupted control plane - having a well-structured GitOps repository means your cluster can be restored to its last known good state. Every Deployment, ConfigMap, Secret reference, and HelmRelease is defined in code, and Flux knows exactly how to apply them.
 
 This guide walks you through designing your repository for recoverability, bootstrapping Flux on a fresh cluster, and validating that your applications come back healthy. The goal is a documented, testable recovery procedure you can run under pressure.
 
@@ -29,7 +29,7 @@ This guide walks you through designing your repository for recoverability, boots
 
 A recoverable repository follows a clear layout so Flux knows where to find everything.
 
-```
+```plaintext
 clusters/
   production/
     flux-system/          # Flux bootstrap output
@@ -180,7 +180,7 @@ kubectl get pods -A | grep -v Running | grep -v Completed
 - Back up sealed-secrets master keys and Flux image automation credentials to a separate secure location (cloud KMS, offline vault).
 - Use `dependsOn` in Kustomizations to enforce infrastructure-before-apps ordering.
 - Keep a separate `tests/` directory in your repo with smoke test jobs that run as part of recovery validation.
-- Document and regularly test your recovery runbook — at minimum quarterly.
+- Document and regularly test your recovery runbook - at minimum quarterly.
 - Tag recovery-tested commits so you know which Git SHA has been validated for rebuild.
 
 ## Conclusion

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, CNI, Networking, Customization, Scaling
 
-Description: Go beyond the defaults and customize Typha for your specific environment — tuning resource requests, scheduling policies, custom replica counts, and node affinity rules to match your cluster topology.
+Description: Go beyond the defaults and customize Typha for your specific environment - tuning resource requests, scheduling policies, custom replica counts, and node affinity rules to match your cluster topology.
 
 ---
 
@@ -258,7 +258,7 @@ kubectl set resources deployment calico-typha \
 ## Best Practices
 
 - Use `requiredDuringSchedulingIgnoredDuringExecution` pod anti-affinity by hostname to guarantee replica isolation, not just `preferred`.
-- Combine topology spread constraints with pod anti-affinity for multi-zone clusters — spread constraints ensure zone balance while anti-affinity ensures host-level isolation within each zone.
+- Combine topology spread constraints with pod anti-affinity for multi-zone clusters - spread constraints ensure zone balance while anti-affinity ensures host-level isolation within each zone.
 - Set `minAvailable` in PodDisruptionBudget to `replicas - 1` so you can always drain one node at a time.
 - Size memory limits generously; Typha caches all watched resource types in memory, and the cache grows with cluster size.
 - Label infra nodes consistently and use tolerations plus node affinity together to reliably pin Typha to those nodes.

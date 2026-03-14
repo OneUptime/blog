@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Monitor Calico upgrades on OpenStack with visibility into Neutron agent status, VM connectivity, and compute node networking health.
 
@@ -39,4 +39,4 @@ done
 
 ## Conclusion
 
-Monitoring OpenStack Calico upgrades requires parallel visibility into Kubernetes metrics (via Prometheus) and OpenStack metrics (via Neutron agent health checks). The Neutron agent list is your primary signal for OpenStack-side health — any agent going 'down' during the upgrade window requires immediate investigation.
+Monitoring OpenStack Calico upgrades requires parallel visibility into Kubernetes metrics (via Prometheus) and OpenStack metrics (via Neutron agent health checks). The Neutron agent list is your primary signal for OpenStack-side health - any agent going 'down' during the upgrade window requires immediate investigation.

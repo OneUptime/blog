@@ -1,10 +1,10 @@
-# How to Deploy KEDA for Event-Driven Autoscaling with Flux CD
+# KEDA Event-Driven Autoscaling with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, KEDA, Event-Driven Autoscaling, Kubernetes, GitOps, SQS, Kafka, Redis
+Tags: Flux CD, KEDA, Event-Driven Autoscaling, Kubernetes, GitOps, SQS, Kafka
 
-Description: Learn how to deploy KEDA (Kubernetes Event-Driven Autoscaling) using Flux CD HelmRelease and configure event-driven pod scaling for queues and message brokers.
+Description: Deploy and manage KEDA (Kubernetes Event-driven Autoscaling) using Flux CD for GitOps-native event-driven scaling of Kubernetes workloads.
 
 ---
 

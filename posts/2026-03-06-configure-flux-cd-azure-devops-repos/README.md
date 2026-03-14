@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure-devops, GitOps, Kubernetes, Git, SSH, HTTPS
+Tags: Flux-cd, Azure-devops, GitOps, Kubernetes, Git, SSH, HTTPS
 
 Description: Learn how to connect Flux CD to Azure DevOps Git repositories using SSH keys, HTTPS with PAT tokens, and configure branch policies for safe GitOps workflows.
 

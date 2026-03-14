@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Troubleshooting
+Tags: Calico, Kubernetes, Networking, Upgrade, Troubleshooting
 
 Description: Diagnose and resolve Calico upgrade failures including stuck rolling updates, version incompatibilities, and post-upgrade network connectivity issues.
 

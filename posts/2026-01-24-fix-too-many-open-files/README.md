@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, File Descriptors, ulimit, Troubleshooting, Performance
+Tags: Linux, System Administration, File Descriptors, Ulimit, Troubleshooting, Performance
 
 Description: Learn how to diagnose and fix the common 'Too many open files' error in Linux by adjusting system and user limits for file descriptors.
 

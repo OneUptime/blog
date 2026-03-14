@@ -10,7 +10,7 @@ Description: Safely migrate a Calico cluster from full-mesh BGP to route reflect
 
 ## Introduction
 
-As Kubernetes clusters grow beyond 50-100 nodes, the default Calico full-mesh BGP topology creates O(n²) session complexity — each node must maintain a BGP session with every other node. A 100-node cluster requires 4,950 BGP sessions, consuming significant CPU and memory on each node.
+As Kubernetes clusters grow beyond 50-100 nodes, the default Calico full-mesh BGP topology creates O(n²) session complexity - each node must maintain a BGP session with every other node. A 100-node cluster requires 4,950 BGP sessions, consuming significant CPU and memory on each node.
 
 Route reflectors solve this by acting as BGP hubs: instead of each node peering with all others, worker nodes peer only with a small set of route reflectors, which then reflect routes to all other nodes. This reduces the per-node session count from O(n) to O(r) where r is the number of route reflectors (typically 2-3).
 

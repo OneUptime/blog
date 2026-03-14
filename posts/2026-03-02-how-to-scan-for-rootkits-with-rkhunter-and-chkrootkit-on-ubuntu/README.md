@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Rootkit Detection, rkhunter, chkrootkit
+Tags: Ubuntu, Security, Rootkit Detection, Rkhunter, Chkrootkit
 
 Description: Guide to installing and using rkhunter and chkrootkit on Ubuntu to detect rootkits, backdoors, and suspicious files, including configuration, interpreting results, and automating scans.
 

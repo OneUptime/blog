@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, talosctl, Installation, CLI Tools
+Tags: Talos Linux, Kubernetes, Talosctl, Installation, CLI Tools
 
 Description: A complete guide to installing and configuring talosctl, the command-line tool for managing Talos Linux clusters.
 

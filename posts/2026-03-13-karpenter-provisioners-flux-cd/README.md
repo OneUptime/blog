@@ -12,7 +12,7 @@ Description: Manage Karpenter provisioner configurations declaratively with Flux
 
 Karpenter's `NodePool` (formerly `Provisioner`) resources define what kinds of nodes Karpenter can launch. Managing these through Flux CD gives platform teams version-controlled, auditable node provisioning configurations that can be reviewed through pull requests and rolled back if provisioning behavior causes issues.
 
-This post focuses on designing and managing NodePool configurations for common enterprise workload patterns — web applications, batch jobs, machine learning, and development environments.
+This post focuses on designing and managing NodePool configurations for common enterprise workload patterns - web applications, batch jobs, machine learning, and development environments.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ This post focuses on designing and managing NodePool configurations for common e
 
 Structure your Git repository for multiple NodePool configurations:
 
-```
+```plaintext
 fleet-infra/
 └── infrastructure/
     └── karpenter/
@@ -175,7 +175,7 @@ spec:
         - key: "karpenter.k8s.aws/instance-family"
           operator: In
           values: ["g4dn", "g5", "p3", "p4d"]
-        # On-demand only for GPU — spot GPU is less available
+        # On-demand only for GPU - spot GPU is less available
         - key: "karpenter.sh/capacity-type"
           operator: In
           values: ["on-demand"]
@@ -183,7 +183,7 @@ spec:
     cpu: 200
     memory: 1600Gi
   disruption:
-    # Don't consolidate ML nodes — training jobs are expensive to restart
+    # Don't consolidate ML nodes - training jobs are expensive to restart
     consolidationPolicy: WhenEmpty
 ```
 
@@ -227,7 +227,7 @@ spec:
 - Use separate NodePools for spot and on-demand workloads to make cost visibility clear
 - Set `expireAfter` on all NodePools to ensure regular AMI rotation for security patching
 - Define CPU and memory limits on each NodePool to prevent runaway scaling and unexpected bills
-- Use taints to enforce workload isolation — GPU nodes should require explicit tolerations
+- Use taints to enforce workload isolation - GPU nodes should require explicit tolerations
 - Review NodePool configurations via pull requests before applying to production
 
 ## Conclusion

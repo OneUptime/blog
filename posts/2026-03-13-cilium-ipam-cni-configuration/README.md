@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, CNI, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: Understand how Cilium's CNI configuration interacts with its IPAM subsystem, including how to configure IPAM parameters in the CNI config, troubleshoot IPAM-CNI integration issues, and validate correct IP assignment behavior.
+Description: Understand how Cilium's CNI configuration interacts with its IPAM subsystem, including how to configure IPAM parameters in the CNI config, troubleshoot IPAM-CNI integration issues, and validate...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Understand how Cilium's CNI configuration interacts with its IPAM s
 
 The relationship between Cilium's CNI plugin and its IPAM subsystem determines how IP addresses are assigned to pods at the moment of their creation. When the kubelet calls the Cilium CNI plugin for a new pod, the CNI binary communicates with the Cilium Agent via Unix socket, which then consults the IPAM module to allocate an IP address from the appropriate pool. This IPAM-CNI integration is the critical path for pod IP allocation and must be correctly configured for reliable pod networking.
 
-While the CNI configuration file at `/etc/cni/net.d/05-cilium.conf` is intentionally minimal (deferring all configuration to the Cilium Agent), the IPAM mode and parameters configured in the Cilium Agent's ConfigMap directly affect what the CNI binary does when allocating IPs. The CNI configuration and IPAM configuration must be consistent — for example, configuring AWS ENI IPAM but not granting the necessary IAM permissions will cause the CNI to fail at IP allocation time.
+While the CNI configuration file at `/etc/cni/net.d/05-cilium.conf` is intentionally minimal (deferring all configuration to the Cilium Agent), the IPAM mode and parameters configured in the Cilium Agent's ConfigMap directly affect what the CNI binary does when allocating IPs. The CNI configuration and IPAM configuration must be consistent - for example, configuring AWS ENI IPAM but not granting the necessary IAM permissions will cause the CNI to fail at IP allocation time.
 
 This guide covers the intersection of CNI and IPAM configuration, how they interact, troubleshooting IPAM-CNI integration failures, and validating end-to-end IP allocation through the CNI interface.
 

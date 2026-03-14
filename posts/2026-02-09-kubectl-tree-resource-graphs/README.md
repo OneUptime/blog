@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Visualization, DevOps, CLI
+Tags: Kubernetes, Kubectl, Visualization, DevOps, CLI
 
 Description: Build custom resource viewers using kubectl tree and relationship graphs to visualize complex Kubernetes object hierarchies and understand dependencies between resources.
 

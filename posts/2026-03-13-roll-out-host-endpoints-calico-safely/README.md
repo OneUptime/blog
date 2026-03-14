@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Host Endpoints, Security
+Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
 Description: A safe rollout strategy for Calico host endpoint policies that prevents locking yourself out of nodes.
 

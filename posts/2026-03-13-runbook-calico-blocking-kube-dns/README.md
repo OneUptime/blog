@@ -10,7 +10,7 @@ Description: Emergency runbook for restoring cluster-wide DNS when Calico polici
 
 ## Introduction
 
-Calico blocking kube-dns is a P1 incident — it causes total DNS failure across all namespaces. Response must be immediate. This runbook is optimized for the fastest possible DNS restoration.
+Calico blocking kube-dns is a P1 incident - it causes total DNS failure across all namespaces. Response must be immediate. This runbook is optimized for the fastest possible DNS restoration.
 
 ## Symptoms
 

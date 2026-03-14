@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ext4, Filesystems, Data Recovery, fsck
+Tags: Ubuntu, Ext4, Filesystems, Data Recovery, Fsck
 
 Description: Learn how to diagnose and repair corrupted ext4 filesystems on Ubuntu using fsck, debugfs, and e2fsck with practical examples and recovery strategies.
 

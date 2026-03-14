@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, git sparse checkout, GitOps, Kubernetes, Repository Pattern
+Tags: Flux CD, Git sparse checkout, GitOps, Kubernetes, Repository Pattern
 
 Description: Learn how to use Git sparse checkout patterns with Flux CD to selectively sync only the files and directories your cluster needs from large monorepos.
 

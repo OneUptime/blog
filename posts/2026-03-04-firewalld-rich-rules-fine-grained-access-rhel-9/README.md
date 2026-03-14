@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Rich Rules, Security, Linux
+Tags: RHEL, Firewalld, Rich Rules, Security, Linux
 
 Description: How to use firewalld rich rules on RHEL for granular traffic control, including source-based filtering, rate limiting, logging, and complex allow/deny patterns.
 

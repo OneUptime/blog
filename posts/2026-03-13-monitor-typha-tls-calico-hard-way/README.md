@@ -10,7 +10,7 @@ Description: A guide to monitoring Typha TLS certificate expiry, connection auth
 
 ## Introduction
 
-Monitoring Typha TLS requires tracking two categories of concerns: certificate lifecycle (expiry dates and upcoming renewals) and runtime authentication (failed handshakes and rejected connections). Certificate expiry is a silent failure — Typha and Felix continue operating until the certificates expire, at which point all Felix connections fail simultaneously. Runtime authentication monitoring catches misconfigured clients before they cause operational impact.
+Monitoring Typha TLS requires tracking two categories of concerns: certificate lifecycle (expiry dates and upcoming renewals) and runtime authentication (failed handshakes and rejected connections). Certificate expiry is a silent failure - Typha and Felix continue operating until the certificates expire, at which point all Felix connections fail simultaneously. Runtime authentication monitoring catches misconfigured clients before they cause operational impact.
 
 ## Step 1: Monitor Certificate Expiry
 
@@ -101,7 +101,7 @@ Create a Prometheus rule to alert on unexpected connection rejections.
     severity: warning
   annotations:
     summary: "Typha is rejecting Felix connections"
-    description: "{{ $value }} connections dropped in the last 5 minutes — possible TLS misconfiguration"
+    description: "{{ $value }} connections dropped in the last 5 minutes - possible TLS misconfiguration"
 ```
 
 ## Step 3: Monitor Active vs. Expected Connections
@@ -128,7 +128,7 @@ Alert if the ratio falls below 90%.
     severity: critical
   annotations:
     summary: "Fewer nodes connected to Typha than expected"
-    description: "Only {{ $value }} nodes connected to Typha — possible TLS authentication failure"
+    description: "Only {{ $value }} nodes connected to Typha - possible TLS authentication failure"
 ```
 
 ## Step 4: Grafana Dashboard for TLS Health

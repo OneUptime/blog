@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Linux, Kernel, Programming, Observability, Security
+Tags: EBPF, Linux, Kernel, Programming, Observability, Security
 
 Description: A beginner's guide to eBPF programming on Linux, covering fundamentals and first programs.
 

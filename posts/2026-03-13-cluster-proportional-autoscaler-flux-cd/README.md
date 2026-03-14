@@ -1,10 +1,10 @@
-# How to Deploy Cluster Proportional Autoscaler with Flux CD
+# Managing Cluster Proportional Autoscaler with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cluster Proportional Autoscaler, CPA, DNS, Kubernetes, GitOps, Autoscaling
+Tags: Flux, Kubernetes, Autoscaling, Cluster-proportional-autoscaler, GitOps, Helm
 
-Description: Learn how to deploy Cluster Proportional Autoscaler for scaling DNS and addon deployments proportionally to cluster size using Flux CD.
+Description: Learn how to deploy and manage the Kubernetes Cluster Proportional Autoscaler using Flux CD, enabling automatic scaling of cluster add-ons like CoreDNS in proportion to cluster size.
 
 ---
 

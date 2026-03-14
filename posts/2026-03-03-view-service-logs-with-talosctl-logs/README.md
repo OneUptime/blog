@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Service Logs, Debugging, Kubernetes
+Tags: Talos Linux, Talosctl, Service Logs, Debugging, Kubernetes
 
 Description: A complete guide to viewing and managing Talos Linux service logs using the talosctl logs command.
 

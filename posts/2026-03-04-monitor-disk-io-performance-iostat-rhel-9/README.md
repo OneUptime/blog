@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, iostat, Disk I/O, Performance, Monitoring, Linux
+Tags: RHEL, Iostat, Disk I/O, Performance, Monitoring, Linux
 
 Description: Learn how to use iostat on RHEL to monitor disk I/O performance, identify bottlenecks, and understand storage throughput metrics.
 

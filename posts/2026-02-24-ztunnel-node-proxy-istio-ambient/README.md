@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ztunnel, Ambient Mesh, Kubernetes, Service Mesh
+Tags: Istio, Ztunnel, Ambient Mesh, Kubernetes, Service Mesh
 
 Description: A practical guide to understanding the ztunnel node proxy in Istio ambient mode, covering its role, configuration, and how it handles L4 traffic.
 

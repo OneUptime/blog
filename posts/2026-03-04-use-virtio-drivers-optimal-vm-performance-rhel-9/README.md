@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virtio, Performance, Virtualization, Linux
+Tags: RHEL, KVM, Virtio, Performance, Virtualization, Linux
 
 Description: Learn how to configure virtio paravirtualized drivers on RHEL 9 for maximum virtual machine disk, network, and memory performance.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, RabbitMQ, Topology Operator, Queues, Exchanges, AMQP
+Tags: Flux CD, Kubernetes, GitOps, RabbitMQ, Topology Operator, Queue, Exchange, AMQP
 
 Description: Manage RabbitMQ queues, exchanges, and bindings with the Topology Operator using Flux CD for declarative message topology management.
 
@@ -10,7 +10,7 @@ Description: Manage RabbitMQ queues, exchanges, and bindings with the Topology O
 
 ## Introduction
 
-The RabbitMQ Messaging Topology Operator extends the Cluster Operator with CRDs for managing RabbitMQ topology objects — queues, exchanges, bindings, virtual hosts, policies, and users — through Kubernetes resources. This means your entire AMQP topology: which queues exist, which exchanges route to them, and what dead-letter configurations are in place, is described in Git and automatically applied.
+The RabbitMQ Messaging Topology Operator extends the Cluster Operator with CRDs for managing RabbitMQ topology objects - queues, exchanges, bindings, virtual hosts, policies, and users - through Kubernetes resources. This means your entire AMQP topology: which queues exist, which exchanges route to them, and what dead-letter configurations are in place, is described in Git and automatically applied.
 
 Managing RabbitMQ topology through Flux CD eliminates the common problem of undocumented queues created manually in the management UI. When a team needs a new queue, they open a pull request, and the Topology Operator creates it automatically.
 
@@ -295,11 +295,11 @@ kubectl exec -n rabbitmq production-server-0 -- \
 
 ## Best Practices
 
-- Prefer quorum queues (`x-queue-type: quorum`) over classic mirrored queues for HA — they are Raft-based and more reliable.
+- Prefer quorum queues (`x-queue-type: quorum`) over classic mirrored queues for HA - they are Raft-based and more reliable.
 - Always configure a dead-letter exchange (`x-dead-letter-exchange`) on queues used for message processing to catch failed messages.
-- Use virtual hosts to isolate different applications or teams — permissions are scoped per vhost.
+- Use virtual hosts to isolate different applications or teams - permissions are scoped per vhost.
 - Set `x-message-ttl` to prevent queues from filling indefinitely if consumers fall behind.
-- Manage user credentials with the Topology Operator's `User` CRD and `importCredentialsSecret` — never embed passwords in CRD specs.
+- Manage user credentials with the Topology Operator's `User` CRD and `importCredentialsSecret` - never embed passwords in CRD specs.
 
 ## Conclusion
 

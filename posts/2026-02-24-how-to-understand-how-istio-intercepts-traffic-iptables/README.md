@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, iptables, Traffic Interception, Networking, Kubernetes
+Tags: Istio, Iptables, Traffic Interception, Networking, Kubernetes
 
 Description: A detailed guide to how Istio uses iptables rules to intercept and redirect all pod traffic through the Envoy sidecar proxy transparently.
 

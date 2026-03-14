@@ -1,10 +1,10 @@
-# Troubleshoot Calico on Self-Managed Azure Kubernetes
+# How to Troubleshoot Calico on Azure Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, azure, kubernetes, self-managed, troubleshooting, networking, nsg
+Tags: Calico, Kubernetes, Networking, Troubleshooting, Azure, Self-Managed
 
-Description: A guide to diagnosing and resolving networking issues when running Calico on self-managed Kubernetes clusters deployed on Azure Virtual Machines.
+Description: Diagnose and resolve common Calico installation issues on self-managed Kubernetes clusters running on Azure VMs.
 
 ---
 

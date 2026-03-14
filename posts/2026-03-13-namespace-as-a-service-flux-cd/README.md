@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Platform Engineering, Namespace, Multi-tenancy
+Tags: Flux CD, Kubernetes, GitOps, Platform Engineering, Namespace, Multi-Tenancy
 
 Description: Implement namespace-as-a-service for development teams using Flux CD so teams can request isolated Kubernetes namespaces through Git pull requests.
 
@@ -12,7 +12,7 @@ Description: Implement namespace-as-a-service for development teams using Flux C
 
 Namespace-as-a-Service (NaaS) is a pattern where platform teams provide isolated Kubernetes namespaces to development teams on demand, complete with RBAC, network policies, resource quotas, and tooling pre-configured. Teams get an environment they own without needing cluster-admin access, and the platform team maintains governance at scale.
 
-Flux CD is the ideal engine for NaaS because namespace lifecycle — creation, configuration, and deletion — maps perfectly to Git commits. A team requests a namespace by opening a PR, a platform team member reviews and approves it, and Flux reconciles the desired state in seconds. Deleting the PR branch or removing the configuration file triggers Flux's pruning to clean up all associated resources.
+Flux CD is the ideal engine for NaaS because namespace lifecycle - creation, configuration, and deletion - maps perfectly to Git commits. A team requests a namespace by opening a PR, a platform team member reviews and approves it, and Flux reconciles the desired state in seconds. Deleting the PR branch or removing the configuration file triggers Flux's pruning to clean up all associated resources.
 
 This guide walks through building a complete NaaS implementation on top of Flux CD, including a self-service request workflow and automated provisioning pipeline.
 
@@ -27,7 +27,7 @@ This guide walks through building a complete NaaS implementation on top of Flux 
 
 Create a simple directory structure that acts as the namespace request interface. Each subdirectory under `namespaces/requests/` represents one tenant namespace.
 
-```
+```plaintext
 platform-gitops/
 └── namespaces/
     ├── base/                    # Reusable namespace template

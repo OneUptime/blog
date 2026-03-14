@@ -1,10 +1,10 @@
-# Flux CD vs Weave GitOps: Feature Comparison
+# Flux CD vs Weave GitOps: Comparison
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Weave GitOps, GitOps, Kubernetes, Comparison, CNCF, Enterprise
+Tags: Flux CD, Weave GitOps, GitOps, Kubernetes, UI, Comparison
 
-Description: Compare open-source Flux CD and Weave GitOps Enterprise features, covering the value of enterprise add-ons over the upstream open-source project.
+Description: Compare Flux CD and Weave GitOps, understanding how Weave GitOps extends Flux CD with a UI and enterprise features while remaining Flux-compatible.
 
 ---
 
@@ -45,7 +45,7 @@ What upstream Flux CD does NOT include:
 
 Weave GitOps Enterprise layered these features on top of Flux CD:
 
-```
+```plaintext
 Enterprise Features:
 - Weave GitOps UI (React-based dashboard for Flux resources)
 - Policy Controller (OPA-based policy enforcement at admission)

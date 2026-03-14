@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Expo, CLI, Mobile Development, iOS, Android, Project Setup
+Tags: React Native, Expo, CLI, Mobile Development, IOS, Android, Project Setup
 
 Description: Learn the key differences between React Native CLI and Expo, and how to choose the right approach for your mobile app development project.
 

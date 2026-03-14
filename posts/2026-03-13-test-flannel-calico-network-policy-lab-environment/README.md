@@ -10,7 +10,7 @@ Description: A guide to building and running a Canal (Flannel + Calico network p
 
 ## Introduction
 
-A lab environment for testing Canal allows you to experiment with network policy behavior, verify Calico's policy enforcement logic, and build runbooks for production scenarios — all without risking production workloads. The lab can be created with `kind` (Kubernetes in Docker) or a simple kubeadm cluster on virtual machines. Canal installs identically in both environments, so policies tested in the lab apply directly to production.
+A lab environment for testing Canal allows you to experiment with network policy behavior, verify Calico's policy enforcement logic, and build runbooks for production scenarios - all without risking production workloads. The lab can be created with `kind` (Kubernetes in Docker) or a simple kubeadm cluster on virtual machines. Canal installs identically in both environments, so policies tested in the lab apply directly to production.
 
 ## Option 1: kind-Based Lab
 
@@ -138,4 +138,4 @@ kind delete cluster --name canal-lab  # if using kind
 
 ## Conclusion
 
-A Canal lab environment — whether kind-based or kubeadm-based — provides a safe space to test all network policy behaviors: default allow, deny-all ingress, label-based allow, and namespace isolation. The policies tested in the lab directly reflect production Canal behavior, making the lab an effective validation tool for both new policy designs and incident investigation scenarios.
+A Canal lab environment - whether kind-based or kubeadm-based - provides a safe space to test all network policy behaviors: default allow, deny-all ingress, label-based allow, and namespace isolation. The policies tested in the lab directly reflect production Canal behavior, making the lab an effective validation tool for both new policy designs and incident investigation scenarios.

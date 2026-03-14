@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Bash, awk, Text Processing, Linux
+Tags: Ubuntu, Bash, Awk, Text Processing, Linux
 
 Description: Learn how to use awk for column extraction, filtering, arithmetic, and report generation from structured text data on Ubuntu with practical examples.
 

@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Tier, Policy, Operations
 
-Description: Practical usage patterns for Calico Tier resources, including multi-team policy governance models, security baseline enforcement, compliance policy tiers, and combining tiers with RBAC for policy ownership separation.
+Description: Practical usage patterns for Calico Tier resources, including multi-team policy governance models, security baseline enforcement, compliance policy tiers, and combining tiers with RBAC for policy...
 
 ---
 
 ## Introduction
 
-Calico Tier resources enable policy governance at scale — separating who can define what policies at which priority. The key operational pattern is a three-tier model: a security team owns the high-priority tier for non-negotiable security baselines, a platform team owns a mid-priority tier for infrastructure connectivity, and application teams own the default tier for their service-to-service policies. This separation ensures that application teams cannot accidentally or intentionally bypass security baselines.
+Calico Tier resources enable policy governance at scale - separating who can define what policies at which priority. The key operational pattern is a three-tier model: a security team owns the high-priority tier for non-negotiable security baselines, a platform team owns a mid-priority tier for infrastructure connectivity, and application teams own the default tier for their service-to-service policies. This separation ensures that application teams cannot accidentally or intentionally bypass security baselines.
 
 ## Usage Pattern 1: Three-Tier Policy Governance Model
 
@@ -150,4 +150,4 @@ roleRef:
 
 ## Conclusion
 
-Calico Tiers are the organizational backbone of multi-team network policy governance. The three-tier pattern — security, platform, default — provides a clean separation where security baselines enforced in the security tier cannot be overridden by lower-tier policies. Combine tier ordering with RBAC to ensure that only authorized teams can manage policies in each tier, and document the intended tier ownership in your runbooks so all teams understand which tier is appropriate for their policies.
+Calico Tiers are the organizational backbone of multi-team network policy governance. The three-tier pattern - security, platform, default - provides a clean separation where security baselines enforced in the security tier cannot be overridden by lower-tier policies. Combine tier ordering with RBAC to ensure that only authorized teams can manage policies in each tier, and document the intended tier ownership in your runbooks so all teams understand which tier is appropriate for their policies.

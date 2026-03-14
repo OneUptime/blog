@@ -10,7 +10,7 @@ Description: Avoid the most common pitfalls when setting up and maintaining Cali
 
 ## Introduction
 
-Calico metrics monitoring has several common configuration mistakes that result in partial or incorrect observability. The most dangerous is false assurance — believing you have complete coverage when actually only some nodes or components are being monitored. This section catalogs the top mistakes with concrete examples.
+Calico metrics monitoring has several common configuration mistakes that result in partial or incorrect observability. The most dangerous is false assurance - believing you have complete coverage when actually only some nodes or components are being monitored. This section catalogs the top mistakes with concrete examples.
 
 ## Mistake 1: ServiceMonitor Selector Not Matching Service Labels
 
@@ -122,4 +122,4 @@ flowchart TD
 
 ## Conclusion
 
-The most common Calico metrics monitoring mistakes are silent failures: ServiceMonitor label mismatches, partial node coverage, and Prometheus selector configuration mismatches. None of these produce obvious errors — Prometheus just doesn't collect data from the missing components. Always validate coverage quantitatively after setup by comparing scraped node count to total node count. Build the coverage check into your automated validation pipeline so it runs after every deployment.
+The most common Calico metrics monitoring mistakes are silent failures: ServiceMonitor label mismatches, partial node coverage, and Prometheus selector configuration mismatches. None of these produce obvious errors - Prometheus just doesn't collect data from the missing components. Always validate coverage quantitatively after setup by comparing scraped node count to total node count. Build the coverage check into your automated validation pipeline so it runs after every deployment.

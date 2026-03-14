@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Load Testing, Distributed Testing, Kubernetes, Performance Testing, Scalability
+Tags: K6, Load Testing, Distributed Testing, Kubernetes, Performance Testing, Scalability
 
 Description: Learn how to scale k6 tests from a single machine to distributed clusters for simulating massive user loads.
 

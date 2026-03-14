@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Web Crawler, Async, tokio, Performance
+Tags: Rust, Web Crawler, Async, Tokio, Performance
 
 Description: A hands-on guide to building a fast, concurrent web crawler in Rust using async/await and Tokio, covering request handling, rate limiting, and practical patterns for scraping at scale.
 

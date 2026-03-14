@@ -65,9 +65,9 @@ spec:
 **Step 2: Dashboard panels**
 
 Monitor these metrics:
-- `kube_node_status_condition{condition="Ready"}` — node readiness
-- `kube_pod_status_ready{namespace="kube-system",pod=~"calico-node-.*"}` — calico-node readiness
-- `kube_pod_container_status_restarts_total{container="calico-node"}` — restart rate
+- `kube_node_status_condition{condition="Ready"}` - node readiness
+- `kube_pod_status_ready{namespace="kube-system",pod=~"calico-node-.*"}` - calico-node readiness
+- `kube_pod_container_status_restarts_total{container="calico-node"}` - restart rate
 
 **Step 3: Event watcher**
 

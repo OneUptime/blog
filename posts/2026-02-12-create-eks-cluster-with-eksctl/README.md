@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EKS, Kubernetes, eksctl, DevOps
+Tags: AWS, EKS, Kubernetes, Eksctl, DevOps
 
 Description: Learn how to create and configure an Amazon EKS cluster using eksctl, the official CLI tool for provisioning Kubernetes clusters on AWS.
 

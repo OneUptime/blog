@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Watchdog, Service Monitoring, Linux
+Tags: Ansible, Systemd, Watchdog, Service Monitoring, Linux
 
 Description: Learn how to configure systemd watchdog timers with Ansible to automatically detect and restart hung services that stop responding.
 

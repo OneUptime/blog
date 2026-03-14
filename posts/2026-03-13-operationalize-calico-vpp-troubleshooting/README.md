@@ -114,4 +114,4 @@ Before handling VPP incidents independently, engineers must complete:
 
 ## Conclusion
 
-Operationalizing Calico VPP troubleshooting requires a runbook with clear P1/P2 severity levels, a standard diagnostic bundle format that Tigera support can use immediately, and on-call training that builds vppctl command fluency. The most important operational investment is the pre-built support bundle script — when VPP incidents occur, having a single command that collects all required diagnostics reduces time-to-escalation from 30 minutes to under 5 minutes.
+Operationalizing Calico VPP troubleshooting requires a runbook with clear P1/P2 severity levels, a standard diagnostic bundle format that Tigera support can use immediately, and on-call training that builds vppctl command fluency. The most important operational investment is the pre-built support bundle script - when VPP incidents occur, having a single command that collects all required diagnostics reduces time-to-escalation from 30 minutes to under 5 minutes.

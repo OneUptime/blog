@@ -1,10 +1,10 @@
-# Migrate Workloads to Calico on IBM Kubernetes Service
+# How to Migrate Existing Workloads to Calico on IBM Kubernetes Service
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IBM Cloud, Kubernetes, IKS, Networking, Migration, Network Policy
+Tags: Calico, Kubernetes, Networking, Migration, IBM Kubernetes Service
 
-Description: Guide to leveraging Calico's advanced network policy features on IBM Kubernetes Service (IKS), which ships with Calico pre-installed, including migration of workloads and policy configuration best practices.
+Description: Migrate existing IBM Kubernetes Service workloads to leverage Calico's advanced networking features.
 
 ---
 

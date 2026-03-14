@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Understand the CRDs and Kubernetes resources that power Cilium's BGP Control Plane, including CiliumBGPPeeringPolicy, CiliumLoadBalancerIPPool, and node annotations.
 

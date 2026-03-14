@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Alibaba Cloud, ack, Kubernetes, Service Mesh
+Tags: Istio, Alibaba Cloud, ACK, Kubernetes, Service Mesh
 
 Description: Guide to deploying Istio on Alibaba Cloud Container Service for Kubernetes (ACK) with SLB integration and China region setup.
 

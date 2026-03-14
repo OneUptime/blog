@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, github, community, open-source, contribution, bug-report
+Tags: Cilium, Community, GitHub, Open Source
 
-Description: A practical guide to using GitHub effectively as a Cilium user — from searching for existing issues and filing bug reports to tracking feature development and contributing improvements.
+Description: A practical guide to using GitHub effectively as a Cilium user - from searching for existing issues and filing bug reports to tracking feature development and contributing improvements.
 
 ---
 
@@ -141,11 +141,11 @@ git push origin docs/fix-typo-in-getting-started
 
 ## Best Practices
 
-- Search issues before filing — duplicate reports slow down maintainers
+- Search issues before filing - duplicate reports slow down maintainers
 - Include the Cilium version and Kubernetes version in every issue
 - Attach a sysdump for any issue involving unexpected behavior
 - Watch the repository releases for security patches that need fast deployment
-- Comment on issues to confirm you're affected and add environment details — it helps prioritization
+- Comment on issues to confirm you're affected and add environment details - it helps prioritization
 
 ## Conclusion
 

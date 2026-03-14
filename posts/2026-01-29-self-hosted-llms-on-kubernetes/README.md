@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, LLM, GPU, Docker, Machine Learning, AI, Self-Hosting, vLLM
+Tags: Kubernetes, LLM, GPU, Docker, Machine Learning, AI, Self-Hosting, VLLM
 
 Description: A comprehensive guide to deploying and running self-hosted large language models on Kubernetes, covering GPU access, model serving, and production best practices.
 

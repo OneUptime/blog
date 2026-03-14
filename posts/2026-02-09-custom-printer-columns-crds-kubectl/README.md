@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, kubectl
+Tags: Kubernetes, CRD, Kubectl
 
 Description: Learn how to configure custom printer columns in your Custom Resource Definitions to display meaningful information when using kubectl get commands.
 

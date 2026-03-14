@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Version Compatibility, CNI, Troubleshooting, Upgrades, Best Practices
+Tags: Calico, Kubernetes, Version Compatibility, CNI, Troubleshooting
 
-Description: Common version compatibility mistakes in Calico deployments — from skipping minor versions to mismatched calicoctl — and how to prevent and fix them.
+Description: Common version compatibility mistakes in Calico deployments - from skipping minor versions to mismatched calicoctl - and how to prevent and fix them.
 
 ---
 
 ## Introduction
 
-Version compatibility mistakes in Calico are typically not immediately obvious — the system continues running but with subtle failures: API calls returning errors, features that should work but don't, or policies that appear to apply but aren't enforced. These mistakes are preventable with proper version tracking and upgrade planning.
+Version compatibility mistakes in Calico are typically not immediately obvious - the system continues running but with subtle failures: API calls returning errors, features that should work but don't, or policies that appear to apply but aren't enforced. These mistakes are preventable with proper version tracking and upgrade planning.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ For EKS/GKE/AKS managed clusters with auto-upgrade enabled, disable auto-upgrade
 
 ## Mistake 2: Mismatched calicoctl Version
 
-Using a `calicoctl` binary that doesn't match the cluster's Calico version causes silent failures — commands appear to succeed but the resources are created with the wrong API schema.
+Using a `calicoctl` binary that doesn't match the cluster's Calico version causes silent failures - commands appear to succeed but the resources are created with the wrong API schema.
 
 **Symptom**: `calicoctl get` works but returned resources have unexpected fields. `calicoctl apply` returns success but the resource is not applied correctly.
 
@@ -67,7 +67,7 @@ chmod +x /usr/local/bin/calicoctl
 
 Upgrading only some Calico components (e.g., calico-node but not calico-kube-controllers) creates version skew between components. This is an unsupported state.
 
-**Symptom**: Calico appears partially healthy — some functions work but others don't. Error messages reference internal API version mismatches.
+**Symptom**: Calico appears partially healthy - some functions work but others don't. Error messages reference internal API version mismatches.
 
 **Diagnosis**:
 ```bash
@@ -76,7 +76,7 @@ kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}
 # All should show the same Calico version
 ```
 
-**Prevention**: Use the Calico operator for upgrades — it updates all components atomically, preventing partial upgrades:
+**Prevention**: Use the Calico operator for upgrades - it updates all components atomically, preventing partial upgrades:
 ```bash
 # Operator-managed upgrade: update the operator, which updates all components
 kubectl set image deployment/tigera-operator \

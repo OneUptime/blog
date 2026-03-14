@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, SwiftUI, MVVM, Architecture, iOS
+Tags: Swift, SwiftUI, MVVM, Architecture, IOS
 
 Description: Learn how to structure SwiftUI applications using MVVM architecture with ObservableObject, @Published, and clean separation of concerns.
 

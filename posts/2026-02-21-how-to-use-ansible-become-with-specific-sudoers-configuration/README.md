@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Security, Linux, Privilege Escalation
+Tags: Ansible, Sudo, Security, Linux, Privilege Escalation
 
 Description: Configure sudoers rules to work properly with Ansible become, including NOPASSWD, command restrictions, and secure configurations.
 

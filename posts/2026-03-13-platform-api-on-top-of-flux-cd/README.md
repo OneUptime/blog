@@ -12,7 +12,7 @@ Description: Build a platform API that wraps Flux CD for developer self-service,
 
 Not all developers are comfortable with Git-native workflows. Some teams use internal tools, ticketing systems, or custom CLIs that expect a REST API rather than a pull request. A platform API that wraps Flux CD bridges this gap: it accepts simple HTTP requests, translates them into Git commits or Kubernetes object updates, and lets Flux handle the reconciliation.
 
-The platform API becomes the abstraction layer that lets your GitOps internals evolve without changing the developer-facing interface. You can migrate from Kustomize to Helm, change your repository structure, or add policy validation — none of it breaks the API contract that developers and other tools depend on.
+The platform API becomes the abstraction layer that lets your GitOps internals evolve without changing the developer-facing interface. You can migrate from Kustomize to Helm, change your repository structure, or add policy validation - none of it breaks the API contract that developers and other tools depend on.
 
 In this guide you will build a lightweight platform API service that can trigger Flux reconciliations, check deployment status, and manage simple lifecycle operations through HTTP endpoints.
 
@@ -27,7 +27,7 @@ In this guide you will build a lightweight platform API service that can trigger
 
 Keep the API surface small and focused on the operations developers actually need.
 
-```
+```plaintext
 POST   /api/v1/deploy                  - Deploy or update an application
 GET    /api/v1/deploy/{name}/status    - Get deployment status
 POST   /api/v1/deploy/{name}/restart   - Rolling restart
@@ -262,4 +262,4 @@ spec:
 
 ## Conclusion
 
-A platform API built on top of Flux CD gives non-Git-native tools a clean integration point for deployment operations. The API translates simple HTTP requests into Flux objects and returns human-readable status, while Flux handles all the actual reconciliation work. This architecture keeps the GitOps model intact — every deployment is still a Kubernetes object managed by Flux — while providing the flexibility to integrate with any toolchain your organization uses.
+A platform API built on top of Flux CD gives non-Git-native tools a clean integration point for deployment operations. The API translates simple HTTP requests into Flux objects and returns human-readable status, while Flux handles all the actual reconciliation work. This architecture keeps the GitOps model intact - every deployment is still a Kubernetes object managed by Flux - while providing the flexibility to integrate with any toolchain your organization uses.

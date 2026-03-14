@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, nsx, broadcom, kubernetes, networking, vmware, integration
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
-Description: Learn how to configure Cilium to work alongside Broadcom NSX (formerly VMware NSX-T) for Kubernetes clusters running on NSX-managed infrastructure, enabling both NSX and eBPF-based networking capabilities.
+Description: Learn how to configure Cilium to work alongside Broadcom NSX (formerly VMware NSX-T) for Kubernetes clusters running on NSX-managed infrastructure, enabling both NSX and eBPF-based networking...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to configure Cilium to work alongside Broadcom NSX (forme
 
 Broadcom NSX (formerly VMware NSX-T) provides software-defined networking for vSphere-based infrastructure. When running Kubernetes on NSX-managed environments, you can deploy Cilium as the Kubernetes CNI on top of NSX's virtual networking, combining NSX's network virtualization with Cilium's eBPF-based policy enforcement and observability.
 
-In this configuration, NSX handles the underlay networking — creating logical switches, routers, and segments for VM and node connectivity — while Cilium manages pod networking, network policy, and observability within the Kubernetes cluster. The two systems operate at different layers and complement each other.
+In this configuration, NSX handles the underlay networking - creating logical switches, routers, and segments for VM and node connectivity - while Cilium manages pod networking, network policy, and observability within the Kubernetes cluster. The two systems operate at different layers and complement each other.
 
 This guide covers the integration points between Cilium and NSX, and how to configure Cilium for optimal operation in NSX-managed environments.
 
@@ -64,7 +64,7 @@ helm install cilium cilium/cilium \
 
 ## Step 3: Configure Cilium for NSX Segment MTU
 
-NSX overlays add header overhead — configure Cilium's MTU accordingly.
+NSX overlays add header overhead - configure Cilium's MTU accordingly.
 
 ```yaml
 # cilium-configmap-nsx.yaml
@@ -153,7 +153,7 @@ hubble observe --namespace production --follow
 - Set Cilium's MTU to at least 100 bytes below the NSX segment's configured MTU to prevent fragmentation
 - Use native routing mode (tunnel=disabled) when NSX provides full L3 reachability between all nodes
 - Monitor both NSX flow data and Hubble flows to get a complete picture of traffic in hybrid environments
-- Coordinate MTU settings with the NSX network team — mismatched MTU causes silent packet drops
+- Coordinate MTU settings with the NSX network team - mismatched MTU causes silent packet drops
 - Test connectivity after every NSX segment or gateway configuration change before deploying workloads
 
 ## Conclusion

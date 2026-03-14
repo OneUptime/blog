@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, asyncio, Queue, Concurrency, Async Programming
+Tags: Python, Asyncio, Queue, Concurrency, Async Programming
 
 Description: Master Python asyncio queues for producer-consumer patterns, task distribution, and backpressure handling in async applications.
 

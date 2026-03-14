@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, Troubleshooting, eBPF
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A guide to diagnosing and resolving common Cilium requirement issues on Azure Kubernetes Service, from kernel version problems to network plugin conflicts.
 
@@ -140,4 +140,4 @@ az aks update \
 
 ## Conclusion
 
-Troubleshooting Cilium requirement issues on AKS requires understanding both Cilium's requirements and Azure's specific networking model. The most common issues — CNI conflicts, old kernel versions, NSG restrictions, and IP exhaustion — all have documented solutions. By systematically diagnosing the symptoms with the commands above, you can resolve requirement mismatches without rebuilding the entire cluster.
+Troubleshooting Cilium requirement issues on AKS requires understanding both Cilium's requirements and Azure's specific networking model. The most common issues - CNI conflicts, old kernel versions, NSG restrictions, and IP exhaustion - all have documented solutions. By systematically diagnosing the symptoms with the commands above, you can resolve requirement mismatches without rebuilding the entire cluster.

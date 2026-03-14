@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, runc, Container Runtime, OCI, Namespace, Cgroups, Containers, Linux
+Tags: Docker, Runc, Container Runtime, OCI, Namespace, Cgroups, Containers, Linux
 
 Description: Learn how runc works as the low-level OCI container runtime that actually creates and runs containers using Linux kernel primitives.
 

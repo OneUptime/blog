@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Documentation, Operations
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Documentation, Operations
 
 Description: How to document the Calico CNI plugin configuration, IPAM design, and operational procedures to support engineers managing pod networking in Kubernetes clusters.
 
@@ -129,4 +129,4 @@ calicoctl create -f new-pool.yaml  # Add additional pool
 
 ## Conclusion
 
-Documenting the Calico CNI plugin provides operators with the context needed to understand IPAM design decisions, the CNI configuration file parameters and their rationale, and runbooks for the most common failure modes. The IPAM capacity planning section is particularly valuable for avoiding the most common production CNI failure — IP address pool exhaustion that prevents new pods from starting.
+Documenting the Calico CNI plugin provides operators with the context needed to understand IPAM design decisions, the CNI configuration file parameters and their rationale, and runbooks for the most common failure modes. The IPAM capacity planning section is particularly valuable for avoiding the most common production CNI failure - IP address pool exhaustion that prevents new pods from starting.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, CLI, Kustomization, GitOps, Kubernetes, flux-get, Troubleshooting, Reconciliation
+Tags: Flux, CLI, Kustomization, GitOps, Kubernetes, Flux-get, Troubleshooting, Reconciliation
 
 Description: A comprehensive guide to using flux get kustomizations to monitor, inspect, and troubleshoot Flux Kustomization resources in your cluster.
 

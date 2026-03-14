@@ -49,7 +49,7 @@ With two Typha replicas, the endpoints list shows two IP addresses. Felix reconn
 
 With one Typha replica:
 
-```
+```plaintext
 Typha fails → All Felix agents disconnect → Felix continues with cached state
                → Typha pod restarts (typically <60s) → Felix reconnects
                → Policy changes during downtime applied
@@ -61,7 +61,7 @@ Policy changes during the Typha outage are applied after reconnection. For short
 
 With three Typha replicas (one per availability zone):
 
-```
+```plaintext
 Typha replica in zone-a fails → Felix agents in zone-a reconnect to zone-b or zone-c
                                 → No policy propagation interruption
                                 → Zone-a Felix agents receive snapshot on reconnect

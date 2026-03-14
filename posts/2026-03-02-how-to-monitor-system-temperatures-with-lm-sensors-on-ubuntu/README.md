@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, lm-sensors, Hardware Monitoring, Temperature, Server
+Tags: Ubuntu, Lm-sensors, Hardware Monitoring, Temperature, Server
 
 Description: A complete guide to installing and configuring lm-sensors on Ubuntu to monitor CPU, motherboard, and GPU temperatures along with fan speeds and voltages.
 

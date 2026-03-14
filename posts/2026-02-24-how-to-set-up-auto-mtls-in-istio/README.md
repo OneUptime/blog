@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Auto mTLS, Service Mesh, Security
+Tags: Istio, MTLS, Auto mTLS, Service Mesh, Security
 
 Description: Understanding and configuring Istio auto mTLS which automatically uses mutual TLS when both sides have sidecars without manual configuration.
 

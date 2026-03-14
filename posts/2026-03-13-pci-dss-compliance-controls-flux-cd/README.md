@@ -12,7 +12,7 @@ Description: Satisfy PCI DSS change control requirements using Flux CD GitOps wo
 
 PCI DSS (Payment Card Industry Data Security Standard) mandates rigorous controls over systems that store, process, or transmit cardholder data. Requirement 6 (Develop and Maintain Secure Systems) and Requirement 10 (Log and Monitor All Access) are most directly addressed by how your team manages infrastructure changes. Flux CD GitOps provides a technical foundation for satisfying these requirements.
 
-The core PCI DSS requirement for change management (Requirement 6.5) demands that all system components have a documented change control process that includes impact analysis, testing, authorization, rollback procedures, and audit documentation. A GitOps workflow with Flux CD satisfies every element of this requirement — each PR is a documented change record with authorization evidence, test status, rollback capability (git revert), and a permanent audit entry in Git history.
+The core PCI DSS requirement for change management (Requirement 6.5) demands that all system components have a documented change control process that includes impact analysis, testing, authorization, rollback procedures, and audit documentation. A GitOps workflow with Flux CD satisfies every element of this requirement - each PR is a documented change record with authorization evidence, test status, rollback capability (git revert), and a permanent audit entry in Git history.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ metadata:
     pci-scope: in-scope     # Label marks this as a PCI-scoped namespace
     compliance: pci-dss
   annotations:
-    pci.control: "Requirement 1 — Network Security Controls"
+    pci.control: "Requirement 1 - Network Security Controls"
 ---
 # Deny all ingress by default in the CDE namespace
 apiVersion: networking.k8s.io/v1
@@ -44,7 +44,7 @@ metadata:
   name: default-deny-all
   namespace: cardholder-data
   annotations:
-    pci.control: "Requirement 1.3 — Restrict inbound/outbound traffic"
+    pci.control: "Requirement 1.3 - Restrict inbound/outbound traffic"
 spec:
   podSelector: {}
   policyTypes:
@@ -84,8 +84,8 @@ PCI DSS Requirement 6.5.1 requires that change control procedures include docume
 **PCI Scope**: [ ] In-scope (CDE or connected system) [ ] Out-of-scope
 
 **PCI Requirement(s) Affected**:
-- Requirement 6 — Secure Development
-- Requirement 1 — Network Controls
+- Requirement 6 - Secure Development
+- Requirement 1 - Network Controls
 - Other: ___
 
 **Change Impact Analysis**:
@@ -101,14 +101,14 @@ _Describe impact on cardholder data security, availability, and integrity_
 - [ ] Approved by security team (required for in-scope changes)
 
 **Rollback Procedure**:
-`git revert <commit-sha>` — describe any additional rollback steps
+`git revert <commit-sha>` - describe any additional rollback steps
 
 **Backout Test**: [ ] Rollback tested in non-production
 ```
 
 ## Step 3: Require Security Team Approval for CDE Changes
 
-```
+```plaintext
 # .github/CODEOWNERS
 # All in-scope CDE changes require QSA-designated security approver
 /clusters/cde/                  @your-org/pci-security-team
@@ -165,13 +165,13 @@ metadata:
   name: payment-processor
   namespace: cardholder-data
   annotations:
-    pci.control: "Requirement 6.3.3 — Protect against known vulnerabilities"
+    pci.control: "Requirement 6.3.3 - Protect against known vulnerabilities"
 spec:
   interval: 10m
   chart:
     spec:
       chart: payment-processor
-      version: "3.4.2"        # Exact version — no ranges in PCI scope
+      version: "3.4.2"        # Exact version - no ranges in PCI scope
       sourceRef:
         kind: HelmRepository
         name: internal-charts
@@ -179,7 +179,7 @@ spec:
   values:
     image:
       repository: registry.example.com/payment-processor
-      tag: "3.4.2"            # Exact immutable tag — not 'latest'
+      tag: "3.4.2"            # Exact immutable tag - not 'latest'
       pullPolicy: IfNotPresent
 ```
 
@@ -194,7 +194,7 @@ kind: ClusterPolicy
 metadata:
   name: pci-no-root-containers
   annotations:
-    pci.control: "Requirement 2.2 — System configuration standards"
+    pci.control: "Requirement 2.2 - System configuration standards"
 spec:
   validationFailureAction: enforce
   rules:
@@ -243,7 +243,7 @@ echo "Evidence file: $OUTPUT"
 ## Best Practices
 
 - Engage a Qualified Security Assessor (QSA) early to confirm that Git-based PR approvals satisfy their interpretation of PCI DSS authorization requirements for your specific Report on Compliance (ROC).
-- Never store cardholder data or primary account numbers (PANs) in your Git repository — use Sealed Secrets or External Secrets for all credentials.
+- Never store cardholder data or primary account numbers (PANs) in your Git repository - use Sealed Secrets or External Secrets for all credentials.
 - Retain Git history and Flux event logs for a minimum of 12 months online and 12 months offline storage to satisfy PCI DSS Requirement 10.7.
 - Run automated vulnerability scans on all container images in CI before they are referenced in the GitOps repository.
 - Conduct a full Flux configuration review whenever your PCI DSS scope changes.

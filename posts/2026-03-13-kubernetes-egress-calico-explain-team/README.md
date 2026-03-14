@@ -10,7 +10,7 @@ Description: A practical guide for explaining Kubernetes egress traffic control 
 
 ## Introduction
 
-Egress control is often the last security layer teams think about in Kubernetes — most attention goes to ingress (who can reach my services). But unrestricted egress means any compromised pod can phone home to an attacker's infrastructure, exfiltrate data, or participate in a botnet. Calico's egress controls are the primary mechanism for preventing this.
+Egress control is often the last security layer teams think about in Kubernetes - most attention goes to ingress (who can reach my services). But unrestricted egress means any compromised pod can phone home to an attacker's infrastructure, exfiltrate data, or participate in a botnet. Calico's egress controls are the primary mechanism for preventing this.
 
 Explaining egress to your team requires making the threat concrete, showing the Calico controls that address it, and demonstrating that implementing egress policy does not require a deep understanding of networking internals. This post gives you the messaging and examples to run that conversation.
 
@@ -62,7 +62,7 @@ spec:
   - action: Deny
 ```
 
-This is immediately understandable to security stakeholders — it reads like a firewall rule.
+This is immediately understandable to security stakeholders - it reads like a firewall rule.
 
 ## Framing Egress for Developers
 
@@ -95,7 +95,7 @@ A: CoreDNS runs inside the cluster. Pod-to-DNS traffic is intra-cluster, not egr
 
 ## Best Practices
 
-- Start with observation (Calico flow logs) before enforcement — know what your pods are talking to before you start blocking it
+- Start with observation (Calico flow logs) before enforcement - know what your pods are talking to before you start blocking it
 - Implement egress policy namespace by namespace, starting with the most security-sensitive workloads
 - Use FQDN-based policies for external SaaS endpoints to avoid IP-based policy drift
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, Codable, JSON, iOS, Data Parsing, API Integration, Type Safety
+Tags: Swift, Codable, JSON, IOS, Data Parsing, API Integration, Type Safety
 
 Description: Master JSON parsing in Swift using the Codable protocol. Learn encoding, decoding, custom transformations, nested objects, error handling, and production-ready patterns for iOS and macOS development.
 

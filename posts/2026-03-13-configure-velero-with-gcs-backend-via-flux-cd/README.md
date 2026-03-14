@@ -10,7 +10,7 @@ Description: Configure Velero to use Google Cloud Storage for backups with Flux 
 
 ## Introduction
 
-Google Cloud Storage (GCS) combined with Velero provides durable, globally distributed backup storage for Kubernetes clusters running on GCP. GCS offers eleven 9s of durability, automatic versioning, object lifecycle management, and tight integration with GKE through Workload Identity. When Velero authenticates to GCS using Workload Identity, no long-lived service account key files are needed—the credential is bound to the pod's Kubernetes service account.
+Google Cloud Storage (GCS) combined with Velero provides durable, globally distributed backup storage for Kubernetes clusters running on GCP. GCS offers eleven 9s of durability, automatic versioning, object lifecycle management, and tight integration with GKE through Workload Identity. When Velero authenticates to GCS using Workload Identity, no long-lived service account key files are needed-the credential is bound to the pod's Kubernetes service account.
 
 This guide covers setting up GCS as the Velero backup backend with Workload Identity for GKE, including multi-region storage configuration and lifecycle policies for cost management.
 

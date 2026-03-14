@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, openSUSE, Linux, Server Configuration, Zypper
+Tags: Ansible, OpenSUSE, Linux, Server Configuration, Zypper
 
 Description: Configure openSUSE Leap servers with Ansible using zypper package management, AppArmor security profiles, and community repositories.
 

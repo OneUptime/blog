@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Cluster Management, CLI, DevOps
+Tags: Talos Linux, Talosctl, Cluster Management, CLI, DevOps
 
 Description: A comprehensive guide to using talosctl for day-to-day management of your Talos Linux Kubernetes cluster.
 

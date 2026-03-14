@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, CNI, Validation
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to validate a fresh Cilium installation in Kubernetes by running connectivity tests and checking component health to ensure your CNI is functioning correctly.
 
@@ -12,7 +12,7 @@ Description: Learn how to validate a fresh Cilium installation in Kubernetes by 
 
 After installing Cilium as your Kubernetes CNI plugin, validating the installation is a critical first step before running production workloads. A misconfigured or incomplete Cilium installation can cause networking failures, policy enforcement issues, and hard-to-debug connectivity problems that only manifest under load.
 
-Cilium ships with a built-in CLI tool and connectivity test suite that performs end-to-end validation of your installation. These tests cover pod-to-pod communication, service connectivity, policy enforcement, and more — giving you confidence that the data plane is working correctly.
+Cilium ships with a built-in CLI tool and connectivity test suite that performs end-to-end validation of your installation. These tests cover pod-to-pod communication, service connectivity, policy enforcement, and more - giving you confidence that the data plane is working correctly.
 
 This guide walks through a systematic approach to validating a new Cilium installation, from checking component status to running the full connectivity test suite.
 
@@ -58,7 +58,7 @@ kubectl logs -n kube-system ds/cilium --tail=50
 Confirm that Cilium has established correct tunnel or direct routing between nodes.
 
 ```bash
-# Show the Cilium endpoint list — each pod gets an endpoint entry
+# Show the Cilium endpoint list - each pod gets an endpoint entry
 kubectl exec -n kube-system ds/cilium -- cilium endpoint list
 
 # Check that BPF maps are populated with node routes
@@ -88,7 +88,7 @@ cilium connectivity test --cleanup-on-completion
 Confirm that Cilium is enforcing network policies correctly by testing a simple deny-all policy.
 
 ```yaml
-# test-netpol.yaml — deploy a NetworkPolicy to validate enforcement
+# test-netpol.yaml - deploy a NetworkPolicy to validate enforcement
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

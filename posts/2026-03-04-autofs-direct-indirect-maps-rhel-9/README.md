@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, Direct Maps, Indirect Maps, NFS, Linux
+Tags: RHEL, Autofs, Direct Maps, Indirect Maps, NFS, Linux
 
 Description: Understand and configure direct and indirect autofs maps on RHEL to control exactly where NFS shares and other file systems are mounted.
 

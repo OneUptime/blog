@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Packaging, pbuilder, Debian, Build Environment
+Tags: Ubuntu, Packaging, Pbuilder, Debian, Build Environment
 
 Description: Learn how to use pbuilder on Ubuntu to build Debian packages in a clean chroot environment, ensuring reproducible builds that don't depend on your development machine's installed packages.
 

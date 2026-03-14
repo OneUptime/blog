@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, stress-ng, Performance, Testing, System Administration
+Tags: Ubuntu, Stress-ng, Performance, Testing, System Administration
 
 Description: Use stress-ng on Ubuntu to load-test CPU, memory, I/O, and network subsystems to verify stability, measure thermal behavior, and validate hardware changes.
 

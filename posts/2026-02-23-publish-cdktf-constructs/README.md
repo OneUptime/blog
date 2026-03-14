@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Infrastructure as Code, Constructs, npm, Open Source
+Tags: Terraform, CDKTF, Infrastructure as Code, Constructs, Npm, Open Source
 
 Description: Step-by-step guide to building, packaging, and publishing your own CDKTF constructs to npm and other package registries so others can reuse your infrastructure patterns.
 

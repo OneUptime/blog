@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, VirtualService, gRPC, Traffic Management, Kubernetes
+Tags: Istio, VirtualService, GRPC, Traffic Management, Kubernetes
 
 Description: Learn how to configure Istio VirtualService for gRPC traffic routing including method-based matching, retries, and timeouts.
 

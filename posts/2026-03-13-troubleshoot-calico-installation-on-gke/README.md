@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gke, google-cloud, kubernetes, installation, troubleshooting
+Tags: Calico, Kubernetes, Networking, Troubleshooting, GKE, Google Cloud
 
 Description: A guide to diagnosing and resolving common issues when installing and running Calico on Google Kubernetes Engine (GKE) clusters.
 
@@ -10,7 +10,7 @@ Description: A guide to diagnosing and resolving common issues when installing a
 
 ## Introduction
 
-Google Kubernetes Engine (GKE) clusters use Google's proprietary CNI plugin and network infrastructure. Running Calico on GKE requires operating in policy-only mode—Calico handles network policy enforcement while GKE's CNI handles IP allocation and routing.
+Google Kubernetes Engine (GKE) clusters use Google's proprietary CNI plugin and network infrastructure. Running Calico on GKE requires operating in policy-only mode-Calico handles network policy enforcement while GKE's CNI handles IP allocation and routing.
 
 GKE-specific constraints include the managed control plane's restrictions, GKE's default use of Dataplane V2 (which is built on Cilium), and the requirement to use node-pool-level configurations for some settings. Understanding these constraints is essential for troubleshooting Calico on GKE.
 
@@ -131,7 +131,7 @@ kubectl run -n gke-policy-test client --rm -it --image=curlimages/curl -- \
 
 ## Best Practices
 
-- Verify GKE's Dataplane V2 setting before attempting Calico installation—they are mutually exclusive
+- Verify GKE's Dataplane V2 setting before attempting Calico installation-they are mutually exclusive
 - Use GKE-specific Calico manifests rather than generic Kubernetes manifests
 - Test after every GKE cluster upgrade, as managed updates can affect Calico compatibility
 - Enable GKE's built-in Kubernetes NetworkPolicy support as a fallback while evaluating Calico

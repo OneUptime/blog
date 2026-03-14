@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Laravel, PHP, FPM, Nginx, Deployment
+Tags: Flux CD, Kubernetes, GitOps, Laravel, PHP, FPM, NGINX, Deployments
 
 Description: Deploy a PHP Laravel application to Kubernetes using Flux CD, with PHP-FPM and Nginx serving, database migrations, and queue workers.
 
@@ -12,7 +12,7 @@ Description: Deploy a PHP Laravel application to Kubernetes using Flux CD, with 
 
 Laravel is the most popular PHP framework, offering an expressive ORM (Eloquent), a queue system, scheduled tasks, and a rich ecosystem. Containerizing Laravel for Kubernetes requires pairing PHP-FPM (which processes PHP) with Nginx (which handles HTTP). This two-container pod pattern, or a single container combining both, is the standard approach.
 
-Flux CD provides the GitOps workflow that ensures your Laravel deployment — including migrations, web pods, and queue workers — is always consistent with your Git repository. Every environment-specific configuration difference is captured as a Kustomize overlay, and Flux reconciles it automatically.
+Flux CD provides the GitOps workflow that ensures your Laravel deployment - including migrations, web pods, and queue workers - is always consistent with your Git repository. Every environment-specific configuration difference is captured as a Kustomize overlay, and Flux reconciles it automatically.
 
 This guide covers the Laravel Dockerfile with PHP-FPM and Nginx, the Kubernetes manifest design for migrations and workers, and the complete Flux pipeline.
 
@@ -29,7 +29,7 @@ This guide covers the Laravel Dockerfile with PHP-FPM and Nginx, the Kubernetes 
 Use a single container that runs Nginx and PHP-FPM via supervisord, or two separate containers in a pod. The single-container approach is simpler for small teams.
 
 ```dockerfile
-# Dockerfile — Laravel with PHP-FPM + Nginx + supervisord
+# Dockerfile - Laravel with PHP-FPM + Nginx + supervisord
 FROM php:8.3-fpm-alpine AS base
 WORKDIR /var/www/html
 
@@ -317,4 +317,4 @@ curl http://localhost:8080/up
 
 ## Conclusion
 
-Laravel on Kubernetes with Flux CD provides a structured deployment pipeline for PHP applications. The supervisord-managed Nginx and PHP-FPM combination serves requests efficiently, the migration Job pattern ensures schema correctness before each release, and queue workers handle background processing — all reconciled continuously by Flux from your Git repository.
+Laravel on Kubernetes with Flux CD provides a structured deployment pipeline for PHP applications. The supervisord-managed Nginx and PHP-FPM combination serves requests efficiently, the migration Job pattern ensures schema correctness before each release, and queue workers handle background processing - all reconciled continuously by Flux from your Git repository.

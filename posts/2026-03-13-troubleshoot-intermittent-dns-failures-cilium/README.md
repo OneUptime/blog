@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, DNS, Troubleshooting, Network Policy, eBPF
+Tags: Cilium, Kubernetes, DNS, Troubleshooting, Network Policy, EBPF
 
 Description: Diagnose and fix intermittent DNS resolution failures in Kubernetes clusters running Cilium, including proxy race conditions, FQDN cache staleness, and UDP policy issues.
 
@@ -10,7 +10,7 @@ Description: Diagnose and fix intermittent DNS resolution failures in Kubernetes
 
 ## Introduction
 
-Intermittent DNS failures in Cilium-managed clusters are notoriously difficult to debug because they often occur under specific timing conditions. The Cilium DNS proxy intercepts all DNS traffic, and failures in the proxy—even brief ones during policy updates—cause resolution timeouts for pods.
+Intermittent DNS failures in Cilium-managed clusters are notoriously difficult to debug because they often occur under specific timing conditions. The Cilium DNS proxy intercepts all DNS traffic, and failures in the proxy-even brief ones during policy updates-cause resolution timeouts for pods.
 
 Common causes include: race conditions between policy updates and DNS proxy startup, FQDN cache entries expiring before traffic is allowed, UDP timeout misconfiguration, and conflicts between CoreDNS and Cilium's DNS proxy.
 

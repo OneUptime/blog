@@ -26,7 +26,7 @@ This guide covers the repository structure, per-region customization, global loa
 
 ## Step 1: Repository Structure for Multi-Region
 
-```
+```plaintext
 clusters/
   us-east-1/
     flux-system/
@@ -208,7 +208,7 @@ curl -X PATCH "https://api.cloudflare.com/client/v4/user/load_balancers/pools/$P
 ## Best Practices
 
 - Use latency-based or geo-based routing so users always hit the nearest region.
-- Keep base application manifests identical across regions — only environment-specific values differ.
+- Keep base application manifests identical across regions - only environment-specific values differ.
 - Test a regional failure quarterly by temporarily disabling a region in your load balancer.
 - Use distributed databases (CockroachDB, Spanner) rather than replicating single-region databases.
 - Monitor cross-region replication lag and alert if it exceeds your RPO threshold.

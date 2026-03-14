@@ -10,7 +10,7 @@ Description: Validate that Calico Grafana dashboards are correctly displaying da
 
 ## Introduction
 
-Validating Calico dashboards goes beyond confirming they load — it requires verifying that each panel shows accurate data that matches the cluster's actual state. A dashboard panel showing "0" when there are active network policies, or showing data from only 3 of 10 nodes, is a false negative that misleads operators.
+Validating Calico dashboards goes beyond confirming they load - it requires verifying that each panel shows accurate data that matches the cluster's actual state. A dashboard panel showing "0" when there are active network policies, or showing data from only 3 of 10 nodes, is a false negative that misleads operators.
 
 ## Validation Approach
 

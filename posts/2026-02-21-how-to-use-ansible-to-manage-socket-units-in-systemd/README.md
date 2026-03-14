@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Socket Activation, Linux
+Tags: Ansible, Systemd, Socket Activation, Linux
 
 Description: Learn how to deploy and manage systemd socket units with Ansible for on-demand service activation and efficient resource usage.
 

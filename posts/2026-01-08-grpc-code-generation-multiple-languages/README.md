@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Protocol Buffers, Code Generation, protoc, Buf, Go, Python, Node.js, Java, Rust
+Tags: GRPC, Protocol Buffers, Code Generation, Protoc, Buf, Go, Python, Node.js, Java, Rust
 
 Description: Learn how to set up protoc and generate gRPC client/server code in Go, Python, Node.js, Java, and Rust with build automation using Buf.
 

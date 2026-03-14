@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, File Download, uri Module, Automation
+Tags: Ansible, File Download, Uri Module, Automation
 
 Description: Learn how to download files from URLs using the Ansible uri module and get_url module with checksums and authentication.
 

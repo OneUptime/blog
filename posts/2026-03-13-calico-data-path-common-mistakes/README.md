@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Troubleshooting, Best Practices, iptables, eBPF
+Tags: Calico, Kubernetes, Data Path, CNI, Troubleshooting, Best Practices, Iptables, EBPF
 
-Description: Common data path mistakes in Calico deployments — from MTU mismatches to stale iptables rules — and how to diagnose and fix them.
+Description: Common data path mistakes in Calico deployments - from MTU mismatches to stale iptables rules - and how to diagnose and fix them.
 
 ---
 
@@ -61,7 +61,7 @@ sudo iptables -L | grep cali | wc -l
 sudo iptables -L -n -v | head -50
 ```
 
-**Fix**: Restart the calico-node pod on the affected node — Felix will clean up stale rules and reprogram the correct state:
+**Fix**: Restart the calico-node pod on the affected node - Felix will clean up stale rules and reprogram the correct state:
 ```bash
 kubectl delete pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name>
@@ -100,7 +100,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
   grep -i "bpf\|ebpf\|failed"
 ```
 
-**Fix**: Restart calico-node on the affected node — Felix will recompile and reload the eBPF programs for the new kernel version:
+**Fix**: Restart calico-node on the affected node - Felix will recompile and reload the eBPF programs for the new kernel version:
 ```bash
 kubectl delete pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<upgraded-node>
@@ -127,7 +127,7 @@ echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
 
 ## Best Practices
 
-- Always check MTU when enabling VXLAN or IP-in-IP encapsulation — test with `ping -M do -s 1400` to detect fragmentation
+- Always check MTU when enabling VXLAN or IP-in-IP encapsulation - test with `ping -M do -s 1400` to detect fragmentation
 - Monitor conntrack table utilization as a Prometheus metric on all nodes
 - After any kernel upgrade, verify eBPF programs are loaded by running `bpftool prog list | grep calico`
 - Include IP forwarding enablement in your node bootstrap script and verify it in your node health checks

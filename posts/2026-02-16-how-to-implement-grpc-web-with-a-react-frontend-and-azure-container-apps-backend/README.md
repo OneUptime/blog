@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC-Web, React, Azure Container Apps, Frontend, Backend, Envoy, Proxy
+Tags: GRPC-Web, React, Azure Container Apps, Frontend, Backend, Envoy, Proxy
 
 Description: Build a React frontend that communicates with a gRPC backend through gRPC-Web, deployed on Azure Container Apps with an Envoy proxy.
 

@@ -12,7 +12,7 @@ Description: Configure Flux CD controllers to work within GKE Autopilot's resour
 
 GKE Autopilot is Google's fully managed Kubernetes mode where Google controls node provisioning, scaling, and patching. This hands-off model is excellent for reducing operational overhead, but it comes with strict resource requirements: every pod must declare both requests and limits, certain privilege escalations are blocked, and Autopilot enforces minimum CPU and memory values per pod class.
 
-Flux CD's controllers are standard Kubernetes Deployments, so they run on Autopilot without modification — with one important caveat. The default Flux resource requests set during `flux bootstrap` are below Autopilot's minimum thresholds, causing controllers to be automatically adjusted or rejected. This guide shows how to patch the Flux controllers with Autopilot-compliant resource settings and bootstrap Flux correctly from the start.
+Flux CD's controllers are standard Kubernetes Deployments, so they run on Autopilot without modification - with one important caveat. The default Flux resource requests set during `flux bootstrap` are below Autopilot's minimum thresholds, causing controllers to be automatically adjusted or rejected. This guide shows how to patch the Flux controllers with Autopilot-compliant resource settings and bootstrap Flux correctly from the start.
 
 Whether you are setting up a new Autopilot cluster or migrating an existing Flux installation, the techniques here will give you a stable, fully reconciling Flux installation that coexists cleanly with Autopilot's automation.
 
@@ -184,7 +184,7 @@ spec:
 
 - Use Kustomize overlays to maintain separate resource configurations for Autopilot and Standard cluster environments in the same repository.
 - Set up Flux alerts (`Alert` and `Provider` resources) to notify your team when a controller pod fails to start due to resource admission rejection.
-- GKE Autopilot automatically applies `cluster-autoscaler.kubernetes.io/safe-to-evict: "true"` annotations — account for this in pod disruption budgets.
+- GKE Autopilot automatically applies `cluster-autoscaler.kubernetes.io/safe-to-evict: "true"` annotations - account for this in pod disruption budgets.
 - Avoid using `hostNetwork`, `hostPID`, `hostIPC`, or `privileged` in any manifest synced by Flux on Autopilot, as Autopilot's admission webhook will reject them.
 - Use Workload Identity for all GCP API access from pods running on Autopilot rather than node service accounts.
 

@@ -1,10 +1,10 @@
-# Migrate Workloads to Calico on Self-Managed Azure Kubernetes
+# How to Migrate Existing Workloads to Calico on Self-Managed Azure Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Azure, Kubernetes, Networking, Migration, CNI
+Tags: Calico, Kubernetes, Networking, Migration, Azure, Self-Managed
 
-Description: Step-by-step guide to migrating workloads from an existing CNI to Calico on a self-managed Kubernetes cluster running on Azure Virtual Machines, including IP pool alignment and network policy setup.
+Description: Migrate existing workloads to Calico on self-managed Kubernetes clusters running on Azure Virtual Machines.
 
 ---
 

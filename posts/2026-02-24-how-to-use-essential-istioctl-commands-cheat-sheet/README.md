@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Cheat Sheet, Kubernetes, Service Mesh, CLI
+Tags: Istio, Istioctl, Cheat Sheet, Kubernetes, Service Mesh, CLI
 
 Description: A comprehensive cheat sheet of essential istioctl commands for managing, debugging, and monitoring your Istio service mesh.
 

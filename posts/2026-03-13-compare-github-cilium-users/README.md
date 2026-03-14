@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, github, open-source, community, contributing
+Tags: Cilium, Community, GitHub, Open Source
 
 Description: A guide to navigating the Cilium GitHub organization, understanding how to use GitHub resources effectively, and contributing back to the project.
 
@@ -12,7 +12,7 @@ Description: A guide to navigating the Cilium GitHub organization, understanding
 
 The Cilium GitHub organization is the authoritative source for code, issues, documentation, and release artifacts. With dozens of repositories and thousands of issues and pull requests, knowing how to navigate it efficiently can dramatically speed up your ability to find examples, debug issues, and track the project roadmap.
 
-Beyond consuming resources, GitHub is also the primary avenue for contributing to Cilium — whether by filing detailed bug reports, improving documentation, contributing eBPF programs, or reviewing pull requests. The project has a well-defined contribution process that welcomes newcomers.
+Beyond consuming resources, GitHub is also the primary avenue for contributing to Cilium - whether by filing detailed bug reports, improving documentation, contributing eBPF programs, or reviewing pull requests. The project has a well-defined contribution process that welcomes newcomers.
 
 This post provides a practical guide to the most useful GitHub resources for Cilium users, from finding example configurations to understanding how to engage with the maintainer team.
 
@@ -126,7 +126,7 @@ gh pr create \
 ## Best Practices
 
 - Watch the `cilium/cilium` repository for release announcements and security advisories
-- Use GitHub labels to filter issues — `good first issue` is ideal for new contributors
+- Use GitHub labels to filter issues - `good first issue` is ideal for new contributors
 - Reference related issues and PRs in your comments to build context
 - Attach sysdumps and logs as files, not inline text, to keep issues readable
 - Check the CONTRIBUTING.md guide before submitting your first PR

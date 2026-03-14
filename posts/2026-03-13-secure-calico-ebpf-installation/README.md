@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation, Security
+Tags: Calico, Kubernetes, Networking, EBPF, Installation, Security
 
 Description: Apply security hardening during Calico eBPF installation to establish a secure-by-default networking foundation with default-deny policies, restricted BPF access, and minimal attack surface.
 

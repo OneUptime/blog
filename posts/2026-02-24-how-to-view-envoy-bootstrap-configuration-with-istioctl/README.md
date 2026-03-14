@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Bootstrap, istioctl, Kubernetes, Configuration
+Tags: Istio, Envoy, Bootstrap, Istioctl, Kubernetes, Configuration
 
 Description: Learn how to inspect the Envoy bootstrap configuration in Istio to debug proxy startup settings, control plane connectivity, and static resources.
 

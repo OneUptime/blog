@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico on Windows Nodes with the Operator
+# How to Troubleshoot Calico on Windows Nodes - Operator
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: A diagnostic guide for resolving Calico installation failures on Wi
 
 ## Introduction
 
-Troubleshooting operator-managed Calico on Windows nodes benefits from the operator's status reporting — TigeraStatus provides structured error messages that identify the failing component. However, the root causes often still require Windows-specific investigation: HNS state, Windows service logs, Windows Firewall configuration, and containerd configuration.
+Troubleshooting operator-managed Calico on Windows nodes benefits from the operator's status reporting - TigeraStatus provides structured error messages that identify the failing component. However, the root causes often still require Windows-specific investigation: HNS state, Windows service logs, Windows Firewall configuration, and containerd configuration.
 
 The operator adds its own layer of potential failures: incorrect Installation CR configuration for Windows, operator RBAC issues preventing Windows DaemonSet deployment, and operator version mismatches with Windows-specific DaemonSet images. This guide covers both operator-level and Windows-level diagnostic steps.
 
@@ -36,8 +36,8 @@ kubectl logs -n tigera-operator deploy/tigera-operator --tail=50 | grep -i "wind
 ```
 
 Common operator errors for Windows:
-- `failed to reconcile Windows DaemonSet` — Installation CR misconfiguration
-- `unsupported windows dataplane` — Invalid `windowsDataplane` value
+- `failed to reconcile Windows DaemonSet` - Installation CR misconfiguration
+- `unsupported windows dataplane` - Invalid `windowsDataplane` value
 
 ## Step 3: Check Windows DaemonSet Pod Status
 

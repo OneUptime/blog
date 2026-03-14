@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, Disk Management, Logging
+Tags: RHEL, Journald, Disk Management, Logging
 
 Description: Control journal disk usage and vacuum old logs on RHEL 9 to prevent storage issues.
 

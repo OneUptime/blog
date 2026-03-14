@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Jellyfin, Media-server, Streaming, Self-Hosted, docker-compose
+Tags: Docker, Jellyfin, Media-server, Streaming, Self-Hosted, Docker-compose
 
 Description: Deploy Jellyfin in Docker to build your own media streaming server for movies, TV shows, and music collections.
 

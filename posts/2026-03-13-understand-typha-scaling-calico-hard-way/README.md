@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Scaling, CNI, Networking, Architecture
+Tags: Calico, Typha, Kubernetes, Networking, Scaling, Hard Way
 
-Description: Build a deep understanding of how Typha scales Felix connections in large Kubernetes clusters — covering the fan-out model, connection lifecycle, scaling thresholds, and the tradeoffs between replica count and per-pod load when running Calico in manifest mode.
+Description: Build a deep understanding of how Typha scales Felix connections in large Kubernetes clusters - covering the fan-out model, connection lifecycle, scaling thresholds, and the tradeoffs between...
 
 ---
 
@@ -27,7 +27,7 @@ This post explains the Typha scaling model in depth, without relying on operator
 
 ## Step 1: What "Scaling" Means in the Context of Typha
 
-Typha solves a specific scaling problem: API server connection fan-out. Without Typha, every Felix agent maintains its own watch connections to the Kubernetes API server — one per watched resource type (NetworkPolicy, IPPool, HostEndpoint, nodes, etc.). At 500 nodes, this creates thousands of concurrent watch streams, consuming significant API server goroutines and memory.
+Typha solves a specific scaling problem: API server connection fan-out. Without Typha, every Felix agent maintains its own watch connections to the Kubernetes API server - one per watched resource type (NetworkPolicy, IPPool, HostEndpoint, nodes, etc.). At 500 nodes, this creates thousands of concurrent watch streams, consuming significant API server goroutines and memory.
 
 Typha collapses this to a constant number of watch connections regardless of cluster size: one watch stream per resource type, held by each Typha pod. Felix agents connect to Typha, not the API server.
 
@@ -39,7 +39,7 @@ The "scaling" in "Typha scaling" refers to adding more Typha replicas as the clu
 
 Understanding when Felix connects, disconnects, and reconnects to Typha explains how scaling events affect the cluster:
 
-```
+```plaintext
 Startup:
 1. Felix starts on a new node
 2. Felix resolves the calico-typha Service DNS name
@@ -68,7 +68,7 @@ Typha pod restart:
 
 The recommended formula for Typha replica count is:
 
-```
+```plaintext
 replicas = max(2, ceil(node_count / 200))
 ```
 
@@ -144,7 +144,7 @@ kill %1
 ## Best Practices
 
 - Always set `TYPHA_MAXCONNECTIONSLOWERLIMIT` to enforce connection distribution; without it, Felix agents connect to the Typha pod whose DNS response they received last, which can be uneven.
-- Size memory limits generously — the per-client send buffer is allocated when Felix connects, and a sudden influx of reconnecting clients can spike memory usage well above the steady-state value.
+- Size memory limits generously - the per-client send buffer is allocated when Felix connects, and a sudden influx of reconnecting clients can spike memory usage well above the steady-state value.
 - Use the rolling restart strategy (`kubectl rollout restart`) instead of deleting pods directly; it staggers restarts to limit the simultaneous reconnection load.
 - Monitor `typha_snapshots_generated_total` rate as an indicator of reconnection events; a spike above the baseline indicates a pod restart or Felix agent restart event.
 - When planning Typha scaling, factor in the reconnection storm: a pod that serves 200 Felix clients will generate 200 simultaneous reconnects when it restarts. Size your remaining pods to handle this burst.
@@ -153,7 +153,7 @@ kill %1
 
 ## Conclusion
 
-Typha scaling is fundamentally about managing Felix connection fan-out to the API server. The scaling formula, connection lifecycle, and reconnection storm dynamics all follow logically from this core purpose. Understanding these mechanics makes every Typha configuration decision — replica count, connection limits, memory sizing — an informed choice rather than a guess.
+Typha scaling is fundamentally about managing Felix connection fan-out to the API server. The scaling formula, connection lifecycle, and reconnection storm dynamics all follow logically from this core purpose. Understanding these mechanics makes every Typha configuration decision - replica count, connection limits, memory sizing - an informed choice rather than a guess.
 
 ---
 

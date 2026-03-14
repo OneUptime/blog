@@ -12,7 +12,7 @@ Description: Set up log-based alerting using Elastalert2 managed by Flux CD to t
 
 Log-based alerting bridges the gap between your logging infrastructure and your incident response workflows. Rather than waiting for a user to notice an error pattern in Kibana, tools like Elastalert2 continuously query Elasticsearch or OpenSearch and fire alerts to Slack, PagerDuty, or email when rules match. Elastalert2 is the actively maintained community fork of the original Yelp Elastalert project.
 
-Managing alert rules through Flux CD means your alert definitions live in Git alongside the logging infrastructure they monitor. New rules are added through pull requests, ensuring review and preventing runaway alert noise from untested rules landing in production. Rule changes are automatically applied when Elastalert2 restarts — no manual SSH or API calls required.
+Managing alert rules through Flux CD means your alert definitions live in Git alongside the logging infrastructure they monitor. New rules are added through pull requests, ensuring review and preventing runaway alert noise from untested rules landing in production. Rule changes are automatically applied when Elastalert2 restarts - no manual SSH or API calls required.
 
 This guide deploys Elastalert2 as a Flux HelmRelease and configures a set of common alert rules stored as ConfigMaps in Git.
 
@@ -242,9 +242,9 @@ kubectl exec -n logging elasticsearch-master-0 -- \
 - Test all alert rules with `elastalert-test-rule` in a development environment before merging to the main branch.
 - Use the `frequency` rule type for threshold-based alerting and `spike` for sudden changes to reduce alert fatigue.
 - Set `realert.minutes` on rules to prevent the same alert from firing repeatedly within a short window.
-- Store Slack webhook URLs and PagerDuty keys in Kubernetes Secrets — inject them as environment variables, never hardcode in ConfigMaps.
+- Store Slack webhook URLs and PagerDuty keys in Kubernetes Secrets - inject them as environment variables, never hardcode in ConfigMaps.
 - Use Git tags and Flux image policies to manage Elastalert2 version upgrades systematically.
 
 ## Conclusion
 
-Elastalert2 deployed and configured through Flux CD brings GitOps discipline to your log-based alerting. Alert rules are peer-reviewed, versioned, and automatically applied — eliminating the risk of unreviewed rules causing alert storms in production. Combined with your Flux-managed logging stack, you now have end-to-end observability infrastructure that is fully described in Git and automatically reconciled across your environments.
+Elastalert2 deployed and configured through Flux CD brings GitOps discipline to your log-based alerting. Alert rules are peer-reviewed, versioned, and automatically applied - eliminating the risk of unreviewed rules causing alert storms in production. Combined with your Flux-managed logging stack, you now have end-to-end observability infrastructure that is fully described in Git and automatically reconciled across your environments.

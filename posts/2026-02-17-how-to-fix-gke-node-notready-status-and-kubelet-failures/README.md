@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, kubelet, Node Management, Troubleshooting
+Tags: GCP, GKE, Kubernetes, Kubelet, Node Management, Troubleshooting
 
 Description: Learn how to diagnose and fix GKE node NotReady status and kubelet failures, including common causes like resource exhaustion, network issues, and disk pressure.
 

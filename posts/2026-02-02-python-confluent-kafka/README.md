@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Kafka, Event Driven, Messaging, confluent-kafka
+Tags: Python, Kafka, Event Driven, Messaging, Confluent-kafka
 
 Description: A complete guide to using Apache Kafka with Python using the confluent-kafka library, covering producers, consumers, error handling, and production configurations.
 

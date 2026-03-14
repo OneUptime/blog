@@ -41,7 +41,7 @@ kubectl exec -n calico-system ${NODE_POD} -- birdcl show protocols
 
 Expected output:
 
-```
+```plaintext
 Name       Proto      Table      State  Since         Info
 Kernel1    Kernel     master     up     14:23:00
 BGP_10_0_0_2 BGP      master     up     14:24:00      Established

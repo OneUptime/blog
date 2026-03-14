@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, jq, JSON, API, DevOps, Automation
+Tags: Bash, Shell Scripting, Jq, JSON, API, DevOps, Automation
 
 Description: Learn how to parse, query, and manipulate JSON data in Bash scripts using jq, from basic extraction to complex transformations.
 

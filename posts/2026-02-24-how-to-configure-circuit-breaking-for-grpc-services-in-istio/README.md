@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Circuit Breaking, gRPC, Kubernetes
+Tags: Istio, Service Mesh, Circuit Breaking, GRPC, Kubernetes
 
 Description: How to configure circuit breaking for gRPC services in Istio, including HTTP/2 specific settings and handling gRPC streaming connections.
 

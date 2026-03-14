@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, DestinationRule, Security, Kubernetes
+Tags: Istio, MTLS, DestinationRule, Security, Kubernetes
 
 Description: Configure client-side mutual TLS in Istio DestinationRule for secure service-to-service communication with certificate-based authentication.
 

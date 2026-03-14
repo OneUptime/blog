@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, iptables, eBPF, Networking, Packet Processing
+Tags: Calico, Kubernetes, Data Path, CNI, Iptables, EBPF, Networking, Packet Processing
 
 Description: A deep dive into how packets flow through Calico's dataplane, covering the iptables and eBPF data paths and the role of each processing stage.
 
@@ -10,7 +10,7 @@ Description: A deep dive into how packets flow through Calico's dataplane, cover
 
 ## Introduction
 
-The Calico data path is the sequence of processing stages that every packet traverses from source pod to destination pod. Understanding this path — which kernel hooks are involved, what processing happens at each stage, and where policy is enforced — is essential for diagnosing connectivity issues and understanding the performance characteristics of different Calico configurations.
+The Calico data path is the sequence of processing stages that every packet traverses from source pod to destination pod. Understanding this path - which kernel hooks are involved, what processing happens at each stage, and where policy is enforced - is essential for diagnosing connectivity issues and understanding the performance characteristics of different Calico configurations.
 
 Calico supports three dataplanes: standard Linux (iptables/nftables), eBPF, and Windows HNS. This post focuses on the two Linux dataplanes because they represent the choice most production clusters make.
 
@@ -48,7 +48,7 @@ sudo iptables -L cali-FORWARD -n --line-numbers
 
 The iptables chain structure is hierarchical:
 
-```
+```plaintext
 FORWARD
 └── cali-FORWARD
     ├── cali-from-host-endpoint (host traffic)

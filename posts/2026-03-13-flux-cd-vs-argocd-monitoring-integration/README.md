@@ -53,7 +53,7 @@ spec:
 
 Key Flux metrics:
 
-```
+```plaintext
 # Kustomization reconciliation duration
 gotk_reconcile_duration_seconds{kind="Kustomization", name="myapp", namespace="flux-system"}
 
@@ -100,7 +100,7 @@ spec:
 
 Key ArgoCD metrics:
 
-```
+```plaintext
 # Application sync status
 argocd_app_info{name="myapp", project="production", sync_status="Synced", health_status="Healthy"}
 

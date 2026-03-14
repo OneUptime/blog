@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Gateway API, Ingress, Configuration, eBPF
+Tags: Cilium, Kubernetes, Gateway API, Ingress, Configuration, EBPF
 
 Description: Configure Cilium Gateway API support to replace traditional Ingress controllers with a standards-based, eBPF-powered ingress solution.
 

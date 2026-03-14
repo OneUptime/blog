@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Troubleshooting, eBPF, System Requirements
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A complete guide to verifying all system-level requirements for Cilium, including kernel versions, CPU architecture, memory, and filesystem prerequisites.
 

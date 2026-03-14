@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, libbpf, C, Programming, Linux, Portability
+Tags: EBPF, Libbpf, C, Programming, Linux, Portability
 
 Description: Learn how to develop portable eBPF programs using libbpf and CO-RE for cross-kernel compatibility.
 

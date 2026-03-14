@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Profile, Audit, Compliance
+Tags: Calico, Kubernetes, Networking, Profiles, Audit, Compliance
 
-Description: A guide to auditing Calico Profile resources to detect unauthorized modifications, verify namespace label synchronization, identify profiles with overly permissive rules, and ensure profile assignments match security requirements.
+Description: A guide to auditing Calico Profile resources to detect unauthorized modifications, verify namespace label synchronization, identify profiles with overly permissive rules, and ensure profile...
 
 ---
 
@@ -128,4 +128,4 @@ for ep in data['items']:
 
 ## Conclusion
 
-Profile audits enforce that the namespace profile sync loop is healthy and that no profiles have been manually modified outside approved change processes. In Kubernetes, namespace profiles should be read-only artifacts managed by calico-kube-controllers — any modification is either unauthorized or indicates a broken sync loop. Custom profiles for non-Kubernetes workloads should be version-controlled and compared against baselines as part of regular security audits.
+Profile audits enforce that the namespace profile sync loop is healthy and that no profiles have been manually modified outside approved change processes. In Kubernetes, namespace profiles should be read-only artifacts managed by calico-kube-controllers - any modification is either unauthorized or indicates a broken sync loop. Custom profiles for non-Kubernetes workloads should be version-controlled and compared against baselines as part of regular security audits.

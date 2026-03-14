@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, Kernel Modules, initramfs, Boot, Linux
+Tags: RHEL, Dracut, Kernel Modules, Initramfs, Boot, Linux
 
 Description: Step-by-step instructions for adding custom or third-party kernel modules to the RHEL initramfs using dracut so they load during early boot.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gcloud CLI, SCP, File Transfer, Compute Engine
+Tags: GCP, Gcloud CLI, SCP, File Transfer, Compute Engine
 
 Description: Learn how to transfer files and directories between your local machine and GCP Compute Engine instances using gcloud scp, including IAP tunneling and batch transfers.
 

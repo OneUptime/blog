@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Plugin, Monitoring, Observability
+Tags: Calico, Kubernetes, Networking, CNI, Plugins, Monitoring, Observability
 
 Description: Set up monitoring for the Calico CNI plugin to track pod IP allocation rates, CNI invocation errors, IPAM pool utilization, and WorkloadEndpoint creation health.
 
@@ -129,4 +129,4 @@ kubectl create cronjob ipam-check --schedule="0 3 * * *" \
 
 ## Conclusion
 
-Monitoring the Calico CNI plugin focuses on IPAM pool utilization (to prevent exhaustion), CNI error rate tracking via log aggregation, and WorkloadEndpoint count alignment with running pods. IPAM pool utilization is the most actionable metric — at 80% capacity, you have time to add IP pools before pod creation failures occur. CNI error log monitoring catches transient failures that don't create visible Kubernetes events.
+Monitoring the Calico CNI plugin focuses on IPAM pool utilization (to prevent exhaustion), CNI error rate tracking via log aggregation, and WorkloadEndpoint count alignment with running pods. IPAM pool utilization is the most actionable metric - at 80% capacity, you have time to add IP pools before pod creation failures occur. CNI error log monitoring catches transient failures that don't create visible Kubernetes events.

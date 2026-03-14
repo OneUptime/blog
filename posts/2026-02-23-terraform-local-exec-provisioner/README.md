@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provisioner, local-exec, Infrastructure as Code, Automation
+Tags: Terraform, Provisioner, Local-exec, Infrastructure as Code, Automation
 
 Description: Learn how to use the local-exec provisioner in Terraform to execute commands on the machine running Terraform for integration tasks, notifications, and post-deployment scripts.
 

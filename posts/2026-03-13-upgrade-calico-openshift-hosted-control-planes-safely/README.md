@@ -12,7 +12,7 @@ Description: A safe upgrade procedure for Calico on OpenShift Hosted Control Pla
 
 Upgrading Calico on OpenShift Hosted Control Planes follows the standard operator-managed rolling upgrade process, but with one additional consideration: during the upgrade, worker nodes will be rolling through calico-node pod replacements, and their connectivity to the remote API server must be maintained throughout. If the management cluster has any network disruptions during the Calico upgrade window, the upgrade may stall or fail.
 
-Coordinating the Calico upgrade with the management cluster team — ensuring no maintenance is scheduled on the management cluster during the upgrade window — is an important planning step that does not apply to non-HCP deployments.
+Coordinating the Calico upgrade with the management cluster team - ensuring no maintenance is scheduled on the management cluster during the upgrade window - is an important planning step that does not apply to non-HCP deployments.
 
 This guide covers a safe Calico upgrade on OpenShift Hosted Control Plane worker nodes.
 

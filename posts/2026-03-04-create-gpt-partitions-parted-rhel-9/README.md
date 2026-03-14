@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, parted, GPT, Partitioning, Linux
+Tags: RHEL, Parted, GPT, Partitioning, Linux
 
 Description: Learn how to use parted to create GPT partition tables and partitions on RHEL, supporting large disks and modern hardware requirements.
 

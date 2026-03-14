@@ -10,7 +10,7 @@ Description: A systematic verification guide for confirming Calico pod networkin
 
 ## Introduction
 
-Verifying pod networking on a bare metal Calico cluster is more involved than on cloud-managed clusters because the underlying routing depends on BGP sessions with physical switches rather than a cloud provider's managed network. A verification process that only checks pod-to-pod pings is insufficient — you need to confirm BGP route advertisement, validate that the routing table on each node contains correct pod subnet routes, and test egress from pods to external destinations.
+Verifying pod networking on a bare metal Calico cluster is more involved than on cloud-managed clusters because the underlying routing depends on BGP sessions with physical switches rather than a cloud provider's managed network. A verification process that only checks pod-to-pod pings is insufficient - you need to confirm BGP route advertisement, validate that the routing table on each node contains correct pod subnet routes, and test egress from pods to external destinations.
 
 Container-based workloads on bare metal can achieve very high throughput, and a misconfigured MTU or missing route can create hard-to-diagnose performance cliffs. Catching these issues during verification prevents them from surfacing under production load.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Alibaba Cloud, ENI, Kubernetes, Networking, eBPF, ACK
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
 
 Description: Guide to installing Cilium on Alibaba Cloud Kubernetes clusters using ENI (Elastic Network Interface) for native cloud networking with eBPF security.
 
@@ -164,9 +164,9 @@ hubble observe --follow --namespace production
 
 - Attach the required RAM role to ECS instances for ENI attachment permissions
 - Pre-warm ENI attachment to reduce pod scheduling latency in bursty workloads
-- Enable Hubble for network flow visibility — it provides significant value in debugging ENI-based connectivity issues
+- Enable Hubble for network flow visibility - it provides significant value in debugging ENI-based connectivity issues
 - Use `CiliumClusterwideNetworkPolicy` for cluster-wide baseline rules
-- Monitor ENI quota usage in Alibaba Cloud — each ECS instance type has a maximum ENI count
+- Monitor ENI quota usage in Alibaba Cloud - each ECS instance type has a maximum ENI count
 
 ## Conclusion
 

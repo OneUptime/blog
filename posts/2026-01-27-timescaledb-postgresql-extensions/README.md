@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TimescaleDB, PostgreSQL, Extensions, PostGIS, pg_partman, Time-Series, Database, Performance, DevOps
+Tags: TimescaleDB, PostgreSQL, Extensions, PostGIS, Pg_partman, Time-Series, Database, Performance, DevOps
 
 Description: A comprehensive guide to combining TimescaleDB with other PostgreSQL extensions like PostGIS and pg_partman, covering extension compatibility, installation patterns, performance optimization.
 

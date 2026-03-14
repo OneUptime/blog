@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Configure NodeLocal DNSCache with Calico to reduce DNS latency and improve reliability by adding a per-node DNS caching layer that avoids unnecessary kube-dns roundtrips.
 

@@ -10,7 +10,7 @@ Description: Write a comprehensive disaster recovery runbook for Flux CD deploym
 
 ## Introduction
 
-A disaster recovery runbook is a living document that tells an operator exactly what to do when things go wrong. Without a runbook, recovery depends on tribal knowledge — and tribal knowledge is unavailable at 3 AM when the primary operator is asleep and the junior engineer is holding the pager. A good runbook is opinionated, specific, and regularly tested.
+A disaster recovery runbook is a living document that tells an operator exactly what to do when things go wrong. Without a runbook, recovery depends on tribal knowledge - and tribal knowledge is unavailable at 3 AM when the primary operator is asleep and the junior engineer is holding the pager. A good runbook is opinionated, specific, and regularly tested.
 
 For Flux CD environments, a runbook must cover failures at multiple layers: the Flux controllers themselves, the Git source, the container registry, the Kubernetes control plane, and the application workloads. Each failure mode has a distinct recovery path, and the runbook should make those paths explicit.
 
@@ -64,7 +64,7 @@ Every runbook starts with meta-information so responders know who to call and wh
 kubectl get pods -n flux-system
 kubectl describe pod -n flux-system -l app=source-controller
 kubectl logs -n flux-system deployment/source-controller --tail=50
-```
+```plaintext
 
 **Recovery:**
 ```bash
@@ -86,7 +86,7 @@ flux bootstrap github \
 
 # Step 4: Verify recovery
 flux get all -A
-```
+```plaintext
 
 **Expected RTO:** 5-10 minutes
 ```
@@ -105,7 +105,7 @@ flux get all -A
 flux get sources git -A
 flux describe source git flux-system
 kubectl logs -n flux-system deployment/source-controller | grep -i error
-```
+```plaintext
 
 **Recovery - Authentication Issue:**
 ```bash
@@ -117,7 +117,7 @@ kubectl create secret generic flux-system \
   --from-literal=password="$NEW_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 flux reconcile source git flux-system
-```
+```plaintext
 
 **Recovery - Repository Unreachable (failover to mirror):**
 ```bash
@@ -125,7 +125,7 @@ kubectl patch gitrepository flux-system -n flux-system \
   --type=merge \
   -p '{"spec":{"url":"https://gitea.internal.example.com/my-org/my-fleet"}}'
 flux reconcile source git flux-system
-```
+```plaintext
 
 **Expected RTO:** 3-5 minutes
 ```
@@ -174,7 +174,7 @@ kubectl wait kustomization/apps -n flux-system \
 # Step 5: Validate
 kubectl get pods -A | grep -v Running | grep -v Completed
 flux get all -A | grep -v True
-```
+```plaintext
 
 **Expected RTO:** 20-45 minutes
 ```
@@ -189,21 +189,21 @@ flux get all -A | grep -v True
 flux get helmreleases -A
 flux describe helmrelease my-app -n production
 helm history my-app -n production
-```
+```plaintext
 
 **Recovery - Rollback to last good release:**
 ```bash
 flux suspend helmrelease my-app -n production
 helm rollback my-app -n production
 flux resume helmrelease my-app -n production
-```
+```plaintext
 
 **Recovery - Force re-install:**
 ```bash
 flux suspend helmrelease my-app -n production
 helm uninstall my-app -n production
 flux resume helmrelease my-app -n production
-```
+```plaintext
 
 **Expected RTO:** 5-15 minutes
 ```
@@ -232,13 +232,13 @@ Store the runbook in a location accessible even when the cluster is down.
 
 ## Best Practices
 
-- Store the runbook outside the cluster — a ConfigMap is not accessible when the cluster is down.
-- Include exact commands, not descriptions of commands — under pressure, people make mistakes.
+- Store the runbook outside the cluster - a ConfigMap is not accessible when the cluster is down.
+- Include exact commands, not descriptions of commands - under pressure, people make mistakes.
 - List all credentials needed and exactly where to find them before listing recovery steps.
-- Keep the runbook in sync with infrastructure changes — outdated runbooks are dangerous.
+- Keep the runbook in sync with infrastructure changes - outdated runbooks are dangerous.
 - Require that runbook changes go through peer review in Git, just like code changes.
 - Post-incident, always update the runbook with what actually worked.
 
 ## Conclusion
 
-A well-written DR runbook is one of the most valuable investments a platform team can make. For Flux CD environments, the runbook should cover controller failures, source failures, and full cluster rebuilds, with Flux's Git-based model providing a consistent recovery path across all scenarios. The runbook is only as good as its last test — schedule drills and treat the runbook as living documentation.
+A well-written DR runbook is one of the most valuable investments a platform team can make. For Flux CD environments, the runbook should cover controller failures, source failures, and full cluster rebuilds, with Flux's Git-based model providing a consistent recovery path across all scenarios. The runbook is only as good as its last test - schedule drills and treat the runbook as living documentation.

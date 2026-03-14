@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, CRDs, Kubernetes Operators, GitOps, CustomResourceDefinitions, Comparison
+Tags: Flux CD, ArgoCD, CRD, Kubernetes Operator, GitOps, CustomResourceDefinition, Comparison
 
 Description: Compare CRD lifecycle management in Flux CD and ArgoCD, covering installation ordering, upgrades, and the challenges of managing operator CRDs through GitOps.
 

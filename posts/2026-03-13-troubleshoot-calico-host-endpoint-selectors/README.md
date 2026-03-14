@@ -10,7 +10,7 @@ Description: Diagnose and fix common problems with Calico host endpoint selector
 
 ## Introduction
 
-Selector-related issues in Calico host endpoint policies are often invisible — the policy exists, no errors are reported, but the intended security rules are simply not being enforced on the target nodes. This happens because selectors silently fail to match when labels are missing, mismatched, or expressed incorrectly. The consequences range from over-permissive security to unexpected traffic denial on the wrong nodes.
+Selector-related issues in Calico host endpoint policies are often invisible - the policy exists, no errors are reported, but the intended security rules are simply not being enforced on the target nodes. This happens because selectors silently fail to match when labels are missing, mismatched, or expressed incorrectly. The consequences range from over-permissive security to unexpected traffic denial on the wrong nodes.
 
 This guide covers the most common selector troubleshooting scenarios, including zero-match policies, partial matches, automatic host endpoint label propagation issues, and selector syntax errors.
 

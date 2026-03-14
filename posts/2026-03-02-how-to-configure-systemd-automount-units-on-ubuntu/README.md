@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Storage, Mounting, Linux
+Tags: Ubuntu, Systemd, Storage, Mounting, Linux
 
 Description: Configure systemd automount units on Ubuntu to mount filesystems on demand and unmount them automatically after a period of inactivity, replacing autofs.
 

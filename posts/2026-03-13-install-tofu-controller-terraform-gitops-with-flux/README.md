@@ -129,7 +129,7 @@ kubectl api-resources | grep infra.contrib.fluxcd.io
 ```
 
 Expected CRDs after installation:
-```
+```plaintext
 terraforms.infra.contrib.fluxcd.io
 ```
 

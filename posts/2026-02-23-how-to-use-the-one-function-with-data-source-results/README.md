@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, one Function, Data Source, HCL, Infrastructure as Code, Collections
+Tags: Terraform, One Function, Data Source, HCL, Infrastructure as Code, Collections
 
 Description: Learn how to use the one function in Terraform to safely extract a single element from a list, especially when working with data source results that should return exactly one item.
 

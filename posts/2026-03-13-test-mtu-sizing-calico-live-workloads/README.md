@@ -105,4 +105,4 @@ watch -n 1 "ip -s link show eth0"
 
 ## Conclusion
 
-Live workload testing of MTU configuration validates that the abstract MTU settings translate to correct behavior under real application conditions. Focus on large data transfer scenarios, TLS-heavy applications, and any workloads you know are sensitive to packet size. Monitor fragmentation counters during tests — any increase indicates MTU misconfiguration that needs to be addressed before production.
+Live workload testing of MTU configuration validates that the abstract MTU settings translate to correct behavior under real application conditions. Focus on large data transfer scenarios, TLS-heavy applications, and any workloads you know are sensitive to packet size. Monitor fragmentation counters during tests - any increase indicates MTU misconfiguration that needs to be addressed before production.

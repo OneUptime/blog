@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, sar, sysstat, Disk I/O, Performance, Monitoring, Linux
+Tags: RHEL, Sar, Sysstat, Disk I/O, Performance, Monitoring, Linux
 
 Description: Learn how to use sar on RHEL to collect and analyze historical disk I/O statistics for performance troubleshooting and capacity planning.
 

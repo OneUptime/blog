@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, daemon_reload, Linux, Service Management
+Tags: Ansible, Systemd, Daemon_reload, Linux, Service Management
 
 Description: Deep dive into the daemon_reload parameter of the Ansible systemd_service module, covering when it is needed, common pitfalls, and patterns for safe unit file management.
 

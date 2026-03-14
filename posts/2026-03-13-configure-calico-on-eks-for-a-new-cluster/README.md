@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aws, eks, kubernetes, networking, cni
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, EKS, AWS
 
 Description: Learn how to install and configure Calico on a new Amazon EKS cluster, replacing or augmenting the default VPC CNI with Calico's powerful network policy and IPAM capabilities.
 
@@ -29,7 +29,7 @@ This guide walks through installing Calico as the network policy provider on a n
 Create a new EKS cluster using `eksctl`.
 
 ```bash
-# Create a basic EKS cluster (without a network policy provider — we'll add Calico)
+# Create a basic EKS cluster (without a network policy provider - we'll add Calico)
 eksctl create cluster \
   --name calico-eks-cluster \
   --region us-east-1 \
@@ -68,7 +68,7 @@ spec:
   # This keeps AWS VPC CNI for networking while Calico handles policy
   cni:
     type: AmazonVPC
-  # Disable Calico IPAM — use AWS VPC CNI IPAM
+  # Disable Calico IPAM - use AWS VPC CNI IPAM
   calicoNetwork:
     bgp: Disabled
     ipPools: []
@@ -157,10 +157,10 @@ kubectl run frontend --image=nginx -n production -l app=frontend
 kubectl run backend --image=nginx -n production -l app=backend
 kubectl run unrelated --image=nginx -n production -l app=unrelated
 
-# Test connectivity — frontend -> backend should work
+# Test connectivity - frontend -> backend should work
 kubectl exec -n production frontend -- curl -s --max-time 5 http://backend
 
-# Test connectivity — unrelated -> backend should be blocked
+# Test connectivity - unrelated -> backend should be blocked
 kubectl exec -n production unrelated -- curl --max-time 5 http://backend
 
 # Check Calico's view of endpoint policies
@@ -172,7 +172,7 @@ calicoctl get weps -n production
 - Use Calico in policy-only mode on EKS to retain VPC CNI's native pod networking and ENI benefits
 - Apply GlobalNetworkPolicy for baseline cluster-wide rules before deploying workloads
 - Monitor Calico pod health: `kubectl get pods -n calico-system`
-- Upgrade Calico independently from EKS — check the Calico-Kubernetes compatibility matrix first
+- Upgrade Calico independently from EKS - check the Calico-Kubernetes compatibility matrix first
 - Enable VPC Flow Logs to complement Calico policy logging for full network audit coverage
 
 ## Conclusion

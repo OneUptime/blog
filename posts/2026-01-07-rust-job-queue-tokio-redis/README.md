@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Job Queue, Redis, tokio, Background Tasks, Async, Retry, Dead Letter Queue
+Tags: Rust, Job Queue, Redis, Tokio, Background Tasks, Async, Retry, Dead Letter Queue
 
 Description: Learn how to build a robust job queue in Rust using Tokio and Redis. This guide covers job scheduling, retries, dead letter queues, and patterns for reliable background processing.
 

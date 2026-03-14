@@ -98,4 +98,4 @@ calicoctl ipam release --ip="${SUSPECT_IP}"
 
 ## Conclusion
 
-IPAM security requires clear separation between read operations (ipam show, ipam check — available to all diagnostic engineers) and write operations (ipam release, IPPool changes — requiring senior approval and change ticket). The two-engineer verification requirement for `calicoctl ipam release` prevents the most damaging IPAM mistake: releasing an IP that is still in use by a running pod. Audit logging of all IPAM CRD write operations provides accountability and helps detect unauthorized changes.
+IPAM security requires clear separation between read operations (ipam show, ipam check - available to all diagnostic engineers) and write operations (ipam release, IPPool changes - requiring senior approval and change ticket). The two-engineer verification requirement for `calicoctl ipam release` prevents the most damaging IPAM mistake: releasing an IP that is still in use by a running pod. Audit logging of all IPAM CRD write operations provides accountability and helps detect unauthorized changes.

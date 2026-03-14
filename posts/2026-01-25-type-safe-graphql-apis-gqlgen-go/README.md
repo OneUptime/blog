@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, GraphQL, gqlgen, API, Type Safety
+Tags: Go, GraphQL, Gqlgen, API, Type Safety
 
 Description: Learn how to build production-ready GraphQL APIs in Go using gqlgen, a schema-first code generation library that gives you full type safety without writing boilerplate.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Lab, Testing, iptables, eBPF, Validation
+Tags: Calico, Kubernetes, Data Path, CNI, Lab, Testing, Iptables, EBPF, Validation
 
 Description: Step-by-step instructions for validating Calico's data path in a lab cluster, including iptables chain inspection, eBPF program verification, and packet tracing.
 
@@ -10,7 +10,7 @@ Description: Step-by-step instructions for validating Calico's data path in a la
 
 ## Introduction
 
-Data path validation confirms that Calico's packet processing pipeline is functioning correctly — that policies are being enforced at the right hook points, that encapsulation is working as expected, and that the path from pod to pod traverses the expected stages. This validation is more granular than connectivity testing — you are verifying the mechanism, not just the result.
+Data path validation confirms that Calico's packet processing pipeline is functioning correctly - that policies are being enforced at the right hook points, that encapsulation is working as expected, and that the path from pod to pod traverses the expected stages. This validation is more granular than connectivity testing - you are verifying the mechanism, not just the result.
 
 This guide provides data path validation procedures for both iptables and eBPF modes.
 
@@ -35,7 +35,7 @@ IFACE=$(ip route show $POD_IP | awk '{print $3}')
 echo "Host-side veth: $IFACE"
 ```
 
-## Validation 1: iptables Mode — Chain Existence
+## Validation 1: iptables Mode - Chain Existence
 
 Verify Calico has created the expected policy chains for the pod:
 
@@ -52,7 +52,7 @@ sudo iptables -L cali-fw-$IFACE -n --line-numbers
 # Expected: policy rules for egress from this pod (cali-fw = from-workload)
 ```
 
-## Validation 2: iptables Mode — Rule Counter Verification
+## Validation 2: iptables Mode - Rule Counter Verification
 
 Traffic through a pod's policy chains increments iptables counters. Use this to confirm traffic is traversing the expected path:
 
@@ -68,9 +68,9 @@ sudo iptables -L cali-tw-$IFACE -n -v
 # Expected: The allow rule shows packet count > 0
 ```
 
-If counters don't increment, the packet is not reaching the expected chain — indicating a routing or encapsulation issue.
+If counters don't increment, the packet is not reaching the expected chain - indicating a routing or encapsulation issue.
 
-## Validation 3: eBPF Mode — Program Verification
+## Validation 3: eBPF Mode - Program Verification
 
 In eBPF mode, verify that Calico's programs are attached to the pod's veth interface:
 
@@ -142,8 +142,8 @@ Cross-node latency should be higher by the encapsulation overhead (small for VXL
 
 - Run validation 1 and 2 (iptables chain checks) after every policy change to confirm the data path updated
 - Save the baseline latency measurements and compare after every Calico upgrade
-- Keep temporary logging rules for no more than 5 minutes in production — they generate significant log volume
+- Keep temporary logging rules for no more than 5 minutes in production - they generate significant log volume
 
 ## Conclusion
 
-Data path validation goes beyond connectivity testing to verify the mechanism itself — that the right iptables chains or eBPF programs are in place, that packets traverse them, and that encapsulation works correctly. These checks catch data path problems that connectivity tests miss, such as stale rules, missing eBPF programs, or encapsulation mismatches.
+Data path validation goes beyond connectivity testing to verify the mechanism itself - that the right iptables chains or eBPF programs are in place, that packets traverse them, and that encapsulation works correctly. These checks catch data path problems that connectivity tests miss, such as stale rules, missing eBPF programs, or encapsulation mismatches.

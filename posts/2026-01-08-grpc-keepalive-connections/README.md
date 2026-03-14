@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, keepalive, Connection, Networking, Performance, TCP, HTTP2, Resilience
+Tags: GRPC, Keepalive, Connection, Networking, Performance, TCP, HTTP2, Resilience
 
 Description: Learn how to configure gRPC keepalive parameters to maintain long-lived connections, detect failures quickly, and handle network interruptions gracefully.
 

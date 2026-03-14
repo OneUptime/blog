@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, PeerAuthentication, Migration, Security
+Tags: Istio, MTLS, PeerAuthentication, Migration, Security
 
 Description: A step-by-step strategy for safely migrating from permissive to strict mTLS across your Istio service mesh without breaking anything.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IPAM, Firewall, Legacy, Kubernetes, Networking, Integration
+Tags: Calico, IPAM, Firewall, LEGACY, Kubernetes, Networking, Integration
 
 Description: Learn how to integrate Calico IPAM with legacy firewall infrastructure, ensuring that dynamically allocated pod IPs can be tracked and firewall rules remain consistent as the pod IP space changes.
 
@@ -12,7 +12,7 @@ Description: Learn how to integrate Calico IPAM with legacy firewall infrastruct
 
 Legacy firewalls operate on static IP-based rules, while Calico dynamically allocates IPs to pods from configured pools. This fundamental difference creates a challenge: firewall rules written for specific IP addresses become stale when pod IPs change, and it is difficult to keep legacy firewalls synchronized with Calico's dynamic IP assignments.
 
-Calico's predictable IPAM model — where pod IPs come from known CIDR ranges — allows you to write firewall rules against IP pools rather than individual pod IPs. However, maintaining consistency between Calico IP pools and legacy firewall rules requires monitoring to detect when Calico pool configurations change in ways that affect existing firewall rules.
+Calico's predictable IPAM model - where pod IPs come from known CIDR ranges - allows you to write firewall rules against IP pools rather than individual pod IPs. However, maintaining consistency between Calico IP pools and legacy firewall rules requires monitoring to detect when Calico pool configurations change in ways that affect existing firewall rules.
 
 This guide covers designing a Calico IPAM strategy compatible with legacy firewalls, monitoring for IPAM configuration drift, and validating that firewall rules remain effective as the cluster evolves.
 

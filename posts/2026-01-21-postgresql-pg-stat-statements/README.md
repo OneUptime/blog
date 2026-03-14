@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, pg_stat_statements, Monitoring, Performance, Query Analysis
+Tags: PostgreSQL, Pg_stat_statements, Monitoring, Performance, Query Analysis
 
 Description: A comprehensive guide to using pg_stat_statements for PostgreSQL query performance monitoring, covering installation, configuration, analysis queries, and integration with monitoring tools.
 

@@ -10,7 +10,7 @@ Description: On-call runbook for responding to Calico pods losing external servi
 
 ## Introduction
 
-This runbook guides on-call engineers through responding to incidents where pods in a Calico cluster cannot reach external services. External connectivity loss affects API calls, database connections, and any outbound pod traffic. Rapid triage to identify the blocking layer — NAT, network policy, or DNS — enables a targeted fix within minutes.
+This runbook guides on-call engineers through responding to incidents where pods in a Calico cluster cannot reach external services. External connectivity loss affects API calls, database connections, and any outbound pod traffic. Rapid triage to identify the blocking layer - NAT, network policy, or DNS - enables a targeted fix within minutes.
 
 ## Symptoms
 
@@ -27,7 +27,7 @@ This runbook guides on-call engineers through responding to incidents where pods
 
 ## Diagnosis Steps
 
-**Step 1: Confirm scope — all pods or specific namespace/node?**
+**Step 1: Confirm scope - all pods or specific namespace/node?**
 
 ```bash
 # Test from multiple pods

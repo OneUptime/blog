@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Connection Errors, Networking, Debugging, Troubleshooting
+Tags: Talos Linux, Talosctl, Connection Errors, Networking, Debugging, Troubleshooting
 
 Description: Practical steps for diagnosing and resolving connection refused errors when using talosctl to manage Talos Linux nodes.
 

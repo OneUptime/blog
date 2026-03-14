@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Load Testing, Performance, k6, Locust, AWS, Infrastructure as Code
+Tags: Terraform, Load Testing, Performance, K6, Locust, AWS, Infrastructure as Code
 
 Description: Learn how to build a scalable load testing infrastructure using Terraform with distributed test runners, result collection, and automated performance analysis.
 

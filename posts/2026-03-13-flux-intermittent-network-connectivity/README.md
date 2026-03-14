@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Network Resilience, Offline, Disconnected
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Network Resilience, Offline
 
 Description: Configure Flux CD to handle intermittent network connectivity at edge sites, ensuring cluster stability and graceful reconnection behavior.
 
@@ -12,7 +12,7 @@ Description: Configure Flux CD to handle intermittent network connectivity at ed
 
 Edge sites frequently experience network connectivity that is unreliable by cloud data center standards. Cellular connections drop during weather events, satellite links have high latency and variable availability, and remote industrial sites may have only periodic connectivity windows. Flux CD must work gracefully in these conditions.
 
-By default, Flux is designed to be resilient to temporary network failures — controllers retry on error, cached source state is used when new fetches fail, and cluster reconciliation continues using the last successful state. However, the default configuration is tuned for cloud environments with reliable connectivity. Edge deployments benefit significantly from tuning Flux for intermittent networks.
+By default, Flux is designed to be resilient to temporary network failures - controllers retry on error, cached source state is used when new fetches fail, and cluster reconciliation continues using the last successful state. However, the default configuration is tuned for cloud environments with reliable connectivity. Edge deployments benefit significantly from tuning Flux for intermittent networks.
 
 This guide covers configuring Flux timeouts, retry behavior, and cache settings, as well as implementing local source caching for extended offline operation.
 
@@ -247,7 +247,7 @@ spec:
 ## Best Practices
 
 - Set Flux source `interval` to match your expected connectivity window frequency.
-- Use OCI artifacts instead of Git cloning — artifacts are smaller and faster to download.
+- Use OCI artifacts instead of Git cloning - artifacts are smaller and faster to download.
 - Pre-load a local registry cache during deployment that Flux can use when offline.
 - Design edge applications to operate in degraded mode when the network is unavailable.
 - Monitor the age of Flux's last successful source fetch as a connectivity health indicator.

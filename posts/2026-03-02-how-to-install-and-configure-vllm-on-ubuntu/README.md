@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, vLLM, LLM, GPU, Machine Learning
+Tags: Ubuntu, VLLM, LLM, GPU, Machine Learning
 
 Description: A complete guide to installing vLLM on Ubuntu for high-throughput LLM inference, serving models via the OpenAI-compatible API, and optimizing throughput for production use.
 

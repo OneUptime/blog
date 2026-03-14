@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, xDS, Debugging, Configuration
+Tags: Istio, Istiod, XDS, Debugging, Configuration
 
 Description: How to identify and resolve issues where istiod fails to push configuration updates to Envoy proxies, causing stale routes, missing endpoints, or broken traffic rules.
 

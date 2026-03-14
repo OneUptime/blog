@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ulimit, Resource Limits, limits.conf, Linux, Performance
+Tags: RHEL, Ulimit, Resource Limits, Limits.conf, Linux, Performance
 
 Description: A complete guide to configuring resource limits on RHEL using ulimit and /etc/security/limits.conf, covering soft and hard limits, common settings for production workloads, and troubleshooting.
 

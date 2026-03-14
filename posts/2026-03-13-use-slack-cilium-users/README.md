@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, slack, community, support, kubernetes, networking
+Tags: Cilium, Community, Slack, Support
 
-Description: A practical guide to getting the most out of the Cilium Slack community — from asking effective questions and sharing diagnostic information to contributing answers and building community relationships.
+Description: A practical guide to getting the most out of the Cilium Slack community - from asking effective questions and sharing diagnostic information to contributing answers and building community...
 
 ---
 
@@ -43,10 +43,10 @@ Set up your profile:
 
 ## Step 2: Prepare Diagnostic Context Before Posting
 
-Never post a Cilium question without diagnostic context — it always leads to follow-up requests.
+Never post a Cilium question without diagnostic context - it always leads to follow-up requests.
 
 ```bash
-# Run this before posting to Slack — paste the output in your message
+# Run this before posting to Slack - paste the output in your message
 echo "--- Cilium Version ---"
 cilium version 2>/dev/null || kubectl exec -n kube-system \
   $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- cilium version
@@ -67,7 +67,7 @@ Structure your message for maximum clarity and response speed.
 
 Good Slack message template:
 
-```
+```plaintext
 **Problem**: [One sentence describing what's wrong]
 
 **Environment**:
@@ -83,7 +83,7 @@ Good Slack message template:
 **Relevant output** (use code block):
 ```
 paste your error or command output here
-```
+```plaintext
 
 **Question**: [Specific question or "What am I missing?"]
 ```
@@ -100,7 +100,7 @@ kubectl apply -f suggested-fix.yaml
 cilium connectivity test
 
 # 2. Report back with result in the THREAD (not a new message)
-# "The suggestion worked — the issue was X, fixed by Y"
+# "The suggestion worked - the issue was X, fixed by Y"
 
 # 3. Mark resolution with an emoji
 # React to your original message with :white_check_mark: or :resolved:
@@ -132,13 +132,13 @@ cilium policy trace --from-pod <pod-name> --to-pod <pod-name>
 
 ## Best Practices
 
-- Use threads to keep conversations organized — never start a new message to continue a discussion
-- Post in one channel only — cross-posting to multiple channels is considered bad etiquette
+- Use threads to keep conversations organized - never start a new message to continue a discussion
+- Post in one channel only - cross-posting to multiple channels is considered bad etiquette
 - Include version information in every question without being asked
-- Share your resolutions publicly — they help future searchers find answers
-- DM maintainers only for security disclosures — all other questions go to public channels
-- Be patient during weekends — many community volunteers are based in specific timezones
+- Share your resolutions publicly - they help future searchers find answers
+- DM maintainers only for security disclosures - all other questions go to public channels
+- Be patient during weekends - many community volunteers are based in specific timezones
 
 ## Conclusion
 
-Getting maximum value from Cilium Slack requires preparation and good communication habits. By joining the right channels, preparing diagnostic context before posting, writing well-structured questions, and contributing answers to others, you become an effective community participant. The community is genuinely helpful — meeting it halfway with good questions and follow-through makes the experience productive for everyone.
+Getting maximum value from Cilium Slack requires preparation and good communication habits. By joining the right channels, preparing diagnostic context before posting, writing well-structured questions, and contributing answers to others, you become an effective community participant. The community is genuinely helpful - meeting it halfway with good questions and follow-through makes the experience productive for everyone.

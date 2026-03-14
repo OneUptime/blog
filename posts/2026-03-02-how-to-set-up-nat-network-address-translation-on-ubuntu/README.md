@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, NAT, Networking, iptables, nftables
+Tags: Ubuntu, NAT, Networking, Iptables, Nftables
 
 Description: Configure Network Address Translation (NAT) on Ubuntu using iptables and nftables to share a single public IP, set up port forwarding, and build a gateway for private networks.
 

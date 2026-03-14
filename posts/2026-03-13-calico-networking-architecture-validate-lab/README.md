@@ -10,7 +10,7 @@ Description: A systematic validation suite for verifying that all Calico archite
 
 ## Introduction
 
-Validating Calico's architecture means verifying that each component — Felix, BIRD, Typha, confd, and the CNI plugin — is running, healthy, and correctly connected. A component that is running but not functioning correctly (such as Typha that is connected but not receiving updates) requires different diagnostics than one that is simply crashed.
+Validating Calico's architecture means verifying that each component - Felix, BIRD, Typha, confd, and the CNI plugin - is running, healthy, and correctly connected. A component that is running but not functioning correctly (such as Typha that is connected but not receiving updates) requires different diagnostics than one that is simply crashed.
 
 This guide provides component-by-component health checks with the specific commands and expected outputs that indicate a healthy Calico installation.
 
@@ -151,4 +151,4 @@ calicoctl delete globalnetworkpolicy arch-validation-test
 
 ## Conclusion
 
-Validating Calico's architecture requires checking each component independently — operator status, Felix health, Typha connections, BIRD BGP sessions, CNI plugin installation, and IPAM datastore connectivity. Running all checks systematically after installation or upgrades ensures the architecture is fully healthy before relying on it for production traffic.
+Validating Calico's architecture requires checking each component independently - operator status, Felix health, Typha connections, BIRD BGP sessions, CNI plugin installation, and IPAM datastore connectivity. Running all checks systematically after installation or upgrades ensures the architecture is fully healthy before relying on it for production traffic.

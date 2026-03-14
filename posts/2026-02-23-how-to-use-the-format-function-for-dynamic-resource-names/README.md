@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, format Function, Resource Naming, Infrastructure as Code, Best Practices
+Tags: Terraform, Format Function, Resource Naming, Infrastructure as Code, Best Practices
 
 Description: Learn how to use Terraform's format function to build consistent, dynamic resource names with padding, prefixes, and environment-specific conventions.
 

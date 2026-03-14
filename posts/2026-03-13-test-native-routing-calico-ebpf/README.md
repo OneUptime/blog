@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Networking, Performance
+Tags: Calico, Kubernetes, EBPF, Networking, Performance
 
 Description: Benchmark Calico eBPF native routing performance with live workloads to quantify improvements over iptables mode.
 
@@ -72,4 +72,4 @@ graph LR
 
 ## Conclusion
 
-Calico eBPF native routing delivers measurable performance improvements by bypassing traditional kernel networking overhead. Enable eBPF mode after verifying kernel compatibility, disable kube-proxy, and benchmark throughput and latency to validate the improvement. The migration is reversible — eBPF mode can be disabled and kube-proxy re-enabled if issues are encountered.
+Calico eBPF native routing delivers measurable performance improvements by bypassing traditional kernel networking overhead. Enable eBPF mode after verifying kernel compatibility, disable kube-proxy, and benchmark throughput and latency to validate the improvement. The migration is reversible - eBPF mode can be disabled and kube-proxy re-enabled if issues are encountered.

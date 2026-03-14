@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, SQL, Data Transformation, Analytics, Data Modeling
+Tags: Dbt, Data Engineering, SQL, Data Transformation, Analytics, Data Modeling
 
 Description: A practical guide to writing effective dbt models - covering organization, materialization strategies, testing, documentation, and performance optimization for scalable data transformations.
 

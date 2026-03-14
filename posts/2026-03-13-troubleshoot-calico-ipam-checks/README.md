@@ -91,4 +91,4 @@ flowchart TD
 
 ## Conclusion
 
-Calico IPAM troubleshooting requires distinguishing between active exhaustion (pod scheduling failures, high utilization) and silent inconsistencies (leaked IPs found by ipam check). Active exhaustion is resolved by adding a new IPPool. Leaked IPs are resolved with `calicoctl ipam release` — but only after verifying the pod is truly gone. Never release an IP that might still be in use by a running pod, as this will corrupt the IPAM database and cause duplicate IP assignment.
+Calico IPAM troubleshooting requires distinguishing between active exhaustion (pod scheduling failures, high utilization) and silent inconsistencies (leaked IPs found by ipam check). Active exhaustion is resolved by adding a new IPPool. Leaked IPs are resolved with `calicoctl ipam release` - but only after verifying the pod is truly gone. Never release an IP that might still be in use by a running pod, as this will corrupt the IPAM database and cause duplicate IP assignment.

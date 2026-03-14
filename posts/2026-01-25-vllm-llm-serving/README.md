@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: vLLM, LLM, Machine Learning, Model Serving, GPU
+Tags: VLLM, LLM, Machine Learning, Model Serving, GPU
 
 Description: Learn how to deploy and configure vLLM for high-throughput large language model serving with efficient memory management and batching.
 

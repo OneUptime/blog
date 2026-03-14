@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, iptables, Firewall, GeoIP, Security
+Tags: Ubuntu, Iptables, Firewall, GeoIP, Security
 
 Description: Block incoming traffic from specific countries on Ubuntu using iptables with GeoIP databases from MaxMind or IP sets, including automated update scripts and performance considerations.
 

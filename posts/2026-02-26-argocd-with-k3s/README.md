@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, k3s, Lightweight Kubernetes
+Tags: ArgoCD, GitOps, Kubernetes, K3s, Lightweight Kubernetes
 
 Description: Learn how to install and configure ArgoCD on K3s, the lightweight Kubernetes distribution, including Traefik integration, embedded storage, and resource optimization.
 

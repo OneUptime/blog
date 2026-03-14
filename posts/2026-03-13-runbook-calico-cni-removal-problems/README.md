@@ -119,4 +119,4 @@ flowchart TD
 
 ## Conclusion
 
-Resolving Calico removal problems requires working through each layer of stuck state in order: IPAM resource finalizers, CRDs, node-level config and iptables, then RBAC. Each phase is independent — if one phase is already complete, skip to the next. After all phases, verify that no Calico resources remain before proceeding with new CNI installation.
+Resolving Calico removal problems requires working through each layer of stuck state in order: IPAM resource finalizers, CRDs, node-level config and iptables, then RBAC. Each phase is independent - if one phase is already complete, skip to the next. After all phases, verify that no Calico resources remain before proceeding with new CNI installation.

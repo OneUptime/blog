@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, ansible-test, CI/CD, DevOps
+Tags: Ansible, Testing, Ansible-test, CI/CD, DevOps
 
 Description: Complete guide to testing Ansible collections using ansible-test with sanity, unit, and integration tests including Docker-based test environments.
 

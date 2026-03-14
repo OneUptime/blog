@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, l7-policy, http, network-policy, star-wars-demo, kubernetes, security
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A hands-on guide to applying and validating Layer 7 HTTP-aware network policies using the Cilium Star Wars demo, demonstrating how to restrict API access by HTTP method and path.
 
@@ -10,9 +10,9 @@ Description: A hands-on guide to applying and validating Layer 7 HTTP-aware netw
 
 ## Introduction
 
-Layer 7 network policies in Cilium enable security enforcement at the application protocol level — restricting which HTTP methods, paths, headers, or gRPC methods can be used between services. In production environments, this capability allows you to express security requirements that directly map to your API's access control model rather than just IP addresses and ports.
+Layer 7 network policies in Cilium enable security enforcement at the application protocol level - restricting which HTTP methods, paths, headers, or gRPC methods can be used between services. In production environments, this capability allows you to express security requirements that directly map to your API's access control model rather than just IP addresses and ports.
 
-The Star Wars demo provides the perfect hands-on environment to learn L7 policies. After applying an L3/L4 policy, TIE fighters can reach the Death Star, but they can still access the dangerous `/v1/exhaust-port` endpoint. An L7 HTTP policy fixes this by allowing only POST to `/v1/request-landing` — blocking all other methods and paths.
+The Star Wars demo provides the perfect hands-on environment to learn L7 policies. After applying an L3/L4 policy, TIE fighters can reach the Death Star, but they can still access the dangerous `/v1/exhaust-port` endpoint. An L7 HTTP policy fixes this by allowing only POST to `/v1/request-landing` - blocking all other methods and paths.
 
 This guide takes you through applying, testing, and extending L7 policies using the Star Wars demo as your sandbox.
 
@@ -69,7 +69,7 @@ kubectl get ciliumnetworkpolicies
 Verify that allowed requests still succeed.
 
 ```bash
-# This should succeed — TIE fighter POST to /v1/request-landing is allowed
+# This should succeed - TIE fighter POST to /v1/request-landing is allowed
 kubectl exec tiefighter -- \
   curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
@@ -81,17 +81,17 @@ kubectl exec tiefighter -- \
 Verify that the L7 policy blocks disallowed methods and paths.
 
 ```bash
-# This should return 403 Forbidden — PUT to exhaust-port is not allowed
+# This should return 403 Forbidden - PUT to exhaust-port is not allowed
 kubectl exec tiefighter -- \
   curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 
 # Expected: 403 Access denied or connection hang
 
-# This should also fail — X-wing blocked at L3/L4 level
+# This should also fail - X-wing blocked at L3/L4 level
 kubectl exec xwing -- \
   curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
-# Expected: connection timeout (not 403 — blocked at IP level, not HTTP)
+# Expected: connection timeout (not 403 - blocked at IP level, not HTTP)
 ```
 
 ## Step 4: Observe L7 Events in Hubble
@@ -145,7 +145,7 @@ spec:
         # Allow status checks (read-only GET)
         - method: "GET"
           path: "/v1/status"
-        # Deny everything else — implicit deny since policy is allowlist-based
+        # Deny everything else - implicit deny since policy is allowlist-based
 ```
 
 ```bash
@@ -159,12 +159,12 @@ kubectl exec tiefighter -- \
 
 ## Best Practices
 
-- L7 policies are allowlist-based — any HTTP request not matching a rule is denied
+- L7 policies are allowlist-based - any HTTP request not matching a rule is denied
 - Combine L3/L4 and L7 policies: L3/L4 for identity filtering, L7 for API method/path restrictions
 - Use Hubble HTTP visibility to audit which API endpoints are accessed and by whom
 - Test L7 policies with both allowed and denied requests before deploying to production
-- L7 policy adds Envoy proxy overhead — benchmark your latency-sensitive services
+- L7 policy adds Envoy proxy overhead - benchmark your latency-sensitive services
 
 ## Conclusion
 
-Applying L7 HTTP policies in the Cilium Star Wars demo demonstrates how powerful application-layer network security can be. The ability to allow landing requests while blocking exhaust-port modifications — based purely on HTTP method and path — maps directly to real-world API security requirements. By mastering L7 policy in this sandbox environment, you're prepared to apply the same patterns to production microservices with confidence.
+Applying L7 HTTP policies in the Cilium Star Wars demo demonstrates how powerful application-layer network security can be. The ability to allow landing requests while blocking exhaust-port modifications - based purely on HTTP method and path - maps directly to real-world API security requirements. By mastering L7 policy in this sandbox environment, you're prepared to apply the same patterns to production microservices with confidence.

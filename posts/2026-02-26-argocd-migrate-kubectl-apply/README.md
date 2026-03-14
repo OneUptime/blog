@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Migration, kubectl
+Tags: ArgoCD, GitOps, Kubernetes, Migration, Kubectl
 
 Description: Learn how to migrate from manual kubectl apply deployments to ArgoCD GitOps with a practical step-by-step guide covering manifest extraction, repository setup, and adoption.
 

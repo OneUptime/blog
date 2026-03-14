@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, static-ip, kubernetes, migration, networking, pod-ip
+Tags: Calico, IPAM, Static-ip, Kubernetes, Migration, Networking, Pod-ip
 
 Description: Learn how to safely migrate workloads that depend on static pod IP addresses to Calico's IP annotation model, maintaining IP stability without manual IPAM management.
 

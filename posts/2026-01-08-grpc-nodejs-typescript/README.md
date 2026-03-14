@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Node.js, TypeScript, API, Microservices, Protocol Buffers, Backend Development, @grpc/grpc-js
+Tags: GRPC, Node.js, TypeScript, API, Microservices, Protocol Buffers, Backend Development, @grpc/grpc-js
 
 Description: A comprehensive guide to building type-safe gRPC services in Node.js using TypeScript, covering server implementation, middleware patterns, error handling, and production best practices.
 

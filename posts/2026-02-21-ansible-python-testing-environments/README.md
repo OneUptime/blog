@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Testing, CI/CD, pytest
+Tags: Ansible, Python, Testing, CI/CD, Pytest
 
 Description: Automate Python testing environment provisioning with Ansible including pytest, tox, coverage tools, and CI integration.
 

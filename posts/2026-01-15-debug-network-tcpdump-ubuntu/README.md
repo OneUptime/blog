@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, tcpdump, Network, Debugging, Packet Capture, Tutorial
+Tags: Ubuntu, Tcpdump, Network, Debugging, Packet Capture, Tutorial
 
 Description: Complete guide to using tcpdump for network troubleshooting and packet analysis on Ubuntu.
 

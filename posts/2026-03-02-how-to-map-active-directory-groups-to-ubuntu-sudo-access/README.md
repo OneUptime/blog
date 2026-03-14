@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Active Directory, sudo, SSSD, Authorization
+Tags: Ubuntu, Active Directory, Sudo, SSSD, Authorization
 
 Description: Configure sudo access on Ubuntu for Active Directory groups, allowing AD group membership to control administrative privileges on Linux systems.
 

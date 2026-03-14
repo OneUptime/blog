@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, for_each, Count, Infrastructure as Code, HCL
+Tags: OpenTofu, Terraform, For_each, Count, Infrastructure as Code, HCL
 
 Description: Learn how to use OpenTofu's feature that allows for_each to reference resources created with count, solving a common limitation in Terraform HCL configuration patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Version Management, Kubernetes, Cluster Administration
+Tags: Talos Linux, Talosctl, Version Management, Kubernetes, Cluster Administration
 
 Description: Learn how to use the talosctl version command to check client and node versions in your Talos Linux cluster
 

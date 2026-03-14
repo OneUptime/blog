@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: gRPC, Deadlines, Timeout, Reliability
+Tags: GRPC, Deadlines, Timeout, Reliability
 
 Description: Learn how to set, propagate, and handle gRPC deadlines to build resilient distributed systems that fail fast and recover gracefully.
 

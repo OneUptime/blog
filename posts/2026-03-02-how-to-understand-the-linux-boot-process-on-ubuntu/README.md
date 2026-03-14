@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, System Administration, Kernel, systemd
+Tags: Ubuntu, Linux, System Administration, Kernel, Systemd
 
 Description: A deep dive into the Linux boot process on Ubuntu, covering BIOS/UEFI, GRUB, kernel initialization, initramfs, and systemd target startup.
 

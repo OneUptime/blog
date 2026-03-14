@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Kubernetes, Load Balancing, Envoy, Client-Side Load Balancing, Proxy, HTTP/2, Sidecar
+Tags: GRPC, Kubernetes, Load Balancing, Envoy, Client-Side Load Balancing, Proxy, HTTP/2, Sidecar
 
 Description: A comprehensive guide to load balancing gRPC traffic in Kubernetes without a service mesh, covering client-side load balancing, L7 proxies with Envoy sidecar, and connection management strategies.
 

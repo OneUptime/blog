@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico on Windows Nodes with Rancher
+# How to Troubleshoot Calico on Windows Nodes - Rancher
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

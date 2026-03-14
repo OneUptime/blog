@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, Disk Management, System Administration, logrotate
+Tags: Ubuntu, Logging, Disk Management, System Administration, Logrotate
 
 Description: Reclaim disk space on Ubuntu by safely cleaning up old log files from journald, rsyslog, application logs, and configuring automatic log rotation to prevent future accumulation.
 

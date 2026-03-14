@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Testinfra, pytest, Infrastructure
+Tags: Ansible, Testing, Testinfra, Pytest, Infrastructure
 
 Description: Use Testinfra to write Python-based infrastructure tests that validate your Ansible playbook results on target systems.
 

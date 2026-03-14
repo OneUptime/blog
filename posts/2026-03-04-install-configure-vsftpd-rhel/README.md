@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, vsftpd, FTP, File Transfer, Linux
+Tags: RHEL, Vsftpd, FTP, File Transfer, Linux
 
 Description: Install and configure vsftpd (Very Secure FTP Daemon) on RHEL to set up a secure FTP server for file transfers with proper user access controls.
 

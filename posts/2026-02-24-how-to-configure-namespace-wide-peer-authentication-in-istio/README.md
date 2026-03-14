@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, PeerAuthentication, Kubernetes, Namespace Security
+Tags: Istio, MTLS, PeerAuthentication, Kubernetes, Namespace Security
 
 Description: Step-by-step guide to configuring namespace-wide PeerAuthentication policies in Istio for per-namespace mTLS control.
 

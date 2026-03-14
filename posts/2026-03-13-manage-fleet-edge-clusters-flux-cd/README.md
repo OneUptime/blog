@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Fleet Management, Multi-Cluster, Scale
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Fleet Management, Multi-Cluster
 
 Description: Scale Flux CD across a fleet of edge clusters using a hub-and-spoke model, progressive rollouts, and cluster group management.
 
@@ -12,7 +12,7 @@ Description: Scale Flux CD across a fleet of edge clusters using a hub-and-spoke
 
 Managing one edge cluster is straightforward. Managing fifty requires process. Managing five hundred requires automation and rigorous tooling. Flux CD scales to large edge cluster fleets through a hub-and-spoke architecture where a central management cluster runs Flux and each edge cluster has its own Flux installation reconciling from the same central Git repository.
 
-The key to fleet management at scale is organizing clusters into groups based on their characteristics — hardware type, deployment environment, geographic region, or application profile. Changes roll out progressively through these groups, validated at each stage before proceeding.
+The key to fleet management at scale is organizing clusters into groups based on their characteristics - hardware type, deployment environment, geographic region, or application profile. Changes roll out progressively through these groups, validated at each stage before proceeding.
 
 This guide covers the hub-and-spoke fleet architecture, cluster grouping strategies, progressive rollouts, and the tooling needed to operate a fleet of hundreds of edge clusters.
 
@@ -25,7 +25,7 @@ This guide covers the hub-and-spoke fleet architecture, cluster grouping strateg
 
 ## Step 1: Hub-and-Spoke Repository Structure
 
-```
+```plaintext
 clusters/
   hub/                         # Central management cluster
     flux-system/
@@ -231,9 +231,9 @@ echo "Summary: $HEALTHY/$TOTAL healthy, $DEGRADED degraded"
 ## Best Practices
 
 - Use progressive tiers (pilot → early majority → full fleet) for all application changes.
-- Automate the health gate between tiers — never promote manually if you can check automatically.
+- Automate the health gate between tiers - never promote manually if you can check automatically.
 - Store cluster kubeconfigs in a centralized secrets manager, never in Git.
-- Keep cluster-specific configuration minimal — share as much as possible through tier overlays.
+- Keep cluster-specific configuration minimal - share as much as possible through tier overlays.
 - Label clusters consistently (region, hardware type, application tier) for targeted rollouts.
 - Implement a cluster decommission script alongside the onboarding script.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, artifactgenerator, Reconciliation, Path-Filtering, GitOps, Kubernetes
+Tags: Flux, Fluxcd, Artifactgenerator, Reconciliation, Path-Filtering, GitOps, Kubernetes
 
 Description: Learn how to configure path-based triggers in Flux ArtifactGenerator to control when reconciliation happens based on file changes.
 

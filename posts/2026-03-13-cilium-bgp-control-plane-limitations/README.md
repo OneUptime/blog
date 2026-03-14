@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Understand the current limitations of Cilium's BGP Control Plane including unsupported BGP features, scalability considerations, and known edge cases to plan around.
 

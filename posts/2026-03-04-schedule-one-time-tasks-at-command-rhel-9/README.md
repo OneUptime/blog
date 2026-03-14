@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, at Command, Scheduling, Linux, System Administration
+Tags: RHEL, At Command, Scheduling, Linux, System Administration
 
 Description: Learn how to schedule one-time tasks using the at command on RHEL, including managing the at queue, controlling user access, and using the batch command for load-aware execution.
 

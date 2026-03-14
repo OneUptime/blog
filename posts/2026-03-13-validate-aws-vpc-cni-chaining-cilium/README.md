@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, aws, vpc-cni, cni-chaining, eks, kubernetes, networking, validation
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
-Description: Learn how to validate that Cilium is correctly chained with the AWS VPC CNI plugin on EKS or self-managed AWS Kubernetes clusters, ensuring both IPAM and network policy functions are working correctly.
+Description: Learn how to validate that Cilium is correctly chained with the AWS VPC CNI plugin on EKS or self-managed AWS Kubernetes clusters, ensuring both IPAM and network policy functions are working...
 
 ---
 
@@ -47,7 +47,7 @@ kubectl debug node/<node-name> -it --image=ubuntu -- \
 Confirm pods are receiving AWS VPC IPs, not Cilium-assigned IPs.
 
 ```bash
-# Check pod IPs — they should be from your VPC subnet ranges
+# Check pod IPs - they should be from your VPC subnet ranges
 kubectl get pods -A -o wide | grep -v NAMESPACE | awk '{print $8}' | sort | head -20
 
 # Verify these IPs are in your VPC subnet CIDR
@@ -111,7 +111,7 @@ spec:
   ingress: []
 EOF
 
-# Test connectivity WITH policy (should fail — Cilium is enforcing)
+# Test connectivity WITH policy (should fail - Cilium is enforcing)
 kubectl exec policy-test-client -- \
   curl -s --max-time 5 http://policy-test-server.default.svc.cluster.local || \
   echo "BLOCKED as expected by Cilium policy"
@@ -145,7 +145,7 @@ kubectl delete ciliumnetworkpolicy deny-all-ingress-test
 - Run validation after every Cilium or aws-node upgrade to confirm chaining still works
 - Monitor both Cilium endpoint count and aws-node ENI counts for discrepancies
 - Use Hubble `--verdict DROPPED` filter to quickly spot policy-enforcement issues
-- Check `/etc/cni/net.d/` on nodes after any aws-node update — it can overwrite CNI config
+- Check `/etc/cni/net.d/` on nodes after any aws-node update - it can overwrite CNI config
 - Verify aws-node and Cilium versions are compatible with the EKS Kubernetes version
 
 ## Conclusion

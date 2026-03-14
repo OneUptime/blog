@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, Envoy, Kubernetes
+Tags: Istio, Debugging, Istioctl, Envoy, Kubernetes
 
 Description: A practical guide to using istioctl proxy-status to diagnose configuration sync issues and debug Istio proxy connectivity problems.
 

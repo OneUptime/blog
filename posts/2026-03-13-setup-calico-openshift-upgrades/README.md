@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade
 
 Description: A step-by-step guide to upgrading Calico on OpenShift clusters, navigating OCP-specific operator management, SCC requirements, and upgrade coordination with OpenShift platform upgrades.
 

@@ -128,4 +128,4 @@ kubectl exec -n calico-system ds/calico-node -- ip link show | grep -E "cali|vxl
 
 ## Conclusion
 
-Validating Calico node configuration is a systematic check of Felix settings, node IP registration accuracy, dataplane mode status, BGP session health, and interface MTU alignment. Run this validation after any configuration change and after cluster upgrades. Discrepancies between intended configuration and actual state should be investigated promptly — an incorrect node IP or wrong dataplane mode can cause subtle networking issues that are difficult to diagnose later.
+Validating Calico node configuration is a systematic check of Felix settings, node IP registration accuracy, dataplane mode status, BGP session health, and interface MTU alignment. Run this validation after any configuration change and after cluster upgrades. Discrepancies between intended configuration and actual state should be investigated promptly - an incorrect node IP or wrong dataplane mode can cause subtle networking issues that are difficult to diagnose later.

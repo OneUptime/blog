@@ -74,7 +74,7 @@ HIPAA requires encryption of PHI at rest and in transit. Use Sealed Secrets to s
 
 ```yaml
 # clusters/hipaa/secrets/database-credentials.yaml
-# This is a SealedSecret — safe to commit to Git
+# This is a SealedSecret - safe to commit to Git
 apiVersion: bitnami.com/v1alpha1
 kind: SealedSecret
 metadata:
@@ -84,7 +84,7 @@ metadata:
     hipaa.control: "164.312(a)(2)(iv) - Encryption and Decryption"
 spec:
   encryptedData:
-    # Encrypted with the cluster's public key — only the cluster can decrypt
+    # Encrypted with the cluster's public key - only the cluster can decrypt
     DB_PASSWORD: AgAK3x9...  # Encrypted value from kubeseal
     DB_HOST: AgBR7p2...
   template:
@@ -119,7 +119,7 @@ spec:
 
 ## Step 3: Configure Strict RBAC for PHI Namespaces
 
-HIPAA §164.312(a)(2)(i) — Unique User Identification requires that access to PHI be tied to specific, identifiable accounts:
+HIPAA §164.312(a)(2)(i) - Unique User Identification requires that access to PHI be tied to specific, identifiable accounts:
 
 ```yaml
 # clusters/hipaa/rbac/phi-workloads-rbac.yaml
@@ -157,7 +157,7 @@ roleRef:
 
 ## Step 4: Enable Comprehensive Audit Logging
 
-HIPAA §164.312(b) — Audit Controls requires recording and examining activity in information systems:
+HIPAA §164.312(b) - Audit Controls requires recording and examining activity in information systems:
 
 ```yaml
 # clusters/hipaa/monitoring/flux-audit-alert.yaml
@@ -210,14 +210,14 @@ Create a HIPAA-specific PR template:
 <!-- .github/PULL_REQUEST_TEMPLATE/hipaa.md -->
 ## HIPAA Change Management Record
 
-**PHI Impact**: [ ] Yes — this change affects PHI processing/storage/transmission
-               [ ] No — this change is infrastructure only
+**PHI Impact**: [ ] Yes - this change affects PHI processing/storage/transmission
+               [ ] No - this change is infrastructure only
 
 **HIPAA Controls Affected**:
-- [ ] 164.312(a) — Access Control
-- [ ] 164.312(b) — Audit Controls
-- [ ] 164.312(c) — Integrity
-- [ ] 164.312(e) — Transmission Security
+- [ ] 164.312(a) - Access Control
+- [ ] 164.312(b) - Audit Controls
+- [ ] 164.312(c) - Integrity
+- [ ] 164.312(e) - Transmission Security
 
 **Risk Assessment**:
 _Describe any risk to PHI confidentiality, integrity, or availability_
@@ -265,7 +265,7 @@ spec:
 - Retain all Flux event logs and Git history for a minimum of 6 years to satisfy HIPAA retention requirements.
 - Conduct quarterly access reviews of CODEOWNERS and RBAC bindings for PHI namespaces.
 - Run annual HIPAA Security Risk Assessments that include a review of Flux configuration for the PHI scope.
-- Never allow any application workload to directly access the Flux service account — only Flux reconcilers should have deployment permissions.
+- Never allow any application workload to directly access the Flux service account - only Flux reconcilers should have deployment permissions.
 - Use a dedicated Flux instance (separate flux-system namespace or cluster) for PHI workloads if your risk assessment requires isolation of the GitOps control plane.
 
 ## Conclusion

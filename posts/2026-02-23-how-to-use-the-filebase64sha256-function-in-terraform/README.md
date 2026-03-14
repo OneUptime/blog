@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, filebase64sha256 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA256
+Tags: Terraform, Filebase64sha256 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA256
 
 Description: Learn how to use the filebase64sha256 function in Terraform to compute base64-encoded SHA256 hashes of files for change detection and integrity verification.
 

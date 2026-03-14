@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, CNI, Networking, Configuration, Scaling
 
-Description: Configure every meaningful Typha setting — replica counts, connection limits, timeouts, and Prometheus metrics — when running Calico in manifest mode. This post covers the full set of environment variables and FelixConfiguration fields that control Typha behavior.
+Description: Configure every meaningful Typha setting - replica counts, connection limits, timeouts, and Prometheus metrics - when running Calico in manifest mode.
 
 ---
 
 ## Introduction
 
-Deploying Typha is only the beginning. To run it well in production you need to understand and tune the configuration knobs that control how many Felix connections each Typha pod accepts, when it disconnects slow clients, and how it exposes operational data. Because you are running Calico "the hard way" — without the operator — every configuration decision is yours to make explicitly.
+Deploying Typha is only the beginning. To run it well in production you need to understand and tune the configuration knobs that control how many Felix connections each Typha pod accepts, when it disconnects slow clients, and how it exposes operational data. Because you are running Calico "the hard way" - without the operator - every configuration decision is yours to make explicitly.
 
 This post covers the environment variables that configure Typha itself and the `FelixConfiguration` fields that affect how Felix interacts with it.
 
@@ -210,7 +210,7 @@ calicoctl get felixconfiguration default -o yaml
 - Never disable the health endpoint (`TYPHA_HEALTHENABLED`); liveness probes depend on it.
 - Use `TYPHA_LOGSEVERITYSCREEN=warning` in very high-throughput environments to reduce log volume, but revert to `info` when debugging.
 - Set `typhaReadTimeout` and `typhaWriteTimeout` in `FelixConfiguration` to values larger than your normal network latency plus one standard deviation.
-- Always set `TYPHA_PROMETHEUSMETRICSENABLED=true` from day one — retroactively adding metrics after an incident is costly.
+- Always set `TYPHA_PROMETHEUSMETRICSENABLED=true` from day one - retroactively adding metrics after an incident is costly.
 
 ---
 

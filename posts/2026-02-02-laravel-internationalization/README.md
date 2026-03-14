@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, PHP, i18n, Internationalization, Localization
+Tags: Laravel, PHP, I18n, Internationalization, Localization
 
 Description: A comprehensive guide to implementing internationalization (i18n) in Laravel applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Best Practices
+Tags: Calico, Kubernetes, Networking, EBPF, Best Practices
 
 Description: Identify and avoid the most common mistakes when enabling and operating Calico in eBPF mode, from kernel version confusion to kube-proxy conflicts and BPF map exhaustion.
 
@@ -10,7 +10,7 @@ Description: Identify and avoid the most common mistakes when enabling and opera
 
 ## Introduction
 
-Calico eBPF mode has a well-documented set of common mistakes that operators encounter when enabling or operating it. Many of these mistakes result in silent degradation — the cluster continues to work, but in iptables mode rather than eBPF mode — defeating the purpose of enabling eBPF. Others result in service connectivity failures that are difficult to diagnose without understanding the eBPF architecture.
+Calico eBPF mode has a well-documented set of common mistakes that operators encounter when enabling or operating it. Many of these mistakes result in silent degradation - the cluster continues to work, but in iptables mode rather than eBPF mode - defeating the purpose of enabling eBPF. Others result in service connectivity failures that are difficult to diagnose without understanding the eBPF architecture.
 
 This guide catalogs the most common eBPF mistakes with concrete examples and corrective actions.
 

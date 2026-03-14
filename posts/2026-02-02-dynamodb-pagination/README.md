@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DynamoDB, AWS, Pagination, NoSQL, Database, Node.js, Python, boto3, Serverless
+Tags: DynamoDB, AWS, Pagination, NoSQL, Database, Node.js, Python, Boto3, Serverless
 
 Description: Learn how to implement efficient pagination in Amazon DynamoDB.
 

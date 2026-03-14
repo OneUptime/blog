@@ -1,10 +1,10 @@
-# How to Configure Egress Network Policies with Flux CD
+# Manage Egress Network Policies with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Network Policy, Egress, Kubernetes, Security, GitOps, Networking
+Tags: Network Policies, Egress, Kubernetes, Flux CD, GitOps, Security, Zero Trust
 
-Description: Learn how to manage Kubernetes egress NetworkPolicy resources using Flux CD GitOps to control outbound traffic from pods to external services and the internet.
+Description: Learn how to manage Kubernetes egress NetworkPolicies using Flux CD to enforce zero-trust outbound traffic controls.
 
 ---
 
@@ -22,7 +22,7 @@ Egress network policies control what external services your pods can connect to.
 
 Document what each application namespace needs to reach:
 
-```
+```plaintext
 Namespace: myapp
 Egress allowed to:
   - PostgreSQL in database namespace (port 5432)

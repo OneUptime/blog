@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Collector, DaemonSet, Flux CD, GitOps, Kubernetes, Observability
+Tags: Flux CD, Kubernetes, GitOps, OpenTelemetry, OTEL Collector, DaemonSets, Observability
 
 Description: Deploy the OpenTelemetry Collector as a Kubernetes DaemonSet using Flux CD to collect node-level metrics, host logs, and application telemetry from every node in your cluster.
 
@@ -12,7 +12,7 @@ Description: Deploy the OpenTelemetry Collector as a Kubernetes DaemonSet using 
 
 Deploying the OpenTelemetry Collector as a DaemonSet ensures that one collector pod runs on every node in your Kubernetes cluster. This pattern is ideal for collecting node-level host metrics, kubelet statistics, container logs from the host filesystem, and receiving telemetry from applications running on the same node via `hostPort`.
 
-Managing the DaemonSet collector configuration via Flux CD means your pipeline configuration—receivers, processors, exporters—is version-controlled. When you add a new backend or enable a new receiver, the change flows through a pull request and Flux automatically reconciles every node's collector.
+Managing the DaemonSet collector configuration via Flux CD means your pipeline configuration-receivers, processors, exporters-is version-controlled. When you add a new backend or enable a new receiver, the change flows through a pull request and Flux automatically reconciles every node's collector.
 
 This guide uses the OpenTelemetry Operator and a `Collector` custom resource to deploy the DaemonSet.
 

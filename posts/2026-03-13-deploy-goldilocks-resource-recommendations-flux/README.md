@@ -10,7 +10,7 @@ Description: Deploy Goldilocks VPA recommendations dashboard using Flux CD HelmR
 
 ## Introduction
 
-Finding the correct resource requests and limits for Kubernetes workloads is difficult. Setting them too high wastes money; setting them too low causes throttling and OOMKills. Goldilocks, created by Fairwinds, solves this by running the Kubernetes Vertical Pod Autoscaler (VPA) in recommendation mode and surfacing those recommendations through a clean dashboard — without actually modifying your pods.
+Finding the correct resource requests and limits for Kubernetes workloads is difficult. Setting them too high wastes money; setting them too low causes throttling and OOMKills. Goldilocks, created by Fairwinds, solves this by running the Kubernetes Vertical Pod Autoscaler (VPA) in recommendation mode and surfacing those recommendations through a clean dashboard - without actually modifying your pods.
 
 The name captures the goal perfectly: you want resource settings that are "just right." Goldilocks watches your running workloads, gathers VPA data, and presents namespace-by-namespace recommendations you can directly copy into your Flux-managed manifests. This creates a virtuous feedback loop where actual runtime data drives your GitOps configuration.
 
@@ -212,11 +212,11 @@ The dashboard shows "Guaranteed" and "Burstable" QoS recommendations. Copy the B
 
 ## Best Practices
 
-- Wait at least 24 hours after enabling Goldilocks before acting on recommendations — VPA needs enough data across different traffic patterns to give accurate suggestions.
+- Wait at least 24 hours after enabling Goldilocks before acting on recommendations - VPA needs enough data across different traffic patterns to give accurate suggestions.
 - Apply recommendations to staging environments first and monitor for instability before promoting changes to production.
 - Set `updateMode: "Off"` on all VPA objects created by Goldilocks to ensure recommendations never automatically change running pods.
 - Use the Goldilocks dashboard's "QoS" toggle to choose between Guaranteed (same requests and limits) and Burstable (lower requests, higher limits) based on workload type.
-- Re-review recommendations quarterly, especially after major traffic changes — workload profiles change over time.
+- Re-review recommendations quarterly, especially after major traffic changes - workload profiles change over time.
 - Track the diff between recommended and current settings in Git commit messages to build an optimization history.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Protocol Buffers, Protobuf, gRPC, API Design, Serialization, Schema, Tutorial
+Tags: Protocol Buffers, Protobuf, GRPC, API Design, Serialization, Schema, Tutorial
 
 Description: Master Protocol Buffers syntax and best practices for defining efficient, maintainable gRPC service contracts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, SSL, TLS, Handshake Errors, Troubleshooting, mTLS
+Tags: Istio, SSL, TLS, Handshake Errors, Troubleshooting, MTLS
 
 Description: Resolve SSL and TLS handshake failures in Istio caused by certificate mismatches, expired certs, mTLS configuration errors, and protocol mismatches.
 

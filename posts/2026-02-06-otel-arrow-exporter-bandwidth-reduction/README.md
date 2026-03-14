@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Arrow, Bandwidth, gRPC
+Tags: OpenTelemetry, OTel Arrow, Bandwidth, GRPC
 
 Description: Replace your OTLP/gRPC exporter with OTel Arrow to achieve 30-70% network bandwidth reduction for telemetry data.
 

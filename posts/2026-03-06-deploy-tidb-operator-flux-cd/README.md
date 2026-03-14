@@ -1,8 +1,8 @@
-# How to Deploy TiDB Operator with Flux CD
+# How to Deploy TiDB Operator with Flux CD - 2026-03-06
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, TiDB, Kubernetes, Database, GitOps, Operator, Distributed SQL, newSQL, tikv
+Tags: Flux CD, TiDB, Kubernetes, Database, GitOps, Operator, Distributed SQL, NewSQL, Tikv
 
 Description: A step-by-step guide to deploying the TiDB Operator and TiDB clusters on Kubernetes using Flux CD for GitOps-managed distributed SQL databases.
 

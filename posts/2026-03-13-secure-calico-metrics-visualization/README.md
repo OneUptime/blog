@@ -86,4 +86,4 @@ flowchart TD
 
 ## Conclusion
 
-Securing Calico visualizations requires Grafana RBAC to control who can view which dashboards, folder-level permissions to separate sensitive networking dashboards from general observability, and using read-only access for operational users to prevent accidental dashboard modification. Ensure all Calico dashboards are in a dedicated Grafana folder with explicit access controls — never rely on security through obscurity (hiding dashboards) as the sole protection.
+Securing Calico visualizations requires Grafana RBAC to control who can view which dashboards, folder-level permissions to separate sensitive networking dashboards from general observability, and using read-only access for operational users to prevent accidental dashboard modification. Ensure all Calico dashboards are in a dedicated Grafana folder with explicit access controls - never rely on security through obscurity (hiding dashboards) as the sole protection.

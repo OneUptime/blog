@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Kafka, eBPF
+Tags: Cilium, Kubernetes, Network Policy, Kafka, EBPF
 
 Description: Enforce topic-level access control for Kafka using Cilium network policies that allow or deny produce and consume operations per-topic without Kafka ACLs.
 
@@ -10,9 +10,9 @@ Description: Enforce topic-level access control for Kafka using Cilium network p
 
 ## Introduction
 
-Kafka security traditionally relies on Kafka's own ACL system, which requires configuring Kafka brokers with SASL/SSL authentication and managing ACLs through `kafka-acls.sh`. In Kubernetes environments, this adds operational complexity — you need to manage Kafka credentials, configure authentication on both brokers and clients, and keep ACLs synchronized as services scale. Cilium offers a network-layer alternative using its L7 Kafka policy support.
+Kafka security traditionally relies on Kafka's own ACL system, which requires configuring Kafka brokers with SASL/SSL authentication and managing ACLs through `kafka-acls.sh`. In Kubernetes environments, this adds operational complexity - you need to manage Kafka credentials, configure authentication on both brokers and clients, and keep ACLs synchronized as services scale. Cilium offers a network-layer alternative using its L7 Kafka policy support.
 
-Cilium can parse the Kafka protocol and enforce access control based on Kafka API calls. This means you can allow specific pods to produce to topic A but not topic B, allow consumers of topic B but not producers, and block Kafka admin operations entirely — all at the network layer without modifying Kafka configuration. The enforcement is transparent to both Kafka clients and brokers.
+Cilium can parse the Kafka protocol and enforce access control based on Kafka API calls. This means you can allow specific pods to produce to topic A but not topic B, allow consumers of topic B but not producers, and block Kafka admin operations entirely - all at the network layer without modifying Kafka configuration. The enforcement is transparent to both Kafka clients and brokers.
 
 This guide covers writing Cilium Kafka policies, configuring topic-level allow and deny rules, and validating enforcement in a running Kafka cluster.
 

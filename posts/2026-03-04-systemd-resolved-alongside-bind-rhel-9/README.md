@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-resolved, BIND, DNS, Linux
+Tags: RHEL, Systemd-resolved, BIND, DNS, Linux
 
 Description: Learn how to configure systemd-resolved and BIND to coexist on RHEL, handling local and external DNS resolution without conflicts.
 

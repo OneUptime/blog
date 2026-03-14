@@ -10,7 +10,7 @@ Description: Optimization techniques for Calico VPP uplink interface performance
 
 ## Introduction
 
-The VPP uplink interface is the performance bottleneck for all pod network traffic on a Calico VPP node. Optimizing the uplink configuration — queue count, descriptor ring sizes, RSS configuration, and the choice between interrupt and polling mode — determines the maximum throughput achievable for pod-to-external and cross-node pod communication.
+The VPP uplink interface is the performance bottleneck for all pod network traffic on a Calico VPP node. Optimizing the uplink configuration - queue count, descriptor ring sizes, RSS configuration, and the choice between interrupt and polling mode - determines the maximum throughput achievable for pod-to-external and cross-node pod communication.
 
 Different workload types benefit from different uplink configurations: high-throughput bulk data transfer workloads benefit from larger ring sizes and more queues, while latency-sensitive workloads benefit from polling mode and smaller rings.
 
@@ -80,7 +80,7 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 ## Optimization 3: Polling vs. Interrupt Mode
 
-```
+```plaintext
 # Polling mode: VPP worker continuously polls NIC queues
 # Best for: High-throughput workloads (> 1M pps)
 # Cost: Higher CPU usage even when idle

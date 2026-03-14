@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, High Availability, Documentation, CNI, Networking, Runbook
+Tags: Calico, Typha, Kubernetes, Networking, High Availability, Documentation, Hard Way
 
-Description: Create the operational documentation your team needs to maintain Typha HA in a manifest-based Calico installation — covering architecture diagrams in text, runbook templates, and configuration inventories.
+Description: Create the operational documentation your team needs to maintain Typha HA in a manifest-based Calico installation - covering architecture diagrams in text, runbook templates, and configuration...
 
 ---
 
 ## Introduction
 
-A Typha deployment that lacks documentation is a liability. When an incident occurs at 2am, the on-call engineer needs to know the expected replica count, the HA configuration rationale, the certificate rotation procedure, and the recovery steps — without reading through Kubernetes manifests. Good documentation turns a Typha deployment from a personal knowledge silo into a shared operational asset.
+A Typha deployment that lacks documentation is a liability. When an incident occurs at 2am, the on-call engineer needs to know the expected replica count, the HA configuration rationale, the certificate rotation procedure, and the recovery steps - without reading through Kubernetes manifests. Good documentation turns a Typha deployment from a personal knowledge silo into a shared operational asset.
 
 This post covers the key documents to create: an architecture description, a configuration inventory, a runbook for common operations, and a decision log for HA choices.
 
@@ -29,7 +29,7 @@ This post covers the key documents to create: an architecture description, a con
 Every Typha deployment should have a written architecture description that explains the data flow, the component roles, and the HA design decisions:
 
 ```markdown
-# Typha Architecture — Production Cluster
+# Typha Architecture - Production Cluster
 
 ## Component Roles
 
@@ -60,7 +60,7 @@ Every Typha deployment should have a written architecture description that expla
 ## mTLS Configuration
 
 - All Felix-to-Typha connections use mutual TLS
-- Calico CA: stored in calico-ca Secret (outside cluster — in Vault)
+- Calico CA: stored in calico-ca Secret (outside cluster - in Vault)
 - Certificate expiry: 825 days from last rotation date (see rotation log)
 - TYPHA_CLIENTCN: calico-felix
 - typhaServerCN: calico-typha
@@ -180,7 +180,7 @@ Record the rationale behind HA configuration choices so future engineers underst
 - Update the configuration inventory as part of every PR that modifies Typha resources.
 - Include a "last validated" date in the runbook so engineers know when it was last tested against the live cluster.
 - Add the runbook link to Prometheus alert annotations so on-call engineers have it during incidents.
-- Treat the decision log as append-only history — never delete old decisions, only add new ones when decisions change.
+- Treat the decision log as append-only history - never delete old decisions, only add new ones when decisions change.
 
 ---
 

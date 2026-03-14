@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Version Management, talosctl, kubectl, Cluster Management
+Tags: Talos Linux, Kubernetes, Version Management, Talosctl, Kubectl, Cluster Management
 
 Description: Multiple methods to check which version of Kubernetes is running on your Talos Linux cluster and understand version compatibility.
 

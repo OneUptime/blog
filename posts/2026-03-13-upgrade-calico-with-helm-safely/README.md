@@ -1,10 +1,10 @@
-# Upgrade Calico with Helm Safely
+# How to Upgrade Calico with Helm Safely
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, helm, kubernetes, upgrade, networking, safety, gitops
+Tags: Calico, Kubernetes, Networking, Upgrade, Helm, CNI
 
-Description: A guide to safely upgrading Calico using Helm, including pre-upgrade validation, Helm diff review, the upgrade execution procedure, and post-upgrade verification for GitOps-managed deployments.
+Description: Safely upgrade Calico to a newer version using Helm and the Tigera Operator upgrade process.
 
 ---
 

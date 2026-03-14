@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, kubectl, Installation, DevOps
+Tags: Ansible, Kubernetes, Kubectl, Installation, DevOps
 
 Description: Automate kubectl installation and configuration across your infrastructure using Ansible playbooks for consistent Kubernetes access.
 

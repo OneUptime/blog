@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Best Practices
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Best Practices
 
 Description: Avoid OpenShift-specific Calico upgrade mistakes including SCC breakage, concurrent MCP/Calico upgrades, and missing OCP compatibility requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, BPF Maps, Troubleshooting
+Tags: Cilium, Kubernetes, EBPF, BPF Maps, Troubleshooting
 
 Description: Inspect Cilium's eBPF maps directly to debug data plane issues, verify policy state, examine connection tracking tables, and understand load balancer configuration at the kernel level.
 
@@ -10,7 +10,7 @@ Description: Inspect Cilium's eBPF maps directly to debug data plane issues, ver
 
 ## Introduction
 
-Cilium implements its data plane entirely in eBPF, and all state — routing decisions, connection tracking, load balancer backends, policy verdicts, NAT translations — is stored in eBPF maps in the Linux kernel. When something is wrong with Cilium's behavior, the root cause is often visible in these maps. Cilium exposes inspection commands for all its BPF maps through the `cilium bpf` subcommand family, giving you direct visibility into the kernel data structures that govern packet processing.
+Cilium implements its data plane entirely in eBPF, and all state - routing decisions, connection tracking, load balancer backends, policy verdicts, NAT translations - is stored in eBPF maps in the Linux kernel. When something is wrong with Cilium's behavior, the root cause is often visible in these maps. Cilium exposes inspection commands for all its BPF maps through the `cilium bpf` subcommand family, giving you direct visibility into the kernel data structures that govern packet processing.
 
 BPF map inspection is the deepest level of debugging available in Cilium, below even log-level debugging. If Hubble shows a flow being dropped but the policy looks correct, checking the compiled policy map for that endpoint can reveal a stale entry or a policy that was compiled differently than the YAML implies. If a service isn't load balancing correctly, inspecting the LB map shows exactly which backends are registered. If connections are failing with timeout, the conntrack map shows whether the connection was tracked and what state it reached.
 
@@ -136,4 +136,4 @@ flowchart TD
 
 ## Conclusion
 
-BPF map inspection gives you the ground truth about Cilium's data plane state — no interpretation required, just the actual kernel data structures that govern packet processing. Use `cilium bpf ct list` when debugging connection failures (look for missing or stale conntrack entries), `cilium bpf lb list` when load balancing isn't working (check if the right backends are registered), and `cilium bpf policy get <id>` when a policy appears correct in YAML but traffic is still being dropped (check what was actually compiled into the policy map). This level of visibility is unique to Cilium and unavailable in any other CNI plugin.
+BPF map inspection gives you the ground truth about Cilium's data plane state - no interpretation required, just the actual kernel data structures that govern packet processing. Use `cilium bpf ct list` when debugging connection failures (look for missing or stale conntrack entries), `cilium bpf lb list` when load balancing isn't working (check if the right backends are registered), and `cilium bpf policy get <id>` when a policy appears correct in YAML but traffic is still being dropped (check what was actually compiled into the policy map). This level of visibility is unique to Cilium and unavailable in any other CNI plugin.

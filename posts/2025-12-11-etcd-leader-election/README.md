@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: etcd, Leader Election, Distributed Systems, Coordination, High Availability
+Tags: Etcd, Leader Election, Distributed Systems, Coordination, High Availability
 
 Description: Learn how to implement leader election using etcd for distributed coordination, ensuring only one instance performs critical operations in your cluster.
 

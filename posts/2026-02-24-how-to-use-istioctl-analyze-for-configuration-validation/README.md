@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Configuration, Validation, Troubleshooting
+Tags: Istio, Istioctl, Configuration, Validation, Troubleshooting
 
 Description: A comprehensive guide to using istioctl analyze to detect configuration issues, warnings, and best practice violations in your Istio mesh.
 

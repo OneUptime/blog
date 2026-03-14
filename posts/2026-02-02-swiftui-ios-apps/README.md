@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, SwiftUI, iOS, Apple, Mobile Development
+Tags: Swift, SwiftUI, IOS, Apple, Mobile Development
 
 Description: A comprehensive guide to building iOS applications with SwiftUI, covering views, state management, navigation, and modern app architecture patterns.
 

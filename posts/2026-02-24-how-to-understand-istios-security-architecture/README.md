@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, mTLS, Authorization, Authentication
+Tags: Istio, Security, MTLS, Authorization, Authentication
 
 Description: A comprehensive overview of Istio's security architecture including identity, authentication, authorization, and encryption mechanisms.
 

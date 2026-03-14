@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Validation, Performance
+Tags: Calico, Kubernetes, Networking, EBPF, Validation, Performance
 
 Description: Validate that Calico eBPF mode is correctly active by checking BPF programs, service routing, network performance benchmarks, and policy enforcement.
 
@@ -142,4 +142,4 @@ kubectl delete pod iperf3-server iperf3-client svc/iperf3-server -n default
 
 ## Conclusion
 
-Validating Calico eBPF mode requires evidence from multiple layers: BPF program count in the kernel, absence of iptables rules, service routing without kube-proxy, network policy enforcement via BPF drops, and measurable performance improvements. The most important validation step is checking BPF program presence with `bpftool prog list` — this is the ground truth for whether eBPF is actually active. The absence of iptables rules is a secondary confirming signal that the transition from iptables to eBPF was complete.
+Validating Calico eBPF mode requires evidence from multiple layers: BPF program count in the kernel, absence of iptables rules, service routing without kube-proxy, network policy enforcement via BPF drops, and measurable performance improvements. The most important validation step is checking BPF program presence with `bpftool prog list` - this is the ground truth for whether eBPF is actually active. The absence of iptables rules is a secondary confirming signal that the transition from iptables to eBPF was complete.

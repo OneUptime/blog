@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Scripting, subprocess, Automation
+Tags: Ansible, Python, Scripting, Subprocess, Automation
 
 Description: Write Python wrapper scripts that invoke Ansible playbooks via subprocess with proper argument handling, output capture, and error management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, GitOps, Kubernetes, CRD, Infrastructure as Code
+Tags: Flux CD, Tofu Controller, Terraform, GitOps, Kubernetes, CRD
 
 Description: Define Terraform resources using the Tofu Controller CRD managed by Flux CD to bring Terraform module execution into the Kubernetes reconciliation loop.
 

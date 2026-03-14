@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Plugin Development
+Tags: Kubernetes, Kubectl, Plugin Development
 
 Description: Learn how to create custom kubectl plugins in Bash and Go to extend kubectl functionality with your own commands and automate cluster management workflows.
 

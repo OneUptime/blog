@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, kubelet, Certificate Rotation, TLS, Troubleshooting, Node Authentication
+Tags: AKS, Kubernetes, Kubelet, Certificate Rotation, TLS, Troubleshooting, Node Authentication
 
 Description: Diagnose and fix kubelet certificate rotation failures on AKS that cause nodes to become NotReady and pods to stop scheduling.
 

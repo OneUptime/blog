@@ -1,10 +1,10 @@
-# How to Deploy Prometheus Adapter for Custom Metrics HPA with Flux CD
+# Prometheus Adapter Custom Metrics HPA with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Prometheus Adapter, Custom Metrics, HPA, Kubernetes, GitOps, Autoscaling
+Tags: Flux-cd, Kubernetes, Prometheus, HPA, Autoscaling, Custom-metrics, GitOps
 
-Description: Learn how to deploy Prometheus Adapter to expose custom metrics for HPA using Flux CD, enabling Prometheus-powered pod autoscaling.
+Description: Learn how to deploy the Prometheus Adapter with Flux CD and configure custom metrics-based Horizontal Pod Autoscalers, enabling application-aware scaling beyond CPU and memory.
 
 ---
 

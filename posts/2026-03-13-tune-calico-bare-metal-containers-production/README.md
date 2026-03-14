@@ -10,7 +10,7 @@ Description: A guide to tuning Calico for maximum performance and stability on b
 
 ## Introduction
 
-Bare metal hardware delivers the highest possible network performance, but realizing that performance with containerized workloads requires tuning the entire networking stack — from the NIC driver settings to Calico's internal timers. Default Calico settings leave significant performance on the table because they are tuned for compatibility across diverse environments rather than peak throughput on dedicated hardware.
+Bare metal hardware delivers the highest possible network performance, but realizing that performance with containerized workloads requires tuning the entire networking stack - from the NIC driver settings to Calico's internal timers. Default Calico settings leave significant performance on the table because they are tuned for compatibility across diverse environments rather than peak throughput on dedicated hardware.
 
 Production tuning on bare metal focuses on three areas: eliminating encapsulation overhead, enabling the eBPF dataplane for kernel-bypass processing, and tuning the Linux networking stack to support high packet rates. Each optimization is independent, and the cumulative effect can increase throughput by 30-50% compared to default settings.
 
@@ -96,4 +96,4 @@ calicoctl patch felixconfiguration default \
 
 ## Conclusion
 
-Tuning Calico for production on bare metal with containers combines software optimizations — eBPF dataplane, encapsulation removal, Felix timer tuning — with OS-level networking stack tuning. Together these changes allow Calico to deliver the full throughput and low latency that bare metal NIC hardware is capable of achieving for containerized workloads.
+Tuning Calico for production on bare metal with containers combines software optimizations - eBPF dataplane, encapsulation removal, Felix timer tuning - with OS-level networking stack tuning. Together these changes allow Calico to deliver the full throughput and low latency that bare metal NIC hardware is capable of achieving for containerized workloads.

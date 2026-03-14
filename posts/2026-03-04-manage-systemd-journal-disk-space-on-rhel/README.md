@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Journal, Logging, Disk Space
+Tags: RHEL, Systemd, Journal, Logging, Disk Space
 
 Description: Control how much disk space the systemd journal consumes on RHEL by configuring retention limits, vacuuming old logs, and setting size caps.
 

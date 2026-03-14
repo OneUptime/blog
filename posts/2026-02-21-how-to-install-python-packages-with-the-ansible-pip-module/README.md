@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, pip, Package Management
+Tags: Ansible, Python, Pip, Package Management
 
 Description: A practical guide to installing and managing Python packages with the Ansible pip module including version pinning and virtualenvs.
 

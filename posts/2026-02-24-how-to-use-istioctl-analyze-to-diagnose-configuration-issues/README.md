@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Configuration, Debugging, Kubernetes
+Tags: Istio, Istioctl, Configuration, Debugging, Kubernetes
 
 Description: A practical walkthrough of using istioctl analyze to catch Istio misconfigurations before they cause production problems.
 

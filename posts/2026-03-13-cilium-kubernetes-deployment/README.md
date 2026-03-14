@@ -1,8 +1,8 @@
-# Deployment in Cilium Kubernetes Networking: Configure, Troubleshoot, Validate, and Monitor
+# Deployment in Cilium Kubernetes Networking
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Deployment, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: A complete guide to deploying Cilium in Kubernetes clusters covering installation methods, deployment topologies, common deployment issues, validation procedures, and production monitoring.
 

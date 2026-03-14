@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, eBPF
+Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, EBPF
 
 Description: A guide to configuring Cilium GAMMA (Gateway API for Mesh Management and Administration) support to enable service mesh capabilities without a sidecar proxy.
 
@@ -12,7 +12,7 @@ Description: A guide to configuring Cilium GAMMA (Gateway API for Mesh Managemen
 
 GAMMA (Gateway API for Mesh Management and Administration) is a sub-project of the Kubernetes Gateway API that extends Gateway API semantics to east-west (service-to-service) traffic. Cilium supports GAMMA, enabling identity-aware and policy-driven mesh functionality using eBPF without requiring sidecar injection.
 
-With Cilium GAMMA, you can configure HTTPRoutes that apply to traffic between services within the cluster. This provides advanced traffic management capabilities such as weighted routing, header manipulation, and retries—all handled at the kernel level via eBPF.
+With Cilium GAMMA, you can configure HTTPRoutes that apply to traffic between services within the cluster. This provides advanced traffic management capabilities such as weighted routing, header manipulation, and retries-all handled at the kernel level via eBPF.
 
 This guide walks through enabling and configuring Cilium's GAMMA support in an existing cluster.
 

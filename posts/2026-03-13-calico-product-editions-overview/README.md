@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, CNI, Networking, Open Source, Calico Cloud, Calico Enterprise
 
-Description: A comprehensive overview of Calico's three product editions — Open Source, Calico Cloud, and Calico Enterprise — and what each offers for Kubernetes networking.
+Description: A comprehensive overview of Calico's three product editions - Open Source, Calico Cloud, and Calico Enterprise - and what each offers for Kubernetes networking.
 
 ---
 

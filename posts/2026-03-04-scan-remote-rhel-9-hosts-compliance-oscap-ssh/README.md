@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, oscap-ssh, Remote Scanning, Compliance, Linux
+Tags: RHEL, Oscap-ssh, Remote Scanning, Compliance, Linux
 
 Description: Use oscap-ssh to scan remote RHEL servers for compliance without installing SCAP content on each target host.
 

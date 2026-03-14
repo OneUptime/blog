@@ -69,8 +69,8 @@ cat /opt/stack/logs/calico-felix.log.txt | tail -50
 ```
 
 Common Felix startup errors in DevStack:
-- `Cannot connect to etcd` — etcd is not running yet
-- `Failed to load module` — Python dependency missing
+- `Cannot connect to etcd` - etcd is not running yet
+- `Failed to load module` - Python dependency missing
 
 ## Step 5: Re-run DevStack with Debug
 

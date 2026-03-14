@@ -10,7 +10,7 @@ Description: Monitor the effectiveness of Calico namespace-based network policie
 
 ## Introduction
 
-Monitoring namespace-based policies means tracking two things: whether all namespaces have the correct labels for policy enforcement, and whether the policies are producing the expected traffic patterns. Namespace label drift — where labels are added or removed without coordination — is a particularly common issue in multi-team clusters.
+Monitoring namespace-based policies means tracking two things: whether all namespaces have the correct labels for policy enforcement, and whether the policies are producing the expected traffic patterns. Namespace label drift - where labels are added or removed without coordination - is a particularly common issue in multi-team clusters.
 
 Calico's Prometheus metrics combined with kube-state-metrics namespace label data give you the visibility needed to detect policy gaps and unexpected cross-namespace traffic. Setting up dashboards and alerts for these metrics turns namespace security from a one-time configuration into an actively monitored control.
 

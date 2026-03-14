@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, undef, Required Variables, Best Practices
+Tags: Ansible, Variables, Undef, Required Variables, Best Practices
 
 Description: Learn how to use the Ansible undef function to explicitly mark variables as required in defaults and catch missing values early.
 

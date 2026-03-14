@@ -1,10 +1,10 @@
-# Deploy HAProxy Ingress with Custom Configuration Using Flux CD
+# How to Deploy HAProxy Ingress with Custom Configuration via Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: HAProxy, Ingress, Load Balancing, Flux CD, GitOps, Kubernetes, Networking
+Tags: Flux CD, Kubernetes, GitOps, HAProxy, Ingress Controller, HelmRelease, Load Balancing
 
-Description: Deploy the HAProxy Ingress Controller on Kubernetes with custom global and per-Ingress configurations using Flux CD. This guide covers timeouts, rate limiting, TLS settings, and GitOps-managed configuration maps.
+Description: Deploy HAProxy Ingress Controller with custom configuration using Flux CD HelmRelease for high-performance HTTP load balancing with advanced health checking and ACL-based routing.
 
 ---
 

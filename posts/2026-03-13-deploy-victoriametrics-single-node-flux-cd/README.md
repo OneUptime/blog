@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, VictoriaMetrics, Prometheus, Metrics, Observability, HelmRelease, Performance
+Tags: Flux CD, Kubernetes, GitOps, VictoriaMetrics, Prometheus, Metrics, Observability, HelmRelease
 
 Description: Deploy VictoriaMetrics single-node for high-performance metrics storage using Flux CD HelmRelease as a drop-in Prometheus replacement with superior compression and faster queries.
 
@@ -10,7 +10,7 @@ Description: Deploy VictoriaMetrics single-node for high-performance metrics sto
 
 ## Introduction
 
-VictoriaMetrics is a high-performance, cost-effective time series database that serves as a drop-in replacement for Prometheus. In benchmark tests, VictoriaMetrics consistently outperforms Prometheus on write throughput, query speed, and storage efficiency — often using 7-10x less disk space than Prometheus for the same dataset. For teams running large-scale monitoring, these efficiency gains translate directly to lower infrastructure costs.
+VictoriaMetrics is a high-performance, cost-effective time series database that serves as a drop-in replacement for Prometheus. In benchmark tests, VictoriaMetrics consistently outperforms Prometheus on write throughput, query speed, and storage efficiency - often using 7-10x less disk space than Prometheus for the same dataset. For teams running large-scale monitoring, these efficiency gains translate directly to lower infrastructure costs.
 
 The single-node VictoriaMetrics deployment is ideal for clusters with up to several million active time series. It provides a fully compatible Prometheus remote write endpoint, a PromQL-compatible query API (with MetricsQL extensions), and native Grafana integration through the Prometheus data source. Migrating from Prometheus to VictoriaMetrics single-node requires minimal configuration changes.
 
@@ -268,7 +268,7 @@ flux get helmrelease victoria-metrics-single -n monitoring
 ## Best Practices
 
 - Set the deduplication window (`dedup.minScrapeInterval`) to match your scrape interval when using multiple Prometheus instances writing to the same VictoriaMetrics; this prevents duplicate data storage.
-- Monitor VictoriaMetrics's own metrics — specifically `vm_data_size_bytes` and `vm_rows_inserted_total` — to track ingestion rates and storage growth.
+- Monitor VictoriaMetrics's own metrics - specifically `vm_data_size_bytes` and `vm_rows_inserted_total` - to track ingestion rates and storage growth.
 - Use VictoriaMetrics snapshots for point-in-time backups before upgrades; create a snapshot via the `/snapshot/create` HTTP endpoint and sync to object storage.
 - Configure `memory.allowedPercent` based on your VictoriaMetrics pod's memory limit; the default 60% is conservative and can be raised for higher-performance workloads.
 - Take advantage of VictoriaMetrics's MetricsQL extensions in Grafana dashboards for advanced queries unavailable in standard PromQL.

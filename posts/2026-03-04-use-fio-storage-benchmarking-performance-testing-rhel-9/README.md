@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, fio, Benchmarking, Storage, Performance, Linux
+Tags: RHEL, Fio, Benchmarking, Storage, Performance, Linux
 
 Description: Learn how to use fio on RHEL to benchmark storage performance with realistic workload simulations and interpret the results accurately.
 

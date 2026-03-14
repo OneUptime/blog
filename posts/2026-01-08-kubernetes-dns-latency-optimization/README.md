@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DNS, Performance, CoreDNS, nodelocal-dns, Optimization, Latency
+Tags: Kubernetes, DNS, Performance, CoreDNS, Nodelocal-dns, Optimization, Latency
 
 Description: Strategies and techniques to minimize DNS latency and improve performance in high-traffic Kubernetes environments.
 

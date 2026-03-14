@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Code Quality, DevOps
+Tags: Ansible, Ansible-lint, Code Quality, DevOps
 
 Description: A complete guide to installing ansible-lint, configuring it for your project, and understanding its default rules and configuration options.
 

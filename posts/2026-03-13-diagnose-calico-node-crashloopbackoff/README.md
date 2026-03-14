@@ -108,4 +108,4 @@ Apply the fix that matches the root cause identified in diagnosis (see companion
 
 ## Conclusion
 
-Diagnosing calico-node CrashLoopBackOff requires retrieving the previous container log and systematically checking kernel modules, datastore connectivity, CNI configuration, and RBAC. The previous container log is the most valuable artifact — capture it immediately when the alert fires.
+Diagnosing calico-node CrashLoopBackOff requires retrieving the previous container log and systematically checking kernel modules, datastore connectivity, CNI configuration, and RBAC. The previous container log is the most valuable artifact - capture it immediately when the alert fires.

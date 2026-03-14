@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Nested
+Tags: Flux, Fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Nested
 
 Description: Learn how post-build variable substitution works with nested Flux Kustomizations, including variable inheritance, scoping rules, and best practices for complex deployments.
 

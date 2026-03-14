@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API Gateway, WebSocket, gRPC
+Tags: API Gateway, WebSocket, GRPC
 
 Description: Configure API gateways to handle WebSocket connections and gRPC services with load balancing, authentication, rate limiting, and protocol translation capabilities.
 

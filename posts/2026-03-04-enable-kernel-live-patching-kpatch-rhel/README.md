@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kpatch, Kernel Live Patching, Security, Linux
+Tags: RHEL, Kpatch, Kernel Live Patching, Security, Linux
 
 Description: Enable kernel live patching with kpatch on RHEL to apply critical security fixes to the running kernel without rebooting the system.
 

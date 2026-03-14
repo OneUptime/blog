@@ -118,4 +118,4 @@ logcli query \
 
 ## Conclusion
 
-Monitoring Calico log collection requires tracking two signals: Fluent Bit output error rates (which detect forwarding failures) and log ingestion volume per component (which detects both silences and unexpectedly high volumes from Debug logging). The log silence alert is the most operationally critical — a 15-minute gap in calico-node logs during an incident can make root cause analysis impossible. Set up the Prometheus alerts and Grafana dashboard as part of your initial log collection deployment, not after your first incident.
+Monitoring Calico log collection requires tracking two signals: Fluent Bit output error rates (which detect forwarding failures) and log ingestion volume per component (which detects both silences and unexpectedly high volumes from Debug logging). The log silence alert is the most operationally critical - a 15-minute gap in calico-node logs during an incident can make root cause analysis impossible. Set up the Prometheus alerts and Grafana dashboard as part of your initial log collection deployment, not after your first incident.

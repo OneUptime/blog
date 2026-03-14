@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WebAssembly, WASM, Linux Containers, WASI, containerd, Cloud Native, Edge Computing
+Tags: Docker, WebAssembly, WASM, Linux Containers, WASI, Containerd, Cloud Native, Edge Computing
 
 Description: Compare WebAssembly containers with traditional Linux containers across performance, security, portability, and practical use cases.
 

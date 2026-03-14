@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Validate that external connectivity is restored after a Calico upgrade fix by testing pod-to-external connectivity from all nodes, verifying iptables MASQUERADE rules, and confirming natOutgoing is enabled.
+Description: Validate that external connectivity is restored after a Calico upgrade fix by testing pod-to-external connectivity from all nodes, verifying iptables MASQUERADE rules, and confirming natOutgoing...
 
 ---
 
@@ -22,7 +22,7 @@ Complete validation also includes verifying that all calico-node pods are runnin
 ## Root Causes
 
 - calico-node not yet reconciled iptables on all nodes
-- Multiple IP pools — only one was fixed
+- Multiple IP pools - only one was fixed
 
 ## Solution
 

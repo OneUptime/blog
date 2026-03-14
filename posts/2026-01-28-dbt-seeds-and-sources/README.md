@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, Analytics Engineering, SQL, Data Warehouse
+Tags: Dbt, Data Engineering, Analytics Engineering, SQL, Data Warehouse
 
 Description: Learn how to use dbt seeds for static reference data and sources for external table definitions to build maintainable data pipelines.
 

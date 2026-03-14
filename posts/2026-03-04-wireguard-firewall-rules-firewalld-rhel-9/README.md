@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, WireGuard, firewalld, VPN, Linux
+Tags: RHEL, WireGuard, Firewalld, VPN, Linux
 
 Description: Learn how to properly configure firewalld rules for WireGuard VPN on RHEL, including port openings, zone assignments, masquerading, and forwarding policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Apple Silicon, macOS, M1, M2, M3, ARM64, Installation, DevOps
+Tags: Terraform, Apple Silicon, MacOS, M1, M2, M3, ARM64, Installation, DevOps
 
 Description: Complete guide to installing and configuring Terraform on Apple Silicon Macs including native ARM builds, Rosetta considerations, and provider compatibility.
 

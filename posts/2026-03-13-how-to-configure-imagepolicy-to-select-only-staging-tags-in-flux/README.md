@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Staging
+Tags: Flux, Fluxcd, Image-policy, Kubernetes, GitOps, Staging
 
 Description: Learn how to configure Flux CD ImagePolicy to filter and select only staging-specific image tags for your staging environment.
 

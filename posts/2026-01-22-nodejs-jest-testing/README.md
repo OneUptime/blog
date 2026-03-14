@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Jest, Testing, unittest, TDD
+Tags: NodeJS, Jest, Testing, Unittest, TDD
 
 Description: Learn how to use Jest for testing Node.js applications including unit tests, integration tests, mocking, async testing, and code coverage.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, WildFly, Java, Linux
+Tags: RHEL, Systemd, System Administration, WildFly, Java, Linux
 
 Description: Learn how to configure WildFly as a systemd Service on RHEL with step-by-step instructions, configuration examples, and best practices.
 

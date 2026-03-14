@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, xDS, Configuration, Troubleshooting
+Tags: Istio, Envoy, XDS, Configuration, Troubleshooting
 
 Description: How to diagnose and resolve issues where the Envoy sidecar proxy is not receiving configuration updates from Istiod.
 

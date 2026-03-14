@@ -10,7 +10,7 @@ Description: Deploy KEDA with Prometheus metrics-based autoscaling trigger using
 
 ## Introduction
 
-Prometheus is the de facto monitoring standard for Kubernetes. KEDA's Prometheus scaler opens up an entirely new dimension of autoscaling — scale any workload based on any metric that Prometheus can collect, whether it's HTTP request rate, database connection count, error rate, queue depth exposed via a custom exporter, or GPU utilization.
+Prometheus is the de facto monitoring standard for Kubernetes. KEDA's Prometheus scaler opens up an entirely new dimension of autoscaling - scale any workload based on any metric that Prometheus can collect, whether it's HTTP request rate, database connection count, error rate, queue depth exposed via a custom exporter, or GPU utilization.
 
 By managing KEDA Prometheus scalers through Flux CD, your metric-based autoscaling policies are version-controlled alongside your application code. When you tune a scaling threshold, that change is a pull request with a clear audit trail.
 
@@ -204,7 +204,7 @@ kubectl get pods -n app -l app=api-server -w
 
 ## Best Practices
 
-- Write PromQL queries that return a single scalar value — the threshold comparison is `metric_value / target_value = desired_replicas`. Test your query in the Prometheus UI first.
+- Write PromQL queries that return a single scalar value - the threshold comparison is `metric_value / target_value = desired_replicas`. Test your query in the Prometheus UI first.
 - Use `activationThreshold` to prevent KEDA from waking a deployment from zero before the metric has meaningfully crossed baseline noise.
 - Set `stabilizationWindowSeconds` on scale-down to prevent thrashing when metrics oscillate around the threshold.
 - Use per-replica normalization in your PromQL (e.g., divide by pod count) for request-rate metrics so the threshold represents a per-pod target, not a total.

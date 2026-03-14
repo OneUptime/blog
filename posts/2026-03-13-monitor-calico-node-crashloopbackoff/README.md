@@ -10,7 +10,7 @@ Description: Monitoring and alerting setup to detect calico-node CrashLoopBackOf
 
 ## Introduction
 
-Detecting calico-node CrashLoopBackOff quickly is critical because each crash cycle withdraws BGP routes and may cause new pod scheduling to fail on the affected node. Without monitoring, teams often learn about this condition from application-level alerts or user reports — by which time the cluster may have been degraded for many minutes.
+Detecting calico-node CrashLoopBackOff quickly is critical because each crash cycle withdraws BGP routes and may cause new pod scheduling to fail on the affected node. Without monitoring, teams often learn about this condition from application-level alerts or user reports - by which time the cluster may have been degraded for many minutes.
 
 Effective monitoring for CrashLoopBackOff combines multiple signals: Kubernetes pod restart counters (via kube-state-metrics), calico-node readiness probe failures, and structured log patterns from the Felix process. Layering these signals provides redundancy so that no single monitoring gap leaves the cluster blind to calico-node crashes.
 

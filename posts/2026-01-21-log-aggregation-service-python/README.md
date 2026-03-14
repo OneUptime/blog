@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Logging, Log Aggregation, Observability, FastAPI, asyncio
+Tags: Python, Logging, Log Aggregation, Observability, FastAPI, Asyncio
 
 Description: Learn how to build a log aggregation service in Python that collects, processes, and stores logs from multiple sources.
 

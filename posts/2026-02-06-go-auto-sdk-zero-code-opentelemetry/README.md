@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Auto SDK, Zero-Code, eBPF, Auto-Instrumentation
+Tags: OpenTelemetry, Go, Auto SDK, Zero-Code, EBPF, Auto-Instrumentation
 
 Description: Explore OpenTelemetry auto-instrumentation for Go using eBPF technology to add observability without modifying application code or recompiling binaries.
 

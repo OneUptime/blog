@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, iSCSI, Storage, Linux, SAN
+Tags: Ansible, ISCSI, Storage, Linux, SAN
 
 Description: Automate iSCSI target and initiator configuration on Linux using Ansible for block-level network storage with proper multipath and authentication setup.
 

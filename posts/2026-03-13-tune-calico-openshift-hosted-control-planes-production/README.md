@@ -81,4 +81,4 @@ Watch `felix_exec_time_seconds` and `felix_int_dataplane_apply_time_seconds` for
 
 ## Conclusion
 
-Production tuning for Calico on OpenShift Hosted Control Planes focuses on managing API server communication overhead — measuring and minimizing latency to the management cluster, increasing Felix poll intervals to reduce call frequency, and sizing IPAM blocks to batch allocation requests. These HCP-specific considerations complement the standard Calico tuning parameters for a well-performing production deployment.
+Production tuning for Calico on OpenShift Hosted Control Planes focuses on managing API server communication overhead - measuring and minimizing latency to the management cluster, increasing Felix poll intervals to reduce call frequency, and sizing IPAM blocks to batch allocation requests. These HCP-specific considerations complement the standard Calico tuning parameters for a well-performing production deployment.

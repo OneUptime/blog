@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate Rotation, mTLS, Security, Operations
+Tags: Istio, Certificate Rotation, MTLS, Security, Operations
 
 Description: Learn how to configure and tune certificate rotation intervals in Istio, including workload certificate TTL, grace periods, and monitoring rotation events.
 

@@ -10,11 +10,11 @@ Description: A guide to diagnosing and resolving Typha TLS failures including ce
 
 ## Introduction
 
-Typha TLS failures are the most common cause of Felix-to-Typha connectivity issues in hard way installations. The failures are often silent — Felix logs show connection errors but may not clearly indicate TLS as the root cause. A systematic diagnostic approach starting from the certificate content and working outward to the runtime connection resolves the majority of TLS issues.
+Typha TLS failures are the most common cause of Felix-to-Typha connectivity issues in hard way installations. The failures are often silent - Felix logs show connection errors but may not clearly indicate TLS as the root cause. A systematic diagnostic approach starting from the certificate content and working outward to the runtime connection resolves the majority of TLS issues.
 
 ## Diagnostic Decision Tree
 
-```
+```plaintext
 Felix cannot connect to Typha
   ├─ Is Typha pod running? → kubectl get pods -n calico-system -l k8s-app=calico-typha
   ├─ Is the Typha service endpoint populated? → kubectl get endpoints calico-typha -n calico-system
@@ -64,7 +64,7 @@ kubectl rollout restart deployment/calico-typha -n calico-system
 ```bash
 TYPHA_CA=$(kubectl get secret calico-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
 FELIX_CA=$(kubectl get secret calico-felix-typha-tls -n calico-system -o jsonpath='{.data.ca\.crt}')
-[ "$TYPHA_CA" = "$FELIX_CA" ] && echo "MATCH" || echo "MISMATCH — update Felix CA to match Typha CA"
+[ "$TYPHA_CA" = "$FELIX_CA" ] && echo "MATCH" || echo "MISMATCH - update Felix CA to match Typha CA"
 ```
 
 **Resolution:** Copy the CA cert from the Typha Secret to the Felix Secret.

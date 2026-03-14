@@ -12,7 +12,7 @@ Description: Build a validation framework for Calico label-based network policie
 
 Validating label-based Calico network policies requires more than checking YAML syntax. You need to verify that your selectors match the intended pods, that no pods are missing required labels, and that the combined effect of all your policies produces the intended traffic behavior. A policy that is syntactically valid but semantically wrong can be just as dangerous as one with a typo.
 
-Validation should happen at three points: before applying policies (static analysis), after applying policies in staging (behavioral testing), and continuously in production (ongoing label coverage monitoring). This guide focuses on the first two — the checks you run before policies reach production.
+Validation should happen at three points: before applying policies (static analysis), after applying policies in staging (behavioral testing), and continuously in production (ongoing label coverage monitoring). This guide focuses on the first two - the checks you run before policies reach production.
 
 ## Prerequisites
 

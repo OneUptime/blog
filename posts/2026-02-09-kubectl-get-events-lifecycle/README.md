@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Events, Debugging, kubectl, Troubleshooting
+Tags: Kubernetes, Events, Debugging, Kubectl, Troubleshooting
 
 Description: Learn how to use kubectl get events to track Kubernetes pod lifecycle, diagnose issues, and understand cluster activity through event analysis.
 

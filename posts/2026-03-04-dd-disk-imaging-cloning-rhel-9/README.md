@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dd, Disk Imaging, Cloning
+Tags: RHEL, Dd, Disk Imaging, Cloning
 
 Description: Use dd on RHEL 9 for disk imaging, drive cloning, and byte-level backups.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Kubernetes, Upgrade, Cluster Management
+Tags: Talos Linux, Talosctl, Kubernetes, Upgrade, Cluster Management
 
 Description: Learn how to use talosctl upgrade-k8s to upgrade the Kubernetes version running on your Talos Linux cluster safely
 

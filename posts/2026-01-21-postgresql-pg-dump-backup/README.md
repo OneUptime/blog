@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Backup, pg_dump, Disaster Recovery, Database Administration
+Tags: PostgreSQL, Backup, Pg_dump, Disaster Recovery, Database Administration
 
 Description: A comprehensive guide to backing up PostgreSQL databases with pg_dump, covering backup formats, compression, automation, and restoration procedures.
 

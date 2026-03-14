@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, macOS, Homebrew, Installation, DevOps, Infrastructure as Code
+Tags: Terraform, MacOS, Homebrew, Installation, DevOps, Infrastructure as Code
 
 Description: Learn how to install Terraform on macOS using Homebrew package manager with step-by-step instructions covering installation, verification, and troubleshooting.
 

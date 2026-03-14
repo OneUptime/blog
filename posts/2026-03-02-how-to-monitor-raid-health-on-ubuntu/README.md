@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, RAID, mdadm, Storage, Monitoring
+Tags: Ubuntu, RAID, Mdadm, Storage, Monitoring
 
 Description: Set up comprehensive RAID health monitoring on Ubuntu using mdadm, SMART monitoring, email alerts, and automated checks to detect failures before data loss occurs.
 

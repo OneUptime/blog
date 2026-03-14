@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation, Automation
+Tags: Calico, Kubernetes, Networking, EBPF, Installation, Automation
 
 Description: Automate the full Calico eBPF installation process including cluster bootstrapping, kube-proxy disablement, and operator configuration using Terraform and Ansible.
 
@@ -165,4 +165,4 @@ jobs:
 
 ## Conclusion
 
-Automating Calico eBPF installation through Terraform, Ansible, and CI/CD ensures every cluster in your fleet starts with eBPF correctly configured. The automation handles the three critical prerequisites — compatible kernel, no kube-proxy, real API server IP in the ConfigMap — as integrated steps rather than manual checklists. By adding automated validation as the final step, you get immediate confirmation that eBPF is actually active, not just configured.
+Automating Calico eBPF installation through Terraform, Ansible, and CI/CD ensures every cluster in your fleet starts with eBPF correctly configured. The automation handles the three critical prerequisites - compatible kernel, no kube-proxy, real API server IP in the ConfigMap - as integrated steps rather than manual checklists. By adding automated validation as the final step, you get immediate confirmation that eBPF is actually active, not just configured.

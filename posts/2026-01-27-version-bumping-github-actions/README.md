@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Versioning, Semantic Versioning, Release Automation, CI/CD, npm
+Tags: GitHub Actions, Versioning, Semantic Versioning, Release Automation, CI/CD, Npm
 
 Description: Automate version bumping in GitHub Actions using conventional commits, semantic-release, and custom scripts to maintain consistent versioning across your projects.
 

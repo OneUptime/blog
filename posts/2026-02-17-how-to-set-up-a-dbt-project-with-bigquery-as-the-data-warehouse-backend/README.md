@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Data Warehouse, Analytics Engineering
+Tags: GCP, BigQuery, Dbt, Data Warehouse, Analytics Engineering
 
 Description: A step-by-step guide to setting up a dbt project with BigQuery as the data warehouse, including authentication, project structure, and running your first models.
 

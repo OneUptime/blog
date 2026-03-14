@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, AKS, Azure, CNI, Kubernetes, Networking, eBPF
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: Step-by-step guide to installing Cilium as the CNI plugin on Azure Kubernetes Service using the Azure CNI Powered by Cilium feature.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, networking, faq, ebpf
+Tags: Cilium, FAQ, Troubleshooting, Kubernetes
 
 Description: A comprehensive FAQ addressing the most common questions from Cilium users, covering installation, troubleshooting, policy configuration, and performance considerations.
 
@@ -37,7 +37,7 @@ cilium connectivity test
 kubectl -n kube-system logs -l k8s-app=cilium --tail=50
 ```
 
-## Step 2: Common FAQ — Policy Not Taking Effect
+## Step 2: Common FAQ - Policy Not Taking Effect
 
 One of the most common issues is a policy that appears applied but isn't enforced.
 
@@ -52,7 +52,7 @@ cilium endpoint list
 cilium endpoint get <endpoint-id>
 ```
 
-## Step 3: Common FAQ — Pod Cannot Reach External Services
+## Step 3: Common FAQ - Pod Cannot Reach External Services
 
 When pods cannot reach external services, the issue is often related to masquerading or NodePort configuration.
 
@@ -67,7 +67,7 @@ cilium config view | grep node-port
 cilium status | grep KubeProxy
 ```
 
-## Step 4: Common FAQ — Hubble Not Showing Flows
+## Step 4: Common FAQ - Hubble Not Showing Flows
 
 Hubble is Cilium's observability layer. If flows aren't visible, check these settings.
 
@@ -82,7 +82,7 @@ cilium hubble enable
 cilium hubble ui
 ```
 
-## Step 5: Common FAQ — Upgrading Cilium
+## Step 5: Common FAQ - Upgrading Cilium
 
 Upgrading Cilium requires careful sequencing to avoid downtime.
 
@@ -103,7 +103,7 @@ cilium status
 ## Best Practices
 
 - Always run `cilium connectivity test` after installation or upgrades to validate the data plane
-- Enable Hubble from the start — observability is essential for debugging
+- Enable Hubble from the start - observability is essential for debugging
 - Subscribe to Cilium release notes to stay ahead of breaking changes
 - Use `cilium debuginfo` to gather a comprehensive diagnostic bundle when filing issues
 - Review the Cilium compatibility matrix before upgrading Kubernetes versions

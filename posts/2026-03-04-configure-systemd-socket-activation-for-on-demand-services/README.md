@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Socket Activation, Linux
+Tags: RHEL, Systemd, System Administration, Socket Activation, Linux
 
 Description: Learn how to configure systemd Socket Activation for On-Demand Services on RHEL with step-by-step instructions, configuration examples, and best practices.
 

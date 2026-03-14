@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemctl, Services, systemd, Linux
+Tags: RHEL, Systemctl, Services, Systemd, Linux
 
 Description: A practical guide to managing services with systemctl on RHEL, covering start, stop, restart, reload, and understanding when to use each one.
 

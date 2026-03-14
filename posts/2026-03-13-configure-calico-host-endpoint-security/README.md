@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring Calico host endpoint security p
 
 ## Introduction
 
-Calico host endpoints allow you to apply network policy to the network interfaces of your Kubernetes nodes themselves, not just to pods. This capability extends Calico's fine-grained policy model to the host networking layer, enabling you to control traffic flowing directly to and from node processes — including the kubelet, SSH, and other system services.
+Calico host endpoints allow you to apply network policy to the network interfaces of your Kubernetes nodes themselves, not just to pods. This capability extends Calico's fine-grained policy model to the host networking layer, enabling you to control traffic flowing directly to and from node processes - including the kubelet, SSH, and other system services.
 
 By default, Kubernetes nodes have unrestricted network access. Once you enable host endpoint protection, you gain the ability to enforce allow-list or deny-list policies at the OS level. This is a critical security boundary for production clusters where lateral movement or direct node compromise must be mitigated.
 

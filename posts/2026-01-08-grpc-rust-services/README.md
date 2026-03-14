@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Rust, tonic, Protocol Buffers, Microservices, Async, tokio, Systems Programming
+Tags: GRPC, Rust, Tonic, Protocol Buffers, Microservices, Async, Tokio, Systems Programming
 
 Description: A comprehensive guide to building high-performance gRPC services in Rust using the Tonic framework, covering service implementation, async/await patterns, error handling, and production deployment.
 

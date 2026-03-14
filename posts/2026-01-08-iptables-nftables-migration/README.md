@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, iptables, nftables, kube-proxy, Linux, Security, DevOps
+Tags: Kubernetes, Networking, Iptables, Nftables, Kube-proxy, Linux, Security, DevOps
 
 Description: A comprehensive guide to migrating Kubernetes clusters from iptables to nftables, covering rule translation, kube-proxy configuration, and compatibility considerations.
 

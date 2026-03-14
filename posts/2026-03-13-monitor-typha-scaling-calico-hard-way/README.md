@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, Monitoring, Prometheus, Observability, CNI
 
-Description: Set up Prometheus scraping, define critical alerting rules, and build a monitoring baseline for Calico Typha in a manifest-based deployment. Learn which metrics matter most for detecting scaling problems before they impact the cluster.
+Description: Set up Prometheus scraping, define critical alerting rules, and build a monitoring baseline for Calico Typha in a manifest-based deployment.
 
 ---
 
 ## Introduction
 
-Typha exposes a rich set of Prometheus metrics covering connection counts, cache sizes, update fanout latency, and error rates. Without monitoring these metrics, you are flying blind — a Typha pod that silently falls behind syncing from the API server can cause Felix agents to enforce stale network policies for minutes before anyone notices.
+Typha exposes a rich set of Prometheus metrics covering connection counts, cache sizes, update fanout latency, and error rates. Without monitoring these metrics, you are flying blind - a Typha pod that silently falls behind syncing from the API server can cause Felix agents to enforce stale network policies for minutes before anyone notices.
 
 This post covers enabling Typha metrics, configuring Prometheus to scrape them, defining alert rules for common failure modes, and establishing a baseline to detect performance regressions.
 
@@ -39,10 +39,10 @@ curl -s http://localhost:9093/metrics | grep "^typha_" | head -40
 
 Key metric families to verify are present:
 
-- `typha_connections_accepted_total` — cumulative connections ever accepted
-- `typha_connections_active` — current connected Felix clients
-- `typha_snapshots_generated_total` — how often Typha sends a full state snapshot
-- `typha_updates_sent_total` — incremental updates dispatched to Felix clients
+- `typha_connections_accepted_total` - cumulative connections ever accepted
+- `typha_connections_active` - current connected Felix clients
+- `typha_snapshots_generated_total` - how often Typha sends a full state snapshot
+- `typha_updates_sent_total` - incremental updates dispatched to Felix clients
 
 ---
 
@@ -199,7 +199,7 @@ done
 ## Best Practices
 
 - Scrape Typha metrics every 15–30 seconds; connection counts change rapidly during rolling restarts.
-- Alert on `typha_connections_active` dropping to zero for any pod — it means Felix agents connected to that pod have lost their sync path.
+- Alert on `typha_connections_active` dropping to zero for any pod - it means Felix agents connected to that pod have lost their sync path.
 - Create a dashboard panel showing `typha_connections_active` per pod instance to visualize balance at a glance.
 - Include Typha metrics in the same dashboard as Felix `route_table_list_seconds` to correlate Typha sync delays with Felix programming latency.
 - Export `typha_snapshots_generated_total` rate to detect unusually frequent full re-syncs, which can indicate API server connectivity problems.

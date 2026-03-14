@@ -12,7 +12,7 @@ Description: Use OPA Gatekeeper policies alongside Flux CD to enforce deployment
 
 Policy-as-Code applies the same GitOps principles used for application configuration to governance rules. Instead of enforcing standards through manual review alone, you define policies as code, store them in Git, and apply them automatically to every resource that tries to enter your cluster.
 
-Open Policy Agent (OPA) Gatekeeper is a Kubernetes admission controller that evaluates resources against policies defined as `ConstraintTemplate` and `Constraint` objects before allowing them to be created or modified. When combined with Flux CD, Gatekeeper policies are themselves managed by Flux — they live in Git, require PR review, and are reconciled automatically. Any resource that violates a policy is rejected at admission time, regardless of whether it came from Flux or any other source.
+Open Policy Agent (OPA) Gatekeeper is a Kubernetes admission controller that evaluates resources against policies defined as `ConstraintTemplate` and `Constraint` objects before allowing them to be created or modified. When combined with Flux CD, Gatekeeper policies are themselves managed by Flux - they live in Git, require PR review, and are reconciled automatically. Any resource that violates a policy is rejected at admission time, regardless of whether it came from Flux or any other source.
 
 This guide covers installing Gatekeeper via Flux, defining governance policies, and integrating policy validation into your PR workflow.
 
@@ -174,7 +174,7 @@ spec:
 
 ```yaml
 # clusters/production/policies/kustomization.yaml
-# Flux manages policy deployment — policies themselves go through PR review
+# Flux manages policy deployment - policies themselves go through PR review
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -288,4 +288,4 @@ kubectl describe requiredresourcelimits production-must-have-limits
 
 ## Conclusion
 
-Policy-as-Code with OPA Gatekeeper and Flux CD creates a governance layer that is enforced at the cluster level, not just at code review. Every resource that Flux reconciles — or that any user tries to apply manually — is evaluated against your policy set before it can enter the cluster. By managing policies through the same GitOps workflow as applications, you ensure that governance rules are version-controlled, peer-reviewed, and automatically applied across your entire cluster estate.
+Policy-as-Code with OPA Gatekeeper and Flux CD creates a governance layer that is enforced at the cluster level, not just at code review. Every resource that Flux reconciles - or that any user tries to apply manually - is evaluated against your policy set before it can enter the cluster. By managing policies through the same GitOps workflow as applications, you ensure that governance rules are version-controlled, peer-reviewed, and automatically applied across your entire cluster estate.

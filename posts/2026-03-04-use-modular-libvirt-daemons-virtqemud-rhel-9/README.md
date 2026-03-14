@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, libvirt, virtqemud, Virtualization, KVM, Linux
+Tags: RHEL, Libvirt, Virtqemud, Virtualization, KVM, Linux
 
 Description: Learn how to use the modular libvirt daemon architecture on RHEL 9, including virtqemud, for improved security and resource isolation.
 

@@ -262,7 +262,7 @@ kubectl patch flinkdeployment event-processor -n flink-jobs \
 ## Best Practices
 
 - Use `upgradeMode: stateful` for production streaming jobs to prevent state loss during upgrades
-- Always configure S3 or GCS for checkpoint storage — do not rely on local disk
+- Always configure S3 or GCS for checkpoint storage - do not rely on local disk
 - Store `flinkConfiguration` in a separate ConfigMap and reference it in FlinkDeployment for reuse
 - Set `execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION` to recover from failures
 - Monitor checkpoint duration and size to detect performance degradation early

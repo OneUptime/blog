@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Traffic Management, Kubernetes, Service Mesh
+Tags: Istio, GRPC, Traffic Management, Kubernetes, Service Mesh
 
 Description: How to configure Istio for gRPC traffic management including routing, load balancing, retries, timeouts, and fault injection for gRPC services.
 

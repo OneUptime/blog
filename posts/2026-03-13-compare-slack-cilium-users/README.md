@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, community, slack, support
+Tags: Cilium, Community, Slack, Support
 
-Description: A guide to the Cilium Slack community — which channels to join, how to ask effective questions, and how to get the most out of real-time community support.
+Description: A guide to the Cilium Slack community - which channels to join, how to ask effective questions, and how to get the most out of real-time community support.
 
 ---
 
 ## Introduction
 
-The Cilium Slack workspace is the beating heart of the Cilium community. With thousands of members — from new users asking their first questions to core maintainers discussing RFCs — Slack provides a level of real-time help that documentation alone cannot match.
+The Cilium Slack workspace is the beating heart of the Cilium community. With thousands of members - from new users asking their first questions to core maintainers discussing RFCs - Slack provides a level of real-time help that documentation alone cannot match.
 
 Knowing how to use the Cilium Slack effectively means knowing which channels to join, how to structure questions for maximum response quality, and how to contribute back by helping others. The community's culture is welcoming and technical, rewarding those who come prepared with diagnostic information.
 
@@ -26,7 +26,7 @@ This post is a practical guide to getting the most out of the Cilium Slack commu
 
 Different channels serve different purposes. Join the ones relevant to your work.
 
-```
+```plaintext
 # Core channels to join:
 #general          - Announcements, news, general discussion
 #help             - Getting help with issues (most active support channel)
@@ -63,7 +63,7 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=30 | grep -i error
 
 A well-formatted question dramatically increases response quality and speed.
 
-```
+```plaintext
 # Good question format for #help:
 
 ---
@@ -85,12 +85,12 @@ All traffic is allowed instead of only POST /v1/api.
 **Policy:**
 ```yaml
 [paste your YAML here]
-```
+```plaintext
 
 **Cilium status:**
 ```
 [paste cilium status output here]
-```
+```plaintext
 ---
 ```
 
@@ -98,7 +98,7 @@ All traffic is allowed instead of only POST /v1/api.
 
 Slack threads help keep channels organized and conversations trackable.
 
-```
+```plaintext
 Tips for thread usage:
 - Always reply in-thread once a conversation starts
 - Start a new top-level message only for new, distinct questions
@@ -124,11 +124,11 @@ The health of the community depends on members helping each other.
 
 ## Best Practices
 
-- Use code blocks (triple backtick) for YAML, logs, and command output — never paste raw text
-- Mention your cloud provider and Kubernetes distribution — issues are often environment-specific
-- Don't DM maintainers directly unless they invite it — post in channels so everyone benefits
+- Use code blocks (triple backtick) for YAML, logs, and command output - never paste raw text
+- Mention your cloud provider and Kubernetes distribution - issues are often environment-specific
+- Don't DM maintainers directly unless they invite it - post in channels so everyone benefits
 - Check channel pins and bookmarks for common answers before posting
-- Be patient — maintainers are volunteers and may be in different time zones
+- Be patient - maintainers are volunteers and may be in different time zones
 
 ## Conclusion
 

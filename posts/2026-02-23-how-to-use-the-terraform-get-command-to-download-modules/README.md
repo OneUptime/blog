@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, CLI, terraform get, Infrastructure as Code
+Tags: Terraform, Modules, CLI, Terraform get, Infrastructure as Code
 
 Description: Master the terraform get command for downloading and updating Terraform modules from registries, Git repositories, S3 buckets, and other sources.
 

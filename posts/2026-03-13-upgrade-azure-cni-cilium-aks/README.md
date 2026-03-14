@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, aks, azure, cni, upgrade, migration, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A step-by-step guide to upgrading from Azure CNI to Cilium on Azure Kubernetes Service, covering pre-migration checks, the migration process, and post-upgrade validation.
 
@@ -61,7 +61,7 @@ az aks create \
   --node-count 3 \
   --generate-ssh-keys
 
-# For existing clusters — add a Cilium-enabled node pool
+# For existing clusters - add a Cilium-enabled node pool
 az aks nodepool add \
   --resource-group <resource-group> \
   --cluster-name <cluster-name> \

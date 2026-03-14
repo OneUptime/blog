@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, API Documentation
+Tags: Kubernetes, Kubectl, API Documentation
 
 Description: Master kubectl explain to discover resource field definitions, data types, required fields, and documentation directly from the command line without external API references.
 

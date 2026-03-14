@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Upgrade, Command Line, Cluster Operations
+Tags: Talos Linux, Talosctl, Upgrade, Command Line, Cluster Operations
 
 Description: Master the talosctl upgrade command with this in-depth guide covering all flags, options, best practices, and real-world usage patterns for Talos Linux upgrades.
 

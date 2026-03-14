@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Installation, Uninstall, macOS, Linux, Windows
+Tags: NodeJS, Installation, Uninstall, MacOS, Linux, Windows
 
 Description: Complete guide to uninstalling Node.js from Windows, macOS, and Linux including removing npm packages, cleaning cache, and preparing for a fresh installation.
 

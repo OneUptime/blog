@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, cloud-init, Cloud, Infrastructure
+Tags: Ubuntu, Cloud-init, Cloud, Infrastructure
 
 Description: A detailed explanation of cloud-init on Ubuntu - how it bootstraps cloud instances, its execution stages, data sources, and the configuration format it accepts.
 

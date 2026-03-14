@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Variables, set_fact, DevOps, Automation
+Tags: Ansible, Variables, Set_fact, DevOps, Automation
 
 Description: Learn how to use the Ansible set_fact module to create and modify variables dynamically during playbook execution based on runtime conditions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, autofs, LDAP, NFS, Networking
+Tags: Ubuntu, Autofs, LDAP, NFS, Networking
 
 Description: Configure autofs to use LDAP as the automount map source on Ubuntu, enabling centrally managed auto-mount configurations for NFS home directories and shared storage.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, HTTP2, gRPC, Service Mesh, Kubernetes, Envoy
+Tags: Istio, HTTP2, GRPC, Service Mesh, Kubernetes, Envoy
 
 Description: Step-by-step instructions for setting up Istio to handle HTTP/2 and gRPC traffic including routing, load balancing, retries, and troubleshooting.
 

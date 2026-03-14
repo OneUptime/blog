@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Gin, Middleware, otelgin, Tracing
+Tags: OpenTelemetry, Go, Gin, Middleware, Otelgin, Tracing
 
 Description: Learn how to implement OpenTelemetry middleware in Go Gin applications using otelgin for comprehensive HTTP request tracing and observability.
 

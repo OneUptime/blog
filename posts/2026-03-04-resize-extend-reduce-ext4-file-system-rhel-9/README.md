@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Resize, Storage, Linux
+Tags: RHEL, Ext4, Resize, Storage, Linux
 
 Description: Learn how to extend and reduce ext4 file systems on RHEL, including online growth, offline shrinking, and working with LVM logical volumes.
 

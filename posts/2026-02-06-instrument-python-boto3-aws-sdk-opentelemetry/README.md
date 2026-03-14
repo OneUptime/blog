@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, boto3, AWS, SDK, Tracing, Cloud
+Tags: OpenTelemetry, Python, Boto3, AWS, SDK, Tracing, Cloud
 
 Description: Complete guide to instrumenting boto3 AWS SDK calls with OpenTelemetry to trace S3, DynamoDB, Lambda, and other AWS service interactions in Python applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Security, System Hardening, Linux
+Tags: Ubuntu, Systemd, Security, System Hardening, Linux
 
 Description: Learn how to use systemd's built-in sandboxing and security directives to harden services on Ubuntu, limiting their access to the system and reducing attack surface.
 

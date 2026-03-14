@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Cgroups, Resource Limits, Linux, Performance
+Tags: RHEL, Systemd, Cgroups, Resource Limits, Linux, Performance
 
 Description: A practical guide to using systemd cgroup directives on RHEL to limit CPU, memory, and I/O for services, preventing runaway processes from taking down your server.
 

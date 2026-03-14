@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Migration, iptables
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Migration, Iptables
 
 Description: A guide to migrating existing Calico workloads from iptables backend to nftables mode with zero downtime.
 
@@ -10,7 +10,7 @@ Description: A guide to migrating existing Calico workloads from iptables backen
 
 ## Introduction
 
-Migrating an existing Calico deployment from iptables to nftables mode requires careful coordination because Felix manages dataplane rules for every running pod. The migration path is a live switch — Felix supports changing `iptablesBackend` at runtime, and it will flush iptables rules and reprogram equivalent nftables rules within one refresh cycle. However, there is a brief window during the transition where existing connections may be interrupted if not handled carefully.
+Migrating an existing Calico deployment from iptables to nftables mode requires careful coordination because Felix manages dataplane rules for every running pod. The migration path is a live switch - Felix supports changing `iptablesBackend` at runtime, and it will flush iptables rules and reprogram equivalent nftables rules within one refresh cycle. However, there is a brief window during the transition where existing connections may be interrupted if not handled carefully.
 
 The recommended approach is to migrate nodes one at a time using a cordon-and-drain workflow, or to perform a cluster-wide switch during a maintenance window with pre-validation that nftables kernel modules are loaded on all nodes.
 
@@ -128,4 +128,4 @@ Apply times under 1 second confirm the nftables dataplane is operating normally.
 
 ## Conclusion
 
-Migrating existing Calico workloads to nftables mode involves validating kernel readiness, snapshotting current policy state, switching `iptablesBackend` to `nft` in FelixConfiguration, and verifying that both nftables rules are active and existing policies remain enforced. The migration is largely transparent to running workloads — Felix handles the dataplane reprogram automatically — but connectivity tests and Prometheus metric review confirm the transition completed successfully.
+Migrating existing Calico workloads to nftables mode involves validating kernel readiness, snapshotting current policy state, switching `iptablesBackend` to `nft` in FelixConfiguration, and verifying that both nftables rules are active and existing policies remain enforced. The migration is largely transparent to running workloads - Felix handles the dataplane reprogram automatically - but connectivity tests and Prometheus metric review confirm the transition completed successfully.

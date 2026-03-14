@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, User Management, Security, systemd-homed
+Tags: Ubuntu, Systemd, User Management, Security, Systemd-homed
 
 Description: Configure systemd-homed on Ubuntu for portable, encrypted home directories with per-user resource limits and modern authentication features.
 

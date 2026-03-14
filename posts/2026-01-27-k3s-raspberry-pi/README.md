@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, k3s, Raspberry Pi, ARM, Edge Computing, Home Lab, IoT, Self-Hosting
+Tags: Kubernetes, K3s, Raspberry Pi, ARM, Edge Computing, Home Lab, IoT, Self-Hosting
 
 Description: A complete guide to installing K3s on Raspberry Pi, from hardware preparation to cluster optimization. Learn how to build a lightweight, production-ready Kubernetes cluster on ARM devices.
 

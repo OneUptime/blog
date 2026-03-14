@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Harness CD, Migration, GitOps, Kubernetes, CI/CD, Pipeline
+Tags: Flux CD, Harness CD, GitOps, Migration, Kubernetes, CI/CD
 
 Description: Learn how to migrate from Harness CD deployment pipelines to Flux CD GitOps for Kubernetes workloads, covering service mapping and approval workflow migration.
 
@@ -211,4 +211,4 @@ spec:
 
 ## Conclusion
 
-Migrating from Harness CD to Flux CD reduces platform complexity and licensing costs at the expense of some visual pipeline orchestration capabilities. The Flux model—where Git is the source of truth and the cluster reconciles continuously—is more reliable and auditable than push-based CD. For Kubernetes-focused organizations, Flux CD is a compelling replacement for Harness CD's Kubernetes deployment capabilities, complemented by Flagger for progressive delivery.
+Migrating from Harness CD to Flux CD reduces platform complexity and licensing costs at the expense of some visual pipeline orchestration capabilities. The Flux model-where Git is the source of truth and the cluster reconciles continuously-is more reliable and auditable than push-based CD. For Kubernetes-focused organizations, Flux CD is a compelling replacement for Harness CD's Kubernetes deployment capabilities, complemented by Flagger for progressive delivery.

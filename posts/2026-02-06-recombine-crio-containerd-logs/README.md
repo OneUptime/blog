@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, CRI-O, containerd, Container Logs, Recombine Operator
+Tags: OpenTelemetry, CRI-O, Containerd, Container Logs, Recombine Operator
 
 Description: Use the recombine operator in the OpenTelemetry filelog receiver to reassemble partial CRI-O and containerd container log lines.
 

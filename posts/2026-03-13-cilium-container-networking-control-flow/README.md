@@ -1,16 +1,16 @@
-# Cilium Container Networking Control Flow: Configure, Troubleshoot, Validate, and Monitor
+# Cilium Container Networking Control Flow
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Container
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A detailed walkthrough of how Cilium handles the complete lifecycle of container networking from pod creation to packet delivery, including the eBPF control flow, policy enforcement path, and datapath decisions.
+Description: A detailed walkthrough of how Cilium handles the complete lifecycle of container networking from pod creation to packet delivery, including the eBPF control flow, policy enforcement path, and...
 
 ---
 
 ## Introduction
 
-Understanding Cilium's container networking control flow — the sequence of events and decisions from pod creation through packet delivery — is fundamental to diagnosing complex networking issues and understanding where things can go wrong. The control flow involves multiple components (kubelet, Cilium CNI, Cilium Agent, eBPF programs in the kernel) acting in a specific sequence, and a failure at any stage produces a distinct error signature.
+Understanding Cilium's container networking control flow - the sequence of events and decisions from pod creation through packet delivery - is fundamental to diagnosing complex networking issues and understanding where things can go wrong. The control flow involves multiple components (kubelet, Cilium CNI, Cilium Agent, eBPF programs in the kernel) acting in a specific sequence, and a failure at any stage produces a distinct error signature.
 
 The control flow begins when Kubernetes schedules a pod on a node. The kubelet invokes the Cilium CNI binary, which communicates with the Cilium Agent to allocate an IP and configure the pod's network namespace. The Agent then creates a Cilium Endpoint object, computes the pod's security identity from its labels, and programs eBPF maps and programs to enforce network policies for that endpoint. Only after all these steps complete can the pod receive and send traffic.
 
@@ -210,4 +210,4 @@ watch -n10 "kubectl get pods -A | grep ContainerCreating"
 
 ## Conclusion
 
-Cilium's container networking control flow is a well-defined sequence from kubelet CNI invocation through eBPF program installation. Each stage has a clear error signature that enables rapid root cause identification. The key insight for troubleshooting is that stages are sequential — if Stage 2 (socket connectivity) fails, Stages 3-7 cannot proceed. The `cilium monitor --type endpoint` command provides real-time visibility into control flow events. Monitoring endpoint regeneration time gives an end-to-end measure of control flow performance, with latency spikes indicating bottlenecks in IPAM allocation, identity computation, or eBPF compilation.
+Cilium's container networking control flow is a well-defined sequence from kubelet CNI invocation through eBPF program installation. Each stage has a clear error signature that enables rapid root cause identification. The key insight for troubleshooting is that stages are sequential - if Stage 2 (socket connectivity) fails, Stages 3-7 cannot proceed. The `cilium monitor --type endpoint` command provides real-time visibility into control flow events. Monitoring endpoint regeneration time gives an end-to-end measure of control flow performance, with latency spikes indicating bottlenecks in IPAM allocation, identity computation, or eBPF compilation.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, axum, REST API, Web Services, HTTP, Middleware, Error Handling, Graceful Shutdown
+Tags: Rust, Axum, REST API, Web Services, HTTP, Middleware, Error Handling, Graceful Shutdown
 
 Description: Learn how to build production-ready REST APIs in Rust using Axum. This guide covers routing, middleware, error handling, validation, graceful shutdown, and best practices for production deployments.
 

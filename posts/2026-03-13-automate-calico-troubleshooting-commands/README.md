@@ -10,7 +10,7 @@ Description: Automate Calico diagnostic command execution with scripts that coll
 
 ## Introduction
 
-Running individual Calico troubleshooting commands manually during an incident is slow and error-prone. Automating the collection of standard diagnostics — BGP peer states, IPAM block usage, Felix error counts, and TigeraStatus — into a single script reduces incident triage from minutes to seconds and ensures consistent data collection regardless of which engineer is on-call.
+Running individual Calico troubleshooting commands manually during an incident is slow and error-prone. Automating the collection of standard diagnostics - BGP peer states, IPAM block usage, Felix error counts, and TigeraStatus - into a single script reduces incident triage from minutes to seconds and ensures consistent data collection regardless of which engineer is on-call.
 
 ## Automated Calico Diagnostic Bundle
 
@@ -123,4 +123,4 @@ spec:
 
 ## Conclusion
 
-The diagnostic bundle script provides a one-command way to collect all necessary Calico state during an incident. The automated BGP peer check can be integrated into a CronJob to detect BGP peer failures before they escalate to application outages. Run the bundle script as the first step in any Calico incident and attach it to the ticket before beginning root cause analysis — this prevents the common mistake of diagnosing in isolation without the full context.
+The diagnostic bundle script provides a one-command way to collect all necessary Calico state during an incident. The automated BGP peer check can be integrated into a CronJob to detect BGP peer failures before they escalate to application outages. Run the bundle script as the first step in any Calico incident and attach it to the ticket before beginning root cause analysis - this prevents the common mistake of diagnosing in isolation without the full context.

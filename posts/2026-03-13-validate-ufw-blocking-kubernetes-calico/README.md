@@ -12,7 +12,7 @@ Description: Validation steps to confirm UFW is no longer blocking Calico Kubern
 
 Validating UFW-Calico conflict resolution requires confirming that the iptables FORWARD policy is no longer DROP, that Calico's encapsulation traffic is flowing, and that cross-node pod connectivity is fully restored. Because UFW changes take effect at the kernel iptables level, validation should be done at both the iptables layer and the application layer.
 
-A thorough validation also checks that the fix is persistent across node reboots — a common oversight where the iptables change is applied but UFW re-enables at boot with the DROP policy.
+A thorough validation also checks that the fix is persistent across node reboots - a common oversight where the iptables change is applied but UFW re-enables at boot with the DROP policy.
 
 ## Symptoms
 
@@ -117,4 +117,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating UFW-Calico conflict resolution requires checking the iptables FORWARD policy on all nodes, confirming cross-node pod connectivity, and verifying the fix persists through node reboots. The reboot test is critical — UFW may re-enable with DROP forward policy if the service was not properly disabled.
+Validating UFW-Calico conflict resolution requires checking the iptables FORWARD policy on all nodes, confirming cross-node pod connectivity, and verifying the fix persists through node reboots. The reboot test is critical - UFW may re-enable with DROP forward policy if the service was not properly disabled.

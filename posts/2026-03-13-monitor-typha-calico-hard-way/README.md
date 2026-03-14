@@ -10,7 +10,7 @@ Description: A guide to monitoring Typha's health, connection counts, and policy
 
 ## Introduction
 
-Monitoring Typha in a hard way installation requires instrumenting the Typha process itself (via Prometheus metrics), setting up alerting for connection drops and high propagation latency, and creating dashboards that give operators a clear view of Typha's health relative to cluster size. Without monitoring, a degraded Typha is invisible until Felix agents start reporting stale policy state — by which time network policy may already be incorrectly enforced.
+Monitoring Typha in a hard way installation requires instrumenting the Typha process itself (via Prometheus metrics), setting up alerting for connection drops and high propagation latency, and creating dashboards that give operators a clear view of Typha's health relative to cluster size. Without monitoring, a degraded Typha is invisible until Felix agents start reporting stale policy state - by which time network policy may already be incorrectly enforced.
 
 ## Step 1: Enable Typha Prometheus Metrics
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, vmware, esxi, broadcom, kubernetes, upgrade, networking, nsx
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
 Description: A guide to upgrading Cilium on Kubernetes clusters running on Broadcom VMware ESXi hypervisors, covering vSphere-specific networking considerations and the upgrade procedure.
 
@@ -10,7 +10,7 @@ Description: A guide to upgrading Cilium on Kubernetes clusters running on Broad
 
 ## Introduction
 
-Running Kubernetes on VMware ESXi with Cilium as the CNI is common in enterprise environments that have standardized on VMware's virtualization infrastructure. Upgrading Cilium in this environment requires understanding how vSphere's virtual networking — including VMware NSX, distributed virtual switches (DVS), and VXLAN support — interacts with Cilium's dataplane.
+Running Kubernetes on VMware ESXi with Cilium as the CNI is common in enterprise environments that have standardized on VMware's virtualization infrastructure. Upgrading Cilium in this environment requires understanding how vSphere's virtual networking - including VMware NSX, distributed virtual switches (DVS), and VXLAN support - interacts with Cilium's dataplane.
 
 VMware ESXi's virtualization layer can affect Cilium's eBPF programs due to how the hypervisor presents hardware capabilities to VMs. Most modern ESXi deployments with VMXNET3 network adapters and hardware virtualization extensions support Cilium's full feature set, but confirming hardware capability passthrough is an essential pre-upgrade step.
 
@@ -142,9 +142,9 @@ kubectl run vmware-test --image=busybox --rm -it --restart=Never -- \
 ## Best Practices
 
 - Take VM snapshots before Cilium upgrades for quick rollback capability
-- Verify VMXNET3 is the VM network adapter — E1000/E1000e have reduced performance with Cilium
+- Verify VMXNET3 is the VM network adapter - E1000/E1000e have reduced performance with Cilium
 - If running VMware NSX, coordinate Cilium upgrades with NSX configuration changes
-- Disable VMware Fault Tolerance on Kubernetes VMs during upgrade — FT can cause unexpected node behavior
+- Disable VMware Fault Tolerance on Kubernetes VMs during upgrade - FT can cause unexpected node behavior
 - Monitor vCenter for VM network performance metrics during the rolling upgrade
 
 ## Conclusion

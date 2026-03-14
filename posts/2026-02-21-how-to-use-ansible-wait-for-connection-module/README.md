@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, wait_for_connection, SSH, Connection, DevOps
+Tags: Ansible, Wait_for_connection, SSH, Connection, DevOps
 
 Description: Use the Ansible wait_for_connection module to wait for remote hosts to become accessible after reboots and provisioning.
 

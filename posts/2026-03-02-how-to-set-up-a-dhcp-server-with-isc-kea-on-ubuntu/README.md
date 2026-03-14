@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DHCP, Networking, isc-kea, Server
+Tags: Ubuntu, DHCP, Networking, Isc-kea, Server
 
 Description: Configure a DHCP server using ISC Kea on Ubuntu, including subnet configuration, static reservations, lease management, and monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Atomic, Concurrency, sync/atomic, Thread Safety
+Tags: Go, Golang, Atomic, Concurrency, Sync/atomic, Thread Safety
 
 Description: Learn how to use atomic operations in Go for lock-free concurrent programming with the sync/atomic package.
 

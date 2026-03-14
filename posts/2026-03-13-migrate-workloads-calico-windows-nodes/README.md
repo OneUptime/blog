@@ -89,4 +89,4 @@ Get-HnsEndpoint | Select-Object IPAddress, MacAddress
 
 ## Conclusion
 
-Migrating Windows workloads to Calico requires scaling down Windows-scheduled pods, removing the existing CNI, installing and configuring Calico's Windows package, and scaling workloads back up to receive new Calico-assigned IPs. The Windows-specific steps — HNS network removal, Windows service management — differ from Linux CNI migration but follow the same logical sequence.
+Migrating Windows workloads to Calico requires scaling down Windows-scheduled pods, removing the existing CNI, installing and configuring Calico's Windows package, and scaling workloads back up to receive new Calico-assigned IPs. The Windows-specific steps - HNS network removal, Windows service management - differ from Linux CNI migration but follow the same logical sequence.

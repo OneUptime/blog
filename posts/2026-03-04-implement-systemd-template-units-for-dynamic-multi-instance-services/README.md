@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Templates, Linux
+Tags: RHEL, Systemd, System Administration, Templates, Linux
 
 Description: Learn how to implement systemd Template Units for Dynamic Multi-Instance Services on RHEL with step-by-step instructions, configuration examples, and best practices.
 

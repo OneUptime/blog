@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Node Status, Troubleshooting, kubelet
+Tags: Talos Linux, Kubernetes, Node Status, Troubleshooting, Kubelet
 
 Description: Learn how to diagnose and fix Kubernetes node Ready and NotReady status issues on Talos Linux, covering kubelet health, network problems, and resource pressure.
 

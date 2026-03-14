@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Network Policy, Calico, Cilium, Kubernetes, Networking, GitOps, Security
+Tags: Kubernetes, Network-policy, Flux-cd, GitOps, Calico, Cilium, CNI
 
 Description: Learn how to deploy a Kubernetes network policy controller (Calico or Cilium) using Flux CD and manage NetworkPolicy resources through GitOps.
 
@@ -10,7 +10,7 @@ Description: Learn how to deploy a Kubernetes network policy controller (Calico 
 
 ## Introduction
 
-Kubernetes NetworkPolicy resources define how pods can communicate with each other and with external services. However, NetworkPolicies require a CNI plugin that supports them—not all CNI plugins enforce NetworkPolicy by default. Deploying a policy-aware CNI controller like Calico or Cilium via Flux CD ensures consistent network security across clusters, with all policy changes tracked in Git.
+Kubernetes NetworkPolicy resources define how pods can communicate with each other and with external services. However, NetworkPolicies require a CNI plugin that supports them-not all CNI plugins enforce NetworkPolicy by default. Deploying a policy-aware CNI controller like Calico or Cilium via Flux CD ensures consistent network security across clusters, with all policy changes tracked in Git.
 
 ## Prerequisites
 
@@ -188,7 +188,7 @@ spec:
 
 ## Step 5: Organize NetworkPolicies in Fleet Repository
 
-```
+```plaintext
 fleet-repo/
   apps/
     myapp/

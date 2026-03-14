@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Flagger, microsoft-teams, Alerting, Notifications, Canary, Kubernetes, GitOps
+Tags: Flux, Flagger, Microsoft-teams, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: How to set up Microsoft Teams notifications for Flagger canary deployments in Flux-managed Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, Alerts, Reconciliation, Events, GitOps, Kubernetes, Notification-Controller
+Tags: Flux, Fluxcd, Alerts, Reconciliation, Events, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that only fire when reconciliation succeeds, using the inclusionList field to match the ReconciliationSucceeded event reason.
 

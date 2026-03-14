@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, crictl, Debugging, Container Runtime, containerd
+Tags: Kubernetes, Crictl, Debugging, Container Runtime, Containerd
 
 Description: Learn how to use crictl CLI tool to debug container runtime issues on Kubernetes nodes, inspect containers, and troubleshoot pod failures at the CRI level.
 

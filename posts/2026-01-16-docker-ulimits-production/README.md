@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ulimit, Production, Performance, Linux
+Tags: Docker, Ulimit, Production, Performance, Linux
 
 Description: Learn how to configure Docker ulimits for production workloads, including file descriptors, process limits, memory locks, and core dumps for optimal container performance.
 

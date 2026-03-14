@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, rsyslog, Logging, Linux
+Tags: RHEL, Journald, Rsyslog, Logging, Linux
 
 Description: Forward systemd journal logs to rsyslog on RHEL to combine both logging systems.
 

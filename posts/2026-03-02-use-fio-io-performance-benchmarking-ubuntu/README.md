@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, fio, Benchmarking, Storage, Performance
+Tags: Ubuntu, Fio, Benchmarking, Storage, Performance
 
 Description: Learn to use fio (Flexible I/O Tester) on Ubuntu to measure disk and storage performance with realistic workloads covering IOPS, throughput, and latency.
 

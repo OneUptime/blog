@@ -10,9 +10,9 @@ Description: Deploy the Jenkins CI/CD controller on Kubernetes using Flux CD Hel
 
 ## Introduction
 
-Jenkins remains one of the most widely adopted CI/CD platforms in the world, with a rich plugin ecosystem that integrates with virtually every tool in the DevOps landscape. Running Jenkins on Kubernetes—using ephemeral pod-based agents—eliminates static build servers, reduces cost, and scales build capacity on demand.
+Jenkins remains one of the most widely adopted CI/CD platforms in the world, with a rich plugin ecosystem that integrates with virtually every tool in the DevOps landscape. Running Jenkins on Kubernetes-using ephemeral pod-based agents-eliminates static build servers, reduces cost, and scales build capacity on demand.
 
-Flux CD turns the Jenkins deployment itself into a GitOps workflow. The Jenkins Configuration as Code (JCasC) plugin lets you declare Jenkins settings—credentials, agent templates, job DSL—in YAML files stored in Git. Flux watches for changes and keeps the cluster in sync, meaning even Jenkins configuration drift is prevented automatically.
+Flux CD turns the Jenkins deployment itself into a GitOps workflow. The Jenkins Configuration as Code (JCasC) plugin lets you declare Jenkins settings-credentials, agent templates, job DSL-in YAML files stored in Git. Flux watches for changes and keeps the cluster in sync, meaning even Jenkins configuration drift is prevented automatically.
 
 This guide uses the official `jenkins` Helm chart, configures JCasC through Helm values, and wires everything through Flux CD.
 
@@ -179,7 +179,7 @@ kubectl rollout status deployment/jenkins -n jenkins
 kubectl logs -n jenkins -l app.kubernetes.io/name=jenkins -c jenkins -f
 ```
 
-Navigate to `https://jenkins.example.com`. Jenkins should load with the JCasC configuration already applied—no manual plugin installation or cloud configuration required.
+Navigate to `https://jenkins.example.com`. Jenkins should load with the JCasC configuration already applied-no manual plugin installation or cloud configuration required.
 
 ## Step 6: Run a Test Pipeline
 
@@ -205,7 +205,7 @@ Trigger the pipeline and watch an agent pod spin up in the `jenkins` namespace.
 - Use JCasC for all Jenkins configuration; avoid clicking through the UI for settings that should be reproducible.
 - Store Jenkins credentials (GitHub tokens, Docker Hub passwords) as Kubernetes secrets and reference them in JCasC via `${SECRET_NAME}` syntax.
 - Pin plugin versions in `installPlugins` using explicit version numbers instead of `latest` to ensure repeatable builds.
-- Configure `controller.numExecutors: 0` so the controller never runs builds directly—use pod agents exclusively.
+- Configure `controller.numExecutors: 0` so the controller never runs builds directly-use pod agents exclusively.
 - Enable `controller.prometheus.enabled: true` and scrape Jenkins metrics with your existing Prometheus stack.
 
 ## Conclusion

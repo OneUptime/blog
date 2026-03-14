@@ -12,7 +12,7 @@ Description: Configure S3 as the Terraform state backend using the Tofu Controll
 
 While Kubernetes Secrets work well for simple state storage, production Terraform workloads benefit from a dedicated remote backend. S3 with DynamoDB state locking is the most widely used Terraform backend for AWS environments. It provides state versioning for rollback, cross-team access to shared state, concurrent access protection through DynamoDB locking, and CloudTrail auditability.
 
-The Tofu Controller supports custom backend configurations through the `backendConfig` field. By specifying an S3 backend, the runner pods use S3 for state storage rather than the default Kubernetes Secret backend. This is transparent to the rest of the workflow—Flux still manages the Terraform resource and the controller still handles plan and apply operations.
+The Tofu Controller supports custom backend configurations through the `backendConfig` field. By specifying an S3 backend, the runner pods use S3 for state storage rather than the default Kubernetes Secret backend. This is transparent to the rest of the workflow-Flux still manages the Terraform resource and the controller still handles plan and apply operations.
 
 This guide sets up an S3 backend with DynamoDB locking and configures Terraform resources to use it.
 
@@ -165,7 +165,7 @@ spec:
 
 Use a consistent S3 key structure for easy navigation and access control.
 
-```
+```plaintext
 my-org-terraform-state/
 ├── production/
 │   ├── networking/terraform.tfstate

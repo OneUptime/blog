@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, lsof, Debugging, Linux
+Tags: RHEL, Lsof, Debugging, Linux
 
 Description: Learn how to list Open Files and Network Connections with lsof on RHEL with step-by-step instructions, configuration examples, and best practices.
 

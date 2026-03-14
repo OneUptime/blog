@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, split Function, join Function, String Manipulation, HCL, Infrastructure as Code
+Tags: Terraform, Split Function, Join Function, String Manipulation, HCL, Infrastructure as Code
 
 Description: Learn how to combine Terraform's split and join functions for string transformations including delimiter changes, filtering, reordering, and data restructuring.
 

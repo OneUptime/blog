@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, mTLS, Security, Service Mesh
+Tags: Cilium, Kubernetes, MTLS, Security, Service Mesh
 
 Description: Configure mutual TLS in Cilium Service Mesh to encrypt and authenticate service-to-service communication without modifying application code or managing certificates manually.
 
@@ -130,4 +130,4 @@ sequenceDiagram
 
 ## Conclusion
 
-Cilium's mTLS implementation using SPIFFE/SPIRE brings cryptographic service identity to Kubernetes without application changes, sidecar injection per pod, or manual certificate management. The `authentication: required` field in `CiliumNetworkPolicy` is the only configuration needed to enforce mutual authentication between services. Combined with Cilium's L7 policies, you get both encrypted transport and application-layer access control in a unified policy model — the foundation of a zero-trust service mesh.
+Cilium's mTLS implementation using SPIFFE/SPIRE brings cryptographic service identity to Kubernetes without application changes, sidecar injection per pod, or manual certificate management. The `authentication: required` field in `CiliumNetworkPolicy` is the only configuration needed to enforce mutual authentication between services. Combined with Cilium's L7 policies, you get both encrypted transport and application-layer access control in a unified policy model - the foundation of a zero-trust service mesh.

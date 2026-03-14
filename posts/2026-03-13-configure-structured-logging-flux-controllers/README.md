@@ -124,7 +124,7 @@ Commit and push. Flux will reconcile its own controllers (the source-controller 
 ## Step 4: Verify Structured Log Output
 
 ```bash
-# Check source-controller logs — should now be JSON
+# Check source-controller logs - should now be JSON
 kubectl logs -n flux-system deployment/source-controller --tail=10
 
 # Expected output format:
@@ -199,7 +199,7 @@ data:
 
 ## Best Practices
 
-- Set `--log-level=debug` only in development — debug logs are very verbose and will significantly increase log volume in production.
+- Set `--log-level=debug` only in development - debug logs are very verbose and will significantly increase log volume in production.
 - Use `--log-encoding=json` in all environments, including staging, so you can test log queries before they matter in production.
 - Add `cluster` and `environment` labels to Flux controller pods via the patch so logs from multiple clusters are distinguishable in a shared aggregation system.
 - Create Grafana dashboard panels showing Flux reconciliation error rates over time using the structured `level` and `controllerKind` fields.

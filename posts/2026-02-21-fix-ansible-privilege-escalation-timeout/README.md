@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Troubleshooting, Privilege Escalation, DevOps
+Tags: Ansible, Sudo, Troubleshooting, Privilege Escalation, DevOps
 
 Description: Fix Ansible privilege escalation timeout errors caused by sudo password prompts, PAM configuration, and slow authentication backends.
 

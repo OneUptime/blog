@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Microservices, Architecture
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: Compare the simplified Star Wars demo application structure to real-world microservice architectures and understand how to apply the same Cilium policy patterns at scale.
 
@@ -12,7 +12,7 @@ Description: Compare the simplified Star Wars demo application structure to real
 
 The Cilium Star Wars demo application is a deliberate simplification, but its structure mirrors patterns found in nearly every production microservice environment. By comparing the demo app to real architectures, you can bridge the gap between learning the demo and applying Cilium policies in your own clusters. The mapping is more direct than you might expect.
 
-The core pattern — a sensitive service (`deathstar`) that should only be reached by authorized clients (`tiefighter`) using specific API methods (`POST /v1/request-landing`) — appears constantly in production. It is the pattern for an internal payment service, an authentication API, a database proxy, or a secrets manager. The label-based identity model that Cilium uses in the demo scales naturally to these environments through standard Kubernetes label conventions.
+The core pattern - a sensitive service (`deathstar`) that should only be reached by authorized clients (`tiefighter`) using specific API methods (`POST /v1/request-landing`) - appears constantly in production. It is the pattern for an internal payment service, an authentication API, a database proxy, or a secrets manager. The label-based identity model that Cilium uses in the demo scales naturally to these environments through standard Kubernetes label conventions.
 
 This post compares the demo's simplified architecture against three common real-world patterns: an API gateway architecture, a multi-team monorepo deployment, and a zero-trust mesh. Understanding these comparisons will guide how you design labels and policies for Cilium in production.
 
@@ -118,7 +118,7 @@ spec:
 
 ## Conclusion
 
-The Cilium Star Wars demo application is not just a toy — it is a scaled-down model of real production architectures. By mapping its components to your own services, labels, and API boundaries, you can apply the same policy design principles directly. The demo teaches the pattern; your production labels and services provide the substance.
+The Cilium Star Wars demo application is not just a toy - it is a scaled-down model of real production architectures. By mapping its components to your own services, labels, and API boundaries, you can apply the same policy design principles directly. The demo teaches the pattern; your production labels and services provide the substance.
 
 Description: Explore Cilium's capabilities using the classic Star Wars demo application, which demonstrates identity-based network policies and L7 visibility in a fun, relatable way.
 
@@ -128,9 +128,9 @@ Description: Explore Cilium's capabilities using the classic Star Wars demo appl
 
 The Cilium Star Wars demo is one of the most popular ways to learn how Cilium's identity-based security model works in practice. By modeling the Galactic Empire and Rebel Alliance as Kubernetes services, it vividly illustrates how Cilium enforces network policies at multiple layers.
 
-In this demo, you'll deploy a set of Star Wars-themed microservices — the Death Star, TIE fighters, and X-wing fighters — and then apply Cilium network policies to control which services can communicate with each other. This makes abstract networking concepts tangible and easy to understand.
+In this demo, you'll deploy a set of Star Wars-themed microservices - the Death Star, TIE fighters, and X-wing fighters - and then apply Cilium network policies to control which services can communicate with each other. This makes abstract networking concepts tangible and easy to understand.
 
-Whether you're evaluating Cilium for the first time or deepening your understanding of its policy model, this demo provides a hands-on foundation. It covers basic connectivity, identity-based enforcement, and Layer 7 HTTP policy — all in a single scenario.
+Whether you're evaluating Cilium for the first time or deepening your understanding of its policy model, this demo provides a hands-on foundation. It covers basic connectivity, identity-based enforcement, and Layer 7 HTTP policy - all in a single scenario.
 
 ## Prerequisites
 
@@ -200,7 +200,7 @@ After applying the policy, test connectivity to confirm the policy is working co
 # TIE fighter (Empire) should still be allowed
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
-# X-wing (Rebel) should now be blocked — this request should hang/timeout
+# X-wing (Rebel) should now be blocked - this request should hang/timeout
 kubectl exec xwing -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 ```
 
@@ -220,10 +220,10 @@ hubble observe --pod deathstar --follow
 
 - Always verify baseline connectivity before applying policies to understand the default behavior
 - Use `hubble observe` to audit policy decisions and debug connectivity issues
-- Label your pods consistently — Cilium's identity model relies on labels
+- Label your pods consistently - Cilium's identity model relies on labels
 - Start with L3/L4 policies before moving to L7 for simpler troubleshooting
 - Use `cilium endpoint list` to inspect the security identity assigned to each pod
 
 ## Conclusion
 
-The Cilium Star Wars demo provides an accessible and memorable way to understand how identity-based network policies work. By walking through deployment, policy application, and observability with Hubble, you gain practical experience with Cilium's core capabilities — setting a strong foundation for securing real-world Kubernetes workloads.
+The Cilium Star Wars demo provides an accessible and memorable way to understand how identity-based network policies work. By walking through deployment, policy application, and observability with Hubble, you gain practical experience with Cilium's core capabilities - setting a strong foundation for securing real-world Kubernetes workloads.

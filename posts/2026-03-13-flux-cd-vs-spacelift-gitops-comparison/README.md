@@ -1,10 +1,10 @@
-# Flux CD vs Spacelift: GitOps Approach Comparison
+# Flux CD vs Spacelift: GitOps Comparison
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Spacelift, GitOps, Infrastructure as Code, Terraform, Kubernetes, Comparison
+Tags: Flux CD, Spacelift, GitOps, Kubernetes, Terraform, Infrastructure as Code
 
-Description: Compare Flux CD GitOps and Spacelift for infrastructure automation, covering Kubernetes-specific vs multi-cloud IaC use cases.
+Description: Compare Flux CD and Spacelift as GitOps platforms, examining their strengths in Kubernetes-native delivery versus polyglot infrastructure automation.
 
 ---
 

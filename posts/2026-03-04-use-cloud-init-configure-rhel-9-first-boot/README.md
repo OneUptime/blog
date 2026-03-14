@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cloud-init, Automation, Cloud, Linux
+Tags: RHEL, Cloud-init, Automation, Cloud, Linux
 
 Description: Use cloud-init to automate RHEL first-boot configuration including users, packages, network settings, and custom scripts.
 

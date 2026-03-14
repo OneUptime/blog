@@ -240,7 +240,7 @@ kubectl exec -it acid-my-app-db-0 -n databases -- su postgres -c "psql"
 - Use the `teamId` field to enable ownership-based access control when managing clusters for multiple application teams.
 - Enable logical backups to S3 using IRSA credentials rather than static access keys.
 - Set `numberOfInstances: 3` (or higher with odd numbers) for quorum-based leader election in production.
-- Use `preparedDatabases` to have the operator automatically create schemas and roles — reduces manual post-provisioning steps.
+- Use `preparedDatabases` to have the operator automatically create schemas and roles - reduces manual post-provisioning steps.
 - Monitor Patroni's REST API on port 8008 with Prometheus to track cluster state, leader, and sync lag.
 
 ## Conclusion

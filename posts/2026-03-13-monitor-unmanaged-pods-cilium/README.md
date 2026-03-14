@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Unmanaged Pods, Monitoring, Security
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Learn how to detect and monitor pods that are not managed by Cilium to identify networking gaps, security policy blind spots, and CNI misconfiguration.
 
@@ -10,7 +10,7 @@ Description: Learn how to detect and monitor pods that are not managed by Cilium
 
 ## Introduction
 
-In a Cilium-managed cluster, every pod should have a corresponding Cilium Endpoint that tracks its networking state and enforces network policies. Pods that exist in Kubernetes but lack a Cilium Endpoint—known as "unmanaged pods"—are invisible to Cilium's policy enforcement engine and can create security blind spots.
+In a Cilium-managed cluster, every pod should have a corresponding Cilium Endpoint that tracks its networking state and enforces network policies. Pods that exist in Kubernetes but lack a Cilium Endpoint-known as "unmanaged pods"-are invisible to Cilium's policy enforcement engine and can create security blind spots.
 
 Unmanaged pods may occur due to CNI configuration errors, node initialization failures, Cilium pod restarts, or the presence of a secondary CNI via Multus. Detecting and monitoring these gaps is essential for maintaining consistent network policy enforcement across all workloads.
 

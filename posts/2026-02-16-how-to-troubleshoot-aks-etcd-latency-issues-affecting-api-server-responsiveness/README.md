@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, etcd, Latency, Troubleshooting, API Server, Kubernetes, Performance
+Tags: AKS, Etcd, Latency, Troubleshooting, API Server, Kubernetes, Performance
 
 Description: Learn how to diagnose and resolve etcd latency issues in AKS that cause slow API server responses, failed deployments, and degraded cluster performance.
 

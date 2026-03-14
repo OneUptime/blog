@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Namespace, Security, Multi-Tenancy
+Tags: Istio, MTLS, Namespace, Security, Multi-Tenancy
 
 Description: How to apply different mutual TLS policies to different Kubernetes namespaces in Istio for multi-team and multi-tenant clusters.
 

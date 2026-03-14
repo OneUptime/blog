@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, network-policy, l3, l4, star-wars-demo
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A deep dive into L3 and L4 network policy enforcement using the Cilium Star Wars demo, explaining how identity-based IP and port policies work in practice.
 
@@ -76,10 +76,10 @@ kubectl apply -f sw-l3-l4-policy.yaml
 Test connectivity from both the allowed and blocked endpoints.
 
 ```bash
-# TIE fighter is org=empire — should succeed with HTTP 200
+# TIE fighter is org=empire - should succeed with HTTP 200
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 
-# X-wing is org=alliance — should be dropped at L3 (connection will hang then timeout)
+# X-wing is org=alliance - should be dropped at L3 (connection will hang then timeout)
 kubectl exec xwing -- curl --max-time 5 -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 ```
 
@@ -113,7 +113,7 @@ cilium endpoint get $ENDPOINT_ID | jq '.[].spec.policy'
 - Always specify both `fromEndpoints` and `toPorts` together for least-privilege enforcement
 - Watch Hubble flows while testing policy changes to immediately see enforcement results
 - Combine L3/L4 policies with L7 rules for APIs that require method-level control
-- Label pods with structured, consistent labels from the start — policy design depends on label hygiene
+- Label pods with structured, consistent labels from the start - policy design depends on label hygiene
 
 ## Conclusion
 

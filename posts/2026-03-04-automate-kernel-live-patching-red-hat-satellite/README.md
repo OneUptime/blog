@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Red Hat Satellite, kpatch, Kernel Live Patching, Automation, Linux
+Tags: RHEL, Red Hat Satellite, Kpatch, Kernel Live Patching, Automation, Linux
 
 Description: Use Red Hat Satellite to automate the deployment of kernel live patches across your RHEL fleet, ensuring critical security fixes are applied consistently without manual intervention.
 

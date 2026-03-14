@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, digitalocean, kubernetes, self-managed, cni, networking
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, DigitalOcean, Self-Managed
 
 Description: A guide to deploying Calico on a self-managed Kubernetes cluster on DigitalOcean Droplets, providing advanced networking and policy capabilities beyond DOKS's managed options.
 
@@ -28,7 +28,7 @@ This guide covers setting up self-managed Kubernetes on DigitalOcean Droplets wi
 Configure all Droplets before cluster initialization.
 
 ```bash
-# On all nodes — perform prerequisite setup
+# On all nodes - perform prerequisite setup
 # Disable swap
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
@@ -77,7 +77,7 @@ doctl compute droplet tag k8s-control-plane k8s-worker-1 k8s-worker-2 \
 Bootstrap the control plane.
 
 ```bash
-# On the control plane Droplet — get the private IP (DigitalOcean private network)
+# On the control plane Droplet - get the private IP (DigitalOcean private network)
 PRIVATE_IP=$(ip -4 addr show eth1 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 # Initialize kubeadm with the private IP and a non-overlapping pod CIDR
@@ -151,11 +151,11 @@ kubectl exec -n demo client -- curl -s http://$WEB_IP
 
 ## Best Practices
 
-- Use DigitalOcean's private network (eth1) for all Kubernetes traffic — never use the public IP for inter-node communication
+- Use DigitalOcean's private network (eth1) for all Kubernetes traffic - never use the public IP for inter-node communication
 - Combine DigitalOcean Cloud Firewalls with Calico NetworkPolicy for defense-in-depth
-- Use VXLAN encapsulation — DigitalOcean's VPC does not support user-managed routes needed for BGP mode
+- Use VXLAN encapsulation - DigitalOcean's VPC does not support user-managed routes needed for BGP mode
 - Enable DigitalOcean Spaces for storing cluster backups (etcd snapshots)
-- Monitor node resources carefully on DigitalOcean Droplets — Calico consumes additional CPU and memory
+- Monitor node resources carefully on DigitalOcean Droplets - Calico consumes additional CPU and memory
 
 ## Conclusion
 

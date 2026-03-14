@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, ausearch, aureport, Log Analysis, Security, Linux
+Tags: RHEL, Auditd, Ausearch, Aureport, Log Analysis, Security, Linux
 
 Description: Master the ausearch and aureport tools on RHEL to search, filter, and generate reports from audit logs for security analysis and compliance.
 

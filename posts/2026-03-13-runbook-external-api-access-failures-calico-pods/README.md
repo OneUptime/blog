@@ -10,7 +10,7 @@ Description: On-call runbook for responding to external API access failures from
 
 ## Introduction
 
-This runbook guides on-call engineers through responding to incidents where pods in a Calico cluster cannot reach external APIs. External API failures typically manifest as application errors — payment failures, authentication errors, or data ingestion stops — rather than direct network alerts.
+This runbook guides on-call engineers through responding to incidents where pods in a Calico cluster cannot reach external APIs. External API failures typically manifest as application errors - payment failures, authentication errors, or data ingestion stops - rather than direct network alerts.
 
 The response focuses on quickly identifying whether Calico network policy is blocking the API calls, and applying targeted policy changes to restore access. Emergency egress allow policies can be applied in under 5 minutes while a proper long-term fix is prepared.
 
@@ -62,7 +62,7 @@ calicoctl get globalnetworkpolicy -o yaml | grep -B5 -A10 "action: Deny"
 
 ## Solution
 
-**Emergency fix — allow external HTTPS egress:**
+**Emergency fix - allow external HTTPS egress:**
 
 ```bash
 # Apply emergency egress allow while investigating proper fix
@@ -99,7 +99,7 @@ kubectl exec $APP_POD -n <namespace> -- \
   curl -s --connect-timeout 10 https://api.external.com/health
 ```
 
-**Proper fix — update existing NetworkPolicy:**
+**Proper fix - update existing NetworkPolicy:**
 
 ```bash
 # Add specific egress rule to existing policy rather than emergency policy

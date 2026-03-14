@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Init Containers, Database Migration, Flyway, Liquibase, Kustomization
+Tags: Flux CD, Kubernetes, GitOps, Init Containers, Database Migrations, Flyway, Liquibase, Kustomization
 
 Description: Learn how to use Kubernetes init containers to run database migrations automatically before application startup in Flux CD managed deployments.
 
@@ -290,7 +290,7 @@ Flux detects the ConfigMap change, reconciles the Deployment (causing a rolling 
 - Set a generous `timeout` in your Flux Kustomization to allow for slow migrations
 - Use migration tools that support idempotency so re-runs are safe
 - Always use `FLYWAY_BASELINE_ON_MIGRATE=true` for databases with pre-existing data
-- Store migration SQL files in Git — never generate them dynamically at runtime
+- Store migration SQL files in Git - never generate them dynamically at runtime
 - Test migrations in a staging environment against a copy of production data before promoting
 - Set resource limits on init containers to prevent them from consuming excessive memory during large migrations
 

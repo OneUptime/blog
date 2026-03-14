@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, artifactgenerator, Troubleshooting, Debugging, GitOps, Kubernetes
+Tags: Flux, Fluxcd, Artifactgenerator, Troubleshooting, Debugging, GitOps, Kubernetes
 
 Description: A practical guide to diagnosing and fixing common ArtifactGenerator build failures in Flux 2.8.
 

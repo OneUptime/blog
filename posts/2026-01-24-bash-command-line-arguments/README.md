@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Command Line, Arguments, getopts, Linux, DevOps
+Tags: Bash, Shell Scripting, Command Line, Arguments, Getopts, Linux, DevOps
 
 Description: A comprehensive guide to parsing and handling command line arguments in Bash scripts using positional parameters, getopts, and manual parsing techniques.
 

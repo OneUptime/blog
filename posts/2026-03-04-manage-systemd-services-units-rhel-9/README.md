@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Services, Linux, System Administration
+Tags: RHEL, Systemd, Services, Linux, System Administration
 
 Description: A hands-on guide to managing systemd services and units on RHEL, covering systemctl commands, unit types, custom service files, targets, and dependency management.
 

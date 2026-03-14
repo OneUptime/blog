@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, FFI, C, Interoperability, bindgen, cbindgen
+Tags: Rust, FFI, C, Interoperability, Bindgen, Cbindgen
 
 Description: A practical guide to implementing FFI in Rust to call C libraries and expose Rust functions to C code.
 

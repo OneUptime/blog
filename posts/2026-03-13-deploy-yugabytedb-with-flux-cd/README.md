@@ -222,8 +222,8 @@ kubectl exec -n yb-demo yb-master-0 -- \
 ## Best Practices
 
 - Set `replication_factor: "3"` and run at least 3 tserver pods on separate nodes for fault tolerance.
-- Use SSD storage (`premium-ssd` StorageClass) — YugabyteDB uses RocksDB which benefits greatly from low-latency storage.
-- Tune `yb_num_shards_per_tserver` based on your CPU count — typically 4-8 shards per CPU.
+- Use SSD storage (`premium-ssd` StorageClass) - YugabyteDB uses RocksDB which benefits greatly from low-latency storage.
+- Tune `yb_num_shards_per_tserver` based on your CPU count - typically 4-8 shards per CPU.
 - Enable the Admin UI (`port 7000`) and monitor tablet distribution, leader placement, and compaction metrics.
 - Use read replicas (`tserver.readReplica`) for geo-distribution if you have users in multiple regions.
 

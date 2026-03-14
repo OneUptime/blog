@@ -84,7 +84,7 @@ create_release:
 
       ```bash
       npm install mypackage@$CI_COMMIT_TAG
-      ```
+      ```plaintext
   rules:
     - if: '$CI_COMMIT_TAG'
 ````

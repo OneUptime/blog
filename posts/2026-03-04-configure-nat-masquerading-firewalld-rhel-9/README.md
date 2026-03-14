@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, NAT, Masquerading, Linux
+Tags: RHEL, Firewalld, NAT, Masquerading, Linux
 
 Description: How to set up NAT masquerading with firewalld on RHEL, turning your RHEL server into a gateway that provides internet access to private network hosts.
 

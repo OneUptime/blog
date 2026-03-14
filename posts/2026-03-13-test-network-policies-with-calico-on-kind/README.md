@@ -12,7 +12,7 @@ Description: Learn how to create and test Kubernetes network policies enforced b
 
 One of Calico's primary strengths is its robust support for Kubernetes NetworkPolicy resources and its own extended GlobalNetworkPolicy. Testing network policies on Kind before deploying to production prevents security misconfigurations from reaching live environments. Kind with Calico provides a cost-effective local environment for this purpose.
 
-Kubernetes NetworkPolicy resources let you define which pods can communicate with each other and with external endpoints. Without a CNI that enforces policies — such as Calico — these resources have no effect. Calico translates NetworkPolicy objects into iptables or eBPF rules applied at the kernel level on each node.
+Kubernetes NetworkPolicy resources let you define which pods can communicate with each other and with external endpoints. Without a CNI that enforces policies - such as Calico - these resources have no effect. Calico translates NetworkPolicy objects into iptables or eBPF rules applied at the kernel level on each node.
 
 This guide walks through creating a realistic policy scenario: a frontend pod that can reach a backend pod, while all other traffic to the backend is denied. You will then verify that the policy is enforced correctly.
 

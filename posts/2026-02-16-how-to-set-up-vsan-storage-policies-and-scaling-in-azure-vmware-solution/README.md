@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VMware, vSAN, Storage, Scaling, Private Cloud, Performance
+Tags: Azure, VMware, VSAN, Storage, Scaling, Private Cloud, Performance
 
 Description: Learn how to configure vSAN storage policies and scale storage in Azure VMware Solution to meet performance and capacity requirements for your workloads.
 

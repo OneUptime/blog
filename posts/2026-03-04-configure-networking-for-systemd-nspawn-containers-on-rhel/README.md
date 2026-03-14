@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-nspawn, Networking, Containers, Linux
+Tags: RHEL, Systemd-nspawn, Networking, Containers, Linux
 
 Description: Configure different networking modes for systemd-nspawn containers on RHEL, including private virtual ethernet, host networking, and bridged setups.
 

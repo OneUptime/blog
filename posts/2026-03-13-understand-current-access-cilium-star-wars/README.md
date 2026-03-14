@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, Zero Trust
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
-Description: Understand what "current access" means in the Cilium Star Wars demo and why observing open access before applying policy is an essential step in any security hardening workflow.
+Description: Understand what 'current access' means in the Cilium Star Wars demo and why observing open access before applying policy is an essential step in any security hardening workflow.
 
 ---
 
 ## Introduction
 
-Before applying any Cilium network policy, the Star Wars demo starts from a state of fully open access. Every pod can reach every other pod. The `xwing`, despite belonging to the enemy Alliance, can request a landing on the Death Star just as easily as an authorized TIE Fighter can. This initial state is not a failure — it is a deliberately constructed baseline that exposes a universal truth about Kubernetes networking: by default, all pods can communicate with all other pods.
+Before applying any Cilium network policy, the Star Wars demo starts from a state of fully open access. Every pod can reach every other pod. The `xwing`, despite belonging to the enemy Alliance, can request a landing on the Death Star just as easily as an authorized TIE Fighter can. This initial state is not a failure - it is a deliberately constructed baseline that exposes a universal truth about Kubernetes networking: by default, all pods can communicate with all other pods.
 
 Understanding the "current access" phase of the demo means understanding the Kubernetes networking model. Kubernetes implements a flat, routable network where every pod has a unique IP address and can communicate with every other pod by default, regardless of namespace, label, or ownership. No implicit deny exists in the Kubernetes networking model. All deny rules must be explicitly created.
 

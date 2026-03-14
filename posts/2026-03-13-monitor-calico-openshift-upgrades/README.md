@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenShift, Kubernetes, Networking, Upgrades, Monitoring
+Tags: Calico, OpenShift, Kubernetes, Networking, Upgrade, Monitoring
 
 Description: Monitor Calico upgrades on OpenShift with additional visibility into OCP-specific components including MachineConfigPool status and cluster operator health during the upgrade window.
 
@@ -93,4 +93,4 @@ spec:
 
 ## Conclusion
 
-Monitoring Calico upgrades on OpenShift adds MachineConfigPool status and cluster operator health to the standard upgrade monitoring. The enhanced monitor script watches both Calico's rolling update progress and OCP's infrastructure updates simultaneously. The concurrent update alert is particularly important — when both MCPs and Calico are updating at the same time, nodes may restart multiple times, extending the upgrade window and making it harder to diagnose issues.
+Monitoring Calico upgrades on OpenShift adds MachineConfigPool status and cluster operator health to the standard upgrade monitoring. The enhanced monitor script watches both Calico's rolling update progress and OCP's infrastructure updates simultaneously. The concurrent update alert is particularly important - when both MCPs and Calico are updating at the same time, nodes may restart multiple times, extending the upgrade window and making it harder to diagnose issues.

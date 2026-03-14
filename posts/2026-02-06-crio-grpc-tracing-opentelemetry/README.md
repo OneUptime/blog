@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, CRI-O, gRPC Tracing, Kubernetes
+Tags: OpenTelemetry, CRI-O, GRPC Tracing, Kubernetes
 
 Description: Enable OpenTelemetry tracing for CRI-O gRPC calls to monitor container runtime operations and export traces to your observability backend.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Logging, Audit
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Logging, Audit
 
 Description: Configure logging and auditing for Calico service account-based network policies to track identity-driven traffic decisions and service account changes.
 

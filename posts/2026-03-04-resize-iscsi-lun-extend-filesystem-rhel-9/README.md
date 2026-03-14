@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, LUN Resize, File Systems, Storage, Linux
+Tags: RHEL, ISCSI, LUN Resize, File Systems, Storage, Linux
 
 Description: Resize an iSCSI LUN on the target and extend the file system on the initiator on RHEL without downtime.
 

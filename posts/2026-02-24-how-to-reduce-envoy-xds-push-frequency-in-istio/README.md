@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, xDS, Performance, Control Plane
+Tags: Istio, Envoy, XDS, Performance, Control Plane
 
 Description: Practical methods to reduce the frequency of xDS configuration pushes from istiod to Envoy proxies in Istio.
 

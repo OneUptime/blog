@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, rke, rancher, kubernetes, requirements, cni, networking
+Tags: Cilium, Kubernetes, RKE, Rancher, EBPF
 
 Description: Learn how to verify and update Cilium's system requirements on Rancher Kubernetes Engine (RKE and RKE2), covering node OS compatibility, network configuration, and Rancher-specific prerequisites.
 
@@ -12,7 +12,7 @@ Description: Learn how to verify and update Cilium's system requirements on Ranc
 
 Rancher Kubernetes Engine (RKE and RKE2) has specific networking defaults and node provisioning behaviors that affect Cilium's requirements. RKE2 ships with Canal (Calico + Flannel) as its default CNI, while RKE1 uses Canal by default. Replacing these with Cilium requires understanding the CNI replacement process and ensuring all nodes meet Cilium's requirements before the switch.
 
-RKE's node provisioning model — which manages Docker or containerd on worker nodes — affects how Cilium's eBPF programs are loaded. Additionally, Rancher's node hardening CIS profiles can restrict certain system calls that Cilium requires, making it essential to review these configurations before installation.
+RKE's node provisioning model - which manages Docker or containerd on worker nodes - affects how Cilium's eBPF programs are loaded. Additionally, Rancher's node hardening CIS profiles can restrict certain system calls that Cilium requires, making it essential to review these configurations before installation.
 
 This guide covers checking and updating Cilium requirements specifically for RKE and RKE2 clusters, including CNI replacement planning, kernel verification, and Rancher-specific configuration adjustments.
 
@@ -34,7 +34,7 @@ rke2 --version
 
 # Check current CNI from the cluster config
 kubectl get configmap -n kube-system rke2-canal -o yaml 2>/dev/null || \
-  echo "Canal not found — different CNI may be in use"
+  echo "Canal not found - different CNI may be in use"
 
 # Check which CNI pods are running
 kubectl get pods -n kube-system | grep -E "canal|cilium|flannel|calico"
@@ -62,7 +62,7 @@ kubectl get nodes \
 Upgrade nodes that don't meet kernel requirements:
 
 ```bash
-# On Ubuntu nodes — upgrade kernel to LTS version
+# On Ubuntu nodes - upgrade kernel to LTS version
 sudo apt-get update && sudo apt-get install -y linux-image-generic-hwe-22.04
 sudo reboot
 
@@ -86,7 +86,7 @@ cat /etc/rancher/rke2/config.yaml
 Create an updated RKE2 configuration for Cilium:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml — Updated for Cilium CNI
+# /etc/rancher/rke2/config.yaml - Updated for Cilium CNI
 # This configuration disables Canal and prepares for Cilium
 cni: cilium
 cluster-cidr: 10.42.0.0/16
@@ -134,7 +134,7 @@ ls -la /etc/cni/net.d/
 - Always test CNI replacement on a non-production RKE2 cluster first
 - Back up the RKE cluster state before any CNI changes
 - Plan for cluster downtime during CNI replacement in RKE1 (rolling replacement not supported)
-- Use RKE2 over RKE1 for new clusters — better Cilium integration support
+- Use RKE2 over RKE1 for new clusters - better Cilium integration support
 - Validate with `cilium connectivity test` after every requirement update
 
 ## Conclusion

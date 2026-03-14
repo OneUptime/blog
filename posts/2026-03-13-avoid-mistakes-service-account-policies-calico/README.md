@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Best Practices
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Best Practices
 
 Description: Avoid the most common mistakes when using Calico service account-based network policies that cause silent security gaps or unexpected traffic blocks.
 
@@ -10,7 +10,7 @@ Description: Avoid the most common mistakes when using Calico service account-ba
 
 ## Introduction
 
-Service account-based Calico policies are more secure than label-based policies, but they come with their own set of failure modes. The most dangerous mistakes create the appearance of security while leaving gaps — for example, believing your database is protected by SA policy while the default service account can still reach it.
+Service account-based Calico policies are more secure than label-based policies, but they come with their own set of failure modes. The most dangerous mistakes create the appearance of security while leaving gaps - for example, believing your database is protected by SA policy while the default service account can still reach it.
 
 ## Prerequisites
 

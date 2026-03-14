@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, add_host, Dynamic Inventory, Provisioning, DevOps
+Tags: Ansible, Add_host, Dynamic Inventory, Provisioning, DevOps
 
 Description: Add hosts to the Ansible inventory at runtime with the add_host module for cloud provisioning and dynamic infrastructure management.
 

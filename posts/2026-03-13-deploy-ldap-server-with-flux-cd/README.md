@@ -10,7 +10,7 @@ Description: Deploy OpenLDAP server to Kubernetes using Flux CD for GitOps-manag
 
 ## Introduction
 
-OpenLDAP is the de facto open-source implementation of the Lightweight Directory Access Protocol (LDAP). Organizations use LDAP directories to store user accounts, groups, organizational units, and access policies that are consumed by dozens of downstream services—from email servers and VPNs to Kubernetes RBAC and CI/CD platforms.
+OpenLDAP is the de facto open-source implementation of the Lightweight Directory Access Protocol (LDAP). Organizations use LDAP directories to store user accounts, groups, organizational units, and access policies that are consumed by dozens of downstream services-from email servers and VPNs to Kubernetes RBAC and CI/CD platforms.
 
 Running OpenLDAP on Kubernetes makes your directory service available cluster-wide without a separate virtual machine. Flux CD ensures the deployment is reproducible: from the initial schema to the admin credentials, everything is declared in Git and reconciled automatically. Combined with a web-based LDAP browser like phpLDAPadmin, teams gain a complete self-hosted directory solution.
 

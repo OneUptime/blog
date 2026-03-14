@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Profiles, Best Practices
+Tags: Ansible, Ansible-lint, Profiles, Best Practices
 
 Description: Understand and choose the right ansible-lint profile for your project, from minimal checks to production-grade enforcement, with examples for each level.
 

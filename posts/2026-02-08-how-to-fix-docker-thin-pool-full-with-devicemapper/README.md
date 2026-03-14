@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, devicemapper, Thin Pool, Storage, Disk Space, Troubleshooting, Linux
+Tags: Docker, Devicemapper, Thin Pool, Storage, Disk Space, Troubleshooting, Linux
 
 Description: Fix Docker thin pool full errors when using the devicemapper storage driver by expanding pools, cleaning images, and migrating to overlay2.
 

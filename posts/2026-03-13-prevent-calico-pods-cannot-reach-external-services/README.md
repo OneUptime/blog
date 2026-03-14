@@ -10,7 +10,7 @@ Description: Prevent pods from losing access to external services by setting nat
 
 ## Introduction
 
-Preventing pods from losing external service connectivity in Calico requires establishing safe defaults and enforcing them through infrastructure-as-code practices. The two most common causes of external connectivity loss — disabled natOutgoing and missing egress rules in network policies — are both preventable through configuration standards and automated validation.
+Preventing pods from losing external service connectivity in Calico requires establishing safe defaults and enforcing them through infrastructure-as-code practices. The two most common causes of external connectivity loss - disabled natOutgoing and missing egress rules in network policies - are both preventable through configuration standards and automated validation.
 
 Setting `natOutgoing: true` as a required field in all IP pool manifests eliminates the most common cause. For network policies, a structured approach where every default-deny policy includes an explicit egress allowlist prevents implicit blocks from cutting off external connectivity silently.
 

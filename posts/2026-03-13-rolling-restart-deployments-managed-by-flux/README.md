@@ -10,7 +10,7 @@ Description: Trigger rolling restarts of Flux-managed deployments without commit
 
 ## Introduction
 
-Rolling restarts are a common day-two operation: you need all pods in a deployment to restart to pick up a new environment variable from a mounted secret, to recover from a degraded state, or to force a new image pull after a mutable tag was updated. In a GitOps world managed by Flux, the naive approach — running `kubectl rollout restart` — creates a challenge. Flux may reconcile the Deployment back to its declared state and restart the pods again or undo your restart.
+Rolling restarts are a common day-two operation: you need all pods in a deployment to restart to pick up a new environment variable from a mounted secret, to recover from a degraded state, or to force a new image pull after a mutable tag was updated. In a GitOps world managed by Flux, the naive approach - running `kubectl rollout restart` - creates a challenge. Flux may reconcile the Deployment back to its declared state and restart the pods again or undo your restart.
 
 The good news is that `kubectl rollout restart` adds a `kubectl.kubernetes.io/restartedAt` annotation to the pod template, and Flux's field management actually preserves this annotation because it is not declared in Git. The restart proceeds safely. However, there are nuances worth understanding to avoid surprises, and there are Flux-native approaches that work even better.
 
@@ -156,7 +156,7 @@ metadata:
 
 - Prefer `kubectl rollout restart` over editing the running Deployment directly; it adds an annotation that Flux respects
 - Use the Stakater Reloader for deployments that mount secrets or ConfigMaps that rotate frequently
-- Record manual restarts in your incident log — even though they don't go through Git, they should be documented
+- Record manual restarts in your incident log - even though they don't go through Git, they should be documented
 - Use `flux reconcile kustomization --with-source` to ensure the latest Git state is applied before a restart
 - Test rolling restarts during off-peak hours the first time to verify no traffic disruption with your ingress setup
 - Use `kubectl rollout undo deployment/my-service` to roll back if the restart exposes a previously masked issue

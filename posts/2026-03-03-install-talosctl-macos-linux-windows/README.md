@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Installation, macOS, Linux, Windows, CLI
+Tags: Talos Linux, Talosctl, Installation, MacOS, Linux, Windows, CLI
 
 Description: Step-by-step instructions for installing the talosctl command-line tool on macOS, Linux, and Windows systems.
 

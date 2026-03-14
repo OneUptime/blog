@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Troubleshooting, eBPF
+Tags: Cilium, Kubernetes, Network Policy, Troubleshooting, EBPF
 
 Description: Diagnose and resolve Cilium network policy issues including unexpected traffic drops, policy not applying to endpoints, and L7 policy enforcement failures.
 
@@ -10,7 +10,7 @@ Description: Diagnose and resolve Cilium network policy issues including unexpec
 
 ## Introduction
 
-Network policy troubleshooting in Cilium differs significantly from debugging iptables-based policies. You can't rely on `iptables -L` or parsing iptables rules — instead, Cilium policies are stored as compiled eBPF programs loaded into the kernel and keyed to endpoint identities. The good news is that Cilium provides much richer tooling for policy debugging: Hubble shows you policy verdicts for every flow, `cilium endpoint get` shows the computed policy for each pod, and `cilium monitor` captures detailed policy drop events with reason codes.
+Network policy troubleshooting in Cilium differs significantly from debugging iptables-based policies. You can't rely on `iptables -L` or parsing iptables rules - instead, Cilium policies are stored as compiled eBPF programs loaded into the kernel and keyed to endpoint identities. The good news is that Cilium provides much richer tooling for policy debugging: Hubble shows you policy verdicts for every flow, `cilium endpoint get` shows the computed policy for each pod, and `cilium monitor` captures detailed policy drop events with reason codes.
 
 The most common policy troubleshooting scenarios are: pods that should be able to communicate but can't (missing allow rule), pods that can communicate when they shouldn't (overly broad allow rule), L7 rules that aren't applying (proxy not intercepting the traffic), and policy changes that aren't taking effect (stale endpoint state or policy revision mismatch). Each scenario requires a different diagnostic approach.
 
@@ -140,4 +140,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium policy troubleshooting is most effective when approached in layers: first confirm whether traffic is dropping at all using Hubble's verdict filter, then inspect the computed policy on the destination endpoint, then trace back to the source of the policy mismatch — whether a label selector issue, a policy import failure, or a namespace scope problem. The `hubble observe --verdict DROPPED` command with `--from-pod` and `--to-pod` filters is the single most useful debugging command, as it shows you exactly what is being dropped and why.
+Cilium policy troubleshooting is most effective when approached in layers: first confirm whether traffic is dropping at all using Hubble's verdict filter, then inspect the computed policy on the destination endpoint, then trace back to the source of the policy mismatch - whether a label selector issue, a policy import failure, or a namespace scope problem. The `hubble observe --verdict DROPPED` command with `--from-pod` and `--to-pod` filters is the single most useful debugging command, as it shows you exactly what is being dropped and why.

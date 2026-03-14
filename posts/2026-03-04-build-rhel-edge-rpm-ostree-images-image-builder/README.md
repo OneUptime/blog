@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, Edge, rpm-ostree
+Tags: RHEL, Image Builder, Edge, Rpm-ostree
 
 Description: Build RHEL for Edge images using Image Builder for immutable deployments.
 

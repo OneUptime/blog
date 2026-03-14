@@ -10,7 +10,7 @@ Description: A guide to configuring Calico's networking settings for a new Kuber
 
 ## Introduction
 
-A fresh Calico installation on bare metal with containers uses sensible defaults, but configuring it to match your specific hardware, network topology, and workload requirements unlocks its full potential. Bare metal environments give you hardware-level control — you can configure Calico to route at line rate using BGP, match your NIC's maximum MTU, and tune the eBPF dataplane for maximum throughput.
+A fresh Calico installation on bare metal with containers uses sensible defaults, but configuring it to match your specific hardware, network topology, and workload requirements unlocks its full potential. Bare metal environments give you hardware-level control - you can configure Calico to route at line rate using BGP, match your NIC's maximum MTU, and tune the eBPF dataplane for maximum throughput.
 
 The configuration surface covers IP pools, BGP settings, FelixConfiguration, and the Installation CR. Each of these controls a distinct aspect of how Calico behaves in your environment. Getting these settings right from the start avoids costly reconfiguration later.
 

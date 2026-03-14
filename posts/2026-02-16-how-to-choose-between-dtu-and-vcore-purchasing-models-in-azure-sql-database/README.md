@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL, DTU, vCore, Pricing, Cost Optimization, Azure, Database
+Tags: Azure SQL, DTU, VCore, Pricing, Cost Optimization, Azure, Database
 
 Description: Understand the differences between DTU and vCore purchasing models in Azure SQL Database so you can pick the right one for your workload and budget.
 

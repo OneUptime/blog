@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Debugging, CLI, flux debug
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Debugging, CLI, Flux debug
 
 Description: Learn how to use the flux debug helmrelease CLI command to diagnose HelmRelease issues in Flux CD with detailed output and troubleshooting information.
 

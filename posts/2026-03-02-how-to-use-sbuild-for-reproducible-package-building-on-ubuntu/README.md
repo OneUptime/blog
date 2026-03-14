@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Packaging, sbuild, Reproducible Builds, Debian
+Tags: Ubuntu, Packaging, Sbuild, Reproducible Builds, Debian
 
 Description: Set up and use sbuild on Ubuntu for reproducible Debian package builds using schroot, ensuring consistent results across different build environments and machines.
 

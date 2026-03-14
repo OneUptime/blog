@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, CLI, clap, Error Handling, Command Line, anyhow, thiserror
+Tags: Rust, CLI, Clap, Error Handling, Command Line, Anyhow, Thiserror
 
 Description: Learn how to build professional CLI tools in Rust using Clap for argument parsing and proper error handling patterns. This guide covers subcommands, validation, configuration, and exit codes.
 

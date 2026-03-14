@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Networking, IP Pools, Best Practices, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
-Description: Learn the most costly mistakes made when splitting Calico IP pools — from splitting with inconsistent IPAM to deleting the source pool too early — and the exact steps to prevent each one.
+Description: Learn the most costly mistakes made when splitting Calico IP pools - from splitting with inconsistent IPAM to deleting the source pool too early - and the exact steps to prevent each one.
 
 ---
 
@@ -25,7 +25,7 @@ This post catalogs the most common and costly mistakes and shows exactly how to 
 
 ---
 
-## Step 1: Mistake — Splitting with Inconsistent IPAM
+## Step 1: Mistake - Splitting with Inconsistent IPAM
 
 The most fundamental mistake is running a split when IPAM is already inconsistent. A pre-existing inconsistency means you cannot tell whether post-split problems were caused by the split or were already present.
 
@@ -42,7 +42,7 @@ Never continue with a split if `calicoctl ipam check` reports problems. Fix the 
 
 ---
 
-## Step 2: Mistake — Sub-Pool CIDRs That Don't Cover All Existing Allocations
+## Step 2: Mistake - Sub-Pool CIDRs That Don't Cover All Existing Allocations
 
 If you plan to split `10.0.0.0/16` into `10.0.0.0/17` and `10.0.128.0/17`, but pods already have IPs in both halves, you cannot cleanly assign all existing allocations to a single sub-pool.
 
@@ -64,9 +64,9 @@ If both halves have allocations, you must drain the nodes in one half first befo
 
 ---
 
-## Step 3: Mistake — Deleting the Source Pool Too Early
+## Step 3: Mistake - Deleting the Source Pool Too Early
 
-After creating sub-pools, you must keep the source pool in place — even if disabled — until all pods have been restarted onto addresses from the new sub-pools. Deleting it early removes the allocation records for any pods still using addresses from it.
+After creating sub-pools, you must keep the source pool in place - even if disabled - until all pods have been restarted onto addresses from the new sub-pools. Deleting it early removes the allocation records for any pods still using addresses from it.
 
 ```yaml
 # Correct: disable the source pool first; do NOT delete it yet
@@ -95,7 +95,7 @@ calicoctl ipam show --show-blocks | grep "10.0.0.0/16"
 
 ---
 
-## Step 4: Mistake — Applying Node Selectors Before Sub-Pools Exist
+## Step 4: Mistake - Applying Node Selectors Before Sub-Pools Exist
 
 If you label nodes to match a sub-pool selector before creating that sub-pool, new pods on those nodes cannot get an IP address from the non-existent pool.
 
@@ -117,7 +117,7 @@ kubectl label nodes worker-03 worker-04 zone=zone-b
 
 ---
 
-## Step 5: Mistake — Leaving Nodes Without a Matching Pool
+## Step 5: Mistake - Leaving Nodes Without a Matching Pool
 
 If some nodes do not match any sub-pool's `nodeSelector`, those nodes have no pool to draw from. New pods on unlabeled nodes will fail to get IP addresses.
 
@@ -131,7 +131,7 @@ Create a fallback pool with no `nodeSelector` to cover unlabeled nodes during th
 
 ```yaml
 # ippool-fallback.yaml
-# Fallback pool matching all nodes — use during transition, disable after all nodes are labeled
+# Fallback pool matching all nodes - use during transition, disable after all nodes are labeled
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -160,7 +160,7 @@ calicoctl patch ippool fallback-pool --patch '{"spec":{"disabled":true}}'
 - Perform splits during low-traffic periods; while the split itself does not affect running pods, subsequent node relabeling triggers pod IP reallocation.
 - Keep the original pool disabled for at least 24 hours before deleting it to allow time to detect any allocation problems.
 - Never split a pool that is more than 80% utilized; the remaining 20% provides headroom for pods to restart onto sub-pool addresses.
-- Document every step in a change management record before starting — this ensures you have a rollback procedure if something goes wrong.
+- Document every step in a change management record before starting - this ensures you have a rollback procedure if something goes wrong.
 
 ---
 

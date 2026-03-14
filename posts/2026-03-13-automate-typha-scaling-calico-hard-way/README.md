@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Automation, Scaling, CNI, Networking, CronJob
+Tags: Calico, Typha, Kubernetes, Networking, Scaling, Automation, Hard Way
 
-Description: Build a CronJob-based automation that monitors cluster node count and adjusts the Typha replica count automatically — without the Calico Operator — following the recommended 1 Typha pod per 200 nodes scaling formula.
+Description: Build a CronJob-based automation that monitors cluster node count and adjusts the Typha replica count automatically - without the Calico Operator - following the recommended 1 Typha pod per 200...
 
 ---
 
@@ -29,7 +29,7 @@ This post builds a Kubernetes CronJob that periodically checks the node count, c
 
 Calico recommends approximately 1 Typha replica per 200 nodes, with a minimum of 2 (for HA) and a practical maximum of 20. The formula used in this automation:
 
-```
+```plaintext
 desired_replicas = max(2, ceil(node_count / 200))
 ```
 
@@ -64,7 +64,7 @@ rules:
     resources: ["deployments"]
     verbs: ["get"]
     resourceNames: ["calico-typha"]
-  # Patch the scale subresource — restricted to calico-typha only
+  # Patch the scale subresource - restricted to calico-typha only
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
     verbs: ["get", "patch"]
@@ -107,7 +107,7 @@ data:
     #!/bin/sh
     set -e
 
-    # Tunable constants — adjust for your cluster
+    # Tunable constants - adjust for your cluster
     MIN_REPLICAS=2          # Always keep at least 2 Typha pods for HA
     MAX_REPLICAS=20         # Never scale beyond 20 (avoids over-provisioning)
     NODES_PER_REPLICA=200   # Target ratio: 1 Typha pod per 200 nodes

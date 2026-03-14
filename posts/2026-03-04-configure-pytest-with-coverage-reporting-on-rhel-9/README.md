@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Python, pytest, Coverage, Testing, Linux
+Tags: RHEL, Python, Pytest, Coverage, Testing, Linux
 
 Description: Learn how to configure pytest with coverage reporting on RHEL, including pytest-cov setup, coverage thresholds, HTML reports, branch coverage, and CI/CD integration for Python projects.
 

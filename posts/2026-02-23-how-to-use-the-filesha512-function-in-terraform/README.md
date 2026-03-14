@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, filesha512 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA512, Security
+Tags: Terraform, Filesha512 Function, File Systems, HCL, Infrastructure as Code, Hashing, SHA512, Security
 
 Description: Learn how to use the filesha512 function in Terraform to compute SHA-512 hashes of files for maximum-strength integrity verification and compliance requirements.
 

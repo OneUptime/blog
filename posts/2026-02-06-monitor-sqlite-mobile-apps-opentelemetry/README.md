@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SQLite, Mobile, Android, iOS, Database, Observability, Tracing
+Tags: OpenTelemetry, SQLite, Mobile, Android, IOS, Database, Observability, Tracing
 
 Description: Learn how to instrument SQLite database operations in mobile apps using OpenTelemetry to trace queries, measure performance, and diagnose slow database calls in production.
 

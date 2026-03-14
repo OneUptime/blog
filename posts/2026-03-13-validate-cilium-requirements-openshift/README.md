@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, openshift, redhat, kubernetes, requirements, prerequisites, cni
+Tags: Cilium, Kubernetes, OpenShift, EBPF
 
 Description: A guide to validating the specific requirements for running Cilium on Red Hat OpenShift, including SCC configuration, operator installation, and OpenShift-specific networking prerequisites.
 
@@ -92,7 +92,7 @@ On OpenShift, the cluster Network Operator manages CNI configuration.
 oc get network.config cluster -o yaml
 
 # For replacing OVN-Kubernetes with Cilium, the networkType should be changed
-# This is a significant operation — validate in a test cluster first
+# This is a significant operation - validate in a test cluster first
 oc get network.config cluster \
   -o jsonpath='{.spec.networkType}'
 
@@ -115,7 +115,7 @@ oc describe daemonset cilium -n cilium | grep -A 5 "Capabilities"
 ## Best Practices
 
 - Use the certified Cilium Operator from Red Hat OperatorHub for OpenShift support
-- Do not skip the SCC creation step — Cilium will fail to start without proper SCCs
+- Do not skip the SCC creation step - Cilium will fail to start without proper SCCs
 - Test the CNI migration from OVN-Kubernetes to Cilium in a non-production cluster first
 - Keep the OpenShift Network Operator and Cilium Operator versions aligned
 - Monitor OpenShift cluster operators after Cilium changes: `oc get clusteroperators`

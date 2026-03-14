@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Monitoring, System Tables, Performance, Database, Observability, query_log, Metrics
+Tags: ClickHouse, Monitoring, System Tables, Performance, Database, Observability, Query_log, Metrics
 
 Description: A comprehensive guide to monitoring ClickHouse using built-in system tables including query_log, parts, metrics, and processes for performance analysis and troubleshooting.
 

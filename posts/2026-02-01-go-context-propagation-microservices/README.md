@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Microservices, Context, Distributed Tracing, HTTP, gRPC
+Tags: Go, Golang, Microservices, Context, Distributed Tracing, HTTP, GRPC
 
 Description: A practical guide to propagating request context across Go microservices for tracing, cancellation, and request-scoped values.
 

@@ -10,7 +10,7 @@ Description: Set up comprehensive BGP peering monitoring in Calico using Prometh
 
 ## Introduction
 
-BGP peering failures in Calico can cause silent networking outages — pods on affected nodes lose connectivity while the node itself appears healthy to Kubernetes. Without proactive monitoring, these failures may go undetected until application teams report connectivity issues. By the time an alert fires based on application symptoms, the root cause investigation adds significant time to the resolution.
+BGP peering failures in Calico can cause silent networking outages - pods on affected nodes lose connectivity while the node itself appears healthy to Kubernetes. Without proactive monitoring, these failures may go undetected until application teams report connectivity issues. By the time an alert fires based on application symptoms, the root cause investigation adds significant time to the resolution.
 
 Calico exposes BGP metrics through Felix (the per-node agent) and through the BIRD BGP daemon. These metrics cover session states, route counts, and convergence events. Feeding these metrics into Prometheus and building dashboards in Grafana gives you real-time visibility into the health of your BGP peering topology.
 

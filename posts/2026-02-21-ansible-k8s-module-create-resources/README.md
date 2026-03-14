@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, k8s Module, Resources, Automation
+Tags: Ansible, Kubernetes, K8s Module, Resources, Automation
 
 Description: Create any Kubernetes resource using the Ansible k8s module with inline definitions, YAML files, and Jinja2 templates.
 

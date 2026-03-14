@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Security, Static Analysis, DevSecOps, tfsec, Checkov
+Tags: Terraform, Security, Static Analysis, DevSecOps, Tfsec, Checkov
 
 Description: Integrate security scanning into your Terraform workflow with tools like tfsec, Checkov, Trivy, and OPA to catch misconfigurations before they reach production.
 

@@ -236,9 +236,9 @@ Commit, push, and Flux applies the change. The operator adds new nodes and rebal
 - Set `cluster-require-full-coverage no` so the cluster continues serving requests even if a shard is down (acceptable for most use cases).
 - Use `PodDisruptionBudget` (`pdb.enabled: true`) on both leaders and followers to prevent the cluster from going down during node maintenance.
 - Connect applications using a cluster-aware Redis client (like `redis-py-cluster`, `ioredis` with cluster mode, or Lettuce) that handles slot redirection.
-- Set `maxmemory` per shard based on the node's available memory minus OS overhead — typically 60-70% of node RAM.
+- Set `maxmemory` per shard based on the node's available memory minus OS overhead - typically 60-70% of node RAM.
 - Monitor cluster health with the `cluster info` command and set up Prometheus alerts on `cluster_state != ok`.
 
 ## Conclusion
 
-Redis Cluster deployed via the OpsTree Redis Operator and managed by Flux CD gives you a horizontally scalable Redis installation where data is automatically distributed across shards. The `RedisCluster` CRD makes topology changes — adding shards, adjusting replica counts — simple Git commits that Flux applies safely. For workloads that have outgrown a single Redis instance, Redis Cluster is the path to linear scaling while maintaining the performance and simplicity that Redis is known for.
+Redis Cluster deployed via the OpsTree Redis Operator and managed by Flux CD gives you a horizontally scalable Redis installation where data is automatically distributed across shards. The `RedisCluster` CRD makes topology changes - adding shards, adjusting replica counts - simple Git commits that Flux applies safely. For workloads that have outgrown a single Redis instance, Redis Cluster is the path to linear scaling while maintaining the performance and simplicity that Redis is known for.

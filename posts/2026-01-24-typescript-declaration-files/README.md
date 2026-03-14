@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Declaration Files, Type Definitions, d.ts, Module Types, Configuration
+Tags: TypeScript, Declaration Files, Type Definitions, D.ts, Module Types, Configuration
 
 Description: A comprehensive guide to creating, configuring, and managing TypeScript declaration files for libraries, modules, and global types.
 

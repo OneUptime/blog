@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, ASP.NET Core, gRPC, .NET, Tracing, C#
+Tags: OpenTelemetry, ASP.NET Core, GRPC, .NET, Tracing, C#
 
 Description: Learn how to implement distributed tracing and metrics for ASP.NET Core gRPC services using OpenTelemetry for complete observability of your microservices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, TCP/IP, Networking, Performance, Linux, Debugging
+Tags: EBPF, TCP/IP, Networking, Performance, Linux, Debugging
 
 Description: A guide to using eBPF for deep TCP/IP stack analysis and network performance debugging.
 

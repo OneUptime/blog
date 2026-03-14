@@ -29,7 +29,7 @@ kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
 
 ## Flow Log Format
 
-```
+```plaintext
 # Example flow log entry (abbreviated):
 # StartTime | EndTime | SrcIP | DstIP | Proto | SrcPort | DstPort | 
 # Packets | Bytes | Action | SrcNamespace | SrcPod | DstNamespace | DstSvc
@@ -57,4 +57,4 @@ flowchart LR
 
 ## Conclusion
 
-Calico flow logs provide the connection-level detail that no other Calico diagnostic can offer. The most valuable operational use case is denied traffic analysis — flow logs show exactly which connections are being blocked, by which policy, enabling rapid policy debugging. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.
+Calico flow logs provide the connection-level detail that no other Calico diagnostic can offer. The most valuable operational use case is denied traffic analysis - flow logs show exactly which connections are being blocked, by which policy, enabling rapid policy debugging. Validate the flow log pipeline periodically by generating known test connections and verifying they appear with the correct attributes in your aggregation system.

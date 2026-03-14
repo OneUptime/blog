@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, dnsmasq, DHCP, Networking
+Tags: Ubuntu, DNS, Dnsmasq, DHCP, Networking
 
 Description: Set up dnsmasq as a lightweight DNS forwarder and DHCP server on Ubuntu for small networks, home labs, and development environments where BIND9 is overkill.
 

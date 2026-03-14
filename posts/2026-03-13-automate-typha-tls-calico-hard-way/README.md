@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Typha, Kubernetes, Networking, TLS, Automation, Hard Way, cert-manager
+Tags: Calico, Typha, Kubernetes, Networking, TLS, Automation, Hard Way, Cert-Manager
 
 Description: A guide to automating Typha TLS certificate generation, rotation, and distribution using cert-manager and Ansible in a manually installed Calico cluster.
 
@@ -10,7 +10,7 @@ Description: A guide to automating Typha TLS certificate generation, rotation, a
 
 ## Introduction
 
-Manual TLS certificate management for Typha is error-prone and scales poorly — each rotation requires generating new certificates, updating Kubernetes Secrets, and restarting Typha and Felix. Automating this lifecycle with cert-manager or Ansible eliminates the risk of certificate expiry outages and reduces operational burden.
+Manual TLS certificate management for Typha is error-prone and scales poorly - each rotation requires generating new certificates, updating Kubernetes Secrets, and restarting Typha and Felix. Automating this lifecycle with cert-manager or Ansible eliminates the risk of certificate expiry outages and reduces operational burden.
 
 ## Option 1: Automate with cert-manager
 
@@ -170,4 +170,4 @@ kubectl describe certificate calico-typha-tls -n calico-system | grep -A5 "Statu
 
 ## Conclusion
 
-Automating Typha TLS with cert-manager is the preferred approach for Kubernetes-native environments — it handles certificate issuance, renewal, and Secret updates automatically with no manual intervention. For environments where cert-manager is not available, an Ansible playbook with an expiry check and conditional rotation achieves the same result on a scheduled basis. Both approaches eliminate the risk of certificate expiry outages in production Calico clusters.
+Automating Typha TLS with cert-manager is the preferred approach for Kubernetes-native environments - it handles certificate issuance, renewal, and Secret updates automatically with no manual intervention. For environments where cert-manager is not available, an Ansible playbook with an expiry check and conditional rotation achieves the same result on a scheduled basis. Both approaches eliminate the risk of certificate expiry outages in production Calico clusters.

@@ -109,7 +109,7 @@ flowchart TD
 
 ## Solution
 
-After identifying the layer causing the failure, apply the targeted fix (see companion Fix post). The most common cause is a default-deny NetworkPolicy blocking ICMP — adding an explicit allow for ICMP typically restores connectivity within seconds.
+After identifying the layer causing the failure, apply the targeted fix (see companion Fix post). The most common cause is a default-deny NetworkPolicy blocking ICMP - adding an explicit allow for ICMP typically restores connectivity within seconds.
 
 ## Prevention
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID 10, mdadm, Storage, Linux
+Tags: RHEL, RAID 10, Mdadm, Storage, Linux
 
 Description: Build a RAID 10 array on RHEL using mdadm to combine the speed of striping with the safety of mirroring for demanding workloads.
 

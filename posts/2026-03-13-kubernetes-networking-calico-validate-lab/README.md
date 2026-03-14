@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, CNI, Lab, Testing, Networking, Validation, kubectl
+Tags: Calico, Kubernetes, CNI, Lab, Testing, Networking, Validation, Kubectl
 
 Description: A systematic validation checklist for verifying Kubernetes networking behavior with Calico in a lab environment before production deployment.
 

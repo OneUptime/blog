@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Package Management, debsums, Integrity
+Tags: Ubuntu, Security, Package Management, Debsums, Integrity
 
 Description: Use debsums on Ubuntu to verify MD5 checksums of installed package files, detect modifications, and identify potentially compromised system files.
 

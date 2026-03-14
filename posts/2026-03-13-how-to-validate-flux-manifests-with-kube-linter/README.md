@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Testing, kube-linter, Validation, Security, CI/CD
+Tags: Flux, Kubernetes, GitOps, Testing, Kube-linter, Validation, Security, CI/CD
 
 Description: Learn how to use kube-linter to validate Flux manifests for security misconfigurations and Kubernetes best practices.
 

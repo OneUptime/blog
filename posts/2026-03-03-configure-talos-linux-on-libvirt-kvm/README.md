@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, libvirt, KVM, Virtualization, Kubernetes, Linux
+Tags: Talos Linux, Libvirt, KVM, Virtualization, Kubernetes, Linux
 
 Description: Learn how to deploy and manage Talos Linux Kubernetes clusters using libvirt and KVM with virsh and virt-install tools.
 

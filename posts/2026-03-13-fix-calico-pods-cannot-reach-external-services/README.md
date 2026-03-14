@@ -18,7 +18,7 @@ Fixing external service connectivity from Calico pods requires addressing the sp
 - `calicoctl` CLI configured
 - `kubectl` with cluster-admin access
 
-## Step 1: Fix — Enable NAT for Outgoing Traffic
+## Step 1: Fix - Enable NAT for Outgoing Traffic
 
 If pods can ping external IPs but external services see a non-routable source IP, enable `natOutgoing` on the IP pool.
 
@@ -38,7 +38,7 @@ kubectl exec connectivity-test -- curl -s --connect-timeout 10 https://ifconfig.
 # Should now show the node IP, not the pod IP
 ```
 
-## Step 2: Fix — Add Egress Allow Rules to Network Policies
+## Step 2: Fix - Add Egress Allow Rules to Network Policies
 
 If a default-deny policy blocks all egress, add explicit rules for external traffic.
 
@@ -79,7 +79,7 @@ calicoctl apply -f calico-egress-allow-external.yaml
 kubectl exec connectivity-test -- curl -s --connect-timeout 10 https://google.com
 ```
 
-## Step 3: Fix — Repair CoreDNS DNS Resolution
+## Step 3: Fix - Repair CoreDNS DNS Resolution
 
 If DNS is the root cause of external service failures, fix CoreDNS first.
 
@@ -96,7 +96,7 @@ kubectl exec connectivity-test -- nslookup google.com
 kubectl exec connectivity-test -- nslookup kubernetes.default.svc.cluster.local
 ```
 
-## Step 4: Fix — Restore iptables NAT Rules After Felix Restart
+## Step 4: Fix - Restore iptables NAT Rules After Felix Restart
 
 If Felix was restarted or iptables rules were flushed, force Felix to reprogram the rules.
 

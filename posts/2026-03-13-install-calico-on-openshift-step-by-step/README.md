@@ -10,7 +10,7 @@ Description: A step-by-step guide to replacing OpenShift's default OVN-Kubernete
 
 ## Introduction
 
-OpenShift ships with OVN-Kubernetes as its default CNI plugin, but self-managed OpenShift clusters can be reconfigured to use Calico. The primary reason to choose Calico on OpenShift is access to Calico's advanced network policy capabilities — GlobalNetworkPolicy, host endpoint policies, and fine-grained egress rules — which go beyond what OpenShift's built-in network policy supports.
+OpenShift ships with OVN-Kubernetes as its default CNI plugin, but self-managed OpenShift clusters can be reconfigured to use Calico. The primary reason to choose Calico on OpenShift is access to Calico's advanced network policy capabilities - GlobalNetworkPolicy, host endpoint policies, and fine-grained egress rules - which go beyond what OpenShift's built-in network policy supports.
 
 Installing Calico on OpenShift requires using the Tigera Operator with OpenShift-specific configuration. OpenShift's Security Context Constraints (SCCs) require that the Calico pods run with elevated privileges, and the cluster network operator must be informed of the CNI change.
 

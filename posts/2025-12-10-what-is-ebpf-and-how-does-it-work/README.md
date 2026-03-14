@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, Linux, Observability, Security, Networking, Tracing, Performance, Kernel
+Tags: EBPF, Linux, Observability, Security, Networking, Tracing, Performance, Kernel
 
 Description: A comprehensive guide to eBPF (extended Berkeley Packet Filter)- what it is, how it works, why it's transforming observability and security, and how modern tools like Cilium, Falco.
 

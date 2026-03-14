@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, tcpdump, Debugging, Networking
+Tags: Kubernetes, MetalLB, Tcpdump, Debugging, Networking
 
 Description: Learn how to use tcpdump to trace traffic from MetalLB through kube-proxy to backend pods when services are not responding.
 

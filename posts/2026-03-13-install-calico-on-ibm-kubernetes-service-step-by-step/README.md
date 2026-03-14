@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IBM Cloud, Kubernetes, IKS, Networking, Network Policy
+Tags: Calico, Kubernetes, Networking, CNI, Installation, IBM Kubernetes Service
 
 Description: Step-by-step guide to installing and configuring Calico network policies on IBM Kubernetes Service for advanced Kubernetes networking.
 
@@ -10,7 +10,7 @@ Description: Step-by-step guide to installing and configuring Calico network pol
 
 ## Introduction
 
-IBM Kubernetes Service (IKS) includes Calico as its default CNI plugin, making it unique among major cloud Kubernetes services — Calico is already installed when you create an IKS cluster. This means you can immediately start using Calico network policies without an additional installation step.
+IBM Kubernetes Service (IKS) includes Calico as its default CNI plugin, making it unique among major cloud Kubernetes services - Calico is already installed when you create an IKS cluster. This means you can immediately start using Calico network policies without an additional installation step.
 
 However, configuring calicoctl, managing IP pools, and applying advanced Calico policies on IKS requires specific configuration steps due to IBM's networking architecture. This guide walks through the setup and configuration process.
 
@@ -139,7 +139,7 @@ kubectl get networkpolicies -A
 ## Best Practices
 
 - Use `ibmcloud ks cluster config --network` to get the correct calicoctl configuration for each IKS cluster
-- Be careful with GlobalNetworkPolicies on IKS — IBM uses specific network ranges for health checks and NodePort services
+- Be careful with GlobalNetworkPolicies on IKS - IBM uses specific network ranges for health checks and NodePort services
 - Monitor Calico node status on IKS using IBM Cloud Monitoring with the Calico metrics integration
 - Test network policies in a staging IKS cluster before applying to production
 - Keep Calico policies consistent across development, staging, and production to prevent environment-specific issues

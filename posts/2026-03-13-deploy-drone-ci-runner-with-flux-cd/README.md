@@ -99,7 +99,7 @@ spec:
         cpu: 500m
         memory: 256Mi
 
-    # Replica count — scale for higher concurrency
+    # Replica count - scale for higher concurrency
     replicaCount: 2
 ```
 
@@ -184,7 +184,7 @@ Push a commit and watch pipeline pods appear in the `drone` namespace.
 
 ## Best Practices
 
-- Set `DRONE_RUNNER_CAPACITY` based on your cluster's available CPU and memory—overcommitting leads to pending pods.
+- Set `DRONE_RUNNER_CAPACITY` based on your cluster's available CPU and memory-overcommitting leads to pending pods.
 - Use `node_selector` in your `.drone.yml` to target specific node pools for builds that need GPU or high-memory nodes.
 - Enable `DRONE_TRACE=true` temporarily on the runner pod to debug connectivity issues with the Drone server.
 - Use `DRONE_LIMIT_REPOS` to restrict which repositories the runner will accept jobs from.
@@ -192,4 +192,4 @@ Push a commit and watch pipeline pods appear in the `drone` namespace.
 
 ## Conclusion
 
-Drone CI runners are now deployed on Kubernetes and reconciled by Flux CD. Your runner fleet scales through Git—add replicas, adjust resource limits, or change the RPC host by opening a pull request. Pipeline pods appear and disappear automatically as builds are triggered, keeping your cluster resources efficient and your build infrastructure fully auditable.
+Drone CI runners are now deployed on Kubernetes and reconciled by Flux CD. Your runner fleet scales through Git-add replicas, adjust resource limits, or change the RPC host by opening a pull request. Pipeline pods appear and disappear automatically as builds are triggered, keeping your cluster resources efficient and your build infrastructure fully auditable.

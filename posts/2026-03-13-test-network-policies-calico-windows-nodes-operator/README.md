@@ -10,7 +10,7 @@ Description: A guide to testing network policy enforcement on Windows nodes mana
 
 ## Introduction
 
-Network policy testing on operator-managed Windows nodes benefits from the operator's consistent configuration management — policies applied through the standard Kubernetes NetworkPolicy API or Calico CRDs are translated to HNS ACL rules on Windows nodes automatically. The operator ensures that policy configuration is consistent between Linux and Windows nodes, eliminating a class of failures that can occur with manual Windows Calico installation.
+Network policy testing on operator-managed Windows nodes benefits from the operator's consistent configuration management - policies applied through the standard Kubernetes NetworkPolicy API or Calico CRDs are translated to HNS ACL rules on Windows nodes automatically. The operator ensures that policy configuration is consistent between Linux and Windows nodes, eliminating a class of failures that can occur with manual Windows Calico installation.
 
 Testing still requires explicit connectivity checks because the translation from Kubernetes policy to HNS ACL can have edge cases, particularly with more complex selector-based policies. This guide covers the testing workflow for operator-managed Windows nodes.
 
@@ -121,4 +121,4 @@ kubectl delete namespace win-policy-test
 
 ## Conclusion
 
-Testing network policies on operator-managed Windows nodes verifies that the operator correctly translates Kubernetes NetworkPolicy resources to HNS ACL rules on Windows. The testing workflow — baseline connectivity, apply policies, verify enforcement, confirm HNS rules — provides comprehensive coverage of the policy enforcement pipeline for Windows workloads in mixed-OS clusters.
+Testing network policies on operator-managed Windows nodes verifies that the operator correctly translates Kubernetes NetworkPolicy resources to HNS ACL rules on Windows. The testing workflow - baseline connectivity, apply policies, verify enforcement, confirm HNS rules - provides comprehensive coverage of the policy enforcement pipeline for Windows workloads in mixed-OS clusters.

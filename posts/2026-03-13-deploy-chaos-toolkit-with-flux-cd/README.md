@@ -10,7 +10,7 @@ Description: Deploy Chaos Toolkit chaos experiments to Kubernetes using Flux CD,
 
 ## Introduction
 
-Chaos Toolkit is an open-source chaos engineering framework that defines experiments as simple JSON or YAML files. Unlike Chaos Mesh or LitmusChaos, Chaos Toolkit is a CLI-first tool, which means integrating it with Kubernetes requires wrapping experiments in Kubernetes Jobs or CronJobs. This model actually pairs excellently with Flux CD — each experiment becomes a declarative Kubernetes workload tracked in Git.
+Chaos Toolkit is an open-source chaos engineering framework that defines experiments as simple JSON or YAML files. Unlike Chaos Mesh or LitmusChaos, Chaos Toolkit is a CLI-first tool, which means integrating it with Kubernetes requires wrapping experiments in Kubernetes Jobs or CronJobs. This model actually pairs excellently with Flux CD - each experiment becomes a declarative Kubernetes workload tracked in Git.
 
 The approach in this guide packages Chaos Toolkit experiments as container-based Kubernetes Jobs. Flux CD watches the Git repository and automatically applies new or updated experiments to the cluster. This gives you the flexibility of Chaos Toolkit's Python-based extension ecosystem while maintaining GitOps-grade auditability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, API, Protocol Buffers, Microservices, RPC, Tutorial, Beginner
+Tags: GRPC, API, Protocol Buffers, Microservices, RPC, Tutorial, Beginner
 
 Description: A comprehensive introduction to gRPC covering core concepts, comparison with REST, and building your first gRPC service from scratch.
 

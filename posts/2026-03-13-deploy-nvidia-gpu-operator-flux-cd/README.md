@@ -181,4 +181,4 @@ kubectl delete pod gpu-test
 
 ## Conclusion
 
-By managing the NVIDIA GPU Operator through Flux CD, you gain a fully declarative, GitOps-driven approach to GPU infrastructure. Every change to driver versions, feature flags, or MIG strategies goes through a pull request, is reviewed, and is automatically applied and reconciled across your cluster — eliminating configuration drift and reducing toil for platform teams supporting AI/ML workloads.
+By managing the NVIDIA GPU Operator through Flux CD, you gain a fully declarative, GitOps-driven approach to GPU infrastructure. Every change to driver versions, feature flags, or MIG strategies goes through a pull request, is reviewed, and is automatically applied and reconciled across your cluster - eliminating configuration drift and reducing toil for platform teams supporting AI/ML workloads.

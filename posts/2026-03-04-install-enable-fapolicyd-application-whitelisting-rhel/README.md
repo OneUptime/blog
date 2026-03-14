@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fapolicyd, Security, Application Whitelisting, Linux
+Tags: RHEL, Fapolicyd, Security, Application Whitelisting, Linux
 
 Description: Learn how to install and enable fapolicyd on RHEL to enforce application whitelisting and prevent unauthorized binaries from executing.
 

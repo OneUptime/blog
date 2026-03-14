@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Disk Management, Storage, ext4, System Administration
+Tags: Ubuntu, Disk Management, Storage, Ext4, System Administration
 
 Description: Grow or shrink ext4 partitions on a live Ubuntu system without downtime, covering both partition resizing and filesystem resizing with practical cloud and physical disk scenarios.
 

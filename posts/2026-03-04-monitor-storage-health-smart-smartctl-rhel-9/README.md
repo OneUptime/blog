@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, SMART, smartctl, Storage, Monitoring, Disk Health, Linux
+Tags: RHEL, SMART, Smartctl, Storage, Monitoring, Disk Health, Linux
 
 Description: Learn how to use SMART monitoring and smartctl on RHEL to detect failing drives early and prevent data loss from hardware failures.
 

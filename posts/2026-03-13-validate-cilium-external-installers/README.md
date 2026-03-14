@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, installation, helm, kubernetes, kubeadm, validation
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to validate Cilium installations deployed via external tools such as Helm, kubeadm, or cluster provisioners, ensuring correct configuration and functionality regardless of the installation method used.
+Description: Learn how to validate Cilium installations deployed via external tools such as Helm, kubeadm, or cluster provisioners, ensuring correct configuration and functionality regardless of the...
 
 ---
 

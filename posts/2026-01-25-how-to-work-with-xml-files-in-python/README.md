@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, XML, File Handling, Data Processing, ElementTree, lxml, Parsing
+Tags: Python, XML, File Handling, Data Processing, ElementTree, Lxml, Parsing
 
 Description: Learn how to read, write, parse, and manipulate XML files in Python using the built-in ElementTree module and the powerful lxml library. This guide covers practical examples for common XML operations.
 

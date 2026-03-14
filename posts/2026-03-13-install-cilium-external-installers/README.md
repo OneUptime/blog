@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Installation, Helm, Kustomize, GitOps, Flux CD
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: Guide to installing Cilium on Kubernetes using external installer tools including Helm, Kustomize, and Flux CD for GitOps-native management.
 
@@ -10,7 +10,7 @@ Description: Guide to installing Cilium on Kubernetes using external installer t
 
 ## Introduction
 
-While the Cilium CLI is the simplest way to install Cilium, production environments often require installation via declarative tooling that integrates with GitOps workflows. Cilium can be installed with Helm, Kustomize, or as a Flux CD HelmRelease — each offering different levels of version control and lifecycle management.
+While the Cilium CLI is the simplest way to install Cilium, production environments often require installation via declarative tooling that integrates with GitOps workflows. Cilium can be installed with Helm, Kustomize, or as a Flux CD HelmRelease - each offering different levels of version control and lifecycle management.
 
 This guide covers installing Cilium with each external installer approach, with a focus on GitOps integration.
 
@@ -232,7 +232,7 @@ cilium status --wait
 
 ## Best Practices
 
-- Always use a specific `version` in Helm installs — never install without pinning the version
+- Always use a specific `version` in Helm installs - never install without pinning the version
 - Store Helm values in Git alongside the HelmRelease for full version control
 - Use Flux's `spec.chart.spec.version` with a semantic version range (e.g., `1.15.x`) to enable automatic patch updates
 - Run `cilium connectivity test` in CI/CD after every Cilium upgrade

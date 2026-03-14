@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fapolicyd, Security, Application Whitelisting, Trust Rules
+Tags: RHEL, Fapolicyd, Security, Application Whitelisting, Trust Rules
 
 Description: Learn how to create custom fapolicyd trust rules to allow specific third-party or in-house applications to run on RHEL while maintaining application whitelisting.
 

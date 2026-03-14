@@ -10,7 +10,7 @@ Description: Deploy TensorFlow Serving with GPU support using Flux CD to serve m
 
 ## Introduction
 
-TensorFlow Serving is a production-grade model server purpose-built for TensorFlow models. When backed by GPU hardware, it delivers significantly lower inference latency and higher throughput than CPU-only deployments. Managing a TensorFlow Serving deployment manually across environments is error-prone — model versions, resource allocations, and environment variables drift quickly.
+TensorFlow Serving is a production-grade model server purpose-built for TensorFlow models. When backed by GPU hardware, it delivers significantly lower inference latency and higher throughput than CPU-only deployments. Managing a TensorFlow Serving deployment manually across environments is error-prone - model versions, resource allocations, and environment variables drift quickly.
 
 Flux CD solves this by making TensorFlow Serving configuration declarative and version-controlled. Promoting a new model version becomes a pull request, and the cluster state is continuously reconciled against the Git source of truth.
 
@@ -195,10 +195,10 @@ curl -X POST http://<service-ip>:8501/v1/models/my-model:predict \
 
 - Use `TF_FORCE_GPU_ALLOW_GROWTH=true` to prevent TensorFlow from allocating all GPU memory upfront, allowing multiple models or processes to share the GPU.
 - Enable batching with a `batching_parameters_file` to maximize GPU utilization by grouping concurrent requests.
-- Version your model server image tags explicitly — avoid `latest` to ensure reproducible deployments.
+- Version your model server image tags explicitly - avoid `latest` to ensure reproducible deployments.
 - Store model configs in ConfigMaps managed by Flux so model version updates are tracked in Git.
 - Use a PodDisruptionBudget alongside the Deployment to ensure rolling updates keep at least one replica serving.
 
 ## Conclusion
 
-Deploying TensorFlow Serving on GPU with Flux CD gives your ML platform team a reliable, auditable path from model training to production serving. Model version promotions become code reviews, resource changes are tracked in Git history, and the cluster self-heals any configuration drift — letting your team focus on model quality rather than infrastructure operations.
+Deploying TensorFlow Serving on GPU with Flux CD gives your ML platform team a reliable, auditable path from model training to production serving. Model version promotions become code reviews, resource changes are tracked in Git history, and the cluster self-heals any configuration drift - letting your team focus on model quality rather than infrastructure operations.

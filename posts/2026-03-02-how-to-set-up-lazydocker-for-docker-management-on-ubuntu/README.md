@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, lazydocker, DevOps, CLI Tools
+Tags: Ubuntu, Docker, Lazydocker, DevOps, CLI Tools
 
 Description: Install lazydocker on Ubuntu to get a terminal-based UI for managing Docker containers, images, volumes, and logs without memorizing lengthy Docker commands.
 

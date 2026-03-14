@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, Least Privilege, Security, Linux
+Tags: RHEL, Sudo, Least Privilege, Security, Linux
 
 Description: Design and implement least-privilege sudo policies on RHEL that give users only the specific commands they need, reducing the attack surface.
 

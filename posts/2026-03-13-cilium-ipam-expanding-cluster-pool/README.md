@@ -1,8 +1,8 @@
-# Expanding the Cilium Cluster Pool: Configure, Troubleshoot, Validate, and Monitor
+# Expanding the Cilium Cluster Pool
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Cluster-Pool, Scaling
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how to safely expand Cilium's cluster-pool IPAM when the pod IP address space is running low, including step-by-step expansion procedures, validation, and ongoing capacity monitoring.
 
@@ -12,7 +12,7 @@ Description: Learn how to safely expand Cilium's cluster-pool IPAM when the pod 
 
 As your Kubernetes cluster grows, the pod IP address pool configured in Cilium's cluster-pool IPAM will eventually approach exhaustion. When the pool fills up, the Cilium Operator cannot allocate CIDRs to new nodes, preventing them from hosting pods. Planning for and executing pool expansion before this happens is a critical operational task for cluster administrators.
 
-Expanding the cluster pool in Cilium is non-disruptive to existing workloads — the new CIDR ranges are simply added to the pool configuration, and the Operator begins using them for new node allocations. Existing node CIDRs remain unchanged. The expansion can be performed at any time without a maintenance window, making it one of the more operationally friendly scaling tasks in Cilium management.
+Expanding the cluster pool in Cilium is non-disruptive to existing workloads - the new CIDR ranges are simply added to the pool configuration, and the Operator begins using them for new node allocations. Existing node CIDRs remain unchanged. The expansion can be performed at any time without a maintenance window, making it one of the more operationally friendly scaling tasks in Cilium management.
 
 This guide covers how to detect pool exhaustion risk early, perform the expansion safely, troubleshoot expansion-related issues, and validate that the expanded pool is being used correctly.
 
@@ -229,4 +229,4 @@ EOF
 
 ## Conclusion
 
-Expanding Cilium's cluster-pool IPAM is a routine operational task that should be performed proactively at 70-80% pool utilization rather than reactively during an outage. The non-disruptive nature of pool expansion — simply adding CIDRs to the existing list — makes it safe to execute at any time. Establish monitoring thresholds that trigger alerts well before pool exhaustion and document your CIDR expansion procedure in your runbooks. Planning your IPAM address space with growth headroom from the beginning reduces how often expansions are needed.
+Expanding Cilium's cluster-pool IPAM is a routine operational task that should be performed proactively at 70-80% pool utilization rather than reactively during an outage. The non-disruptive nature of pool expansion - simply adding CIDRs to the existing list - makes it safe to execute at any time. Establish monitoring thresholds that trigger alerts well before pool exhaustion and document your CIDR expansion procedure in your runbooks. Planning your IPAM address space with growth headroom from the beginning reduces how often expansions are needed.

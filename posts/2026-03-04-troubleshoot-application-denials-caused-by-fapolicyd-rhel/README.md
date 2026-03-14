@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fapolicyd, Troubleshooting, Security, Application Whitelisting
+Tags: RHEL, Fapolicyd, Troubleshooting, Security, Application Whitelisting
 
 Description: Step-by-step guide to troubleshooting application denials caused by fapolicyd on RHEL, including log analysis, rule debugging, and resolving trust issues.
 

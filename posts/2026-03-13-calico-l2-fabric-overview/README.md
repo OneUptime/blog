@@ -10,7 +10,7 @@ Description: A comprehensive guide to Layer 2 networking with Calico, covering V
 
 ## Introduction
 
-In Kubernetes networking, an L2 interconnect fabric refers to the mechanism by which pods on different nodes communicate — specifically, whether the interconnect uses Layer 2 (Ethernet) framing or overlay encapsulation to carry pod traffic across the underlying network.
+In Kubernetes networking, an L2 interconnect fabric refers to the mechanism by which pods on different nodes communicate - specifically, whether the interconnect uses Layer 2 (Ethernet) framing or overlay encapsulation to carry pod traffic across the underlying network.
 
 Calico supports L2-based interconnect through two overlay modes: VXLAN (Virtual Extensible LAN) and IP-in-IP. Both modes create an overlay network that allows pod traffic to traverse underlay networks that don't know about pod IP addresses. This is the standard approach for cloud environments where you cannot control the underlying network routing.
 
@@ -24,7 +24,7 @@ Understanding L2 interconnect in the context of Calico means understanding when 
 
 ## Why Overlay Encapsulation Exists
 
-Cloud VPC networks (AWS VPC, GCP VPC, Azure VNet) route traffic between VM instances based on the VM's IP address — they don't know about pod IPs. If a pod on Node 1 sends a packet to a pod IP on Node 2, the VPC router won't know where to send it.
+Cloud VPC networks (AWS VPC, GCP VPC, Azure VNet) route traffic between VM instances based on the VM's IP address - they don't know about pod IPs. If a pod on Node 1 sends a packet to a pod IP on Node 2, the VPC router won't know where to send it.
 
 Overlay encapsulation solves this by wrapping the pod packet (inner packet) inside a packet that uses node IPs as the outer source and destination:
 
@@ -88,10 +88,10 @@ spec:
 
 ## Best Practices
 
-- Use VXLAN in cloud environments by default — it works in all cloud VPCs without special configuration
+- Use VXLAN in cloud environments by default - it works in all cloud VPCs without special configuration
 - Use IP-in-IP only after confirming your cloud security groups/firewall rules allow IP protocol 4
 - Use CrossSubnet for multi-AZ clusters to reduce encapsulation overhead for same-AZ traffic
-- Monitor MTU carefully with any overlay mode — set MTU to node MTU minus the encapsulation overhead
+- Monitor MTU carefully with any overlay mode - set MTU to node MTU minus the encapsulation overhead
 
 ## Conclusion
 

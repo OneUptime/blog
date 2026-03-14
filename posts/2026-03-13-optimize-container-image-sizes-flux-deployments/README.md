@@ -12,7 +12,7 @@ Description: Reduce container image sizes for faster Flux CD reconciliation, low
 
 Container image size directly affects your Kubernetes operations in measurable ways. Larger images mean longer pod startup times during deployments and node scale-outs, increased registry storage costs, larger attack surfaces for security vulnerabilities, and higher bandwidth costs for pulling images across nodes. In clusters managed by Flux CD where continuous reconciliation is common, image pull efficiency compounds across every deployment.
 
-Optimizing container images is not just a development concern — it is an operational and financial one. A 1GB image pulled across 50 nodes on every deployment costs both time and money. Reducing that to 100MB changes the economics of your continuous delivery pipeline significantly.
+Optimizing container images is not just a development concern - it is an operational and financial one. A 1GB image pulled across 50 nodes on every deployment costs both time and money. Reducing that to 100MB changes the economics of your continuous delivery pipeline significantly.
 
 This guide covers practical image optimization techniques for Flux-managed workloads: multi-stage Dockerfiles, distroless and scratch base images, layer caching strategies, and Flux Image Automation for keeping optimized images up to date.
 
@@ -254,13 +254,13 @@ flux get imageupdateautomation api-server
 
 ## Best Practices
 
-- Use distroless images for statically compiled languages (Go, Rust) — they contain no shell, package manager, or OS utilities, dramatically reducing attack surface.
+- Use distroless images for statically compiled languages (Go, Rust) - they contain no shell, package manager, or OS utilities, dramatically reducing attack surface.
 - For interpreted languages (Python, Node.js), use Alpine-based images as the runtime stage; Alpine adds only 5MB versus 100MB+ for full Debian images.
 - Order Dockerfile layers from least to most frequently changed; put dependency installation before source code copies to maximize layer cache hits.
 - Use `.dockerignore` files to exclude test files, documentation, and development configurations from the build context.
 - Combine multiple RUN commands with `&&` to reduce layer count; each RUN instruction creates a new layer.
-- Scan images with Trivy in your CI pipeline — reducing image size typically reduces vulnerability count as well.
+- Scan images with Trivy in your CI pipeline - reducing image size typically reduces vulnerability count as well.
 
 ## Conclusion
 
-Container image optimization is a multiplier for every other improvement in your Flux CD deployment pipeline. Smaller images pull faster, start sooner, consume less registry storage, and expose fewer security vulnerabilities. Combined with Flux Image Automation, you can maintain optimized images automatically — ensuring that the discipline of building minimal images is sustained over time without manual intervention.
+Container image optimization is a multiplier for every other improvement in your Flux CD deployment pipeline. Smaller images pull faster, start sooner, consume less registry storage, and expose fewer security vulnerabilities. Combined with Flux Image Automation, you can maintain optimized images automatically - ensuring that the discipline of building minimal images is sustained over time without manual intervention.

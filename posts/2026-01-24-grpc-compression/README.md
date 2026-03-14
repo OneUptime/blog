@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Compression, Performance, Gzip, Go, Python, Bandwidth, Optimization
+Tags: GRPC, Compression, Performance, Gzip, Go, Python, Bandwidth, Optimization
 
 Description: A practical guide to implementing and optimizing compression in gRPC services, covering gzip and other algorithms, per-call compression, and performance considerations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Service Dependencies, Linux
+Tags: Ansible, Systemd, Service Dependencies, Linux
 
 Description: Learn how to configure and manage systemd service dependencies using Ansible to ensure services start in the correct order and handle failures properly.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, set_stats, Statistics, Reporting, Automation
+Tags: Ansible, Set_stats, Statistics, Reporting, Automation
 
 Description: Track custom statistics during Ansible playbook runs with the set_stats module for reporting and pipeline integration.
 

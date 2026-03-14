@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Automation, inotify, File Monitoring, Bash Scripting
+Tags: Ubuntu, Automation, Inotify, File Monitoring, Bash Scripting
 
 Description: Learn how to use inotifywait on Ubuntu to watch files and directories for changes and trigger automated actions in response to file system events.
 

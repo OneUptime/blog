@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Automation, Linux
+Tags: RHEL, Systemd, System Administration, Automation, Linux
 
 Description: Learn how to create systemd Path Units for File System Triggered Automation on RHEL with step-by-step instructions, configuration examples, and best practices.
 

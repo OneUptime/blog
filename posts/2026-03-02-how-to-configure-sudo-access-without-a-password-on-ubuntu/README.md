@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, sudo, Security, Linux, System Administration
+Tags: Ubuntu, Sudo, Security, Linux, System Administration
 
 Description: A practical guide to configuring passwordless sudo access on Ubuntu for specific users, commands, or automation scripts, with security considerations.
 

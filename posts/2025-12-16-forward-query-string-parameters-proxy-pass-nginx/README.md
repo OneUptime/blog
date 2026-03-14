@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NGINX, Reverse Proxy, Query String, URL Parameters, Configuration, proxy_pass
+Tags: NGINX, Reverse Proxy, Query String, URL Parameters, Configuration, Proxy_pass
 
 Description: Learn how to properly forward query string parameters through Nginx proxy_pass directive, including common pitfalls and solutions for various URL rewriting scenarios.
 

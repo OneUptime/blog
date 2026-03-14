@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, Debugging, SQL, Data Warehouse, Troubleshooting
+Tags: Dbt, Data Engineering, Debugging, SQL, Data Warehouse, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing dbt model failures using logs, compiled SQL, and systematic debugging techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Bidirectional streaming, Per-Message Tracing
+Tags: OpenTelemetry, GRPC, Bidirectional streaming, Per-Message Tracing
 
 Description: Instrument gRPC bidirectional streaming RPCs with OpenTelemetry to create per-message spans that track individual message flow.
 

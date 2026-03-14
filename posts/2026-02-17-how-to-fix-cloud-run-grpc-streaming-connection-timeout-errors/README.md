@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, gRPC, Streaming, Timeout, Troubleshooting
+Tags: GCP, Cloud Run, GRPC, Streaming, Timeout, Troubleshooting
 
 Description: A practical guide to fixing gRPC streaming connection timeout errors on Cloud Run, covering HTTP/2 configuration, keepalive settings, and timeout tuning.
 

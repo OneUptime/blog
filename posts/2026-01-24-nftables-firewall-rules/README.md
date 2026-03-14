@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: nftables, Firewall, Linux Security, Network Security, iptables, Packet Filtering, System Administration
+Tags: Nftables, Firewall, Linux Security, Network Security, Iptables, Packet Filtering, System Administration
 
 Description: Learn nftables from scratch. Create, list, and manage firewall rules on modern Linux systems with practical examples for filtering, NAT, and port forwarding.
 

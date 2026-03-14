@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sosreport, Red Hat Support, Troubleshooting, Linux
+Tags: RHEL, Sosreport, Red Hat Support, Troubleshooting, Linux
 
 Description: Learn how to use the sos report tool on RHEL to collect system diagnostic data for Red Hat support cases, including plugin selection, sensitive data filtering, and uploading to Red Hat.
 

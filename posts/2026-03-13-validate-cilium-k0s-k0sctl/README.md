@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, k0s, k0sctl, kubernetes, networking, cni, automation
+Tags: Cilium, Kubernetes, K0s, EBPF
 
 Description: A guide to validating Cilium on k0s clusters deployed with k0sctl, including checking k0sctl cluster configuration, Cilium installation via addons, and end-to-end connectivity testing.
 
@@ -10,7 +10,7 @@ Description: A guide to validating Cilium on k0s clusters deployed with k0sctl, 
 
 ## Introduction
 
-k0sctl is the cluster lifecycle management tool for k0s, enabling declarative multi-node cluster creation, upgrades, and configuration management. When deploying k0s clusters with Cilium via k0sctl, the entire cluster configuration—including Cilium's Helm chart settings—is defined in the `k0sctl.yaml` file. This declarative approach makes it straightforward to version-control your network configuration but requires specific validation steps to confirm the deployment matched the configuration.
+k0sctl is the cluster lifecycle management tool for k0s, enabling declarative multi-node cluster creation, upgrades, and configuration management. When deploying k0s clusters with Cilium via k0sctl, the entire cluster configuration-including Cilium's Helm chart settings-is defined in the `k0sctl.yaml` file. This declarative approach makes it straightforward to version-control your network configuration but requires specific validation steps to confirm the deployment matched the configuration.
 
 Validating a k0sctl-deployed k0s cluster with Cilium involves checking that the k0sctl configuration was correctly applied, that all k0s nodes are in the expected state, and that Cilium is functioning correctly across all control plane and worker nodes.
 

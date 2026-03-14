@@ -12,7 +12,7 @@ Description: Learn how to monitor Calico host endpoint security using Felix metr
 
 Monitoring Calico host endpoint security gives you ongoing visibility into which traffic is being allowed or denied at your Kubernetes node boundaries. Without monitoring, you may not notice policy drift, unexpected traffic patterns, or policy programming failures until a security incident or connectivity outage occurs.
 
-Calico exposes rich telemetry through Felix metrics, flow logs, and policy audit logs. By integrating these signals with Prometheus and Grafana, you can build dashboards that surface anomalies in node-level traffic enforcement and alert on suspicious access patterns — such as unexpected SSH attempts or port scans against node interfaces.
+Calico exposes rich telemetry through Felix metrics, flow logs, and policy audit logs. By integrating these signals with Prometheus and Grafana, you can build dashboards that surface anomalies in node-level traffic enforcement and alert on suspicious access patterns - such as unexpected SSH attempts or port scans against node interfaces.
 
 This guide walks through setting up monitoring for Calico host endpoint security using open-source tooling.
 

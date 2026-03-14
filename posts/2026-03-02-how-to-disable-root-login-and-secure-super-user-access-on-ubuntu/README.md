@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, SSH, sudo, User Management
+Tags: Ubuntu, Security, SSH, Sudo, User Management
 
 Description: Learn how to disable direct root login over SSH and console on Ubuntu, configure sudo for controlled privilege escalation, and audit super user access.
 

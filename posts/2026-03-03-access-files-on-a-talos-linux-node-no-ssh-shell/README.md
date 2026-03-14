@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, File Access, talosctl, Security, Kubernetes, System Administration
+Tags: Talos Linux, File Access, Talosctl, Security, Kubernetes, System Administration
 
 Description: Learn how to access and manage files on Talos Linux nodes without SSH or shell access using talosctl and other techniques.
 

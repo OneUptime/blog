@@ -185,7 +185,7 @@ jx uninstall --force
 - Run Flux and Jenkins X in parallel for 2-4 weeks before full migration
 - Replace Jenkins X's preview environments with Flux + dynamic namespace creation from CI
 - Use Flux's notification controller to replace Jenkins X's deployment notifications
-- Document your promotion workflow clearly — Flux requires explicit Git commits for promotion unlike Jenkins X's automatic promotion
+- Document your promotion workflow clearly - Flux requires explicit Git commits for promotion unlike Jenkins X's automatic promotion
 - Keep Jenkins X's Tekton pipelines as the CI system if they work well; only migrate the CD/GitOps layer
 
 ## Conclusion

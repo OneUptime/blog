@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Monitoring, Observability
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Monitoring, Observability
 
 Description: Set up monitoring and alerting for Calico etcd RBAC to detect permission errors, unauthorized access attempts, and authentication failures across Calico components.
 
@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for Calico etcd RBAC to detect permi
 
 ## Introduction
 
-Monitoring Calico etcd RBAC health is essential for maintaining both security and reliability. Permission errors that affect Felix or the CNI plugin can cause subtle degradation — policies stop updating silently, or IP allocation slows without obvious errors in the Kubernetes event stream. On the security side, unexpected permission denied events may indicate a compromised component attempting to access unauthorized paths.
+Monitoring Calico etcd RBAC health is essential for maintaining both security and reliability. Permission errors that affect Felix or the CNI plugin can cause subtle degradation - policies stop updating silently, or IP allocation slows without obvious errors in the Kubernetes event stream. On the security side, unexpected permission denied events may indicate a compromised component attempting to access unauthorized paths.
 
 A good monitoring strategy combines etcd audit logs for security events, Calico component log scraping for permission error rates, and Prometheus metrics for overall etcd connectivity health.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Argo Events, Event-Driven, Workflows, Automation
+Tags: Flux CD, Kubernetes, GitOps, Argo Events, Event-Driven, Workflow, Automation
 
 Description: Deploy Argo Events event-driven workflow automation using Flux CD to build Kubernetes-native event pipelines that trigger Argo Workflows, Jobs, and other resources.
 
@@ -12,7 +12,7 @@ Description: Deploy Argo Events event-driven workflow automation using Flux CD t
 
 Argo Events is a Kubernetes-native event-driven workflow automation framework. It provides EventSources (Webhooks, Kafka, S3, GitHub, etc.), an event bus for routing, and Sensors that trigger actions when events match defined conditions. Combined with Argo Workflows, it creates powerful data and CI/CD pipeline automation.
 
-Managing Argo Events through Flux CD ensures the event pipeline infrastructure — EventSources, EventBus, and Sensors — is version-controlled. Adding a new event source or trigger is a pull request, not a manual deployment.
+Managing Argo Events through Flux CD ensures the event pipeline infrastructure - EventSources, EventBus, and Sensors - is version-controlled. Adding a new event source or trigger is a pull request, not a manual deployment.
 
 This guide covers deploying Argo Events using Flux CD and building a sample event pipeline that triggers an Argo Workflow on a GitHub webhook.
 
@@ -227,9 +227,9 @@ kubectl get workflows -n argo-workflows
 - Use the JetStream EventBus for production (replicated, persistent) rather than the native NATS EventBus, which is ephemeral.
 - Store webhook secrets in Kubernetes Secrets and reference them in EventSource `spec.webhook.*.secret` for GitHub webhook signature verification.
 - Use `dependsOn` in Flux Kustomizations to ensure the EventBus is ready before creating EventSources and Sensors.
-- Define Sensors with specific `filters` on event data to ensure triggers fire only for the intended events — avoid overly broad dependency matching.
+- Define Sensors with specific `filters` on event data to ensure triggers fire only for the intended events - avoid overly broad dependency matching.
 - Monitor the event pipeline with the Argo Events UI or Prometheus metrics to detect stuck sensors or failed trigger operations.
 
 ## Conclusion
 
-Argo Events deployed and managed through Flux CD provides a powerful, GitOps-governed event-driven automation platform. Every event pipeline — from EventSource to Sensor to triggered action — is defined in Git, making it straightforward to audit, test, and iterate on your event-driven automation workflows without manual cluster access.
+Argo Events deployed and managed through Flux CD provides a powerful, GitOps-governed event-driven automation platform. Every event pipeline - from EventSource to Sensor to triggered action - is defined in Git, making it straightforward to audit, test, and iterate on your event-driven automation workflows without manual cluster access.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, strace, Debugging, Linux
+Tags: RHEL, Strace, Debugging, Linux
 
 Description: Learn how to trace System Calls with strace for Debugging on RHEL with step-by-step instructions, configuration examples, and best practices.
 

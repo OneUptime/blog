@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Debian, Package Configuration, debconf, Ubuntu
+Tags: Ansible, Debian, Package Configuration, Debconf, Ubuntu
 
 Description: Learn how to use the Ansible debconf module to pre-seed package configuration answers and automate interactive package installations on Debian and Ubuntu systems.
 

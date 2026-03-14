@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing Calico with the VPP (Vector Pack
 
 ## Introduction
 
-Calico VPP is a high-performance data plane option that replaces Calico's default iptables or eBPF data plane with VPP — the Vector Packet Processor. VPP processes packets in user space using a vectorized approach that handles packets in batches, delivering multi-million packets-per-second throughput at low CPU cost. It is designed for workloads that push the limits of Linux kernel networking: telco NFV applications, high-frequency trading, and large-scale service meshes.
+Calico VPP is a high-performance data plane option that replaces Calico's default iptables or eBPF data plane with VPP - the Vector Packet Processor. VPP processes packets in user space using a vectorized approach that handles packets in batches, delivering multi-million packets-per-second throughput at low CPU cost. It is designed for workloads that push the limits of Linux kernel networking: telco NFV applications, high-frequency trading, and large-scale service meshes.
 
 Calico VPP runs as a separate process alongside calico-node. It intercepts pod traffic at the kernel-bypass level using DPDK or `af_packet`, process it through VPP's pipeline, and forwards it to the appropriate destination. The installation requires specific hardware support (SR-IOV or DPDK-compatible NICs for best performance) and a kernel configuration that allows VPP to bind to network interfaces.
 
@@ -94,4 +94,4 @@ kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
 
 ## Conclusion
 
-Installing Calico VPP requires configuring hugepages on nodes, selecting the data interface for VPP to manage, deploying the Calico VPP manifests, and verifying that VPP is processing packets. The installation is more involved than standard Calico, but the resulting throughput — millions of packets per second per core — makes it the right choice for performance-critical Kubernetes workloads.
+Installing Calico VPP requires configuring hugepages on nodes, selecting the data interface for VPP to manage, deploying the Calico VPP manifests, and verifying that VPP is processing packets. The installation is more involved than standard Calico, but the resulting throughput - millions of packets per second per core - makes it the right choice for performance-critical Kubernetes workloads.

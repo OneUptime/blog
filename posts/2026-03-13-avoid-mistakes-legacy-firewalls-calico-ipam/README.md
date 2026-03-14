@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, firewall, kubernetes, networking, security, legacy-infrastructure
+Tags: Calico, IPAM, Firewall, Kubernetes, Networking, Security, Legacy-infrastructure
 
-Description: Learn how to avoid the common mistakes when running Calico-managed Kubernetes clusters alongside legacy firewalls — including IP whitelisting failures, unpredictable pod IP changes, and IPAM block routing gaps.
+Description: Learn how to avoid the common mistakes when running Calico-managed Kubernetes clusters alongside legacy firewalls - including IP whitelisting failures, unpredictable pod IP changes, and IPAM block...
 
 ---
 
 ## Introduction
 
-Many organizations run Kubernetes clusters alongside legacy firewall infrastructure that was designed for static IP environments. Legacy firewalls enforce rules based on specific IP addresses or narrow CIDR ranges — a model that conflicts with Calico's dynamic IP allocation, where pods can receive any IP from a large pool and that IP changes when pods are rescheduled.
+Many organizations run Kubernetes clusters alongside legacy firewall infrastructure that was designed for static IP environments. Legacy firewalls enforce rules based on specific IP addresses or narrow CIDR ranges - a model that conflicts with Calico's dynamic IP allocation, where pods can receive any IP from a large pool and that IP changes when pods are rescheduled.
 
 The most common mistakes are: whitelisting individual pod IPs in firewall rules (which break on pod restarts), not accounting for Calico's block-level routing in firewall rules, and misunderstanding which traffic goes through the node IP vs. the pod IP when `natOutgoing` is involved.
 
@@ -22,7 +22,7 @@ The most common mistakes are: whitelisting individual pod IPs in firewall rules 
 - `kubectl` with cluster access
 - Understanding of your firewall's IP whitelist mechanism
 
-## Step 1: Mistake — Whitelisting Individual Pod IPs in Firewall Rules
+## Step 1: Mistake - Whitelisting Individual Pod IPs in Firewall Rules
 
 The most fundamental mistake is writing firewall rules for specific pod IPs. Pod IPs change every time a pod is rescheduled.
 
@@ -137,7 +137,7 @@ kubectl cluster-info dump | grep service-cluster-ip-range | head -1
 
 ## Best Practices
 
-- Never whitelist individual pod IPs in legacy firewall rules — they change on every pod restart.
+- Never whitelist individual pod IPs in legacy firewall rules - they change on every pod restart.
 - Provide your firewall team with CIDR ranges (pod CIDR or node CIDR depending on NAT mode), not individual IPs.
 - When `natOutgoing: true`, legacy firewalls should allow the node CIDR; when `natOutgoing: false`, allow the pod CIDR.
 - Use Calico network policies to enforce fine-grained access control between pods and external resources, reducing the firewall rule surface area.
@@ -145,4 +145,4 @@ kubectl cluster-info dump | grep service-cluster-ip-range | head -1
 
 ## Conclusion
 
-Legacy firewalls and dynamic Kubernetes networking are inherently in tension. The correct integration approach is to treat the entire pod CIDR (or node CIDR with NAT) as the Kubernetes address space in your firewall, and use Calico's native network policies for pod-level access control. This simplifies firewall management while maintaining security — and eliminates the fragile IP-per-pod whitelisting that breaks on every pod restart.
+Legacy firewalls and dynamic Kubernetes networking are inherently in tension. The correct integration approach is to treat the entire pod CIDR (or node CIDR with NAT) as the Kubernetes address space in your firewall, and use Calico's native network policies for pod-level access control. This simplifies firewall management while maintaining security - and eliminates the fragile IP-per-pod whitelisting that breaks on every pod restart.

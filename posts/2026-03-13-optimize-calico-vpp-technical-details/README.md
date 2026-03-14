@@ -24,7 +24,7 @@ Understanding the relationship between these parameters and performance metrics 
 
 The optimal buffer pool size depends on your traffic profile:
 
-```
+```plaintext
 # Buffer calculation formula:
 # Total_buffers = NIC_line_rate (bps) × buffer_hold_time (s) / avg_packet_size (bytes) × 8
 # For 10G NIC, 1ms hold time, 1000B average:

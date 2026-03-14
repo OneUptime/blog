@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, gke, gcp, kubernetes, requirements, cni, upgrade
+Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
 
 Description: Learn how to verify and update Cilium's system requirements on Google Kubernetes Engine (GKE), including node image selection, kernel version requirements, and GKE-specific networking prerequisites.
 
@@ -42,9 +42,9 @@ gcloud container node-pools list \
 ```
 
 Supported image types for Cilium on GKE:
-- `COS_CONTAINERD` (Container-Optimized OS) — Recommended, kernel 5.10+
-- `UBUNTU_CONTAINERD` — Supported, kernel 5.15+
-- `COS` (Docker runtime) — Not supported for Cilium
+- `COS_CONTAINERD` (Container-Optimized OS) - Recommended, kernel 5.10+
+- `UBUNTU_CONTAINERD` - Supported, kernel 5.15+
+- `COS` (Docker runtime) - Not supported for Cilium
 
 ## Step 2: Verify Kernel Version on GKE Nodes
 
@@ -120,7 +120,7 @@ kubectl get pods -n kube-system | grep kube-dns
 
 ## Best Practices
 
-- Use GKE Dataplane V2 for new clusters — it provides a managed, fully supported Cilium integration
+- Use GKE Dataplane V2 for new clusters - it provides a managed, fully supported Cilium integration
 - Prefer COS_CONTAINERD over Ubuntu nodes for smaller attack surface and better Cilium support
 - Pin GKE node versions and upgrade node pools sequentially to avoid compatibility gaps
 - Review GKE release notes for changes to network policy enforcement before each upgrade

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Disconnected, Air-Gapped, Offline Operation
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Disconnected, Air-Gapped
 
 Description: Set up Flux CD to reconcile from local sources at disconnected edge sites, enabling full GitOps operation without internet connectivity.
 
@@ -10,7 +10,7 @@ Description: Set up Flux CD to reconcile from local sources at disconnected edge
 
 ## Introduction
 
-Some edge deployments operate in environments with no persistent internet connectivity — military installations, offshore platforms, underground mining operations, and classified government facilities all require air-gapped or occasionally-connected Kubernetes clusters. These sites cannot reach GitHub or cloud registries, but they still need the operational consistency and auditability that GitOps provides.
+Some edge deployments operate in environments with no persistent internet connectivity - military installations, offshore platforms, underground mining operations, and classified government facilities all require air-gapped or occasionally-connected Kubernetes clusters. These sites cannot reach GitHub or cloud registries, but they still need the operational consistency and auditability that GitOps provides.
 
 Flux CD supports fully disconnected operation through two mechanisms: local source repositories and OCI artifact caching. By running a local Gitea instance or a local OCI registry inside the disconnected network, Flux can operate with the same GitOps workflow as connected clusters, just with a different source endpoint.
 
@@ -268,4 +268,4 @@ spec:
 
 ## Conclusion
 
-Fully disconnected edge sites are not an obstacle to GitOps — they require a different delivery mechanism for manifests and images, but the core GitOps workflow is preserved. With a local Gitea instance and OCI registry, Flux operates identically to connected clusters, providing the same audit trail, reconciliation guarantees, and rollback capabilities. The transfer workflow becomes the disciplined process that replaces internet connectivity.
+Fully disconnected edge sites are not an obstacle to GitOps - they require a different delivery mechanism for manifests and images, but the core GitOps workflow is preserved. With a local Gitea instance and OCI registry, Flux operates identically to connected clusters, providing the same audit trail, reconciliation guarantees, and rollback capabilities. The transfer workflow becomes the disciplined process that replaces internet connectivity.

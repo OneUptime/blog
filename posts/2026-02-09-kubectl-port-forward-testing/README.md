@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Port Forward, Debugging, Networking
+Tags: Kubernetes, Kubectl, Port Forward, Debugging, Networking
 
 Description: Master kubectl port-forward to test service connectivity and debug networking issues by creating temporary tunnels to pods, services, and deployments for local access to cluster resources.
 

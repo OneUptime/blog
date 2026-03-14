@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, boto3, Python, Serverless
+Tags: AWS, Lambda, Boto3, Python, Serverless
 
 Description: Learn how to invoke AWS Lambda functions using Boto3, including synchronous and asynchronous invocations, passing payloads, handling responses, and error management.
 

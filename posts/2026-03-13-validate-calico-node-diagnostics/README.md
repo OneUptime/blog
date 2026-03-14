@@ -102,4 +102,4 @@ flowchart LR
 
 ## Conclusion
 
-Per-node Calico validation ensures that no node is silently degraded. The four validation points — Felix liveness, BGP peer state, iptables rules, and pod reachability — cover the primary failure modes for individual nodes. Run this validation after node replacements, calico-node pod restarts, and before declaring an incident resolved. A green run on all nodes confirms the full data plane is healthy.
+Per-node Calico validation ensures that no node is silently degraded. The four validation points - Felix liveness, BGP peer state, iptables rules, and pod reachability - cover the primary failure modes for individual nodes. Run this validation after node replacements, calico-node pod restarts, and before declaring an incident resolved. A green run on all nodes confirms the full data plane is healthy.

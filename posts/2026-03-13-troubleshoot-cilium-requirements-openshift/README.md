@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, OpenShift, Kubernetes, Networking, Troubleshooting, OVN-Kubernetes
+Tags: Cilium, Kubernetes, OpenShift, EBPF
 
 Description: A step-by-step guide to verifying Cilium prerequisites on Red Hat OpenShift, addressing OVN-Kubernetes replacement, RHCOS kernel requirements, and SCC configuration.
 
@@ -25,7 +25,7 @@ This guide covers the critical requirement checks and configuration steps specif
 
 ## Step 1: Check RHCOS Kernel Compatibility
 
-RHCOS ships with a Real-Time or standard kernel. Both support eBPF, but the standard kernel is required for Cilium — the RT kernel disables several eBPF program types.
+RHCOS ships with a Real-Time or standard kernel. Both support eBPF, but the standard kernel is required for Cilium - the RT kernel disables several eBPF program types.
 
 Verify the kernel variant on each node:
 
@@ -46,7 +46,7 @@ Cilium requires elevated privileges to manage network interfaces and BPF program
 Apply the required SCC for Cilium:
 
 ```yaml
-# cilium-scc.yaml — grants Cilium the privileges it needs on RHCOS nodes
+# cilium-scc.yaml - grants Cilium the privileges it needs on RHCOS nodes
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:

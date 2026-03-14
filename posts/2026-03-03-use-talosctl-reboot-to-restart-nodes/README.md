@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Node Management, Kubernetes, Infrastructure
+Tags: Talos Linux, Talosctl, Node Management, Kubernetes, Infrastructure
 
 Description: Learn how to use the talosctl reboot command to safely restart Talos Linux nodes with practical examples and best practices
 

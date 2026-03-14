@@ -1,8 +1,8 @@
-# How to Set Up Calico on OpenStack Upgrades
+# How to  Calico on OpenStack Upgrades - Setup
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Step-by-step guide to upgrading Calico on OpenStack deployments, handling Neutron ML2 driver compatibility and Calico's OpenStack networking agent updates.
 

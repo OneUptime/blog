@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, iptables, Felix, Prevention, Best Practices
+Tags: Calico, Kubernetes, Networking, Iptables, Felix, Prevention
 
 Description: Prevent Calico iptables rules from failing to apply by ensuring Felix prerequisites are met, using the correct iptables backend, and monitoring for iptables programming failures.
 
@@ -10,7 +10,7 @@ Description: Prevent Calico iptables rules from failing to apply by ensuring Fel
 
 ## Introduction
 
-Preventing Calico iptables rule failures requires ensuring that every node meets Felix's prerequisites before calico-node is deployed, and that the iptables backend is correctly configured for the kernel version. Unlike many Kubernetes issues that can be fixed in-place, iptables backend mismatches often require a node reboot or kernel module load — making prevention through correct initial configuration more valuable than reactive fixes.
+Preventing Calico iptables rule failures requires ensuring that every node meets Felix's prerequisites before calico-node is deployed, and that the iptables backend is correctly configured for the kernel version. Unlike many Kubernetes issues that can be fixed in-place, iptables backend mismatches often require a node reboot or kernel module load - making prevention through correct initial configuration more valuable than reactive fixes.
 
 ## Prerequisites
 

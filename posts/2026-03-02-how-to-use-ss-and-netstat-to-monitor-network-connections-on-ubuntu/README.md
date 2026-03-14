@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, ss, netstat, Monitoring
+Tags: Ubuntu, Networking, Ss, Netstat, Monitoring
 
 Description: Monitor and inspect network connections on Ubuntu using ss and netstat, with practical examples for finding listening ports, established connections, and connection statistics.
 

@@ -12,7 +12,7 @@ Description: Learn how to deploy Dagster data orchestration platform to Kubernet
 
 Dagster is a cloud-native data orchestration platform with a software-defined assets model that brings data engineering, data science, and machine learning workflows under a unified framework. Its Kubernetes deployment model runs each pipeline job as an isolated Kubernetes Job, while the Dagster daemon handles scheduling and the web UI provides full observability.
 
-Deploying Dagster on Kubernetes with Flux CD means your entire data platform infrastructure — the web server, daemon, database, and user code deployments — is managed through Git. When you update a Dagster user code deployment (which contains your pipeline definitions), Flux reconciles the change, making your new pipelines available immediately without manual commands.
+Deploying Dagster on Kubernetes with Flux CD means your entire data platform infrastructure - the web server, daemon, database, and user code deployments - is managed through Git. When you update a Dagster user code deployment (which contains your pipeline definitions), Flux reconciles the change, making your new pipelines available immediately without manual commands.
 
 In this guide you will deploy the full Dagster stack on Kubernetes using the official Helm chart via Flux CD, configure user code server deployments, and set up PostgreSQL for run history storage.
 
@@ -361,7 +361,7 @@ defs = Definitions(
 ## Best Practices
 
 - Use separate Docker images per code location to allow independent deployments of pipeline groups
-- Pin user code image tags in the HelmRelease — never use `latest` in production
+- Pin user code image tags in the HelmRelease - never use `latest` in production
 - Set `jobTtlSecondsAfterFinished` to clean up completed run pods automatically
 - Use Dagster's built-in secrets management (`EnvVar`) rather than hardcoding credentials in pipeline code
 - Configure the `QueuedRunCoordinator` with `maxConcurrentRuns` to prevent resource exhaustion
@@ -369,4 +369,4 @@ defs = Definitions(
 
 ## Conclusion
 
-Deploying Dagster on Kubernetes with Flux CD creates a fully GitOps-managed data orchestration platform. The complete Dagster stack — web server, daemon, PostgreSQL, and user code servers — is defined in a single HelmRelease YAML and reconciled continuously by Flux. When your data engineering team deploys new pipeline code, they update the user code image tag in Git, and Flux rolls out the change. Dagster handles scheduling, dependency management, and run observability, while Kubernetes provides the compute and Flux keeps everything synchronized with Git.
+Deploying Dagster on Kubernetes with Flux CD creates a fully GitOps-managed data orchestration platform. The complete Dagster stack - web server, daemon, PostgreSQL, and user code servers - is defined in a single HelmRelease YAML and reconciled continuously by Flux. When your data engineering team deploys new pipeline code, they update the user code image tag in Git, and Flux rolls out the change. Dagster handles scheduling, dependency management, and run observability, while Kubernetes provides the compute and Flux keeps everything synchronized with Git.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: etcd, Distributed Systems, Configuration Management, Kubernetes, DevOps
+Tags: Etcd, Distributed Systems, Configuration Management, Kubernetes, DevOps
 
 Description: A comprehensive guide to using etcd for distributed configuration management, including cluster setup, key-value operations, watches, and integration patterns for microservices.
 

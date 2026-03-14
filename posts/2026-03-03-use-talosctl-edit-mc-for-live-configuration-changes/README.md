@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Configuration Editing, talosctl, Machine Configuration
+Tags: Talos Linux, Kubernetes, Configuration Editing, Talosctl, Machine Configuration
 
 Description: Learn how to use talosctl edit mc to make live configuration changes to Talos Linux nodes with an interactive editor.
 

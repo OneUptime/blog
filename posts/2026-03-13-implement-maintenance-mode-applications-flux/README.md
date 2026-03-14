@@ -115,7 +115,7 @@ data:
 
 Use Kustomize overlays to manage the two states of Ingress configuration.
 
-```
+```plaintext
 deploy/
 ├── base/
 │   └── ingress.yaml         # Base Ingress (normal operation)
@@ -212,7 +212,7 @@ kubectl patch kustomization my-service -n team-alpha \
   --type=merge \
   -p '{"spec":{"path":"./deploy/overlays/maintenance"}}'
 
-# Or do it the GitOps way — edit the Kustomization path in the platform repo:
+# Or do it the GitOps way - edit the Kustomization path in the platform repo:
 # path: ./deploy/overlays/maintenance
 # Commit, push, and Flux reconciles within its interval
 
@@ -265,11 +265,11 @@ esac
 
 ## Best Practices
 
-- Keep the maintenance page deployment always running — it should be cheap (10m CPU, 16Mi memory) and always ready
+- Keep the maintenance page deployment always running - it should be cheap (10m CPU, 16Mi memory) and always ready
 - Test the maintenance mode activation in staging before using it in production
 - Send proactive user notifications before enabling maintenance mode when possible
 - Set a maximum maintenance window duration and alert if it exceeds the limit
-- Monitor the maintenance page service health separately — a failed maintenance page during maintenance is the worst outcome
+- Monitor the maintenance page service health separately - a failed maintenance page during maintenance is the worst outcome
 - Use the GitOps-native approach (commit the path change) rather than kubectl patches for planned maintenance
 
 ## Conclusion

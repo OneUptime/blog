@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Monitoring
+Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Monitoring
 
 Description: Set up monitoring and alerting for Calico etcd TLS certificate expiry and renewal health to prevent certificate-related outages in your Kubernetes cluster.
 
@@ -36,7 +36,7 @@ helm install x509-certificate-exporter enix/x509-certificate-exporter \
 
 This exposes metrics like:
 
-```
+```plaintext
 x509_cert_not_after{secret_name="calico-etcd-certs",namespace="kube-system"} 1.760313e+09
 ```
 
@@ -95,7 +95,7 @@ graph TD
 
 Create a Grafana panel showing days until expiry for each Calico etcd certificate:
 
-```
+```plaintext
 # Prometheus query for dashboard
 (x509_cert_not_after{secret_name=~"calico-etcd.*"} - time()) / 86400
 ```

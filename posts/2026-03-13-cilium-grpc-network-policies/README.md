@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, gRPC, eBPF
+Tags: Cilium, Kubernetes, Network Policy, GRPC, EBPF
 
 Description: Secure gRPC services with Cilium network policies that enforce access control at the service and method level, controlling which callers can invoke specific gRPC procedures.
 
@@ -10,7 +10,7 @@ Description: Secure gRPC services with Cilium network policies that enforce acce
 
 ## Introduction
 
-gRPC is the dominant RPC framework in cloud-native Kubernetes environments, used for service-to-service communication in microservices architectures. Standard Kubernetes NetworkPolicy can only allow or deny traffic on the gRPC port (typically 50051) — it has no understanding of gRPC service names or method paths. This means once port 50051 is open, any caller can invoke any gRPC method including dangerous operations like admin RPCs, delete operations, or internal maintenance procedures.
+gRPC is the dominant RPC framework in cloud-native Kubernetes environments, used for service-to-service communication in microservices architectures. Standard Kubernetes NetworkPolicy can only allow or deny traffic on the gRPC port (typically 50051) - it has no understanding of gRPC service names or method paths. This means once port 50051 is open, any caller can invoke any gRPC method including dangerous operations like admin RPCs, delete operations, or internal maintenance procedures.
 
 Cilium addresses this by parsing gRPC as HTTP/2 traffic. Since gRPC uses HTTP/2 as its transport and encodes service and method names in the HTTP/2 path (format: `/package.Service/Method`), Cilium's HTTP L7 policy engine can match and filter gRPC calls using path regex. This gives you method-level access control for gRPC services without any changes to the application code or protocol.
 
@@ -31,7 +31,7 @@ gRPC methods are encoded as HTTP/2 paths:
 - Full path: `/package.ServiceName/MethodName`
 
 Example paths:
-```
+```plaintext
 /com.example.UserService/GetUser
 /com.example.UserService/CreateUser
 /com.example.UserService/DeleteUser
@@ -164,4 +164,4 @@ flowchart LR
 
 ## Conclusion
 
-Cilium's treatment of gRPC as HTTP/2 means you can apply HTTP path regex policies to enforce gRPC method-level access control. This fills a critical security gap — without L7 gRPC policies, any caller with port access can invoke any method. Write policies that explicitly list allowed methods rather than trying to deny specific ones, following the principle of least privilege. Use Hubble to monitor gRPC traffic and quickly identify which methods are being blocked or allowed.
+Cilium's treatment of gRPC as HTTP/2 means you can apply HTTP path regex policies to enforce gRPC method-level access control. This fills a critical security gap - without L7 gRPC policies, any caller with port access can invoke any method. Write policies that explicitly list allowed methods rather than trying to deny specific ones, following the principle of least privilege. Use Hubble to monitor gRPC traffic and quickly identify which methods are being blocked or allowed.

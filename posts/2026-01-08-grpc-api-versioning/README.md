@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, API Versioning, Protocol Buffers, Backward Compatibility, Deprecation, Microservices, API Design
+Tags: GRPC, API Versioning, Protocol Buffers, Backward Compatibility, Deprecation, Microservices, API Design
 
 Description: Master gRPC API versioning strategies including field numbering rules, backward compatibility patterns, additive changes, and proper deprecation workflows.
 

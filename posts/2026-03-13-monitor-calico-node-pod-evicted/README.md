@@ -10,7 +10,7 @@ Description: Monitor for calico-node pod eviction using node pressure metrics, p
 
 ## Introduction
 
-Monitoring for calico-node eviction requires tracking both the preconditions (node pressure metrics) and the event itself (pod eviction). Node pressure metrics provide advance warning — when disk or memory pressure builds, intervention is possible before calico-node is evicted.
+Monitoring for calico-node eviction requires tracking both the preconditions (node pressure metrics) and the event itself (pod eviction). Node pressure metrics provide advance warning - when disk or memory pressure builds, intervention is possible before calico-node is evicted.
 
 ## Symptoms
 

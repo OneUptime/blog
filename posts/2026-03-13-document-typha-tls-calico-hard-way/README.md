@@ -80,7 +80,7 @@ done
 For compliance audits, document the following:
 
 ```markdown
-## Typha TLS Security Controls — Audit Evidence
+## Typha TLS Security Controls - Audit Evidence
 
 **mTLS Enforcement:**
 - Typha requires client certificates: YES

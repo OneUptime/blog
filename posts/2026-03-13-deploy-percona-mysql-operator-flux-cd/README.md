@@ -253,4 +253,4 @@ kubectl exec -n mysql cluster1-pxc-0 -- mysql -u root -p'RootPassword123!' \
 
 ## Conclusion
 
-The Percona MySQL Operator deployed via Flux CD gives you a production-grade XtraDB Cluster with synchronous multi-primary replication, automated backups, and connection load balancing through HAProxy. Every aspect of the cluster — from MySQL parameters to backup schedules — is declared in Git and applied by Flux. For workloads that require MySQL compatibility with high-availability writes on any node, XtraDB Cluster managed by this operator is a compelling choice.
+The Percona MySQL Operator deployed via Flux CD gives you a production-grade XtraDB Cluster with synchronous multi-primary replication, automated backups, and connection load balancing through HAProxy. Every aspect of the cluster - from MySQL parameters to backup schedules - is declared in Git and applied by Flux. For workloads that require MySQL compatibility with high-availability writes on any node, XtraDB Cluster managed by this operator is a compelling choice.

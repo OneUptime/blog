@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, n8n, Workflow Automation, Docker Compose, Self-Hosted, Integration, Low-Code
+Tags: Docker, N8n, Workflow Automation, Docker Compose, Self-Hosted, Integration, Low-Code
 
 Description: Deploy n8n in Docker to build automated workflows that connect your apps, APIs, and services with a visual editor.
 

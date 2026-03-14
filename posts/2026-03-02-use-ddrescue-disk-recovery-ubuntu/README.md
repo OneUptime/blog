@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ddrescue, Data Recovery, Disk, Storage
+Tags: Ubuntu, Ddrescue, Data Recovery, Disk, Storage
 
 Description: A thorough guide to using GNU ddrescue on Ubuntu to recover data from failing drives, with coverage of mapfiles, retry strategies, and recovery workflows.
 

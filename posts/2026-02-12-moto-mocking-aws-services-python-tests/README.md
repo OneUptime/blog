@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Python, Testing, Mocking, boto3
+Tags: AWS, Python, Testing, Mocking, Boto3
 
 Description: Learn how to use the moto library to mock AWS services in Python unit and integration tests, with examples for S3, DynamoDB, SQS, Lambda, and complex multi-service workflows.
 

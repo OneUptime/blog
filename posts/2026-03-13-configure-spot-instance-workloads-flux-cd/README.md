@@ -10,7 +10,7 @@ Description: Configure Flux-managed Kubernetes workloads to run on spot and pree
 
 ## Introduction
 
-Spot instances on AWS, Preemptible VMs on GCP, and Spot VMs on Azure offer compute capacity at 60-90% discounts compared to on-demand pricing. For stateless, fault-tolerant workloads — web servers, batch processors, and background workers — spot instances are one of the highest-impact cost optimization strategies available. The catch is that cloud providers can reclaim spot capacity with short notice, requiring your workloads to handle interruptions gracefully.
+Spot instances on AWS, Preemptible VMs on GCP, and Spot VMs on Azure offer compute capacity at 60-90% discounts compared to on-demand pricing. For stateless, fault-tolerant workloads - web servers, batch processors, and background workers - spot instances are one of the highest-impact cost optimization strategies available. The catch is that cloud providers can reclaim spot capacity with short notice, requiring your workloads to handle interruptions gracefully.
 
 Kubernetes and Flux CD make spot instance management tractable at scale. By defining node selectors, tolerations, and pod disruption budgets as code in your Git repository, you can systematically route cost-tolerant workloads to spot nodes while keeping latency-sensitive or stateful workloads on on-demand capacity.
 
@@ -242,4 +242,4 @@ kubectl get pods -n workers -o wide | grep batch-processor
 
 ## Conclusion
 
-Spot instances are the single highest-impact compute cost optimization available in Kubernetes. By encoding spot affinity, tolerations, and disruption budgets in your Flux-managed manifests, you create a systematic approach to spot instance adoption that is safe, auditable, and easy to maintain. The GitOps workflow ensures every workload's spot eligibility is explicitly documented and reviewed — transforming spot instance management from an ad-hoc practice into a first-class engineering concern.
+Spot instances are the single highest-impact compute cost optimization available in Kubernetes. By encoding spot affinity, tolerations, and disruption budgets in your Flux-managed manifests, you create a systematic approach to spot instance adoption that is safe, auditable, and easy to maintain. The GitOps workflow ensures every workload's spot eligibility is explicitly documented and reviewed - transforming spot instance management from an ad-hoc practice into a first-class engineering concern.

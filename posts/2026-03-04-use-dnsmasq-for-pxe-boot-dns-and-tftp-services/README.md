@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, DNS, dnsmasq, PXE Boot, Linux
+Tags: RHEL, DNS, Dnsmasq, PXE Boot, Linux
 
 Description: Learn how to use dnsmasq for PXE Boot DNS and TFTP Services on RHEL with step-by-step instructions, configuration examples, and best practices.
 

@@ -12,7 +12,7 @@ Description: Learn how to deploy KServe serverless model inference on Kubernetes
 
 KServe (formerly KFServing) is the standard model inference platform for Kubernetes, providing serverless model serving with autoscaling to zero, multi-framework support (TensorFlow, PyTorch, Scikit-learn, XGBoost, ONNX), and canary rollouts. It integrates deeply with Knative Serving for scale-to-zero functionality and Istio for traffic management.
 
-Managing KServe deployments through Flux CD means that data scientists and MLOps engineers submit pull requests to deploy, update, or roll back models. The InferenceService custom resource declaratively describes a model's serving configuration — the model URI, runtime, resource requirements, and scaling policy. Flux reconciles this resource continuously, ensuring the cluster always reflects what is in Git.
+Managing KServe deployments through Flux CD means that data scientists and MLOps engineers submit pull requests to deploy, update, or roll back models. The InferenceService custom resource declaratively describes a model's serving configuration - the model URI, runtime, resource requirements, and scaling policy. Flux reconciles this resource continuously, ensuring the cluster always reflects what is in Git.
 
 In this guide you will install KServe and its dependencies using Flux CD, create InferenceService resources for multiple model runtimes, and configure autoscaling for cost-efficient model serving.
 

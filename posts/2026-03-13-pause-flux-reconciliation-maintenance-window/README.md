@@ -184,7 +184,7 @@ kubectl get pods --all-namespaces -w | grep -v Running
 - Take a snapshot of the cluster state with `kubectl get all --all-namespaces` before and after
 - Maintain a maintenance log with start time, end time, operator, and a summary of changes made
 - Set a calendar alert for the end of the maintenance window to remind you to resume Flux
-- Never leave Flux suspended overnight — if maintenance runs long, extend the window explicitly
+- Never leave Flux suspended overnight - if maintenance runs long, extend the window explicitly
 - Test your maintenance scripts in a staging cluster before running them in production
 
 ## Conclusion

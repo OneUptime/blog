@@ -128,4 +128,4 @@ kubectl get kubeconfigurationcontrollers default \
 
 ## Conclusion
 
-Troubleshooting Calico metrics monitoring issues requires working through the service discovery chain: ServiceMonitor creation, Prometheus ServiceMonitor selector matching, Service endpoint connectivity, and network policy access. The Prometheus UI's `/targets` endpoint is the most useful debugging tool — it shows the exact error reason for each failing target. Network policies are the most common blocker in security-hardened clusters; always verify that the monitoring namespace can reach the calico-system pods on the metrics ports.
+Troubleshooting Calico metrics monitoring issues requires working through the service discovery chain: ServiceMonitor creation, Prometheus ServiceMonitor selector matching, Service endpoint connectivity, and network policy access. The Prometheus UI's `/targets` endpoint is the most useful debugging tool - it shows the exact error reason for each failing target. Network policies are the most common blocker in security-hardened clusters; always verify that the monitoring namespace can reach the calico-system pods on the metrics ports.

@@ -10,9 +10,9 @@ Description: Deploy the Vitess Operator for MySQL horizontal sharding on Kuberne
 
 ## Introduction
 
-Vitess is a database clustering system for horizontal scaling of MySQL. Originally developed at YouTube to handle their MySQL scaling challenges, Vitess provides transparent sharding, connection pooling via VTGate, schema management, and online schema changes — all without modifying application code beyond the connection string. PlanetScale, the company behind Vitess, uses it to power their cloud database service.
+Vitess is a database clustering system for horizontal scaling of MySQL. Originally developed at YouTube to handle their MySQL scaling challenges, Vitess provides transparent sharding, connection pooling via VTGate, schema management, and online schema changes - all without modifying application code beyond the connection string. PlanetScale, the company behind Vitess, uses it to power their cloud database service.
 
-The Vitess Operator (`vitess-operator`) manages Vitess clusters on Kubernetes using CRDs (`VitessCluster`, `VitessKeyspace`). Deploying through Flux CD gives you GitOps control over your Vitess topology — adding shards, adjusting tablet counts, and managing schema changes all flow through pull requests.
+The Vitess Operator (`vitess-operator`) manages Vitess clusters on Kubernetes using CRDs (`VitessCluster`, `VitessKeyspace`). Deploying through Flux CD gives you GitOps control over your Vitess topology - adding shards, adjusting tablet counts, and managing schema changes all flow through pull requests.
 
 ## Prerequisites
 
@@ -252,7 +252,7 @@ vtctldclient --server localhost:15999 GetTablets
 
 ## Best Practices
 
-- Use VSchema to define your vindex (sharding key) carefully — changing it later requires a full table copy.
+- Use VSchema to define your vindex (sharding key) carefully - changing it later requires a full table copy.
 - Set `enforceSemiSync: true` to ensure at least one replica has received each transaction before the primary commits.
 - Use Vitess's `MoveTables` workflow for zero-downtime migration of unsharded tables to sharded keyspaces.
 - Monitor VTGate QPS and latency metrics via Prometheus to understand query routing overhead.
@@ -260,4 +260,4 @@ vtctldclient --server localhost:15999 GetTablets
 
 ## Conclusion
 
-The Vitess Operator deployed via Flux CD provides GitOps-managed MySQL sharding at scale. Vitess handles the complexity of shard routing, replication management, and schema changes while your applications connect through VTGate as if it were a single MySQL server. With Flux managing the VitessCluster CRDs, your sharding topology is version-controlled and reproducible — a critical property for infrastructure that is difficult to recreate manually.
+The Vitess Operator deployed via Flux CD provides GitOps-managed MySQL sharding at scale. Vitess handles the complexity of shard routing, replication management, and schema changes while your applications connect through VTGate as if it were a single MySQL server. With Flux managing the VitessCluster CRDs, your sharding topology is version-controlled and reproducible - a critical property for infrastructure that is difficult to recreate manually.

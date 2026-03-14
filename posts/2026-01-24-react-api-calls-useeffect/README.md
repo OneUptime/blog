@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, useEffect, API, JavaScript, TypeScript, Hooks, Data Fetching, Frontend
+Tags: React, UseEffect, API, JavaScript, TypeScript, Hooks, Data Fetching, Frontend
 
 Description: A comprehensive guide to handling API calls in React using useEffect, including proper cleanup, error handling, loading states, and avoiding common pitfalls.
 

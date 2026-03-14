@@ -10,7 +10,7 @@ Description: Learn how to verify Calico network policy enforcement and pod netwo
 
 ## Introduction
 
-Verifying Calico on EKS focuses on confirming that pod networking via AWS VPC CNI is operational and that Calico's policy enforcement is active. Since EKS with Calico in policy-only mode relies on two separate components — AWS VPC CNI for IP assignment and Calico Felix for policy enforcement — both must be verified independently.
+Verifying Calico on EKS focuses on confirming that pod networking via AWS VPC CNI is operational and that Calico's policy enforcement is active. Since EKS with Calico in policy-only mode relies on two separate components - AWS VPC CNI for IP assignment and Calico Felix for policy enforcement - both must be verified independently.
 
 On EKS, pod IPs come from the VPC subnet range rather than from Calico IP pools. This means calicoctl's `ipam show` command will not show pod IP allocation as it would on self-managed clusters. Instead, verification focuses on Felix running correctly, network policies being loaded, and connectivity tests confirming that pod-to-pod communication works and policies are enforced.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Typha, CNI, Networking, Performance, Optimization
 
-Description: Tune Typha for maximum throughput and minimum latency in large Kubernetes clusters by optimizing connection distribution, garbage collection, and Felix reconnection behavior when running Calico in manifest mode.
+Description: Tune Typha for maximum throughput and minimum latency in large Kubernetes clusters by optimizing connection distribution, garbage collection, and Felix reconnection behavior when running Calico in...
 
 ---
 
@@ -198,7 +198,7 @@ kubectl set resources deployment calico-typha \
 - Set CPU limits higher than CPU requests to allow Typha to burst during reconnection storms without being throttled.
 - Monitor the Prometheus metric `typha_connections_active` across all pods; imbalances greater than 20% warrant investigation.
 - Use `topologySpreadConstraints` to ensure Typha replicas are zone-distributed, so a zone failure does not collapse all Typha capacity simultaneously.
-- Regularly review Typha's memory usage trend — a steady increase over days indicates a cache leak or unbounded policy growth.
+- Regularly review Typha's memory usage trend - a steady increase over days indicates a cache leak or unbounded policy growth.
 
 ---
 

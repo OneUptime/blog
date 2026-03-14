@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Network Policies
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Network Policies
 
 Description: A guide to testing network policy enforcement when Calico is running in nftables mode.
 
@@ -10,7 +10,7 @@ Description: A guide to testing network policy enforcement when Calico is runnin
 
 ## Introduction
 
-Testing network policies in Calico's nftables mode verifies that Felix correctly translates Kubernetes NetworkPolicy and Calico CRD policies into nftables rules. The policy semantics are identical to iptables mode — the same policies produce the same traffic filtering behavior — but the underlying rules are stored in nftables tables rather than iptables chains.
+Testing network policies in Calico's nftables mode verifies that Felix correctly translates Kubernetes NetworkPolicy and Calico CRD policies into nftables rules. The policy semantics are identical to iptables mode - the same policies produce the same traffic filtering behavior - but the underlying rules are stored in nftables tables rather than iptables chains.
 
 The advantage of nftables for policy testing is atomic rule updates: when a policy is added or modified, nftables applies all changes in a single transaction. This means you should not observe partial policy application where some rules take effect before others, which can happen with iptables during complex policy updates.
 

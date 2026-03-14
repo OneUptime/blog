@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Hetzner Cloud, Kubernetes, GitOps, CSI Driver, hcloud
+Tags: Flux CD, Hetzner Cloud, Kubernetes, GitOps, CSI Driver, Hcloud
 
 Description: Learn how to set up Flux CD on Hetzner Cloud Kubernetes with CSI driver integration for persistent storage and a complete GitOps workflow.
 

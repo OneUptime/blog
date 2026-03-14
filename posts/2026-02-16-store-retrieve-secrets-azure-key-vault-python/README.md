@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Python, Secrets Management, Security, azure-keyvault-secrets, Cloud Security
+Tags: Azure, Key Vault, Python, Secrets Management, Security, Azure-keyvault-secrets, Cloud Security
 
 Description: A hands-on guide to storing and retrieving application secrets from Azure Key Vault using the azure-keyvault-secrets Python SDK.
 

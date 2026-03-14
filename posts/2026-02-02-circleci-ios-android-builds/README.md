@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, iOS, Android, CI/CD, Mobile Development, DevOps, Fastlane, Code Signing
+Tags: CircleCI, IOS, Android, CI/CD, Mobile Development, DevOps, Fastlane, Code Signing
 
 Description: A comprehensive guide to configuring CircleCI pipelines for iOS and Android mobile app builds, covering code signing, dependency caching, parallel testing, and release automation with Fastlane.
 

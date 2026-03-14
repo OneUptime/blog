@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, traceroute, tracepath, Networking, Linux
+Tags: RHEL, Traceroute, Tracepath, Networking, Linux
 
 Description: Learn how to use traceroute and tracepath on RHEL to trace packet paths across networks, identify routing issues, discover MTU problems, and diagnose latency bottlenecks.
 

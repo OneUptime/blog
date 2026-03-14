@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, for_each, Loops, Infrastructure as Code
+Tags: Terraform, HCL, For_each, Loops, Infrastructure as Code
 
 Description: Learn how to use each.key and each.value in Terraform for_each loops to create multiple resources from maps and sets with clean, readable configurations.
 

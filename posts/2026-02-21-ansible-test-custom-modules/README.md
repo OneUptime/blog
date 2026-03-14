@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Module Development, pytest
+Tags: Ansible, Testing, Module Development, Pytest
 
 Description: Test custom Ansible modules with unit tests, integration tests, and ansible-test for reliable automation.
 

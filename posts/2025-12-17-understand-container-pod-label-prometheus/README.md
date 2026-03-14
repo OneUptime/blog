@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Kubernetes, cAdvisor, Containers, Metrics, Monitoring, Pods, Labels, Observability
+Tags: Prometheus, Kubernetes, CAdvisor, Containers, Metrics, Monitoring, Pods, Labels, Observability
 
 Description: Learn what the container='POD' label means in Prometheus metrics from Kubernetes.
 

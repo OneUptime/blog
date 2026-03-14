@@ -10,7 +10,7 @@ Description: Deploy HashiCorp Consul service mesh on Kubernetes using Flux CD fo
 
 ## Introduction
 
-HashiCorp Consul Connect is a service mesh that extends across Kubernetes, VMs, and bare metal — making it the go-to choice for hybrid and multi-cloud environments where not all services run on Kubernetes. Consul provides service discovery, health checking, mTLS via Envoy proxies, and intentions-based access control.
+HashiCorp Consul Connect is a service mesh that extends across Kubernetes, VMs, and bare metal - making it the go-to choice for hybrid and multi-cloud environments where not all services run on Kubernetes. Consul provides service discovery, health checking, mTLS via Envoy proxies, and intentions-based access control.
 
 Managing Consul Connect through Flux CD brings GitOps governance to your service mesh deployment. Consul version upgrades, configuration changes, and feature enablement all flow through pull requests, giving your platform team full auditability and control.
 
@@ -254,9 +254,9 @@ kubectl exec -n consul consul-server-0 -- \
 ## Best Practices
 
 - Deploy 3 Consul server replicas with pod anti-affinity to distribute them across nodes, preventing a single node failure from losing Consul quorum.
-- Enable ACLs (`acls.manageSystemACLs: true`) from the start — adding ACLs to an existing Consul cluster with data in it is significantly more complex.
-- Use `connectInject.default: false` and enable injection per namespace with labels — this prevents accidental injection into system namespaces.
-- Store the Consul gossip encryption key and root CA in Kubernetes Secrets managed by Flux's SOPS integration — never commit unencrypted secrets.
+- Enable ACLs (`acls.manageSystemACLs: true`) from the start - adding ACLs to an existing Consul cluster with data in it is significantly more complex.
+- Use `connectInject.default: false` and enable injection per namespace with labels - this prevents accidental injection into system namespaces.
+- Store the Consul gossip encryption key and root CA in Kubernetes Secrets managed by Flux's SOPS integration - never commit unencrypted secrets.
 - Use Consul's built-in health checks alongside Kubernetes readiness probes for comprehensive service health visibility across both platforms.
 
 ## Conclusion

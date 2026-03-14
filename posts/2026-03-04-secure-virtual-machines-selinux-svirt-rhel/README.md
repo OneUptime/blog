@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, SELinux, sVirt, Security, Virtualization, Linux
+Tags: RHEL, KVM, SELinux, SVirt, Security, Virtualization, Linux
 
 Description: Learn how SELinux sVirt provides mandatory access control for KVM virtual machines on RHEL, isolating VMs from each other and the host system.
 

@@ -37,7 +37,7 @@ graph LR
 
 ## Step 2: Kafka DLQ Pattern with Strimzi
 
-Kafka doesn't have native DLQ support — the pattern is implemented at the application layer. Create a DLQ topic and have consumers publish failed messages there:
+Kafka doesn't have native DLQ support - the pattern is implemented at the application layer. Create a DLQ topic and have consumers publish failed messages there:
 
 ```yaml
 # infrastructure/messaging/topics/orders-main.yaml
@@ -83,10 +83,10 @@ metadata:
     strimzi.io/cluster: production
     purpose: dead-letter
 spec:
-  partitions: 3    # fewer partitions — DLQ is not high throughput
+  partitions: 3    # fewer partitions - DLQ is not high throughput
   replicas: 3
   config:
-    # Long retention for DLQ — 90 days for inspection
+    # Long retention for DLQ - 90 days for inspection
     retention.ms: "7776000000"
     min.insync.replicas: "2"
     compression.type: gzip
@@ -318,10 +318,10 @@ spec:
 
 ## Best Practices
 
-- Always configure a DLQ for all queues handling business-critical messages — never silently discard failures.
+- Always configure a DLQ for all queues handling business-critical messages - never silently discard failures.
 - Set `x-max-delivery-count` (RabbitMQ quorum queues) or implement retry counting in Kafka consumers to prevent infinite processing loops.
-- Alert immediately when DLQ depth exceeds zero — a DLQ with messages means your system has unprocessed errors that need attention.
-- Never auto-requeue from DLQ without first diagnosing and fixing the root cause — requeuing broken messages creates infinite loops.
+- Alert immediately when DLQ depth exceeds zero - a DLQ with messages means your system has unprocessed errors that need attention.
+- Never auto-requeue from DLQ without first diagnosing and fixing the root cause - requeuing broken messages creates infinite loops.
 - Log the failure reason as a message header when sending to DLQ to aid debugging.
 
 ## Conclusion

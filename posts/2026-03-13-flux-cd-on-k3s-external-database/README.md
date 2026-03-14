@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, k3s, PostgreSQL, MySQL, External Database
+Tags: Flux CD, Kubernetes, GitOps, K3s, PostgreSQL, MySQL, External Database
 
 Description: Configure Flux CD on k3s using an external database (PostgreSQL or MySQL) for the k3s datastore, enabling high availability without embedded etcd.
 
@@ -10,7 +10,7 @@ Description: Configure Flux CD on k3s using an external database (PostgreSQL or 
 
 ## Introduction
 
-k3s supports replacing embedded SQLite or etcd with an external relational database — PostgreSQL or MySQL — for its datastore. This mode is ideal when you already operate a managed database service (Amazon RDS, Google Cloud SQL, Azure Database) and want to leverage it for Kubernetes state storage rather than managing etcd. It simplifies HA configuration since the database handles replication, and it integrates naturally with existing database backup and monitoring infrastructure.
+k3s supports replacing embedded SQLite or etcd with an external relational database - PostgreSQL or MySQL - for its datastore. This mode is ideal when you already operate a managed database service (Amazon RDS, Google Cloud SQL, Azure Database) and want to leverage it for Kubernetes state storage rather than managing etcd. It simplifies HA configuration since the database handles replication, and it integrates naturally with existing database backup and monitoring infrastructure.
 
 When Flux CD runs on a k3s cluster backed by an external database, the architecture is familiar to teams already comfortable with relational database operations. The trade-off is that k3s datastore performance is tied to database query latency, so using a geographically co-located database is important.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sysbench, MySQL, PostgreSQL, Benchmarking, Database
+Tags: RHEL, Sysbench, MySQL, PostgreSQL, Benchmarking, Database
 
 Description: Learn how to use sysbench on RHEL to benchmark MySQL and PostgreSQL databases, measuring throughput and latency under various workloads.
 

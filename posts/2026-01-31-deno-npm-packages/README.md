@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deno, npm, JavaScript, Package Management
+Tags: Deno, Npm, JavaScript, Package Management
 
 Description: A comprehensive guide to using npm packages in Deno, covering the npm: specifier syntax, import maps, CommonJS compatibility, and practical examples with popular libraries.
 

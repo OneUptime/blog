@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, DNS, Caching, Linux
+Tags: RHEL, Systemd, System Administration, DNS, Caching, Linux
 
 Description: Learn how to configure systemd-resolved for Local DNS Caching on RHEL with step-by-step instructions, configuration examples, and best practices.
 

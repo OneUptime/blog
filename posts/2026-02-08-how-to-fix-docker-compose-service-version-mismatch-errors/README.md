@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, docker-compose, Version Mismatch, Troubleshooting, Configuration, YAML, Compose file
+Tags: Docker, Docker-compose, Version Mismatch, Troubleshooting, Configuration, YAML, Compose file
 
 Description: Resolve Docker Compose service version mismatch errors by understanding Compose file versions, upgrading Docker Compose, and migrating configurations.
 

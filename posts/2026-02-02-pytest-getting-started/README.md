@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, pytest, Testing, Unit Tests, TDD
+Tags: Python, Pytest, Testing, Unit Tests, TDD
 
 Description: A practical guide to getting started with pytest for Python testing, covering installation, writing tests, fixtures, parametrization, and best practices for building a solid test suite.
 

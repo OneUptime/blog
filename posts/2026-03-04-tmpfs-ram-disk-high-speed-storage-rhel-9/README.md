@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, tmpfs, RAM Disk, Linux
+Tags: RHEL, Tmpfs, RAM Disk, Linux
 
 Description: Learn how to create and configure tmpfs RAM disks on RHEL for ultra-fast temporary storage that lives entirely in memory.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, MinIO, Tenant, Object Storage, S3, Multi-tenancy
+Tags: Flux CD, Kubernetes, GitOps, MinIO, Tenant, Object Storage, S3, Multi-Tenancy
 
 Description: Deploy a MinIO Tenant for object storage on Kubernetes using Flux CD GitOps for fully declarative S3-compatible storage provisioning.
 
@@ -10,9 +10,9 @@ Description: Deploy a MinIO Tenant for object storage on Kubernetes using Flux C
 
 ## Introduction
 
-A MinIO Tenant is a dedicated, isolated MinIO object storage cluster managed by the MinIO Operator. Each Tenant has its own credentials, storage pools, and network exposure — enabling multiple application teams to share a single MinIO Operator while having isolated storage environments. This multi-tenancy model is ideal for platform teams that need to provision S3-compatible storage for multiple teams from a single control plane.
+A MinIO Tenant is a dedicated, isolated MinIO object storage cluster managed by the MinIO Operator. Each Tenant has its own credentials, storage pools, and network exposure - enabling multiple application teams to share a single MinIO Operator while having isolated storage environments. This multi-tenancy model is ideal for platform teams that need to provision S3-compatible storage for multiple teams from a single control plane.
 
-Managing MinIO Tenants through Flux CD means application teams can request storage capacity through a Git pull request, and the platform team reviews and approves it. Each Tenant's configuration — storage pool size, drive count, resource limits — is version-controlled and reproducible.
+Managing MinIO Tenants through Flux CD means application teams can request storage capacity through a Git pull request, and the platform team reviews and approves it. Each Tenant's configuration - storage pool size, drive count, resource limits - is version-controlled and reproducible.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Managing MinIO Tenants through Flux CD means application teams can request stora
 
 ## Step 1: Organize Tenant Directory Structure
 
-```
+```plaintext
 infrastructure/
   storage/
     minio/

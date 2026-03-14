@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, Envoy, Logging, Kubernetes
+Tags: Istio, Debugging, Istioctl, Envoy, Logging, Kubernetes
 
 Description: How to dynamically adjust Envoy proxy log levels with istioctl proxy-config log to debug traffic issues in Istio without restarting pods.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kpatch, Kernel, Development, Patching
+Tags: RHEL, Kpatch, Kernel, Development, Patching
 
 Description: Build custom kpatch kernel live patches on RHEL from source-level diffs, enabling you to apply your own kernel fixes without rebooting.
 

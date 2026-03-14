@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Canary, Ingress, Deployment
+Tags: Calico, Kubernetes, Canary, Ingress, Deployments
 
 Description: Validate that canary rollout traffic weights are correctly applied and traffic is splitting as expected.
 

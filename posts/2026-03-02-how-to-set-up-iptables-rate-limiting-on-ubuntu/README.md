@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, iptables, Security, Networking, DDoS Protection
+Tags: Ubuntu, Iptables, Security, Networking, DDoS Protection
 
 Description: Configure iptables rate limiting on Ubuntu to protect services from brute force attacks and connection floods using the limit, hashlimit, and recent modules.
 

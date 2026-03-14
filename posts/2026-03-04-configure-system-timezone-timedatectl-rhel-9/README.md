@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, timedatectl, Timezone, Linux
+Tags: RHEL, Timedatectl, Timezone, Linux
 
 Description: A practical guide to viewing, setting, and managing system timezone configuration on RHEL using timedatectl and related tools.
 

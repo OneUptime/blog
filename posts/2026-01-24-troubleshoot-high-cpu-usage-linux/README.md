@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Performance, Troubleshooting, CPU, Monitoring, top, htop
+Tags: Linux, System Administration, Performance, Troubleshooting, CPU, Monitoring, Top, Htop
 
 Description: A systematic guide to identifying and resolving high CPU usage issues in Linux, including process analysis, profiling techniques, and optimization strategies.
 

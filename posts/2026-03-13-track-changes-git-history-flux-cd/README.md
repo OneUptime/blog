@@ -25,7 +25,7 @@ In practice, getting the most value from Git history for compliance tracking req
 
 Consistent commit messages make Git history queryable. Adopt Conventional Commits:
 
-```
+```plaintext
 <type>[optional scope]: <description>
 
 [optional body]
@@ -35,7 +35,7 @@ Consistent commit messages make Git history queryable. Adopt Conventional Commit
 
 Types relevant to a Flux CD repository:
 
-```
+```plaintext
 feat:     New application deployment or new infrastructure component
 fix:      Bug fix or rollback
 chore:    Dependency update (Renovate PRs), Flux configuration cleanup
@@ -51,7 +51,7 @@ Example commits:
 ```bash
 # Good commit messages for Flux repos
 git commit -m "deploy: promote my-app v2.5.0 to production (from staging)"
-git commit -m "fix: rollback nginx-ingress to v4.9.0 — memory leak in v4.10.0"
+git commit -m "fix: rollback nginx-ingress to v4.9.0 - memory leak in v4.10.0"
 git commit -m "security: restrict PHI namespace egress to EU databases only"
 git commit -m "feat: add monitoring stack to production cluster"
 git commit -m "suspend: pause production reconciliation for Q4 freeze"
@@ -243,12 +243,12 @@ echo "Exported $(cat reports/deployment-history.json | python3 -c 'import json,s
 
 ## Best Practices
 
-- Use signed commits (GPG or SSH signing) so the authorship of every commit is cryptographically verified — this strengthens the audit trail for high-compliance environments.
-- Never use `git commit --amend` or `git rebase` on shared branches — both rewrite history and destroy the audit trail. Use `git revert` to undo changes.
+- Use signed commits (GPG or SSH signing) so the authorship of every commit is cryptographically verified - this strengthens the audit trail for high-compliance environments.
+- Never use `git commit --amend` or `git rebase` on shared branches - both rewrite history and destroy the audit trail. Use `git revert` to undo changes.
 - Configure `git push --force` (and `--force-with-lease`) to be rejected on the main branch to prevent history rewriting.
 - Include a link to the PR number in every commit message body (GitHub does this automatically for merge commits) so you can navigate from a commit to its approval record.
 - Archive quarterly Git bundle exports to long-term storage as tamper-evident backups of your audit trail.
 
 ## Conclusion
 
-Git history in a Flux CD repository is more than version control — it is a complete record of every infrastructure change, including who made it, when it was made, what exactly was changed, and who approved it. By establishing consistent commit conventions, using structured queries against Git history, and combining commit data with PR approval records, you can produce comprehensive change traceability evidence from your normal development workflow without any additional tooling.
+Git history in a Flux CD repository is more than version control - it is a complete record of every infrastructure change, including who made it, when it was made, what exactly was changed, and who approved it. By establishing consistent commit conventions, using structured queries against Git history, and combining commit data with PR approval records, you can produce comprehensive change traceability evidence from your normal development workflow without any additional tooling.

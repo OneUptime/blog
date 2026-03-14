@@ -1,8 +1,8 @@
-# How to Secure Calico on OpenStack Upgrades
+# How to  Calico on OpenStack Upgrades
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Apply OpenStack-specific security controls during Calico upgrades, including Keystone auth validation and Neutron API security.
 

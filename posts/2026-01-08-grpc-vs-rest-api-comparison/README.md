@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, REST, API, Performance, Architecture, Microservices, Comparison
+Tags: GRPC, REST, API, Performance, Architecture, Microservices, Comparison
 
 Description: A comprehensive comparison of gRPC and REST APIs covering performance, use cases, tooling, and decision criteria to help you choose the right approach.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, ztunnel, Architecture, Service Mesh
+Tags: Istio, Ambient Mode, Ztunnel, Architecture, Service Mesh
 
 Description: A deep dive into ztunnel architecture in Istio ambient mode covering its design, responsibilities, traffic flow, and how it replaces sidecar proxies for L4 functionality.
 

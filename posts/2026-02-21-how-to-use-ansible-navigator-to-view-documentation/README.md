@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-navigator, Documentation, DevOps
+Tags: Ansible, Ansible-navigator, Documentation, DevOps
 
 Description: Access Ansible module documentation, collection docs, and plugin references directly through ansible-navigator without leaving your terminal.
 

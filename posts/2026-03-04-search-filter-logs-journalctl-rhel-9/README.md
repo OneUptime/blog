@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journalctl, journald, Logging, Linux
+Tags: RHEL, Journalctl, Journald, Logging, Linux
 
 Description: Master journalctl on RHEL to efficiently search, filter, and analyze system logs using time ranges, service filters, priority levels, and advanced query techniques.
 

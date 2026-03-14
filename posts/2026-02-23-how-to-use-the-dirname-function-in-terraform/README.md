@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, dirname Function, File Systems, HCL, Infrastructure as Code, Path Manipulation
+Tags: Terraform, Dirname Function, File Systems, HCL, Infrastructure as Code, Path Manipulation
 
 Description: Learn how to use the dirname function in Terraform to extract the directory portion from a file path for building dynamic and portable infrastructure configurations.
 

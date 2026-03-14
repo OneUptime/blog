@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Virtual Machines, Kubernetes, Security
+Tags: Istio, MTLS, Virtual Machines, Kubernetes, Security
 
 Description: How to configure mutual TLS authentication between VM-based workloads and Kubernetes pods within an Istio service mesh for end-to-end encryption.
 

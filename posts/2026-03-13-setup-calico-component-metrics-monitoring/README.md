@@ -10,7 +10,7 @@ Description: A step-by-step guide to enabling Prometheus metrics for all Calico 
 
 ## Introduction
 
-Calico exposes Prometheus metrics from its three main components: Felix (the per-node network policy agent), Typha (the Kubernetes API cache for large clusters), and kube-controllers (the controller managing IPAM and policy sync). These metrics provide deep visibility into Calico's performance, health, and operational state — from policy programming latency to IPAM allocation counts.
+Calico exposes Prometheus metrics from its three main components: Felix (the per-node network policy agent), Typha (the Kubernetes API cache for large clusters), and kube-controllers (the controller managing IPAM and policy sync). These metrics provide deep visibility into Calico's performance, health, and operational state - from policy programming latency to IPAM allocation counts.
 
 Setting up Calico component metrics monitoring enables you to detect problems before they impact workloads, understand cluster-wide networking performance characteristics, and build dashboards that give platform teams visibility into the networking layer without requiring command-line access.
 

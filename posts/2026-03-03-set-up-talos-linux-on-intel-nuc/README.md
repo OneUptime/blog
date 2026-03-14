@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Intel NUC, Kubernetes, Bare Metal, x86
+Tags: Talos Linux, Intel NUC, Kubernetes, Bare Metal, X86
 
 Description: A complete walkthrough for setting up Talos Linux on Intel NUC mini PCs to run production-grade Kubernetes clusters.
 

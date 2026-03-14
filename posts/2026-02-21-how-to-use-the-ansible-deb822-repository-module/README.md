@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, APT, deb822, Ubuntu, Repositories
+Tags: Ansible, APT, Deb822, Ubuntu, Repositories
 
 Description: Learn how to use the Ansible deb822_repository module to manage APT repositories using the modern DEB822 format on Debian and Ubuntu.
 

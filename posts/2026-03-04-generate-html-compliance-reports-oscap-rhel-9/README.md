@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, oscap, HTML Reports, Compliance, Linux
+Tags: RHEL, Oscap, HTML Reports, Compliance, Linux
 
 Description: Generate professional HTML compliance reports using oscap on RHEL, with tips for customization, automation, and distribution to auditors.
 

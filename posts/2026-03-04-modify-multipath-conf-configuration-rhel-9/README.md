@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, DM-Multipath, Configuration, multipath.conf, Linux
+Tags: RHEL, DM-Multipath, Configuration, Multipath.conf, Linux
 
 Description: Understand and modify the multipath.conf configuration file on RHEL to customize path grouping, failover behavior, and device-specific settings.
 

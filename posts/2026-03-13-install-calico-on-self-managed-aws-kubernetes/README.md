@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, AWS, Kubernetes, EC2, Networking, CNI, Self-Managed
+Tags: Calico, Kubernetes, Networking, CNI, Installation, AWS, Self-Managed
 
 Description: Step-by-step guide to installing Calico as the CNI on self-managed Kubernetes clusters running on AWS EC2 instances.
 
@@ -10,7 +10,7 @@ Description: Step-by-step guide to installing Calico as the CNI on self-managed 
 
 ## Introduction
 
-When running Kubernetes on AWS EC2 without EKS — using kubeadm, kOps, or similar tools — you have full control over CNI selection. Calico is a popular choice for self-managed AWS Kubernetes clusters because it provides both pod networking (without requiring VPC CNI license limitations) and advanced network policy enforcement.
+When running Kubernetes on AWS EC2 without EKS - using kubeadm, kOps, or similar tools - you have full control over CNI selection. Calico is a popular choice for self-managed AWS Kubernetes clusters because it provides both pod networking (without requiring VPC CNI license limitations) and advanced network policy enforcement.
 
 This guide covers installing Calico on a kubeadm-provisioned Kubernetes cluster on AWS EC2, using Calico's VXLAN overlay for cross-node communication.
 

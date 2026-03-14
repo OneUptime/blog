@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Migration, Security, Zero Trust
+Tags: Istio, MTLS, Migration, Security, Zero Trust
 
 Description: A detailed migration guide for safely transitioning from permissive to strict mutual TLS in Istio without causing service outages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Distributed Tracing, OpenTelemetry, Microservices, axum, tonic, gRPC, Kafka, Context Propagation
+Tags: Rust, Distributed Tracing, OpenTelemetry, Microservices, Axum, Tonic, GRPC, Kafka, Context Propagation
 
 Description: Learn how to implement distributed tracing across Rust microservices using OpenTelemetry.
 

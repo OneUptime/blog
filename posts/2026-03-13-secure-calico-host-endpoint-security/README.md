@@ -12,7 +12,7 @@ Description: Best practices and hardening techniques for strengthening Calico ho
 
 Configuring Calico host endpoints is the first step; securing them to meet production security standards requires additional hardening. Default configurations often leave room for improvement in terms of policy specificity, logging, and access control. Threat actors who gain access to pod workloads may attempt to pivot to node-level services, making host endpoint hardening a critical defense layer.
 
-Securing host endpoint policies means applying the principle of least privilege — allowing only the precise traffic that your cluster components require, from the precise sources that should send it. It also means protecting the Calico control plane itself from manipulation and ensuring that policy changes are audited and reviewed.
+Securing host endpoint policies means applying the principle of least privilege - allowing only the precise traffic that your cluster components require, from the precise sources that should send it. It also means protecting the Calico control plane itself from manipulation and ensuring that policy changes are audited and reviewed.
 
 This guide covers advanced hardening techniques for Calico host endpoint security configurations in production Kubernetes environments.
 

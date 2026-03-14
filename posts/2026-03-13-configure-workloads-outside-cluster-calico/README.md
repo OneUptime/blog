@@ -10,7 +10,7 @@ Description: Configure Calico to enable connectivity between Kubernetes pods and
 
 ## Introduction
 
-Many production environments have workloads running both inside Kubernetes and outside it — legacy applications, databases, monitoring agents, or infrastructure services that haven't been containerized. Calico enables seamless connectivity between Kubernetes pods and these external workloads by advertising pod routes via BGP or configuring static routes on external hosts.
+Many production environments have workloads running both inside Kubernetes and outside it - legacy applications, databases, monitoring agents, or infrastructure services that haven't been containerized. Calico enables seamless connectivity between Kubernetes pods and these external workloads by advertising pod routes via BGP or configuring static routes on external hosts.
 
 The key challenge is ensuring that return traffic from external workloads can reach pod IPs. Because pod IPs are assigned from a private CIDR that is not natively routable on the external network, external hosts need either a BGP session with Calico or a static route pointing to a Kubernetes node as the gateway for the pod CIDR.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, argparse, CLI, Command Line, Scripts
+Tags: Python, Argparse, CLI, Command Line, Scripts
 
 Description: Learn to build command-line interfaces in Python using argparse. Handle positional arguments, optional flags, subcommands, and create professional CLI tools.
 

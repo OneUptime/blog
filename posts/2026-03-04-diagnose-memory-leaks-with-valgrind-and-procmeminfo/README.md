@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, proc, Debugging, Memory, Linux
+Tags: RHEL, Proc, Debugging, Memory, Linux
 
 Description: Learn how to diagnose Memory Leaks with Valgrind and /proc/meminfo on RHEL with step-by-step instructions, configuration examples, and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipv6, control-plane, kubernetes, networking, bgp
+Tags: Calico, IPv6, Control-plane, Kubernetes, Networking, BGP
 
 Description: A guide to validating Calico's IPv6 control plane, including BGP IPv6 peering, IPv6 node addressing, and ensuring Calico's control plane components communicate correctly over IPv6.
 
@@ -10,7 +10,7 @@ Description: A guide to validating Calico's IPv6 control plane, including BGP IP
 
 ## Introduction
 
-Running Kubernetes with an IPv6 control plane means that cluster components—including Calico's BGP daemon, Felix policy engine, and IPAM components—communicate over IPv6. Validating the IPv6 control plane in Calico requires checking more than just pod networking; you need to confirm that Calico's own internal communication, BGP sessions, and datastore connectivity are functioning correctly over IPv6.
+Running Kubernetes with an IPv6 control plane means that cluster components-including Calico's BGP daemon, Felix policy engine, and IPAM components-communicate over IPv6. Validating the IPv6 control plane in Calico requires checking more than just pod networking; you need to confirm that Calico's own internal communication, BGP sessions, and datastore connectivity are functioning correctly over IPv6.
 
 IPv6 control plane validation is especially important in IPv6-only clusters (not dual-stack) where there is no IPv4 fallback. Misconfigurations in IPv6 addressing, routing, or DNS resolution for control plane components can cause Calico to fail in ways that are harder to diagnose than equivalent IPv4 issues.
 
@@ -125,7 +125,7 @@ flowchart TD
 
 ## Best Practices
 
-- Ensure ip6tables rules are configured alongside iptables rules — Calico manages both
+- Ensure ip6tables rules are configured alongside iptables rules - Calico manages both
 - For IPv6-only clusters, verify all system components support IPv6 before deploying Calico
 - Configure explicit IPv6 BGP peer IPs rather than relying on autodetection
 - Test IPv6 DNS resolution separately as split-horizon DNS can cause issues

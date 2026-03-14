@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, GKE, GCP, Pod Networking
+Tags: Calico, Kubernetes, Networking, Verification, GKE, Google Cloud
 
 Description: Learn how to verify Calico network policy enforcement on Google Kubernetes Engine (GKE), where Calico operates alongside GKE's data plane to enforce network policies for pod communication.
 
@@ -12,7 +12,7 @@ Description: Learn how to verify Calico network policy enforcement on Google Kub
 
 Google Kubernetes Engine (GKE) offers Calico as a network policy provider when you enable network policy at cluster creation. In this configuration, GKE's built-in data plane (using Alias IP ranges) handles pod IP assignment and routing, while Calico enforces network policies. This is similar to the EKS architecture where the cloud provider CNI handles data plane operations.
 
-Validating Calico on GKE requires understanding that pod connectivity is handled by GKE's Alias IP CNI — pods receive IPs directly from the VPC subnet range. Calico provides the policy enforcement layer on top. Testing both layers independently ensures comprehensive validation of your GKE cluster networking.
+Validating Calico on GKE requires understanding that pod connectivity is handled by GKE's Alias IP CNI - pods receive IPs directly from the VPC subnet range. Calico provides the policy enforcement layer on top. Testing both layers independently ensures comprehensive validation of your GKE cluster networking.
 
 This guide covers verification of Calico pod networking and policy enforcement on GKE.
 
@@ -64,7 +64,7 @@ kubectl exec pod-a -- ping -c 5 $POD_B_IP
 Test that Calico correctly enforces Kubernetes NetworkPolicies on GKE.
 
 ```yaml
-# gke-network-policy-test.yaml — deny all then allow specific traffic
+# gke-network-policy-test.yaml - deny all then allow specific traffic
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -146,7 +146,7 @@ kubectl delete namespace gke-test gke-test-external
 
 ## Best Practices
 
-- Enable GKE network policy at cluster creation — enabling it post-creation requires node pool recreation
+- Enable GKE network policy at cluster creation - enabling it post-creation requires node pool recreation
 - Use Calico's `calicoctl` to inspect endpoint state when policies don't behave as expected
 - Test cross-namespace policies explicitly as they are a common source of misconfigurations
 - Monitor Calico pod health via GKE's built-in monitoring and alerting

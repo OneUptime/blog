@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, networkctl, systemd-networkd, systemd
+Tags: Ubuntu, Networking, Networkctl, Systemd-networkd, Systemd
 
 Description: A practical reference for using networkctl to inspect and manage network interfaces on Ubuntu systems running systemd-networkd.
 

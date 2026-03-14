@@ -10,9 +10,9 @@ Description: Configure Flux health checks to monitor Crossplane managed resource
 
 ## Introduction
 
-Flux's health checking mechanism is a powerful but often underutilized feature when working with Crossplane. By default, Flux considers a Kustomization reconciled once all manifests are applied to the cluster. But for Crossplane resources, "applied" means "the Kubernetes object exists"—not "the cloud resource has been provisioned successfully." A health check bridges this gap by waiting for the `Ready` condition to become `True`.
+Flux's health checking mechanism is a powerful but often underutilized feature when working with Crossplane. By default, Flux considers a Kustomization reconciled once all manifests are applied to the cluster. But for Crossplane resources, "applied" means "the Kubernetes object exists"-not "the cloud resource has been provisioned successfully." A health check bridges this gap by waiting for the `Ready` condition to become `True`.
 
-Beyond blocking dependent Kustomizations, health checks enable Flux to report infrastructure failures through its standard alerting channels—Slack, PagerDuty, GitHub, and more. When an RDS instance fails to provision or a Crossplane provider becomes unhealthy, Flux can notify your team immediately.
+Beyond blocking dependent Kustomizations, health checks enable Flux to report infrastructure failures through its standard alerting channels-Slack, PagerDuty, GitHub, and more. When an RDS instance fails to provision or a Crossplane provider becomes unhealthy, Flux can notify your team immediately.
 
 This guide covers configuring health checks for Crossplane resources, setting appropriate timeouts, and wiring up Flux Alerts for operational notifications.
 

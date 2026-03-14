@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, kubectl, Service Mesh, Cluster Management
+Tags: Istio, Kubernetes, Kubectl, Service Mesh, Cluster Management
 
 Description: Practical methods for listing, querying, and inventorying all Istio custom resources across namespaces in your Kubernetes cluster.
 

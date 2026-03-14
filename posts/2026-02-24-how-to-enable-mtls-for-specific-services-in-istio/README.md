@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Service Security, Kubernetes, PeerAuthentication
+Tags: Istio, MTLS, Service Security, Kubernetes, PeerAuthentication
 
 Description: How to apply mutual TLS selectively to individual services in Istio using workload-specific PeerAuthentication policies.
 

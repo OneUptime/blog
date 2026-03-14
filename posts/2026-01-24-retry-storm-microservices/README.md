@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microservices, Retry Storm, Resilience, Circuit Breaker, backoff, Distributed Systems, Troubleshooting
+Tags: Microservices, Retry Storm, Resilience, Circuit Breaker, Backoff, Distributed Systems, Troubleshooting
 
 Description: Learn how to identify and fix retry storm issues in microservices, including exponential backoff, jitter, circuit breakers, and request hedging strategies.
 

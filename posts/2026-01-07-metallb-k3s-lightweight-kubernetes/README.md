@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, k3s, Kubernetes, Load Balancing, Edge, IoT, Bare Metal, Networking
+Tags: MetalLB, K3s, Kubernetes, Load Balancing, Edge, IoT, Bare Metal, Networking
 
 Description: Learn how to configure MetalLB with K3s for lightweight Kubernetes deployments on edge and IoT environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Monitoring, Troubleshooting
+Tags: Calico, Kubernetes, Networking, EBPF, Monitoring, Troubleshooting
 
 Description: Set up proactive monitoring to automatically detect Calico eBPF issues before they require manual troubleshooting, reducing incident response time.
 
@@ -10,7 +10,7 @@ Description: Set up proactive monitoring to automatically detect Calico eBPF iss
 
 ## Introduction
 
-The goal of monitoring Calico eBPF in the context of troubleshooting is to detect issues before they become incidents requiring manual diagnosis. When your monitoring can automatically identify the type of eBPF failure — BPF map exhaustion, program loading failure, or mode regression — your on-call engineer starts with context instead of having to collect it.
+The goal of monitoring Calico eBPF in the context of troubleshooting is to detect issues before they become incidents requiring manual diagnosis. When your monitoring can automatically identify the type of eBPF failure - BPF map exhaustion, program loading failure, or mode regression - your on-call engineer starts with context instead of having to collect it.
 
 ## Prerequisites
 
@@ -118,4 +118,4 @@ flowchart TD
 
 ## Conclusion
 
-Proactive monitoring for eBPF issues transforms troubleshooting from reactive (detect via user complaints) to proactive (detect via metrics before impact). The key alert types — eBPF mode regression, BPF map exhaustion, and frequent calico-node restarts — cover the most common eBPF failure categories. By including runbook URLs in alerts and pre-collecting diagnostic context automatically, you significantly reduce the time from alert to resolution. A well-configured monitoring setup means your on-call engineer receives an alert with the diagnostic bundle already attached, ready to start root cause analysis immediately.
+Proactive monitoring for eBPF issues transforms troubleshooting from reactive (detect via user complaints) to proactive (detect via metrics before impact). The key alert types - eBPF mode regression, BPF map exhaustion, and frequent calico-node restarts - cover the most common eBPF failure categories. By including runbook URLs in alerts and pre-collecting diagnostic context automatically, you significantly reduce the time from alert to resolution. A well-configured monitoring setup means your on-call engineer receives an alert with the diagnostic bundle already attached, ready to start root cause analysis immediately.

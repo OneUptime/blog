@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Disaster Recovery, Kubernetes, Cluster Recovery, Backup
+Tags: Talos Linux, Etcd, Disaster Recovery, Kubernetes, Cluster Recovery, Backup
 
 Description: Step-by-step instructions for recovering a Talos Linux Kubernetes cluster from an etcd snapshot backup after a failure.
 

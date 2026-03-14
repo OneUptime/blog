@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Load Testing, k6, Performance, Microservices, DevOps
+Tags: Load Testing, K6, Performance, Microservices, DevOps
 
 Description: Learn to implement comprehensive load testing for microservices using k6, including distributed testing, realistic traffic patterns, and performance threshold validation.
 

@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting, Monitoring
 
-Description: Build a continuous monitoring approach using Calico troubleshooting commands as health checks, running them periodically to detect BGP peer failures, IPAM exhaustion, and policy count anomalies before they impact applications.
+Description: Build a continuous monitoring approach using Calico troubleshooting commands as health checks, running them periodically to detect BGP peer failures, IPAM exhaustion, and policy count anomalies...
 
 ---
 
 ## Introduction
 
-Calico troubleshooting commands are not just for incident response — they can be run as scheduled health checks to detect issues before applications are affected. `calicoctl node status` (BGP peer health), `calicoctl ipam show` (IPAM exhaustion), and `kubectl get tigerastatus` (operator health) together cover the three most common Calico failure modes. Running these on a schedule turns diagnostic commands into a monitoring system.
+Calico troubleshooting commands are not just for incident response - they can be run as scheduled health checks to detect issues before applications are affected. `calicoctl node status` (BGP peer health), `calicoctl ipam show` (IPAM exhaustion), and `kubectl get tigerastatus` (operator health) together cover the three most common Calico failure modes. Running these on a schedule turns diagnostic commands into a monitoring system.
 
 ## Scheduled Calico Health Monitor
 

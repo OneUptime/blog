@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, kubernetes, autoscaling, hpa, keda, gitops, performance
+Tags: Flux-cd, Kubernetes, Autoscaling, HPA, KEDA, GitOps, Performance
 
-Description: Learn how to implement predictive autoscaling for Kubernetes workloads using Flux CD, combining KEDA event-driven scaling with custom metrics and scheduled scaling policies to anticipate demand rather than react to it. This guide covers GitOps-managed autoscaling configurations for production workloads.
+Description: Learn how to implement predictive autoscaling for Kubernetes workloads using Flux CD, combining KEDA event-driven scaling with custom metrics and scheduled scaling policies to anticipate demand...
 
 ---
 
 ## Introduction
 
-Reactive autoscaling — scaling up after CPU or memory thresholds are breached — introduces latency between demand spikes and additional capacity. By the time new pods are running, users have already experienced degraded performance. Predictive autoscaling anticipates demand using historical patterns, external event signals, and scheduled scale-out triggers to provision capacity before it is needed.
+Reactive autoscaling - scaling up after CPU or memory thresholds are breached - introduces latency between demand spikes and additional capacity. By the time new pods are running, users have already experienced degraded performance. Predictive autoscaling anticipates demand using historical patterns, external event signals, and scheduled scale-out triggers to provision capacity before it is needed.
 
 Flux CD is an ideal tool for managing predictive autoscaling configurations because all scaling policies live in Git, changes are auditable, and you can preview scaling behavior in staging before promoting to production. Combined with KEDA (Kubernetes Event-Driven Autoscaling) and Prometheus-based custom metrics, Flux enables a sophisticated autoscaling strategy that's fully declarative.
 
@@ -107,7 +107,7 @@ spec:
     - type: cron
       metadata:
         timezone: "America/New_York"
-        # Pre-scale at 7:45 AM — 15 minutes before business hours start
+        # Pre-scale at 7:45 AM - 15 minutes before business hours start
         start: "45 7 * * 1-5"
         # Scale back down after business hours
         end: "0 19 * * 1-5"

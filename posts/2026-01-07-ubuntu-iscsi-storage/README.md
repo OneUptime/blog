@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Storage, iSCSI, Networking, Infrastructure
+Tags: Ubuntu, Linux, Storage, ISCSI, Networking, Infrastructure
 
 Description: A complete guide to setting up iSCSI targets and initiators for network-attached block storage on Ubuntu.
 

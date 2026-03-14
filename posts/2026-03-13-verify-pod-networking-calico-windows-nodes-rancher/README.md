@@ -12,7 +12,7 @@ Description: A guide to verifying Calico pod networking on Windows nodes in a Ra
 
 Verifying Calico pod networking on Windows nodes in a Rancher-managed cluster combines standard Kubernetes checks available through the Rancher UI with CLI-based verification using kubectl and calicoctl. Rancher's UI provides a useful first overview of node and pod health, while kubectl and calicoctl provide the detail needed to confirm Calico-specific networking is working correctly.
 
-The verification workflow is the same as for non-Rancher deployments, with the addition of Rancher-specific checks — verifying that Rancher has correctly registered the Windows node, that the node appears in Rancher's node management UI, and that any Rancher-deployed monitoring tools are collecting metrics from the Windows node.
+The verification workflow is the same as for non-Rancher deployments, with the addition of Rancher-specific checks - verifying that Rancher has correctly registered the Windows node, that the node appears in Rancher's node management UI, and that any Rancher-deployed monitoring tools are collecting metrics from the Windows node.
 
 ## Prerequisites
 
@@ -97,4 +97,4 @@ kubectl delete pod win-verify linux-verify
 
 ## Conclusion
 
-Verifying Calico on Windows nodes in a Rancher cluster uses a combination of Rancher UI node status checks and kubectl/calicoctl CLI verification. The cross-OS connectivity test — Linux pinging Windows pods and vice versa — is the key functional test that confirms Rancher's Windows node integration and Calico's mixed-OS networking are both working correctly.
+Verifying Calico on Windows nodes in a Rancher cluster uses a combination of Rancher UI node status checks and kubectl/calicoctl CLI verification. The cross-OS connectivity test - Linux pinging Windows pods and vice versa - is the key functional test that confirms Rancher's Windows node integration and Calico's mixed-OS networking are both working correctly.

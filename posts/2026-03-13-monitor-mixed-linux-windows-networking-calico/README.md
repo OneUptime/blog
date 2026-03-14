@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Windows, Linux, Mixed OS, Kubernetes, Networking, Monitoring
 
-Description: Learn how to monitor Calico networking in hybrid Linux/Windows Kubernetes clusters, including cross-OS pod connectivity, Windows-specific Calico metrics, and network policy enforcement across OS boundaries.
+Description: Learn how to monitor Calico networking in hybrid Linux/Windows Kubernetes clusters, including cross-OS pod connectivity, Windows-specific Calico metrics, and network policy enforcement across OS...
 
 ---
 
 ## Introduction
 
-Kubernetes supports running Windows Server workloads alongside Linux workloads in the same cluster, and Calico provides CNI support for both platforms. However, Windows and Linux nodes use different networking stacks — Windows uses the Host Network Service (HNS) instead of Linux's netfilter/iptables — which means monitoring and troubleshooting Calico in a mixed-OS cluster requires understanding both networking models.
+Kubernetes supports running Windows Server workloads alongside Linux workloads in the same cluster, and Calico provides CNI support for both platforms. However, Windows and Linux nodes use different networking stacks - Windows uses the Host Network Service (HNS) instead of Linux's netfilter/iptables - which means monitoring and troubleshooting Calico in a mixed-OS cluster requires understanding both networking models.
 
 Calico on Windows operates through the calico-node Windows service, which uses HNS for network policy enforcement and Overlay (VXLAN) for pod-to-pod connectivity. Cross-OS connectivity between Windows and Linux pods is supported but requires careful network policy configuration, as some Calico features (such as eBPF mode) are Linux-only.
 

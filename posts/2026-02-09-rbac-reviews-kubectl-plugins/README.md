@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, kubectl, Plugins, Audit
+Tags: Kubernetes, RBAC, Kubectl, Plugins, Audit
 
 Description: Learn how to use kubectl RBAC plugins like rbac-lookup, who-can, and rbac-tool to conduct comprehensive permission audits and reviews of your Kubernetes cluster RBAC configuration.
 

@@ -10,9 +10,9 @@ Description: Use Flux CD HelmRelease rollback configuration to enable automatic 
 
 ## Introduction
 
-When your Kubernetes applications are managed by Helm charts, rollbacks can go through either the GitOps path (git revert) or Helm's own rollback mechanism. Flux CD's `HelmRelease` resource provides built-in rollback configuration that lets you define exactly what should happen when a Helm upgrade fails — including automatic rollback, retry limits, and cleanup behavior.
+When your Kubernetes applications are managed by Helm charts, rollbacks can go through either the GitOps path (git revert) or Helm's own rollback mechanism. Flux CD's `HelmRelease` resource provides built-in rollback configuration that lets you define exactly what should happen when a Helm upgrade fails - including automatic rollback, retry limits, and cleanup behavior.
 
-Understanding both paths — Git-based rollback and HelmRelease rollback — helps you choose the right tool for each scenario. Automatic HelmRelease rollback is ideal for catching upgrade failures immediately, while Git-based rollback is better for reverting changes that passed the upgrade but caused problems over time.
+Understanding both paths - Git-based rollback and HelmRelease rollback - helps you choose the right tool for each scenario. Automatic HelmRelease rollback is ideal for catching upgrade failures immediately, while Git-based rollback is better for reverting changes that passed the upgrade but caused problems over time.
 
 This guide covers configuring automatic HelmRelease rollback, triggering manual rollback when needed, and integrating rollback visibility into your monitoring stack.
 
@@ -198,4 +198,4 @@ spec:
 
 ## Conclusion
 
-HelmRelease rollback in Flux CD gives you two complementary rollback mechanisms: automatic remediation for upgrade failures caught immediately, and Git-based version pinning for problems discovered after a successful upgrade. Understanding when to use each mechanism — and how to return to a stable GitOps state after either — is essential for maintaining reliable Helm-managed applications in production.
+HelmRelease rollback in Flux CD gives you two complementary rollback mechanisms: automatic remediation for upgrade failures caught immediately, and Git-based version pinning for problems discovered after a successful upgrade. Understanding when to use each mechanism - and how to return to a stable GitOps state after either - is essential for maintaining reliable Helm-managed applications in production.

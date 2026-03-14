@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Security, Zero Trust
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Security, Zero Trust
 
 Description: A step-by-step guide to configuring Calico network policies based on Kubernetes service accounts for stronger workload identity-based access control.
 
@@ -10,7 +10,7 @@ Description: A step-by-step guide to configuring Calico network policies based o
 
 ## Introduction
 
-Service account-based policies represent a stronger identity model than label-based policies because service accounts are more controlled — they are granted by the cluster operator rather than set freely in pod metadata. In a zero-trust cluster, using service accounts as the identity basis for network policy makes it harder for an attacker to escalate network access by simply adding labels to a pod.
+Service account-based policies represent a stronger identity model than label-based policies because service accounts are more controlled - they are granted by the cluster operator rather than set freely in pod metadata. In a zero-trust cluster, using service accounts as the identity basis for network policy makes it harder for an attacker to escalate network access by simply adding labels to a pod.
 
 Calico's `projectcalico.org/v3` NetworkPolicy supports `serviceAccountSelector` in both the policy selector and the source/destination fields, enabling policies like "allow pods running as the `payment-processor` service account to reach the database." This ties network access to the Kubernetes RBAC identity of the workload.
 

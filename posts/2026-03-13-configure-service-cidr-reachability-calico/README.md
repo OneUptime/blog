@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, service-cidr, bgp, networking, kubernetes, routing
+Tags: Calico, Service-cidr, BGP, Networking, Kubernetes, Routing
 
 Description: Learn how to configure Calico to advertise Kubernetes Service CIDRs via BGP, making ClusterIP services reachable from outside the cluster without a load balancer.
 

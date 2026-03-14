@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Security, Networking, Troubleshooting
+Tags: RHEL, Firewalld, Security, Networking, Troubleshooting
 
 Description: Diagnose and fix firewalld startup failures on RHEL, restore firewall rules, and verify proper operation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Command Module, argv, DevOps
+Tags: Ansible, Command Module, Argv, DevOps
 
 Description: Learn how to use the argv parameter in Ansible command module to pass arguments safely as a list without shell interpretation.
 

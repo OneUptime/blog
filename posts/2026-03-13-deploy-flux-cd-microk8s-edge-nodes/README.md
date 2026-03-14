@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, MicroK8s, Kubernetes, Edge Computing, GitOps, Ubuntu, Snap
+Tags: Flux CD, MicroK8s, Kubernetes, Edge Computing, GitOps, Ubuntu
 
 Description: Configure Flux CD on MicroK8s for edge node deployments, leveraging MicroK8s addons and snap-based management for simplified operations.
 
@@ -10,7 +10,7 @@ Description: Configure Flux CD on MicroK8s for edge node deployments, leveraging
 
 ## Introduction
 
-MicroK8s is Canonical's lightweight Kubernetes distribution, distributed as a snap package on Ubuntu and Ubuntu Core. It is particularly popular for edge deployments on Ubuntu-based hardware — from industrial PCs to digital signage systems. MicroK8s has a unique addon system that provides one-command installation of common components, and its snap-based delivery ensures automatic security updates.
+MicroK8s is Canonical's lightweight Kubernetes distribution, distributed as a snap package on Ubuntu and Ubuntu Core. It is particularly popular for edge deployments on Ubuntu-based hardware - from industrial PCs to digital signage systems. MicroK8s has a unique addon system that provides one-command installation of common components, and its snap-based delivery ensures automatic security updates.
 
 Flux CD integrates naturally with MicroK8s, taking advantage of its addon ecosystem for observability and storage while providing GitOps-driven application management. The combination is especially powerful for organizations already using Ubuntu as their edge OS standard.
 

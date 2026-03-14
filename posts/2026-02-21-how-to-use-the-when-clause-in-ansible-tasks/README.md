@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, when Clause, Playbook, Task Control
+Tags: Ansible, Conditional, When Clause, Playbook, Task Control
 
 Description: Learn how to use the when clause in Ansible to control task execution with conditionals, facts, and variable-based logic.
 

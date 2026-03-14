@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Image Builder, composer-cli, Custom ISO, System Administration, Linux
+Tags: RHEL, Image Builder, Composer-cli, Custom ISO, System Administration, Linux
 
 Description: Use the composer-cli command-line tool to create custom RHEL ISO images with pre-installed packages, users, and configurations.
 

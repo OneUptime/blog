@@ -10,7 +10,7 @@ Description: Learn how to deploy Seldon Core ML model serving platform to Kubern
 
 ## Introduction
 
-Seldon Core is a production-grade platform for deploying machine learning models on Kubernetes. It supports multi-framework model serving (scikit-learn, TensorFlow, PyTorch, XGBoost), A/B testing, canary deployments, explainability, and outlier detection — all through Kubernetes custom resources. Deploying Seldon Core with Flux CD brings GitOps discipline to your model serving infrastructure.
+Seldon Core is a production-grade platform for deploying machine learning models on Kubernetes. It supports multi-framework model serving (scikit-learn, TensorFlow, PyTorch, XGBoost), A/B testing, canary deployments, explainability, and outlier detection - all through Kubernetes custom resources. Deploying Seldon Core with Flux CD brings GitOps discipline to your model serving infrastructure.
 
 Managing model deployments through Flux CD means that every model rollout, A/B test configuration, and serving infrastructure change is tracked in Git. Data scientists and MLOps engineers submit pull requests to deploy new model versions, and Flux automatically applies the changes. If a model degrades in production, reverting the Git commit rolls back the model deployment.
 

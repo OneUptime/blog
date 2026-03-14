@@ -12,7 +12,7 @@ Description: Deploy Keycloak identity provider with a PostgreSQL database backen
 
 Keycloak is the leading open-source identity and access management solution. It provides single sign-on (SSO), identity brokering, social login, user federation via LDAP/AD, and fine-grained authorization for modern applications. Organizations use Keycloak to centralize authentication across dozens of internal and customer-facing services.
 
-Running Keycloak on Kubernetes with a dedicated PostgreSQL backend—rather than the embedded H2 database—gives you production-grade reliability with proper connection pooling, transactions, and point-in-time recovery. Flux CD manages the entire stack declaratively: a version bump to Keycloak or PostgreSQL is a one-line change in Git that Flux rolls out safely.
+Running Keycloak on Kubernetes with a dedicated PostgreSQL backend-rather than the embedded H2 database-gives you production-grade reliability with proper connection pooling, transactions, and point-in-time recovery. Flux CD manages the entire stack declaratively: a version bump to Keycloak or PostgreSQL is a one-line change in Git that Flux rolls out safely.
 
 This guide deploys Keycloak in production mode using the Bitnami Helm chart, backed by a separate PostgreSQL release, both managed by Flux CD.
 

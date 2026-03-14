@@ -10,7 +10,7 @@ Description: On-call runbook for responding to calico-node CrashLoopBackOff aler
 
 ## Introduction
 
-This runbook guides on-call engineers through the response to a `CalicoNodeCrashLoopBackOff` alert. The calico-node DaemonSet is critical cluster infrastructure — when a pod enters CrashLoopBackOff, the affected node loses CNI functionality and new pods cannot be scheduled or receive network configuration. Rapid, structured response is essential.
+This runbook guides on-call engineers through the response to a `CalicoNodeCrashLoopBackOff` alert. The calico-node DaemonSet is critical cluster infrastructure - when a pod enters CrashLoopBackOff, the affected node loses CNI functionality and new pods cannot be scheduled or receive network configuration. Rapid, structured response is essential.
 
 The runbook is organized as a linear triage sequence. Each step narrows down the root cause. Once identified, jump to the corresponding fix section. The entire triage-to-fix sequence should complete within 15 minutes for well-understood failure modes.
 
@@ -32,14 +32,14 @@ Keep this runbook open alongside your incident management tool. Record the outpu
 
 ## Diagnosis Steps
 
-**Triage Step 1: Identify affected node(s) — run immediately**
+**Triage Step 1: Identify affected node(s) - run immediately**
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node \
   -o wide | grep -v "1/1"
 ```
 
-**Triage Step 2: Capture previous container log — do this before next restart clears it**
+**Triage Step 2: Capture previous container log - do this before next restart clears it**
 
 ```bash
 export NODE_NAME=<node-name>

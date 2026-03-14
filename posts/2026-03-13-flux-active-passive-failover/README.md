@@ -10,9 +10,9 @@ Description: Set up active-passive cluster failover managed by Flux CD, with aut
 
 ## Introduction
 
-Active-passive failover is the foundation of high availability for systems that cannot run in multiple active instances simultaneously — stateful databases, systems with leader election, or applications that require exclusive resource access. In this model, the primary cluster serves all traffic while a standby cluster remains synchronized but idle, ready to take over within minutes.
+Active-passive failover is the foundation of high availability for systems that cannot run in multiple active instances simultaneously - stateful databases, systems with leader election, or applications that require exclusive resource access. In this model, the primary cluster serves all traffic while a standby cluster remains synchronized but idle, ready to take over within minutes.
 
-Flux CD enables GitOps-driven active-passive failover by managing both clusters from the same repository. The standby cluster runs Flux, reconciles the same application definitions, but remains behind a DNS record that receives no traffic. When the primary fails, a single Git commit or script execution promotes the standby to primary — and Flux handles the rest.
+Flux CD enables GitOps-driven active-passive failover by managing both clusters from the same repository. The standby cluster runs Flux, reconciles the same application definitions, but remains behind a DNS record that receives no traffic. When the primary fails, a single Git commit or script execution promotes the standby to primary - and Flux handles the rest.
 
 This guide implements a complete active-passive setup with automated health monitoring, DNS-based traffic control, and a tested promotion procedure.
 
@@ -26,7 +26,7 @@ This guide implements a complete active-passive setup with automated health moni
 
 ## Step 1: Repository Structure for Active-Passive
 
-```
+```plaintext
 clusters/
   primary/           # Active cluster (us-east-1)
     flux-system/
@@ -222,7 +222,7 @@ echo "==> Primary will resume serving traffic as DNS health checks recover"
 
 ## Best Practices
 
-- Test the promotion script quarterly — undocumented procedures fail under pressure.
+- Test the promotion script quarterly - undocumented procedures fail under pressure.
 - Keep the standby running at 1 replica per service to validate health without serving traffic.
 - Use the same Docker image versions on both clusters at all times via GitOps.
 - Ensure database connection strings point at shared external state, not cluster-local databases.
@@ -231,4 +231,4 @@ echo "==> Primary will resume serving traffic as DNS health checks recover"
 
 ## Conclusion
 
-Active-passive failover with Flux CD combines the reliability of DNS-based traffic control with the consistency of GitOps-managed configuration. Both clusters always run the same application code because they reconcile from the same Git repository — only the scale and routing differ. When the primary fails, a single Git commit is all it takes to promote the standby to full production capacity.
+Active-passive failover with Flux CD combines the reliability of DNS-based traffic control with the consistency of GitOps-managed configuration. Both clusters always run the same application code because they reconcile from the same Git repository - only the scale and routing differ. When the primary fails, a single Git commit is all it takes to promote the standby to full production capacity.

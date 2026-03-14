@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on AWS EC2 runs Calico as a full CNI with complete IPAM, BGP routing, and network policy enforcement — unlike EKS where Calico operates in policy-only mode. This gives you access to all Calico features including IPIP/VXLAN encapsulation, BGP peering, and GlobalNetworkPolicy resources.
+Self-managed Kubernetes on AWS EC2 runs Calico as a full CNI with complete IPAM, BGP routing, and network policy enforcement - unlike EKS where Calico operates in policy-only mode. This gives you access to all Calico features including IPIP/VXLAN encapsulation, BGP peering, and GlobalNetworkPolicy resources.
 
 On AWS, IPIP encapsulation is required for cross-subnet pod-to-pod traffic unless you configure VPC routing tables to route pod CIDRs through EC2 instances. VXLAN is a simpler alternative that works reliably with AWS security groups without requiring additional VPC routing configuration.
 

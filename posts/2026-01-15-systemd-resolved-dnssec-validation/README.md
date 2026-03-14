@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DNSSEC, systemd, DNS, Security, Linux, Ubuntu
+Tags: DNSSEC, Systemd, DNS, Security, Linux, Ubuntu
 
 Description: A comprehensive guide to configuring DNSSEC validation in systemd-resolved to protect your Linux system from DNS spoofing and cache poisoning attacks.
 

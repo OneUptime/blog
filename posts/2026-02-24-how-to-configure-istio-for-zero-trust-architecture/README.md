@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Zero Trust, Security, mTLS, Service Mesh, Kubernetes
+Tags: Istio, Zero Trust, Security, MTLS, Service Mesh, Kubernetes
 
 Description: Step-by-step guide to implementing zero-trust security architecture in your Kubernetes cluster using Istio service mesh.
 

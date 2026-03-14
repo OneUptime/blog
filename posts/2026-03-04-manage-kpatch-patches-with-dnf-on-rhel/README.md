@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kpatch, DNF, Patching, Security
+Tags: RHEL, Kpatch, DNF, Patching, Security
 
 Description: Use DNF to search, install, update, and manage kpatch kernel live patches on RHEL, integrating live patching into your standard package management workflow.
 

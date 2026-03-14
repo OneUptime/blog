@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Troubleshooting
+Tags: Calico, Kubernetes, DNS, Node-cache, Troubleshooting
 
 Description: Diagnose and fix NodeLocal DNSCache issues in Calico clusters, including cache pod failures, policy conflicts, and DNS resolution failures affecting workloads.
 

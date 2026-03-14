@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, gRPC, Version Conflicts
+Tags: OpenTelemetry, Python, GRPC, Version Conflicts
 
 Description: Resolve silent gRPC instrumentation failures caused by version mismatches between grpcio and the OpenTelemetry gRPC instrumentation package.
 

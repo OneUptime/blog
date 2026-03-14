@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Zero Trust, Security, mTLS, Authorization, Service Mesh
+Tags: Istio, Zero Trust, Security, MTLS, Authorization, Service Mesh
 
 Description: A practical guide to implementing zero-trust networking principles with Istio including identity verification, encryption, and fine-grained access control.
 

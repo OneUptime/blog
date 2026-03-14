@@ -10,7 +10,7 @@ Description: A complete guide to configuring Calico networking on AWS self-manag
 
 ## Introduction
 
-Configuring Calico networking on AWS requires careful alignment between Calico's IP address management, pod CIDR ranges, and AWS VPC routing. Unlike managed EKS where CNI configuration is abstracted away, self-managed Kubernetes on AWS gives you full control over how Calico integrates with your VPC network — but also requires you to make explicit choices about routing modes, IP pool sizes, and cross-AZ traffic handling.
+Configuring Calico networking on AWS requires careful alignment between Calico's IP address management, pod CIDR ranges, and AWS VPC routing. Unlike managed EKS where CNI configuration is abstracted away, self-managed Kubernetes on AWS gives you full control over how Calico integrates with your VPC network - but also requires you to make explicit choices about routing modes, IP pool sizes, and cross-AZ traffic handling.
 
 AWS offers two primary integration patterns for Calico: overlay networking (VXLAN or IP-in-IP) which works out of the box with AWS security groups, and native routing mode which requires configuring AWS VPC routes for Calico pod CIDRs. Native routing provides better performance by eliminating encapsulation overhead but requires more configuration.
 
@@ -68,7 +68,7 @@ spec:
   nodeSelector: all()
 ```
 
-`CrossSubnet` mode uses encapsulation only for cross-subnet traffic (cross-AZ), and native routing within the same subnet — the ideal tradeoff for AWS.
+`CrossSubnet` mode uses encapsulation only for cross-subnet traffic (cross-AZ), and native routing within the same subnet - the ideal tradeoff for AWS.
 
 ## Step 3: Configure AWS Security Groups
 

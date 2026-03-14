@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, cost-management, kubernetes, finops, gitops, opencost
+Tags: Flux-cd, Cost-Management, Kubernetes, FinOps, GitOps, Opencost
 
 Description: Learn how to generate cost reports for Flux CD-managed deployments using OpenCost and Prometheus, enabling FinOps visibility into GitOps-driven infrastructure.
 
@@ -12,7 +12,7 @@ Description: Learn how to generate cost reports for Flux CD-managed deployments 
 
 Understanding the cost of individual deployments is crucial for engineering teams practicing FinOps. When you manage dozens or hundreds of applications through Flux CD, it can be challenging to attribute Kubernetes resource costs to specific deployments, teams, or GitOps sources. Cost visibility enables teams to optimize resource requests, identify wasteful workloads, and make informed decisions about scaling.
 
-OpenCost is the open-source standard for Kubernetes cost monitoring. When combined with Flux CD labels and annotations, you can break down costs by Flux Kustomization, HelmRelease, or GitRepository source—giving you direct visibility into how much each GitOps-managed deployment costs per hour, day, or month.
+OpenCost is the open-source standard for Kubernetes cost monitoring. When combined with Flux CD labels and annotations, you can break down costs by Flux Kustomization, HelmRelease, or GitRepository source-giving you direct visibility into how much each GitOps-managed deployment costs per hour, day, or month.
 
 This guide covers deploying OpenCost via Flux, configuring cost allocation by Flux deployment labels, and querying cost reports for specific deployments.
 

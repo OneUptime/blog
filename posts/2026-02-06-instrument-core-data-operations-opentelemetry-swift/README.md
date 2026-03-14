@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, Core Data, iOS, Database, Tracing
+Tags: OpenTelemetry, Swift, Core Data, IOS, Database, Tracing
 
 Description: Learn how to instrument Core Data operations in Swift with OpenTelemetry to track database performance, identify slow queries, and understand data access patterns in your iOS applications.
 

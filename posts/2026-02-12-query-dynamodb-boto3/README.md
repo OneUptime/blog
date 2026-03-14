@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DynamoDB, boto3, Python
+Tags: AWS, DynamoDB, Boto3, Python
 
 Description: A comprehensive guide to querying DynamoDB tables using Boto3 in Python, covering key conditions, filters, pagination, indexes, and performance optimization.
 

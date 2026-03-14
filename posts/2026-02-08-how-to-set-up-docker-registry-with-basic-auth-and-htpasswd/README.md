@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Registry, Authentication, htpasswd, Security, Self-Hosted, Basic Auth
+Tags: Docker, Docker Registry, Authentication, Htpasswd, Security, Self-Hosted, Basic Auth
 
 Description: Secure your private Docker registry with HTTP Basic Authentication using htpasswd for simple, effective access control.
 

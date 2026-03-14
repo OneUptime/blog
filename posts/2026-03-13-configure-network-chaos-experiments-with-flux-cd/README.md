@@ -221,4 +221,4 @@ kubectl top pods -n default
 
 ## Conclusion
 
-Network chaos experiments reveal how your services behave when the network becomes unreliable — the most realistic failure mode in cloud-native environments. Managing these experiments through Flux CD ensures they are part of your engineering record, automatically reconciled, and applied consistently across environments, turning ad-hoc network testing into a repeatable discipline.
+Network chaos experiments reveal how your services behave when the network becomes unreliable - the most realistic failure mode in cloud-native environments. Managing these experiments through Flux CD ensures they are part of your engineering record, automatically reconciled, and applied consistently across environments, turning ad-hoc network testing into a repeatable discipline.

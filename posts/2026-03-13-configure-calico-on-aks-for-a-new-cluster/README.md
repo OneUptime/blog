@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, azure, aks, kubernetes, networking, cni
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, AKS, Azure
 
 Description: A step-by-step guide to deploying Calico as the network policy engine on a new Azure Kubernetes Service cluster, enabling advanced network policies beyond what Azure CNI provides natively.
 
@@ -10,7 +10,7 @@ Description: A step-by-step guide to deploying Calico as the network policy engi
 
 ## Introduction
 
-Azure Kubernetes Service supports Calico as a network policy provider alongside Azure CNI. While Azure CNI handles pod networking and IP address assignment using Azure VNet IPs, Calico enforces network policies using its powerful policy engine — giving you access to GlobalNetworkPolicies, host endpoint policies, and other Calico features not available with Azure's native policy implementation.
+Azure Kubernetes Service supports Calico as a network policy provider alongside Azure CNI. While Azure CNI handles pod networking and IP address assignment using Azure VNet IPs, Calico enforces network policies using its powerful policy engine - giving you access to GlobalNetworkPolicies, host endpoint policies, and other Calico features not available with Azure's native policy implementation.
 
 This combination is popular for teams that need the VNet integration of Azure CNI with the policy richness of Calico. AKS can provision Calico automatically during cluster creation, making it straightforward to deploy.
 

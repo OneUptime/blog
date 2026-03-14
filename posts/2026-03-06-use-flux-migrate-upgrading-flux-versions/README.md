@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Migrate, Upgrade, Version-management
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Migrate, Upgrade, Version-management
 
 Description: Learn how to use the flux migrate command to safely upgrade between Flux CD versions and migrate deprecated API resources.
 

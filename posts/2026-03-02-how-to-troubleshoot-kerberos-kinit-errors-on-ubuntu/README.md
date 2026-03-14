@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kerberos, Troubleshooting, Authentication, kinit
+Tags: Ubuntu, Kerberos, Troubleshooting, Authentication, Kinit
 
 Description: Diagnose and fix common kinit errors on Ubuntu, including clock skew, KDC unreachable, invalid credentials, and encryption type mismatches.
 

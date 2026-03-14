@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Open Source, Community, Contributing, GitHub, CNI
+Tags: Calico, Kubernetes, Open Source, Community, Contributing
 
 Description: A guide to contributing to and working with the Calico open source community, covering the project structure, contribution workflows, issue reporting, and community resources.
 
@@ -25,7 +25,7 @@ The Calico project is maintained by Tigera and the open source community on GitH
 
 The Calico project is organized as a monorepo at `github.com/projectcalico/calico`:
 
-```
+```plaintext
 calico/
 ├── felix/          # The Felix agent (Go)
 ├── node/           # calico/node container (Felix + BIRD + confd)
@@ -102,7 +102,7 @@ graph LR
     Fork[Fork repo on GitHub] --> Clone[Clone your fork]
     Clone --> Branch[Create feature branch]
     Branch --> Code[Make changes + tests]
-    Code --> CI[Push — triggers CI]
+    Code --> CI[Push - triggers CI]
     CI --> PR[Open Pull Request]
     PR --> Review[Code review by maintainers]
     Review --> Merge[Merge to main]
@@ -145,11 +145,11 @@ Roadmap discussions happen in GitHub Issues with the `roadmap` label and in comm
 
 ## Best Practices
 
-- Join the Calico Slack community before filing your first issue — many questions are answered faster in Slack
-- Reproduce the issue on the latest Calico release before filing — the bug may already be fixed
+- Join the Calico Slack community before filing your first issue - many questions are answered faster in Slack
+- Reproduce the issue on the latest Calico release before filing - the bug may already be fixed
 - For large features, open a design issue first to discuss the approach before writing code
 - Read the contribution guide at `github.com/projectcalico/calico/blob/master/CONTRIBUTING.md` before your first PR
 
 ## Conclusion
 
-The Calico open source community follows standard GitHub-based workflows with specific conventions around DCO sign-off, testing requirements, and secure vulnerability reporting. Engaging effectively means searching issues before filing, providing complete version information and reproduction steps, and participating in design discussions before writing large features. The community is active and responsive — contributing to Calico is an effective way to influence the direction of one of Kubernetes' most widely-used CNI plugins.
+The Calico open source community follows standard GitHub-based workflows with specific conventions around DCO sign-off, testing requirements, and secure vulnerability reporting. Engaging effectively means searching issues before filing, providing complete version information and reproduction steps, and participating in design discussions before writing large features. The community is active and responsive - contributing to Calico is an effective way to influence the direction of one of Kubernetes' most widely-used CNI plugins.

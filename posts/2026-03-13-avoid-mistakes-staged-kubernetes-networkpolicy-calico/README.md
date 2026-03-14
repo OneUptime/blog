@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Staged Policies, Kubernetes
+Tags: Calico, Kubernetes, Network Policy, Staged Policies
 
 Description: Avoid the most common pitfalls when implementing Staged Kubernetes NetworkPolicy in Calico.
 

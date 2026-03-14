@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, cli_parse, Network Automation, Parsing
+Tags: Ansible, Cli_parse, Network Automation, Parsing
 
 Description: Master the Ansible cli_parse module to run commands and parse output in a single task using multiple parsing engines like TextFSM, TTP, and pyATS.
 

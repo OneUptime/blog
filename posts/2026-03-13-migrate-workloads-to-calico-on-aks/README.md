@@ -1,10 +1,10 @@
-# Migrate Workloads to Calico on AKS
+# How to Migrate Existing Workloads to Calico on AKS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, AKS, Azure, Kubernetes, Networking, Migration, Network Policy
+Tags: Calico, Kubernetes, Networking, Migration, AKS, Azure
 
-Description: Learn how to enable Calico network policy on Azure Kubernetes Service (AKS) and migrate existing workloads to leverage Calico's advanced policy enforcement capabilities.
+Description: Migrate existing AKS workloads to Calico network policy enforcement for improved security.
 
 ---
 

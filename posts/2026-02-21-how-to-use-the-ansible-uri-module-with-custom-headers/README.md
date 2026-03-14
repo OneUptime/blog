@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HTTP Headers, uri Module, API
+Tags: Ansible, HTTP Headers, Uri Module, API
 
 Description: Learn how to set custom HTTP headers in Ansible uri module requests for authentication, content negotiation, and API versioning.
 

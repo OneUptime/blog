@@ -12,7 +12,7 @@ Description: Understand and monitor Calico's BlockAffinity resources that contro
 
 Calico IPAM uses a concept called "block affinity" to manage how IP address blocks from IP pools are assigned to nodes. Each node is given affinity to one or more blocks (subnets of configurable size, default /26), and pods on that node receive IPs from its affiliated blocks. BlockAffinity resources in the Calico datastore track these assignments.
 
-Understanding block affinity behavior is critical for diagnosing IP allocation failures, understanding why certain nodes have high or low IP utilization, and planning IP pool capacity. Problems with block affinity — such as blocks not being released after node deletion or allocation failures due to fragmented pools — can lead to pod scheduling failures that are difficult to diagnose without understanding the underlying IPAM model.
+Understanding block affinity behavior is critical for diagnosing IP allocation failures, understanding why certain nodes have high or low IP utilization, and planning IP pool capacity. Problems with block affinity - such as blocks not being released after node deletion or allocation failures due to fragmented pools - can lead to pod scheduling failures that are difficult to diagnose without understanding the underlying IPAM model.
 
 This guide covers monitoring BlockAffinity resources in Calico, interpreting allocation patterns, and identifying and resolving common block affinity issues.
 

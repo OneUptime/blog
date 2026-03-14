@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Privilege Escalation, sudo, DevOps, Security
+Tags: Ansible, Privilege Escalation, Sudo, DevOps, Security
 
 Description: Use become_flags in Ansible to pass custom options to sudo, su, and other privilege escalation methods
 

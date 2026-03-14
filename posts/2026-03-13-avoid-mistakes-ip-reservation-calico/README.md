@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, ip-reservation, kubernetes, networking, static-ip
+Tags: Calico, IPAM, Ip-reservation, Kubernetes, Networking, Static-ip
 
-Description: Learn how to correctly reserve specific IP addresses in Calico IPAM to prevent conflicts with infrastructure services, load balancers, and monitoring systems — and avoid the common mistakes that lead to silent IP conflicts.
+Description: Learn how to correctly reserve specific IP addresses in Calico IPAM to prevent conflicts with infrastructure services, load balancers, and monitoring systems - and avoid the common mistakes that...
 
 ---
 
 ## Introduction
 
-In most Kubernetes clusters, there are IP addresses within the pod CIDR range that must not be assigned to pods — reserved for infrastructure services, monitoring probes, network appliances, or legacy systems that already use those IPs. Without proper IP reservation in Calico, these addresses may be assigned to pods, causing silent IP conflicts that manifest as intermittent connectivity failures.
+In most Kubernetes clusters, there are IP addresses within the pod CIDR range that must not be assigned to pods - reserved for infrastructure services, monitoring probes, network appliances, or legacy systems that already use those IPs. Without proper IP reservation in Calico, these addresses may be assigned to pods, causing silent IP conflicts that manifest as intermittent connectivity failures.
 
 Calico provides IP reservation through the `IPAMConfig` resource and the `calicoctl ipam` command, but using it incorrectly leads to reservations not being honored or causing unexpected IPAM behavior. This guide covers the correct approach.
 

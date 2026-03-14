@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, zswap, Memory, Performance, Kernel
+Tags: Ubuntu, Zswap, Memory, Performance, Kernel
 
 Description: Enable and configure zswap on Ubuntu to compress swap pages in RAM before writing to disk, reducing I/O and improving system responsiveness under memory pressure.
 

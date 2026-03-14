@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Connectivity, Testing, eBPF
+Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
 
 Description: Understand the Cilium connectivity test suite in depth, learn what each test validates, how to customize the test run, and how to interpret failures to pinpoint Cilium configuration issues.
 
@@ -12,7 +12,7 @@ Description: Understand the Cilium connectivity test suite in depth, learn what 
 
 The `cilium connectivity test` command is the most comprehensive automated validation tool available for a Cilium deployment. It deploys a set of test pods and services in a dedicated namespace, then executes dozens of test scenarios that cover all aspects of Cilium networking: basic pod-to-pod connectivity, service connectivity, L7 policy enforcement, FQDN policy, egress connectivity, cross-namespace traffic, node-to-pod connectivity, and performance benchmarks.
 
-What makes the connectivity test particularly powerful is that it doesn't just test whether traffic flows — it validates that Cilium's specific features are working correctly. Tests for network policy enforcement check that allowed traffic passes and denied traffic is blocked. Tests for load balancing verify that service traffic reaches the correct backends. Tests for kube-proxy replacement confirm that ClusterIP, NodePort, and HostPort services all work without kube-proxy. Running these tests after any significant Cilium change or cluster upgrade gives you confidence that nothing is broken.
+What makes the connectivity test particularly powerful is that it doesn't just test whether traffic flows - it validates that Cilium's specific features are working correctly. Tests for network policy enforcement check that allowed traffic passes and denied traffic is blocked. Tests for load balancing verify that service traffic reaches the correct backends. Tests for kube-proxy replacement confirm that ClusterIP, NodePort, and HostPort services all work without kube-proxy. Running these tests after any significant Cilium change or cluster upgrade gives you confidence that nothing is broken.
 
 This guide explains the connectivity test architecture, how to run targeted tests, how to interpret failures, and how to extend the suite with custom scenarios.
 
@@ -128,4 +128,4 @@ flowchart TD
 
 ## Conclusion
 
-The Cilium connectivity test suite is a complete functional regression test for Cilium networking. Running it after every Cilium upgrade, configuration change, or major deployment is a best practice that catches regressions before they affect production workloads. The targeted test options (`--test "policy"`) let you quickly validate specific subsystems without running the full suite. When tests fail, the verbose output combined with Hubble flow observation gives you the information needed to diagnose the root cause — whether a policy misconfiguration, a missing feature flag, or a data plane issue introduced by a kernel version change.
+The Cilium connectivity test suite is a complete functional regression test for Cilium networking. Running it after every Cilium upgrade, configuration change, or major deployment is a best practice that catches regressions before they affect production workloads. The targeted test options (`--test "policy"`) let you quickly validate specific subsystems without running the full suite. When tests fail, the verbose output combined with Hubble flow observation gives you the information needed to diagnose the root cause - whether a policy misconfiguration, a missing feature flag, or a data plane issue introduced by a kernel version change.

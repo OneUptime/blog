@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Performance, Load Balancing, Service Mesh
+Tags: Istio, GRPC, Performance, Load Balancing, Service Mesh
 
 Description: Configuration and optimization strategies for running gRPC services efficiently within an Istio service mesh.
 

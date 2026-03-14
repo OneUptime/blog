@@ -10,7 +10,7 @@ Description: Learn how to configure and monitor IP address reservations in Calic
 
 ## Introduction
 
-Calico IPAM's IP reservation feature allows you to exclude specific IP addresses or ranges from pod allocation. This is essential in environments where certain IPs within a Calico IP pool CIDR are already in use by infrastructure services — such as load balancers, gateways, monitoring agents, or reserved cloud provider IPs — that cannot be reallocated.
+Calico IPAM's IP reservation feature allows you to exclude specific IP addresses or ranges from pod allocation. This is essential in environments where certain IPs within a Calico IP pool CIDR are already in use by infrastructure services - such as load balancers, gateways, monitoring agents, or reserved cloud provider IPs - that cannot be reallocated.
 
 Without proper IP reservations, Calico may assign a pod the same IP as an existing infrastructure service, causing IP conflicts that lead to unreachable services, ARP poisoning, or network instability. Monitoring IP reservations ensures they remain in place and that the reserved IPs are not accidentally allocated as the cluster scales.
 

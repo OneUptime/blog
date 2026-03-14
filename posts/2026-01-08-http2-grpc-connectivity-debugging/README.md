@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, gRPC, HTTP, Debugging, Troubleshooting, TLS, Ingresses, DevOps, Networking
+Tags: Kubernetes, GRPC, HTTP, Debugging, Troubleshooting, TLS, Ingresses, DevOps, Networking
 
 Description: A comprehensive guide to debugging HTTP/2 and gRPC connectivity issues in Kubernetes using grpcurl, grpc-health-probe, and other diagnostic tools.
 

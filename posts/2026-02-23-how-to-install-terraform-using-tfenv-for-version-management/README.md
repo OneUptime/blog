@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, tfenv, Version Management, DevOps, Installation, Infrastructure as Code
+Tags: Terraform, Tfenv, Version Management, DevOps, Installation, Infrastructure as Code
 
 Description: Learn how to install and use tfenv to manage multiple Terraform versions on your system with automatic version switching per project.
 

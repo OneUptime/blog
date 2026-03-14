@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Apache, mod_rewrite, Web Server, URL
+Tags: Ubuntu, Apache, Mod_rewrite, Web Server, URL
 
 Description: A practical guide to Apache mod_rewrite on Ubuntu covering rules, conditions, flags, and real-world examples for redirects, clean URLs, and HTTPS enforcement.
 

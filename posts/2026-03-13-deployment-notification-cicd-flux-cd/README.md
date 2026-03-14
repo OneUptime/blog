@@ -1,8 +1,8 @@
-# How to Implement Deployment Notification in CI/CD with Flux CD
+# Deployment Notification in CI/CD with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Notifications, Slack, PagerDuty, CI/CD, GitOps, Alerting, Kubernetes
+Tags: Flux CD, Notifications, Slack, CI/CD, GitOps, Kubernetes, Alerting
 
 Description: Learn how to configure Flux CD's Notification Controller to send deployment status alerts to Slack, PagerDuty, Microsoft Teams, and other channels.
 

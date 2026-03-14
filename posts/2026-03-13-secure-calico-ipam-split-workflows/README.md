@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Security, RBAC, Networking, IP Pools, CNI
+Tags: Calico, Kubernetes, Networking, IPAM
 
 Description: Secure Calico IPAM split operations by restricting who can modify IP pools, audit-logging all IPAM changes, and preventing accidental deletion of active pools using RBAC and admission controls.
 
@@ -37,7 +37,7 @@ kind: ClusterRole
 metadata:
   name: calico-ipam-operator
 rules:
-  # Full IPAM pool management — assign only to IPAM operators
+  # Full IPAM pool management - assign only to IPAM operators
   - apiGroups: ["crd.projectcalico.org"]
     resources:
       - ippools
@@ -105,7 +105,7 @@ kubectl auth can-i delete ippools.crd.projectcalico.org \
 Configure the Kubernetes audit policy to record all IPPool create, update, patch, and delete operations:
 
 ```yaml
-# In /etc/kubernetes/audit-policy.yaml — add before the catch-all rule
+# In /etc/kubernetes/audit-policy.yaml - add before the catch-all rule
 # Records all modifications to Calico IPPool resources
 - level: Request
   resources:
@@ -192,16 +192,16 @@ echo "     Run: calicoctl delete ippool $POOL_NAME"
 ## Best Practices
 
 - Restrict `delete` verb on `ippools` to a named IPAM operator role; not even cluster-admin accounts used daily should have this permission.
-- Always disable a pool before deleting it — disabling first prevents new allocations and makes the deletion a two-step process that is harder to perform accidentally.
+- Always disable a pool before deleting it - disabling first prevents new allocations and makes the deletion a two-step process that is harder to perform accidentally.
 - Require two-person review (four-eyes principle) for all IPPool deletions in production.
 - Retain IPPool audit log entries for at least 90 days to support incident investigations.
-- Use `calicoctl ipam check` as part of the audit trail — run it before and after every IPAM change and record the output in your change management system.
+- Use `calicoctl ipam check` as part of the audit trail - run it before and after every IPAM change and record the output in your change management system.
 
 ---
 
 ## Conclusion
 
-Securing IPAM splits requires restricting write access to a small, named group of operators, logging every modification for audit purposes, and establishing a process gate — pool disablement before deletion — that prevents accidental data loss. These controls make IPAM operations auditable and reversible.
+Securing IPAM splits requires restricting write access to a small, named group of operators, logging every modification for audit purposes, and establishing a process gate - pool disablement before deletion - that prevents accidental data loss. These controls make IPAM operations auditable and reversible.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, vLLM, LLM, Large Language Models, GPU, MLOps
+Tags: Flux CD, Kubernetes, GitOps, VLLM, LLM, Large Language Models, GPU, MLOps
 
 Description: Deploy vLLM LLM inference server to Kubernetes using Flux CD for high-throughput large language model serving with PagedAttention.
 
@@ -219,7 +219,7 @@ curl http://<vllm-svc-ip>:8000/v1/chat/completions \
 - Use a PVC for the Hugging Face model cache (`HF_HOME`) so model weights are not re-downloaded on every pod restart.
 - For large models requiring multiple GPUs, set `--tensor-parallel-size` equal to the number of GPUs and request that many `nvidia.com/gpu` resources.
 - Use AWQ or GPTQ quantization (`--quantization awq`) to serve larger models on fewer GPUs without significant quality loss.
-- Set generous `initialDelaySeconds` on probes — model loading can take several minutes for large weights.
+- Set generous `initialDelaySeconds` on probes - model loading can take several minutes for large weights.
 - Use Flux image update automation to automatically roll out new vLLM container releases from your registry.
 
 ## Conclusion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dm-crypt, Block Device Encryption, cryptsetup, Security, Linux
+Tags: RHEL, Dm-crypt, Block Device Encryption, Cryptsetup, Security, Linux
 
 Description: Use dm-crypt directly on RHEL 9 for low-level block device encryption without the LUKS header, useful for specific use cases like encrypted swap and temporary volumes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Distributed Switch, Networking, vSphere
+Tags: Ansible, VMware, Distributed Switch, Networking, VSphere
 
 Description: Learn how to create and manage VMware distributed virtual switches with Ansible for centralized network management across ESXi hosts.
 

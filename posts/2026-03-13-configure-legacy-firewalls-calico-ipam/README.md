@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, firewall, networking, kubernetes, enterprise
+Tags: Calico, IPAM, Firewall, Networking, Kubernetes, Enterprise
 
 Description: Learn how to integrate Calico IPAM with legacy enterprise firewalls by controlling IP allocation to ensure pod IPs fall within firewall-approved ranges.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Service Mesh, mTLS, istioctl, Troubleshooting
+Tags: GCP, Cloud Service Mesh, MTLS, Istioctl, Troubleshooting
 
 Description: A practical troubleshooting guide for diagnosing and fixing mutual TLS issues in Cloud Service Mesh using istioctl commands and Envoy proxy debugging techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, aks, ipam, cni, networking, ip-management
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A guide to configuring Azure CNI Delegated IPAM with Cilium on AKS, giving Cilium control over pod IP address management while retaining Azure VNet integration.
 
@@ -152,7 +152,7 @@ cilium endpoint list
 - Use `/24` per-node blocks to balance address utilization and route table size
 - Monitor Cilium IPAM metrics (`cilium_ipam_*`) for address exhaustion alerts
 - Enable Hubble to trace IPAM-related connectivity issues
-- Review Azure IP limits per VM SKU — larger nodes can hold more Cilium IP pools
+- Review Azure IP limits per VM SKU - larger nodes can hold more Cilium IP pools
 
 ## Conclusion
 

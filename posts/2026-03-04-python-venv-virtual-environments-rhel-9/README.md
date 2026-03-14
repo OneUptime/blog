@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Python, venv, Virtual Environments, Linux, Development
+Tags: RHEL, Python, Venv, Virtual Environments, Linux, Development
 
 Description: A practical guide to creating and managing Python virtual environments on RHEL using the built-in venv module, keeping your projects isolated and your system Python clean.
 

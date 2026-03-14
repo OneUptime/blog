@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, journalctl, Logging, Linux
+Tags: Ubuntu, Systemd, Journalctl, Logging, Linux
 
 Description: Use journalctl on Ubuntu to view, filter, and search systemd service logs by service name, time range, priority level, and other criteria for effective log analysis.
 

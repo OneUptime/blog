@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, screen, Terminal, Linux, System Administration
+Tags: Ubuntu, Screen, Terminal, Linux, System Administration
 
 Description: Learn how to use GNU screen on Ubuntu to run persistent terminal sessions, manage multiple windows, and keep processes running after disconnecting from SSH.
 

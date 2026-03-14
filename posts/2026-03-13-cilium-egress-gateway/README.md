@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Egress, eBPF
+Tags: Cilium, Kubernetes, Networking, Egress, EBPF
 
 Description: Configure Cilium Egress Gateway to route pod egress traffic through dedicated gateway nodes with stable IP addresses, enabling external firewall rules based on predictable source IPs.
 

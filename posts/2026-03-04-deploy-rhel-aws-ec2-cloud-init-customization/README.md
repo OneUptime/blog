@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AWS, EC2, cloud-init, Cloud, Automation, Linux
+Tags: RHEL, AWS, EC2, Cloud-init, Cloud, Automation, Linux
 
 Description: Deploy RHEL instances on AWS EC2 with cloud-init user data to automate initial configuration, package installation, and service setup at launch.
 

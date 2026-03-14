@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Neptune, Graph Database, Serverless, Gremlin, openCypher
+Tags: AWS, Neptune, Graph Database, Serverless, Gremlin, OpenCypher
 
 Description: Set up Amazon Neptune Serverless for graph database workloads that need automatic scaling without the overhead of managing instance sizes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Storage, Performance, hdparm, Disk Management
+Tags: Ubuntu, Storage, Performance, Hdparm, Disk Management
 
 Description: Use hdparm on Ubuntu to query disk parameters, measure read performance, tune power management settings, and configure advanced features on ATA/SATA drives.
 

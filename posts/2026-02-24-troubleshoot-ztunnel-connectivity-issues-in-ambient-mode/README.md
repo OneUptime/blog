@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, ztunnel, Troubleshooting, Kubernetes
+Tags: Istio, Ambient Mode, Ztunnel, Troubleshooting, Kubernetes
 
 Description: A practical troubleshooting guide for diagnosing and fixing ztunnel connectivity issues in Istio ambient mode with real commands and solutions.
 

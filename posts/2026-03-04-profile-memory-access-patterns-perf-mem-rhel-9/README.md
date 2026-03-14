@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, perf, Memory, Performance, Profiling, NUMA, Linux
+Tags: RHEL, Perf, Memory, Performance, Profiling, NUMA, Linux
 
 Description: Learn how to use perf mem on RHEL to profile memory access patterns and identify cache misses and NUMA issues.
 

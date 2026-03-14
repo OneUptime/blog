@@ -10,7 +10,7 @@ Description: A practical guide for explaining Calico's L2 overlay networking (VX
 
 ## Introduction
 
-Explaining L2 overlay networking to a team requires making encapsulation intuitive. Most developers understand sending a letter in an envelope — overlay networking is just putting one envelope inside another. The inner envelope has the pod addresses; the outer envelope has the node addresses that the network knows how to route.
+Explaining L2 overlay networking to a team requires making encapsulation intuitive. Most developers understand sending a letter in an envelope - overlay networking is just putting one envelope inside another. The inner envelope has the pod addresses; the outer envelope has the node addresses that the network knows how to route.
 
 This post gives you the analogies, diagrams, and live demonstrations to explain Calico's L2 interconnect to teams with varying networking backgrounds.
 
@@ -24,7 +24,7 @@ This post gives you the analogies, diagrams, and live demonstrations to explain 
 
 Start with this analogy:
 
-> "Imagine you want to send a letter to someone who lives in an apartment building, but the postal service only knows about building addresses — not apartment numbers. You put your letter (addressed to Apartment 5B) inside another envelope addressed to the building. The post office delivers the outer envelope to the building; the building's lobby handles getting your letter to Apartment 5B."
+> "Imagine you want to send a letter to someone who lives in an apartment building, but the postal service only knows about building addresses - not apartment numbers. You put your letter (addressed to Apartment 5B) inside another envelope addressed to the building. The post office delivers the outer envelope to the building; the building's lobby handles getting your letter to Apartment 5B."
 
 In Kubernetes overlay networking:
 - **Inner envelope**: Pod IP to Pod IP (the actual application traffic)
@@ -44,7 +44,7 @@ kubectl exec pod-on-node-1 -- wget -qO- http://<pod-on-node-2>
 ```
 
 Expected output:
-```
+```plaintext
 10:23:45.123 IP 172.16.1.1 > 172.16.2.1: VXLAN, vni 4096
     IP 10.0.1.4 > 10.0.2.5: TCP 80
 ```
@@ -55,7 +55,7 @@ Point out: "Two IP addresses in one packet. Outer: node IPs the network knows. I
 
 For developers who want to know why this matters for their applications:
 
-> "The overlay is transparent to your application. Your pod thinks it's talking directly to another pod's IP. The encapsulation happens below the socket layer — your Go, Python, or Java code doesn't know or care about VXLAN."
+> "The overlay is transparent to your application. Your pod thinks it's talking directly to another pod's IP. The encapsulation happens below the socket layer - your Go, Python, or Java code doesn't know or care about VXLAN."
 
 The only thing developers might notice: slightly higher network latency (a few microseconds for encap/decap) and a reduced effective MTU. If they're sending very large application messages (close to 64KB), they may need to consider the MTU impact.
 
@@ -65,7 +65,7 @@ Network engineers who manage the underlay infrastructure need to know:
 
 1. **VXLAN uses UDP/4789**: Ensure your firewall/security group rules allow UDP port 4789 between all nodes in the cluster
 2. **IP-in-IP uses protocol 4**: If using IP-in-IP, ensure IP protocol 4 is allowed between nodes
-3. **MTU planning**: The encapsulation reduces the effective payload MTU — coordinate with the application team on expected message sizes
+3. **MTU planning**: The encapsulation reduces the effective payload MTU - coordinate with the application team on expected message sizes
 
 Show the comparison:
 
@@ -95,14 +95,14 @@ The VXLAN FDB is programmed by Felix and should have one entry per remote node. 
 ## Common Questions
 
 **Q: Does the overlay add a lot of latency?**
-A: The encapsulation/decapsulation is done in kernel space and adds ~5-15 microseconds per round trip — imperceptible for most applications.
+A: The encapsulation/decapsulation is done in kernel space and adds ~5-15 microseconds per round trip - imperceptible for most applications.
 
 **Q: Why not just use BGP instead of overlays?**
 A: BGP requires your network fabric to support and accept BGP sessions from Kubernetes nodes. Cloud VPC networks typically don't support this. Overlays work with any network that can route UDP traffic between VMs.
 
 ## Best Practices
 
-- Show the `tcpdump` encapsulation demo to any team member who will be troubleshooting network connectivity — seeing the double IP header makes debugging much clearer
+- Show the `tcpdump` encapsulation demo to any team member who will be troubleshooting network connectivity - seeing the double IP header makes debugging much clearer
 - Document which overlay mode is configured in your cluster in the team wiki
 - Include the required firewall ports (UDP 4789 for VXLAN) in your cluster provisioning runbook
 

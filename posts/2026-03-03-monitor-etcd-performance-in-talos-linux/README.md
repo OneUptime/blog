@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Kubernetes, Monitoring, Performance
+Tags: Talos Linux, Etcd, Kubernetes, Monitoring, Performance
 
 Description: Learn how to monitor etcd performance metrics in Talos Linux to keep your Kubernetes cluster healthy and responsive.
 

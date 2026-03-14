@@ -35,7 +35,7 @@ graph TD
     C --> G[Existing pods unaffected if already running]
 ```
 
-Existing running pods are unaffected by registry outages — the image is already on the node. Only new pod scheduling fails. This means a registry outage during stable operation is less critical than during a deployment.
+Existing running pods are unaffected by registry outages - the image is already on the node. Only new pod scheduling fails. This means a registry outage during stable operation is less critical than during a deployment.
 
 ## Step 2: Configure Image Pull Policies to Reduce Registry Dependency
 
@@ -58,7 +58,7 @@ spec:
           imagePullPolicy: IfNotPresent
 ```
 
-Avoid `imagePullPolicy: Always` in production — it requires registry access on every pod start.
+Avoid `imagePullPolicy: Always` in production - it requires registry access on every pod start.
 
 ## Step 3: Set Up a Registry Mirror with Pull-Through Cache
 
@@ -177,7 +177,7 @@ spec:
 
 - Use `imagePullPolicy: IfNotPresent` for all production workloads.
 - Run a pull-through cache (Harbor or Nexus) as an internal registry mirror.
-- Automate ECR token refresh — 12-hour expiry causes predictable 2 AM incidents.
+- Automate ECR token refresh - 12-hour expiry causes predictable 2 AM incidents.
 - Store critical base images in your own registry to avoid Docker Hub rate limits.
 - Configure Flux ImageRepository with a reasonable `timeout` to fail fast and retry.
 - Pin image digests in production rather than mutable tags so the exact image is always known.
@@ -185,4 +185,4 @@ spec:
 
 ## Conclusion
 
-Container registry outages are disruptive but manageable with the right architecture. The combination of `IfNotPresent` pull policies, a pull-through cache, and proper ECR token rotation dramatically reduces your exposure to registry availability. Flux's behavior during an outage — retaining last-known state and continuing to reconcile non-image resources — means most cluster operations continue normally even when the registry is temporarily unreachable.
+Container registry outages are disruptive but manageable with the right architecture. The combination of `IfNotPresent` pull policies, a pull-through cache, and proper ECR token rotation dramatically reduces your exposure to registry availability. Flux's behavior during an outage - retaining last-known state and continuing to reconcile non-image resources - means most cluster operations continue normally even when the registry is temporarily unreachable.

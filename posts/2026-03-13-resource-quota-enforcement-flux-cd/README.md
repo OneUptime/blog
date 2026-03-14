@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, kubernetes, resource-quota, gitops, governance, namespaces
+Tags: Flux-cd, Kubernetes, Resource-quota, GitOps, Governance, Namespace
 
-Description: Learn how to manage and enforce Kubernetes ResourceQuotas and LimitRanges across namespaces using Flux CD, ensuring teams stay within resource budgets and preventing runaway workloads from impacting shared clusters. This guide covers GitOps-managed quota configurations and monitoring strategies.
+Description: Learn how to manage and enforce Kubernetes ResourceQuotas and LimitRanges across namespaces using Flux CD, ensuring teams stay within resource budgets and preventing runaway workloads from...
 
 ---
 

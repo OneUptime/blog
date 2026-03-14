@@ -34,7 +34,7 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 Restrict API access via VPP startup configuration:
 
-```
+```plaintext
 # /etc/vpp/startup.conf
 api-segment {
   uid vpp

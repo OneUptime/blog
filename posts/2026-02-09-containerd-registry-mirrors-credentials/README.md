@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container Registry, containerd
+Tags: Kubernetes, Container Registry, Containerd
 
 Description: Learn how to configure containerd registry mirrors and authentication credentials for private registries to improve image pull performance and reliability in Kubernetes clusters.
 

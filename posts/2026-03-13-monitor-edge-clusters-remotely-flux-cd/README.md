@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Monitoring, Prometheus, Remote Observability
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Monitoring, Prometheus
 
 Description: Set up remote monitoring for edge clusters managed by Flux CD, using Prometheus federation, push-based metrics, and Flux notification webhooks.
 
@@ -10,7 +10,7 @@ Description: Set up remote monitoring for edge clusters managed by Flux CD, usin
 
 ## Introduction
 
-Edge clusters by their nature are remote — often behind firewalls, on cellular connections, or at sites with limited IT staff. Monitoring them effectively requires a different approach from cloud cluster monitoring. You cannot simply set up a centralized Prometheus and scrape from it — firewalls and NAT prevent inbound connections. Instead, edge clusters must push their metrics and events outward to a central collection point.
+Edge clusters by their nature are remote - often behind firewalls, on cellular connections, or at sites with limited IT staff. Monitoring them effectively requires a different approach from cloud cluster monitoring. You cannot simply set up a centralized Prometheus and scrape from it - firewalls and NAT prevent inbound connections. Instead, edge clusters must push their metrics and events outward to a central collection point.
 
 Flux CD's notification system provides a built-in mechanism for pushing Flux-specific events to external systems. Combined with push-based Prometheus remote write, log shipping, and Flux's GitOps-managed monitoring configuration, you can have full observability into hundreds of edge clusters from a central dashboard.
 
@@ -278,7 +278,7 @@ spec:
 
 - Use push-based metrics (remoteWrite) rather than pull-based scraping for edge sites behind firewalls.
 - Label all metrics with `edge_site_id` and `edge_region` so you can filter by site in central Grafana.
-- Set short retention (24h) on edge Prometheus — the central system is the long-term store.
+- Set short retention (24h) on edge Prometheus - the central system is the long-term store.
 - Configure alerting from the central system, not from edge Prometheus (edge Alertmanager may be offline).
 - Use Flux notification webhooks as a lightweight alternative to full Prometheus for connectivity health.
 - Deploy the monitoring stack itself via Flux to ensure monitoring is consistently deployed across all sites.

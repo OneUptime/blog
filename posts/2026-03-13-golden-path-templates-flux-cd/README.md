@@ -10,7 +10,7 @@ Description: Create golden path templates for application deployment using Flux 
 
 ## Introduction
 
-The "golden path" concept in platform engineering describes the paved road that makes the right thing the easy thing. When you build a golden path, you codify your organization's best practices — security defaults, observability, scaling, reliability — into a template that developers can use without understanding every underlying decision. The golden path should be the path of least resistance to production.
+The "golden path" concept in platform engineering describes the paved road that makes the right thing the easy thing. When you build a golden path, you codify your organization's best practices - security defaults, observability, scaling, reliability - into a template that developers can use without understanding every underlying decision. The golden path should be the path of least resistance to production.
 
 Flux CD is the ideal runtime for golden path templates. The templates define what a properly configured workload looks like in your organization, and Flux ensures every workload continuously matches that definition. When the platform team improves the golden path (adding a new security control, updating default resource limits), all workloads that follow the path inherit the improvement automatically.
 
@@ -249,7 +249,7 @@ spec:
 ## Best Practices
 
 - Keep the developer-facing patch surface minimal: image, domain, and environment variables should cover 90% of use cases
-- Version golden path templates carefully — changes propagate to every team using the path
+- Version golden path templates carefully - changes propagate to every team using the path
 - Provide a migration guide when releasing a new major version of a golden path
 - Monitor adoption: track what percentage of team workloads use golden path templates
 - Include runbook annotations in the templates linking to operational documentation

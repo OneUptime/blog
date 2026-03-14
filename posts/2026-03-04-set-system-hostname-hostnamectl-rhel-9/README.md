@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, hostnamectl, Hostname, Linux
+Tags: RHEL, Hostnamectl, Hostname, Linux
 
 Description: Learn how to properly set and manage the system hostname on RHEL using hostnamectl, including static, transient, and pretty hostnames.
 

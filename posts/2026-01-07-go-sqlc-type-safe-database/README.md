@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, sqlc, Database, PostgreSQL, SQL, Type Safety
+Tags: Go, Sqlc, Database, PostgreSQL, SQL, Type Safety
 
 Description: Generate type-safe Go code from SQL queries using sqlc for compile-time SQL validation and efficient database access.
 

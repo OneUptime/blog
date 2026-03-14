@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Community, Support, Troubleshooting, eBPF
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A practical guide to finding and getting effective help with Cilium through documentation, Slack, GitHub, and built-in diagnostic tools.
 
@@ -12,7 +12,7 @@ Description: A practical guide to finding and getting effective help with Cilium
 
 Getting help with Cilium effectively is a learnable skill. The project provides multiple support channels, each suited for different types of questions. This guide shows you the practical steps: how to use the documentation, how to join and search Cilium Slack, how to file a GitHub issue that gets responded to, and how to use Cilium's built-in diagnostic tools to diagnose issues independently before escalating.
 
-The most efficient path to help almost always starts with a `cilium status` and a check of the documentation. Most Cilium issues — network policy not enforced, pods not getting IP addresses, connectivity failing — have documented troubleshooting guides. Knowing how to search the docs effectively can save you an hour of Slack conversation.
+The most efficient path to help almost always starts with a `cilium status` and a check of the documentation. Most Cilium issues - network policy not enforced, pods not getting IP addresses, connectivity failing - have documented troubleshooting guides. Knowing how to search the docs effectively can save you an hour of Slack conversation.
 
 ## Prerequisites
 
@@ -132,4 +132,4 @@ kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all
 
 ## Conclusion
 
-Getting help with Cilium is most effective when you follow a progression: diagnose locally first, check the documentation, then escalate to Slack or GitHub with a well-prepared question and diagnostic data. The Cilium community rewards well-prepared questions with fast, thorough responses. Mastering the diagnostic tools — `cilium status`, `cilium monitor`, `cilium policy trace`, `cilium sysdump` — is the most important investment you can make for operating Cilium in production.
+Getting help with Cilium is most effective when you follow a progression: diagnose locally first, check the documentation, then escalate to Slack or GitHub with a well-prepared question and diagnostic data. The Cilium community rewards well-prepared questions with fast, thorough responses. Mastering the diagnostic tools - `cilium status`, `cilium monitor`, `cilium policy trace`, `cilium sysdump` - is the most important investment you can make for operating Cilium in production.

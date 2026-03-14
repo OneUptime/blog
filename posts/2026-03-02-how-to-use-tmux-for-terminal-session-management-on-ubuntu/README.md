@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, tmux, Terminal, Linux, Productivity
+Tags: Ubuntu, Tmux, Terminal, Linux, Productivity
 
 Description: Learn how to use tmux on Ubuntu for persistent terminal sessions, covering sessions, windows, panes, key bindings, and practical workflows for remote server work.
 

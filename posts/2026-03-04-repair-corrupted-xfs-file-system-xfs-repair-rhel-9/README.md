@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, xfs_repair, Filesystem Recovery, Storage, Linux
+Tags: RHEL, XFS, Xfs_repair, Filesystem Recovery, Storage, Linux
 
 Description: Learn how to diagnose and repair corrupted XFS file systems on RHEL using xfs_repair, including handling log corruption, lost+found recovery, and dealing with severe damage.
 

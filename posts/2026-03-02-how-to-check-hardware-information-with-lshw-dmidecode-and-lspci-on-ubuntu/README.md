@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Hardware, lshw, dmidecode, System Administration
+Tags: Ubuntu, Hardware, Lshw, Dmidecode, System Administration
 
 Description: Learn how to use lshw, dmidecode, and lspci on Ubuntu to gather detailed hardware information including CPU, memory, disks, network cards, and PCI devices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, React, JavaScript, SPA, Nginx
+Tags: Flux CD, Kubernetes, GitOps, React, JavaScript, SPA, NGINX
 
 Description: Deploy a React single-page application to Kubernetes using Flux CD and Nginx, with automated image updates and environment-specific configuration.
 
@@ -10,9 +10,9 @@ Description: Deploy a React single-page application to Kubernetes using Flux CD 
 
 ## Introduction
 
-React single-page applications are typically built into a set of static files — HTML, JavaScript, and CSS bundles — that can be served by any web server. On Kubernetes, Nginx is the standard choice: it is lightweight, highly configurable, and handles the client-side routing that SPAs require. The challenge is wiring together the build pipeline, container image registry, and Kubernetes deployment in a way that is repeatable and auditable.
+React single-page applications are typically built into a set of static files - HTML, JavaScript, and CSS bundles - that can be served by any web server. On Kubernetes, Nginx is the standard choice: it is lightweight, highly configurable, and handles the client-side routing that SPAs require. The challenge is wiring together the build pipeline, container image registry, and Kubernetes deployment in a way that is repeatable and auditable.
 
-Flux CD makes this straightforward. You define your Nginx-wrapped React app as a container image, write the Kubernetes manifests once, and let Flux continuously reconcile the cluster against your Git repository. When your CI pipeline pushes a new image tag, Flux's image automation controller detects it and opens or pushes a commit updating the deployment — no human intervention required.
+Flux CD makes this straightforward. You define your Nginx-wrapped React app as a container image, write the Kubernetes manifests once, and let Flux continuously reconcile the cluster against your Git repository. When your CI pipeline pushes a new image tag, Flux's image automation controller detects it and opens or pushes a commit updating the deployment - no human intervention required.
 
 This guide covers building a React app into an Nginx container, writing the Kubernetes manifests, and setting up the full Flux GitOps pipeline including automatic image promotion.
 
@@ -26,7 +26,7 @@ This guide covers building a React app into an Nginx container, writing the Kube
 ## Step 1: Build the React Application Container Image
 
 ```dockerfile
-# Dockerfile — two-stage build: build React, serve with Nginx
+# Dockerfile - two-stage build: build React, serve with Nginx
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -47,7 +47,7 @@ CMD ["nginx", "-g", "daemon off;"]
 ```
 
 ```nginx
-# nginx.conf — handles React Router's client-side routing
+# nginx.conf - handles React Router's client-side routing
 server {
     listen 80;
     root /usr/share/nginx/html;

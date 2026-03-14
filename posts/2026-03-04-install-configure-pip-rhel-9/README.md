@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Python, pip, Package Management, Linux
+Tags: RHEL, Python, Pip, Package Management, Linux
 
 Description: Learn how to safely install and configure pip on RHEL while protecting the system Python installation from accidental modifications.
 

@@ -12,7 +12,7 @@ Description: A safe procedure for upgrading Calico VPP to a newer version while 
 
 Upgrading Calico VPP involves upgrading both the Calico control plane (calico-node, calico-kube-controllers) and the VPP data plane (VPP manager, VPP agent). These two components may have different upgrade procedures and versioning. The Calico control plane upgrade follows the standard Calico operator path, while the VPP component upgrade requires applying updated VPP-specific manifests.
 
-During the VPP upgrade, the VPP process on each node will restart. This briefly interrupts pod networking on that node — connections through VPP will be reset as the new VPP process initializes. Scheduling the upgrade during low-traffic periods and cordoning nodes before VPP restart minimizes the impact.
+During the VPP upgrade, the VPP process on each node will restart. This briefly interrupts pod networking on that node - connections through VPP will be reset as the new VPP process initializes. Scheduling the upgrade during low-traffic periods and cordoning nodes before VPP restart minimizes the impact.
 
 ## Prerequisites
 

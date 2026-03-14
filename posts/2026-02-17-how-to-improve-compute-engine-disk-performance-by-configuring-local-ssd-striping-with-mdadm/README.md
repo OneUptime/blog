@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Local SSD, Disk Performance, mdadm
+Tags: GCP, Compute Engine, Local SSD, Disk Performance, Mdadm
 
 Description: Step-by-step guide to configuring RAID 0 striping across multiple local SSDs on Compute Engine using mdadm for maximum disk throughput and IOPS.
 

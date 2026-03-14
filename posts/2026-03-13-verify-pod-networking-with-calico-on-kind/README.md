@@ -10,7 +10,7 @@ Description: Learn how to verify that Calico pod networking is functioning corre
 
 ## Introduction
 
-After installing Calico on Kind, it is essential to verify that pod networking is working as expected. Verification goes beyond checking that Calico pods are running — you need to confirm that pods can communicate with each other, with services, and with external endpoints. A thorough verification process catches misconfiguration early and builds confidence before running real workloads.
+After installing Calico on Kind, it is essential to verify that pod networking is working as expected. Verification goes beyond checking that Calico pods are running - you need to confirm that pods can communicate with each other, with services, and with external endpoints. A thorough verification process catches misconfiguration early and builds confidence before running real workloads.
 
 Calico manages pod IP address assignment, inter-pod routing, and network policy enforcement. Verifying each of these layers ensures that the full Calico data plane is operational. On Kind, this is especially important because the Docker networking substrate adds an extra layer that must cooperate with Calico's encapsulation.
 

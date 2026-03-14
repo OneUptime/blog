@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, xDS, Envoy, Control Plane, Troubleshooting
+Tags: Istio, XDS, Envoy, Control Plane, Troubleshooting
 
 Description: Guide to diagnosing and resolving xDS discovery service connection issues between Envoy sidecars and the Istio control plane.
 

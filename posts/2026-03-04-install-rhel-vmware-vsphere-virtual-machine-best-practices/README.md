@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, VMware, vSphere, Virtualization, Installation, Linux
+Tags: RHEL, VMware, VSphere, Virtualization, Installation, Linux
 
 Description: Install RHEL as a virtual machine on VMware vSphere using best practices for guest OS type, disk controllers, and network adapters for optimal performance.
 

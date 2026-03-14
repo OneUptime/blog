@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Testing, Security, Kubernetes
+Tags: Istio, MTLS, Testing, Security, Kubernetes
 
 Description: Comprehensive testing strategies to verify that your Istio mTLS configuration is correct, including automated tests, manual verification, and common edge cases.
 

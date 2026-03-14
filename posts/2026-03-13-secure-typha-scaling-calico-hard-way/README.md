@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Security, mTLS, TLS, CNI, Networking, RBAC
+Tags: Calico, Kubernetes, Typha, Security, MTLS, TLS, CNI, Networking, RBAC
 
-Description: Harden Calico Typha by enabling mutual TLS between Felix and Typha, restricting who can scale the Typha Deployment via RBAC, and auditing all scaling events — all in a manifest-based Calico installation.
+Description: Harden Calico Typha by enabling mutual TLS between Felix and Typha, restricting who can scale the Typha Deployment via RBAC, and auditing all scaling events - all in a manifest-based Calico...
 
 ---
 
@@ -72,7 +72,7 @@ Update the Typha Deployment to mount and use the TLS credentials:
 
 ```yaml
 # typha-deployment-tls.yaml
-# Typha with mutual TLS — only Felix agents presenting a signed certificate can connect
+# Typha with mutual TLS - only Felix agents presenting a signed certificate can connect
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -171,7 +171,7 @@ spec:
   typhaClientCertFile: "/calico-secrets/tls.crt"
   # Felix's private key
   typhaClientKeyFile: "/calico-secrets/tls.key"
-  # CN Typha must present — prevents Felix from connecting to a rogue server
+  # CN Typha must present - prevents Felix from connecting to a rogue server
   typhaServerCN: "calico-typha"
 ```
 
@@ -246,7 +246,7 @@ kubectl apply -f typha-pdb.yaml
 Add an audit policy rule on your API server to record all scale operations on Typha:
 
 ```yaml
-# In /etc/kubernetes/audit-policy.yaml — add this rule before the catch-all
+# In /etc/kubernetes/audit-policy.yaml - add this rule before the catch-all
 # Logs all patch/update operations on the Typha Deployment's scale subresource
 - level: Request
   resources:
@@ -271,7 +271,7 @@ grep "calico-typha" /var/log/kubernetes/audit.log | grep "deployments/scale"
 - Rotate certificates at least 30 days before they expire; a certificate rotation that goes wrong can disconnect all Felix agents simultaneously.
 - Apply a `NetworkPolicy` that restricts access to port 5473 to only the `calico-node` DaemonSet pods, adding defense-in-depth even with mTLS active.
 - Set `minAvailable` in the PDB to `replicas - 1` so node drains can always proceed one node at a time.
-- Alert on `kube_deployment_spec_replicas{deployment="calico-typha"}` dropping below 2 — this detects accidental or malicious scale-down before it becomes an outage.
+- Alert on `kube_deployment_spec_replicas{deployment="calico-typha"}` dropping below 2 - this detects accidental or malicious scale-down before it becomes an outage.
 
 ---
 

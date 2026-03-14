@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environments, Python, ansible-builder
+Tags: Ansible, Execution Environments, Python, Ansible-builder
 
 Description: Include custom and third-party Python packages in Ansible Execution Environments for filters, modules, and custom plugins.
 

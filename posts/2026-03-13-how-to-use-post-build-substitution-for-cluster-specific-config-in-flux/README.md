@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Cluster
+Tags: Flux, Fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Cluster
 
 Description: Learn how to use Flux post-build variable substitution to manage cluster-specific configurations across multiple Kubernetes clusters from a single Git repository.
 

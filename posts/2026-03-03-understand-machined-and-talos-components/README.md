@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, machined, System Architecture, Kubernetes, Init System
+Tags: Talos Linux, Machined, System Architecture, Kubernetes, Init System
 
 Description: A detailed look at machined and the core system components that make Talos Linux work as a Kubernetes-focused operating system.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Python, uv, Package Management, Development
+Tags: Ubuntu, Python, Uv, Package Management, Development
 
 Description: Learn how to install and use uv - the extremely fast Python package manager written in Rust - on Ubuntu for managing Python versions, virtual environments, and dependencies.
 

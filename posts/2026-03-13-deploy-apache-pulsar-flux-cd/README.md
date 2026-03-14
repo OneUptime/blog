@@ -1,8 +1,8 @@
-# How to Deploy Apache Pulsar with Flux CD
+# How to Deploy Apache Pulsar with Flux CD - 2026-03-13
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Apache Pulsar, Message Queue, Streaming, Multi-tenancy
+Tags: Flux CD, Kubernetes, GitOps, Apache Pulsar, Message Queue, Streaming, Multi-Tenancy
 
 Description: Deploy Apache Pulsar distributed messaging and streaming platform on Kubernetes using Flux CD HelmRelease for GitOps-managed Pulsar clusters.
 
@@ -273,7 +273,7 @@ kubectl exec -n pulsar pulsar-broker-0 -- \
 - Use separate disk pools for BookKeeper journal (high IOPS, small) and ledger storage (large, sequential) for optimal performance.
 - Set `defaultRetentionTimeInMinutes` at the broker level and override per namespace for fine-grained retention control.
 - Enable JWT authentication for all production deployments and create service accounts for each application.
-- Monitor BookKeeper write latency — it is the key indicator of Pulsar's message delivery performance.
+- Monitor BookKeeper write latency - it is the key indicator of Pulsar's message delivery performance.
 - Use Pulsar's multi-tenancy to set per-tenant resource quotas preventing one application from consuming all broker capacity.
 
 ## Conclusion

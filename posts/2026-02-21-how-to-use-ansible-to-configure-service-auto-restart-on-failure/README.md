@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd, Service Recovery, Linux, Reliability
+Tags: Ansible, Systemd, Service Recovery, Linux, Reliability
 
 Description: Learn how to configure automatic service restart on failure using Ansible and systemd, including restart policies, rate limiting, and failure actions.
 

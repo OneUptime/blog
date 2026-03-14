@@ -255,12 +255,12 @@ kubectl logs -n kafka deploy/data-pipeline-connect --tail=30
 
 ## Best Practices
 
-- Set `strimzi.io/use-connector-resources: "true"` on the KafkaConnect resource — without this annotation, KafkaConnector CRDs are ignored.
+- Set `strimzi.io/use-connector-resources: "true"` on the KafkaConnect resource - without this annotation, KafkaConnector CRDs are ignored.
 - Use `tasksMax: 1` for Debezium CDC connectors (they are inherently single-threaded per database slot).
-- Store connector credentials in Kubernetes Secrets and reference them via `externalConfiguration.env` — never embed passwords in KafkaConnector config.
+- Store connector credentials in Kubernetes Secrets and reference them via `externalConfiguration.env` - never embed passwords in KafkaConnector config.
 - Monitor connector lag with the Connect REST API (`/connectors/{name}/status`) and set up Prometheus alerts on `status.running` going false.
 - Use Single Message Transforms (SMTs) to enrich or route messages without writing custom code.
 
 ## Conclusion
 
-Strimzi's `KafkaConnect` and `KafkaConnector` CRDs managed by Flux CD bring full GitOps discipline to data integration pipelines. CDC connectors, sink connectors, and the Connect cluster configuration are all version-controlled and automatically applied. When you need to add a new data source or change a connector configuration, it is a pull request — reviewed, auditable, and automatically applied by Flux without touching the Kafka REST API manually.
+Strimzi's `KafkaConnect` and `KafkaConnector` CRDs managed by Flux CD bring full GitOps discipline to data integration pipelines. CDC connectors, sink connectors, and the Connect cluster configuration are all version-controlled and automatically applied. When you need to add a new data source or change a connector configuration, it is a pull request - reviewed, auditable, and automatically applied by Flux without touching the Kafka REST API manually.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: vLLM, OpenAI, LLM, AI/ML, API, Inference
+Tags: VLLM, OpenAI, LLM, AI/ML, API, Inference
 
 Description: Learn how to deploy vLLM as a drop-in replacement for OpenAI API with high-throughput inference for production workloads.
 

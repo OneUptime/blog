@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, iSCSI, Storage, System Extensions, Kubernetes, Longhorn, Infrastructure
+Tags: Talos Linux, ISCSI, Storage, System Extensions, Kubernetes, Longhorn, Infrastructure
 
 Description: Step-by-step guide to installing and configuring the iscsi-tools extension on Talos Linux for iSCSI-based storage support with solutions like Longhorn and OpenEBS.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, rightsizing, resource-optimization, vpa, gitops, finops
+Tags: Flux, Kubernetes, Rightsizing, Resource-optimization, VPA, GitOps, FinOps
 
 Description: Learn how to implement a GitOps-driven cluster rightsizing workflow using Flux CD, applying VPA recommendations and resource limit updates through pull requests for controlled, auditable optimization.
 
@@ -10,7 +10,7 @@ Description: Learn how to implement a GitOps-driven cluster rightsizing workflow
 
 ## Introduction
 
-Cluster rightsizing — adjusting CPU and memory requests/limits to match actual workload consumption — is a key FinOps practice that reduces cloud waste and prevents OOM kills. However, directly applying VPA recommendations without review is risky. A GitOps approach where VPA recommendations are converted to pull requests against your fleet repository provides the benefits of automation with the safety of human review.
+Cluster rightsizing - adjusting CPU and memory requests/limits to match actual workload consumption - is a key FinOps practice that reduces cloud waste and prevents OOM kills. However, directly applying VPA recommendations without review is risky. A GitOps approach where VPA recommendations are converted to pull requests against your fleet repository provides the benefits of automation with the safety of human review.
 
 This guide shows how to build a rightsizing workflow: VPA generates recommendations, a script creates PRs with updated resource values, and Flux applies the approved changes.
 
@@ -183,11 +183,11 @@ jobs:
 ## Best Practices
 
 - Always run VPA in `Off` mode first (recommendation-only) before enabling auto-apply.
-- Review rightsizing PRs with the workload owner — they know the traffic patterns best.
+- Review rightsizing PRs with the workload owner - they know the traffic patterns best.
 - Set `maxAllowed` bounds on VPA objects to prevent recommendations larger than your node capacity.
 - Apply rightsizing in staging first, observe for 24-48 hours, then apply to production.
 - Track resource utilization before and after rightsizing using Prometheus metrics to measure cost savings.
 
 ## Conclusion
 
-A GitOps-driven rightsizing workflow with Flux gives you the benefits of VPA's data-driven recommendations with the safety of human review before applying changes. By generating PRs rather than auto-applying recommendations, you maintain control while automating the measurement and proposal of resource optimizations — reducing both waste and OOM risk over time.
+A GitOps-driven rightsizing workflow with Flux gives you the benefits of VPA's data-driven recommendations with the safety of human review before applying changes. By generating PRs rather than auto-applying recommendations, you maintain control while automating the measurement and proposal of resource optimizations - reducing both waste and OOM risk over time.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Service Bus, Python, Messaging, Queue, Pub/Sub, azure-servicebus
+Tags: Azure, Service Bus, Python, Messaging, Queue, Pub/Sub, Azure-servicebus
 
 Description: Learn how to send and receive messages using Azure Service Bus queues and topics with the azure-servicebus Python SDK.
 

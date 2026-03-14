@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, NATS, Accounts, Security, Multi-tenancy
+Tags: Flux CD, Kubernetes, GitOps, NATS, Accounts, Security, Multi-Tenancy
 
 Description: Manage NATS accounts and security configurations using Flux CD for GitOps-managed NATS multi-tenancy and access control.
 
@@ -253,7 +253,7 @@ kubectl exec -n nats deploy/nats-box -- \
 
 ## Best Practices
 
-- Use the `system_account` for monitoring and internal NATS tooling — never use it for application connections.
+- Use the `system_account` for monitoring and internal NATS tooling - never use it for application connections.
 - Scope JetStream limits per account (`max_memory`, `max_file`) to prevent one account from consuming all JetStream storage.
 - Use exports/imports for cross-account communication rather than giving accounts access to each other's subjects.
 - Rotate user passwords by updating the Kubernetes Secret and triggering a NATS server config reload.

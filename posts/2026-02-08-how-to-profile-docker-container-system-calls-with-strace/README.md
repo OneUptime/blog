@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, strace, Debugging, Linux, System Calls, Profiling, DevOps
+Tags: Docker, Performance, Strace, Debugging, Linux, System Calls, Profiling, DevOps
 
 Description: Learn how to use strace to trace and profile system calls inside Docker containers for debugging performance issues and understanding application behavior.
 

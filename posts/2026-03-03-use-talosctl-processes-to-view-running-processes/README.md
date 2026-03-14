@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Process Management, Debugging, System Administration
+Tags: Talos Linux, Talosctl, Process Management, Debugging, System Administration
 
 Description: Learn how to use the talosctl processes command to view and analyze running processes on Talos Linux nodes for debugging
 

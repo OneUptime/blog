@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Slim CI, CI/CD, Cost Optimization
+Tags: GCP, BigQuery, Dbt, Slim CI, CI/CD, Cost Optimization
 
 Description: Learn how to set up dbt Slim CI with BigQuery to test only modified models and their dependents on pull requests, dramatically reducing CI costs and execution time.
 

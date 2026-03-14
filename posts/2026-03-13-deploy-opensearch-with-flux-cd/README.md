@@ -233,4 +233,4 @@ curl -s -k -u admin:MyStr0ngP@ssword! \
 
 ## Conclusion
 
-OpenSearch deployed through Flux CD gives you a fully open-source search and log analytics platform with enterprise-grade security included. Every cluster configuration change — from shard allocation settings to security plugin rules — is a Git commit reviewed by your team. From here you can deploy OpenSearch Dashboards for visualization and integrate Fluent Bit or Vector for log shipping, all managed through the same GitOps workflow.
+OpenSearch deployed through Flux CD gives you a fully open-source search and log analytics platform with enterprise-grade security included. Every cluster configuration change - from shard allocation settings to security plugin rules - is a Git commit reviewed by your team. From here you can deploy OpenSearch Dashboards for visualization and integrate Fluent Bit or Vector for log shipping, all managed through the same GitOps workflow.

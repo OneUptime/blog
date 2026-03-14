@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, fluxcd, Comparison
+Tags: ArgoCD, GitOps, Kubernetes, Fluxcd, Comparison
 
 Description: A comprehensive feature-by-feature comparison of ArgoCD and FluxCD, covering architecture, UI, multi-tenancy, scalability, and ecosystem to help you choose the right GitOps tool.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, mDNS, Avahi, Service Discovery, Networking
+Tags: Ubuntu, MDNS, Avahi, Service Discovery, Networking
 
 Description: Configure Avahi on Ubuntu to enable mDNS-based local service discovery, publish custom services, and integrate with systemd-resolved for .local hostname resolution.
 

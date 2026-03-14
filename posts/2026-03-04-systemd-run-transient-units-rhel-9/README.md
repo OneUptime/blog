@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, systemd-run, Transient Units, Linux
+Tags: RHEL, Systemd, Systemd-run, Transient Units, Linux
 
 Description: Learn how to use systemd-run on RHEL to create temporary service units on the fly with resource limits, sandboxing, and proper process management.
 

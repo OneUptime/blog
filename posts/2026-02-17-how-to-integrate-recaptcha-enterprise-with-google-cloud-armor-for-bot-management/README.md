@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, reCAPTCHA Enterprise, Cloud Armor, Bot Management, WAF
+Tags: GCP, ReCAPTCHA Enterprise, Cloud Armor, Bot Management, WAF
 
 Description: Learn how to integrate reCAPTCHA Enterprise with Google Cloud Armor to create bot management policies that automatically block or challenge suspicious traffic at the edge.
 

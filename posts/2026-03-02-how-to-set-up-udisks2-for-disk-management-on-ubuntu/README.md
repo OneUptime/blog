@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Storage, Disk Management, udisks2, System Administration
+Tags: Ubuntu, Storage, Disk Management, Udisks2, System Administration
 
 Description: Learn how to install and use udisks2 on Ubuntu to manage disks, mount and unmount filesystems, query disk information, and automate storage tasks from the command line.
 

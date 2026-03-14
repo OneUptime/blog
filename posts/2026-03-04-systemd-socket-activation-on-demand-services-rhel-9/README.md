@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Socket Activation, Linux, Services
+Tags: RHEL, Systemd, Socket Activation, Linux, Services
 
 Description: Learn how to configure systemd socket activation on RHEL to start services on-demand when connections arrive, reducing resource usage and boot time.
 

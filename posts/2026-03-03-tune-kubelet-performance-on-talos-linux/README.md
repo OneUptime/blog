@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubelet, Kubernetes, Performance Tuning, Node Management
+Tags: Talos Linux, Kubelet, Kubernetes, Performance Tuning, Node Management
 
 Description: Learn how to tune kubelet performance on Talos Linux for better pod management, faster scheduling, and improved node stability
 

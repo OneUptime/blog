@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsyslog, TLS, Encryption, Logging, Security
+Tags: RHEL, Rsyslog, TLS, Encryption, Logging, Security
 
 Description: Secure your centralized log collection by configuring rsyslog with TLS encryption on RHEL, preventing log data from being intercepted or tampered with in transit.
 

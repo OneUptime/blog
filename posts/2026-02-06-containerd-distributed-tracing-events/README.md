@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, containerd, Distributed Tracing, Container Events
+Tags: OpenTelemetry, Containerd, Distributed Tracing, Container Events
 
 Description: Enable built-in OpenTelemetry distributed tracing in containerd to trace container create, start, and stop operations with OTLP export.
 

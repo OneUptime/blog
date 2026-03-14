@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, cidr, networking, kubernetes, planning
+Tags: Calico, IPAM, CIDR, Networking, Kubernetes, Planning
 
 Description: Learn how to plan and configure per-node CIDR block sizing in Calico to optimize IP address utilization and avoid address exhaustion in large clusters.
 

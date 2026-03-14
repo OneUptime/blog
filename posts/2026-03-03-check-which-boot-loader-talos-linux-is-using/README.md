@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Boot Loader, GRUB, systemd-boot, Diagnostics
+Tags: Talos Linux, Boot Loader, GRUB, Systemd-boot, Diagnostics
 
 Description: Learn multiple methods to determine whether your Talos Linux installation is using GRUB or systemd-boot as its boot loader.
 

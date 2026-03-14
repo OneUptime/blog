@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Trace Propagation, Metadata
+Tags: OpenTelemetry, GRPC, Trace Propagation, Metadata
 
 Description: Propagate OpenTelemetry trace context through gRPC metadata headers to enable distributed tracing across gRPC service boundaries.
 

@@ -10,7 +10,7 @@ Description: Select the optimal Calico encapsulation mode for your network topol
 
 ## Introduction
 
-Choosing between VXLAN and IP-in-IP encapsulation in Calico is one of the most common architecture decisions when deploying Kubernetes networking. Both protocols solve the same problem — routing pod traffic across subnet boundaries — but with different tradeoffs in overhead, compatibility, and operational complexity.
+Choosing between VXLAN and IP-in-IP encapsulation in Calico is one of the most common architecture decisions when deploying Kubernetes networking. Both protocols solve the same problem - routing pod traffic across subnet boundaries - but with different tradeoffs in overhead, compatibility, and operational complexity.
 
 VXLAN uses 50 bytes of overhead per packet (UDP + VXLAN headers) and operates on UDP port 4789. IP-in-IP uses only 20 bytes of overhead (an additional IP header) and operates as protocol 4. Both work on any IP network, but VXLAN is more likely to traverse NAT devices because it uses UDP, while IP-in-IP may be blocked by firewalls unfamiliar with protocol 4.
 

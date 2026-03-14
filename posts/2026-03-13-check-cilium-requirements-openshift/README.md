@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, openshift, red-hat, kubernetes, networking, cni, requirements
+Tags: Cilium, Kubernetes, OpenShift, EBPF
 
-Description: Learn how to verify that your OpenShift cluster meets the prerequisites for installing Cilium as the CNI, including OVN-Kubernetes replacement, RHCOS kernel requirements, and OpenShift-specific security context constraints.
+Description: Learn how to verify that your OpenShift cluster meets the prerequisites for installing Cilium as the CNI, including OVN-Kubernetes replacement, RHCOS kernel requirements, and OpenShift-specific...
 
 ---
 
@@ -113,7 +113,7 @@ Use the Cilium Helm chart with OpenShift-specific values.
 
 ```bash
 # Install Cilium with OpenShift-specific configuration
-# Note: OpenShift uses its own kube-proxy implementation — do not enable kube-proxy replacement initially
+# Note: OpenShift uses its own kube-proxy implementation - do not enable kube-proxy replacement initially
 cilium install \
   --helm-set kubeProxyReplacement=false \
   --helm-set openshift.enabled=true \
@@ -135,7 +135,7 @@ oc get pods -n kube-system -l k8s-app=cilium
 ## Best Practices
 
 - Always test Cilium on a non-production OpenShift cluster before migrating production.
-- Perform CNI migration during a maintenance window — all nodes will reboot during the migration.
+- Perform CNI migration during a maintenance window - all nodes will reboot during the migration.
 - Do not attempt CNI migration while an OpenShift cluster upgrade is in progress.
 - Use the Cilium operator (`openshift.enabled=true`) to ensure OpenShift-specific SCC and RBAC configurations are applied correctly.
 - Verify all critical workloads are healthy after the migration before declaring success.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Performance, Connection Pooling, Optimization, Microservices, Go, Python, Java
+Tags: GRPC, Performance, Connection Pooling, Optimization, Microservices, Go, Python, Java
 
 Description: Learn how to implement connection pooling in gRPC to maximize throughput, reduce latency, and efficiently manage resources in distributed systems.
 

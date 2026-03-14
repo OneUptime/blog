@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, perf, Performance, Linux
+Tags: RHEL, Perf, Performance, Linux
 
 Description: Learn how to use perf to Profile Process Performance and CPU Hotspots on RHEL with step-by-step instructions, configuration examples, and best practices.
 

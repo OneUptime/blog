@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Logging, Security
 
-Description: Secure Calico log collection by controlling access to sensitive log data, implementing log shipper RBAC with least privilege, encrypting log transmission, and filtering sensitive fields from Calico logs before forwarding.
+Description: Secure Calico log collection by controlling access to sensitive log data, implementing log shipper RBAC with least privilege, encrypting log transmission, and filtering sensitive fields from...
 
 ---
 

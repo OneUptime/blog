@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, systemd-resolved, Networking, Security
+Tags: Ubuntu, DNS, Systemd-resolved, Networking, Security
 
 Description: Configure systemd-resolved for DNS management on Ubuntu, including DNS-over-TLS, DNSSEC, per-interface DNS, and split-DNS routing.
 

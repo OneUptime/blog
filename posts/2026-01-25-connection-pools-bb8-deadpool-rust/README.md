@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Connection Pool, bb8, Deadpool, Database
+Tags: Rust, Connection Pool, Bb8, Deadpool, Database
 
 Description: Learn how to implement efficient connection pooling in Rust using bb8 and deadpool, two async-first libraries that handle database connections for high-throughput applications.
 

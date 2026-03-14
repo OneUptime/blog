@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTTL, merge_maps, Transform Processor
+Tags: OpenTelemetry, OTTL, Merge_maps, Transform Processor
 
 Description: Use the OTTL merge_maps function in the transform processor to combine resource attributes with span attributes for enriched telemetry.
 

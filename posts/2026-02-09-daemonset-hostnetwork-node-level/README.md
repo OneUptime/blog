@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, hostNetwork, Node Networking, Performance
+Tags: Kubernetes, DaemonSets, HostNetwork, Node Networking, Performance
 
 Description: Learn when and how to use hostNetwork mode in Kubernetes DaemonSets for direct access to node networking, enabling low-latency monitoring and network-critical services.
 

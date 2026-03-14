@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Async, tokio, Concurrency, Performance, Runtime, Blocking
+Tags: Rust, Async, Tokio, Concurrency, Performance, Runtime, Blocking
 
 Description: Learn how to properly use async Rust without blocking the runtime. This guide covers common anti-patterns like block_on in async contexts, spawn_blocking for CPU work, and proper async/await patterns.
 

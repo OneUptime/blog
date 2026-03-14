@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, JSON, Logging, Data Analysis, Linux
+Tags: RHEL, Journald, JSON, Logging, Data Analysis, Linux
 
 Description: Learn how to export systemd journal logs in JSON format on RHEL for ingestion into external analysis tools, databases, and monitoring platforms.
 

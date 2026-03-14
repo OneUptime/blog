@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Storage, libvirt, Virtual Machines, Virtualization, Linux
+Tags: RHEL, KVM, Storage, Libvirt, Virtual Machines, Virtualization, Linux
 
 Description: Learn how to create and manage libvirt storage pools and volumes on RHEL for organizing and provisioning virtual machine disk storage.
 

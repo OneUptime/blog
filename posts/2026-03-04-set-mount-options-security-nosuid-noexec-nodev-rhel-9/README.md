@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Security, fstab, Mount Options, Hardening, Linux
+Tags: RHEL, Security, Fstab, Mount Options, Hardening, Linux
 
 Description: Learn how to use nosuid, noexec, and nodev mount options on RHEL to harden file system security and comply with security benchmarks.
 

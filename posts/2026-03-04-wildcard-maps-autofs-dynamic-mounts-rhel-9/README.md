@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, Wildcard Maps, NFS, Dynamic Mounts, Linux
+Tags: RHEL, Autofs, Wildcard Maps, NFS, Dynamic Mounts, Linux
 
 Description: Use wildcard maps in autofs on RHEL to dynamically mount any subdirectory on demand without creating individual map entries.
 

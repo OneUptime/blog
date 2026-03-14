@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB, pgvector, Vector Search, AI
+Tags: GCP, AlloyDB, Pgvector, Vector Search, AI
 
 Description: A hands-on guide to setting up pgvector on AlloyDB for PostgreSQL to store embeddings and perform vector similarity search for AI-powered applications.
 

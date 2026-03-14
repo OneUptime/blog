@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Permissions, Troubleshooting, Security, chmod, chown
+Tags: Linux, System Administration, Permissions, Troubleshooting, Security, Chmod, Chown
 
 Description: A comprehensive guide to diagnosing and fixing permission denied errors in Linux, covering file permissions, ownership, ACLs, and SELinux/AppArmor issues.
 

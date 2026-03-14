@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Python, Caching, Tutorial, redis-py
+Tags: Redis, Python, Caching, Tutorial, Redis-py
 
 Description: A comprehensive guide to using Redis with Python, covering installation, basic operations, data structures, connection pooling, and common patterns for caching and session management.
 

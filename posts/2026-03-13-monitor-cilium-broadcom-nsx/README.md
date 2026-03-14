@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Broadcom, NSX, Kubernetes, Networking, Monitoring, Enterprise
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
-Description: Learn how to monitor Cilium's integration with Broadcom NSX networking infrastructure, ensuring consistent policy enforcement and connectivity between Kubernetes workloads and NSX-managed network segments.
+Description: Learn how to monitor Cilium's integration with Broadcom NSX networking infrastructure, ensuring consistent policy enforcement and connectivity between Kubernetes workloads and NSX-managed network...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to monitor Cilium's integration with Broadcom NSX network
 
 Broadcom NSX provides software-defined networking for enterprise data centers, and when Kubernetes is deployed in NSX-managed environments, integrating Cilium with NSX enables consistent network policy enforcement across both container and virtual machine workloads. Cilium can operate on nodes connected to NSX segments while using NSX Distributed Firewall rules alongside CiliumNetworkPolicy for defense-in-depth security.
 
-Monitoring this integration requires visibility into both the Cilium data plane (eBPF metrics, Hubble flows) and the NSX control plane (segment health, DFW rule hits, BGP state). Disconnects between the two layers — such as NSX segment changes that affect Cilium node connectivity — can cause subtle network disruptions that are difficult to trace without monitoring both systems simultaneously.
+Monitoring this integration requires visibility into both the Cilium data plane (eBPF metrics, Hubble flows) and the NSX control plane (segment health, DFW rule hits, BGP state). Disconnects between the two layers - such as NSX segment changes that affect Cilium node connectivity - can cause subtle network disruptions that are difficult to trace without monitoring both systems simultaneously.
 
 This guide covers monitoring the Cilium-NSX integration, validating connectivity across the boundary, and alerting on integration health.
 

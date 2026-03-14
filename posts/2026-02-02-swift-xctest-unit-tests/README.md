@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, XCTest, iOS, Testing, Unit Tests
+Tags: Swift, XCTest, IOS, Testing, Unit Tests
 
 Description: Learn how to write effective unit tests in Swift using XCTest, Apple's native testing framework, with practical examples covering test organization, assertions, mocking, and async testing.
 

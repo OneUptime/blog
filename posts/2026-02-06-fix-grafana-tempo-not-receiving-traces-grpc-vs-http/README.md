@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Grafana Tempo, OTLP, gRPC
+Tags: OpenTelemetry, Grafana Tempo, OTLP, GRPC
 
 Description: Fix traces not arriving in Grafana Tempo due to protocol mismatch between the Collector OTLP exporter and Tempo ingestion endpoint.
 

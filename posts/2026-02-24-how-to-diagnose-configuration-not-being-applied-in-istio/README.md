@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration, Troubleshooting, xDS, Debugging
+Tags: Istio, Configuration, Troubleshooting, XDS, Debugging
 
 Description: A systematic approach to diagnosing why Istio configuration changes are not taking effect on your Envoy proxies.
 

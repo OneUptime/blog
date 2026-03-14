@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of real egress traffic scenarios in a Ca
 
 ## Introduction
 
-Egress traffic in Calico is more complex than it appears. A single pod attempting to reach `api.stripe.com` traverses multiple Calico components — IPAM, iptables/eBPF SNAT rules, NetworkPolicy enforcement, and optionally an egress gateway. Tracing this path makes egress behavior predictable and debuggable.
+Egress traffic in Calico is more complex than it appears. A single pod attempting to reach `api.stripe.com` traverses multiple Calico components - IPAM, iptables/eBPF SNAT rules, NetworkPolicy enforcement, and optionally an egress gateway. Tracing this path makes egress behavior predictable and debuggable.
 
 This post maps three egress scenarios to their actual packet paths: default SNAT egress, egress with NetworkPolicy, and egress via an egress gateway. For each scenario, we show the packet flow and the Calico artifacts you can observe.
 
@@ -123,4 +123,4 @@ kubectl exec -n calico-system daemonset/calico-node -- \
 
 ## Conclusion
 
-Mapping egress traffic to Calico components — MASQUERADE rules, policy chains, egress gateway routes, and DNS-based IP mapping — turns egress debugging from guesswork into systematic investigation. Each egress scenario leaves observable artifacts in iptables, routing tables, and Felix logs that can be inspected directly during an incident.
+Mapping egress traffic to Calico components - MASQUERADE rules, policy chains, egress gateway routes, and DNS-based IP mapping - turns egress debugging from guesswork into systematic investigation. Each egress scenario leaves observable artifacts in iptables, routing tables, and Felix logs that can be inspected directly during an incident.

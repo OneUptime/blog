@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, sudoers.d, Security, Linux
+Tags: RHEL, Sudo, Sudoers.d, Security, Linux
 
 Description: Learn how to create fine-grained sudo rules using drop-in files in /etc/sudoers.d on RHEL, following the principle of least privilege.
 

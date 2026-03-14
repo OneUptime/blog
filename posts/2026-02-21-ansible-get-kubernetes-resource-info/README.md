@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, k8s_info, Monitoring, DevOps
+Tags: Ansible, Kubernetes, K8s_info, Monitoring, DevOps
 
 Description: Query and extract Kubernetes resource information using Ansible's k8s_info module for health checks, auditing, and dynamic playbook logic.
 

@@ -1,8 +1,8 @@
-# Enable Operator Managing Identities on New Cluster: Configure, Troubleshoot, Validate, and Monitor
+# Enable Operator Managing Identities on New Cluster
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Identity Management, Cilium Operator, Installation
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Step-by-step guide to deploying a new Cilium cluster with Operator-managed identity from the start, including optimal configuration, early validation, and monitoring setup.
 
@@ -10,7 +10,7 @@ Description: Step-by-step guide to deploying a new Cilium cluster with Operator-
 
 ## Introduction
 
-When deploying a new Kubernetes cluster with Cilium, enabling Operator-managed identity from the very beginning is the cleanest approach — there is no existing identity state to migrate and no running workloads to disrupt. Starting with Operator-managed identities provides better scalability from day one and avoids the migration complexity required when enabling this feature on existing clusters.
+When deploying a new Kubernetes cluster with Cilium, enabling Operator-managed identity from the very beginning is the cleanest approach - there is no existing identity state to migrate and no running workloads to disrupt. Starting with Operator-managed identities provides better scalability from day one and avoids the migration complexity required when enabling this feature on existing clusters.
 
 Enabling this feature on a new cluster means configuring it in your initial Helm installation rather than as a post-deployment upgrade. The configuration is straightforward, but there are important considerations around Operator startup order, RBAC permissions, and ensuring the Operator is ready before the first workloads are scheduled. A properly configured new cluster with Operator-managed identities will require less operational attention as the cluster scales.
 
@@ -224,4 +224,4 @@ EOF
 
 ## Conclusion
 
-Starting a new cluster with Cilium Operator-managed identities sets you up for better scalability and operational simplicity as your cluster grows. The key difference from the migration path is that there is no existing identity state to reconcile — the Operator starts from a clean slate and manages all identities from the first pod. Ensure the Cilium Operator is deployed and healthy before your first workloads are scheduled to prevent race conditions during initial identity creation. The monitoring foundation established at cluster creation gives you early visibility into identity management health throughout the cluster's lifetime.
+Starting a new cluster with Cilium Operator-managed identities sets you up for better scalability and operational simplicity as your cluster grows. The key difference from the migration path is that there is no existing identity state to reconcile - the Operator starts from a clean slate and manages all identities from the first pod. Ensure the Cilium Operator is deployed and healthy before your first workloads are scheduled to prevent race conditions during initial identity creation. The monitoring foundation established at cluster creation gives you early visibility into identity management health throughout the cluster's lifetime.

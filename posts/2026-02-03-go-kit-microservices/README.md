@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Go-Kit, Microservices, Backend, Architecture, gRPC
+Tags: Go, Go-Kit, Microservices, Backend, Architecture, GRPC
 
 Description: Learn how to build production-ready microservices with Go-Kit. This guide covers service architecture, transports, middleware, and observability patterns.
 

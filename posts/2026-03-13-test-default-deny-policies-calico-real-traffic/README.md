@@ -69,7 +69,7 @@ spec:
 ```bash
 calicoctl apply -f default-deny-all.yaml
 kubectl exec -n test-source source-pod -- wget -qO- --timeout=5 http://$DEST_IP
-# Should timeout — policy is working
+# Should timeout - policy is working
 ```
 
 ## Step 4: Apply Allow Rule and Test Restoration
@@ -93,7 +93,7 @@ spec:
 ```bash
 calicoctl apply -f allow-source-to-dest.yaml
 kubectl exec -n test-source source-pod -- wget -qO- --timeout=5 http://$DEST_IP
-# Should succeed — selective allow working correctly
+# Should succeed - selective allow working correctly
 ```
 
 ## Test Matrix Diagram

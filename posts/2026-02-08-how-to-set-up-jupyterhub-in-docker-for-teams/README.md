@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, JupyterHub, Jupyter, Data Science, Team, docker-compose, Python, Collaboration
+Tags: Docker, JupyterHub, Jupyter, Data Science, Team, Docker-compose, Python, Collaboration
 
 Description: Deploy JupyterHub in Docker for team collaboration with user authentication, persistent storage, custom environments, and resource management.
 

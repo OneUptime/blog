@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, alibaba-cloud, eni, kubernetes, upgrade, networking, ack
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
 
 Description: A step-by-step guide to upgrading Cilium on Alibaba Cloud Kubernetes clusters using Elastic Network Interface (ENI) mode, including Alibaba Cloud-specific prerequisites and validation steps.
 
@@ -136,7 +136,7 @@ kubectl run eni-test --image=busybox --rm -it --restart=Never -- \
 
 ## Best Practices
 
-- Verify ENI quotas before upgrading — ENI capacity constraints can cause upgrade delays
+- Verify ENI quotas before upgrading - ENI capacity constraints can cause upgrade delays
 - Use Alibaba Cloud's ECS snapshot before upgrading worker nodes for rollback capability
 - Monitor Alibaba Cloud's VPC flow logs for ENI traffic anomalies post-upgrade
 - Keep Cilium ConfigMap values for ENI-specific settings in version control

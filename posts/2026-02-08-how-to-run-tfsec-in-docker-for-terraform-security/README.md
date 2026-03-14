@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, tfsec, Terraform, Security, Static Analysis, DevSecOps, Infrastructure as Code, CI/CD
+Tags: Docker, Tfsec, Terraform, Security, Static Analysis, DevSecOps, Infrastructure as Code, CI/CD
 
 Description: Learn how to use tfsec in Docker to scan Terraform code for security misconfigurations and compliance violations.
 

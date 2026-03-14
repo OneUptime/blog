@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kiali, Security, AuthorizationPolicy, Service Mesh, mTLS
+Tags: Istio, Kiali, Security, AuthorizationPolicy, Service Mesh, MTLS
 
 Description: Learn how to visualize and audit your Istio security policies including mTLS, authorization, and authentication using Kiali.
 

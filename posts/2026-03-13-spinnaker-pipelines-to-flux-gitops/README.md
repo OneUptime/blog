@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Spinnaker, Migration, GitOps, Kubernetes, CI/CD, Pipeline
+Tags: Flux CD, Spinnaker, Migration, GitOps, Kubernetes, CI/CD, Pipelines
 
 Description: Learn how to migrate from Spinnaker deployment pipelines to Flux CD GitOps workflows, mapping Spinnaker stages to GitOps equivalents.
 
@@ -10,7 +10,7 @@ Description: Learn how to migrate from Spinnaker deployment pipelines to Flux CD
 
 ## Introduction
 
-Spinnaker is a mature, multi-cloud CD platform with rich pipeline primitives: stages, conditions, parallel branches, approval gates, and deployment strategies. Migrating from Spinnaker to Flux CD is a significant architectural shift—from imperative pipeline execution to declarative GitOps reconciliation. Understanding the mapping between Spinnaker concepts and Flux CD primitives is the first step.
+Spinnaker is a mature, multi-cloud CD platform with rich pipeline primitives: stages, conditions, parallel branches, approval gates, and deployment strategies. Migrating from Spinnaker to Flux CD is a significant architectural shift-from imperative pipeline execution to declarative GitOps reconciliation. Understanding the mapping between Spinnaker concepts and Flux CD primitives is the first step.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ done
 
 ## Step 2: Map Spinnaker Stages to Flux Concepts
 
-```
+```plaintext
 Spinnaker Stage                   Flux CD Equivalent
 ──────────────────────────────    ──────────────────────────────────
 Deploy (Manifest)         ──►     Kustomization or HelmRelease
@@ -210,4 +210,4 @@ spec:
 
 ## Conclusion
 
-Migrating from Spinnaker to Flux CD is a fundamental change in deployment philosophy: from a pipeline that executes imperatively to a reconciliation loop that applies declaratively. The gains are significant—no more pipeline server to maintain, no single point of failure for deployments, and a full Git audit trail. The migration requires redesigning deployment workflows as GitOps structures rather than converting pipelines one-to-one.
+Migrating from Spinnaker to Flux CD is a fundamental change in deployment philosophy: from a pipeline that executes imperatively to a reconciliation loop that applies declaratively. The gains are significant-no more pipeline server to maintain, no single point of failure for deployments, and a full Git audit trail. The migration requires redesigning deployment workflows as GitOps structures rather than converting pipelines one-to-one.

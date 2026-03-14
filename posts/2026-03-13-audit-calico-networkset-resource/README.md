@@ -36,7 +36,7 @@ echo "GlobalNetworkSets: $(calicoctl get globalnetworksets -o json | python3 -c 
 
 ## Audit Check 2: Find Unreferenced NetworkSets
 
-NetworkSets not referenced by any policy are dead configuration — they consume resources and create confusion:
+NetworkSets not referenced by any policy are dead configuration - they consume resources and create confusion:
 
 ```bash
 #!/bin/bash
@@ -162,4 +162,4 @@ for s in sorted(selectors):
 
 ## Conclusion
 
-NetworkSet audits focus on currency and relevance: are IP lists up to date, are all sets referenced by active policies, and do IP ranges match their stated purpose? Threat intelligence blocklists require the most frequent review — a blocklist that isn't updated is worse than no blocklist, as it creates false confidence. Automate currency checks by requiring a `last-updated` annotation on all NetworkSets and alerting when the timestamp exceeds the expected refresh interval.
+NetworkSet audits focus on currency and relevance: are IP lists up to date, are all sets referenced by active policies, and do IP ranges match their stated purpose? Threat intelligence blocklists require the most frequent review - a blocklist that isn't updated is worse than no blocklist, as it creates false confidence. Automate currency checks by requiring a `last-updated` annotation on all NetworkSets and alerting when the timestamp exceeds the expected refresh interval.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, curl, HTTP, Networking
+Tags: Ubuntu, Linux, Curl, HTTP, Networking
 
 Description: Master curl on Ubuntu for HTTP requests, API testing, file downloads, custom headers, authentication, and scripting web interactions from the command line.
 

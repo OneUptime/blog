@@ -12,7 +12,7 @@ Description: A practical troubleshooting guide for diagnosing and resolving comm
 
 Calico host endpoint security issues can manifest in subtle and disruptive ways. Nodes may become unreachable over SSH, the kubelet may fail health checks, or cluster components may be unable to communicate with the API server. Because host endpoint policies operate at the OS network layer, issues are often harder to diagnose than pod-level policy problems.
 
-Understanding the diagnostic flow — from checking resource state to inspecting kernel programming to capturing live traffic — is essential for resolving host endpoint security issues quickly and safely. This guide covers the most common failure modes and the commands used to investigate them.
+Understanding the diagnostic flow - from checking resource state to inspecting kernel programming to capturing live traffic - is essential for resolving host endpoint security issues quickly and safely. This guide covers the most common failure modes and the commands used to investigate them.
 
 ## Prerequisites
 

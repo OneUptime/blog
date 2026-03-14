@@ -121,4 +121,4 @@ kubectl delete service nginx
 
 ## Conclusion
 
-Validating Calico on Azure is a multi-layer process: verify Azure-level settings (IP Forwarding, NSG rules), confirm Calico components are healthy, check IPAM block assignments, and run end-to-end connectivity tests across nodes. Azure-specific validation is critical because IP Forwarding is disabled by default and VXLAN traffic is not allowed in default NSG configurations — both of which silently break Calico pod networking.
+Validating Calico on Azure is a multi-layer process: verify Azure-level settings (IP Forwarding, NSG rules), confirm Calico components are healthy, check IPAM block assignments, and run end-to-end connectivity tests across nodes. Azure-specific validation is critical because IP Forwarding is disabled by default and VXLAN traffic is not allowed in default NSG configurations - both of which silently break Calico pod networking.

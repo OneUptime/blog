@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, pull, Timeout, Corporate firewall, Proxy, Registry, Troubleshooting, Networking
+Tags: Docker, Pull, Timeout, Corporate firewall, Proxy, Registry, Troubleshooting, Networking
 
 Description: Fix Docker pull timeouts behind corporate firewalls by configuring proxy settings, registry mirrors, and firewall exceptions for Docker traffic.
 

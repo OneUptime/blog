@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, cluster-api, vsphere, kubernetes, gitops, on-premises, infrastructure
+Tags: Flux CD, Cluster API, CAPI, VSphere, CAPV, GitOps, Kubernetes, On-Premise
 
-Description: Learn how to provision and manage on-premises Kubernetes clusters on VMware vSphere using Cluster API Provider vSphere (CAPV) and Flux CD, creating a GitOps-driven workflow for VM-based cluster lifecycle management. This guide covers CAPV setup, cluster templates, and Flux integration.
+Description: Learn how to provision and manage on-premises Kubernetes clusters on VMware vSphere using Cluster API Provider vSphere (CAPV) and Flux CD, creating a GitOps-driven workflow for VM-based cluster...
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to provision and manage on-premises Kubernetes clusters o
 
 Many enterprises run VMware vSphere as their primary on-premises virtualization platform, and Cluster API Provider vSphere (CAPV) brings the declarative Kubernetes cluster management model to vSphere-hosted VMs. By combining CAPV with Flux CD, you can manage your on-premises Kubernetes clusters with the same GitOps rigor as cloud-hosted clusters.
 
-This matters for organizations with strict data residency requirements, air-gapped environments, or existing VMware investments. CAPV provisions VMs, configures networking, installs Kubernetes, and joins nodes to the cluster — all driven by YAML manifests stored in Git. Flux reconciles those manifests continuously, ensuring your on-premises clusters match their desired state.
+This matters for organizations with strict data residency requirements, air-gapped environments, or existing VMware investments. CAPV provisions VMs, configures networking, installs Kubernetes, and joins nodes to the cluster - all driven by YAML manifests stored in Git. Flux reconciles those manifests continuously, ensuring your on-premises clusters match their desired state.
 
 This guide covers setting up CAPV on a management cluster, creating vSphere cluster manifests, and managing cluster lifecycle through Flux.
 

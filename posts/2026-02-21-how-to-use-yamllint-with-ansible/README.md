@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, yamllint, YAML, Linting
+Tags: Ansible, Yamllint, YAML, Linting
 
 Description: Configure yamllint specifically for Ansible projects with the right rules, exclusions, and integration alongside ansible-lint for complete coverage.
 

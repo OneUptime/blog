@@ -10,7 +10,7 @@ Description: Deploy and configure the GKE Filestore CSI driver using Flux CD to 
 
 ## Introduction
 
-Many stateful applications — including shared content management systems, ML training jobs that read the same dataset from multiple workers, and legacy applications — require persistent volumes that can be mounted by more than one pod simultaneously. Kubernetes' ReadWriteOnce volumes, backed by standard block storage, cannot satisfy this requirement. Google Cloud Filestore provides a fully managed NFS file server, and the GKE Filestore CSI driver surfaces it as a native Kubernetes storage class.
+Many stateful applications - including shared content management systems, ML training jobs that read the same dataset from multiple workers, and legacy applications - require persistent volumes that can be mounted by more than one pod simultaneously. Kubernetes' ReadWriteOnce volumes, backed by standard block storage, cannot satisfy this requirement. Google Cloud Filestore provides a fully managed NFS file server, and the GKE Filestore CSI driver surfaces it as a native Kubernetes storage class.
 
 Managing the CSI driver installation and the associated StorageClass, PersistentVolumeClaim, and application manifests through a GitOps workflow gives you reproducibility and auditability. Flux CD continuously reconciles the cluster state against your Git repository, meaning the driver and all dependent resources are always installed at the revision you have approved.
 

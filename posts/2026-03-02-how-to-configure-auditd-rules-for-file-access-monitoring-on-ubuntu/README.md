@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, auditd, Compliance, Monitoring
+Tags: Ubuntu, Security, Auditd, Compliance, Monitoring
 
 Description: Configure auditd rules on Ubuntu to monitor file access and modifications, creating an audit trail for security compliance and incident investigation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Logging, Debugging, Troubleshooting
+Tags: Kubernetes, Kubectl, Logging, Debugging, Troubleshooting
 
 Description: Master kubectl logs command with timestamps, time-based filters, and advanced options for efficient Kubernetes application debugging and log analysis.
 

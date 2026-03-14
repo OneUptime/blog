@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, pyenv, Version Management
+Tags: Ansible, Python, Pyenv, Version Management
 
 Description: Install and configure pyenv on remote hosts with Ansible to manage multiple Python versions for development and production workloads.
 

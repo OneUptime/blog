@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, iperf3, Bandwidth Testing, Performance
+Tags: Ubuntu, Networking, Iperf3, Bandwidth Testing, Performance
 
 Description: A practical guide to using iperf3 on Ubuntu to measure network throughput, test bidirectional bandwidth, and identify bottlenecks between hosts.
 

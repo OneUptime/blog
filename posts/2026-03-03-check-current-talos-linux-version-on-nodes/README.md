@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Version Check, talosctl, Cluster Management, Node Information
+Tags: Talos Linux, Version Check, Talosctl, Cluster Management, Node Information
 
 Description: Learn multiple methods to check the current Talos Linux version running on your nodes, including talosctl commands, Kubernetes labels, and API queries.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Fan Control, lm-sensors, Hardware, Server
+Tags: Ubuntu, Fan Control, Lm-sensors, Hardware, Server
 
 Description: Learn how to configure fan speed control on Ubuntu using fancontrol and pwmconfig, set up temperature-based fan curves, and manage cooling for servers and workstations.
 

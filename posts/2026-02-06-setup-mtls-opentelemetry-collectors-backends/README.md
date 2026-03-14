@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, mTLS, Security, TLS, Collector, Observability
+Tags: OpenTelemetry, MTLS, Security, TLS, Collector, Observability
 
 Description: Step-by-step guide to configuring mutual TLS authentication between OpenTelemetry Collectors and observability backends for secure telemetry transport.
 

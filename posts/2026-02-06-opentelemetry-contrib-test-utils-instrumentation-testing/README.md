@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Testing, Instrumentation, Node.js, contrib-test-utils, JavaScript
+Tags: OpenTelemetry, Testing, Instrumentation, Node.js, Contrib-test-utils, JavaScript
 
 Description: Learn how to use @opentelemetry/contrib-test-utils to write reliable tests for custom OpenTelemetry instrumentation libraries with practical examples.
 

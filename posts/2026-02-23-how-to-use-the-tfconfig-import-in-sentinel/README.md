@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Sentinel, Policy as Code, HashiCorp, tfconfig, Configuration Validation
+Tags: Terraform, Sentinel, Policy as Code, HashiCorp, Tfconfig, Configuration Validation
 
 Description: Discover how to use the tfconfig/v2 import in Sentinel to validate Terraform configuration structure, enforce module standards, and check coding conventions.
 

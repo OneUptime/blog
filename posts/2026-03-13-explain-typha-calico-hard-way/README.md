@@ -16,7 +16,7 @@ Explaining Typha to teammates who are familiar with Kubernetes but not with Cali
 
 In a standard Kubernetes setup, controllers watch the API server for resource changes. Calico's Felix daemon runs on every node and watches for NetworkPolicy, IPPool, and node resource changes. In a 200-node cluster, that means 200 concurrent watch connections to the API server, each processing the same stream of events independently.
 
-This is analogous to 200 developers each refreshing a documentation page every second — the server has to respond to all 200 individually, even though the content is the same. A content delivery network (CDN) solves this by caching the content and serving it to all 200 developers from the cache.
+This is analogous to 200 developers each refreshing a documentation page every second - the server has to respond to all 200 individually, even though the content is the same. A content delivery network (CDN) solves this by caching the content and serving it to all 200 developers from the cache.
 
 Typha is Calico's CDN equivalent: it holds one watch connection to the API server, caches the current state of Calico resources, and fans it out to all Felix agents.
 

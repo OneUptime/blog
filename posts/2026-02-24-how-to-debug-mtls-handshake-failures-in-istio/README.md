@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, TLS Handshake, Debugging, Troubleshooting
+Tags: Istio, MTLS, TLS Handshake, Debugging, Troubleshooting
 
 Description: Step-by-step guide to diagnosing and resolving TLS handshake failures between services in Istio including certificate mismatches and protocol errors.
 

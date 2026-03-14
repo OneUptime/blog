@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, stdin, Command Execution, Automation
+Tags: Ansible, Stdin, Command Execution, Automation
 
 Description: Learn how to pass stdin input to commands in Ansible using the shell module, expect module, and stdin parameter.
 

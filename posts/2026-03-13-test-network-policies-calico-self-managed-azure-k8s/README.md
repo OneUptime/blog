@@ -10,7 +10,7 @@ Description: Test and validate Kubernetes network policies enforced by Calico on
 
 ## Introduction
 
-Self-managed Kubernetes on Azure Virtual Machines runs Calico as a full CNI — unlike AKS where Calico operates in policy-only mode. This gives you access to Calico's complete feature set including IPAM, BGP routing, VXLAN encapsulation, and GlobalNetworkPolicy resources on Azure infrastructure.
+Self-managed Kubernetes on Azure Virtual Machines runs Calico as a full CNI - unlike AKS where Calico operates in policy-only mode. This gives you access to Calico's complete feature set including IPAM, BGP routing, VXLAN encapsulation, and GlobalNetworkPolicy resources on Azure infrastructure.
 
 Azure networking requires VXLAN encapsulation for Calico pod-to-pod traffic in most configurations, since IPIP (protocol 4) may be blocked by Azure NSG rules. The VXLAN mode (UDP port 4789) is more reliably allowed through Azure's default NSG configurations. Testing network policies on self-managed Azure Kubernetes validates both the Calico policy enforcement layer and the Azure networking layer underneath.
 

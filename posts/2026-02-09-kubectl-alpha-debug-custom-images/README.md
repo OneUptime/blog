@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Ephemeral Containers, Images
+Tags: Kubernetes, Kubectl, Debugging, Ephemeral Containers, Images
 
 Description: Learn how to use kubectl alpha debug with custom container images for specialized debugging scenarios.
 

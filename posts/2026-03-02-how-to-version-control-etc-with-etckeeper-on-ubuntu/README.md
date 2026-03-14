@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, etckeeper, Version Control, System Administration, Git
+Tags: Ubuntu, Etckeeper, Version Control, System Administration, Git
 
 Description: Install and configure etckeeper on Ubuntu to track changes to /etc using Git, providing audit trails, rollback capability, and change history for all system configuration files.
 

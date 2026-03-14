@@ -10,7 +10,7 @@ Description: Diagnose and fix namespace-based Calico network policy failures whe
 
 ## Introduction
 
-Namespace-based policy failures are particularly confusing because the problem can be at three different layers: the namespace label is missing, the policy selector doesn't match, or there's a conflicting deny rule with higher priority. All three produce the same symptom — traffic is blocked — but each requires a different fix.
+Namespace-based policy failures are particularly confusing because the problem can be at three different layers: the namespace label is missing, the policy selector doesn't match, or there's a conflicting deny rule with higher priority. All three produce the same symptom - traffic is blocked - but each requires a different fix.
 
 Calico's `namespaceSelector` in `projectcalico.org/v3` policies matches namespaces by their labels. If the namespace is missing the expected label, or if the label has a typo, the policy will silently not match and traffic will fall through to the default deny rule. This is different from pod label debugging because you're looking at namespace metadata, not pod metadata.
 
@@ -102,4 +102,4 @@ flowchart TD
 
 ## Conclusion
 
-Namespace-based policy debugging follows a clear path: verify namespace labels first, then verify the policy's `namespaceSelector` matches those labels, then check for ordering conflicts. The most common fix is adding a missing label to a namespace. Once labels are correct, the policy evaluation happens automatically — no restart required. Always clean up debug log policies after you're done investigating.
+Namespace-based policy debugging follows a clear path: verify namespace labels first, then verify the policy's `namespaceSelector` matches those labels, then check for ordering conflicts. The most common fix is adding a missing label to a namespace. Once labels are correct, the policy evaluation happens automatically - no restart required. Always clean up debug log policies after you're done investigating.

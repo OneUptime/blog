@@ -49,7 +49,7 @@ The most sustainable solution for legacy firewall compatibility is to constrain 
 Create a new IP pool with a firewall-compatible CIDR:
 
 ```yaml
-# restricted-pool.yaml — Calico IP pool using a CIDR pre-approved in the legacy firewall
+# restricted-pool.yaml - Calico IP pool using a CIDR pre-approved in the legacy firewall
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -99,7 +99,7 @@ For firewalls that cannot use CIDR-based rules, automate the process of updating
 Use Calico's network sets to group pod IPs for firewall management:
 
 ```yaml
-# external-network-set.yaml — Calico GlobalNetworkSet for firewall-approved external IPs
+# external-network-set.yaml - Calico GlobalNetworkSet for firewall-approved external IPs
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkSet
 metadata:

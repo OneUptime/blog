@@ -10,7 +10,7 @@ Description: A guide to configuring Calico on a new OpenShift Hosted Control Pla
 
 ## Introduction
 
-Configuring Calico on OpenShift Hosted Control Planes (HCP) has one key difference from standard OpenShift configuration: the pod CIDR must not overlap with the management cluster's pod CIDR or the hosted cluster's service CIDR. HCP clusters are multi-tenant — multiple hosted clusters run on the same management cluster — so CIDR planning requires coordination across all hosted clusters to avoid address space conflicts.
+Configuring Calico on OpenShift Hosted Control Planes (HCP) has one key difference from standard OpenShift configuration: the pod CIDR must not overlap with the management cluster's pod CIDR or the hosted cluster's service CIDR. HCP clusters are multi-tenant - multiple hosted clusters run on the same management cluster - so CIDR planning requires coordination across all hosted clusters to avoid address space conflicts.
 
 Beyond CIDR planning, Calico configuration on HCP follows the same principles as standard OpenShift: align with OpenShift's network model, create permissive policies for system namespaces, and tune Felix for the workload pattern. This guide covers the HCP-specific CIDR considerations and the standard configuration steps.
 

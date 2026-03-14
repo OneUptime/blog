@@ -12,7 +12,7 @@ Description: A guide to migrating a DevStack environment from OVS-based networki
 
 Migrating an existing DevStack environment from OVS networking to Calico lets you test the Calico-OpenStack integration with existing workload configurations without starting from scratch. The migration process in DevStack is simpler than production because you can update `local.conf` and re-run `./stack.sh`, which handles the CNI switch automatically.
 
-If you want to preserve existing VM data during the migration, you need to take a more careful approach — snapshotting VMs, switching the plugin, and restoring the VMs. For most development purposes, a clean re-stack is preferable.
+If you want to preserve existing VM data during the migration, you need to take a more careful approach - snapshotting VMs, switching the plugin, and restoring the VMs. For most development purposes, a clean re-stack is preferable.
 
 ## Prerequisites
 
@@ -97,4 +97,4 @@ openstack server list
 
 ## Conclusion
 
-Migrating a DevStack environment from OVS to Calico is most reliably done by updating `local.conf` and running a clean re-stack. For cases where existing test data must be preserved, the in-place migration approach — stopping OVS, installing Calico components, restarting Neutron — achieves the same result with more manual steps. Either approach results in a Calico-backed DevStack environment that reflects production Calico-OpenStack integration accurately.
+Migrating a DevStack environment from OVS to Calico is most reliably done by updating `local.conf` and running a clean re-stack. For cases where existing test data must be preserved, the in-place migration approach - stopping OVS, installing Calico components, restarting Neutron - achieves the same result with more manual steps. Either approach results in a Calico-backed DevStack environment that reflects production Calico-OpenStack integration accurately.

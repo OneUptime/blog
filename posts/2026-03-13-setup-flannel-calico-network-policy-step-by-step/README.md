@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Flannel, Canal, Kubernetes, Networking, Network Policy, CNI
 
-Description: A step-by-step guide to installing Canal — Flannel for pod networking combined with Calico for network policy enforcement.
+Description: A step-by-step guide to installing Canal - Flannel for pod networking combined with Calico for network policy enforcement.
 
 ---
 
@@ -108,4 +108,4 @@ kubectl exec -n kube-system deploy/calicoctl -- calicoctl node status
 
 ## Conclusion
 
-Setting up Canal gives a Kubernetes cluster both Flannel's reliable VXLAN networking and Calico's NetworkPolicy enforcement through a single manifest deployment. The Canal DaemonSet runs both components on every node, and the separation of responsibilities — Flannel for routing, Calico's Felix for policy — means each component can be tuned independently. Network policy applied after installation takes effect immediately, with no disruption to existing pod connectivity.
+Setting up Canal gives a Kubernetes cluster both Flannel's reliable VXLAN networking and Calico's NetworkPolicy enforcement through a single manifest deployment. The Canal DaemonSet runs both components on every node, and the separation of responsibilities - Flannel for routing, Calico's Felix for policy - means each component can be tuned independently. Network policy applied after installation takes effect immediately, with no disruption to existing pod connectivity.

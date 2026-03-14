@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Connection Age, Load Balancing, Envoy, gRPC
+Tags: Istio, Connection Age, Load Balancing, Envoy, GRPC
 
 Description: How to configure maximum connection age in Istio to improve load balancing for HTTP/2 and gRPC services and prevent stale connections.
 

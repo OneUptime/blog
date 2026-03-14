@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificate Authority, PKI, Security
+Tags: Istio, MTLS, Certificate Authority, PKI, Security
 
 Description: How to integrate Istio with an external certificate authority like Vault, cert-manager, or your own PKI for mTLS certificate issuance.
 

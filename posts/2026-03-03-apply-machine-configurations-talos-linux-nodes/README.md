@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Machine Configuration, talosctl, Node Management, Kubernetes
+Tags: Talos Linux, Machine Configuration, Talosctl, Node Management, Kubernetes
 
 Description: Learn how to apply, update, and manage machine configurations on Talos Linux nodes using talosctl.
 

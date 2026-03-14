@@ -79,7 +79,7 @@ spec:
 
 ## Mistake 3: VXLAN and IP-in-IP Both Configured
 
-Configuring both `vxlanMode` and `ipipMode` on the same IPPool creates unpredictable behavior — Calico will use one mode but the configuration is confusing and may change after upgrades.
+Configuring both `vxlanMode` and `ipipMode` on the same IPPool creates unpredictable behavior - Calico will use one mode but the configuration is confusing and may change after upgrades.
 
 **Fix**: Configure only one mode per IPPool:
 ```bash
@@ -113,7 +113,7 @@ kubectl delete pod -n calico-system -l k8s-app=calico-node \
 
 ## Mistake 5: CrossSubnet Mode Misconfigured for Topology
 
-Using CrossSubnet mode but having all nodes on different subnets results in all traffic being encapsulated anyway — same as using Always mode, but with more configuration complexity and potential confusion.
+Using CrossSubnet mode but having all nodes on different subnets results in all traffic being encapsulated anyway - same as using Always mode, but with more configuration complexity and potential confusion.
 
 **Diagnosis**:
 ```bash
@@ -126,10 +126,10 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.a
 
 ## Best Practices
 
-- Always test cross-node connectivity before any production deployment — same-node tests don't validate the overlay
+- Always test cross-node connectivity before any production deployment - same-node tests don't validate the overlay
 - Verify security group rules for the overlay protocol as part of your cluster provisioning checklist
-- Set MTU explicitly in the Calico Installation resource — never rely on auto-detection
-- Monitor VXLAN FDB entry count as a cluster health metric — sudden drops indicate Felix connectivity issues
+- Set MTU explicitly in the Calico Installation resource - never rely on auto-detection
+- Monitor VXLAN FDB entry count as a cluster health metric - sudden drops indicate Felix connectivity issues
 
 ## Conclusion
 

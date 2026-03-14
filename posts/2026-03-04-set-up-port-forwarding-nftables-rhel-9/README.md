@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, Port Forwarding, Firewall, Linux
+Tags: RHEL, Nftables, Port Forwarding, Firewall, Linux
 
 Description: A hands-on guide to configuring port forwarding (DNAT and SNAT) using nftables on RHEL, covering common use cases like redirecting traffic to internal servers.
 

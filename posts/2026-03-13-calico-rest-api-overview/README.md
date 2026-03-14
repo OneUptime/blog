@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, REST API, CNI, Programmatic Access, calicoctl, Automation
+Tags: Calico, Kubernetes, REST API, CNI, Automation
 
 Description: A comprehensive guide to Calico's REST API for programmatic access, covering the API structure, authentication, and how it differs from kubectl and calicoctl workflows.
 
@@ -25,17 +25,17 @@ Understanding the Calico REST API means understanding the API server endpoint st
 
 The Calico REST API is exposed through the Kubernetes API aggregation layer. All Calico v3 resources are accessible at:
 
-```
+```plaintext
 https://<kubernetes-api-server>/apis/projectcalico.org/v3/
 ```
 
 For namespaced resources:
-```
+```plaintext
 https://<kubernetes-api-server>/apis/projectcalico.org/v3/namespaces/<namespace>/<resource-type>/<name>
 ```
 
 For cluster-scoped resources:
-```
+```plaintext
 https://<kubernetes-api-server>/apis/projectcalico.org/v3/<resource-type>/<name>
 ```
 
@@ -144,11 +144,11 @@ curl -s -X POST \
 
 ## Best Practices
 
-- Use service account tokens with minimal permissions for automation — never use admin kubeconfig tokens in scripts
-- Always handle API errors explicitly — a 409 Conflict error means the resource already exists; a 422 means validation failed
+- Use service account tokens with minimal permissions for automation - never use admin kubeconfig tokens in scripts
+- Always handle API errors explicitly - a 409 Conflict error means the resource already exists; a 422 means validation failed
 - Use `kubectl proxy` for local development but use proper service account tokens in CI/CD
-- Set appropriate timeouts on REST calls — the API server can be temporarily slow during upgrades
+- Set appropriate timeouts on REST calls - the API server can be temporarily slow during upgrades
 
 ## Conclusion
 
-The Calico REST API provides programmatic access to all Calico resources through the standard Kubernetes API aggregation layer. It uses Kubernetes authentication and RBAC, making it secure and consistent with the rest of your Kubernetes tooling. For automation scenarios — CI/CD policy management, monitoring integrations, or custom controllers — the REST API is the foundation for building Calico-aware tooling.
+The Calico REST API provides programmatic access to all Calico resources through the standard Kubernetes API aggregation layer. It uses Kubernetes authentication and RBAC, making it secure and consistent with the rest of your Kubernetes tooling. For automation scenarios - CI/CD policy management, monitoring integrations, or custom controllers - the REST API is the foundation for building Calico-aware tooling.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Kubernetes, Distributed Systems, Cluster State, Infrastructure
+Tags: Talos Linux, Etcd, Kubernetes, Distributed Systems, Cluster State, Infrastructure
 
 Description: A comprehensive guide to the etcd service in Talos Linux, covering how it stores cluster state, manages consensus, and how to maintain and troubleshoot etcd on Talos nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Modules, Dependencies, go.mod, Vendoring, Package Management
+Tags: Go, Golang, Modules, Dependencies, Go.mod, Vendoring, Package Management
 
 Description: Master Go modules for dependency management including go.mod, go.sum, version selection, vendoring, and best practices for managing packages.
 

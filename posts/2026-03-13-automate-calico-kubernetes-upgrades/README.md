@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Automation, GitOps
+Tags: Calico, Kubernetes, Networking, Upgrade, Automation, GitOps
 
 Description: Automate Calico upgrades on Kubernetes using GitOps pipelines, automated compatibility checking, and staged rollout with automated validation at each stage.
 

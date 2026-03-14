@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NFS, nfsstat, Monitoring, Linux
+Tags: RHEL, NFS, Nfsstat, Monitoring, Linux
 
 Description: Use nfsstat and other monitoring tools on RHEL to track NFS server performance, identify bottlenecks, and diagnose client issues.
 

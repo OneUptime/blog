@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, Persistent Sessions, Storage, Linux
+Tags: RHEL, ISCSI, Persistent Sessions, Storage, Linux
 
 Description: Configure iSCSI sessions on RHEL to automatically reconnect after reboots, ensuring your remote storage is always available.
 

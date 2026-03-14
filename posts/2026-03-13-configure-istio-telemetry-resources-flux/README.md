@@ -237,9 +237,9 @@ kubectl port-forward svc/prometheus 9090:9090 -n monitoring
 - Set low default sampling rates (1-5%) at the mesh level and override with 100% sampling for critical services like payment or authentication where full tracing is required for compliance.
 - Use tag overrides to add business context (team, environment, service type) to all Istio metrics, making them more useful for SLO monitoring.
 - Filter access logs to errors only (`response.code >= 400`) at the mesh level to reduce log volume; override to full logging for services under active investigation.
-- Define extension providers (Tempo, Jaeger, etc.) in the mesh ConfigMap and reference them by name in Telemetry resources — this decouples the provider endpoint from the telemetry policy.
+- Define extension providers (Tempo, Jaeger, etc.) in the mesh ConfigMap and reference them by name in Telemetry resources - this decouples the provider endpoint from the telemetry policy.
 - Use the Telemetry API's `selector.matchLabels` to apply workload-specific configurations without modifying the mesh-wide defaults.
 
 ## Conclusion
 
-Istio Telemetry resources managed through Flux CD give you declarative, version-controlled observability configuration for your entire service mesh. Tracing sampling rates, access log formats, and metric customizations are all GitOps-managed code — making it easy to adjust observability depth for debugging, compliance, or cost management through the standard pull request workflow.
+Istio Telemetry resources managed through Flux CD give you declarative, version-controlled observability configuration for your entire service mesh. Tracing sampling rates, access log formats, and metric customizations are all GitOps-managed code - making it easy to adjust observability depth for debugging, compliance, or cost management through the standard pull request workflow.

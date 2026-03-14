@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Docker Desktop, macOS, Kubernetes, Service Mesh
+Tags: Istio, Docker Desktop, MacOS, Kubernetes, Service Mesh
 
 Description: Guide to running Istio on Docker Desktop's built-in Kubernetes for macOS with resource tuning and practical development tips.
 

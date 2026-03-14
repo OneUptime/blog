@@ -10,7 +10,7 @@ Description: Learn how to run OPA Conftest and Kyverno policy checks in CI pipel
 
 ## Introduction
 
-GitOps repositories are only as good as the quality of the manifests they contain. Policy compliance checks in CI enforce organizational rules—such as requiring resource limits, disallowing privileged containers, or mandating specific labels—before manifests are merged to the fleet repository. This shifts governance left, catching policy violations at PR time rather than in the cluster.
+GitOps repositories are only as good as the quality of the manifests they contain. Policy compliance checks in CI enforce organizational rules-such as requiring resource limits, disallowing privileged containers, or mandating specific labels-before manifests are merged to the fleet repository. This shifts governance left, catching policy violations at PR time rather than in the cluster.
 
 Two popular tools for this are Conftest (using OPA Rego policies) and Kyverno CLI (using Kyverno policies). Both can run in CI without a running Kubernetes cluster, evaluating rendered manifests against a policy library. Failing policies block the PR merge, ensuring Flux CD only ever reconciles compliant manifests.
 

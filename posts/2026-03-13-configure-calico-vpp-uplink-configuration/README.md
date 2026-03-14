@@ -10,7 +10,7 @@ Description: A detailed guide to configuring the uplink interface for Calico VPP
 
 ## Introduction
 
-The uplink configuration in Calico VPP determines how VPP connects to the physical network. The uplink interface is the NIC that VPP takes over from the Linux kernel using DPDK — this is the most impactful configuration decision for Calico VPP performance. The choice of driver (af_packet, DPDK, SR-IOV), queue count, and interrupt vs. polling mode directly determines the maximum throughput and minimum latency achievable.
+The uplink configuration in Calico VPP determines how VPP connects to the physical network. The uplink interface is the NIC that VPP takes over from the Linux kernel using DPDK - this is the most impactful configuration decision for Calico VPP performance. The choice of driver (af_packet, DPDK, SR-IOV), queue count, and interrupt vs. polling mode directly determines the maximum throughput and minimum latency achievable.
 
 Calico VPP supports several uplink modes:
 - `af_packet`: Uses Linux AF_PACKET socket (no DPDK required, lower performance)

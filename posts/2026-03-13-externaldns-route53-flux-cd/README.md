@@ -1,10 +1,10 @@
-# How to Deploy ExternalDNS with AWS Route53 Provider via Flux CD
+# Deploy ExternalDNS with AWS Route 53 Using Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ExternalDNS, AWS Route53, DNS, Kubernetes, GitOps, Networking
+Tags: ExternalDNS, Route 53, AWS, DNS, Flux CD, GitOps, Kubernetes, EKS
 
-Description: Learn how to deploy ExternalDNS with the AWS Route53 provider using Flux CD HelmRelease to automatically manage DNS records for Kubernetes services.
+Description: Deploy ExternalDNS configured for AWS Route 53 on Kubernetes using Flux CD to automatically manage Route 53 DNS records when Ingress and LoadBalancer Service resources are created or deleted.
 
 ---
 

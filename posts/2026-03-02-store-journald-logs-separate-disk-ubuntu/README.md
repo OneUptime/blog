@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, journald, System Administration, Storage
+Tags: Ubuntu, Logging, Journald, System Administration, Storage
 
 Description: Learn how to move journald log storage to a dedicated disk on Ubuntu to prevent root filesystem exhaustion and improve log management.
 

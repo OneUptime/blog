@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Canary, Ingress, Deployment
+Tags: Calico, Kubernetes, Canary, Ingress, Deployments
 
 Description: Configure canary deployments using Calico ingress gateway to progressively shift traffic to new versions of services.
 

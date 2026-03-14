@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, firewalld, Firewall Zones, Security, Linux
+Tags: Ansible, Firewalld, Firewall Zones, Security, Linux
 
 Description: Manage firewalld zones across your Linux servers using Ansible to control network access with zone-based firewall policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Protocol Buffers, gRPC, API Design, Schema Evolution, Backward Compatibility, Microservices
+Tags: Protocol Buffers, GRPC, API Design, Schema Evolution, Backward Compatibility, Microservices
 
 Description: A comprehensive guide to evolving Protocol Buffer schemas safely, covering backward and forward compatibility rules, field management strategies, and versioning patterns for production gRPC services.
 

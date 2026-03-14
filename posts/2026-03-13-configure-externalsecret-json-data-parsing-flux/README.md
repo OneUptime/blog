@@ -10,7 +10,7 @@ Description: Parse JSON-structured secrets from external stores using ESO Extern
 
 ## Introduction
 
-Modern secret stores often store secrets as JSON objects rather than flat strings. A single AWS Secrets Manager secret might contain a JSON blob with a database hostname, port, username, password, and SSL certificate — all logically grouped together. The External Secrets Operator provides powerful JSON parsing capabilities to extract individual fields from these complex secret structures and map them to specific Kubernetes Secret keys.
+Modern secret stores often store secrets as JSON objects rather than flat strings. A single AWS Secrets Manager secret might contain a JSON blob with a database hostname, port, username, password, and SSL certificate - all logically grouped together. The External Secrets Operator provides powerful JSON parsing capabilities to extract individual fields from these complex secret structures and map them to specific Kubernetes Secret keys.
 
 Understanding JSON data parsing in `ExternalSecret` resources lets you design your secret store layout around logical groupings (one secret per application, one secret per service) rather than being forced into one-key-per-secret organization to satisfy Kubernetes. Managed through Flux CD, these parsing configurations are version-controlled alongside the applications that consume them.
 

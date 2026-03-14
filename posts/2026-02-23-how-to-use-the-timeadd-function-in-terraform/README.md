@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, timeadd, Time Functions, Duration, Infrastructure as Code
+Tags: Terraform, Timeadd, Time Functions, Duration, Infrastructure as Code
 
 Description: Learn how to use Terraform's timeadd function to calculate future and past timestamps for certificate expiry, maintenance windows, and time-based resource policies.
 

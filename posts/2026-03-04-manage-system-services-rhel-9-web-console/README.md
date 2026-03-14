@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cockpit, Services, systemd, Linux
+Tags: RHEL, Cockpit, Services, Systemd, Linux
 
 Description: A practical guide to managing systemd services through the Cockpit web console on RHEL, including starting, stopping, enabling, and troubleshooting services.
 

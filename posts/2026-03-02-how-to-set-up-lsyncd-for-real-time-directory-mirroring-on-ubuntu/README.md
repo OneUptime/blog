@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, File Sync, rsync, Linux, DevOps
+Tags: Ubuntu, File Sync, Rsync, Linux, DevOps
 
 Description: Learn how to configure lsyncd on Ubuntu to perform real-time directory mirroring using inotify and rsync, keeping local or remote directories synchronized as files change.
 

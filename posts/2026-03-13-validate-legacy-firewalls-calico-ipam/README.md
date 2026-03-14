@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, firewall, networking, kubernetes, on-premises, legacy
+Tags: Calico, IPAM, Firewall, Networking, Kubernetes, On-Premise, LEGACY
 
-Description: A guide to validating that Calico IPAM and pod networking work correctly in environments with legacy firewalls, including firewall rule verification and confirming that pod traffic passes through without being blocked.
+Description: A guide to validating that Calico IPAM and pod networking work correctly in environments with legacy firewalls, including firewall rule verification and confirming that pod traffic passes through...
 
 ---
 
@@ -54,7 +54,7 @@ calicoctl get ippool default-ipv4-ippool \
 # Encapsulation modes and required firewall rules:
 # IP-in-IP (ipipMode: Always): requires IP protocol 4 (IPIP) to be permitted
 # VXLAN (vxlanMode: Always): requires UDP port 4789 to be permitted
-# CrossSubnet: IPIP/VXLAN only crosses subnet boundaries — check subnet topology
+# CrossSubnet: IPIP/VXLAN only crosses subnet boundaries - check subnet topology
 # Never (pure BGP): requires BGP (TCP 179) to be permitted between nodes
 ```
 
@@ -114,9 +114,9 @@ kubectl -n kube-system exec -it \
 ```mermaid
 flowchart LR
     subgraph "Firewall Rules Required"
-        R1["TCP 179 — BGP\nbetween nodes and peers"]
+        R1["TCP 179 - BGP\nbetween nodes and peers"]
         R2["Protocol 4 (IPIP)\nbetween nodes if ipipMode: Always"]
-        R3["UDP 4789 — VXLAN\nbetween nodes if vxlanMode: Always"]
+        R3["UDP 4789 - VXLAN\nbetween nodes if vxlanMode: Always"]
         R4["Pod CIDR egress\nthrough firewall for external access"]
     end
     NODES[Kubernetes Nodes] --> FW[Legacy Firewall]
@@ -132,7 +132,7 @@ flowchart LR
 - Document all required firewall rules before deploying Calico in a legacy environment
 - Use `CrossSubnet` encapsulation mode to avoid encapsulation overhead within the same L2 segment
 - Consider native routing mode (BGP, no encapsulation) for the simplest firewall rule set
-- Work with your network team to create firewall rules before deploying pods — retrofitting rules is risky
+- Work with your network team to create firewall rules before deploying pods - retrofitting rules is risky
 - Test connectivity from the pod CIDR range through the firewall during a maintenance window
 
 ## Conclusion

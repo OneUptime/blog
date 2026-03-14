@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HTTP, uri Module, API
+Tags: Ansible, HTTP, Uri Module, API
 
 Description: Learn how to make HTTP requests from Ansible playbooks using the uri module for API calls, health checks, and webhooks.
 

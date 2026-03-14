@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Application Gateway, Mutual TLS, mTLS, Security, Certificate Authentication, Networking
+Tags: Azure, Application Gateway, Mutual TLS, MTLS, Security, Certificate Authentication, Networking
 
 Description: A detailed guide to configuring Azure Application Gateway with mutual TLS authentication for client certificate verification and zero-trust network access.
 

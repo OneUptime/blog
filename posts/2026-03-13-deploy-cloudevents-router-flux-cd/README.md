@@ -12,7 +12,7 @@ Description: Deploy a CloudEvents-based event router to Kubernetes using Flux CD
 
 CloudEvents is a CNCF specification for describing event data in a common format. A CloudEvents router sits between event producers and consumers, routing events based on their type, source, or attributes to the appropriate downstream services. This decouples producers from consumers and enables flexible, reconfigurable event pipelines.
 
-Managing a CloudEvents router through Flux CD means your event routing rules — which event types go to which services — are version-controlled. Adding a new consumer or changing routing logic is a pull request, making event pipeline changes auditable and reversible.
+Managing a CloudEvents router through Flux CD means your event routing rules - which event types go to which services - are version-controlled. Adding a new consumer or changing routing logic is a pull request, making event pipeline changes auditable and reversible.
 
 This guide covers deploying a Kubernetes-native CloudEvents router (using Knative Eventing's Broker as the routing backbone) and configuring routing rules via Flux CD.
 
@@ -59,7 +59,7 @@ spec:
 
 ## Step 2: Define Event Routing Rules (Triggers)
 
-Each Trigger defines a routing rule — a filter and a destination:
+Each Trigger defines a routing rule - a filter and a destination:
 
 ```yaml
 # clusters/my-cluster/cloudevents-router/triggers.yaml
@@ -240,7 +240,7 @@ kubectl logs -n app deployment/analytics --tail=20
 - Use specific CloudEvents attribute filters in Triggers rather than wildcard matching to prevent unintended event fan-out.
 - Always configure a dead-letter sink on the Broker with retry and backoff policies to handle transient consumer failures without losing events.
 - Apply `dependsOn` in Flux Kustomizations to ensure the Broker is ready before Triggers and Sources reference it.
-- Use Knative's `EventType` CRD to document the CloudEvents schema for each event type — these become discoverable API contracts for event producers and consumers.
+- Use Knative's `EventType` CRD to document the CloudEvents schema for each event type - these become discoverable API contracts for event producers and consumers.
 - Monitor Broker and Trigger metrics with Prometheus to detect routing failures, dead-letter accumulation, and event latency issues.
 
 ## Conclusion

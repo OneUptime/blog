@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ulimit, Linux, Performance, System Administration
+Tags: Ansible, Ulimit, Linux, Performance, System Administration
 
 Description: Learn how to configure system resource limits (ulimits) across your Linux infrastructure using Ansible for file descriptors, processes, memory, and more.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, memtest86, Memory Testing, Hardware Diagnostics, Troubleshooting
+Tags: Ubuntu, Memtest86, Memory Testing, Hardware Diagnostics, Troubleshooting
 
 Description: A practical guide to using memtest86+ on Ubuntu to diagnose faulty RAM, understand test results, and troubleshoot memory-related system stability issues.
 

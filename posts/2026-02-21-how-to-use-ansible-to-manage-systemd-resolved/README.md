@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, systemd-resolved, DNS, Linux, Networking
+Tags: Ansible, Systemd-resolved, DNS, Linux, Networking
 
 Description: Learn how to configure systemd-resolved with Ansible for DNS resolution, including custom DNS servers, DNSSEC, DNS-over-TLS, and split-horizon DNS.
 

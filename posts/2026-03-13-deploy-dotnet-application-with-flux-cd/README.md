@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, .NET, C#, ASP.NET Core, Deployment
+Tags: Flux CD, Kubernetes, GitOps, .NET, C#, ASP.NET Core, Deployments
 
 Description: Deploy a .NET Core ASP.NET application to Kubernetes using Flux CD GitOps, with health checks, graceful shutdown, and environment-based configuration.
 
@@ -10,7 +10,7 @@ Description: Deploy a .NET Core ASP.NET application to Kubernetes using Flux CD 
 
 ## Introduction
 
-.NET (formerly .NET Core) has become a top-tier choice for building high-performance microservices and web APIs. ASP.NET Core is fast, cross-platform, and ships with built-in health check endpoints, graceful shutdown support, and structured logging — features that map directly to Kubernetes operational requirements. The .NET SDK's built-in Docker support (`dotnet publish /p:PublishProfile=DefaultContainer`) makes containerization straightforward.
+.NET (formerly .NET Core) has become a top-tier choice for building high-performance microservices and web APIs. ASP.NET Core is fast, cross-platform, and ships with built-in health check endpoints, graceful shutdown support, and structured logging - features that map directly to Kubernetes operational requirements. The .NET SDK's built-in Docker support (`dotnet publish /p:PublishProfile=DefaultContainer`) makes containerization straightforward.
 
 Running .NET on Kubernetes with Flux CD gives you a GitOps-driven deployment pipeline where configuration differences between environments are managed through Kubernetes ConfigMaps and Secrets, not separate Docker images. Flux ensures every cluster always reflects the state declared in your Git repository.
 
@@ -26,7 +26,7 @@ This guide covers the multi-stage .NET Dockerfile, ASP.NET Core health check int
 ## Step 1: Containerize the .NET Application
 
 ```dockerfile
-# Dockerfile — multi-stage build: SDK for compile, runtime for execution
+# Dockerfile - multi-stage build: SDK for compile, runtime for execution
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS builder
 WORKDIR /src
 # Restore dependencies first (cached separately from source)

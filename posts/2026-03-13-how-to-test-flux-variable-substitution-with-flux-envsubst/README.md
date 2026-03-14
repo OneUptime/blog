@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Variable Substitution, Testing, envsubst
+Tags: Flux, Kubernetes, GitOps, Variable Substitution, Testing, Envsubst
 
 Description: Learn how to test and debug Flux postBuild variable substitutions locally using flux envsubst before deploying to your cluster.
 

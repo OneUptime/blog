@@ -112,4 +112,4 @@ flowchart TD
 
 ## Conclusion
 
-Automating Calico IPAM checks with a weekly consistency CronJob and a daily utilization check CronJob provides complete IPAM visibility without manual effort. The consistency check catches leaked IPs that won't appear in utilization metrics. The utilization check provides early warning before exhaustion. Both should be configured from day one in production — not after the first IPAM-related incident.
+Automating Calico IPAM checks with a weekly consistency CronJob and a daily utilization check CronJob provides complete IPAM visibility without manual effort. The consistency check catches leaked IPs that won't appear in utilization metrics. The utilization check provides early warning before exhaustion. Both should be configured from day one in production - not after the first IPAM-related incident.

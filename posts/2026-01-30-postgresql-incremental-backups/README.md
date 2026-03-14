@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Incremental Backups, WAL, pgBackRest
+Tags: PostgreSQL, Incremental Backups, WAL, PgBackRest
 
 Description: Learn to implement incremental backups with WAL archiving, pgBackRest, and block-level incremental strategies for efficient database backup.
 

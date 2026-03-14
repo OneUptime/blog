@@ -77,7 +77,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: bitnami
-  # No dependsOn — tier 1 has no dependencies
+  # No dependsOn - tier 1 has no dependencies
   values:
     primary:
       persistence:

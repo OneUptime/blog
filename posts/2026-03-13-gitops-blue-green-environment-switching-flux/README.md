@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Blue-Green, Deployment, Kustomize
+Tags: Flux CD, GitOps, Kubernetes, Blue-Green, Deployments, Kustomize
 
 Description: Implement blue-green environment switching using Flux CD Kustomizations and Kubernetes Services to achieve zero-downtime deployments with instant rollback capability.
 
@@ -10,7 +10,7 @@ Description: Implement blue-green environment switching using Flux CD Kustomizat
 
 ## Introduction
 
-Blue-green deployment maintains two identical production environments — "blue" (currently live) and "green" (the new version). Traffic is switched from blue to green atomically by updating a Kubernetes Service selector. If green has problems, you switch back to blue instantly with no need to redeploy the old version — it is still running.
+Blue-green deployment maintains two identical production environments - "blue" (currently live) and "green" (the new version). Traffic is switched from blue to green atomically by updating a Kubernetes Service selector. If green has problems, you switch back to blue instantly with no need to redeploy the old version - it is still running.
 
 In a GitOps workflow with Flux CD, both the blue and green deployments are declared in Git. The "switch" is a change to the Service selector in Git, which Flux reconciles within seconds. Because the old version is still running when you switch, instant rollback is a git revert away.
 
@@ -138,7 +138,7 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    # Both slots should be healthy — this confirms the pre-switch state
+    # Both slots should be healthy - this confirms the pre-switch state
     - apiVersion: apps/v1
       kind: Deployment
       name: my-app-blue
@@ -185,7 +185,7 @@ git commit -m "deploy: switch my-app traffic from blue to green (v2.5.0)"
 git push origin main
 ```
 
-Flux detects the commit and updates the Service selector within the interval. The switch is atomic from the Kubernetes perspective — the Service selector update causes all new connections to go to green while existing connections to blue complete normally.
+Flux detects the commit and updates the Service selector within the interval. The switch is atomic from the Kubernetes perspective - the Service selector update causes all new connections to go to green while existing connections to blue complete normally.
 
 ```mermaid
 sequenceDiagram
@@ -237,8 +237,8 @@ git push origin main
 
 ## Best Practices
 
-- Keep both deployments scaled to full production capacity during the switch window — running at half capacity defeats the purpose of the pattern.
-- Always verify green is healthy before committing the selector switch — a pre-switch smoke test prevents a bad switch.
+- Keep both deployments scaled to full production capacity during the switch window - running at half capacity defeats the purpose of the pattern.
+- Always verify green is healthy before committing the selector switch - a pre-switch smoke test prevents a bad switch.
 - Set a stability period (e.g., 24 hours) before updating the inactive slot. During this window instant rollback is available.
 - Label pods with a `version` label in addition to `slot` so you can query running version independently of which slot is active.
 - Monitor error rates and latency immediately after switching to detect problems quickly.

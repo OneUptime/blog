@@ -12,7 +12,7 @@ Description: Deploy Sentry error tracking and monitoring platform to Kubernetes 
 
 Sentry is the leading open-source application monitoring platform that captures errors, traces slow transactions, and surfaces performance bottlenecks in real time. Running Sentry on-premises is common for organizations with strict data residency requirements or those handling sensitive application data that cannot leave their network perimeter.
 
-Deploying Sentry on Kubernetes is non-trivial—it comprises multiple services including the web server, workers, Celery beat scheduler, Snuba (event processing), Relay (ingest), Kafka, Redis, PostgreSQL, ClickHouse, and Zookeeper. The official Sentry Helm chart manages this complexity, and Flux CD ensures the entire multi-component deployment is reconciled from a single Git source of truth.
+Deploying Sentry on Kubernetes is non-trivial-it comprises multiple services including the web server, workers, Celery beat scheduler, Snuba (event processing), Relay (ingest), Kafka, Redis, PostgreSQL, ClickHouse, and Zookeeper. The official Sentry Helm chart manages this complexity, and Flux CD ensures the entire multi-component deployment is reconciled from a single Git source of truth.
 
 This guide uses the `sentry-kubernetes` Helm chart to deploy the self-hosted Sentry stack.
 
@@ -201,8 +201,8 @@ Navigate to `https://sentry.example.com` and log in with the admin credentials.
 - Configure SMTP in the Helm values (`email.from`, `email.host`) for notifications and user invitations.
 - Enable Slack or PagerDuty integrations in Sentry settings for on-call alerting.
 - Set up Sentry projects per application and configure alert rules to avoid alert fatigue.
-- Monitor ClickHouse disk usage closely—event data grows quickly in high-traffic environments.
+- Monitor ClickHouse disk usage closely-event data grows quickly in high-traffic environments.
 
 ## Conclusion
 
-Sentry is now deployed on Kubernetes and managed by Flux CD. Your development teams gain a self-hosted error intelligence platform, while your operations team maintains full control over the deployment through Git. Any configuration change—from adding a new integration to bumping chart versions—is a pull request that Flux applies automatically, keeping your error tracking infrastructure in sync with its declared state.
+Sentry is now deployed on Kubernetes and managed by Flux CD. Your development teams gain a self-hosted error intelligence platform, while your operations team maintains full control over the deployment through Git. Any configuration change-from adding a new integration to bumping chart versions-is a pull request that Flux applies automatically, keeping your error tracking infrastructure in sync with its declared state.

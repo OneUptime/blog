@@ -35,7 +35,7 @@ openssl req -x509 -newkey rsa:4096 \
   -subj "/CN=calico-typha-ca/O=Calico"
 ```
 
-Secure the CA private key — it should not leave the control plane.
+Secure the CA private key - it should not leave the control plane.
 
 ```bash
 chmod 600 /etc/calico/pki/typha-ca.key

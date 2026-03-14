@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, L7, eBPF
+Tags: Cilium, Kubernetes, Network Policy, L7, EBPF
 
 Description: Implement application-layer network policies in Cilium that filter traffic based on HTTP methods, paths, headers, and gRPC methods rather than just IP addresses and ports.
 
@@ -138,4 +138,4 @@ flowchart LR
 
 ## Conclusion
 
-Cilium L7 network policies extend Kubernetes security from the network layer to the application layer, enabling fine-grained access control based on HTTP methods, URL paths, headers, and gRPC methods. The enforcement is transparent to applications — no code changes, no sidecar injection per pod, just eBPF hooks that redirect L7 traffic through a shared Envoy proxy. Combining L3/L4 and L7 policies in a single `CiliumNetworkPolicy` gives you a complete, unified security model from IP routing to API access control.
+Cilium L7 network policies extend Kubernetes security from the network layer to the application layer, enabling fine-grained access control based on HTTP methods, URL paths, headers, and gRPC methods. The enforcement is transparent to applications - no code changes, no sidecar injection per pod, just eBPF hooks that redirect L7 traffic through a shared Envoy proxy. Combining L3/L4 and L7 policies in a single `CiliumNetworkPolicy` gives you a complete, unified security model from IP routing to API access control.

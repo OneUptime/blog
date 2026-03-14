@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, VLAN, nmcli, Networking, Linux
+Tags: RHEL, VLAN, Nmcli, Networking, Linux
 
 Description: Learn how to create, configure, and manage VLAN interfaces on RHEL using nmcli, with practical examples for network segmentation in production environments.
 

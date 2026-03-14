@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Testing, Chaos Engineering, Runbooks
+Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Testing, Chaos Engineering, Runbook
 
 Description: Build and run disaster recovery drills for Flux-managed clusters, validating your recovery procedures before a real incident occurs.
 
@@ -10,7 +10,7 @@ Description: Build and run disaster recovery drills for Flux-managed clusters, v
 
 ## Introduction
 
-A disaster recovery plan that has never been tested is not a plan — it is a hope. Recovery procedures documented in a wiki and never practiced will fail at the worst possible moment, when the team is stressed, the incident is real, and the documentation has drifted from reality. The only way to have confidence in your DR capabilities is to practice them regularly.
+A disaster recovery plan that has never been tested is not a plan - it is a hope. Recovery procedures documented in a wiki and never practiced will fail at the worst possible moment, when the team is stressed, the incident is real, and the documentation has drifted from reality. The only way to have confidence in your DR capabilities is to practice them regularly.
 
 Flux CD makes DR testing significantly more tractable. Because your desired state lives in Git, you can spin up a replica of your production environment, run destructive tests against it, and validate that Flux can restore it to the expected state. The test cluster is disposable, and the tests are repeatable.
 
@@ -234,7 +234,7 @@ Schedule DR drills as a calendar event: monthly for high-severity scenarios, qua
 
 ## Best Practices
 
-- Treat DR tests as code — store scenarios, scripts, and results in Git.
+- Treat DR tests as code - store scenarios, scripts, and results in Git.
 - Run DR tests against a disposable copy of production data, never against production itself.
 - Measure actual RTO for each test and compare against targets.
 - Require that any team member can run the DR test suite independently, not just senior engineers.
@@ -243,4 +243,4 @@ Schedule DR drills as a calendar event: monthly for high-severity scenarios, qua
 
 ## Conclusion
 
-Regular DR testing with Flux CD is not as difficult as it sounds. The Git-based model means you can create a test cluster, bootstrap Flux, run destructive tests, and measure recovery time in a controlled environment. The investment in building a DR test suite pays back immediately — you will find gaps in your runbooks before a real incident does.
+Regular DR testing with Flux CD is not as difficult as it sounds. The Git-based model means you can create a test cluster, bootstrap Flux, run destructive tests, and measure recovery time in a controlled environment. The investment in building a DR test suite pays back immediately - you will find gaps in your runbooks before a real incident does.

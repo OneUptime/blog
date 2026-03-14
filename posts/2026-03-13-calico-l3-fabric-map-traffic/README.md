@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of how Calico's BGP routing fabric handl
 
 ## Introduction
 
-In L3 BGP mode, there is no overlay — pod packets travel through the network as native IP traffic. The routing information that makes this possible is distributed by BGP. Understanding the connection between BGP route advertisement and the resulting packet path gives you the mental model needed for debugging and for explaining the system to your team.
+In L3 BGP mode, there is no overlay - pod packets travel through the network as native IP traffic. The routing information that makes this possible is distributed by BGP. Understanding the connection between BGP route advertisement and the resulting packet path gives you the mental model needed for debugging and for explaining the system to your team.
 
 This post traces three real traffic scenarios through Calico's L3 BGP fabric: cross-node pod-to-pod, pod to external service, and external service to pod (with external BGP peering).
 
@@ -38,13 +38,13 @@ sequenceDiagram
     Note over PodA,PodB: Data plane phase (per-packet)
     PodA->>Felix1: Packet: src=10.0.1.4, dst=10.0.2.5
     Felix1->>Felix1: Egress policy check\nRoute lookup: 10.0.2.0/26 via Node2-IP
-    Felix1->>Network: Packet: src=10.0.1.4, dst=10.0.2.5\n(NO encapsulation — native IP)
+    Felix1->>Network: Packet: src=10.0.1.4, dst=10.0.2.5\n(NO encapsulation - native IP)
     Network->>Felix2: Packet arrives at Node 2
     Felix2->>Felix2: Ingress policy check on Pod B
     Felix2->>PodB: Deliver packet
 ```
 
-The critical difference from overlay: the packet on the physical network has **pod IPs as source and destination** — not node IPs. Every router between Node 1 and Node 2 routes the packet based on the pod IP.
+The critical difference from overlay: the packet on the physical network has **pod IPs as source and destination** - not node IPs. Every router between Node 1 and Node 2 routes the packet based on the pod IP.
 
 **Verify the routing artifacts**:
 ```bash
@@ -68,7 +68,7 @@ graph LR
     Router --> External[External service]
 ```
 
-The BGP routing is not involved for egress to external destinations — the packet exits via the default route (physical uplink) with SNAT applied, exactly as in overlay mode.
+The BGP routing is not involved for egress to external destinations - the packet exits via the default route (physical uplink) with SNAT applied, exactly as in overlay mode.
 
 ## Scenario 3: External Service to Pod (External BGP Peering)
 
@@ -131,10 +131,10 @@ Each hop in this pipeline can be verified with distinct commands, making the BGP
 
 ## Best Practices
 
-- Use `ip route show proto bird` to see all Calico-managed BGP routes — any missing routes indicate a BGP session issue
+- Use `ip route show proto bird` to see all Calico-managed BGP routes - any missing routes indicate a BGP session issue
 - Capture on the physical NIC (`tcpdump -i eth0`) to confirm packets carry pod IPs (native routing) vs node IPs (overlay)
 - For external BGP peering, capture BGP keepalives and route advertisements to verify the peering is active
 
 ## Conclusion
 
-L3 BGP routing maps cleanly to observable artifacts at every stage: BIRD route tables, Linux routing table entries with `proto bird`, and native IP packets on the physical network. Cross-node traffic travels with pod IPs visible to every router — no encapsulation, full network transparency. When external BGP peering is configured, pod routes propagate to enterprise routers, enabling direct external-to-pod connectivity without NAT. This transparency and efficiency is why BGP native routing is the preferred mode for on-premises Kubernetes deployments with BGP-capable infrastructure.
+L3 BGP routing maps cleanly to observable artifacts at every stage: BIRD route tables, Linux routing table entries with `proto bird`, and native IP packets on the physical network. Cross-node traffic travels with pod IPs visible to every router - no encapsulation, full network transparency. When external BGP peering is configured, pod routes propagate to enterprise routers, enabling direct external-to-pod connectivity without NAT. This transparency and efficiency is why BGP native routing is the preferred mode for on-premises Kubernetes deployments with BGP-capable infrastructure.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, RKE, Rancher, Kubernetes, Networking, Troubleshooting
+Tags: Cilium, Kubernetes, RKE, Rancher, EBPF
 
 Description: Learn how to validate and troubleshoot Cilium installation requirements on Rancher Kubernetes Engine (RKE), covering Canal CNI replacement, node OS requirements, and RKE2 differences.
 
@@ -46,7 +46,7 @@ For RKE1, Cilium is configured in the cluster configuration file. Incorrect sett
 Set the CNI plugin to `cilium` in your RKE cluster configuration:
 
 ```yaml
-# cluster.yml — RKE1 cluster configuration with Cilium CNI
+# cluster.yml - RKE1 cluster configuration with Cilium CNI
 network:
   plugin: cilium
   cilium_network_provider:
@@ -95,7 +95,7 @@ After the CNI change, validate that Cilium is functioning correctly and that pod
 Run the Cilium status and connectivity checks:
 
 ```bash
-# Check Cilium agent status — all nodes should show "OK"
+# Check Cilium agent status - all nodes should show "OK"
 cilium status --wait
 
 # View Cilium endpoint list to confirm pods are managed

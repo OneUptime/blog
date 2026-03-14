@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, ztunnel, Fault Tolerance, DaemonSets
+Tags: Istio, Ambient Mode, Ztunnel, Fault Tolerance, DaemonSets
 
 Description: How to detect, troubleshoot, and recover from ztunnel pod failures in Istio ambient mode to maintain mesh availability.
 

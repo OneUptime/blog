@@ -10,7 +10,7 @@ Description: Learn how to configure Calico networking settings on a new Minikube
 
 ## Introduction
 
-After installing Calico on Minikube, the default configuration is functional for basic pod networking but may not match your specific requirements. Configuring Calico properly on Minikube allows you to test behavior that mirrors your production environment — including specific CIDR ranges, encapsulation modes, and security settings.
+After installing Calico on Minikube, the default configuration is functional for basic pod networking but may not match your specific requirements. Configuring Calico properly on Minikube allows you to test behavior that mirrors your production environment - including specific CIDR ranges, encapsulation modes, and security settings.
 
 Minikube is a single-node cluster, which means some Calico features like BGP peering between nodes are not applicable. However, IP pool configuration, Felix tuning, and network policy settings are all relevant and configurable. Using calicoctl alongside kubectl gives you full access to Calico's configuration API.
 

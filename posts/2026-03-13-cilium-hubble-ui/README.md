@@ -12,7 +12,7 @@ Description: Use the Hubble UI to visualize Kubernetes service dependencies, obs
 
 The Hubble UI is a browser-based graphical interface for Cilium's Hubble observability platform. Where the Hubble CLI excels at real-time flow filtering and command-line automation, the Hubble UI provides something qualitatively different: a visual service dependency graph that shows how your pods and services are communicating right now. This kind of visibility is invaluable for onboarding engineers to an unfamiliar system, investigating unexpected service communications, and validating that network policies are working as intended.
 
-The service graph in Hubble UI is generated from live flow data — not from static configuration. As pods communicate, flows appear as animated edges in the graph. When a connection is denied by policy, a red edge appears instead of green. You can filter the view to a specific namespace, click on a service node to see its incoming and outgoing connections, and drill into individual flow records for full details including HTTP method, URL path, and policy verdict.
+The service graph in Hubble UI is generated from live flow data - not from static configuration. As pods communicate, flows appear as animated edges in the graph. When a connection is denied by policy, a red edge appears instead of green. You can filter the view to a specific namespace, click on a service node to see its incoming and outgoing connections, and drill into individual flow records for full details including HTTP method, URL path, and policy verdict.
 
 This guide covers deploying Hubble UI, accessing it securely, and using its key features for network visualization and troubleshooting.
 
@@ -121,4 +121,4 @@ flowchart LR
 
 ## Conclusion
 
-The Hubble UI turns raw network flow data into an intuitive graphical representation of how your Kubernetes services communicate. The visual policy verdict display — green for allowed, red for denied — makes it immediately obvious when a network policy is misconfigured and blocking legitimate traffic. Combined with L7 visibility annotations, you can see HTTP-level details like method and status code directly in the graph, making the Hubble UI an essential tool for both initial service dependency discovery and ongoing security policy validation.
+The Hubble UI turns raw network flow data into an intuitive graphical representation of how your Kubernetes services communicate. The visual policy verdict display - green for allowed, red for denied - makes it immediately obvious when a network policy is misconfigured and blocking legitimate traffic. Combined with L7 visibility annotations, you can see HTTP-level details like method and status code directly in the graph, making the Hubble UI an essential tool for both initial service dependency discovery and ongoing security policy validation.

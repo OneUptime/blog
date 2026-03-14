@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kernel, Boot, initramfs, System Administration
+Tags: Ubuntu, Kernel, Boot, Initramfs, System Administration
 
 Description: Learn when and how to properly update the initramfs on Ubuntu after kernel upgrades, module changes, and configuration updates to keep your system bootable.
 

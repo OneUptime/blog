@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Monorepo, TypeScript, Node.js, Turborepo, pnpm, Shared Types
+Tags: BullMQ, Monorepo, TypeScript, Node.js, Turborepo, Pnpm, Shared Types
 
 Description: A comprehensive guide to setting up BullMQ in a monorepo architecture with shared job types, queue configurations, and best practices for maintaining consistency across multiple services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Host Endpoints, Security
+Tags: Calico, Kubernetes, Network Policy, Host Endpoint, Security
 
 Description: Diagnose and fix Calico host endpoint policy failures when node traffic is unexpectedly blocked.
 

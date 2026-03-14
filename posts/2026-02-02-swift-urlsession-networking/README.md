@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, URLSession, iOS, Networking, API
+Tags: Swift, URLSession, IOS, Networking, API
 
 Description: Learn how to implement networking in Swift using URLSession, covering GET/POST requests, JSON handling, async/await, error handling, and production-ready patterns.
 

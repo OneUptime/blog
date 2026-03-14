@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, API Server, Production, Architecture, Kubernetes
+Tags: Calico, Kubernetes, API Server, CNI, Production
 
 Description: Evaluate Calico API server deployment options and choose the right configuration for production workloads based on availability, security, and operational requirements.
 
@@ -12,7 +12,7 @@ Description: Evaluate Calico API server deployment options and choose the right 
 
 The Calico API server exposes Calico resources as native Kubernetes API extensions, allowing you to manage NetworkPolicy, BGPPeer, IPPool, and other Calico resources using standard `kubectl` commands. Choosing the right configuration for production requires balancing high availability, RBAC security, and resource overhead.
 
-Many teams deploy the Calico API server with default settings that work for development but are insufficient for production. The default configuration may run a single replica, use permissive RBAC, and lack resource limits — all of which must be addressed before the API server handles production traffic.
+Many teams deploy the Calico API server with default settings that work for development but are insufficient for production. The default configuration may run a single replica, use permissive RBAC, and lack resource limits - all of which must be addressed before the API server handles production traffic.
 
 This post walks through the decision points for a production Calico API server deployment, covering replica count, RBAC configuration, and TLS settings.
 

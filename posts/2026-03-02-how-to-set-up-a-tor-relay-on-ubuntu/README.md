@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Tor, Privacy, Network, Security
+Tags: Ubuntu, ToR, Privacy, Network, Security
 
 Description: Step-by-step guide to setting up a Tor relay on Ubuntu, including configuration, bandwidth limits, and monitoring relay health.
 

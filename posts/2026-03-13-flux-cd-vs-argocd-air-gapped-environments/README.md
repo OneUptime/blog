@@ -10,7 +10,7 @@ Description: Compare Flux CD and ArgoCD for Kubernetes deployments in air-gapped
 
 ## Introduction
 
-Air-gapped Kubernetes environments—where clusters have no direct internet access—present unique challenges for GitOps tools. Both Flux CD and ArgoCD can operate in disconnected environments, but they have different dependencies and approaches to image mirroring, registry configuration, and offline operation.
+Air-gapped Kubernetes environments-where clusters have no direct internet access-present unique challenges for GitOps tools. Both Flux CD and ArgoCD can operate in disconnected environments, but they have different dependencies and approaches to image mirroring, registry configuration, and offline operation.
 
 The key challenge is that GitOps tools themselves need to pull their own images, access Git repositories, and poll container registries. All of these normally assume internet connectivity. In air-gapped environments, you must provide local mirrors for all external dependencies.
 

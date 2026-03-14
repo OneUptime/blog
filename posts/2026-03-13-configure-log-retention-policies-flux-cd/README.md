@@ -10,9 +10,9 @@ Description: Manage log retention policies for Elasticsearch and OpenSearch usin
 
 ## Introduction
 
-Log data grows rapidly and without lifecycle management it consumes ever-increasing storage and degrades query performance. Elasticsearch and OpenSearch both provide Index Lifecycle Management (ILM) — a policy engine that automatically rolls over, shrinks, and deletes indices as they age. Configuring ILM through Flux CD brings the same GitOps discipline to data governance that you apply to application deployments.
+Log data grows rapidly and without lifecycle management it consumes ever-increasing storage and degrades query performance. Elasticsearch and OpenSearch both provide Index Lifecycle Management (ILM) - a policy engine that automatically rolls over, shrinks, and deletes indices as they age. Configuring ILM through Flux CD brings the same GitOps discipline to data governance that you apply to application deployments.
 
-When retention policies live in Git, your team has an auditable record of what data you commit to keeping and for how long. Compliance teams can review and approve retention policies through pull requests. Changes to retention windows — from 30 days to 90 days for a new regulatory requirement — are tracked with the same rigor as code changes.
+When retention policies live in Git, your team has an auditable record of what data you commit to keeping and for how long. Compliance teams can review and approve retention policies through pull requests. Changes to retention windows - from 30 days to 90 days for a new regulatory requirement - are tracked with the same rigor as code changes.
 
 This post covers configuring ILM policies in Elasticsearch and ISM policies in OpenSearch using Kubernetes Jobs and ConfigMaps managed by Flux CD.
 

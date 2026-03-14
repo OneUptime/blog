@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, DevOps, Configuration Management, CI/CD, Best Practices
+Tags: Kubernetes, Kubectl, DevOps, Configuration Management, CI/CD, Best Practices
 
 Description: Learn how to use kubectl diff to preview changes before applying them to your Kubernetes cluster.
 

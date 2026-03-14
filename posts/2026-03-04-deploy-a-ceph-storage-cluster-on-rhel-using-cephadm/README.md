@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ceph, Storage, cephadm, Distributed Systems
+Tags: RHEL, Ceph, Storage, Cephadm, Distributed Systems
 
 Description: Deploy a Ceph storage cluster on RHEL using cephadm, the official container-based deployment tool that manages Ceph daemons as systemd services.
 

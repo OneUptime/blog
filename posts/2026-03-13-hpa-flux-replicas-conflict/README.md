@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HPA, Horizontal Pod Autoscaler, Replicas, Conflict, GitOps, Kubernetes
+Tags: Flux CD, HPA, Horizontal Pod Autoscaler, Replica, Conflicts, GitOps, Kubernetes
 
 Description: Understand and resolve the conflict between Flux CD's GitOps reconciliation and Kubernetes HPA when both try to manage Deployment replica counts.
 
@@ -150,7 +150,7 @@ flux get kustomizations
 
 ## Best Practices
 
-- Always choose Solution 1 (remove `replicas` from Git) as the primary approach — it is the cleanest
+- Always choose Solution 1 (remove `replicas` from Git) as the primary approach - it is the cleanest
 - Use Solution 3 (`ignoreDifferences`) when you cannot modify the base manifests
 - Document in the Deployment YAML that replicas are HPA-managed to prevent future confusion
 - Set HPA `minReplicas` to your desired baseline replica count rather than putting it in the Deployment
@@ -158,4 +158,4 @@ flux get kustomizations
 
 ## Conclusion
 
-The HPA-Flux replicas conflict is a common pitfall for teams new to GitOps with autoscaling. The correct solution is to remove or patch out the `replicas` field from Git-managed manifests in environments where HPA is active. Using Flux's `ignoreDifferences` is a viable alternative when modifying base manifests is not feasible. Once resolved, Flux and HPA coexist cleanly — Flux manages all deployment configuration except replica count, which HPA owns.
+The HPA-Flux replicas conflict is a common pitfall for teams new to GitOps with autoscaling. The correct solution is to remove or patch out the `replicas` field from Git-managed manifests in environments where HPA is active. Using Flux's `ignoreDifferences` is a viable alternative when modifying base manifests is not feasible. Once resolved, Flux and HPA coexist cleanly - Flux manages all deployment configuration except replica count, which HPA owns.

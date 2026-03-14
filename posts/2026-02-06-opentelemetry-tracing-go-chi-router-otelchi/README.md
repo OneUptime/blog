@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Chi, otelchi, Router, Tracing
+Tags: OpenTelemetry, Go, Chi, Otelchi, Router, Tracing
 
 Description: Complete guide to instrumenting Chi router applications with OpenTelemetry using otelchi middleware for automatic trace generation and span management.
 

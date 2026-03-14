@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, nmap, Security, Port Scanning
+Tags: Ubuntu, Networking, Nmap, Security, Port Scanning
 
 Description: Use nmap on Ubuntu for network discovery, port scanning, service detection, and OS fingerprinting with practical command examples and output interpretation.
 

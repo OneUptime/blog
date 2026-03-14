@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Upgrade
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Upgrade
 
 Description: A safe upgrade procedure for moving Calico to a newer version on an on-premises Kubernetes cluster with minimal disruption.
 
@@ -12,7 +12,7 @@ Description: A safe upgrade procedure for moving Calico to a newer version on an
 
 Upgrading Calico on an on-premises cluster is a high-stakes operation. The CNI plugin is in the critical path for all pod networking, and a failed upgrade can break inter-pod communication across the cluster. On-prem environments add additional considerations: BGP sessions with physical routers must remain stable throughout the upgrade, and there is no cloud provider rollback mechanism if something goes wrong.
 
-Calico supports rolling upgrades when using the Tigera Operator — the operator manages the DaemonSet rollout node by node, ensuring only one node is transitioning at a time. This means existing pods on other nodes continue to function normally while the upgrade proceeds.
+Calico supports rolling upgrades when using the Tigera Operator - the operator manages the DaemonSet rollout node by node, ensuring only one node is transitioning at a time. This means existing pods on other nodes continue to function normally while the upgrade proceeds.
 
 This guide covers a safe, operator-managed Calico upgrade on an on-premises Kubernetes cluster.
 

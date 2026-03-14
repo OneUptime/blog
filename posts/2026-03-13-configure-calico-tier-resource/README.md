@@ -10,7 +10,7 @@ Description: How to configure Calico Tier resources to organize network policies
 
 ## Introduction
 
-Calico Tier resources define ordered evaluation layers for GlobalNetworkPolicy and NetworkPolicy resources. Tiers allow different teams to manage policies at different priority levels — a security team can enforce cluster-wide baseline policies in a high-priority tier, while application teams manage their own connectivity policies in lower-priority tiers, without risking that application policies override security baselines.
+Calico Tier resources define ordered evaluation layers for GlobalNetworkPolicy and NetworkPolicy resources. Tiers allow different teams to manage policies at different priority levels - a security team can enforce cluster-wide baseline policies in a high-priority tier, while application teams manage their own connectivity policies in lower-priority tiers, without risking that application policies override security baselines.
 
 The default tier (`default`) has order 1000 and contains all standard NetworkPolicy resources. Custom tiers with lower order numbers are evaluated first, enabling a layered security model.
 

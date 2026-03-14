@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, CNI, Security, GlobalNetworkPolicy, Tiers
+Tags: Calico, Kubernetes, Network Policy, CNI, Security, GlobalNetworkPolicy, Tier
 
 Description: Core concepts of Calico network policies including policy types, rule evaluation order, selectors, tiers, and the relationship between Kubernetes and Calico policy resources.
 
@@ -10,7 +10,7 @@ Description: Core concepts of Calico network policies including policy types, ru
 
 ## Introduction
 
-Calico's network policy model is the most powerful and expressive part of the Calico feature set. It extends Kubernetes NetworkPolicy with additional capabilities: ordered rules, explicit deny actions, global scope, policy tiers, and service account selectors. Understanding the fundamentals — how policies are selected, how rules are evaluated, and in what order — is the foundation for all network security work with Calico.
+Calico's network policy model is the most powerful and expressive part of the Calico feature set. It extends Kubernetes NetworkPolicy with additional capabilities: ordered rules, explicit deny actions, global scope, policy tiers, and service account selectors. Understanding the fundamentals - how policies are selected, how rules are evaluated, and in what order - is the foundation for all network security work with Calico.
 
 This post covers the core concepts: the policy resource types, selector model, rule evaluation order, and tier model. Each concept is explained with practical examples that connect the theory to observable behavior.
 
@@ -126,4 +126,4 @@ When any Calico or Kubernetes NetworkPolicy selects a pod, the default behavior 
 
 ## Conclusion
 
-Calico's network policy fundamentals — resource types, selector model, rule evaluation, and tiers — form a comprehensive framework for implementing zero-trust networking in Kubernetes. The key insights are that rules are evaluated top-to-bottom within a policy, policies in the same tier are evaluated independently with union semantics, and tiers create a strict hierarchy where platform policies are always evaluated first. Mastering these fundamentals enables you to design and debug any Calico network security configuration.
+Calico's network policy fundamentals - resource types, selector model, rule evaluation, and tiers - form a comprehensive framework for implementing zero-trust networking in Kubernetes. The key insights are that rules are evaluated top-to-bottom within a policy, policies in the same tier are evaluated independently with union semantics, and tiers create a strict hierarchy where platform policies are always evaluated first. Mastering these fundamentals enables you to design and debug any Calico network security configuration.

@@ -12,7 +12,7 @@ Description: A diagnostic guide for resolving Calico installation and networking
 
 Troubleshooting Calico on RHEL OpenStack requires checking SELinux, firewalld, iptables backend compatibility, and etcd connectivity in addition to the standard Calico diagnostics. RHEL's layered security model means that a correctly installed and configured Calico can still fail silently if SELinux policies or firewall rules are blocking its operations.
 
-The diagnostic sequence prioritizes SELinux checks first because SELinux failures are silent by default — Calico appears to be running but cannot manage network rules.
+The diagnostic sequence prioritizes SELinux checks first because SELinux failures are silent by default - Calico appears to be running but cannot manage network rules.
 
 ## Prerequisites
 

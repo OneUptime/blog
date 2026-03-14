@@ -10,7 +10,7 @@ Description: Avoid the most common pitfalls when implementing Calico namespace-b
 
 ## Introduction
 
-Namespace-based Calico policies fail in distinctive ways because they depend on namespace labels — metadata that is easy to forget, easy to mistype, and easy to change accidentally. The failures can go in either direction: too permissive (namespaces that should be isolated can communicate) or too restrictive (allowed cross-namespace traffic is blocked).
+Namespace-based Calico policies fail in distinctive ways because they depend on namespace labels - metadata that is easy to forget, easy to mistype, and easy to change accidentally. The failures can go in either direction: too permissive (namespaces that should be isolated can communicate) or too restrictive (allowed cross-namespace traffic is blocked).
 
 Understanding the common failure modes and how to avoid them will save you hours of debugging and prevent security incidents caused by misconfigured namespace isolation.
 

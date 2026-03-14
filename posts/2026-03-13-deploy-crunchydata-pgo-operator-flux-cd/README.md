@@ -239,7 +239,7 @@ kubectl annotate postgrescluster hippo -n databases \
 
 ## Best Practices
 
-- Use `users` in the PostgresCluster spec to manage database users declaratively — the operator creates and rotates secrets automatically.
+- Use `users` in the PostgresCluster spec to manage database users declaratively - the operator creates and rotates secrets automatically.
 - Enable `proxy.pgBouncer` with multiple replicas for connection pooling, which is critical for applications using many short-lived connections.
 - Reference S3 credentials via a Secret rather than embedding them in the PostgresCluster spec.
 - Use affinity rules to spread instances across availability zones for maximum resilience.

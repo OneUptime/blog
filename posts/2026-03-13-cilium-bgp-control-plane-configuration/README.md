@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Configure Cilium's BGP Control Plane to advertise Kubernetes service IPs and pod CIDRs to upstream routers using the CiliumBGPPeeringPolicy CRD.
 
@@ -92,7 +92,7 @@ cilium bgp peers
 
 Expected output showing an established session:
 
-```
+```plaintext
 Node          Local ASN   Peer ASN   Peer Address    Session State   ...
 worker-0      65001       65000      192.168.1.1     established
 worker-1      65001       65000      192.168.1.1     established

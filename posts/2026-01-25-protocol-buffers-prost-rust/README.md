@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Protocol Buffers, prost, Serialization, gRPC
+Tags: Rust, Protocol Buffers, Prost, Serialization, GRPC
 
 Description: A hands-on guide to extending Protocol Buffer messages with custom behavior in Rust using the prost library, covering derive macros, custom implementations, and real-world patterns.
 

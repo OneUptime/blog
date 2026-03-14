@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Installation, Validation, eBPF, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A validation guide for verifying each post-installation step for Cilium is working correctly, from connectivity tests to Hubble observability to policy enforcement.
 
@@ -12,7 +12,7 @@ Description: A validation guide for verifying each post-installation step for Ci
 
 After completing each Cilium post-installation step, validation is essential to confirm the change worked as expected. Without systematic validation, you may proceed to the next step while the previous one is silently broken, creating a confusing state where multiple issues interact. This guide provides specific validation commands for each post-installation step, with expected outputs that define success.
 
-Validation is not just a one-time checklist. Each time you make a configuration change to Cilium — upgrading a version, enabling a new feature, modifying a policy — re-running the relevant validations confirms the change had the intended effect. Automating these validations in a CI/CD pipeline creates a safety net for ongoing operations.
+Validation is not just a one-time checklist. Each time you make a configuration change to Cilium - upgrading a version, enabling a new feature, modifying a policy - re-running the relevant validations confirms the change had the intended effect. Automating these validations in a CI/CD pipeline creates a safety net for ongoing operations.
 
 ## Prerequisites
 

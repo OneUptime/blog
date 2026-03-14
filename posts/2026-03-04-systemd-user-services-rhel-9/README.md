@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, User Services, Linux, Process Management
+Tags: RHEL, Systemd, User Services, Linux, Process Management
 
 Description: Learn how to create and manage systemd user services on RHEL that run in your user session without requiring root privileges.
 

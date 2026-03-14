@@ -28,7 +28,7 @@ This guide covers using VPA Recommender for cost optimization with Flux CD.
 Manage the VPA Recommender installation with Flux for consistent lifecycle management.
 
 ```yaml
-# clusters/production/vpa/kustomization.yaml — VPA components via Flux
+# clusters/production/vpa/kustomization.yaml - VPA components via Flux
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -49,7 +49,7 @@ spec:
 ```
 
 ```yaml
-# infrastructure/vpa/vpa-recommender-config.yaml — recommender tuning
+# infrastructure/vpa/vpa-recommender-config.yaml - recommender tuning
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -67,7 +67,7 @@ data:
 Enable cost analysis for all production workloads without risking disruption.
 
 ```yaml
-# apps/production/vpa/all-services-vpa.yaml — VPA for all production services
+# apps/production/vpa/all-services-vpa.yaml - VPA for all production services
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -114,7 +114,7 @@ Identify workloads with the highest potential for resource reduction.
 
 ```bash
 #!/bin/bash
-# cost-optimization-report.sh — identify over-provisioned workloads
+# cost-optimization-report.sh - identify over-provisioned workloads
 
 echo "=== Cost Optimization Report ==="
 echo "Comparing current requests vs VPA recommendations"
@@ -191,7 +191,7 @@ kubectl get events -n production | grep OOMKilled
 # Check if HPA (if configured) is scaling appropriately with new resource requests
 kubectl get hpa -n production
 
-# Monitor VPA recommendations after changes — should stabilize
+# Monitor VPA recommendations after changes - should stabilize
 kubectl get vpa -n production -o wide
 ```
 
@@ -199,7 +199,7 @@ kubectl get vpa -n production -o wide
 
 - Start with the largest workloads for maximum cost impact per change
 - Use VPA's upper bound (not target) for initial reductions to reduce OOM risk
-- Apply resource reductions incrementally — reduce by 20-30% per iteration
+- Apply resource reductions incrementally - reduce by 20-30% per iteration
 - Monitor CPU throttling metrics after reductions (container_cpu_throttled_seconds_total)
 - Schedule optimization reviews monthly using the VPA recommendation report script
 

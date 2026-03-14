@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Linkerd, Service Mesh, Kubernetes, mTLS, Observability
+Tags: Talos Linux, Linkerd, Service Mesh, Kubernetes, MTLS, Observability
 
 Description: A hands-on guide to installing and configuring the Linkerd service mesh on Talos Linux for automatic mTLS, observability, and reliability features.
 

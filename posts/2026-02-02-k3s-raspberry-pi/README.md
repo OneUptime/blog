@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Kubernetes, Raspberry Pi, ARM, Edge Computing, DevOps, IoT
+Tags: K3s, Kubernetes, Raspberry Pi, ARM, Edge Computing, DevOps, IoT
 
 Description: A complete guide to installing and configuring K3s on Raspberry Pi devices. Learn how to set up a lightweight Kubernetes cluster for edge computing, IoT projects, and home lab environments.
 

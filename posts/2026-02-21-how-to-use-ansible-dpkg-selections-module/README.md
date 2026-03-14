@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, dpkg, Ubuntu, Package Management
+Tags: Ansible, Dpkg, Ubuntu, Package Management
 
 Description: A complete guide to using the Ansible dpkg_selections module to hold, unhold, and manage package selections on Debian and Ubuntu.
 

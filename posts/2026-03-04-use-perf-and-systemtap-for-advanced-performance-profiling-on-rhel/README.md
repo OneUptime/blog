@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, perf, SystemTap, Performance, Profiling, Linux
+Tags: RHEL, Perf, SystemTap, Performance, Profiling, Linux
 
 Description: Use perf and SystemTap on RHEL to profile CPU usage, trace system calls, and identify performance bottlenecks in applications and the kernel.
 

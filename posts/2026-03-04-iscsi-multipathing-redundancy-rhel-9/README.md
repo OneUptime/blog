@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, Multipathing, DM-Multipath, Redundancy, Linux
+Tags: RHEL, ISCSI, Multipathing, DM-Multipath, Redundancy, Linux
 
 Description: Configure iSCSI with DM-Multipath on RHEL to provide redundant paths to iSCSI storage, improving availability and performance.
 

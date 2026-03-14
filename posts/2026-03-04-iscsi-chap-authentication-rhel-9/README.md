@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, CHAP, Authentication, Security, Linux
+Tags: RHEL, ISCSI, CHAP, Authentication, Security, Linux
 
 Description: Configure CHAP authentication for iSCSI connections on RHEL to prevent unauthorized access to your iSCSI storage targets.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, mTLS, Security, Production
+Tags: Istio, Certificates, MTLS, Security, Production
 
 Description: How to validate Istio certificate management for production including CA configuration, certificate rotation, expiration monitoring, and custom CA integration.
 

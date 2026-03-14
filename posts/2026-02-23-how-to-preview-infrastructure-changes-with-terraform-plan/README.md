@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, terraform plan, Infrastructure as Code, DevOps, Planning
+Tags: Terraform, Terraform plan, Infrastructure as Code, DevOps, Planning
 
 Description: Master the terraform plan command to preview infrastructure changes before applying them, including output interpretation, saved plans, and advanced targeting.
 

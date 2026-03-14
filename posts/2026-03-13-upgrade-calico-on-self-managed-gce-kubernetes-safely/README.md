@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, gce, gcp, kubernetes, upgrade, networking, safety
+Tags: Calico, Kubernetes, Networking, Upgrade, GCE, Google Cloud, Self-Managed
 
 Description: A guide to safely upgrading Calico on self-managed Kubernetes clusters running on Google Compute Engine, with GCE-specific network validation and rolling upgrade procedures.
 
@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on self-managed Kubernetes clust
 
 Self-managed Kubernetes on Google Compute Engine provides a highly performant networking foundation for Calico. GCE's global VPC, custom route support, and jumbo frame capability combine to make GCE an excellent platform for Calico deployments. However, upgrading Calico on self-managed GCE clusters requires careful attention to GCE route table consistency and firewall rule compatibility.
 
-When Calico uses native GCE routing (no overlay), pod CIDR routes are programmed in GCE route tables pointing to specific VM instances. During a Calico rolling upgrade, each node temporarily goes through a calico-node pod restart — during this brief window, route advertisement may pause. Understanding this behavior helps you plan the upgrade to minimize its impact.
+When Calico uses native GCE routing (no overlay), pod CIDR routes are programmed in GCE route tables pointing to specific VM instances. During a Calico rolling upgrade, each node temporarily goes through a calico-node pod restart - during this brief window, route advertisement may pause. Understanding this behavior helps you plan the upgrade to minimize its impact.
 
 This guide covers safe Calico upgrade procedures for self-managed GCE Kubernetes, including GCE route management and post-upgrade network validation.
 
@@ -135,11 +135,11 @@ gcloud compute firewall-rules list \
 
 ## Best Practices
 
-- Monitor GCE route counts throughout the rolling upgrade — each node should restore its routes within 60 seconds of calico-node restart
+- Monitor GCE route counts throughout the rolling upgrade - each node should restore its routes within 60 seconds of calico-node restart
 - Use GCE's `gcloud compute ssh` for node-level debugging if route restoration stalls
-- Prefer native GCE routing over VXLAN on GCE — it reduces the surface area affected during upgrades
+- Prefer native GCE routing over VXLAN on GCE - it reduces the surface area affected during upgrades
 - Store backup files in GCS before every upgrade
-- Test cross-AZ pod connectivity after the upgrade — it's the most sensitive test for route consistency
+- Test cross-AZ pod connectivity after the upgrade - it's the most sensitive test for route consistency
 
 ## Conclusion
 

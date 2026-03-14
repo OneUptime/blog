@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, HelmRelease, Remediation, Upgrade, Retries, Helm
+Tags: Flux, HelmRelease, Helm, Kubernetes, Remediation, Upgrade, Retries, GitOps
 
 Description: Learn how to configure upgrade remediation with retries and rollback strategies for Flux HelmRelease resources to handle failed Helm chart upgrades.
 

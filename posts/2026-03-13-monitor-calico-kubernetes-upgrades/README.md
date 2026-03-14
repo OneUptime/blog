@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Monitoring
+Tags: Calico, Kubernetes, Networking, Upgrade, Monitoring
 
 Description: Monitor Calico upgrades in real time to detect failures, measure upgrade duration, and capture network impact during rolling updates across cluster nodes.
 
@@ -116,4 +116,4 @@ spec:
 
 ## Conclusion
 
-Monitoring Calico upgrades in real time provides the visibility needed to detect stuck upgrades, unexpected performance impacts, and nodes that fail to update. The combination of a real-time terminal monitor (for operator awareness) and Prometheus-based alerts (for automated detection) ensures upgrade issues are caught within minutes. Track upgrade duration as a metric over time — increasing upgrade durations may indicate cluster health issues that should be addressed before the next upgrade.
+Monitoring Calico upgrades in real time provides the visibility needed to detect stuck upgrades, unexpected performance impacts, and nodes that fail to update. The combination of a real-time terminal monitor (for operator awareness) and Prometheus-based alerts (for automated detection) ensures upgrade issues are caught within minutes. Track upgrade duration as a metric over time - increasing upgrade durations may indicate cluster health issues that should be addressed before the next upgrade.

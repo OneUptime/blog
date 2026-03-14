@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, k3s, etcd, High Availability
+Tags: Flux CD, Kubernetes, GitOps, K3s, Etcd, High Availability
 
 Description: Bootstrap Flux CD on k3s with embedded etcd for high availability, enabling GitOps-driven workload management on lightweight Kubernetes clusters.
 
@@ -12,7 +12,7 @@ Description: Bootstrap Flux CD on k3s with embedded etcd for high availability, 
 
 k3s is a lightweight, certified Kubernetes distribution designed for resource-constrained environments, edge computing, and IoT. Its embedded etcd mode provides high availability without the operational complexity of managing a separate etcd cluster. When running k3s in HA mode with embedded etcd, you get a production-grade control plane on hardware that traditional Kubernetes distributions would find challenging.
 
-Flux CD runs excellently on k3s — the distribution's lightweight footprint means more resources are available for Flux's controllers and your workloads. Bootstrapping Flux on a k3s HA cluster with embedded etcd follows the same process as any Kubernetes cluster, with a few k3s-specific considerations around the kubeconfig path and the cluster endpoint configuration.
+Flux CD runs excellently on k3s - the distribution's lightweight footprint means more resources are available for Flux's controllers and your workloads. Bootstrapping Flux on a k3s HA cluster with embedded etcd follows the same process as any Kubernetes cluster, with a few k3s-specific considerations around the kubeconfig path and the cluster endpoint configuration.
 
 This guide covers deploying a k3s cluster with embedded etcd, configuring a highly available endpoint, and bootstrapping Flux CD.
 

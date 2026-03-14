@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, macOS, Homebrew, CLI
+Tags: Flux CD, GitOps, Kubernetes, MacOS, Homebrew, CLI
 
 Description: Learn how to install and configure the Flux CD command-line interface on macOS using Homebrew for managing GitOps workflows.
 

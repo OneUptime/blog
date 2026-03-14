@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, API Access
+Tags: Kubernetes, Kubectl, API Access
 
 Description: Learn how to use kubectl proxy to create a secure local tunnel to the Kubernetes API server, enabling browser-based API exploration and custom tool integration without managing certificates.
 

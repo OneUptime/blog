@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, eBPF
+Tags: Cilium, Kubernetes, Networking, BGP, EBPF
 
 Description: Configure Cilium BGP Control Plane to automatically discover the default gateway as a BGP peer, simplifying bare-metal and cloud deployments where router IPs are dynamic.
 
@@ -10,7 +10,7 @@ Description: Configure Cilium BGP Control Plane to automatically discover the de
 
 ## Introduction
 
-In many Kubernetes deployments, especially on bare metal or in cloud VMs, the BGP peer for each node is simply the default gateway of that node's network interface. Hardcoding these gateway IPs in a `CiliumBGPPeeringPolicy` is fragile — IP addresses can change during maintenance, and new nodes may get different gateways in multi-rack designs.
+In many Kubernetes deployments, especially on bare metal or in cloud VMs, the BGP peer for each node is simply the default gateway of that node's network interface. Hardcoding these gateway IPs in a `CiliumBGPPeeringPolicy` is fragile - IP addresses can change during maintenance, and new nodes may get different gateways in multi-rack designs.
 
 Cilium's default gateway auto-discovery solves this by detecting the node's default route and automatically configuring that gateway as the BGP peer. This works by reading the kernel routing table at startup and deriving the peer address from `ip route show default`. The feature is particularly useful in cloud provider environments where the gateway is always the first IP of the subnet, in rack-based designs where each rack has a top-of-rack router, and in any environment where per-node router IPs are difficult to predict in advance.
 

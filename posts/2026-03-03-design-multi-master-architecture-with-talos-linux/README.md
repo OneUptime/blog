@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Multi-Master, Architecture, High Availability, Kubernetes, etcd
+Tags: Talos Linux, Multi-Master, Architecture, High Availability, Kubernetes, Etcd
 
 Description: Design and implement a multi-master Kubernetes architecture on Talos Linux for maximum resilience, scalability, and fault tolerance in production.
 

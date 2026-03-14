@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Best Practices
+Tags: Calico, Kubernetes, Networking, Upgrade, Best Practices
 
 Description: Avoid the most common Calico upgrade mistakes including skipping version compatibility checks, upgrading without staging validation, and not having rollback plans ready.
 

@@ -10,7 +10,7 @@ Description: Safely migrate a Calico cluster from VXLAN or IP-in-IP encapsulatio
 
 ## Introduction
 
-Many Calico deployments start with VXLAN or IP-in-IP encapsulation because it requires no special network configuration — it works on any IP network without BGP support in the underlying infrastructure. As clusters mature and performance requirements increase, teams often want to migrate to native BGP routing to eliminate encapsulation overhead and gain better network visibility.
+Many Calico deployments start with VXLAN or IP-in-IP encapsulation because it requires no special network configuration - it works on any IP network without BGP support in the underlying infrastructure. As clusters mature and performance requirements increase, teams often want to migrate to native BGP routing to eliminate encapsulation overhead and gain better network visibility.
 
 This migration carries real risk: changing the data plane while live workloads are running can cause traffic disruption if not handled carefully. The key to a safe migration is enabling BGP alongside the existing encapsulation mode, verifying routes are being distributed correctly, then gradually shifting traffic to native routing paths before removing the encapsulation fallback.
 

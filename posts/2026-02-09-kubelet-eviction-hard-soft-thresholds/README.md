@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Resource Management
+Tags: Kubernetes, Kubelet, Resource Management
 
 Description: Learn how to configure kubelet evictionHard and evictionSoft thresholds to prevent node resource exhaustion, understanding the differences between hard and soft eviction.
 

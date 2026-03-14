@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Version Compatibility, CNI, Traffic Flows, Upgrades, Impact Analysis
+Tags: Calico, Kubernetes, Version Compatibility, CNI, Traffic Flows
 
-Description: Understanding how Calico version compatibility issues manifest in real Kubernetes traffic — from policy enforcement failures to routing inconsistencies — and how to diagnose them.
+Description: Understanding how Calico version compatibility issues manifest in real Kubernetes traffic - from policy enforcement failures to routing inconsistencies - and how to diagnose them.
 
 ---
 
 ## Introduction
 
-Version incompatibility doesn't usually cause an immediate outage — it often manifests as subtle degradation: policies that stop being enforced for new pods, routing that works for existing connections but fails for new ones, or API calls that succeed but have no effect. Mapping these symptoms to version compatibility issues helps you diagnose them faster.
+Version incompatibility doesn't usually cause an immediate outage - it often manifests as subtle degradation: policies that stop being enforced for new pods, routing that works for existing connections but fails for new ones, or API calls that succeed but have no effect. Mapping these symptoms to version compatibility issues helps you diagnose them faster.
 
 This post connects version compatibility failures to their traffic impact and provides diagnostic procedures for each failure mode.
 
@@ -24,7 +24,7 @@ This post connects version compatibility failures to their traffic impact and pr
 
 **What happens**: After a Kubernetes upgrade that leaves Calico on an incompatible version, new pods are created but Calico cannot program their policy chains because the API it uses to discover pods has changed.
 
-**Traffic impact**: New pods have no network policy enforcement — all traffic is allowed. Existing pods with already-programmed policy chains continue to work.
+**Traffic impact**: New pods have no network policy enforcement - all traffic is allowed. Existing pods with already-programmed policy chains continue to work.
 
 **Diagnostic**:
 ```bash
@@ -58,7 +58,7 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 
 **What happens**: Using a mismatched `calicoctl` version to apply a service policy change results in the policy being applied with the wrong schema. The policy appears correct in `calicoctl get` but is not being enforced as intended.
 
-**Traffic impact**: Service traffic appears to be allowed when it should be blocked, or vice versa — depending on which fields were silently ignored due to schema mismatch.
+**Traffic impact**: Service traffic appears to be allowed when it should be blocked, or vice versa - depending on which fields were silently ignored due to schema mismatch.
 
 **Diagnostic**:
 ```bash
@@ -121,7 +121,7 @@ kubectl delete -f test-policy.yaml
 ## Best Practices
 
 - Run the post-upgrade diagnostic suite immediately after any version change to catch issues while the change window is still open
-- Monitor WorkloadEndpoint counts as a proxy for Felix health — sudden drops indicate Felix is not seeing pod events
+- Monitor WorkloadEndpoint counts as a proxy for Felix health - sudden drops indicate Felix is not seeing pod events
 - Keep a version change log that maps each upgrade to any observed traffic impact changes
 
 ## Conclusion

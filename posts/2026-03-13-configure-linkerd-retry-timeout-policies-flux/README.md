@@ -207,12 +207,12 @@ linkerd viz stat deploy/api-service -n production
 
 ## Best Practices
 
-- Set `retryBudget.retryRatio` conservatively (0.1-0.2) to prevent retry storms during outages — retries should absorb transient errors, not amplify load on a struggling service.
+- Set `retryBudget.retryRatio` conservatively (0.1-0.2) to prevent retry storms during outages - retries should absorb transient errors, not amplify load on a struggling service.
 - Use short timeouts (under 1 second) for fast internal services and reserve longer timeouts for operations that inherently require more time (report generation, batch processing).
-- Never mark POST, PUT, or DELETE routes as `isRetryable: true` unless you have verified the endpoint is idempotent — retried non-idempotent operations can cause duplicate transactions.
+- Never mark POST, PUT, or DELETE routes as `isRetryable: true` unless you have verified the endpoint is idempotent - retried non-idempotent operations can cause duplicate transactions.
 - Set timeouts shorter at the calling service and longer at the called service to ensure the caller's timeout fires before the server's, giving clean error propagation.
-- Monitor per-route retry rates with Prometheus — a route retrying more than 10% of requests indicates a reliability problem that needs investigation, not just more retries.
+- Monitor per-route retry rates with Prometheus - a route retrying more than 10% of requests indicates a reliability problem that needs investigation, not just more retries.
 
 ## Conclusion
 
-Configuring Linkerd retry and timeout policies through Flux CD creates a resilient, GitOps-managed service communication layer. Retry budgets, per-route timeouts, and idempotency annotations are all tracked in Git, enabling reliability engineers to tune failure recovery behavior through code review — with the full history of every change available for post-incident analysis.
+Configuring Linkerd retry and timeout policies through Flux CD creates a resilient, GitOps-managed service communication layer. Retry budgets, per-route timeouts, and idempotency annotations are all tracked in Git, enabling reliability engineers to tune failure recovery behavior through code review - with the full history of every change available for post-incident analysis.

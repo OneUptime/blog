@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, Troubleshooting, sealert, Linux
+Tags: RHEL, SELinux, Troubleshooting, Sealert, Linux
 
 Description: Use sealert and ausearch to diagnose and resolve SELinux denials on RHEL with practical examples and a systematic troubleshooting approach.
 

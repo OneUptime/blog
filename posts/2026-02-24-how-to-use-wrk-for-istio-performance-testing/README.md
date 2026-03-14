@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, wrk, Performance Testing, Load Testing, Kubernetes
+Tags: Istio, Wrk, Performance Testing, Load Testing, Kubernetes
 
 Description: How to use the wrk HTTP benchmarking tool to measure and optimize Istio service mesh performance with practical examples.
 

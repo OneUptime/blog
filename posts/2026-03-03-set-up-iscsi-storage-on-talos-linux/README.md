@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, iSCSI, Block Storage, Kubernetes, SAN
+Tags: Talos Linux, ISCSI, Block Storage, Kubernetes, SAN
 
 Description: Configure iSCSI storage on Talos Linux for high-performance block-level access to SAN storage from your Kubernetes cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Migration
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Migration
 
 Description: A guide to migrating workloads from an existing CNI to Calico on an on-premises Kubernetes cluster with minimal downtime.
 
@@ -10,7 +10,7 @@ Description: A guide to migrating workloads from an existing CNI to Calico on an
 
 ## Introduction
 
-Migrating an on-premises Kubernetes cluster from an existing CNI plugin to Calico is a significant infrastructure change. All pods will receive new IP addresses after the migration, which means any service that depends on pod IPs directly — rather than Service or DNS names — will be disrupted. Careful planning and a phased approach minimize this disruption.
+Migrating an on-premises Kubernetes cluster from an existing CNI plugin to Calico is a significant infrastructure change. All pods will receive new IP addresses after the migration, which means any service that depends on pod IPs directly - rather than Service or DNS names - will be disrupted. Careful planning and a phased approach minimize this disruption.
 
 The on-premises advantage is that you can schedule the migration around your own maintenance windows and you can snapshot physical router configurations before making changes. Unlike cloud environments, you also have direct access to the network hardware if BGP sessions need to be manually reset.
 

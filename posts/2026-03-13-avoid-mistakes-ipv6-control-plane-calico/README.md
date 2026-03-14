@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipv6, control-plane, kubernetes, networking, bgp
+Tags: Calico, IPv6, Control-plane, Kubernetes, Networking, BGP
 
 Description: Learn how to correctly configure Calico's IPv6 control plane, avoiding common mistakes with BGP IPv6 peering, Felix IPv6 settings, and node IPv6 address detection that lead to connectivity failures.
 
@@ -10,7 +10,7 @@ Description: Learn how to correctly configure Calico's IPv6 control plane, avoid
 
 ## Introduction
 
-Enabling IPv6 for the Kubernetes control plane with Calico involves more than just adding an IPv6 IP pool. You also need to configure the Calico node to detect its IPv6 address correctly, set up BGP peering over IPv6 if required, and configure Felix (the Calico per-node agent) with the right IPv6 settings. Mistakes in any of these areas cause IPv6 pod connectivity to fail while IPv4 continues to work — a confusing debugging scenario.
+Enabling IPv6 for the Kubernetes control plane with Calico involves more than just adding an IPv6 IP pool. You also need to configure the Calico node to detect its IPv6 address correctly, set up BGP peering over IPv6 if required, and configure Felix (the Calico per-node agent) with the right IPv6 settings. Mistakes in any of these areas cause IPv6 pod connectivity to fail while IPv4 continues to work - a confusing debugging scenario.
 
 This post covers the most common control plane IPv6 mistakes and how to avoid them.
 
@@ -52,7 +52,7 @@ calicoctl apply -f felixconfig-ipv6.yaml
 calicoctl get felixconfiguration default -o yaml | grep -i ipv6
 ```
 
-## Step 2: Mistake — IPv6 Address Not Detected on Nodes
+## Step 2: Mistake - IPv6 Address Not Detected on Nodes
 
 A common mistake is enabling IPv6 in Calico without verifying that each node has its IPv6 address correctly detected and registered.
 
@@ -105,7 +105,7 @@ spec:
     - cidr: "fd00:10:244::/56"     # IPv6 pod CIDR
 ```
 
-## Step 4: Mistake — IPv6 iptables Rules Not Created
+## Step 4: Mistake - IPv6 iptables Rules Not Created
 
 If Felix's IPv6 support is not enabled, iptables6 rules for network policies are not created, leaving IPv6 traffic unfiltered or blocked.
 
@@ -159,4 +159,4 @@ kubectl delete pod pod-a pod-b
 
 ## Conclusion
 
-IPv6 control plane configuration in Calico requires coordinated changes across Felix, BGP, and IP pool settings. The most common mistakes — missing Felix IPv6 settings, undetected node IPv6 addresses, and absent iptables6 rules — all result in IPv6 pod connectivity failures that can be confusing when IPv4 continues to work. By following the correct configuration sequence and validating each component, you can reliably run dual-stack Kubernetes with Calico.
+IPv6 control plane configuration in Calico requires coordinated changes across Felix, BGP, and IP pool settings. The most common mistakes - missing Felix IPv6 settings, undetected node IPv6 addresses, and absent iptables6 rules - all result in IPv6 pod connectivity failures that can be confusing when IPv4 continues to work. By following the correct configuration sequence and validating each component, you can reliably run dual-stack Kubernetes with Calico.

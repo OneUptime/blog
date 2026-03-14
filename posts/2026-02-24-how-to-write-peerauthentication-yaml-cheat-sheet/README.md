@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, mTLS, YAML, Cheat Sheet, Security
+Tags: Istio, PeerAuthentication, MTLS, YAML, Cheat Sheet, Security
 
 Description: Complete cheat sheet for writing Istio PeerAuthentication YAML to configure mutual TLS modes across your service mesh.
 

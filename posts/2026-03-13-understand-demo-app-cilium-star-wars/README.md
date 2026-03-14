@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Networking, Star Wars Demo, Application Architecture
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A detailed look at the application components deployed in the Cilium Star Wars demo and how they represent real-world microservice patterns.
 
@@ -12,7 +12,7 @@ Description: A detailed look at the application components deployed in the Ciliu
 
 Before diving into network policies, it is essential to understand what the Cilium Star Wars demo actually deploys. The application consists of four Kubernetes workloads representing elements of the Star Wars universe: the Death Star (a service accepting landing requests), TIE Fighters (Empire ships), and X-Wings (Rebel Alliance ships). Each workload carries carefully chosen Kubernetes labels that become the foundation for all policy decisions Cilium makes.
 
-The demo application is intentionally simple — it is an HTTP server with a handful of endpoints, not a complex distributed system. But its simplicity is a feature, not a limitation. By keeping the application logic minimal, the demo keeps your attention on the networking layer rather than the application layer. The labels on the pods are the application, from Cilium's perspective.
+The demo application is intentionally simple - it is an HTTP server with a handful of endpoints, not a complex distributed system. But its simplicity is a feature, not a limitation. By keeping the application logic minimal, the demo keeps your attention on the networking layer rather than the application layer. The labels on the pods are the application, from Cilium's perspective.
 
 Understanding the architecture of the demo application also helps you map its patterns to your own services. The `deathstar` represents any sensitive internal service. The `tiefighter` represents an authorized client. The `xwing` represents an unauthorized external actor. This mapping applies directly to real-world API gateway patterns, internal microservice communication, and zero-trust architecture.
 
@@ -110,4 +110,4 @@ These labels are used verbatim in `CiliumNetworkPolicy` selectors. This direct c
 
 ## Conclusion
 
-The demo application in the Cilium Star Wars demo is a minimal but perfectly structured representation of a real-world microservice security problem. By studying its components, labels, and API surface, you gain a template for applying the same patterns to production environments. The labels are the policy handles — every label you put on a pod is a potential security boundary you can enforce with Cilium.
+The demo application in the Cilium Star Wars demo is a minimal but perfectly structured representation of a real-world microservice security problem. By studying its components, labels, and API surface, you gain a template for applying the same patterns to production environments. The labels are the policy handles - every label you put on a pod is a potential security boundary you can enforce with Cilium.

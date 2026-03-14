@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Node.js, Azure, App Service, Microservices, TypeScript, Cloud
+Tags: GRPC, Node.js, Azure, App Service, Microservices, TypeScript, Cloud
 
 Description: Step-by-step guide to building a gRPC service in Node.js and deploying it to Azure App Service with proper configuration.
 

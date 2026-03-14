@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on Windows nodes in a Rancher-ma
 
 Upgrading Calico on Windows nodes in a Rancher-managed cluster involves coordinating between Rancher's cluster upgrade mechanism and the Windows-specific Calico upgrade steps. Rancher can trigger operator and Linux Calico component upgrades through its UI or kubectl, but Windows Calico components still require the same manual steps as non-Rancher deployments.
 
-Rancher may have opinions about Calico version — it pins the Calico version that was used during cluster creation in its cluster configuration. When upgrading Calico independently of the Rancher cluster upgrade, be aware that Rancher may try to revert the Calico version if you perform a cluster-level upgrade without explicitly specifying the new Calico version.
+Rancher may have opinions about Calico version - it pins the Calico version that was used during cluster creation in its cluster configuration. When upgrading Calico independently of the Rancher cluster upgrade, be aware that Rancher may try to revert the Calico version if you perform a cluster-level upgrade without explicitly specifying the new Calico version.
 
 ## Prerequisites
 

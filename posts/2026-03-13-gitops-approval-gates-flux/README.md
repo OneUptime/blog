@@ -12,7 +12,7 @@ Description: Use branch protection rules and CODEOWNERS to require explicit appr
 
 An approval gate in GitOps is a policy that prevents a change from reaching the cluster until a designated group of people have explicitly signed off. Without approval gates, anyone with write access to your repository can deploy to production simply by committing to the Flux-watched branch. Approval gates close that gap by enforcing human review as a prerequisite to reconciliation.
 
-Flux CD does not have a built-in approval UI — it trusts Git. That is a feature, not a gap. By using your version control platform's native approval mechanisms (branch protection, CODEOWNERS, required reviewers), you get approval gates that are version-controlled, auditable, and enforced at the Git level rather than inside a single tool.
+Flux CD does not have a built-in approval UI - it trusts Git. That is a feature, not a gap. By using your version control platform's native approval mechanisms (branch protection, CODEOWNERS, required reviewers), you get approval gates that are version-controlled, auditable, and enforced at the Git level rather than inside a single tool.
 
 This guide walks through setting up multi-layer approval gates: a CODEOWNERS file that routes change reviews to the right team, branch protection rules that block merges without approval, and environment-specific Flux Kustomizations so that production deployments require stricter gates than staging.
 
@@ -69,7 +69,7 @@ spec:
 
 Map directory paths to teams so GitHub automatically assigns the correct reviewers when a PR touches those paths.
 
-```
+```plaintext
 # .github/CODEOWNERS
 
 # Any change to production app manifests requires sign-off from both
@@ -92,7 +92,7 @@ GitHub automatically adds the listed code owners as required reviewers on any PR
 
 Navigate to **Settings → Branches → Add rule** for the `main` branch:
 
-```
+```plaintext
 Branch name pattern: main
 
 Required settings:
@@ -112,7 +112,7 @@ Required settings:
   ✅ Do not allow bypassing the above settings
 ```
 
-With these rules, no merge can land on `main` — and therefore no deployment can happen — without the required approvals.
+With these rules, no merge can land on `main` - and therefore no deployment can happen - without the required approvals.
 
 ## Step 4: Add a Staged Approval Flow for High-Risk Changes
 
@@ -166,7 +166,7 @@ git checkout -b feature/update-production-image
 git push origin feature/update-production-image
 gh pr create --title "Update production image" --base main
 
-# Check the PR — CODEOWNERS should have auto-requested reviews
+# Check the PR - CODEOWNERS should have auto-requested reviews
 gh pr view --json reviewRequests
 ```
 
@@ -182,11 +182,11 @@ git log --oneline -5
 
 ## Best Practices
 
-- Set required approving reviews to at least 2 for production paths — a single approver is a single point of failure.
+- Set required approving reviews to at least 2 for production paths - a single approver is a single point of failure.
 - Use separate CODEOWNERS entries for each environment to enforce progressively stricter gates as changes move toward production.
 - Record approval metadata in PR descriptions using a standardized template so auditors can quickly find the evidence.
 - Combine CODEOWNERS with team-level permissions so rotating staff does not leave gaps in coverage.
-- Review and update CODEOWNERS whenever teams change — stale ownership creates unenforced gates.
+- Review and update CODEOWNERS whenever teams change - stale ownership creates unenforced gates.
 - Use GitHub's "Required reviewers" in Environments for an additional gate that fires after merge for regulated workflows.
 
 ## Conclusion

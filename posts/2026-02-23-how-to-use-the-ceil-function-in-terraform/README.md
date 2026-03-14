@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, ceil Function, Math, HCL, Infrastructure as Code, Numeric Functions
+Tags: Terraform, Ceil Function, Math, HCL, Infrastructure as Code, Numeric Functions
 
 Description: Learn how to use the ceil function in Terraform to round numbers up to the nearest integer and apply it to real infrastructure sizing and capacity planning.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Storage Gateway, Volume Gateway, iSCSI, Block Storage
+Tags: AWS, Storage Gateway, Volume Gateway, ISCSI, Block Storage
 
 Description: Learn how to configure AWS Storage Gateway Volume Gateway for iSCSI block storage, including cached and stored volume modes with EBS snapshot integration.
 

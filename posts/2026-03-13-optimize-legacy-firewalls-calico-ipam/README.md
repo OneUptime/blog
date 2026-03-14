@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Firewall, Legacy, Networking, Optimization, Security
+Tags: Calico, Kubernetes, IPAM, Firewall, LEGACY, Networking, Optimization, Security
 
-Description: Learn how to optimize Calico IPAM configuration to ensure pod IP addresses are compatible with legacy firewall rules, enabling Kubernetes workloads to integrate seamlessly with existing network security infrastructure.
+Description: Learn how to optimize Calico IPAM configuration to ensure pod IP addresses are compatible with legacy firewall rules, enabling Kubernetes workloads to integrate seamlessly with existing network...
 
 ---
 

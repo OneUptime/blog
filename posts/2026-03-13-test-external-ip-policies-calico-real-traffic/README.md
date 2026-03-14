@@ -12,7 +12,7 @@ Description: Validate Calico external IP network policies using real traffic to 
 
 Testing External IP Policies in Calico requires systematic verification that your policy rules produce the expected traffic behavior. By sending real traffic through a test environment, you can confirm both positive scenarios (allowed traffic passes) and negative scenarios (denied traffic is blocked).
 
-Calico's `projectcalico.org/v3` policies are evaluated dynamically — changes take effect immediately without restarting pods or services. This makes live traffic testing particularly reliable for verifying policy correctness.
+Calico's `projectcalico.org/v3` policies are evaluated dynamically - changes take effect immediately without restarting pods or services. This makes live traffic testing particularly reliable for verifying policy correctness.
 
 ## Prerequisites
 

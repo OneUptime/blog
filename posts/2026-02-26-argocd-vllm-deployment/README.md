@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, vLLM, LLM Serving
+Tags: ArgoCD, GitOps, Kubernetes, VLLM, LLM Serving
 
 Description: Learn how to deploy vLLM for high-performance large language model serving on Kubernetes using ArgoCD, with GPU scheduling, model management, and autoscaling configuration.
 

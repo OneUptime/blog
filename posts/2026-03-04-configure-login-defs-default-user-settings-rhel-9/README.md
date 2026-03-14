@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, login.defs, User Settings, Security, Linux
+Tags: RHEL, Login.defs, User Settings, Security, Linux
 
 Description: A detailed walkthrough of the /etc/login.defs file on RHEL, explaining each important setting and how to configure UID/GID ranges, password policies, umask, and more for new user accounts.
 

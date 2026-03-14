@@ -10,7 +10,7 @@ Description: A guide to testing Calico network policies on Windows nodes, includ
 
 ## Introduction
 
-Network policy enforcement on Windows nodes works through Windows HNS ACLs rather than Linux iptables. The policy semantics are the same — Calico translates Kubernetes NetworkPolicy resources into the appropriate dataplane rules — but the underlying mechanism differs. Testing policies on Windows nodes requires verifying that HNS ACL rules are correctly programmed, not just that connectivity behaves as expected.
+Network policy enforcement on Windows nodes works through Windows HNS ACLs rather than Linux iptables. The policy semantics are the same - Calico translates Kubernetes NetworkPolicy resources into the appropriate dataplane rules - but the underlying mechanism differs. Testing policies on Windows nodes requires verifying that HNS ACL rules are correctly programmed, not just that connectivity behaves as expected.
 
 Calico's support for Windows network policies covers standard Kubernetes NetworkPolicy resources. Some Calico-specific policy features (such as host endpoint policies and certain GlobalNetworkPolicy selectors) are not supported on Windows. Testing should focus on the supported policy types and verify cross-OS policy enforcement.
 

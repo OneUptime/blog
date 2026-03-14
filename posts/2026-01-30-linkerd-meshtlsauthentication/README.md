@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Linkerd, Kubernetes, ServiceMesh, mTLS
+Tags: Linkerd, Kubernetes, ServiceMesh, MTLS
 
 Description: Implement workload identity verification in Linkerd using MeshTLSAuthentication to enforce cryptographic identity checks between services.
 

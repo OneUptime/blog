@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, Vue3, i18n, Internationalization, Localization, Translation, Frontend
+Tags: Vue, Vue3, I18n, Internationalization, Localization, Translation, Frontend
 
 Description: Complete guide to setting up Vue i18n for multilingual applications including lazy loading, pluralization, and component interpolation.
 

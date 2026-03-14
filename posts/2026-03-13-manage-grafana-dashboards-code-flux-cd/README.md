@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: grafana, flux-cd, gitops, kubernetes, dashboards, observability, monitoring
+Tags: Flux CD, Kubernetes, GitOps, Grafana, Dashboard, Observability, ConfigMap
 
 Description: Learn how to manage Grafana dashboards as code in Kubernetes using ConfigMaps and Flux CD, enabling version-controlled, automatically reconciled dashboard deployments.
 
@@ -10,7 +10,7 @@ Description: Learn how to manage Grafana dashboards as code in Kubernetes using 
 
 ## Introduction
 
-Grafana dashboards created through the UI are notoriously fragile—they live only in a database and can be accidentally modified or deleted. Managing dashboards as code in Git solves this problem by treating every dashboard as a versioned artifact that is automatically deployed by Flux CD.
+Grafana dashboards created through the UI are notoriously fragile-they live only in a database and can be accidentally modified or deleted. Managing dashboards as code in Git solves this problem by treating every dashboard as a versioned artifact that is automatically deployed by Flux CD.
 
 The Grafana sidecar provisioner watches for ConfigMaps with specific labels and automatically loads the JSON dashboard definitions they contain. Combined with Flux CD, this pattern means every dashboard change is reviewed via pull request, deployed automatically, and can be rolled back with a simple `git revert`.
 
@@ -131,7 +131,7 @@ spec:
 - Use unique, stable `uid` values in dashboard JSON to prevent Grafana from creating duplicates
 - Enable `prune: true` in the Kustomization so deleted dashboard files are removed from the cluster
 - Use `grafana_folder` annotations to organize dashboards into logical folders within Grafana
-- Store dashboard JSON without the `id` field—Grafana assigns IDs on import and they vary between instances
+- Store dashboard JSON without the `id` field-Grafana assigns IDs on import and they vary between instances
 - Run a CI check that validates dashboard JSON schema on pull requests before merging
 
 ## Conclusion

@@ -2,19 +2,19 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, aws, vpc-cni, cni-chaining, eks, networking
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
-Description: Learn how to plan and deploy Cilium in chained mode on top of AWS VPC CNI in EKS clusters, enabling Cilium network policies and observability while retaining native VPC IP allocation. This guide covers the planning, prerequisites, and configuration for AWS VPC CNI chaining.
+Description: Learn how to plan and deploy Cilium in chained mode on top of AWS VPC CNI in EKS clusters, enabling Cilium network policies and observability while retaining native VPC IP allocation.
 
 ---
 
 ## Introduction
 
-AWS EKS clusters use the AWS VPC CNI plugin to assign VPC IP addresses directly to pods, enabling native VPC routing and integration with AWS security groups. However, AWS VPC CNI's network policy capabilities are limited — it only supports basic Kubernetes NetworkPolicy without advanced egress controls, FQDN policies, or L7 enforcement.
+AWS EKS clusters use the AWS VPC CNI plugin to assign VPC IP addresses directly to pods, enabling native VPC routing and integration with AWS security groups. However, AWS VPC CNI's network policy capabilities are limited - it only supports basic Kubernetes NetworkPolicy without advanced egress controls, FQDN policies, or L7 enforcement.
 
 By chaining Cilium on top of AWS VPC CNI, you keep the native VPC IP assignment (no overlay, no IP translation) while adding Cilium's powerful CiliumNetworkPolicy enforcement and Hubble observability. This is the recommended path for EKS customers who need advanced network policy without migrating to a standalone CNI.
 
-This guide covers the planning phase — understanding what changes, what stays the same, and how to configure the chain.
+This guide covers the planning phase - understanding what changes, what stays the same, and how to configure the chain.
 
 ## Prerequisites
 
@@ -93,7 +93,7 @@ cilium connectivity test --test no-policies
 
 ## Best Practices
 
-- Disable AWS security group policies for pods when using Cilium for network policy — they can conflict
+- Disable AWS security group policies for pods when using Cilium for network policy - they can conflict
 - Set `enableIPv4Masquerade=false` since AWS VPC CNI handles routing natively
 - Monitor Cilium agent pod logs on rolling node group updates to detect configuration drift
 - Use `CiliumClusterwideNetworkPolicy` for cluster-wide default-deny in chained mode

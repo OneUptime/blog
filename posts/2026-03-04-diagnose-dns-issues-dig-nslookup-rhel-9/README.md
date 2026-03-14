@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dig, nslookup, DNS, Troubleshooting, Linux
+Tags: RHEL, Dig, Nslookup, DNS, Troubleshooting, Linux
 
 Description: Master the dig and nslookup commands on RHEL to diagnose DNS problems quickly, from basic lookups to advanced debugging.
 

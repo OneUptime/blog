@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nmstate, nmstatectl, Networking, Linux
+Tags: RHEL, Nmstate, Nmstatectl, Networking, Linux
 
 Description: Learn how to use Nmstate and nmstatectl for declarative network configuration on RHEL, using YAML-based state definitions for reproducible network setups.
 

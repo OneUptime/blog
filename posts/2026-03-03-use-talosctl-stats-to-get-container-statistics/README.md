@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Container Monitoring, Performance, Kubernetes
+Tags: Talos Linux, Talosctl, Container Monitoring, Performance, Kubernetes
 
 Description: Learn how to use talosctl stats to get real-time container resource statistics on Talos Linux nodes for performance analysis
 

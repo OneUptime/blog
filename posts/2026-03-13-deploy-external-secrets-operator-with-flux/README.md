@@ -10,9 +10,9 @@ Description: Deploy the External Secrets Operator using Flux CD HelmRelease to e
 
 ## Introduction
 
-Managing Kubernetes secrets securely in a GitOps workflow is one of the most common challenges teams face. Storing secrets in Git — even encrypted — adds operational complexity and key rotation burden. The External Secrets Operator (ESO) solves this by keeping secrets in purpose-built secret stores (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, etc.) and synchronizing them into Kubernetes as native Secret objects on demand.
+Managing Kubernetes secrets securely in a GitOps workflow is one of the most common challenges teams face. Storing secrets in Git - even encrypted - adds operational complexity and key rotation burden. The External Secrets Operator (ESO) solves this by keeping secrets in purpose-built secret stores (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, etc.) and synchronizing them into Kubernetes as native Secret objects on demand.
 
-Deploying ESO through Flux CD completes the GitOps story: the operator itself is managed declaratively in Git, and the `ExternalSecret` and `SecretStore` resources that define which secrets to sync are version-controlled, reviewed, and reconciled automatically. Your actual secret values never touch Git — only the references to them do.
+Deploying ESO through Flux CD completes the GitOps story: the operator itself is managed declaratively in Git, and the `ExternalSecret` and `SecretStore` resources that define which secrets to sync are version-controlled, reviewed, and reconciled automatically. Your actual secret values never touch Git - only the references to them do.
 
 This guide walks through deploying the External Secrets Operator using a Flux HelmRelease, verifying the installation, and preparing for secret store configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Upgrades, Validation
+Tags: Calico, Kubernetes, Networking, Upgrade, Validation
 
 Description: Validate a successful Calico upgrade on Kubernetes by verifying version consistency, network connectivity, policy enforcement, and IPAM integrity.
 

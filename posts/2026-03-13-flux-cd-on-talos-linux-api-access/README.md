@@ -51,7 +51,7 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: 192.168.1.1
-  # Talos has no SSH — management is entirely via talosctl API
+  # Talos has no SSH - management is entirely via talosctl API
   # No SSH keys needed or supported
 
 cluster:
@@ -73,7 +73,7 @@ cluster:
 # Configure the talosctl endpoint
 export TALOSCONFIG=./talos-config/talosconfig
 
-# Apply control plane configuration (no SSH — pure API)
+# Apply control plane configuration (no SSH - pure API)
 talosctl apply-config --insecure \
   --nodes 192.168.1.101 \
   --file ./talos-config/controlplane.yaml
@@ -158,7 +158,7 @@ talosctl patch mc \
 
 ## Best Practices
 
-- Store `talosconfig` and machine configuration templates in Git (encrypted with SOPS) — the API-only access model makes version-controlled configs essential.
+- Store `talosconfig` and machine configuration templates in Git (encrypted with SOPS) - the API-only access model makes version-controlled configs essential.
 - Use Talos's built-in support for control plane configuration upgrades (`talosctl upgrade-k8s`) rather than manual kubeadm commands.
 - Configure Talos node maintenance windows via the API rather than SSH; use `talosctl` commands in Kubernetes Jobs for automated maintenance tasks.
 - Use Cilium with eBPF and kube-proxy replacement on Talos for the most performant and feature-complete networking without OS-level iptables dependencies.
@@ -166,4 +166,4 @@ talosctl patch mc \
 
 ## Conclusion
 
-Talos Linux and Flux CD form a uniquely immutable, declarative stack where neither the operating system nor the workloads can drift from their declared state. The API-only access model of Talos aligns perfectly with Flux's GitOps philosophy — all changes, from OS kernel parameters to application deployments, flow through version-controlled, auditable processes rather than interactive shell sessions.
+Talos Linux and Flux CD form a uniquely immutable, declarative stack where neither the operating system nor the workloads can drift from their declared state. The API-only access model of Talos aligns perfectly with Flux's GitOps philosophy - all changes, from OS kernel parameters to application deployments, flow through version-controlled, auditable processes rather than interactive shell sessions.

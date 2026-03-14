@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, VictoriaMetrics, Cluster, High Availability, Prometheus, Metrics, HelmRelease
+Tags: Flux CD, Kubernetes, GitOps, VictoriaMetrics, Cluster, High Availability, Metrics, HelmRelease
 
 Description: Deploy VictoriaMetrics cluster setup using Flux CD HelmRelease for horizontally scalable, highly available metrics storage with separate write, storage, and query components.
 
@@ -267,4 +267,4 @@ flux get helmrelease victoria-metrics-cluster -n monitoring
 
 ## Conclusion
 
-VictoriaMetrics Cluster deployed through Flux CD provides a horizontally scalable metrics platform capable of handling the largest Kubernetes observability workloads. The separation of write, storage, and query components allows each layer to scale independently as your monitoring requirements grow. Combined with Flux CD's GitOps management, your metrics infrastructure evolves predictably — with every scaling change tracked in version control and automatically applied to your cluster.
+VictoriaMetrics Cluster deployed through Flux CD provides a horizontally scalable metrics platform capable of handling the largest Kubernetes observability workloads. The separation of write, storage, and query components allows each layer to scale independently as your monitoring requirements grow. Combined with Flux CD's GitOps management, your metrics infrastructure evolves predictably - with every scaling change tracked in version control and automatically applied to your cluster.

@@ -10,11 +10,11 @@ Description: A practical guide for explaining the differences between Calico Ope
 
 ## Introduction
 
-When you understand the Calico product landscape, the next challenge is communicating those differences to colleagues who may not have a networking background. Product managers, security leads, and engineering managers all need to understand the tradeoffs — but they don't need to know how BGP peering works to make a good decision.
+When you understand the Calico product landscape, the next challenge is communicating those differences to colleagues who may not have a networking background. Product managers, security leads, and engineering managers all need to understand the tradeoffs - but they don't need to know how BGP peering works to make a good decision.
 
 Explaining CNI editions to a mixed audience requires translating technical capabilities into business outcomes: cost, operational burden, security posture, and compliance coverage. This post gives you the framing and analogies you need to run that conversation effectively.
 
-The goal is not to oversimplify — it's to give each audience the right level of detail so they can participate meaningfully in the decision.
+The goal is not to oversimplify - it's to give each audience the right level of detail so they can participate meaningfully in the decision.
 
 ## Prerequisites
 
@@ -64,12 +64,12 @@ Platform engineers want to know about API compatibility, upgrade paths, and oper
 - All three editions share the same core Calico data model and CRDs
 - Migrating from Open Source to Cloud or Enterprise does **not** require reinstalling the CNI or re-IPing nodes
 - Enterprise adds CRD-based resources (`GlobalThreatFeed`, `PacketCapture`, `PolicyRecommendation`) that are not available in Open Source
-- Calico Cloud connects via a lightweight agent that reports to Tigera's SaaS — no inbound connectivity required from Tigera
+- Calico Cloud connects via a lightweight agent that reports to Tigera's SaaS - no inbound connectivity required from Tigera
 
 ## Best Practices
 
 - Prepare a one-page decision matrix tailored to your organization before the meeting
-- Anchor the discussion on a concrete use case: "We need to prove to auditors that no pod can call external APIs without approval — which edition supports that?"
+- Anchor the discussion on a concrete use case: "We need to prove to auditors that no pod can call external APIs without approval - which edition supports that?"
 - Avoid leading with pricing until you have established which features are actually required
 - Use a lab cluster to demonstrate the UI and policy capabilities of Cloud or Enterprise before committing
 

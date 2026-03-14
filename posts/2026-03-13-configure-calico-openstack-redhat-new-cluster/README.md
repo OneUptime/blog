@@ -10,7 +10,7 @@ Description: A guide to configuring Calico's BGP, IP pools, and Felix settings f
 
 ## Introduction
 
-Configuring Calico for a Red Hat-based OpenStack cluster involves the same core settings as Ubuntu — IP pools, BGP configuration, and Felix tuning — but RHEL-specific considerations include firewalld management for BGP port access, SELinux policy configuration for Felix's iptables operations, and compatibility with RHEL 8/9's iptables-nft backend.
+Configuring Calico for a Red Hat-based OpenStack cluster involves the same core settings as Ubuntu - IP pools, BGP configuration, and Felix tuning - but RHEL-specific considerations include firewalld management for BGP port access, SELinux policy configuration for Felix's iptables operations, and compatibility with RHEL 8/9's iptables-nft backend.
 
 RHEL 8 and 9 use nftables as the backend for iptables by default, which can conflict with Felix's iptables management. Understanding how to configure Felix to work correctly with either iptables-legacy or iptables-nft is an important step in the RHEL-specific configuration.
 
@@ -93,4 +93,4 @@ sudo journalctl -u calico-felix --since "5 minutes ago" | grep -iE "error|warn"
 
 ## Conclusion
 
-Configuring Calico on RHEL-based OpenStack requires resolving the iptables backend compatibility (legacy vs nft), opening BGP and etcd ports through firewalld, and configuring SELinux for Felix's Prometheus port. Once these RHEL-specific steps are complete, the standard Calico configuration — IP pools, BGP, Felix tuning — applies as on any other platform.
+Configuring Calico on RHEL-based OpenStack requires resolving the iptables backend compatibility (legacy vs nft), opening BGP and etcd ports through firewalld, and configuring SELinux for Felix's Prometheus port. Once these RHEL-specific steps are complete, the standard Calico configuration - IP pools, BGP, Felix tuning - applies as on any other platform.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, HCL, for_each, Infrastructure as Code
+Tags: Terraform, Troubleshooting, HCL, For_each, Infrastructure as Code
 
 Description: A practical guide to fixing Invalid for_each argument errors in Terraform caused by unknown values, wrong types, and computed dependencies.
 

@@ -206,4 +206,4 @@ flux get images policy my-service -n team-alpha
 
 ## Conclusion
 
-Flux CD's image automation stack removes every manual step between a code push and a production deployment. Developers get true self-service — they push code, CI builds an image, and Flux handles the rest. The platform team retains governance through ImagePolicy rules and RBAC constraints, and the Git history provides a complete, timestamped audit trail of every deployment decision ever made.
+Flux CD's image automation stack removes every manual step between a code push and a production deployment. Developers get true self-service - they push code, CI builds an image, and Flux handles the rest. The platform team retains governance through ImagePolicy rules and RBAC constraints, and the Git history provides a complete, timestamped audit trail of every deployment decision ever made.

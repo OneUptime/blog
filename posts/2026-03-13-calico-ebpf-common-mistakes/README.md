@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Troubleshooting, Best Practices, Networking
+Tags: Calico, Kubernetes, EBPF, CNI, Troubleshooting, Best Practices, Networking
 
 Description: The most common eBPF configuration mistakes in Calico deployments and how to identify and fix them before they cause production incidents.
 
@@ -73,7 +73,7 @@ echo 'none /sys/fs/bpf bpf defaults 0 0' | sudo tee -a /etc/fstab
 
 ## Mistake 4: Mixed eBPF and iptables Nodes
 
-Enabling eBPF on some nodes but not others in the same cluster causes asymmetric policy enforcement — policies applied as iptables on some nodes may have different behavior than eBPF programs on others.
+Enabling eBPF on some nodes but not others in the same cluster causes asymmetric policy enforcement - policies applied as iptables on some nodes may have different behavior than eBPF programs on others.
 
 **Symptom**: Intermittent policy enforcement failures that are node-specific.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, terraform console, REPL, Debugging, DevOps, Infrastructure as Code
+Tags: Terraform, Terraform console, REPL, Debugging, DevOps, Infrastructure as Code
 
 Description: Learn how to use the terraform console interactive REPL to test expressions, debug variables, explore state, and experiment with Terraform functions.
 

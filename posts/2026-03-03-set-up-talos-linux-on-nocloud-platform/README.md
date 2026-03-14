@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Nocloud, cloud-init, Kubernetes, Virtualization
+Tags: Talos Linux, Nocloud, Cloud-init, Kubernetes, Virtualization
 
 Description: A practical guide to deploying Talos Linux using the nocloud datasource for bare metal and local virtualization environments.
 

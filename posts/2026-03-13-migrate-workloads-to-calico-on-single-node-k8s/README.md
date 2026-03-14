@@ -10,9 +10,9 @@ Description: Migrate existing workloads from another CNI to Calico on a single-n
 
 ## Introduction
 
-Migrating from a different CNI plugin to Calico on a single-node Kubernetes cluster is a common task for teams that originally deployed without network policy requirements and now need to add them. The migration requires careful planning since changing the CNI on a running cluster is disruptive — pods will lose network connectivity during the transition.
+Migrating from a different CNI plugin to Calico on a single-node Kubernetes cluster is a common task for teams that originally deployed without network policy requirements and now need to add them. The migration requires careful planning since changing the CNI on a running cluster is disruptive - pods will lose network connectivity during the transition.
 
-The safest approach depends on whether the single-node cluster can tolerate downtime. For development clusters, a brief downtime during CNI replacement is acceptable. For production single-node clusters serving continuous workloads, a blue-green approach — creating a second single-node cluster with Calico and migrating workloads — is preferable.
+The safest approach depends on whether the single-node cluster can tolerate downtime. For development clusters, a brief downtime during CNI replacement is acceptable. For production single-node clusters serving continuous workloads, a blue-green approach - creating a second single-node cluster with Calico and migrating workloads - is preferable.
 
 This guide covers both the in-place replacement approach (for development) and the blue-green migration approach (for production), with step-by-step instructions for each.
 
@@ -105,4 +105,4 @@ kubectl exec -n default $(kubectl get pods -o name | head -1) -- \
 
 ## Conclusion
 
-You have migrated workloads on a single-node Kubernetes cluster from an existing CNI to Calico. The key steps — exporting workload definitions, removing the old CNI, installing Calico, and restarting pods — deliver a clean migration with Calico-managed networking. All workloads now benefit from Calico's network policy enforcement capabilities.
+You have migrated workloads on a single-node Kubernetes cluster from an existing CNI to Calico. The key steps - exporting workload definitions, removing the old CNI, installing Calico, and restarting pods - deliver a clean migration with Calico-managed networking. All workloads now benefit from Calico's network policy enforcement capabilities.

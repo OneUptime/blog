@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, LUKS, Encryption, dm-crypt
+Tags: Ubuntu, Security, LUKS, Encryption, Dm-crypt
 
 Description: Learn how to configure dm-crypt and LUKS on Ubuntu to encrypt block devices, external drives, and partitions with full-disk encryption and automatic unlocking.
 

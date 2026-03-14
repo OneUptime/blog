@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, perf, Performance, Profiling, Linux, Debugging
+Tags: RHEL, Perf, Performance, Profiling, Linux, Debugging
 
 Description: Learn how to use the perf tool on RHEL to profile application performance and identify CPU bottlenecks.
 

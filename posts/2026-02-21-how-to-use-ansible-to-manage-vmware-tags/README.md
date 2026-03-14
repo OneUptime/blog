@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Tags, vSphere, Metadata
+Tags: Ansible, VMware, Tags, VSphere, Metadata
 
 Description: Learn how to create and manage VMware vSphere tags and tag categories with Ansible for VM classification, policy enforcement, and dynamic inventory.
 

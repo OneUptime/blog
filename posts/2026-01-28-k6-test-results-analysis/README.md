@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k6, Performance Testing, Analysis, Metrics, Reporting, DevOps
+Tags: K6, Performance Testing, Analysis, Metrics, Reporting, DevOps
 
 Description: Learn how to interpret k6 test output, identify performance bottlenecks, and create actionable reports from load test results.
 

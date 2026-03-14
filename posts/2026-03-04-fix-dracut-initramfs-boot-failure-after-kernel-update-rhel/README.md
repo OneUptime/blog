@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, initramfs, Kernel, Boot, Troubleshooting
+Tags: RHEL, Dracut, Initramfs, Kernel, Boot, Troubleshooting
 
 Description: Fix boot failures caused by a corrupted or incomplete initramfs after a kernel update on RHEL using dracut to regenerate the initial RAM filesystem.
 

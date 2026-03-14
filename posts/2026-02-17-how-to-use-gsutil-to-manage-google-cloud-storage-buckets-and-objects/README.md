@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, gsutil, CLI Tools, Cloud Operations
+Tags: GCP, Google Cloud Storage, Gsutil, CLI Tools, Cloud Operations
 
 Description: A comprehensive guide to using gsutil for managing Google Cloud Storage buckets and objects with practical command examples and productivity tips.
 

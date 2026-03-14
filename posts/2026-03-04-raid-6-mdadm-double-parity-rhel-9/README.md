@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID 6, mdadm, Storage, Linux
+Tags: RHEL, RAID 6, Mdadm, Storage, Linux
 
 Description: Configure a RAID 6 array with mdadm on RHEL to achieve double-parity redundancy, allowing your storage to survive two simultaneous disk failures.
 

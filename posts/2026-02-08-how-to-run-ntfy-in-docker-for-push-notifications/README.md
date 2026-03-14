@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ntfy, Push Notifications, Self-Hosted, Alerts, Docker Compose, DevOps
+Tags: Docker, Ntfy, Push Notifications, Self-Hosted, Alerts, Docker Compose, DevOps
 
 Description: Set up ntfy in Docker as a self-hosted push notification service with HTTP-based pub/sub and mobile app support.
 

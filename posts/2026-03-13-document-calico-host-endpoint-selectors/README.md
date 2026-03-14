@@ -10,7 +10,7 @@ Description: A guide to documenting Calico host endpoint selector configurations
 
 ## Introduction
 
-Calico host endpoint selector documentation bridges the gap between the label schema applied to nodes and the policies that depend on those labels. Without clear documentation, operators modifying node labels for unrelated purposes — such as changing a deployment tier or adding a cloud-provider annotation — may inadvertently change which security policies apply to those nodes.
+Calico host endpoint selector documentation bridges the gap between the label schema applied to nodes and the policies that depend on those labels. Without clear documentation, operators modifying node labels for unrelated purposes - such as changing a deployment tier or adding a cloud-provider annotation - may inadvertently change which security policies apply to those nodes.
 
 Good selector documentation explains the label taxonomy, maps labels to policies, and provides guidance for operators making changes. It should be stored alongside the policy definitions in version control and referenced in runbooks and change management procedures.
 
@@ -70,11 +70,11 @@ Maintain this as a table in your documentation:
 1. Identify all policies that reference the label being changed:
    ```
    grep -r "node-role" policies/
-   ```
+   ```plaintext
 2. Determine which nodes will be affected:
    ```
    calicoctl get hep --selector="node-role == 'old-value'" -o wide
-   ```
+   ```plaintext
 3. Get approval from the Security and Platform teams
 
 ### Making the Change
@@ -115,4 +115,4 @@ echo "Documentation exported to $OUTDIR"
 
 ## Conclusion
 
-Documenting Calico host endpoint selectors means maintaining a clear label taxonomy, a policy-to-label mapping table, and runbooks that guide operators through safe label changes. Store everything in version control alongside your policy YAML files. The investment in documentation pays dividends every time an operator needs to modify a node label or understand why a specific policy is — or isn't — being enforced on a particular node.
+Documenting Calico host endpoint selectors means maintaining a clear label taxonomy, a policy-to-label mapping table, and runbooks that guide operators through safe label changes. Store everything in version control alongside your policy YAML files. The investment in documentation pays dividends every time an operator needs to modify a node label or understand why a specific policy is - or isn't - being enforced on a particular node.

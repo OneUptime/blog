@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Zero Trust
+Tags: Calico, Kubernetes, Network Policy, Services, Zero Trust
 
 Description: Zero Trust with Calico service-based network policies to implement zero-trust service communication controls.
 

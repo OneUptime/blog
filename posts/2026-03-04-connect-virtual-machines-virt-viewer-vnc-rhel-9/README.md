@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virt-viewer, VNC, Virtualization, Linux
+Tags: RHEL, KVM, Virt-viewer, VNC, Virtualization, Linux
 
 Description: Learn how to connect to KVM virtual machine consoles using virt-viewer, VNC, and SPICE on RHEL 9 for graphical and remote access.
 

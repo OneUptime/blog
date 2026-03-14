@@ -12,7 +12,7 @@ Description: Proactive measures to prevent Kubernetes node NotReady status cause
 
 Preventing node NotReady status from Calico failures requires ensuring the calico-node pod always has the resources it needs to run, that node prerequisites are in place, and that early warning monitoring detects calico-node health degradation before it escalates to node NotReady.
 
-The most impactful preventive measure is setting appropriate resource requests and limits on the calico-node DaemonSet. Without resource requests, calico-node can be evicted during node pressure events — and an evicted calico-node means a NotReady node.
+The most impactful preventive measure is setting appropriate resource requests and limits on the calico-node DaemonSet. Without resource requests, calico-node can be evicted during node pressure events - and an evicted calico-node means a NotReady node.
 
 ## Symptoms
 

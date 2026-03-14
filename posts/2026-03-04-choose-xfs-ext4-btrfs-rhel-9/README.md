@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, ext4, Btrfs, Comparison, Linux
+Tags: RHEL, XFS, Ext4, Btrfs, Comparison, Linux
 
 Description: A practical comparison of XFS, ext4, and Btrfs on RHEL to help you pick the right filesystem for your workload.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, gRPC, Interceptors, Middleware, Authentication, Tracing
+Tags: Go, GRPC, Interceptors, Middleware, Authentication, Tracing
 
 Description: Implement gRPC interceptors in Go for cross-cutting concerns like logging, authentication, rate limiting, and distributed tracing.
 

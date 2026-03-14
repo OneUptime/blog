@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, mTLS, Load Balancer, Security, Certificates
+Tags: GCP, MTLS, Load Balancer, Security, Certificates
 
 Description: A detailed guide to configuring mutual TLS (mTLS) on a GCP external application load balancer for client certificate authentication and zero-trust security.
 

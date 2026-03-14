@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Cosmos DB, Python, NoSQL, CRUD, azure-cosmos, Database
+Tags: Azure, Cosmos DB, Python, NoSQL, CRUD, Azure-cosmos, Database
 
 Description: Learn how to create, read, update, and delete documents in Azure Cosmos DB using the azure-cosmos Python SDK with practical examples.
 

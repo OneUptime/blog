@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Authentication, Security, Kubernetes
+Tags: Istio, MTLS, Authentication, Security, Kubernetes
 
 Description: Configure mutual TLS authentication between microservices in Istio to verify both client and server identity and encrypt all mesh traffic.
 

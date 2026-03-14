@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: dbt, Data Engineering, SQL, Analytics, ETL, Data Warehouse, Incremental Processing, BigQuery, Snowflake, Redshift
+Tags: Dbt, Data Engineering, SQL, Analytics, ETL, Data Warehouse, Incremental Processing, BigQuery, Snowflake, Redshift
 
 Description: A comprehensive guide to configuring dbt incremental models for efficient data transformations that process only new or changed records instead of rebuilding entire tables.
 

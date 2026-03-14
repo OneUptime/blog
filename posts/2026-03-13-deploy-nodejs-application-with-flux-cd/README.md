@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Node.js, JavaScript, Deployment
+Tags: Flux CD, Kubernetes, GitOps, Node.js, JavaScript, Deployments
 
 Description: Step-by-step guide to deploying a containerized Node.js application to Kubernetes using Flux CD GitOps, from Dockerfile to automated reconciliation.
 
@@ -27,7 +27,7 @@ This guide covers containerizing a Node.js Express application, setting up the F
 ## Step 1: Containerize the Node.js Application
 
 ```dockerfile
-# Dockerfile — multi-stage build for minimal production image
+# Dockerfile - multi-stage build for minimal production image
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
@@ -241,7 +241,7 @@ kubectl logs -n my-node-app -l app=my-node-app -f
 ## Best Practices
 
 - Add health check endpoints (`/health` and `/ready`) to your Node.js app so Kubernetes liveness and readiness probes can accurately determine pod state.
-- Use multi-stage Docker builds to keep production images small — avoid copying `devDependencies` or test files.
+- Use multi-stage Docker builds to keep production images small - avoid copying `devDependencies` or test files.
 - Store environment-specific configuration in Kubernetes Secrets or ConfigMaps rather than baking values into the image.
 - Use semantic versioning for image tags and the `semver` image policy so Flux only promotes stable releases automatically.
 - Set `terminationGracePeriodSeconds` and handle `SIGTERM` in your Node.js app for graceful shutdown during rolling updates.

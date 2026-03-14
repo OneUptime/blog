@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Node Health, Observability, eBPF
+Tags: Cilium, Kubernetes, Node Health, Observability, EBPF
 
 Description: Monitor Cilium node health by inspecting the Cilium agent status, checking inter-node connectivity, and diagnosing issues with BPF program loading and kernel compatibility.
 
@@ -10,7 +10,7 @@ Description: Monitor Cilium node health by inspecting the Cilium agent status, c
 
 ## Introduction
 
-Cilium node health encompasses the health of the Cilium agent running on each node, the inter-node connectivity that enables pod-to-pod communication across nodes, and the kernel-level BPF program state that implements the data plane. A node where Cilium is unhealthy affects not just pods on that node but potentially all pods that need to communicate with them — broken inter-node tunnels cause cluster-wide connectivity issues for any communication involving pods on the unhealthy node.
+Cilium node health encompasses the health of the Cilium agent running on each node, the inter-node connectivity that enables pod-to-pod communication across nodes, and the kernel-level BPF program state that implements the data plane. A node where Cilium is unhealthy affects not just pods on that node but potentially all pods that need to communicate with them - broken inter-node tunnels cause cluster-wide connectivity issues for any communication involving pods on the unhealthy node.
 
 Cilium provides health monitoring at multiple levels: the Cilium agent performs continuous health checks against all other nodes in the cluster through `cilium-health`, Kubernetes readiness and liveness probes monitor the agent process, and Prometheus metrics expose detailed health indicators for alerting. The `cilium status` command gives the most comprehensive single-command view of node health, while `cilium-health status` specifically checks the inter-node connectivity mesh.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Jaeger, Distributed Tracing, Flux CD, GitOps, Kubernetes, OpenTelemetry, Observability
+Tags: Flux CD, Kubernetes, GitOps, Jaeger, Distributed Tracing, Observability, HelmRelease
 
-Description: Deploy Jaeger in all-in-one mode on Kubernetes using Flux CD for GitOps-managed distributed tracing. This guide is ideal for development and small production environments that need a quick, self-contained tracing backend.
+Description: Deploy Jaeger in all-in-one mode on Kubernetes using Flux CD for GitOps-managed distributed tracing.
 
 ---
 
@@ -112,7 +112,7 @@ spec:
       type: prometheus
 
   storage:
-    # In-memory storage — data is lost on pod restart
+    # In-memory storage - data is lost on pod restart
     # Use this for dev/test only; switch to Cassandra/ES for production
     type: memory
     options:

@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Separation of Duties, RBAC, Compliance
 
-Description: Use Flux CD multi-tenancy features to enforce separation of duties between platform teams and application teams, preventing any single team from having unrestricted access to production infrastructure.
+Description: Use Flux CD multi-tenancy features to enforce separation of duties between platform teams and application teams, preventing any single team from having unrestricted access to production...
 
 ---
 
 ## Introduction
 
-Separation of duties (SoD) is a fundamental internal control that divides responsibilities between different people or teams so that no single individual can complete a high-risk process alone. For Kubernetes infrastructure, SoD means the team that builds an application should not also have unrestricted access to deploy it to production — a separate platform or operations team should control that gate.
+Separation of duties (SoD) is a fundamental internal control that divides responsibilities between different people or teams so that no single individual can complete a high-risk process alone. For Kubernetes infrastructure, SoD means the team that builds an application should not also have unrestricted access to deploy it to production - a separate platform or operations team should control that gate.
 
 Flux CD's multi-tenancy model uses Kubernetes RBAC and namespace isolation to enforce SoD declaratively. Platform teams manage the Flux control plane (what sources it watches, what Kustomizations exist), while application teams manage only the content within their designated namespace paths. Neither team can reach the other's resources without an explicit cross-team PR review.
 
@@ -53,7 +53,7 @@ patches:
       name: helm-controller
 ```
 
-The `--no-cross-namespace-refs=true` flag prevents a Kustomization in one namespace from referencing a GitRepository in another — enforcing namespace boundaries.
+The `--no-cross-namespace-refs=true` flag prevents a Kustomization in one namespace from referencing a GitRepository in another - enforcing namespace boundaries.
 
 ## Step 2: Create Tenant Service Accounts and RBAC
 
@@ -120,7 +120,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # Run with team-alpha's service account — limits permissions to their namespace
+  # Run with team-alpha's service account - limits permissions to their namespace
   serviceAccountName: team-alpha
   targetNamespace: team-alpha  # Force all resources into team-alpha namespace
   healthChecks:
@@ -134,7 +134,7 @@ spec:
 
 The Git-level SoD enforcement: platform team controls the Kustomization definitions (which determine what teams can deploy), while application teams control only their app manifests:
 
-```
+```plaintext
 # .github/CODEOWNERS
 
 # === PLATFORM TEAM SCOPE ===
@@ -209,10 +209,10 @@ The SoD enforcement flow:
 
 ```mermaid
 flowchart TD
-    PlatformTeam[Platform Team] -->|Can modify| ClusterConfig[/clusters/ — Kustomization definitions]
+    PlatformTeam[Platform Team] -->|Can modify| ClusterConfig[/clusters/ - Kustomization definitions]
     PlatformTeam -->|Can modify| TenantRBAC[Tenant RBAC and namespaces]
-    TeamAlpha[Team Alpha] -->|Can modify| AlphaApps[/apps/team-alpha/ — their apps only]
-    TeamBeta[Team Beta] -->|Can modify| BetaApps[/apps/team-beta/ — their apps only]
+    TeamAlpha[Team Alpha] -->|Can modify| AlphaApps[/apps/team-alpha/ - their apps only]
+    TeamBeta[Team Beta] -->|Can modify| BetaApps[/apps/team-beta/ - their apps only]
     TeamAlpha -->|Cannot modify| BetaApps
     TeamBeta -->|Cannot modify| AlphaApps
     TeamAlpha -->|Cannot modify| ClusterConfig
@@ -224,9 +224,9 @@ flowchart TD
 - Run quarterly SoD reviews: check CODEOWNERS lists, RBAC bindings, and GitHub team memberships to ensure they accurately reflect current team structures.
 - Use GitHub Teams (not individual usernames) in CODEOWNERS so team membership changes automatically update the approval requirements.
 - Document the SoD matrix in your Information Security Management System (ISMS) and reference the specific CODEOWNERS file path and branch protection settings as technical controls.
-- Test SoD controls after any reorganization or team restructuring — it is easy for CODEOWNERS to become stale.
+- Test SoD controls after any reorganization or team restructuring - it is easy for CODEOWNERS to become stale.
 - Include SoD verification in your CI pipeline by checking that the CODEOWNERS file is present and covers all sensitive paths.
 
 ## Conclusion
 
-Flux CD multi-tenancy with RBAC and CODEOWNERS-based SoD enforcement creates a deployment model where no single team has the ability to unilaterally make production changes across the entire system. The platform team controls the structure (what Kustomizations exist, who has which permissions), while application teams control only their own manifests. Every cross-boundary change requires collaboration — enforced at both the Git level (CODEOWNERS) and the Kubernetes level (scoped service accounts), providing strong, auditable separation of duties.
+Flux CD multi-tenancy with RBAC and CODEOWNERS-based SoD enforcement creates a deployment model where no single team has the ability to unilaterally make production changes across the entire system. The platform team controls the structure (what Kustomizations exist, who has which permissions), while application teams control only their own manifests. Every cross-boundary change requires collaboration - enforced at both the Git level (CODEOWNERS) and the Kubernetes level (scoped service accounts), providing strong, auditable separation of duties.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Verification, Health-check, Troubleshooting
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Verification, Health-check, Troubleshooting
 
 Description: Learn how to use the flux check command to verify your Flux CD installation, diagnose issues, and ensure all components are running correctly.
 

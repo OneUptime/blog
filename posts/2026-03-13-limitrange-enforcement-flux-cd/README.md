@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: kubernetes, limitrange, flux-cd, gitops, resource-management, multi-tenancy
+Tags: Kubernetes, LimitRange, Flux-cd, GitOps, Resource-Management, Multi-Tenancy
 
 Description: Learn how to enforce CPU and memory limits across Kubernetes namespaces using LimitRange resources managed through Flux CD's GitOps workflow.
 
@@ -12,7 +12,7 @@ Description: Learn how to enforce CPU and memory limits across Kubernetes namesp
 
 Kubernetes LimitRange resources set default and maximum CPU/memory constraints for containers, pods, and PersistentVolumeClaims within a namespace. Without LimitRanges, a single misconfigured pod can consume all available cluster resources and starve other workloads.
 
-Managing LimitRanges through Flux CD ensures consistent resource governance across all namespaces. When a new namespace is created or an existing one is updated, Flux automatically applies the correct LimitRange without manual intervention—eliminating the risk of namespaces being created without resource constraints.
+Managing LimitRanges through Flux CD ensures consistent resource governance across all namespaces. When a new namespace is created or an existing one is updated, Flux automatically applies the correct LimitRange without manual intervention-eliminating the risk of namespaces being created without resource constraints.
 
 This guide covers defining LimitRange resources, organizing them in Git with Kustomize overlays, and reconciling them with Flux CD so enforcement is automatic and auditable.
 
@@ -150,4 +150,4 @@ kubectl get pod test-pod -n app-production -o jsonpath='{.spec.containers[0].res
 
 ## Conclusion
 
-Enforcing LimitRanges through Flux CD brings consistency and automation to Kubernetes resource governance. By storing LimitRange definitions in Git and reconciling them with Flux, your team can confidently ensure that every namespace has appropriate resource constraints—preventing noisy-neighbor problems and making capacity planning more predictable.
+Enforcing LimitRanges through Flux CD brings consistency and automation to Kubernetes resource governance. By storing LimitRange definitions in Git and reconciling them with Flux, your team can confidently ensure that every namespace has appropriate resource constraints-preventing noisy-neighbor problems and making capacity planning more predictable.

@@ -12,7 +12,7 @@ Description: A practical troubleshooting guide for resolving common Calico insta
 
 Installing Calico on Kind can encounter several common issues related to Docker networking, IPIP encapsulation, and Kubernetes configuration. When pods remain in `Pending` state, nodes stay `NotReady`, or inter-pod traffic fails, a systematic troubleshooting approach is essential to identify and fix the root cause quickly.
 
-Kind runs Kubernetes nodes as Docker containers, which creates a unique networking environment. IPIP packets, for example, may be blocked by Docker's default network configuration. Additionally, misconfigured Kind cluster settings — such as not disabling the default CNI — can cause conflicts with Calico.
+Kind runs Kubernetes nodes as Docker containers, which creates a unique networking environment. IPIP packets, for example, may be blocked by Docker's default network configuration. Additionally, misconfigured Kind cluster settings - such as not disabling the default CNI - can cause conflicts with Calico.
 
 This guide covers the most frequently encountered Calico installation problems on Kind and provides step-by-step commands to diagnose and resolve each issue.
 

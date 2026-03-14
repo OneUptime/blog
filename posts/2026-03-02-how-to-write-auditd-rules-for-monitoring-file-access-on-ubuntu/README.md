@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, auditd, Security, Audit Logging, Compliance
+Tags: Ubuntu, Auditd, Security, Audit Logging, Compliance
 
 Description: Practical guide to writing auditd rules on Ubuntu for monitoring file access, system calls, and user actions, including rule syntax, key management, log analysis, and compliance configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, SwiftUI, macOS, Desktop, Apple, Native Development
+Tags: Swift, SwiftUI, MacOS, Desktop, Apple, Native Development
 
 Description: A comprehensive guide to building native macOS applications with SwiftUI, covering window management, menu bars, document-based apps, system integration, and desktop-specific UI patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSH, known_hosts, Security
+Tags: Ansible, SSH, Known_hosts, Security
 
 Description: Learn how to manage SSH known_hosts entries with Ansible to automate host key verification and prevent MITM attacks.
 

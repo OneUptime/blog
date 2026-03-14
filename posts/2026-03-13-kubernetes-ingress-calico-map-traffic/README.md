@@ -10,7 +10,7 @@ Description: A concrete walkthrough of real ingress traffic scenarios in a Calic
 
 ## Introduction
 
-Understanding how ingress traffic actually flows through Calico's policy enforcement helps you debug connectivity issues and design policies with confidence. The policy model is clear in documentation, but understanding what happens at the packet level — which hooks are evaluated, in what order, and what causes a packet to be dropped — requires tracing real traffic through the system.
+Understanding how ingress traffic actually flows through Calico's policy enforcement helps you debug connectivity issues and design policies with confidence. The policy model is clear in documentation, but understanding what happens at the packet level - which hooks are evaluated, in what order, and what causes a packet to be dropped - requires tracing real traffic through the system.
 
 This post maps three ingress traffic scenarios to their actual enforcement paths: pod-to-pod ingress, ingress controller to backend, and external load balancer traffic.
 

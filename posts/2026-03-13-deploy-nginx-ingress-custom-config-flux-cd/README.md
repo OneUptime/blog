@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, NGINX, Ingress Controller, HelmRelease, Custom Configuration, ConfigMap
+Tags: Flux CD, Kubernetes, GitOps, NGINX, Ingress Controller, HelmRelease, Custom Configuration
 
 Description: Deploy NGINX Ingress Controller with custom ConfigMap settings and annotation-based configuration using Flux CD HelmRelease for production-ready HTTP routing.
 
@@ -282,7 +282,7 @@ data:
 - Use the `ingress-nginx` class annotation (`ingressClassName: nginx`) rather than the deprecated `kubernetes.io/ingress.class` annotation in new Ingress resources.
 - Set conservative default timeouts in the ConfigMap and override them per-route using annotations for services that legitimately need longer timeouts.
 - Enable the Prometheus ServiceMonitor and import the official NGINX Ingress Grafana dashboard (ID: 9614) for immediate visibility into request rates and latency.
-- Use `nginx.ingress.kubernetes.io/configuration-snippet` annotations for custom NGINX location blocks, but audit them carefully — custom snippets can introduce security vulnerabilities.
+- Use `nginx.ingress.kubernetes.io/configuration-snippet` annotations for custom NGINX location blocks, but audit them carefully - custom snippets can introduce security vulnerabilities.
 - Regularly review and remove annotations from Ingress resources that duplicate the global ConfigMap settings; redundant annotations make configuration harder to maintain.
 - Set `nginx.ingress.kubernetes.io/limit-rps` annotations on public-facing endpoints to protect against traffic spikes.
 

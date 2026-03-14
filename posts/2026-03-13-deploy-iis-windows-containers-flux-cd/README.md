@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, IIS, GitOps, ASP.NET, Windows Server
+Tags: Flux CD, Kubernetes, Windows Containers, IIS, GitOps, ASP.NET
 
 Description: Deploy IIS web server Windows containers to Kubernetes using Flux CD, with custom configuration, TLS, and health monitoring.
 
@@ -12,7 +12,7 @@ Description: Deploy IIS web server Windows containers to Kubernetes using Flux C
 
 Internet Information Services (IIS) remains one of the most widely deployed web server platforms in enterprise environments. Thousands of ASP.NET Web Forms applications, classic ASP sites, and WCF services run on IIS and cannot easily be migrated to Linux without significant rework. Containerizing these applications and running them in Kubernetes provides the operational consistency of modern container orchestration while preserving the IIS runtime.
 
-Flux CD manages IIS container deployments with the same GitOps workflow as any other workload. Configuration changes — application pool settings, HTTPS bindings, custom error pages — are committed to Git and reconciled onto Windows nodes automatically. This guide covers deploying an IIS container with custom configuration, setting up TLS, and configuring health probes appropriate for IIS startup times.
+Flux CD manages IIS container deployments with the same GitOps workflow as any other workload. Configuration changes - application pool settings, HTTPS bindings, custom error pages - are committed to Git and reconciled onto Windows nodes automatically. This guide covers deploying an IIS container with custom configuration, setting up TLS, and configuring health probes appropriate for IIS startup times.
 
 ## Prerequisites
 
@@ -274,7 +274,7 @@ spec:
 ## Best Practices
 
 - Use Windows Server 2022 (`ltsc2022`) base images for best performance and security support.
-- Set `initialDelaySeconds` to at least 90 seconds for IIS readiness probes — application pool warm-up takes time.
+- Set `initialDelaySeconds` to at least 90 seconds for IIS readiness probes - application pool warm-up takes time.
 - Use `RollingUpdate` with `maxUnavailable: 0` for zero-downtime IIS deployments.
 - Manage `web.config` through Git-tracked ConfigMaps rather than baking it into the container image.
 - Keep IIS application images small by minimizing installed features and using multi-stage builds.
@@ -282,4 +282,4 @@ spec:
 
 ## Conclusion
 
-IIS Windows containers in Kubernetes, managed by Flux CD, bring the reliability and auditability of GitOps to the enterprise Windows application portfolio. The key configuration adjustments — longer health probe delays, OS-specific node targeting, and Windows-aware rolling update settings — make IIS deployments behave reliably in the Kubernetes lifecycle. Configuration changes to `web.config` and other IIS settings flow through Git, providing version control and rollback for web server configuration alongside application code.
+IIS Windows containers in Kubernetes, managed by Flux CD, bring the reliability and auditability of GitOps to the enterprise Windows application portfolio. The key configuration adjustments - longer health probe delays, OS-specific node targeting, and Windows-aware rolling update settings - make IIS deployments behave reliably in the Kubernetes lifecycle. Configuration changes to `web.config` and other IIS settings flow through Git, providing version control and rollback for web server configuration alongside application code.

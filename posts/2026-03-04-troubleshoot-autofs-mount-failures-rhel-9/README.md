@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, Troubleshooting, NFS, Linux
+Tags: RHEL, Autofs, Troubleshooting, NFS, Linux
 
 Description: Diagnose and fix common autofs mount failures on RHEL, including configuration errors, NFS connectivity issues, and permission problems.
 

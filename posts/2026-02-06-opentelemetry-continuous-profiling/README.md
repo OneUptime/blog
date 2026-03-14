@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Profiling, Continuous Profiling, Observability, Performance, pprof
+Tags: OpenTelemetry, Profiling, Continuous Profiling, Observability, Performance, Pprof
 
 Description: Learn how to implement continuous profiling with OpenTelemetry to capture CPU, memory, and allocation profiles alongside your traces and metrics for deep performance insights.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, networking, fragments, mtu, ebpf, kubernetes, troubleshooting
+Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
 
 Description: A guide to validating how Cilium handles IP packet fragmentation, including testing fragment tracking, diagnosing MTU-related fragmentation issues, and confirming correct fragment reassembly behavior.
 
@@ -78,7 +78,7 @@ kubectl exec frag-test -- ping -c 5 -s 1500 <destination-pod-ip>
 Check Cilium's eBPF counters for fragment-related drops.
 
 ```bash
-# Check Cilium drop statistics — look for fragment-related drop reasons
+# Check Cilium drop statistics - look for fragment-related drop reasons
 kubectl -n kube-system exec -it \
   $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
   cilium monitor --type drop 2>&1 | head -50

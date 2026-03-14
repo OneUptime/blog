@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Password Aging, chage, Security, Linux
+Tags: RHEL, Password Aging, Chage, Security, Linux
 
 Description: Configure password expiration, aging policies, and account inactivity on RHEL using chage, login.defs, and PAM for compliance and security.
 

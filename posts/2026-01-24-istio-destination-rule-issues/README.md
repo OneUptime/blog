@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Kubernetes, DestinationRule, Traffic Policy, mTLS
+Tags: Istio, Service Mesh, Kubernetes, DestinationRule, Traffic Policy, MTLS
 
 Description: A troubleshooting guide for common DestinationRule issues in Istio, including subset misconfigurations, mTLS conflicts, load balancing problems, and connection pool settings.
 

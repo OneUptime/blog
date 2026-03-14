@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, subprocess, Shell Commands, System Administration, Automation
+Tags: Python, Subprocess, Shell Commands, System Administration, Automation
 
 Description: Learn how to use Python's subprocess module to run external commands, capture output, handle pipes, and automate system tasks safely and effectively.
 

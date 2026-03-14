@@ -10,7 +10,7 @@ Description: Learn how to deploy MLflow experiment tracking server to Kubernetes
 
 ## Introduction
 
-MLflow is the leading open-source platform for managing the machine learning lifecycle, including experiment tracking, model registry, and artifact storage. Running MLflow on Kubernetes enables your ML team to share a centralized tracking server, version models in a shared registry, and store artifacts in object storage — all from their local training scripts.
+MLflow is the leading open-source platform for managing the machine learning lifecycle, including experiment tracking, model registry, and artifact storage. Running MLflow on Kubernetes enables your ML team to share a centralized tracking server, version models in a shared registry, and store artifacts in object storage - all from their local training scripts.
 
 Managing MLflow's Kubernetes deployment through Flux CD ensures that infrastructure changes (database backends, artifact storage configuration, authentication, scaling) go through the same Git review process as your application code. The Bitnami MLflow Helm chart packages all dependencies (MLflow server, PostgreSQL for metadata, and MinIO for artifacts) into a single deployable unit that Flux can manage.
 

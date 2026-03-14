@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Load Testing, k6, Kubernetes, GitOps, Performance, Automation
+Tags: Flux CD, Load Testing, K6, Kubernetes, GitOps, Performance, Automation
 
 Description: A practical guide to automating load tests in your GitOps pipeline using Flux CD and k6-operator for continuous performance validation.
 

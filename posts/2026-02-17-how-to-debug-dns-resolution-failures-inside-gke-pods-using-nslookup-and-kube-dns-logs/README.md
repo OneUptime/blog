@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, DNS, Kubernetes, Troubleshooting, kube-dns
+Tags: GCP, GKE, DNS, Kubernetes, Troubleshooting, Kube-dns
 
 Description: A practical troubleshooting guide for diagnosing and fixing DNS resolution failures inside GKE pods using nslookup, dig, and kube-dns log analysis.
 

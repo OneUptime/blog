@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Host Networking, eBPF
+Tags: Cilium, Kubernetes, Network Policy, Host Networking, EBPF
 
 Description: Secure Kubernetes node networking with Cilium Host Policies that control traffic to and from node processes, including kubelet, SSH, and system services outside of pod namespaces.
 
@@ -10,7 +10,7 @@ Description: Secure Kubernetes node networking with Cilium Host Policies that co
 
 ## Introduction
 
-Standard Kubernetes NetworkPolicy and even `CiliumNetworkPolicy` operate on pod networking — they control traffic between pods but have no effect on traffic that reaches the node's primary network interface outside of any pod network namespace. This leaves node services like SSH, the kubelet API (port 10250), kube-scheduler, and etcd accessible to any pod that can reach the node IP, which is a significant security gap in a zero-trust cluster design.
+Standard Kubernetes NetworkPolicy and even `CiliumNetworkPolicy` operate on pod networking - they control traffic between pods but have no effect on traffic that reaches the node's primary network interface outside of any pod network namespace. This leaves node services like SSH, the kubelet API (port 10250), kube-scheduler, and etcd accessible to any pod that can reach the node IP, which is a significant security gap in a zero-trust cluster design.
 
 Cilium Host Policies extend enforcement to the node level using the `nodeSelector` field in `CiliumClusterwideNetworkPolicy`. With host policies enabled, Cilium's eBPF programs hook into the node's host network namespace and enforce policies on traffic to and from node processes. This allows you to restrict SSH access to specific CIDR ranges, limit kubelet access to the Kubernetes control plane only, and deny unauthorized access to node monitoring endpoints.
 
@@ -152,4 +152,4 @@ flowchart TD
 
 ## Conclusion
 
-Cilium Host Policies close the security gap between pod networking and node networking, extending zero-trust enforcement to the node operating system itself. Enabling `hostFirewall.enabled=true` is the key configuration change — after that, `CiliumClusterwideNetworkPolicy` with `nodeSelector` gives you full declarative control over node-level traffic. Always test host policies in staging first and ensure all required system traffic (kubelet, NodePort, ICMP) is explicitly allowed before enforcing restrictive policies in production.
+Cilium Host Policies close the security gap between pod networking and node networking, extending zero-trust enforcement to the node operating system itself. Enabling `hostFirewall.enabled=true` is the key configuration change - after that, `CiliumClusterwideNetworkPolicy` with `nodeSelector` gives you full declarative control over node-level traffic. Always test host policies in staging first and ensure all required system traffic (kubelet, NodePort, ICMP) is explicitly allowed before enforcing restrictive policies in production.

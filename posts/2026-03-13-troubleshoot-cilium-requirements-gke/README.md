@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, GKE, Kubernetes, Networking, Troubleshooting
+Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
 
 Description: Learn how to validate and troubleshoot Cilium installation requirements on GKE, including node image compatibility, network policy migration, and Dataplane V2 conflicts.
 
@@ -76,7 +76,7 @@ gcloud compute ssh <node-name> --zone=<zone>
 # On the node, check that BPF filesystem is mounted
 mount | grep bpf
 
-# On COS, Cilium mounts BPF at startup via an init container — verify it ran
+# On COS, Cilium mounts BPF at startup via an init container - verify it ran
 kubectl -n kube-system describe pod -l k8s-app=cilium | grep -A5 "Init Containers"
 ```
 
@@ -90,7 +90,7 @@ Execute the full connectivity test suite:
 # Wait for all Cilium pods to be ready before testing
 cilium status --wait
 
-# Run connectivity tests — this creates a test namespace with client/server pods
+# Run connectivity tests - this creates a test namespace with client/server pods
 cilium connectivity test --test-namespace=cilium-test
 
 # Check for any failed test cases in the output

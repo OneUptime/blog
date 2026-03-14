@@ -84,4 +84,4 @@ graph LR
 
 ## Conclusion
 
-VXLAN in Calico provides robust overlay networking for clusters deployed across multiple subnets or in cloud environments without BGP support. Configure IP pools with `vxlanMode: Always`, verify VTEP configuration and FDB entries, and test cross-subnet connectivity. The main operational consideration with VXLAN is MTU sizing — subtract 50 bytes from the host MTU for the VXLAN overhead.
+VXLAN in Calico provides robust overlay networking for clusters deployed across multiple subnets or in cloud environments without BGP support. Configure IP pools with `vxlanMode: Always`, verify VTEP configuration and FDB entries, and test cross-subnet connectivity. The main operational consideration with VXLAN is MTU sizing - subtract 50 bytes from the host MTU for the VXLAN overhead.

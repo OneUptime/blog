@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Custom Rules, Python
+Tags: Ansible, Ansible-lint, Custom Rules, Python
 
 Description: Step-by-step guide to writing custom ansible-lint rules in Python, covering task matching, play matching, file content scanning, and testing.
 

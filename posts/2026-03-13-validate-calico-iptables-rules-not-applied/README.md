@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Felix
+Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Felix
 
 Description: Validate that Calico iptables rules are fully restored by checking chain presence, MASQUERADE rules, and Felix metrics for iptables programming success on all affected nodes.
 

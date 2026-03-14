@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Envoy Proxy, Tracing, gRPC Extension
+Tags: OpenTelemetry, Envoy Proxy, Tracing, GRPC Extension
 
 Description: Configure Envoy Proxy to export distributed traces using the native envoy.tracers.opentelemetry extension with OTLP gRPC export to the Collector.
 

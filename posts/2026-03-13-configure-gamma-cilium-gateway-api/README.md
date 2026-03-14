@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, eBPF
+Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, EBPF
 
 Description: Configure GAMMA routes within the Cilium Gateway API to enable east-west service mesh traffic management using standard HTTPRoute resources.
 

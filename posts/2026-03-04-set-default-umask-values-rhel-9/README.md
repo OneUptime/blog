@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, umask, File Permissions, Security, Linux
+Tags: RHEL, Umask, File Permissions, Security, Linux
 
 Description: A complete guide to understanding and configuring the default umask on RHEL, including system-wide settings, per-user overrides, and the pam_umask module.
 

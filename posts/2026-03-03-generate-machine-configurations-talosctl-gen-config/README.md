@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Machine Configuration, talosctl, Kubernetes, YAML
+Tags: Talos Linux, Machine Configuration, Talosctl, Kubernetes, YAML
 
 Description: Master the talosctl gen config command to generate and customize machine configurations for your Talos Linux cluster.
 

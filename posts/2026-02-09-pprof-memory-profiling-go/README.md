@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Go, pprof, Profiling, Memory
+Tags: Kubernetes, Go, Pprof, Profiling, Memory
 
 Description: Learn how to use pprof for memory profiling Go applications running in Kubernetes to identify leaks and optimize resource usage.
 

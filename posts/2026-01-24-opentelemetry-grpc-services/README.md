@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Observability, Tracing, Microservices, Distributed Tracing, Go, Python, Java
+Tags: OpenTelemetry, GRPC, Observability, Tracing, Microservices, Distributed Tracing, Go, Python, Java
 
 Description: A comprehensive guide to setting up OpenTelemetry instrumentation for gRPC services, including automatic and manual instrumentation, context propagation, and best practices.
 

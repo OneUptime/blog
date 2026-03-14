@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, systemd-homed, Home Directories, Linux
+Tags: RHEL, Systemd, Systemd-homed, Home Directories, Linux
 
 Description: Learn how to use systemd-homed on RHEL to manage portable, encrypted user home directories with modern authentication.
 

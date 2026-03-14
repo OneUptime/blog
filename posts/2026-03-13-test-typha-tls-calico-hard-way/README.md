@@ -10,7 +10,7 @@ Description: A guide to testing Typha TLS authentication including mTLS enforcem
 
 ## Introduction
 
-Testing Typha TLS validates that the mTLS configuration is actually enforcing authentication — not just accepting all connections. The tests confirm that Typha rejects connections without client certificates, rejects connections with untrusted certificates, and accepts only Felix agents presenting certificates signed by the cluster CA. Additionally, testing connection behavior after certificate rotation confirms that the rotation process does not cause a lasting connectivity outage.
+Testing Typha TLS validates that the mTLS configuration is actually enforcing authentication - not just accepting all connections. The tests confirm that Typha rejects connections without client certificates, rejects connections with untrusted certificates, and accepts only Felix agents presenting certificates signed by the cluster CA. Additionally, testing connection behavior after certificate rotation confirms that the rotation process does not cause a lasting connectivity outage.
 
 ## Test 1: Verify mTLS Is Enforced (No Client Certificate)
 

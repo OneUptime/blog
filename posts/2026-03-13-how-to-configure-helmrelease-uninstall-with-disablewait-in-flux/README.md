@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, disableWait
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, DisableWait
 
 Description: Learn how to use the disableWait option in HelmRelease uninstall configuration to speed up release removal in Flux CD.
 

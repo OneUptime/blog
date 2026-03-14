@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, CPU, Profiling, Performance, Linux, Flamegraph
+Tags: EBPF, CPU, Profiling, Performance, Linux, Flamegraph
 
 Description: A guide to using eBPF for CPU profiling and generating flame graphs for performance analysis.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Security, Sandboxing, System Administration
+Tags: Ubuntu, Systemd, Security, Sandboxing, System Administration
 
 Description: Harden systemd services on Ubuntu using sandboxing directives to restrict system calls, file system access, network access, and kernel capabilities, reducing attack surface.
 

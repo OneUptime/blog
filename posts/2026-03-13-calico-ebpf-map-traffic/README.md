@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, CNI, Traffic Flows, Networking, Dataplane
+Tags: Calico, Kubernetes, EBPF, CNI, Traffic Flows, Networking, Dataplane
 
 Description: A packet-level walkthrough of how Calico's eBPF dataplane processes real Kubernetes traffic flows including pod-to-pod, service, and external ingress scenarios.
 
@@ -10,7 +10,7 @@ Description: A packet-level walkthrough of how Calico's eBPF dataplane processes
 
 ## Introduction
 
-Understanding eBPF abstractly is one thing — understanding what actually happens to a packet in Calico's eBPF dataplane is another. Mapping real traffic flows to eBPF hook points, map lookups, and program actions gives you the mental model needed to debug networking issues and explain packet behavior confidently.
+Understanding eBPF abstractly is one thing - understanding what actually happens to a packet in Calico's eBPF dataplane is another. Mapping real traffic flows to eBPF hook points, map lookups, and program actions gives you the mental model needed to debug networking issues and explain packet behavior confidently.
 
 This post traces three representative traffic scenarios through Calico's eBPF dataplane: pod-to-pod within a node, pod-to-service across nodes, and external ingress via a NodePort. For each scenario, we show which eBPF hooks are invoked and what decisions are made at each hook.
 
@@ -59,7 +59,7 @@ graph LR
     TCRET --> ClientPod
 ```
 
-The eBPF program at the TC egress hook on the client pod performs the DNAT directly using a map lookup — no iptables rule traversal. The result is a single NAT operation instead of the double NAT that iptables + SNAT requires.
+The eBPF program at the TC egress hook on the client pod performs the DNAT directly using a map lookup - no iptables rule traversal. The result is a single NAT operation instead of the double NAT that iptables + SNAT requires.
 
 ## Scenario 3: External Traffic via NodePort (DSR Mode)
 
@@ -92,7 +92,7 @@ Felix also exposes eBPF-specific metrics via Prometheus that let you observe map
 ## Best Practices
 
 - Use `bpftool prog show` on nodes to verify that Calico's eBPF programs are loaded after enabling eBPF mode
-- Monitor Felix's eBPF map update rate in Prometheus — spikes indicate rapid policy or endpoint changes
+- Monitor Felix's eBPF map update rate in Prometheus - spikes indicate rapid policy or endpoint changes
 - Enable DSR only after verifying your upstream load balancer can handle asymmetric return paths
 - When debugging a connectivity issue, check both the TC egress hook (on the sender) and the TC ingress hook (on the receiver) to isolate where the packet is dropped
 

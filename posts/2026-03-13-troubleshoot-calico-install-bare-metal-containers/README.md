@@ -1,4 +1,4 @@
-# How to Troubleshoot Installation Issues with Calico on Bare Metal with Containers
+# How to Troubleshoot Calico on Bare Metal
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -38,9 +38,9 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=60
 ```
 
 Common bare metal specific errors:
-- `Failed to find interface matching` — Calico cannot identify the correct NIC
-- `Operation not permitted` — kernel module not loaded or permission issue
-- `Address family not supported` — IPv6 kernel support missing
+- `Failed to find interface matching` - Calico cannot identify the correct NIC
+- `Operation not permitted` - kernel module not loaded or permission issue
+- `Address family not supported` - IPv6 kernel support missing
 
 ## Step 3: Fix NIC Selection
 

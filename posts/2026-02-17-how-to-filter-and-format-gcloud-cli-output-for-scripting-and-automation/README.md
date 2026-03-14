@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, gcloud CLI, Scripting, Automation, Google Cloud
+Tags: GCP, Gcloud CLI, Scripting, Automation, Google Cloud
 
 Description: Master the gcloud CLI filter and format flags to extract exactly the data you need for shell scripts, automation pipelines, and reporting tasks.
 

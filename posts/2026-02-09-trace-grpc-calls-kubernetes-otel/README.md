@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, gRPC, OpenTelemetry, Distributed Tracing, Microservices
+Tags: Kubernetes, GRPC, OpenTelemetry, Distributed Tracing, Microservices
 
 Description: Learn how to implement distributed tracing for gRPC calls across Kubernetes microservices using OpenTelemetry instrumentation to track request flows and debug performance issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, MQTT, Node-RED, InfluxDB, Edge Stack
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, MQTT, InfluxDB, Node-RED
 
 Description: Deploy a complete edge computing stack using Flux CD, including data collection, local processing, storage, and remote connectivity components.
 
@@ -10,11 +10,11 @@ Description: Deploy a complete edge computing stack using Flux CD, including dat
 
 ## Introduction
 
-A complete edge computing stack is not just a single application — it is an interconnected set of services for data ingestion, local processing, temporary storage, and connectivity to the cloud. A typical industrial edge stack includes an MQTT broker for device communication, a stream processing engine, a time-series database, and a dashboard for local visualization.
+A complete edge computing stack is not just a single application - it is an interconnected set of services for data ingestion, local processing, temporary storage, and connectivity to the cloud. A typical industrial edge stack includes an MQTT broker for device communication, a stream processing engine, a time-series database, and a dashboard for local visualization.
 
 Managing all these components consistently across dozens of edge sites is exactly where Flux CD shines. Each component is defined in Git with site-specific configuration applied through Kustomize overlays, ensuring every site runs the correct version of every service and can be updated from a central Git repository.
 
-This guide deploys a complete edge computing stack — Mosquitto MQTT broker, Node-RED for data processing, InfluxDB for time-series storage, and Grafana for dashboards — all managed by Flux CD.
+This guide deploys a complete edge computing stack - Mosquitto MQTT broker, Node-RED for data processing, InfluxDB for time-series storage, and Grafana for dashboards - all managed by Flux CD.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ This guide deploys a complete edge computing stack — Mosquitto MQTT broker, No
 
 ## Step 1: Repository Structure for Edge Stack
 
-```
+```plaintext
 apps/
   base/
     edge-stack/
@@ -283,4 +283,4 @@ spec:
 
 ## Conclusion
 
-A complete edge computing stack — MQTT broker, stream processing, time-series database, and dashboards — can be fully managed through Flux CD with minimal operational overhead. Kustomize overlays handle the differences between industrial and retail edge profiles while sharing a common base configuration. When a new site is deployed, bootstrapping Flux and pointing it at the correct overlay path is all that is needed to bring up the entire stack automatically.
+A complete edge computing stack - MQTT broker, stream processing, time-series database, and dashboards - can be fully managed through Flux CD with minimal operational overhead. Kustomize overlays handle the differences between industrial and retail edge profiles while sharing a common base configuration. When a new site is deployed, bootstrapping Flux and pointing it at the correct overlay path is all that is needed to bring up the entire stack automatically.

@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, CNI, Networking, Scaling, Deployment
+Tags: Calico, Kubernetes, Typha, CNI, Networking, Scaling, Deployments
 
-Description: Deploy Calico Typha manually without the Calico Operator, configuring the Deployment, Service, and RBAC resources step by step. This guide covers everything you need to get Typha running in a large Kubernetes cluster.
+Description: Deploy Calico Typha manually without the Calico Operator, configuring the Deployment, Service, and RBAC resources step by step.
 
 ---
 
 ## Introduction
 
-The Calico Operator automates Typha deployment, but many teams run Calico in manifest mode for greater control over the installation. Setting up Typha "the hard way" means creating every resource yourself — the `ServiceAccount`, `ClusterRole`, `Deployment`, and `Service` — and then telling Felix where to find it.
+The Calico Operator automates Typha deployment, but many teams run Calico in manifest mode for greater control over the installation. Setting up Typha "the hard way" means creating every resource yourself - the `ServiceAccount`, `ClusterRole`, `Deployment`, and `Service` - and then telling Felix where to find it.
 
 This post walks through each step required to get Typha running and connected to Felix in a manifest-based Calico installation.
 
@@ -270,7 +270,7 @@ You should see log lines similar to `Connected to Typha` in the Felix output.
 
 ## Conclusion
 
-You have manually deployed Typha, configured RBAC, created the Service, and pointed Felix at it — all without the Calico Operator. From this baseline, the rest of the series covers scaling to more replicas, enabling TLS, monitoring metrics, and tuning performance.
+You have manually deployed Typha, configured RBAC, created the Service, and pointed Felix at it - all without the Calico Operator. From this baseline, the rest of the series covers scaling to more replicas, enabling TLS, monitoring metrics, and tuning performance.
 
 ---
 

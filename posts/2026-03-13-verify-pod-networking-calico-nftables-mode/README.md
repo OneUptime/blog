@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, nftables, Verification
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Verification
 
 Description: A guide to verifying Calico pod networking when running with the nftables dataplane backend.
 
@@ -37,7 +37,7 @@ nft list tables
 
 Expected output:
 
-```
+```plaintext
 table ip calico-filter
 table ip calico-nat
 table ip calico-mangle

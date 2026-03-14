@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, perf, Network Analysis, Performance, Kernel
+Tags: Ubuntu, Perf, Network Analysis, Performance, Kernel
 
 Description: Learn how to use the Linux perf tool on Ubuntu to profile and analyze network stack performance, identify bottlenecks in packet processing, and measure network-related CPU overhead.
 

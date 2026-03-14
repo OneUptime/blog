@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Debugging, Troubleshooting, Events
+Tags: Kubernetes, Kubectl, Debugging, Troubleshooting, Events
 
 Description: Learn how to use kubectl describe effectively to analyze pod events, diagnose resource issues, and troubleshoot Kubernetes workload problems.
 

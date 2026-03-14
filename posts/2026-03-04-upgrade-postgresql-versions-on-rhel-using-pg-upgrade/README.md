@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, pg_upgrade, Database, Version Upgrade, Migration
+Tags: RHEL, PostgreSQL, Pg_upgrade, Database, Version Upgrade, Migration
 
 Description: Upgrade PostgreSQL to a new major version on RHEL using pg_upgrade for an in-place upgrade that is faster than a dump-and-restore approach.
 

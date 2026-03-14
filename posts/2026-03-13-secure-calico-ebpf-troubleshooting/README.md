@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Security
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Security
 
 Description: Implement security controls for Calico eBPF troubleshooting access, ensuring diagnostic tools are available when needed but restricted to authorized users.
 
@@ -10,7 +10,7 @@ Description: Implement security controls for Calico eBPF troubleshooting access,
 
 ## Introduction
 
-eBPF troubleshooting requires privileged access — running privileged containers, accessing the host's BPF filesystem, and reading BPF maps that contain sensitive network state (NAT tables, conntrack entries). Without proper access controls, these capabilities could be abused. The challenge is making troubleshooting tools available to on-call engineers while restricting them from general use.
+eBPF troubleshooting requires privileged access - running privileged containers, accessing the host's BPF filesystem, and reading BPF maps that contain sensitive network state (NAT tables, conntrack entries). Without proper access controls, these capabilities could be abused. The challenge is making troubleshooting tools available to on-call engineers while restricting them from general use.
 
 The security model for eBPF troubleshooting tools should be: authorized on-call engineers can access diagnostic tools, but not all developers, and all access is audited.
 

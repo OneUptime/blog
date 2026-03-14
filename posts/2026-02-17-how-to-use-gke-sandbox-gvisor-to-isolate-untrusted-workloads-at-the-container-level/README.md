@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, gVisor, Security, Container Isolation
+Tags: GCP, GKE, Kubernetes, GVisor, Security, Container Isolation
 
 Description: Learn how to use GKE Sandbox powered by gVisor to provide an extra layer of kernel-level isolation for running untrusted or multi-tenant container workloads securely.
 

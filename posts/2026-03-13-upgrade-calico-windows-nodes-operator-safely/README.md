@@ -12,7 +12,7 @@ Description: A guide to safely upgrading Calico on Windows nodes when managed by
 
 The Tigera Operator does not currently perform automatic rolling upgrades of the Windows DaemonSet in the same way it manages Linux nodes. When you upgrade the operator and Linux Calico components, the Windows DaemonSet image must also be updated, but the rollout behavior may differ. This guide covers how to ensure Windows nodes are safely upgraded in conjunction with the Linux upgrade.
 
-The upgrade sequence — operator first, then Linux DaemonSet, then Windows DaemonSet — ensures that the control plane is always at the newer version before the data plane components are updated.
+The upgrade sequence - operator first, then Linux DaemonSet, then Windows DaemonSet - ensures that the control plane is always at the newer version before the data plane components are updated.
 
 ## Prerequisites
 
@@ -95,4 +95,4 @@ kubectl delete pod linux-test
 
 ## Conclusion
 
-Upgrading operator-managed Calico on Windows nodes follows the standard operator upgrade sequence — operator first, Linux DaemonSet second, Windows DaemonSet third. Monitoring the Windows DaemonSet rollout separately from the Linux rollout and verifying cross-OS connectivity after completion ensures the mixed-OS cluster remains fully functional throughout the upgrade.
+Upgrading operator-managed Calico on Windows nodes follows the standard operator upgrade sequence - operator first, Linux DaemonSet second, Windows DaemonSet third. Monitoring the Windows DaemonSet rollout separately from the Linux rollout and verifying cross-OS connectivity after completion ensures the mixed-OS cluster remains fully functional throughout the upgrade.

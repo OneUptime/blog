@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, gRPC, Gateway API, Routing, Service Mesh
+Tags: Cilium, Kubernetes, GRPC, Gateway API, Routing, Service Mesh
 
 Description: Configure gRPC routing in Cilium's Gateway API implementation using GRPCRoute resources to route gRPC service calls to backend pods.
 
@@ -10,7 +10,7 @@ Description: Configure gRPC routing in Cilium's Gateway API implementation using
 
 ## Introduction
 
-Cilium's Gateway API implementation supports GRPCRoute resources, enabling native gRPC routing at the gateway level. GRPCRoute provides gRPC-aware routing rules including service name matching, method-level routing, and header-based routing—all without requiring application-level load balancing.
+Cilium's Gateway API implementation supports GRPCRoute resources, enabling native gRPC routing at the gateway level. GRPCRoute provides gRPC-aware routing rules including service name matching, method-level routing, and header-based routing-all without requiring application-level load balancing.
 
 GRPCRoute is part of the Gateway API experimental specification and requires the experimental CRDs to be installed alongside the standard ones.
 

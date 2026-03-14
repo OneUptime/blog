@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CLI, cilium-agent, eBPF, Operations
+Tags: Cilium, Kubernetes, CLI, cilium-agent, EBPF, Operations
 
 Description: A guide to using the cilium-agent command and its subcommands for configuring, monitoring, and troubleshooting the Cilium network agent.
 

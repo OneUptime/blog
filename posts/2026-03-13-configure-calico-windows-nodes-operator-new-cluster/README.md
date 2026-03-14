@@ -10,7 +10,7 @@ Description: A guide to configuring Calico on Windows nodes via the Tigera Opera
 
 ## Introduction
 
-When using the Tigera Operator to manage Calico on Windows nodes, all configuration flows through the operator's CRDs — primarily the `Installation` resource. The operator translates the Installation spec into the appropriate Windows DaemonSet configuration, CNI config files, and network settings. This unified configuration model is the main advantage of the operator approach over manual Windows Calico installation.
+When using the Tigera Operator to manage Calico on Windows nodes, all configuration flows through the operator's CRDs - primarily the `Installation` resource. The operator translates the Installation spec into the appropriate Windows DaemonSet configuration, CNI config files, and network settings. This unified configuration model is the main advantage of the operator approach over manual Windows Calico installation.
 
 The key configuration decisions for Windows nodes are encapsulation mode (VXLAN is required), Windows dataplane selection (HNS), and IP pool CIDR alignment with the rest of the cluster. The operator enforces that Windows-incompatible settings are not applied to Windows nodes.
 
@@ -104,4 +104,4 @@ cat C:\CalicoWindows\config\cni\calico.conf | ConvertFrom-Json
 
 ## Conclusion
 
-Operator-managed Calico configuration for Windows nodes centralizes all settings in the Installation CR. The key settings — `windowsDataplane: HNS`, VXLAN encapsulation, and appropriate MTU — ensure the operator deploys the correct Windows DaemonSet configuration. Separate IP pools for Windows and Linux nodes provide clean address space separation in mixed-OS clusters.
+Operator-managed Calico configuration for Windows nodes centralizes all settings in the Installation CR. The key settings - `windowsDataplane: HNS`, VXLAN encapsulation, and appropriate MTU - ensure the operator deploys the correct Windows DaemonSet configuration. Separate IP pools for Windows and Linux nodes provide clean address space separation in mixed-OS clusters.

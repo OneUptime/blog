@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, ztunnel, Kubernetes, Reliability
+Tags: Istio, Ambient Mesh, Ztunnel, Kubernetes, Reliability
 
 Description: Analyzing whether the ztunnel component in Istio ambient mesh represents a single point of failure and what you can do about it.
 

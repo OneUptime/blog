@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, Envoy, Kubernetes, Cluster Configuration
+Tags: Istio, Debugging, Istioctl, Envoy, Kubernetes, Cluster Configuration
 
 Description: How to use istioctl proxy-config cluster to inspect Envoy cluster configuration and debug upstream connectivity issues in Istio.
 

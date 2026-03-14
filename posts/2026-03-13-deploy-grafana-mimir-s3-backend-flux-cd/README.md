@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Mimir, S3, Prometheus, Flux CD, GitOps, Kubernetes, Metrics
+Tags: Flux CD, Kubernetes, GitOps, Grafana Mimir, Prometheus, S3, Observability, HelmRelease
 
 Description: Deploy Grafana Mimir, a horizontally scalable long-term Prometheus-compatible metrics store, with an S3 object storage backend on Kubernetes using Flux CD and GitOps practices.
 
@@ -36,7 +36,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # S3 access key — must be SOPS-encrypted before committing
+  # S3 access key - must be SOPS-encrypted before committing
   access_key_id: "AKIAIOSFODNN7EXAMPLE"
   secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Calibre-Web, Self-Hosted, eBook, Docker
+Tags: Ubuntu, Calibre-Web, Self-Hosted, EBook, Docker
 
 Description: Install Calibre-Web on Ubuntu to create a self-hosted eBook library with a web interface, OPDS catalog support for e-reader apps, and send-to-Kindle functionality.
 

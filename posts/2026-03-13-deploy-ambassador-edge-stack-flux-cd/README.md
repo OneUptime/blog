@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Ambassador, Emissary-ingress, API Gateway, HelmRelease, Envoy
+Tags: Flux CD, Kubernetes, GitOps, Ambassador, Emissary-ingress, API Gateway, HelmRelease
 
 Description: Deploy Ambassador Edge Stack (Emissary-ingress) API Gateway using Flux CD HelmRelease for production-grade API management built on Envoy proxy.
 
@@ -10,7 +10,7 @@ Description: Deploy Ambassador Edge Stack (Emissary-ingress) API Gateway using F
 
 ## Introduction
 
-Ambassador Edge Stack, now maintained as Emissary-ingress under the CNCF, is a Kubernetes-native API gateway built on the Envoy proxy. It is designed from the ground up for Kubernetes, using Custom Resource Definitions to manage routing, authentication, rate limiting, and TLS — making it an excellent fit for GitOps workflows managed by Flux CD.
+Ambassador Edge Stack, now maintained as Emissary-ingress under the CNCF, is a Kubernetes-native API gateway built on the Envoy proxy. It is designed from the ground up for Kubernetes, using Custom Resource Definitions to manage routing, authentication, rate limiting, and TLS - making it an excellent fit for GitOps workflows managed by Flux CD.
 
 Unlike gateways that were adapted for Kubernetes, Ambassador's entire configuration model is expressed as Kubernetes objects. Every routing rule, every authentication policy, and every upstream service definition is a CRD that lives in your Git repository and is reconciled by Flux CD. This native integration means Ambassador and Flux CD work together seamlessly without additional tooling.
 
@@ -246,4 +246,4 @@ curl -I https://api.example.com/health
 
 ## Conclusion
 
-Ambassador Edge Stack deployed through Flux CD provides a Kubernetes-native API gateway that is fully aligned with GitOps principles. Every routing decision, TLS configuration, and security policy is a CRD in your Git repository, reconciled automatically and consistently by Flux CD. As your APIs grow in complexity, the declarative model scales with you — maintaining auditability and consistency regardless of how many services or routes you manage.
+Ambassador Edge Stack deployed through Flux CD provides a Kubernetes-native API gateway that is fully aligned with GitOps principles. Every routing decision, TLS configuration, and security policy is a CRD in your Git repository, reconciled automatically and consistently by Flux CD. As your APIs grow in complexity, the declarative model scales with you - maintaining auditability and consistency regardless of how many services or routes you manage.

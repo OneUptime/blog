@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, static-ips, kubernetes, stateful, networking
+Tags: Calico, IPAM, Static-ip, Kubernetes, Stateful, Networking
 
 Description: Learn how to configure static, persistent IP addresses for Kubernetes pods using Calico IPAM, ensuring workloads maintain the same IP across restarts and rescheduling.
 
@@ -12,7 +12,7 @@ Description: Learn how to configure static, persistent IP addresses for Kubernet
 
 Static pod IPs are a requirement for certain enterprise workloads: distributed databases that use IP-based cluster membership, applications with hardcoded configuration referencing pod IPs, or compliance environments that require IP-to-workload traceability. While Kubernetes is designed for dynamic IP allocation, Calico provides mechanisms to assign and persist specific IP addresses to pods.
 
-The challenge with static pod IPs in Kubernetes is that pods are ephemeral—they can be rescheduled to different nodes, making node-affinity-based IP persistence tricky. Calico's approach uses IP annotations combined with affinity rules to ensure a pod always receives the same IP when it restarts on the same node, or uses Calico's IPAM reservation capabilities for cluster-wide static assignment.
+The challenge with static pod IPs in Kubernetes is that pods are ephemeral-they can be rescheduled to different nodes, making node-affinity-based IP persistence tricky. Calico's approach uses IP annotations combined with affinity rules to ensure a pod always receives the same IP when it restarts on the same node, or uses Calico's IPAM reservation capabilities for cluster-wide static assignment.
 
 This guide covers the techniques for achieving stable pod IPs using Calico, including annotation-based assignment and pod-level IP reservation strategies.
 

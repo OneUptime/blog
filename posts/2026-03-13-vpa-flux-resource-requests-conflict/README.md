@@ -12,7 +12,7 @@ Description: Learn how to resolve the conflict between VPA (Vertical Pod Autosca
 
 One of the most common pain points when running VPA alongside Flux CD is the reconciliation conflict: VPA modifies pod resource requests to right-size workloads, but Flux CD's reconciliation loop detects these changes as drift from the Git-declared state and overwrites them. This creates a cycle where VPA and Flux continuously fight over resource values.
 
-This conflict manifests as pods being evicted by VPA to apply new resource requests, Flux immediately reconciling back to the original values, and VPA evicting again — causing repeated restarts and negating all the benefits of VPA. Understanding and resolving this conflict is essential for any team using both Flux CD and VPA.
+This conflict manifests as pods being evicted by VPA to apply new resource requests, Flux immediately reconciling back to the original values, and VPA evicting again - causing repeated restarts and negating all the benefits of VPA. Understanding and resolving this conflict is essential for any team using both Flux CD and VPA.
 
 This guide covers the conflict patterns and their solutions.
 
@@ -42,12 +42,12 @@ kubectl get pods -n <namespace> -l app=<app-name> \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].resources.requests}{"\n"}{end}'
 ```
 
-## Step 2: Solution 1 — Use Flux Field Manager Ignore Annotations
+## Step 2: Solution 1 - Use Flux Field Manager Ignore Annotations
 
 Tell Flux to ignore specific fields that VPA manages.
 
 ```yaml
-# deployment-with-vpa-ignore.yaml — Deployment with VPA field ignore annotation
+# deployment-with-vpa-ignore.yaml - Deployment with VPA field ignore annotation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,7 +61,7 @@ spec:
   template:
     metadata:
       annotations:
-        # VPA will manage these — Flux should not reset them
+        # VPA will manage these - Flux should not reset them
         kubectl.kubernetes.io/last-applied-configuration: ""
     spec:
       containers:
@@ -69,17 +69,17 @@ spec:
         image: my-api:v1.0
         resources:
           requests:
-            # Initial values — VPA will update these without Flux interference
+            # Initial values - VPA will update these without Flux interference
             cpu: "250m"
             memory: "256Mi"
 ```
 
-## Step 3: Solution 2 — Use Flux Server-Side Apply with Field Ownership
+## Step 3: Solution 2 - Use Flux Server-Side Apply with Field Ownership
 
 Configure Flux to use server-side apply and respect VPA field ownership.
 
 ```yaml
-# flux-kustomization-ssa.yaml — Kustomization with SSA enabled
+# flux-kustomization-ssa.yaml - Kustomization with SSA enabled
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -105,12 +105,12 @@ spec:
         path: /spec/template/spec/containers/0/resources/requests/memory
 ```
 
-## Step 4: Solution 3 — Use VPA in Initial Mode with Flux
+## Step 4: Solution 3 - Use VPA in Initial Mode with Flux
 
 The cleanest solution is to use VPA in `Initial` mode and commit VPA's recommendations back to Git.
 
 ```yaml
-# vpa-initial-mode.yaml — VPA in Initial mode (only sets on pod creation)
+# vpa-initial-mode.yaml - VPA in Initial mode (only sets on pod creation)
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -133,18 +133,18 @@ kubectl get vpa api-service-vpa -n production \
 
 # Update the Deployment resource requests in Git with the recommended values
 # Edit apps/production/api-service/deployment.yaml with recommended values
-# Commit the change — Flux applies it, VPA confirms it's correct
+# Commit the change - Flux applies it, VPA confirms it's correct
 git add apps/production/api-service/deployment.yaml
 git commit -m "chore: update resource requests based on VPA recommendations"
 git push
 ```
 
-## Step 5: Solution 4 — Flux Ignore Specific Resource Fields via Kustomize
+## Step 5: Solution 4 - Flux Ignore Specific Resource Fields via Kustomize
 
 Use a Kustomize patch to remove resource requests from what Flux manages.
 
 ```yaml
-# kustomization.yaml — remove resources from Flux management
+# kustomization.yaml - remove resources from Flux management
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -173,4 +173,4 @@ patches:
 
 ## Conclusion
 
-The VPA-Flux conflict is a fundamental tension between declarative GitOps and dynamic autoscaling. The cleanest resolution depends on your priorities: if GitOps purity matters most, use VPA in `Initial` or `Off` mode and commit recommendations to Git. If automation is paramount, configure Flux to ignore resource fields. Either approach requires intentional configuration — the default behavior of running both without coordination will result in the conflict loop described here.
+The VPA-Flux conflict is a fundamental tension between declarative GitOps and dynamic autoscaling. The cleanest resolution depends on your priorities: if GitOps purity matters most, use VPA in `Initial` or `Off` mode and commit recommendations to Git. If automation is paramount, configure Flux to ignore resource fields. Either approach requires intentional configuration - the default behavior of running both without coordination will result in the conflict loop described here.

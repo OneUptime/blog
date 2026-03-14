@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Kernel, kdump, System Administration, Debugging
+Tags: Ubuntu, Kernel, Kdump, System Administration, Debugging
 
 Description: Configure kdump on Ubuntu to capture kernel crash dumps when a system panics, enabling post-mortem analysis of kernel failures and system crashes.
 

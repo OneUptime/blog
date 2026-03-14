@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kube-vip, Virtual IP, High Availability, Kubernetes, Load Balancing
+Tags: Talos Linux, Kube-vip, Virtual IP, High Availability, Kubernetes, Load Balancing
 
 Description: Deploy and configure kube-vip on Talos Linux for a highly available control plane VIP and LoadBalancer service support.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, iSCSI, Initiator, Storage, SAN, Linux
+Tags: RHEL, ISCSI, Initiator, Storage, SAN, Linux
 
 Description: Configure an iSCSI initiator on RHEL to discover and connect to iSCSI targets, making remote block storage available as local disks.
 

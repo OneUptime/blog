@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Rollback, kubectl
+Tags: Kubernetes, Rollback, Kubectl
 
 Description: Master kubectl rollback commands to revert Kubernetes deployments to specific revisions, recover from failed updates, and maintain deployment history for reliable recovery operations.
 

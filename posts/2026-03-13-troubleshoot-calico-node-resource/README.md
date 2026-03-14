@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico Node resource issues including m
 
 ## Introduction
 
-Calico Node resource issues typically manifest as BGP routing problems or pod connectivity failures. The Node resource is automatically created and updated by the calico-node agent, so problems often trace back to the calico-node pod itself — whether it failed to start, detected the wrong interface, or lost its connection to the datastore. Understanding how calico-node populates the Node resource is key to diagnosing these problems.
+Calico Node resource issues typically manifest as BGP routing problems or pod connectivity failures. The Node resource is automatically created and updated by the calico-node agent, so problems often trace back to the calico-node pod itself - whether it failed to start, detected the wrong interface, or lost its connection to the datastore. Understanding how calico-node populates the Node resource is key to diagnosing these problems.
 
 ## Prerequisites
 

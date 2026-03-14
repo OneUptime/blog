@@ -10,7 +10,7 @@ Description: Deploy the Chaos Mesh fault injection platform to Kubernetes using 
 
 ## Introduction
 
-Chaos Mesh is a cloud-native chaos engineering platform that provides fine-grained chaos injection capabilities for Kubernetes workloads. It supports pod chaos, network chaos, IO chaos, stress chaos, and more — all defined as Kubernetes custom resources. Because everything in Chaos Mesh is a CRD, it pairs naturally with Flux CD's GitOps reconciliation model.
+Chaos Mesh is a cloud-native chaos engineering platform that provides fine-grained chaos injection capabilities for Kubernetes workloads. It supports pod chaos, network chaos, IO chaos, stress chaos, and more - all defined as Kubernetes custom resources. Because everything in Chaos Mesh is a CRD, it pairs naturally with Flux CD's GitOps reconciliation model.
 
 Deploying Chaos Mesh through Flux CD means your chaos testing infrastructure is treated the same way as your production applications: declared in Git, automatically applied to the cluster, and continuously reconciled. This removes the manual step of running `helm install` and ensures every cluster in your fleet can have a consistent chaos testing capability.
 

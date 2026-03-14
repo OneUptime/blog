@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Linkerd, Multicluster, Service Mesh, Federation
+Tags: Flux CD, Kubernetes, GitOps, Linkerd, MultiCluster, Service Mesh, Federation
 
 Description: Set up Linkerd multicluster communication managed by Flux CD to enable secure, cross-cluster service discovery and traffic routing.
 
@@ -10,7 +10,7 @@ Description: Set up Linkerd multicluster communication managed by Flux CD to ena
 
 ## Introduction
 
-Linkerd's multicluster extension enables services in one Kubernetes cluster to securely call services in another cluster, with full mTLS between them. This is invaluable for active-active deployments, geographic distribution, and separating concerns across cluster boundaries — without complex VPN or service mesh federation setups.
+Linkerd's multicluster extension enables services in one Kubernetes cluster to securely call services in another cluster, with full mTLS between them. This is invaluable for active-active deployments, geographic distribution, and separating concerns across cluster boundaries - without complex VPN or service mesh federation setups.
 
 Managing Linkerd multicluster with Flux CD means your cluster link configuration, mirror policies, and service exports are all version-controlled. Adding a new cluster link or exporting a new service is a pull request, not a manual CLI operation.
 
@@ -222,11 +222,11 @@ linkerd viz stat service/user-service-east -n production
 
 ## Best Practices
 
-- Use the same trust anchor CA for both clusters during Linkerd installation — multicluster mTLS requires a shared root of trust.
+- Use the same trust anchor CA for both clusters during Linkerd installation - multicluster mTLS requires a shared root of trust.
 - Commit the `Link` resource YAML to Git after generating it with `linkerd multicluster link`, so the cluster relationship is version-controlled.
-- Use the `mirror.linkerd.io/exported: "true"` label sparingly — only export services that other clusters genuinely need to call, not all services.
+- Use the `mirror.linkerd.io/exported: "true"` label sparingly - only export services that other clusters genuinely need to call, not all services.
 - Use Linkerd's HTTPRoute to split traffic between local and remote instances for active-active deployments, allowing gradual traffic shifts between clusters.
-- Monitor cross-cluster latency with `linkerd viz stat service/user-service-east` — cross-cluster calls add network RTT, so ensure your timeouts are set appropriately.
+- Monitor cross-cluster latency with `linkerd viz stat service/user-service-east` - cross-cluster calls add network RTT, so ensure your timeouts are set appropriately.
 
 ## Conclusion
 

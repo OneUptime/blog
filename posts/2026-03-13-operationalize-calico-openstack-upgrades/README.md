@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Build operational processes for Calico upgrades in OpenStack environments, coordinating with OpenStack release cycles and neutron maintenance windows.
 
@@ -12,7 +12,7 @@ Description: Build operational processes for Calico upgrades in OpenStack enviro
 
 Operationalizing Calico upgrades in OpenStack environments requires coordination with OpenStack release cycles, Neutron maintenance windows, and the OpenStack operations team. The upgrade involves two different teams (Kubernetes platform and OpenStack infrastructure) and must be carefully sequenced.
 
-Establishing clear ownership boundaries — where Kubernetes platform team responsibility ends and OpenStack team responsibility begins — is essential for smooth upgrades.
+Establishing clear ownership boundaries - where Kubernetes platform team responsibility ends and OpenStack team responsibility begins - is essential for smooth upgrades.
 
 ## Prerequisites
 

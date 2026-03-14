@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Unmanaged Pods, Troubleshooting, CNI, eBPF
+Tags: Cilium, Kubernetes, Networking, EBPF
 
 Description: A guide to diagnosing and fixing issues with pods that were running before Cilium was installed or that were not properly picked up by Cilium after installation.
 
@@ -10,9 +10,9 @@ Description: A guide to diagnosing and fixing issues with pods that were running
 
 ## Introduction
 
-After installing Cilium on an existing Kubernetes cluster, some pods may become "unmanaged" — they are running but Cilium has not assigned them a security identity or taken over their network interface. This situation arises when pods were created before Cilium was installed, when Cilium was upgraded and pods were not restarted, or when Cilium's pod CIDR configuration does not match the existing cluster networking.
+After installing Cilium on an existing Kubernetes cluster, some pods may become "unmanaged" - they are running but Cilium has not assigned them a security identity or taken over their network interface. This situation arises when pods were created before Cilium was installed, when Cilium was upgraded and pods were not restarted, or when Cilium's pod CIDR configuration does not match the existing cluster networking.
 
-Unmanaged pods are a significant security concern because they are not subject to Cilium's network policies. From a policy perspective, they are invisible to Cilium — traffic to and from unmanaged pods bypasses all `CiliumNetworkPolicy` enforcement. Identifying and resolving unmanaged pods is a critical post-installation step.
+Unmanaged pods are a significant security concern because they are not subject to Cilium's network policies. From a policy perspective, they are invisible to Cilium - traffic to and from unmanaged pods bypasses all `CiliumNetworkPolicy` enforcement. Identifying and resolving unmanaged pods is a critical post-installation step.
 
 ## Prerequisites
 

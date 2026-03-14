@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Armor, reCAPTCHA Enterprise, Bot Management, Security
+Tags: GCP, Cloud Armor, ReCAPTCHA Enterprise, Bot Management, Security
 
 Description: Learn how to integrate Google reCAPTCHA Enterprise with Cloud Armor to build a robust bot management layer that protects your web applications from automated threats.
 

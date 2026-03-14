@@ -10,7 +10,7 @@ Description: Monitor BGP-to-workload connectivity health in Calico using Prometh
 
 ## Introduction
 
-Monitoring BGP-to-workload connectivity requires observing both the BGP control plane and the data plane. BGP sessions and route advertisements can be healthy while data plane issues — such as iptables misconfigurations, RPF drops, or MTU blackholes — silently affect traffic. A comprehensive monitoring strategy covers both layers.
+Monitoring BGP-to-workload connectivity requires observing both the BGP control plane and the data plane. BGP sessions and route advertisements can be healthy while data plane issues - such as iptables misconfigurations, RPF drops, or MTU blackholes - silently affect traffic. A comprehensive monitoring strategy covers both layers.
 
 Blackbox probing from external hosts provides end-to-end connectivity verification that BGP-level metrics alone cannot capture. Combining Prometheus metrics from Calico's Felix agent with synthetic monitoring from outside the cluster gives you a complete picture of whether your workloads are actually reachable.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, tcpdump, DNS, Networking, Troubleshooting
+Tags: Kubernetes, Debugging, Tcpdump, DNS, Networking, Troubleshooting
 
 Description: Master debugging techniques for Kubernetes pod-to-service connectivity issues using tcpdump, nslookup, and other network diagnostic tools to identify and resolve DNS and network problems.
 

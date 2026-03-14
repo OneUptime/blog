@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Network Monitoring, ntopng, Traffic Analysis, Networking
+Tags: Ubuntu, Network Monitoring, Ntopng, Traffic Analysis, Networking
 
 Description: Install and configure ntopng on Ubuntu for real-time network traffic analysis, including flow monitoring, protocol detection, and traffic visualization.
 

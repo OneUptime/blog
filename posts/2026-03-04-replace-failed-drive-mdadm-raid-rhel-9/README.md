@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID, mdadm, Recovery, Linux
+Tags: RHEL, RAID, Mdadm, Recovery, Linux
 
 Description: A practical walkthrough for identifying and replacing a failed drive in an mdadm RAID array on RHEL, covering detection, removal, physical swap, and rebuild.
 

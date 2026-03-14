@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Automation, System Administration, Cron
+Tags: Ubuntu, Systemd, Automation, System Administration, Cron
 
 Description: A thorough guide to configuring systemd calendar timers on Ubuntu, covering OnCalendar expressions, persistent timers, randomized delays, and real-world scheduling examples.
 

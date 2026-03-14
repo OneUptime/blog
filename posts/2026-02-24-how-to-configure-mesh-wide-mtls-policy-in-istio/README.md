@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Mesh Policy, Security, Zero Trust
+Tags: Istio, MTLS, Mesh Policy, Security, Zero Trust
 
 Description: How to configure a global mutual TLS policy that applies to every service in your Istio mesh for consistent encryption everywhere.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Timezone, System Administration, timedatectl, Linux
+Tags: Ubuntu, Timezone, System Administration, Timedatectl, Linux
 
 Description: Configure the system timezone on Ubuntu using timedatectl, update /etc/timezone, and ensure applications and log files use the correct local time or UTC.
 

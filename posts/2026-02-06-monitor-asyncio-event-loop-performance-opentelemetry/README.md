@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, asyncio, Event Loop, Metrics, Performance
+Tags: OpenTelemetry, Python, Asyncio, Event Loop, Metrics, Performance
 
 Description: Learn how to monitor asyncio event loop performance using OpenTelemetry metrics to detect bottlenecks, measure task execution times, and optimize concurrent Python applications.
 

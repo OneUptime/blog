@@ -94,4 +94,4 @@ kubectl exec pod-a -- wget -qO- --timeout=5 http://example.com
 
 ## Conclusion
 
-Verifying binary-installed Calico on bare metal requires checking the calico-node systemd service, confirming CNI plugins are present, validating IPAM block allocation, testing cross-node connectivity, and inspecting the node routing table for BGP-learned routes. The OS-level checks — service status, routing table, iptables rules — are the distinguishing aspect of binary installation verification compared to container-based deployments.
+Verifying binary-installed Calico on bare metal requires checking the calico-node systemd service, confirming CNI plugins are present, validating IPAM block allocation, testing cross-node connectivity, and inspecting the node routing table for BGP-learned routes. The OS-level checks - service status, routing table, iptables rules - are the distinguishing aspect of binary installation verification compared to container-based deployments.

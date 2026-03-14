@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, gRPC, Kubernetes, Microservices, Service Mesh
+Tags: Istio, GRPC, Kubernetes, Microservices, Service Mesh
 
 Description: Practical guide to running gRPC services across multiple programming languages in an Istio mesh with proper port naming, health checks, and load balancing.
 

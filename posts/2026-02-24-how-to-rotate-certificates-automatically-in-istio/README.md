@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate Rotation, Security, mTLS, Kubernetes
+Tags: Istio, Certificate Rotation, Security, MTLS, Kubernetes
 
 Description: Understanding and configuring automatic certificate rotation in Istio for workload certificates and the root CA to maintain continuous mTLS.
 

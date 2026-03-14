@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Configuration Management, talosctl, Machine Configuration
+Tags: Talos Linux, Kubernetes, Configuration Management, Talosctl, Machine Configuration
 
 Description: Master the talosctl apply-config command for applying and updating machine configurations on Talos Linux nodes.
 

@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, unmanaged-pods, networking, cni, migration
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to configure Cilium to handle unmanaged pods—those not yet part of Cilium's endpoint management—during migrations and in mixed CNI environments.
+Description: Learn how to configure Cilium to handle unmanaged pods-those not yet part of Cilium's endpoint management-during migrations and in mixed CNI environments.
 
 ---
 
 ## Introduction
 
-During a CNI migration or in environments where multiple CNIs coexist temporarily, some pods may be "unmanaged" by Cilium—they exist in the cluster but Cilium has not yet processed them as endpoints. This typically happens during rolling node upgrades, when pods predate a Cilium installation, or when running static pods that Cilium may not discover immediately.
+During a CNI migration or in environments where multiple CNIs coexist temporarily, some pods may be "unmanaged" by Cilium-they exist in the cluster but Cilium has not yet processed them as endpoints. This typically happens during rolling node upgrades, when pods predate a Cilium installation, or when running static pods that Cilium may not discover immediately.
 
 Unmanaged pods present a security consideration: if Cilium is enforcing network policies, unmanaged pods may either be completely isolated (denied all traffic) or allowed through without policy enforcement, depending on the cluster configuration. Understanding and controlling this behavior is critical for safe migrations and policy enforcement consistency.
 

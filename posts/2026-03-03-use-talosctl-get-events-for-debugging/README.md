@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Events, Debugging, Kubernetes, Cluster Management
+Tags: Talos Linux, Talosctl, Events, Debugging, Kubernetes, Cluster Management
 
 Description: A practical guide to using talosctl get events for debugging issues on Talos Linux nodes and understanding system-level events.
 

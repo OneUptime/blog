@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, Boot, Troubleshooting, Emergency Shell, Linux
+Tags: RHEL, Dracut, Boot, Troubleshooting, Emergency Shell, Linux
 
 Description: Learn how to use the dracut emergency shell to diagnose and fix boot failures on RHEL when the system cannot mount the root filesystem.
 

@@ -90,4 +90,4 @@ flowchart TD
 
 ## Conclusion
 
-Cluster-wide Calico diagnostics require checking TigeraStatus first to identify the failing component, then targeting logs for that specific component. IPAM exhaustion is unique because it doesn't degrade TigeraStatus — pods simply fail to schedule. Always check `calicoctl ipam show` when new pods are stuck in ContainerCreating, especially in large or growing clusters. Collect `calicoctl cluster diags` before making any remediation changes.
+Cluster-wide Calico diagnostics require checking TigeraStatus first to identify the failing component, then targeting logs for that specific component. IPAM exhaustion is unique because it doesn't degrade TigeraStatus - pods simply fail to schedule. Always check `calicoctl ipam show` when new pods are stuck in ContainerCreating, especially in large or growing clusters. Collect `calicoctl cluster diags` before making any remediation changes.

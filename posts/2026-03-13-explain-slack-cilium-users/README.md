@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Community, Slack, Support, eBPF
+Tags: Cilium, Community, Slack, Support
 
 Description: An explanation of how to effectively use the Cilium Slack workspace for technical support, from writing good questions to searching existing answers.
 
@@ -10,7 +10,7 @@ Description: An explanation of how to effectively use the Cilium Slack workspace
 
 ## Introduction
 
-The Cilium Slack workspace is more than a chat room — it is a searchable knowledge base of real-world Cilium questions and answers accumulated over years of community use. Before posting a new question, searching Slack for your error message or symptom often yields answers from similar issues others have encountered. Understanding how to search, how to ask, and how to contribute answers back to the community makes you a more effective Cilium practitioner.
+The Cilium Slack workspace is more than a chat room - it is a searchable knowledge base of real-world Cilium questions and answers accumulated over years of community use. Before posting a new question, searching Slack for your error message or symptom often yields answers from similar issues others have encountered. Understanding how to search, how to ask, and how to contribute answers back to the community makes you a more effective Cilium practitioner.
 
 Explaining Cilium Slack usage to a new team member or documenting it for an onboarding guide requires covering both the mechanical aspects (how to find the workspace, which channels to join) and the cultural aspects (what quality of question is expected, how to format diagnostic information). Both dimensions affect how quickly and thoroughly you get help.
 
@@ -23,7 +23,7 @@ Explaining Cilium Slack usage to a new team member or documenting it for an onbo
 
 Slack's search syntax allows targeted queries:
 
-```
+```plaintext
 # Search in a specific channel
 in:#help cilium connectivity test failed
 
@@ -42,7 +42,7 @@ cilium status "not ready" after:2024-01-01
 Structure your message as follows:
 
 **1. Context block at the top:**
-```
+```plaintext
 Cilium version: 1.15.x
 K8s distribution: EKS 1.29
 CNI mode: direct routing
@@ -58,7 +58,7 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 ```
 
 **3. Specific question:**
-```
+```plaintext
 After applying a CiliumNetworkPolicy, pods with matching labels
 cannot connect to the service. Policy trace shows ALLOW but
 connections still fail. What should I check next?

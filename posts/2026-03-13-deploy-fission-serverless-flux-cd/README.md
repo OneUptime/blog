@@ -10,7 +10,7 @@ Description: Deploy Fission serverless framework to Kubernetes using Flux CD to 
 
 ## Introduction
 
-Fission is a Kubernetes-native serverless framework designed for fast cold starts — typically under 100 milliseconds — by pre-warming function containers. It supports multiple language environments (Python, Node.js, Go, Java, and more) and provides a clean separation between function code, runtime environments, and triggers.
+Fission is a Kubernetes-native serverless framework designed for fast cold starts - typically under 100 milliseconds - by pre-warming function containers. It supports multiple language environments (Python, Node.js, Go, Java, and more) and provides a clean separation between function code, runtime environments, and triggers.
 
 Managing Fission through Flux CD gives platform teams a reproducible deployment of the Fission control plane, while application teams can manage their function definitions, environments, and triggers declaratively in Git.
 

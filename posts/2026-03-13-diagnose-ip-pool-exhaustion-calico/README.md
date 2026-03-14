@@ -10,7 +10,7 @@ Description: Diagnose IP pool exhaustion in Calico IPAM by checking block utiliz
 
 ## Introduction
 
-IP pool exhaustion in Calico occurs when all IP addresses in the configured IP pools have been allocated and no free addresses remain for new pods. When this happens, new pod scheduling fails with IP allocation errors. The failure is not immediate — it builds gradually as pods are created and IPs are assigned, but is never returned when pods terminate improperly or when IPAM block garbage collection lags.
+IP pool exhaustion in Calico occurs when all IP addresses in the configured IP pools have been allocated and no free addresses remain for new pods. When this happens, new pod scheduling fails with IP allocation errors. The failure is not immediate - it builds gradually as pods are created and IPs are assigned, but is never returned when pods terminate improperly or when IPAM block garbage collection lags.
 
 Understanding Calico's IPAM model is key to diagnosing exhaustion. Calico allocates IPs in blocks (typically /26 subnets) to nodes. A node holds a block even when pods on it terminate, releasing the individual IPs within the block but not the block itself. When all blocks are allocated to nodes, new nodes cannot get blocks and new pods on those nodes fail.
 

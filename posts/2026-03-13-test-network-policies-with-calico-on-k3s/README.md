@@ -12,7 +12,7 @@ Description: Learn how to create and test Kubernetes network policies enforced b
 
 K3s deployed at the edge often runs workloads that require strict network isolation. Calico's network policy enforcement on K3s provides the same security controls available on full Kubernetes clusters, making it ideal for edge environments where network segmentation is critical for security compliance.
 
-Testing network policies on K3s validates that Calico correctly enforces isolation rules before deploying to production edge nodes. K3s's lightweight architecture does not change how Calico enforces policies — the iptables or eBPF rules applied by Calico's Felix agent work the same way regardless of the Kubernetes distribution.
+Testing network policies on K3s validates that Calico correctly enforces isolation rules before deploying to production edge nodes. K3s's lightweight architecture does not change how Calico enforces policies - the iptables or eBPF rules applied by Calico's Felix agent work the same way regardless of the Kubernetes distribution.
 
 This guide demonstrates network policy testing on K3s, covering ingress and egress policies relevant to edge computing scenarios.
 

@@ -25,7 +25,7 @@ This guide covers deploying OpenFaaS CE (Community Edition) using Flux CD HelmRe
 
 ## Step 1: Create Namespaces
 
-OpenFaaS uses two namespaces by default — one for the platform, one for functions:
+OpenFaaS uses two namespaces by default - one for the platform, one for functions:
 
 ```yaml
 # clusters/my-cluster/openfaas/namespaces.yaml
@@ -198,4 +198,4 @@ echo "GitOps" | faas-cli invoke figlet --gateway http://localhost:8080
 
 ## Conclusion
 
-OpenFaaS deployed and managed by Flux CD provides a complete serverless platform where both the FaaS infrastructure and individual functions are version-controlled. Function deployments become pull requests, autoscaling policies are tracked in Git, and the cluster self-heals any configuration drift — giving your development teams a reliable serverless platform with GitOps-level governance.
+OpenFaaS deployed and managed by Flux CD provides a complete serverless platform where both the FaaS infrastructure and individual functions are version-controlled. Function deployments become pull requests, autoscaling policies are tracked in Git, and the cluster self-heals any configuration drift - giving your development teams a reliable serverless platform with GitOps-level governance.

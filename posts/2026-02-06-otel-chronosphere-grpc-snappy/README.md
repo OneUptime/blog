@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Chronosphere, gRPC OTLP, Snappy Compression
+Tags: OpenTelemetry, Chronosphere, GRPC OTLP, Snappy Compression
 
 Description: Configure the OpenTelemetry OTLP gRPC exporter to send metrics to Chronosphere with API token authentication and Snappy compression.
 

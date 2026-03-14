@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, PackageManager, Dependencies, Maintenance
+Tags: NodeJS, Npm, PackageManager, Dependencies, Maintenance
 
 Description: Learn different methods to update npm packages to their latest versions including npm update, npm-check-updates, yarn, and strategies for safe dependency upgrades.
 

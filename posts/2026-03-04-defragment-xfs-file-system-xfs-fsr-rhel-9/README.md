@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, Defragmentation, xfs_fsr, Storage, Linux
+Tags: RHEL, XFS, Defragmentation, Xfs_fsr, Storage, Linux
 
 Description: Learn how to defragment XFS file systems on RHEL using xfs_fsr, including identifying fragmented files, running targeted defragmentation, and scheduling automatic maintenance.
 

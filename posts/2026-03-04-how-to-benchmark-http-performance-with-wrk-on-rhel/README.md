@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, wrk, HTTP Benchmarking, Performance Testing, Web Server
+Tags: RHEL, Wrk, HTTP Benchmarking, Performance Testing, Web Server
 
 Description: Learn how to install and use wrk on RHEL for high-performance HTTP benchmarking with multi-threaded load generation.
 

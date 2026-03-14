@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Automated Backup, Kubernetes, CronJobs, Disaster Recovery
+Tags: Talos Linux, Etcd, Automated Backup, Kubernetes, CronJobs, Disaster Recovery
 
 Description: Set up automated etcd backups for your Talos Linux cluster using Kubernetes CronJobs and external scripts for reliable disaster recovery.
 

@@ -12,7 +12,7 @@ Description: Deploy the Strimzi Kafka Operator and Kafka clusters on Kubernetes 
 
 Strimzi is the leading open-source Kubernetes operator for Apache Kafka. It manages Kafka brokers, ZooKeeper (or KRaft for newer versions), Kafka Connect, MirrorMaker 2, and the Kafka Bridge through Kubernetes Custom Resources. Strimzi handles TLS certificate generation, user authentication, rolling upgrades, and topic management declaratively.
 
-Deploying Strimzi through Flux CD gives you GitOps control over your entire Kafka infrastructure — from broker configuration and topic definitions to user ACLs and connector deployments. Every change to your event streaming platform flows through a Git pull request, making your messaging infrastructure as auditable as your application code.
+Deploying Strimzi through Flux CD gives you GitOps control over your entire Kafka infrastructure - from broker configuration and topic definitions to user ACLs and connector deployments. Every change to your event streaming platform flows through a Git pull request, making your messaging infrastructure as auditable as your application code.
 
 ## Prerequisites
 
@@ -285,7 +285,7 @@ kubectl exec -n kafka production-kafka-0 -- \
 - Set `min.insync.replicas: 2` and `acks=all` in producers for guaranteed durability against broker loss.
 - Use pod anti-affinity rules to ensure Kafka brokers are on different Kubernetes nodes.
 - Enable JMX Prometheus metrics and import the Strimzi Grafana dashboard for broker monitoring.
-- Pin Kafka version in the `Kafka` CRD — upgrades are rolling but should be tested in staging first.
+- Pin Kafka version in the `Kafka` CRD - upgrades are rolling but should be tested in staging first.
 
 ## Conclusion
 

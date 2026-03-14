@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Multus CNI, Multi-NIC, Kubernetes, Networking, GitOps, Telco, NFV
+Tags: Multus, CNI, Flux CD, GitOps, Kubernetes, Networking, Multi-Homed Pods
 
 Description: Learn how to deploy Multus CNI for multiple network interfaces in Kubernetes pods using Flux CD for telco, NFV, and high-performance networking use cases.
 
@@ -10,7 +10,7 @@ Description: Learn how to deploy Multus CNI for multiple network interfaces in K
 
 ## Introduction
 
-Multus CNI is a meta-CNI plugin that enables Kubernetes pods to have multiple network interfaces. While standard Kubernetes pods have one network interface (managed by the primary CNI), Multus allows attaching additional secondary networks—essential for telco workloads, network functions (NFV), and high-performance computing that require dedicated network interfaces for data plane traffic separate from management traffic.
+Multus CNI is a meta-CNI plugin that enables Kubernetes pods to have multiple network interfaces. While standard Kubernetes pods have one network interface (managed by the primary CNI), Multus allows attaching additional secondary networks-essential for telco workloads, network functions (NFV), and high-performance computing that require dedicated network interfaces for data plane traffic separate from management traffic.
 
 Managing Multus and its NetworkAttachmentDefinitions through Flux CD ensures consistent multi-NIC configuration across clusters.
 

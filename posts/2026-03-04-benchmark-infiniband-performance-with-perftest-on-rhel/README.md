@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, InfiniBand, perftest, Benchmarking, RDMA
+Tags: RHEL, InfiniBand, Perftest, Benchmarking, RDMA
 
 Description: Use the perftest suite on RHEL to measure InfiniBand and RDMA latency, bandwidth, and message rate to validate network performance.
 

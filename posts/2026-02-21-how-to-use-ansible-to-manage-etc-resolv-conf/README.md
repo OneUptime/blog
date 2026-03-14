@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, DNS, resolv.conf, Linux Administration
+Tags: Ansible, DNS, Resolv.conf, Linux Administration
 
 Description: Learn how to manage /etc/resolv.conf with Ansible including templates, immutable flags, and handling systemd-resolved conflicts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Troubleshooting, Privilege Escalation, sudo, DevOps
+Tags: Ansible, Troubleshooting, Privilege Escalation, Sudo, DevOps
 
 Description: Systematically diagnose and resolve Ansible become errors including sudo failures, permission denied, and timeout issues
 

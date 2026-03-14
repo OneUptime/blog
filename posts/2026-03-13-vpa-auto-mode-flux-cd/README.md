@@ -1,10 +1,10 @@
-# How to Configure VPA in Auto Mode with Flux CD
+# VPA Auto Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, VPA, Vertical Pod Autoscaler, Autoscaling, Kubernetes, GitOps, Resource Management
+Tags: Flux CD, VPA, Kubernetes, Resource Management, GitOps
 
-Description: Learn how to deploy and configure Vertical Pod Autoscaler in auto mode using Flux CD to automatically right-size pod CPU and memory requests.
+Description: Learn how to configure Vertical Pod Autoscaler in Auto mode with Flux CD, enabling automatic right-sizing of pod resource requests through GitOps-managed VPA objects.
 
 ---
 

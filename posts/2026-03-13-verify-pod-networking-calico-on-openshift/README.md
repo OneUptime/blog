@@ -10,7 +10,7 @@ Description: A guide to verifying that Calico pod networking is fully operationa
 
 ## Introduction
 
-Verifying pod networking on OpenShift with Calico requires additional checks beyond a standard Kubernetes verification. OpenShift runs critical infrastructure workloads — the router, the image registry, monitoring, and the API server — that must remain reachable throughout and after the Calico installation. A verification process that only checks user workload connectivity can miss problems in system namespaces that cause cluster instability later.
+Verifying pod networking on OpenShift with Calico requires additional checks beyond a standard Kubernetes verification. OpenShift runs critical infrastructure workloads - the router, the image registry, monitoring, and the API server - that must remain reachable throughout and after the Calico installation. A verification process that only checks user workload connectivity can miss problems in system namespaces that cause cluster instability later.
 
 OpenShift also uses Routes for external access, which requires the router pods (running with host networking) to be able to forward traffic to pods. Verifying this routing path is an essential step in OpenShift-specific Calico verification.
 

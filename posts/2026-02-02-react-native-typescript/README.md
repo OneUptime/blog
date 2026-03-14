@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React Native, TypeScript, Mobile Development, iOS, Android, Cross-Platform, JavaScript, Type Safety
+Tags: React Native, TypeScript, Mobile Development, IOS, Android, Cross-Platform, JavaScript, Type Safety
 
 Description: A comprehensive guide to building React Native applications with TypeScript.
 

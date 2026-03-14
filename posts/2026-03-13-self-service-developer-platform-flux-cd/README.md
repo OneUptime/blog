@@ -12,7 +12,7 @@ Description: Build a self-service developer platform using Flux CD as the GitOps
 
 Platform engineering has fundamentally changed how organizations deliver software. The goal is simple: give developers a paved road to production without requiring them to understand every layer of infrastructure beneath them. Flux CD, with its GitOps-native design, is an excellent foundation for building such a platform because Git itself becomes the interface between developers and infrastructure.
 
-A self-service developer platform powered by Flux CD means developers submit pull requests to request new environments, deploy services, or configure resources. The platform team defines the guardrails, and Flux enforces them continuously. This model scales horizontally — adding a new team costs a PR, not an ops ticket.
+A self-service developer platform powered by Flux CD means developers submit pull requests to request new environments, deploy services, or configure resources. The platform team defines the guardrails, and Flux enforces them continuously. This model scales horizontally - adding a new team costs a PR, not an ops ticket.
 
 In this guide you will learn how to structure a Flux-based platform repository, define tenant namespaces with appropriate RBAC, and give developers a Git-native workflow for deploying their own workloads within policy boundaries.
 
@@ -27,7 +27,7 @@ In this guide you will learn how to structure a Flux-based platform repository, 
 
 Organize your platform repository into layers so the platform team owns the foundation and developers own their application directories.
 
-```
+```plaintext
 platform-gitops/
 ├── clusters/
 │   └── production/
@@ -244,4 +244,4 @@ echo "Tenant ${TENANT} scaffold created. Open a PR to onboard."
 
 ## Conclusion
 
-Flux CD transforms a Kubernetes cluster into a true self-service platform by making Git the single interface between developers and infrastructure. The structure outlined here — layered repositories, tenant overlays, and least-privilege reconcilers — lets platform teams set the rules once and let Flux enforce them continuously, freeing developers to ship without waiting on ops tickets.
+Flux CD transforms a Kubernetes cluster into a true self-service platform by making Git the single interface between developers and infrastructure. The structure outlined here - layered repositories, tenant overlays, and least-privilege reconcilers - lets platform teams set the rules once and let Flux enforce them continuously, freeing developers to ship without waiting on ops tickets.

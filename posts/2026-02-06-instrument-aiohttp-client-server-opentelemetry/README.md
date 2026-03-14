@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, aiohttp, Python, HTTP Client, Server, Async
+Tags: OpenTelemetry, Aiohttp, Python, HTTP Client, Server, Async
 
 Description: Complete guide to instrumenting aiohttp async HTTP client and server applications with OpenTelemetry for distributed tracing and observability.
 

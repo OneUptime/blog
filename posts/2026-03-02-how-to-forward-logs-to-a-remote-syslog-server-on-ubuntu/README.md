@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, rsyslog, Syslog, System Administration
+Tags: Ubuntu, Logging, Rsyslog, Syslog, System Administration
 
 Description: Configure Ubuntu to forward system logs to a remote syslog server using rsyslog, enabling centralized log management and security monitoring across multiple servers.
 

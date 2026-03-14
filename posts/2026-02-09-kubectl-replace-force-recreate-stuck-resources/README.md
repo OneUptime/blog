@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Troubleshooting
+Tags: Kubernetes, Kubectl, Troubleshooting
 
 Description: Learn how to use kubectl replace --force to recreate stuck or corrupted Kubernetes resources when normal update and delete operations fail to resolve issues.
 

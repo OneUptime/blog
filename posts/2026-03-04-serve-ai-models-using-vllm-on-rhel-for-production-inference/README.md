@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, vLLM, AI, Inference, LLM
+Tags: RHEL, VLLM, AI, Inference, LLM
 
 Description: Deploy vLLM on RHEL for high-throughput, low-latency LLM inference serving with an OpenAI-compatible API for production applications.
 

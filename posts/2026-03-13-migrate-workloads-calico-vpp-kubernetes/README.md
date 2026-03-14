@@ -10,7 +10,7 @@ Description: A guide to migrating workloads from standard Calico to Calico VPP d
 
 ## Introduction
 
-Migrating from standard Calico (with iptables or eBPF data plane) to Calico VPP is a data plane migration, not a full CNI replacement. The Calico control plane, IP pools, and network policies remain the same — only the packet processing path changes. This makes VPP migration less disruptive than a full CNI migration, but it still requires node-by-node rollout of the VPP components and a brief connectivity interruption on each node as VPP takes over from the previous data plane.
+Migrating from standard Calico (with iptables or eBPF data plane) to Calico VPP is a data plane migration, not a full CNI replacement. The Calico control plane, IP pools, and network policies remain the same - only the packet processing path changes. This makes VPP migration less disruptive than a full CNI migration, but it still requires node-by-node rollout of the VPP components and a brief connectivity interruption on each node as VPP takes over from the previous data plane.
 
 The migration is most commonly done to increase throughput for performance-sensitive workloads without changing the existing network policy model. All existing Kubernetes NetworkPolicy and Calico NetworkPolicy resources continue to apply.
 

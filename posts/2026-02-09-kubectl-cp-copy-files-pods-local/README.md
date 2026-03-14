@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, File Management
+Tags: Kubernetes, Kubectl, File Management
 
 Description: Master kubectl cp to transfer files between your local machine and Kubernetes pods, including best practices for safety, troubleshooting common issues, and handling edge cases.
 

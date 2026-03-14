@@ -85,7 +85,7 @@ kubectl create secret generic logdna-agent-key \
 
 Create alerts for Calico errors in IBM Log Analysis:
 
-```
+```plaintext
 # Alert query: Felix permission denied errors
 "calico-node" AND "permission denied"
 ```

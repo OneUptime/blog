@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsync, SSH, Remote Backup, Networking, Linux
+Tags: RHEL, Rsync, SSH, Remote Backup, Networking, Linux
 
 Description: Configure rsync over SSH on RHEL to securely transfer backups to a remote server, including key-based authentication and bandwidth limiting.
 

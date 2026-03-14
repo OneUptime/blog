@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, JWT, Authentication, Security, axum, jsonwebtoken, OAuth, Refresh Tokens
+Tags: Rust, JWT, Authentication, Security, Axum, Jsonwebtoken, OAuth, Refresh Tokens
 
 Description: Learn how to implement secure JWT authentication in Rust applications. This guide covers token generation, validation, refresh tokens, secure storage patterns, and common security pitfalls to avoid.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, client-go, Work Queues, Go
+Tags: Kubernetes, Client-go, Work Queues, Go
 
 Description: Learn how to use client-go work queues with rate limiting and exponential backoff to reliably process Kubernetes events in controllers and operators.
 

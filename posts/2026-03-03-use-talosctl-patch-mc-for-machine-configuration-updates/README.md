@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Configuration Patching, talosctl, Machine Configuration
+Tags: Talos Linux, Kubernetes, Configuration Patching, Talosctl, Machine Configuration
 
 Description: Learn how to use talosctl patch mc to make targeted, repeatable machine configuration changes in Talos Linux clusters.
 

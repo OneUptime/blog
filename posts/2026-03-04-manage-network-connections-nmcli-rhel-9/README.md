@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nmcli, Network Connections, Linux
+Tags: RHEL, Nmcli, Network Connections, Linux
 
 Description: A comprehensive guide to managing network connections on RHEL using the nmcli command-line tool, covering everything from listing and creating connections to advanced management tasks.
 

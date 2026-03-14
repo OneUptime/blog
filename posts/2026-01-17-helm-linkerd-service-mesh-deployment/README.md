@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Linkerd, Service Mesh, Security, mTLS
+Tags: Helm, Kubernetes, DevOps, Linkerd, Service Mesh, Security, MTLS
 
 Description: Complete guide to deploying Linkerd service mesh on Kubernetes using Helm charts for lightweight, secure service-to-service communication.
 

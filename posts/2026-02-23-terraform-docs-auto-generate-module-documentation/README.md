@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Documentation, terraform-docs, DevOps
+Tags: Terraform, Modules, Documentation, Terraform-docs, DevOps
 
 Description: Learn how to install and configure terraform-docs to automatically generate README documentation for your Terraform modules, including pre-commit hooks and CI integration.
 

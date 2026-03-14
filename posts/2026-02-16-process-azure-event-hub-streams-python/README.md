@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Event Hub, Python, Stream Processing, Event Streaming, azure-eventhub, Big Data
+Tags: Azure, Event Hub, Python, Stream Processing, Event Streaming, Azure-eventhub, Big Data
 
 Description: Learn how to produce and consume events from Azure Event Hubs using the azure-eventhub Python SDK for high-throughput stream processing.
 

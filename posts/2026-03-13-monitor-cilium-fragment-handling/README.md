@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Networking, Kubernetes, Fragmentation, eBPF, Monitoring, MTU
+Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
 
-Description: Learn how to monitor and troubleshoot IP packet fragmentation in Cilium-managed Kubernetes clusters, including fragment tracking, MTU optimization, and detection of fragmentation-related performance issues.
+Description: Learn how to monitor and troubleshoot IP packet fragmentation in Cilium-managed Kubernetes clusters, including fragment tracking, MTU optimization, and detection of fragmentation-related...
 
 ---
 

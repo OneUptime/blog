@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Performance, Optimization, useMemo, useCallback, React.memo, Virtual DOM, JavaScript, TypeScript
+Tags: React, Performance, Optimization, UseMemo, UseCallback, React.memo, Virtual DOM, JavaScript, TypeScript
 
 Description: Learn how to optimize React component performance using memoization, code splitting, virtualization, and profiling techniques.
 

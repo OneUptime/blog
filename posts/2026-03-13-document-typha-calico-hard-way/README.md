@@ -121,7 +121,7 @@ Save this output to the team wiki at each major change.
 
 For Typha-related incidents:
 
-```
+```plaintext
 Incident: Calico policy propagation failure
 Severity: P1 (if new policies are not taking effect)
 
@@ -136,4 +136,4 @@ Escalation: If Typha is healthy but propagation fails, escalate to Calico core t
 
 ## Conclusion
 
-Typha documentation in a hard way installation should combine architecture context with immediately runnable commands. Organizing the documentation into architecture overview, operations runbooks (health checks, scaling, certificate rotation), troubleshooting quick reference, and an incident response template ensures that every person who interacts with Typha — from day-one onboarding to 2am incidents — can find what they need without requiring deep Calico expertise.
+Typha documentation in a hard way installation should combine architecture context with immediately runnable commands. Organizing the documentation into architecture overview, operations runbooks (health checks, scaling, certificate rotation), troubleshooting quick reference, and an incident response template ensures that every person who interacts with Typha - from day-one onboarding to 2am incidents - can find what they need without requiring deep Calico expertise.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, AWS, VPC CNI, CNI Chaining, EKS, Kubernetes, Networking, Security
+Tags: Cilium, Kubernetes, EKS, AWS, EBPF
 
 Description: Learn how to chain Cilium onto AWS VPC CNI on Amazon EKS to gain Cilium's advanced network policy enforcement and observability features while retaining native VPC networking and pod IP addressing.
 
@@ -91,7 +91,7 @@ cat /etc/cni/net.d/10-aws.conflist
 Apply a CiliumNetworkPolicy and verify it is enforced at the eBPF layer.
 
 ```yaml
-# Test CiliumNetworkPolicy — allow only port 80 ingress to the nginx pod
+# Test CiliumNetworkPolicy - allow only port 80 ingress to the nginx pod
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

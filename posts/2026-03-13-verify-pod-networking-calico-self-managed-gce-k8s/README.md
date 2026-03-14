@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, GCE, GCP, Pod Networking, Self-Managed
+Tags: Calico, Kubernetes, Networking, Verification, GCE, Google Cloud, Self-Managed
 
-Description: Learn how to verify Calico pod networking on a self-managed Kubernetes cluster running on Google Compute Engine, including VPC firewall rules, IPIP mode support, and cross-zone connectivity validation.
+Description: Learn how to verify Calico pod networking on a self-managed Kubernetes cluster running on Google Compute Engine, including VPC firewall rules, IPIP mode support, and cross-zone connectivity...
 
 ---
 
 ## Introduction
 
-Google Compute Engine (GCE) supports self-managed Kubernetes clusters with Calico as the CNI plugin. GCE's Virtual Private Cloud supports both IP-in-IP and VXLAN encapsulation, making both overlay modes viable. However, GCE VPC firewall rules must explicitly allow the encapsulation protocol — IP-in-IP (protocol 4) is not allowed by default and must be added.
+Google Compute Engine (GCE) supports self-managed Kubernetes clusters with Calico as the CNI plugin. GCE's Virtual Private Cloud supports both IP-in-IP and VXLAN encapsulation, making both overlay modes viable. However, GCE VPC firewall rules must explicitly allow the encapsulation protocol - IP-in-IP (protocol 4) is not allowed by default and must be added.
 
 GCE also supports native routing without overlay if you enable VPC native routing and add per-node pod CIDR routes to the VPC routing table. This is the highest-performance option but requires more configuration. The most common choice for self-managed clusters is Calico with IPIP or VXLAN, which provides a good balance of simplicity and performance.
 
@@ -71,7 +71,7 @@ calicoctl get ippool default-ipv4-ippool -o yaml | grep -E "ipipMode|vxlanMode"
 ```
 
 ```yaml
-# ippool-gce-ipip.yaml — GCE-compatible IP pool with cross-subnet IPIP
+# ippool-gce-ipip.yaml - GCE-compatible IP pool with cross-subnet IPIP
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -141,7 +141,7 @@ kubectl exec pod-a -- wget -qO- --timeout=5 https://www.googleapis.com/
 
 ## Best Practices
 
-- Use `ipipMode: CrossSubnet` on GCE for optimal performance — no encapsulation within a zone, IPIP only across zones
+- Use `ipipMode: CrossSubnet` on GCE for optimal performance - no encapsulation within a zone, IPIP only across zones
 - Apply GCE firewall rules using network tags for easier management across instance groups
 - Test connectivity across availability zones as GCE inter-zone routing differs from intra-zone
 - Monitor GCE firewall rule hits to confirm Calico overlay traffic is being allowed

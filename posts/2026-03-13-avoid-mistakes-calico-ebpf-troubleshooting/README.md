@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Best Practices
+Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Best Practices
 
 Description: Avoid the most common mistakes when troubleshooting Calico eBPF issues, including misdiagnosis patterns, incorrect fixes, and changes that make problems worse.
 
@@ -122,4 +122,4 @@ mindmap
 
 ## Conclusion
 
-The most dangerous eBPF troubleshooting mistakes are those that cause additional disruption: restarting all calico-node pods unnecessarily, disabling eBPF mode as a "quick fix," or making multiple simultaneous configuration changes. Always collect a diagnostic bundle before making any changes, isolate your investigation to the affected node(s), and remember that in eBPF mode the absence of iptables rules is correct behavior — not a sign of problems. When a change needs to be made, make exactly one change and observe the effect before proceeding.
+The most dangerous eBPF troubleshooting mistakes are those that cause additional disruption: restarting all calico-node pods unnecessarily, disabling eBPF mode as a "quick fix," or making multiple simultaneous configuration changes. Always collect a diagnostic bundle before making any changes, isolate your investigation to the affected node(s), and remember that in eBPF mode the absence of iptables rules is correct behavior - not a sign of problems. When a change needs to be made, make exactly one change and observe the effect before proceeding.

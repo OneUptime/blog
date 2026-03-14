@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Diagnostic Settings, Monitoring, for_each, IaC, Azure Monitor
+Tags: Terraform, Azure, Diagnostic Settings, Monitoring, For_each, IaC, Azure Monitor
 
 Description: Use Terraform for_each to systematically configure Azure Diagnostic Settings across all resources and send logs to Log Analytics.
 

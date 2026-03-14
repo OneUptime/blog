@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, jsonencode, JSON, IAM Policies, Infrastructure as Code
+Tags: Terraform, Jsonencode, JSON, IAM Policies, Infrastructure as Code
 
 Description: Learn how to use Terraform's jsonencode function to generate JSON from HCL values for IAM policies, API configurations, Lambda payloads, and resource tags.
 

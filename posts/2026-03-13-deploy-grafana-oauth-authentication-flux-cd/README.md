@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, OAuth, OIDC, Authentication, Flux CD, GitOps, Kubernetes, Security
+Tags: Flux CD, Kubernetes, GitOps, Grafana, OAuth, SSO, Authentication, Observability
 
-Description: Configure Grafana with OAuth 2.0 / OIDC authentication (GitHub, Google, Okta, or any OIDC provider) on Kubernetes using Flux CD. Learn how to manage client secrets securely and map OAuth groups to Grafana roles.
+Description: Configure Grafana with OAuth 2.0 / OIDC authentication (GitHub, Google, Okta, or any OIDC provider) on Kubernetes using Flux CD.
 
 ---
 
@@ -44,7 +44,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # GitHub (or other provider) OAuth Client ID and Secret — SOPS-encrypt before committing
+  # GitHub (or other provider) OAuth Client ID and Secret - SOPS-encrypt before committing
   GF_AUTH_GITHUB_CLIENT_ID: "your-client-id-here"
   GF_AUTH_GITHUB_CLIENT_SECRET: "your-client-secret-here"
 ```

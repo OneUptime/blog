@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Type Safety, interface, Objects
+Tags: TypeScript, Type Safety, Interface, Objects
 
 Description: Master TypeScript index signatures for dynamic object properties with proper type constraints, Record utility type, and handling unknown keys safely.
 

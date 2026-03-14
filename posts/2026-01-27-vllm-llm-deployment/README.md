@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: vLLM, LLM, AI, Inference, GPU, Machine Learning, Model Serving, Python
+Tags: VLLM, LLM, AI, Inference, GPU, Machine Learning, Model Serving, Python
 
 Description: Learn how to deploy large language models with vLLM for high-throughput inference, including PagedAttention, continuous batching, and API serving.
 

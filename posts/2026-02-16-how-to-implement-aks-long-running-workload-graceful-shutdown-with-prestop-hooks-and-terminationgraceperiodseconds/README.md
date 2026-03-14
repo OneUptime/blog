@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Graceful Shutdown, preStop, Kubernetes, terminationGracePeriodSeconds, Workload Management, Azure
+Tags: AKS, Graceful Shutdown, PreStop, Kubernetes, TerminationGracePeriodSeconds, Workload Management, Azure
 
 Description: Learn how to configure preStop hooks and termination grace periods in AKS to give long-running workloads enough time to complete work before pod termination.
 

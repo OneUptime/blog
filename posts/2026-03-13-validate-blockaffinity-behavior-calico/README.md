@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, blockaffinity, kubernetes, networking, ip-management
+Tags: Calico, IPAM, BlockAffinity, Kubernetes, Networking, Ip-management
 
 Description: A deep dive into validating Calico's BlockAffinity behavior, including how IP address blocks are allocated per node, how affinity is released, and how to diagnose allocation issues.
 
@@ -10,9 +10,9 @@ Description: A deep dive into validating Calico's BlockAffinity behavior, includ
 
 ## Introduction
 
-Calico's IPAM system allocates IP addresses to pods in blocks—typically /26 subnets carved from your configured IP pools. Each block has an affinity to a specific node, meaning IPs from that block are preferentially assigned to pods running on that node. Understanding and validating this BlockAffinity behavior is essential for diagnosing IP exhaustion, unexpected cross-node allocations, and routing anomalies.
+Calico's IPAM system allocates IP addresses to pods in blocks-typically /26 subnets carved from your configured IP pools. Each block has an affinity to a specific node, meaning IPs from that block are preferentially assigned to pods running on that node. Understanding and validating this BlockAffinity behavior is essential for diagnosing IP exhaustion, unexpected cross-node allocations, and routing anomalies.
 
-BlockAffinity objects in the Calico datastore represent the relationship between an IP block and a node. When a node no longer has any pods using IPs from a block, the block affinity can be released and the block returned to the pool for other nodes to use. Failures in this lifecycle—such as leaked block affinities or blocks that never get released—can gradually exhaust your IP pool.
+BlockAffinity objects in the Calico datastore represent the relationship between an IP block and a node. When a node no longer has any pods using IPs from a block, the block affinity can be released and the block returned to the pool for other nodes to use. Failures in this lifecycle-such as leaked block affinities or blocks that never get released-can gradually exhaust your IP pool.
 
 This guide walks through how to inspect, validate, and troubleshoot BlockAffinity behavior in a Calico cluster using `calicoctl` and Kubernetes API tools.
 
@@ -44,7 +44,7 @@ Check which IPs within each block are currently allocated vs. free.
 # Show the detailed IPAM allocation state for all blocks
 calicoctl ipam show --show-blocks
 
-# Check IP utilization per node — useful for detecting imbalanced allocation
+# Check IP utilization per node - useful for detecting imbalanced allocation
 calicoctl ipam show --show-borrowed-ips
 ```
 

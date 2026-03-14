@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, kubeadm, Migration, Cluster Management, Infrastructure
+Tags: Talos Linux, Kubernetes, Kubeadm, Migration, Cluster Management, Infrastructure
 
 Description: A practical guide to migrating your existing kubeadm-managed Kubernetes clusters to Talos Linux with minimal downtime and full workload preservation.
 

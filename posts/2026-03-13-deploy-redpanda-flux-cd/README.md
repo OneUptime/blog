@@ -263,8 +263,8 @@ kubectl exec -n redpanda redpanda-0 -- \
 
 ## Best Practices
 
-- Set `resources.cpu.overprovisioned: false` to dedicate CPU cores to Redpanda — this is how it achieves consistent low latency.
-- Use local NVMe storage (`hostPath` or local PVCs) for best write throughput — Redpanda's performance is I/O bound.
+- Set `resources.cpu.overprovisioned: false` to dedicate CPU cores to Redpanda - this is how it achieves consistent low latency.
+- Use local NVMe storage (`hostPath` or local PVCs) for best write throughput - Redpanda's performance is I/O bound.
 - Enable TLS and SASL authentication for all production deployments.
 - Set `auto_create_topics_enabled: false` and create topics explicitly for production control.
 - Use the Schema Registry endpoint (port 8081) for Avro and Protobuf message schema management.

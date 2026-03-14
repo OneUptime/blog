@@ -18,7 +18,7 @@ MySQL replication problems caused by Calico networking require fixing the specif
 - `calicoctl` and `kubectl` with admin access
 - MySQL admin access to verify replication status
 
-## Step 1: Fix — Add Network Policy Rules for MySQL Replication
+## Step 1: Fix - Add Network Policy Rules for MySQL Replication
 
 If network policies are blocking port 3306 between replica and primary pods.
 
@@ -65,7 +65,7 @@ kubectl exec -n database mysql-1 -- \
   echo "Port 3306 now reachable" || echo "Still blocked"
 ```
 
-## Step 2: Fix — Restore BGP Routes for Cross-Node Communication
+## Step 2: Fix - Restore BGP Routes for Cross-Node Communication
 
 If MySQL pods are on different nodes and BGP routes are missing, cross-node MySQL traffic will fail.
 
@@ -88,7 +88,7 @@ kubectl exec -n calico-system "${CALICO_POD}" -- \
 # Should show a route to the primary pod's IP via the primary's node
 ```
 
-## Step 3: Fix — Stabilize Pod IPs Using a Headless Service
+## Step 3: Fix - Stabilize Pod IPs Using a Headless Service
 
 MySQL replication connections use IP addresses. When pods restart and get new IPs, replication breaks. Use a headless Service with stable DNS names instead.
 
@@ -120,7 +120,7 @@ kubectl exec -n database mysql-1 -- mysql -u root -p \
   -e "STOP REPLICA; CHANGE REPLICATION SOURCE TO SOURCE_HOST='mysql-0.mysql-headless.database.svc.cluster.local'; START REPLICA;"
 ```
 
-## Step 4: Fix — Re-establish Replication After Network Disruption
+## Step 4: Fix - Re-establish Replication After Network Disruption
 
 After the networking fix, MySQL replication may need to be re-established if it lost too many binlog events.
 

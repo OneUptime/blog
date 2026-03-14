@@ -190,4 +190,4 @@ kubectl describe stresschaos cpu-stress-api -n chaos-mesh
 
 ## Conclusion
 
-Stress chaos experiments are essential for validating that Kubernetes resource management — HPA scaling, resource limits, and OOM handling — behaves as designed under real pressure. By managing `StressChaos` resources through Flux CD, your team gains a systematic, auditable way to stress-test workloads, ensuring resource configurations are correct before a real production incident forces the validation under the worst possible conditions.
+Stress chaos experiments are essential for validating that Kubernetes resource management - HPA scaling, resource limits, and OOM handling - behaves as designed under real pressure. By managing `StressChaos` resources through Flux CD, your team gains a systematic, auditable way to stress-test workloads, ensuring resource configurations are correct before a real production incident forces the validation under the worst possible conditions.

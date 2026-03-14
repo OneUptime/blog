@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Thanos, Prometheus, Compactor, S3, Flux CD, GitOps, Kubernetes, Long-Term Storage
+Tags: Flux CD, Kubernetes, GitOps, Thanos, Compactor, Metrics Retention, Object Storage, Observability
 
-Description: Deploy the Thanos Compactor component on Kubernetes using Flux CD to compact and downsample Prometheus metric blocks in object storage. This guide covers retention configuration, downsampling, and GitOps management.
+Description: Deploy the Thanos Compactor component on Kubernetes using Flux CD to compact and downsample Prometheus metric blocks in object storage.
 
 ---
 
@@ -36,7 +36,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # Thanos object store configuration — encrypt with SOPS before committing
+  # Thanos object store configuration - encrypt with SOPS before committing
   objstore.yaml: |
     type: S3
     config:
@@ -80,11 +80,11 @@ spec:
     # Deploy only the compactor component
     compactor:
       enabled: true
-      # Retention for raw (non-downsampled) blocks — keep 30 days
+      # Retention for raw (non-downsampled) blocks - keep 30 days
       retentionResolutionRaw: 30d
-      # Retention for 5-minute downsampled blocks — keep 90 days
+      # Retention for 5-minute downsampled blocks - keep 90 days
       retentionResolution5m: 90d
-      # Retention for 1-hour downsampled blocks — keep 365 days
+      # Retention for 1-hour downsampled blocks - keep 365 days
       retentionResolution1h: 365d
       # Compact on a schedule (every 2 hours) using wait mode
       extraFlags:
@@ -152,7 +152,7 @@ spec:
 - Set `--deduplication.replica-label=prometheus_replica` to deduplicate metrics from HA Prometheus pairs before compaction.
 - Allocate a large local PVC for the compactor's working directory; it downloads blocks for compaction before re-uploading.
 - Set generous memory limits; compacting many small blocks in parallel is memory-intensive.
-- Monitor compactor metrics—especially `thanos_compact_halted`—which indicates the compactor stopped due to an error.
+- Monitor compactor metrics-especially `thanos_compact_halted`-which indicates the compactor stopped due to an error.
 
 ## Conclusion
 

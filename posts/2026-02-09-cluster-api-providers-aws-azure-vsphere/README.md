@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cluster API, AWS, Azure, vSphere
+Tags: Kubernetes, Cluster API, AWS, Azure, VSphere
 
 Description: Learn how to configure and use Cluster API providers for AWS, Azure, and vSphere to provision and manage Kubernetes clusters across multiple cloud platforms with consistent workflows.
 

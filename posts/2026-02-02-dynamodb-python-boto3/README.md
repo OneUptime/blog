@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: DynamoDB, Python, boto3, AWS, NoSQL, Database, Serverless
+Tags: DynamoDB, Python, Boto3, AWS, NoSQL, Database, Serverless
 
 Description: Learn how to use Amazon DynamoDB with Python using the boto3 library.
 

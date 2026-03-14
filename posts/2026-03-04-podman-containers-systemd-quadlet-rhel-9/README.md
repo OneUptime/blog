@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Podman, Quadlet, systemd, Linux
+Tags: RHEL, Podman, Quadlet, Systemd, Linux
 
 Description: Learn how to use Quadlet on RHEL to run Podman containers as native systemd services with automatic startup, restart policies, and full service management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, bonnie++, Filesystems, Benchmarking, Storage, Performance
+Tags: RHEL, Bonnie++, Filesystems, Benchmarking, Storage, Performance
 
 Description: Learn how to use bonnie++ on RHEL to benchmark filesystem performance including sequential I/O, random seeks, and metadata operations.
 

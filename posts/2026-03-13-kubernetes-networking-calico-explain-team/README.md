@@ -67,7 +67,7 @@ Show the host routing table on a node to make cross-node routing visible:
 ip route show | grep "via"
 ```
 
-Each entry is a route Felix programmed for pods on another node. This is the "every pod can reach every other pod" guarantee made concrete — there is literally a route for each remote pod subnet.
+Each entry is a route Felix programmed for pods on another node. This is the "every pod can reach every other pod" guarantee made concrete - there is literally a route for each remote pod subnet.
 
 ```mermaid
 graph LR
@@ -98,14 +98,14 @@ sudo iptables -L cali-pi-inbound-policy -n --line-numbers
 ## Common Questions and Answers
 
 **Q: Why does my pod have a /32 IP when the pool is a /16?**
-A: Calico allocates host routes per-pod — each pod gets a host route on the node, not a subnet broadcast domain. The /32 makes routing more specific and avoids broadcast traffic.
+A: Calico allocates host routes per-pod - each pod gets a host route on the node, not a subnet broadcast domain. The /32 makes routing more specific and avoids broadcast traffic.
 
 **Q: What happens if the IPPool runs out of IPs?**
 A: New pods will fail to schedule with IPAM exhaustion errors. Show with `calicoctl ipam show` and walk through how to expand the pool.
 
 ## Best Practices
 
-- Use live cluster demos rather than slides wherever possible — networking concepts land better when observable
+- Use live cluster demos rather than slides wherever possible - networking concepts land better when observable
 - Walk through the pod creation flow: kubelet → CNI → IPAM → veth → Felix → route table
 - Assign the team a troubleshooting exercise: disconnect a pod network policy and find the bug using kubectl and calicoctl
 

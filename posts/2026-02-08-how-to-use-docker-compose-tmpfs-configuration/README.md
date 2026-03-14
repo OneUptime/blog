@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, tmpfs, Performance, In-Memory Storage, Container Configuration, DevOps
+Tags: Docker, Docker Compose, Tmpfs, Performance, In-Memory Storage, Container Configuration, DevOps
 
 Description: Use Docker Compose tmpfs mounts to create fast, ephemeral in-memory filesystems for caches, temp files, and session data.
 

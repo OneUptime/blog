@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Timoni, cue, Modules, Custom
+Tags: Flux, Kubernetes, GitOps, Timoni, Cue, Modules, Custom
 
 Description: A step-by-step guide to creating custom Timoni modules that generate Flux resources for your organization's deployment patterns.
 

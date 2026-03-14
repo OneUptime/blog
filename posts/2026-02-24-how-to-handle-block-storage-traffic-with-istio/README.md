@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Block Storage, Kubernetes, iSCSI, Storage
+Tags: Istio, Block Storage, Kubernetes, ISCSI, Storage
 
 Description: Practical guide to managing block storage protocols like iSCSI and NVMe-oF through Istio service mesh without breaking storage connectivity.
 

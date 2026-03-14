@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, kube-vip, Virtual IP, HA, Kubernetes, Networking, GitOps, Bare Metal
+Tags: Kubernetes, Kube-vip, Flux-cd, GitOps, Virtual-ip, High-Availability
 
 Description: Learn how to deploy kube-vip for Kubernetes control plane high availability and LoadBalancer service virtual IP management using Flux CD.
 
@@ -22,8 +22,8 @@ kube-vip provides virtual IP addresses for both Kubernetes control plane high av
 ## Step 1: Understand kube-vip Components
 
 kube-vip has two components:
-1. **kube-vip DaemonSet** (control plane VIP): Usually deployed as a static pod during cluster initialization—NOT managed by Flux.
-2. **kube-vip Cloud Provider**: Manages LoadBalancer Service VIPs—CAN be managed by Flux.
+1. **kube-vip DaemonSet** (control plane VIP): Usually deployed as a static pod during cluster initialization-NOT managed by Flux.
+2. **kube-vip Cloud Provider**: Manages LoadBalancer Service VIPs-CAN be managed by Flux.
 
 This guide focuses on the cloud provider component for LoadBalancer services.
 

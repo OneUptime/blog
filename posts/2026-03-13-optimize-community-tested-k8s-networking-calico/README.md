@@ -1,4 +1,4 @@
-# How to Optimize Community-Tested Kubernetes Networking with Calico for Production
+# How to Optimize Kubernetes Networking with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

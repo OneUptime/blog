@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, SQL, Time Series, generate_series, Date Ranges, Reporting
+Tags: PostgreSQL, SQL, Time Series, Generate_series, Date Ranges, Reporting
 
 Description: Learn how to generate continuous time series data in PostgreSQL using generate_series. This guide covers date ranges, filling gaps in data, and building time-based reports.
 

@@ -1,4 +1,4 @@
-# Cilium CNI Migration Pre-Requisites: Configure, Troubleshoot, Validate, and Monitor
+# Cilium CNI Migration Prerequisites
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

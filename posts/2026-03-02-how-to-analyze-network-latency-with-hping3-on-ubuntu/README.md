@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, hping3, Network Diagnostics, Performance
+Tags: Ubuntu, Networking, Hping3, Network Diagnostics, Performance
 
 Description: Learn how to install and use hping3 on Ubuntu to measure network latency, detect packet loss, and diagnose connectivity issues across TCP, UDP, and ICMP protocols.
 

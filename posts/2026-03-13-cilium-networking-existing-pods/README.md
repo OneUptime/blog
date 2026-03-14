@@ -1,8 +1,8 @@
-# Networking For Existing Pods with Cilium: Configure, Troubleshoot, Validate, and Monitor
+# Networking For Existing Pods with Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, eBPF, Pods
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
 Description: Learn how Cilium manages networking for existing pods after installation or upgrade, handling endpoint regeneration, policy application, and connectivity restoration for already-running workloads.
 
@@ -10,7 +10,7 @@ Description: Learn how Cilium manages networking for existing pods after install
 
 ## Introduction
 
-When Cilium is installed on a cluster that already has running pods, or when the Cilium agent is restarted, it must reconcile its state with the existing workloads. This process — endpoint restoration — involves re-establishing eBPF maps for each running pod without disrupting their network connectivity. Understanding how Cilium handles existing pods is critical when planning maintenance windows, agent upgrades, and troubleshooting post-installation issues.
+When Cilium is installed on a cluster that already has running pods, or when the Cilium agent is restarted, it must reconcile its state with the existing workloads. This process - endpoint restoration - involves re-establishing eBPF maps for each running pod without disrupting their network connectivity. Understanding how Cilium handles existing pods is critical when planning maintenance windows, agent upgrades, and troubleshooting post-installation issues.
 
 During endpoint restoration, the Cilium agent reads the existing pod network namespaces from the node, recreates Cilium Endpoint objects, re-applies network policies, and regenerates eBPF programs. This process is designed to be transparent to workloads, but it can take significant time on busy nodes with many pods. During restoration, traffic may temporarily use fallback paths or experience brief policy enforcement gaps.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, kubernetes, ipam, ip-reservation, networking
+Tags: Calico, Kubernetes, IPAM, Ip-reservation, Networking
 
 Description: Learn how to reserve specific IP addresses in Calico's IPAM to prevent them from being assigned to pods, ensuring certain IPs are kept available for specific use cases.
 
@@ -43,7 +43,7 @@ Create an IPReservation to prevent a specific IP from being assigned to pods.
 
 ```yaml
 # reserve-single-ip.yaml
-# Reserve 192.168.0.10 — this IP is used by a hardware appliance
+# Reserve 192.168.0.10 - this IP is used by a hardware appliance
 apiVersion: projectcalico.org/v3
 kind: IPReservation
 metadata:
@@ -139,7 +139,7 @@ calicoctl ipam show --show-blocks | grep -E "reserved|Reserved"
 
 ## Best Practices
 
-- Create IP reservations before the addresses are ever allocated — reserving already-assigned IPs does not reclaim them
+- Create IP reservations before the addresses are ever allocated - reserving already-assigned IPs does not reclaim them
 - Document IP reservations with descriptive names explaining why each IP is reserved
 - Combine IP reservations with static pod IP annotations for comprehensive IP management
 - Review and clean up stale IPReservations when the hardware or service they protected is decommissioned

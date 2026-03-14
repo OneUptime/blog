@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ibm-cloud, iks, kubernetes, networking, cni
+Tags: Calico, Kubernetes, Networking, CNI, Configuration, IBM Kubernetes Service
 
 Description: Learn how to configure Calico on a new IBM Kubernetes Service cluster, leveraging IKS's built-in Calico integration for advanced network policy enforcement.
 
@@ -10,7 +10,7 @@ Description: Learn how to configure Calico on a new IBM Kubernetes Service clust
 
 ## Introduction
 
-IBM Kubernetes Service (IKS) ships with Calico pre-installed as the default CNI and network policy provider. This makes IKS one of the most Calico-friendly managed Kubernetes services — you get Calico's full feature set including GlobalNetworkPolicy, host endpoint protection, and BGP capabilities right out of the box.
+IBM Kubernetes Service (IKS) ships with Calico pre-installed as the default CNI and network policy provider. This makes IKS one of the most Calico-friendly managed Kubernetes services - you get Calico's full feature set including GlobalNetworkPolicy, host endpoint protection, and BGP capabilities right out of the box.
 
 IKS uses Calico with the Kubernetes datastore, meaning all Calico resources are stored as Kubernetes CRDs. The IBM Cloud console provides visibility into network policies, and `calicoctl` works seamlessly against IKS clusters with minimal configuration.
 
@@ -25,7 +25,7 @@ This guide covers creating a new IKS cluster with Calico, configuring `calicoctl
 
 ## Step 1: Create an IKS Cluster
 
-Create a new IKS cluster — Calico is automatically included.
+Create a new IKS cluster - Calico is automatically included.
 
 ```bash
 # Log in to IBM Cloud
@@ -75,7 +75,7 @@ calicoctl get nodes --config=$CALICO_CONFIG_FILE
 
 ## Step 3: View Pre-Installed Calico Configuration
 
-IKS installs Calico with a default configuration — review it before making changes.
+IKS installs Calico with a default configuration - review it before making changes.
 
 ```bash
 # View the default IP pool
@@ -180,7 +180,7 @@ calicoctl get networkpolicies -n my-app --config=$CALICO_CONFIG_FILE
 
 ## Best Practices
 
-- Use the `--admin --network` flag when downloading IKS cluster config — it provides the calicoctl config file
+- Use the `--admin --network` flag when downloading IKS cluster config - it provides the calicoctl config file
 - Review IKS's pre-installed global network policies before adding your own to avoid conflicts
 - Use `order` values above 1000 for application policies to ensure IBM's system policies take precedence
 - Upgrade Calico only through IBM Cloud's managed update process on IKS
@@ -188,4 +188,4 @@ calicoctl get networkpolicies -n my-app --config=$CALICO_CONFIG_FILE
 
 ## Conclusion
 
-IBM Kubernetes Service's native Calico integration makes it one of the easiest managed Kubernetes platforms for Calico deployments. With Calico pre-installed and configured, you can focus immediately on writing network policies for your applications. The full Calico feature set — GlobalNetworkPolicy, host endpoint protection, and advanced IPAM — is available from day one on every IKS cluster.
+IBM Kubernetes Service's native Calico integration makes it one of the easiest managed Kubernetes platforms for Calico deployments. With Calico pre-installed and configured, you can focus immediately on writing network policies for your applications. The full Calico feature set - GlobalNetworkPolicy, host endpoint protection, and advanced IPAM - is available from day one on every IKS cluster.

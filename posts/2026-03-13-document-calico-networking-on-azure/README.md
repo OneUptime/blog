@@ -105,4 +105,4 @@ If not resolved in 30 minutes, escalate to Azure networking team and Calico plat
 
 ## Conclusion
 
-Azure Calico documentation must prominently feature Azure-specific configuration requirements that don't exist in other environments — IP Forwarding, NSG VXLAN rules, and route table management. A clear dependency map, provisioning checklist, and incident response runbook collectively reduce the mean time to resolution for Azure-specific Calico failures and ensure new team members can confidently provision and maintain cluster nodes.
+Azure Calico documentation must prominently feature Azure-specific configuration requirements that don't exist in other environments - IP Forwarding, NSG VXLAN rules, and route table management. A clear dependency map, provisioning checklist, and incident response runbook collectively reduce the mean time to resolution for Azure-specific Calico failures and ensure new team members can confidently provision and maintain cluster nodes.

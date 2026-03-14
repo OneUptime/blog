@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, gRPC, HTTP, Telemetry Export, Protocol
+Tags: OpenTelemetry, OTLP, GRPC, HTTP, Telemetry Export, Protocol
 
 Description: A practical comparison of OTLP/gRPC and OTLP/HTTP transport protocols for telemetry export, covering performance, compatibility, and deployment scenarios.
 

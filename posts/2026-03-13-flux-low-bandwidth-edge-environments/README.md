@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Bandwidth Optimization, OCI Artifacts, Compression
+Tags: Flux CD, Kubernetes, Edge Computing, GitOps, Bandwidth Optimization, Oci artifacts
 
 Description: Optimize Flux CD for low-bandwidth network environments using OCI artifacts, shallow clones, and manifest compression to minimize data transfer.
 
@@ -10,7 +10,7 @@ Description: Optimize Flux CD for low-bandwidth network environments using OCI a
 
 ## Introduction
 
-Edge sites often operate on constrained network links — 4G cellular with data caps, satellite connections with limited throughput, or private MPLS links shared with operational technology. Every megabyte transferred costs money or time, and Flux CD's default behavior of cloning a full Git repository on every reconciliation cycle can be surprisingly bandwidth-intensive at scale.
+Edge sites often operate on constrained network links - 4G cellular with data caps, satellite connections with limited throughput, or private MPLS links shared with operational technology. Every megabyte transferred costs money or time, and Flux CD's default behavior of cloning a full Git repository on every reconciliation cycle can be surprisingly bandwidth-intensive at scale.
 
 Optimizing Flux for low-bandwidth environments involves replacing Git operations with more efficient OCI artifact pulls, configuring shallow clones, increasing reconciliation intervals, and compressing transferred data. With the right configuration, Flux's bandwidth consumption can be reduced by 70-90% compared to defaults.
 
@@ -222,7 +222,7 @@ ctr images ls | grep fleet/edge-apps
 - Use image digest pinning in OCI artifact tags so Flux only downloads when there is an actual change.
 - Monitor bandwidth per-site to identify outliers that may need additional optimization.
 - Consider local OCI registry caching for sites with extremely limited bandwidth.
-- Set `interval` based on your change frequency — if apps change once a day, a 4-hour interval is reasonable.
+- Set `interval` based on your change frequency - if apps change once a day, a 4-hour interval is reasonable.
 
 ## Conclusion
 

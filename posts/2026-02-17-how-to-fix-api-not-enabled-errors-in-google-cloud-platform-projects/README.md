@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud APIs, Troubleshooting, Cloud Console, gcloud
+Tags: GCP, Google Cloud APIs, Troubleshooting, Cloud Console, Gcloud
 
 Description: A complete guide to fixing API not enabled errors in Google Cloud Platform, including how to enable APIs, troubleshoot common issues, and manage API access across projects.
 

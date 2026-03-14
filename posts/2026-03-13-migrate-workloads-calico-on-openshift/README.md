@@ -12,7 +12,7 @@ Description: A guide to migrating OpenShift workloads from OVN-Kubernetes to Cal
 
 Migrating an OpenShift cluster from OVN-Kubernetes to Calico is a significant change that affects all running workloads. OpenShift's default CNI provides tight integration with the cluster network operator, and replacing it requires explicitly disabling that operator and managing the CNI lifecycle manually. All pod IPs will change during the migration, so any service dependencies on specific pod IPs must be updated to use Services or DNS names instead.
 
-The migration is best done during a scheduled maintenance window, as all pods will be restarted. Planning the migration to minimize downtime for critical workloads — such as OpenShift's own router and registry — is essential.
+The migration is best done during a scheduled maintenance window, as all pods will be restarted. Planning the migration to minimize downtime for critical workloads - such as OpenShift's own router and registry - is essential.
 
 This guide covers the full workload migration from OVN-Kubernetes to Calico on OpenShift.
 

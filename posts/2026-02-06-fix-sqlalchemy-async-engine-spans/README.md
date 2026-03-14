@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SQLAlchemy, Python, asyncio
+Tags: OpenTelemetry, SQLAlchemy, Python, Asyncio
 
 Description: Resolve the issue where OpenTelemetry SQLAlchemy instrumentation does not capture spans from async engine queries in Python apps.
 

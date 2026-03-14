@@ -12,7 +12,7 @@ Description: A guide to testing Calico network policies on OpenShift, including 
 
 OpenShift has built-in NetworkPolicy support, and Calico extends this with its own GlobalNetworkPolicy and NetworkPolicy CRDs. Testing policies on OpenShift requires understanding which resources are evaluated and in which order. Calico policies with lower `order` values take precedence over higher-order policies and over Kubernetes NetworkPolicy resources.
 
-OpenShift also adds its own default network policies in each new project namespace — these allow intra-namespace traffic and router access. Testing Calico policies must account for these pre-existing policies to correctly interpret test results.
+OpenShift also adds its own default network policies in each new project namespace - these allow intra-namespace traffic and router access. Testing Calico policies must account for these pre-existing policies to correctly interpret test results.
 
 This guide covers network policy testing on OpenShift with Calico.
 

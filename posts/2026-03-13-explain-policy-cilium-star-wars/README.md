@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, CiliumNetworkPolicy, Network Policy, L7
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: An in-depth technical explanation of how CiliumNetworkPolicy works under the hood in the Star Wars demo, covering identity compilation, eBPF enforcement, and L7 proxy redirection.
 
@@ -10,7 +10,7 @@ Description: An in-depth technical explanation of how CiliumNetworkPolicy works 
 
 ## Introduction
 
-The `CiliumNetworkPolicy` resource looks deceptively simple. A few YAML fields with label selectors and port numbers. But the compilation of that YAML into kernel-enforced policy is a sophisticated multi-step process involving identity assignment, eBPF map population, and — for L7 rules — traffic redirection to a userspace proxy. Explaining this process demystifies what Cilium is doing and why it is both correct and performant.
+The `CiliumNetworkPolicy` resource looks deceptively simple. A few YAML fields with label selectors and port numbers. But the compilation of that YAML into kernel-enforced policy is a sophisticated multi-step process involving identity assignment, eBPF map population, and - for L7 rules - traffic redirection to a userspace proxy. Explaining this process demystifies what Cilium is doing and why it is both correct and performant.
 
 When a `CiliumNetworkPolicy` is applied, the Cilium agent on each node recompiles the affected endpoints' policy maps. For each endpoint that matches the `endpointSelector`, Cilium calculates the allowed `(source_identity, destination_port)` pairs and writes them into the eBPF policy map. For L7 rules, it additionally creates redirect rules that route matching traffic through Cilium's Envoy-based L7 proxy before the traffic reaches the destination pod.
 

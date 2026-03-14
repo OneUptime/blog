@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, String, str, Ownership, Memory
+Tags: Rust, String, Str, Ownership, Memory
 
 Description: Learn when to use String versus &str in Rust. Understand ownership semantics, performance implications, and best practices for function parameters and return types.
 

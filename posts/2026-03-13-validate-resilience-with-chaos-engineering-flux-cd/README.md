@@ -12,9 +12,9 @@ Description: Use chaos engineering to validate the resilience of Flux CD managed
 
 Resilience validation is the process of proving, with data, that your system meets its reliability goals under adverse conditions. Chaos engineering without a defined steady-state hypothesis and measurement methodology is just random destruction. True resilience validation requires defining what "working correctly" looks like, injecting faults, and measuring whether those conditions still hold.
 
-Flux CD provides the ideal foundation for resilience validation because every workload definition — including chaos experiments, SLO monitors, and alerting rules — lives in Git. This means your resilience tests are as auditable and reproducible as your application deployments. When a chaos experiment fails a SLO threshold, the failure is recorded in your Git history and can be traced back to the specific change that caused the regression.
+Flux CD provides the ideal foundation for resilience validation because every workload definition - including chaos experiments, SLO monitors, and alerting rules - lives in Git. This means your resilience tests are as auditable and reproducible as your application deployments. When a chaos experiment fails a SLO threshold, the failure is recorded in your Git history and can be traced back to the specific change that caused the regression.
 
-This guide walks through the complete resilience validation workflow: defining steady-state hypotheses, running chaos experiments, measuring SLO impact, and recording results — all managed by Flux CD.
+This guide walks through the complete resilience validation workflow: defining steady-state hypotheses, running chaos experiments, measuring SLO impact, and recording results - all managed by Flux CD.
 
 ## Prerequisites
 
@@ -207,9 +207,9 @@ flowchart TD
 - Always define a steady-state hypothesis before running chaos; experiments without a success criterion are not validation.
 - Store experiment results as annotations or labels on the chaos resources in Git for historical tracking.
 - Run the same experiment suite against every new environment (staging, pre-prod) before promoting to production.
-- Treat a resilience validation failure as a bug — open an issue, fix the root cause, and re-run the experiment.
+- Treat a resilience validation failure as a bug - open an issue, fix the root cause, and re-run the experiment.
 - Use Grafana dashboards pinned to chaos experiment time windows to visually confirm SLO preservation.
 
 ## Conclusion
 
-Resilience validation with chaos engineering and Flux CD creates a closed-loop system where reliability goals are defined in code, tested automatically, and measured against real metrics. By managing hypotheses, experiments, and validation logic in Git, your team builds institutional knowledge about system behavior under fault conditions — transforming chaos from a source of fear into a source of confidence.
+Resilience validation with chaos engineering and Flux CD creates a closed-loop system where reliability goals are defined in code, tested automatically, and measured against real metrics. By managing hypotheses, experiments, and validation logic in Git, your team builds institutional knowledge about system behavior under fault conditions - transforming chaos from a source of fear into a source of confidence.

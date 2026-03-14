@@ -12,7 +12,7 @@ Description: Step-by-step validation tests for Calico's L3 BGP routing fabric in
 
 Validating L3 BGP routing in Calico requires confirming that BGP sessions are established, routes are correctly advertised and learned, Felix has programmed the learned routes into the Linux routing table, and cross-node traffic flows without encapsulation. Each of these is independently testable with standard tools.
 
-This guide provides a complete BGP validation suite organized by layer — from BGP session state to packet-level routing verification.
+This guide provides a complete BGP validation suite organized by layer - from BGP session state to packet-level routing verification.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 ```
 
 Expected output for a two-node cluster:
-```
+```plaintext
 Name       Proto      Table      State  Since         Info
 Node_172_16_1_2  BGP        ---        up     12:34:56      Established
 ```
@@ -165,7 +165,7 @@ kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node \
 ## Best Practices
 
 - Run validation 2 (BGP session state) as part of your daily operational checks
-- Alert when any BGP session drops below `Established` — this indicates routing will fail
+- Alert when any BGP session drops below `Established` - this indicates routing will fail
 - Test BGP session recovery in the lab before production to understand your recovery time
 
 ## Conclusion

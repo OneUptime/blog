@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tail-Based Sampling, telemetrygen, OpenTelemetry Collector, Testing
+Tags: OpenTelemetry, Tail-Based Sampling, Telemetrygen, OpenTelemetry Collector, Testing
 
 Description: Use telemetrygen to generate synthetic traces and validate that your tail-based sampling rules work correctly before deploying them.
 

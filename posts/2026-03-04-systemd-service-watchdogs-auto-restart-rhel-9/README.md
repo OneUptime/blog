@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Watchdog, Auto-Restart, Service Management, Linux
+Tags: RHEL, Systemd, Watchdog, Auto-Restart, Service Management, Linux
 
 Description: Learn how to configure systemd service watchdogs and auto-restart policies on RHEL to keep critical services running reliably.
 

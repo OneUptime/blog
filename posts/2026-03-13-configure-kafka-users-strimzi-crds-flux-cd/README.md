@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Kafka, Strimzi, KafkaUser, Authentication, ACLs
+Tags: Flux CD, Kubernetes, GitOps, Kafka, Strimzi, KafkaUser, Authentication, ACL
 
 Description: Manage KafkaUser resources with authentication and ACLs using Strimzi and Flux CD for GitOps-managed Kafka security.
 
@@ -10,9 +10,9 @@ Description: Manage KafkaUser resources with authentication and ACLs using Strim
 
 ## Introduction
 
-Strimzi's User Operator manages `KafkaUser` Kubernetes resources, automatically creating Kafka users with TLS certificates or SCRAM-SHA-512 credentials and configuring Access Control Lists (ACLs). This means your entire Kafka security model — who can produce to which topics, who can consume from which consumer groups — lives in Git as YAML files.
+Strimzi's User Operator manages `KafkaUser` Kubernetes resources, automatically creating Kafka users with TLS certificates or SCRAM-SHA-512 credentials and configuring Access Control Lists (ACLs). This means your entire Kafka security model - who can produce to which topics, who can consume from which consumer groups - lives in Git as YAML files.
 
-Managing Kafka users through Flux CD ensures that credential rotation, new service onboarding, and ACL changes go through code review. When a new microservice needs to produce to a topic, the team opens a PR adding a `KafkaUser` resource — no manual Kafka shell commands, no undocumented permissions.
+Managing Kafka users through Flux CD ensures that credential rotation, new service onboarding, and ACL changes go through code review. When a new microservice needs to produce to a topic, the team opens a PR adding a `KafkaUser` resource - no manual Kafka shell commands, no undocumented permissions.
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ Managing Kafka users through Flux CD ensures that credential rotation, new servi
 
 Strimzi supports two authentication types for KafkaUsers:
 
-1. **TLS** — The User Operator generates a TLS client certificate and stores it in a Kubernetes Secret. Applications use this certificate to authenticate.
-2. **SCRAM-SHA-512** — The User Operator generates a password and stores it in a Kubernetes Secret. Applications use username/password authentication.
+1. **TLS** - The User Operator generates a TLS client certificate and stores it in a Kubernetes Secret. Applications use this certificate to authenticate.
+2. **SCRAM-SHA-512** - The User Operator generates a password and stores it in a Kubernetes Secret. Applications use username/password authentication.
 
 ## Step 2: Create a TLS-Authenticated Producer User
 
@@ -163,15 +163,15 @@ spec:
 When the User Operator creates a `KafkaUser`, it generates a Kubernetes Secret containing the credentials:
 
 For TLS users, the Secret contains:
-- `user.crt` — client certificate
-- `user.key` — private key
-- `user.p12` — PKCS12 keystore
-- `user.password` — PKCS12 keystore password
-- `ca.crt` — CA certificate for verifying the broker
+- `user.crt` - client certificate
+- `user.key` - private key
+- `user.p12` - PKCS12 keystore
+- `user.password` - PKCS12 keystore password
+- `ca.crt` - CA certificate for verifying the broker
 
 For SCRAM-SHA-512 users, the Secret contains:
-- `password` — the SCRAM password
-- `saslJaasConfig` — ready-to-use JAAS config string
+- `password` - the SCRAM password
+- `saslJaasConfig` - ready-to-use JAAS config string
 
 Mount the Secret in your application:
 
@@ -252,9 +252,9 @@ kubectl exec -n kafka production-kafka-0 -- \
 ## Best Practices
 
 - Use TLS authentication for production services (stronger than SCRAM) and SCRAM only for services that cannot handle TLS client certificates.
-- Assign ACLs with minimum necessary permissions — producers should only `Write` to their specific topics, never `All`.
+- Assign ACLs with minimum necessary permissions - producers should only `Write` to their specific topics, never `All`.
 - Use `patternType: prefix` for ACLs that cover multiple topics (e.g., `orders-` prefix) to avoid duplicating rules.
-- Never share `KafkaUser` credentials between services — each service gets its own user so compromised credentials can be revoked individually.
+- Never share `KafkaUser` credentials between services - each service gets its own user so compromised credentials can be revoked individually.
 - Rotate TLS certificates by deleting and recreating the `KafkaUser` (the operator generates new certificates automatically).
 
 ## Conclusion

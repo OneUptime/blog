@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Containers, macOS, Windows, Virtual Machines, DevOps, Docker Alternative
+Tags: Podman, Containers, MacOS, Windows, Virtual Machines, DevOps, Docker Alternative
 
 Description: Learn how to set up and use Podman Machine on macOS and Windows, covering installation, configuration, resource management, and advanced features for running Linux containers on non-Linux systems.
 

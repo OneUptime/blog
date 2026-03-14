@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, EDS, Multi-Cluster, Service Discovery, xDS
+Tags: Istio, EDS, Multi-Cluster, Service Discovery, XDS
 
 Description: How Istio's Endpoint Discovery Service works across clusters and how to configure it for reliable cross-cluster endpoint resolution.
 

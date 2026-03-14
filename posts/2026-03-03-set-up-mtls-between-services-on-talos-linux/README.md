@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, mTLS, Security, Kubernetes, Service Mesh, Zero Trust
+Tags: Talos Linux, MTLS, Security, Kubernetes, Service Mesh, Zero Trust
 
 Description: Learn how to implement mutual TLS authentication between Kubernetes services on Talos Linux for zero-trust service-to-service communication.
 

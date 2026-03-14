@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, TypeScript, ts-node, ESM
+Tags: OpenTelemetry, TypeScript, Ts-node, ESM
 
 Description: Fix the tracing gap in TypeScript projects where ts-node's ESM mode prevents OpenTelemetry from patching imported modules.
 

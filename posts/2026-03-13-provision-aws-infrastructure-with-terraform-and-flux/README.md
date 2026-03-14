@@ -23,7 +23,7 @@ This guide provisions a complete AWS environment: a VPC with public and private 
 
 ## Step 1: Structure the Terraform Modules Repository
 
-```
+```plaintext
 terraform-modules/
 ├── modules/
 │   ├── vpc/

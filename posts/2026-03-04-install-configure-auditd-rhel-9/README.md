@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, Auditing, Security, Compliance, Linux
+Tags: RHEL, Auditd, Auditing, Security, Compliance, Linux
 
 Description: Set up the Linux Audit daemon (auditd) on RHEL to monitor system activity, track security events, and meet compliance requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Automation
+Tags: Kubernetes, Kubectl, Automation
 
 Description: Master kubectl wait to pause scripts and CI/CD pipelines until Kubernetes resources reach specific conditions, eliminating unreliable sleep commands and polling loops.
 

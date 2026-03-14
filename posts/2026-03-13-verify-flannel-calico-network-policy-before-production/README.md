@@ -110,4 +110,4 @@ DNS confirms kube-dns is reachable over the Flannel network.
 
 ## Conclusion
 
-Pre-production verification of a Canal cluster covers cross-node VXLAN connectivity (Flannel layer), NetworkPolicy enforcement (Calico Felix layer), iptables rule programming, workload endpoint registration, and DNS functionality. Separating the verification steps by layer makes it easier to isolate whether a failure belongs to Flannel routing or Calico policy enforcement — two distinct components that Canal combines into a single DaemonSet.
+Pre-production verification of a Canal cluster covers cross-node VXLAN connectivity (Flannel layer), NetworkPolicy enforcement (Calico Felix layer), iptables rule programming, workload endpoint registration, and DNS functionality. Separating the verification steps by layer makes it easier to isolate whether a failure belongs to Flannel routing or Calico policy enforcement - two distinct components that Canal combines into a single DaemonSet.

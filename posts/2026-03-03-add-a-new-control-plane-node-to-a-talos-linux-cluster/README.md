@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Control Plane, etcd, Kubernetes, High Availability
+Tags: Talos Linux, Control Plane, Etcd, Kubernetes, High Availability
 
 Description: Detailed guide to adding a new control plane node to a Talos Linux cluster for improved high availability, including etcd membership and load balancer configuration.
 

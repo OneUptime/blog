@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kong, gRPC
+Tags: Kubernetes, Kong, GRPC
 
 Description: Learn how to configure Kong Ingress Controller for gRPC and WebSocket protocols including protocol detection, load balancing, health checks, and authentication for modern real-time applications.
 

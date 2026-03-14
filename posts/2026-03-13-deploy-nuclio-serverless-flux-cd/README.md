@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Nuclio, Serverless, High Performance, FaaS, Real-time
+Tags: Flux CD, Kubernetes, GitOps, Nuclio, Serverless, High Performance, FaaS, Real-Time
 
 Description: Deploy Nuclio high-performance serverless platform using Flux CD to run real-time event-driven functions with nanosecond latency on Kubernetes.
 
@@ -241,10 +241,10 @@ curl -X POST http://localhost:8080 \
 
 - Use the `NuclioFunction` CRD to declare all functions in Git rather than using the Nuclio dashboard, which is imperative and not GitOps-compatible.
 - For GPU workloads, add `spec.resources.limits["nvidia.com/gpu"]` to functions running on GPU nodes.
-- Configure Kafka triggers directly in the function spec for high-throughput event processing — Nuclio handles consumer group management automatically.
+- Configure Kafka triggers directly in the function spec for high-throughput event processing - Nuclio handles consumer group management automatically.
 - Enable the Nuclio autoscaler for scale-to-zero on cost-sensitive functions that have bursty, intermittent traffic.
 - Use Nuclio's `preemptionEnabled` feature for batch functions to yield GPU resources to higher-priority inference functions during peak demand.
 
 ## Conclusion
 
-Nuclio deployed and managed by Flux CD provides a high-performance serverless platform for real-time event processing with full GitOps lifecycle management. Function definitions, triggers, and scaling policies are version-controlled, and Nuclio's advanced features — GPU support, native messaging triggers, and nanosecond-latency runtimes — make it an excellent choice for data-intensive serverless workloads.
+Nuclio deployed and managed by Flux CD provides a high-performance serverless platform for real-time event processing with full GitOps lifecycle management. Function definitions, triggers, and scaling policies are version-controlled, and Nuclio's advanced features - GPU support, native messaging triggers, and nanosecond-latency runtimes - make it an excellent choice for data-intensive serverless workloads.

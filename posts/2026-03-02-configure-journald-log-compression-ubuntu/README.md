@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, journald, System Administration
+Tags: Ubuntu, Logging, Journald, System Administration
 
 Description: Configure journald log compression on Ubuntu to reduce disk usage while retaining full log history for auditing and troubleshooting purposes.
 

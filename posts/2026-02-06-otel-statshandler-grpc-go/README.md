@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, StatsHandler, Go Instrumentation
+Tags: OpenTelemetry, GRPC, StatsHandler, Go Instrumentation
 
 Description: Migrate from deprecated gRPC interceptors to the StatsHandler-based OpenTelemetry instrumentation in Go for better telemetry data.
 

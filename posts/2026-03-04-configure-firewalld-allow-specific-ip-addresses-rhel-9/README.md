@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, IP Whitelist, Security, Linux
+Tags: RHEL, Firewalld, IP Whitelist, Security, Linux
 
 Description: How to configure firewalld on RHEL to restrict service access to specific IP addresses and subnets using rich rules and source-based zone assignments.
 

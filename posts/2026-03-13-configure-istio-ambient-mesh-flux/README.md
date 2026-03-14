@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Ambient Mesh, Service Mesh, ztunnel, Waypoint
+Tags: Flux CD, Kubernetes, GitOps, Istio, Ambient Mesh, Service Mesh, Ztunnel, Waypoint
 
 Description: Deploy and configure Istio Ambient Mesh mode using Flux CD to get service mesh features without sidecar injection overhead.
 
@@ -12,7 +12,7 @@ Description: Deploy and configure Istio Ambient Mesh mode using Flux CD to get s
 
 Istio Ambient Mesh is a sidecar-less service mesh architecture that moves the data plane out of application pods into shared per-node `ztunnel` proxies and optional per-namespace `waypoint` proxies. This eliminates the resource overhead of injecting Envoy sidecars into every pod while still providing mTLS, observability, and traffic management.
 
-Managing Istio Ambient Mesh through Flux CD gives you all the GitOps benefits — version-controlled mesh configuration, automatic reconciliation, and pull-request-based changes — with the operational simplicity of not managing sidecar injection.
+Managing Istio Ambient Mesh through Flux CD gives you all the GitOps benefits - version-controlled mesh configuration, automatic reconciliation, and pull-request-based changes - with the operational simplicity of not managing sidecar injection.
 
 This guide covers deploying Istio in Ambient mode and configuring namespaces and waypoint proxies using Flux CD.
 
@@ -93,7 +93,7 @@ spec:
     meshConfig:
       accessLogFile: /dev/stdout
       defaultConfig:
-        # Ambient mode — no sidecars
+        # Ambient mode - no sidecars
         proxyMetadata:
           ISTIO_META_AMBIENT_COMPATIBLE: "true"
 ```
@@ -240,9 +240,9 @@ kubectl logs -n istio-system daemonset/ztunnel --tail=20
 ## Best Practices
 
 - Start with the `istio.io/dataplane-mode: ambient` namespace label on non-production namespaces to validate the Ambient mode behavior before enabling it in production.
-- Deploy a Waypoint proxy only for namespaces that need L7 features (traffic routing, JWT auth, retries) — for pure mTLS, ztunnel alone is sufficient and lighter.
+- Deploy a Waypoint proxy only for namespaces that need L7 features (traffic routing, JWT auth, retries) - for pure mTLS, ztunnel alone is sufficient and lighter.
 - Monitor ztunnel resource usage per node; on busy nodes it handles all pod-to-pod traffic, so right-size its CPU and memory limits accordingly.
-- Ambient mode is compatible with Gateway API resources but not all legacy Istio Virtual Service features — review your routing rules before migration.
+- Ambient mode is compatible with Gateway API resources but not all legacy Istio Virtual Service features - review your routing rules before migration.
 - Use `prune: false` on the Flux Kustomization so that removing a manifest from Git does not accidentally uninstall mesh components.
 
 ## Conclusion

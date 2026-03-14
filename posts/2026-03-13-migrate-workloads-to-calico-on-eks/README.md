@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, EKS, AWS, Kubernetes, Networking, Migration, Network Policy
+Tags: Calico, Kubernetes, Networking, Migration, EKS, AWS
 
 Description: A comprehensive guide to installing Calico network policy on Amazon EKS, replacing the default AWS CNI network policy with Calico's advanced policy engine for richer traffic control.
 
@@ -12,7 +12,7 @@ Description: A comprehensive guide to installing Calico network policy on Amazon
 
 Amazon EKS uses the AWS VPC CNI plugin for pod networking, which provides native VPC IP addresses for pods. However, EKS's built-in network policy support is limited compared to what Calico offers. By adding Calico as a network policy engine on top of the AWS VPC CNI, you get the best of both worlds: native VPC networking with Calico's powerful GlobalNetworkPolicy, namespace isolation, and egress controls.
 
-This approach — running Calico for policy while keeping the AWS VPC CNI for IPAM and routing — is the recommended pattern for EKS. Calico operates as a pure policy engine in this mode, using iptables or eBPF to enforce rules without replacing the existing data plane.
+This approach - running Calico for policy while keeping the AWS VPC CNI for IPAM and routing - is the recommended pattern for EKS. Calico operates as a pure policy engine in this mode, using iptables or eBPF to enforce rules without replacing the existing data plane.
 
 This guide walks through installing Calico on an existing EKS cluster, migrating your network policies, and validating that all workloads maintain connectivity under the new policy model.
 

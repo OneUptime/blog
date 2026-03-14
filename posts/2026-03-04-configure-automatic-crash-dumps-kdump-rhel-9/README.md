@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kdump, Crash Dumps, Debugging, Linux, System Administration
+Tags: RHEL, Kdump, Crash Dumps, Debugging, Linux, System Administration
 
 Description: Set up kdump on RHEL to automatically capture crash dumps when your system panics. This guide covers installation, configuration, testing, and analyzing vmcore files.
 

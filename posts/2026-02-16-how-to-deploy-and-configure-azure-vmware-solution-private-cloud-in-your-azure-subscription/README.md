@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VMware, Private Cloud, vSphere, Migration, Hybrid Cloud, Infrastructure
+Tags: Azure, VMware, Private Cloud, VSphere, Migration, Hybrid Cloud, Infrastructure
 
 Description: A comprehensive guide to deploying and configuring an Azure VMware Solution private cloud in your Azure subscription for running VMware workloads natively.
 

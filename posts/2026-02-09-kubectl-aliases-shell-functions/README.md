@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Productivity
+Tags: Kubernetes, Kubectl, Productivity
 
 Description: Boost your kubectl productivity by creating powerful aliases and shell functions that reduce repetitive typing and streamline common cluster management tasks.
 

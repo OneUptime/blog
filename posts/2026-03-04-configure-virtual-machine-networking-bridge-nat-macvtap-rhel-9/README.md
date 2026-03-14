@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Networking, Bridge, NAT, macvtap, Virtualization, Linux
+Tags: RHEL, KVM, Networking, Bridge, NAT, Macvtap, Virtualization, Linux
 
 Description: Learn how to configure bridge, NAT, and macvtap networking modes for KVM virtual machines on RHEL 9 with detailed setup instructions.
 

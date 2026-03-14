@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, argparse, CLI, Command Line, Tools
+Tags: Python, Argparse, CLI, Command Line, Tools
 
 Description: Learn how to build robust command-line applications in Python using argparse. This guide covers arguments, options, subcommands, and creating user-friendly CLIs.
 

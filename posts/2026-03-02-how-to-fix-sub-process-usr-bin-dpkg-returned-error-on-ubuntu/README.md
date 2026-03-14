@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dpkg, APT, Troubleshooting, Package Management
+Tags: Ubuntu, Dpkg, APT, Troubleshooting, Package Management
 
 Description: Diagnose and resolve the 'sub-process /usr/bin/dpkg returned an error code' issue on Ubuntu, covering failed scripts, broken packages, and database repair techniques.
 

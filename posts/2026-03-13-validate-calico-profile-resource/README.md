@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Profile, Validation
+Tags: Calico, Kubernetes, Networking, Profiles, Validation
 
-Description: How to validate Calico Profile resources to confirm label inheritance is working correctly, profile rules are being applied to the intended endpoints, and the policy evaluation order behaves as expected.
+Description: How to validate Calico Profile resources to confirm label inheritance is working correctly, profile rules are being applied to the intended endpoints, and the policy evaluation order behaves as...
 
 ---
 
@@ -106,4 +106,4 @@ diff expected-profile.yaml current-profile.yaml
 
 ## Conclusion
 
-Profile validation in Kubernetes clusters focuses on verifying that namespace profiles are synchronized correctly and that auto-generated profiles match the expected namespace label set. The most critical validation is confirming label inheritance — if `labelsToApply` is incorrect, policy selectors that depend on namespace labels will fail silently, allowing or blocking traffic in unexpected ways. Always test both allowed and denied traffic paths after any profile change.
+Profile validation in Kubernetes clusters focuses on verifying that namespace profiles are synchronized correctly and that auto-generated profiles match the expected namespace label set. The most critical validation is confirming label inheritance - if `labelsToApply` is incorrect, policy selectors that depend on namespace labels will fail silently, allowing or blocking traffic in unexpected ways. Always test both allowed and denied traffic paths after any profile change.

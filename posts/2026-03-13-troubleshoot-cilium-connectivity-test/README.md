@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Connectivity Test, Troubleshooting, eBPF, Networking
+Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
 
 Description: A comprehensive guide to diagnosing and fixing failures in the Cilium connectivity test, covering common failure modes and their root causes.
 

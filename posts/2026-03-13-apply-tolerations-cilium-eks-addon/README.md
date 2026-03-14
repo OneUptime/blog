@@ -10,7 +10,7 @@ Description: Configure custom tolerations for the Cilium EKS add-on to allow Cil
 
 ## Introduction
 
-The Cilium EKS add-on deploys Cilium as a managed DaemonSet on your EKS cluster. When you add specialized node groups with taints—such as GPU nodes, spot instance groups, Windows nodes, or dedicated infrastructure nodes—the Cilium DaemonSet needs matching tolerations to schedule on those nodes.
+The Cilium EKS add-on deploys Cilium as a managed DaemonSet on your EKS cluster. When you add specialized node groups with taints-such as GPU nodes, spot instance groups, Windows nodes, or dedicated infrastructure nodes-the Cilium DaemonSet needs matching tolerations to schedule on those nodes.
 
 Without proper tolerations, Cilium agents won't run on tainted nodes, leaving those nodes without network policy enforcement and potentially causing CNI failures when pods try to schedule there.
 
@@ -103,4 +103,4 @@ kubectl get ds -n kube-system cilium \
 
 ## Conclusion
 
-Applying tolerations to the Cilium EKS add-on ensures that all node types—GPU, spot, Windows, and custom tainted nodes—have the Cilium agent running. Missing Cilium agents on nodes causes CNI failures for pods scheduled there and leaves those nodes without network policy enforcement.
+Applying tolerations to the Cilium EKS add-on ensures that all node types-GPU, spot, Windows, and custom tainted nodes-have the Cilium agent running. Missing Cilium agents on nodes causes CNI failures for pods scheduled there and leaves those nodes without network policy enforcement.

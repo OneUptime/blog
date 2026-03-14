@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Concurrent Mode, useTransition, useDeferredValue, Suspense, Performance, TypeScript
+Tags: React, Concurrent Mode, UseTransition, UseDeferredValue, Suspense, Performance, TypeScript
 
 Description: Learn how to leverage React concurrent features like useTransition and useDeferredValue to build responsive applications that stay interactive during heavy updates.
 

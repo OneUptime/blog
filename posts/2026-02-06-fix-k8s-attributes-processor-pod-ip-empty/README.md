@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, k8sattributes, Processor
+Tags: OpenTelemetry, Kubernetes, K8sattributes, Processor
 
 Description: Fix the k8sattributes processor failing to enrich spans when pod IP lookups return empty due to misconfiguration.
 

@@ -299,11 +299,11 @@ spec:
 ## Best Practices
 
 - Use a dedicated migration tool (Flyway or Liquibase) rather than raw SQL scripts so migrations are checksummed and idempotent.
-- Never use `prune: true` on Kustomizations that contain migration Jobs — Flux will delete completed Jobs which makes the schema history untrackable.
+- Never use `prune: true` on Kustomizations that contain migration Jobs - Flux will delete completed Jobs which makes the schema history untrackable.
 - Version migration Job names (e.g., `flyway-migrate-v3`) so each new migration creates a new Job rather than re-running an old one.
 - Always write backward-compatible migrations: add columns as nullable, don't drop columns until the old app version is fully retired.
 - Set `backoffLimit: 3` on migration Jobs to retry on transient failures, and monitor Job status in your alerting system.
 
 ## Conclusion
 
-Handling database schema migrations in a Flux CD GitOps workflow requires explicit ordering using Kustomization `dependsOn` and Job `healthChecks`. By running migrations as Kubernetes Jobs with Flyway or Liquibase, you get idempotent, checksummed migration tracking with automatic retry. The application only starts after migrations succeed, ensuring your database schema is always compatible with the running application version — a critical property for zero-downtime deployments.
+Handling database schema migrations in a Flux CD GitOps workflow requires explicit ordering using Kustomization `dependsOn` and Job `healthChecks`. By running migrations as Kubernetes Jobs with Flyway or Liquibase, you get idempotent, checksummed migration tracking with automatic retry. The application only starts after migrations succeed, ensuring your database schema is always compatible with the running application version - a critical property for zero-downtime deployments.

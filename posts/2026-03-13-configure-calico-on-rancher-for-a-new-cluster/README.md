@@ -10,7 +10,7 @@ Description: Learn how to configure Calico networking options when provisioning 
 
 ## Introduction
 
-Rancher exposes Calico configuration options both through its cluster creation UI and through the underlying RKE/RKE2 configuration files. Configuring Calico correctly at cluster creation time is important because some settings — such as the pod CIDR — cannot be changed after the cluster is running without a full rebuild.
+Rancher exposes Calico configuration options both through its cluster creation UI and through the underlying RKE/RKE2 configuration files. Configuring Calico correctly at cluster creation time is important because some settings - such as the pod CIDR - cannot be changed after the cluster is running without a full rebuild.
 
 Rancher's Calico configuration covers the pod network CIDR, MTU, VXLAN vs BGP routing, and cloud provider settings that affect how Calico routes traffic. For multi-cloud or multi-region Rancher deployments, getting the BGP vs VXLAN decision right at creation time prevents costly cluster rebuilds later.
 

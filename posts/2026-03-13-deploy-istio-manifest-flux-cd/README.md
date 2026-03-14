@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, istioctl, Manifest
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, Istioctl, Manifests
 
 Description: Deploy Istio using the istioctl manifest install approach managed by Flux CD by generating and committing manifests to your GitOps repository.
 
@@ -96,7 +96,7 @@ istioctl manifest generate -f istio-config/istio-operator.yaml \
 
 ## Step 2: Organize Manifests in Git
 
-```
+```plaintext
 clusters/my-cluster/istio/
 ├── kustomization.yaml
 ├── namespace.yaml
@@ -174,7 +174,7 @@ istioctl manifest generate \
 # Review the diff
 git diff clusters/my-cluster/istio/
 
-# Commit and push — Flux handles the upgrade
+# Commit and push - Flux handles the upgrade
 git add clusters/my-cluster/istio/
 git commit -m "chore: upgrade Istio from 1.21.x to 1.22.0"
 git push
@@ -203,10 +203,10 @@ istioctl analyze --all-namespaces
 
 - Commit the `istio-operator.yaml` source config alongside the generated manifests so future operators know how the manifests were produced.
 - Run `istioctl manifest diff` as part of your CI pipeline to detect any drift between the generated manifests and the running cluster state.
-- Set `prune: false` on the Flux Kustomization for Istio — CRDs and cluster-level resources should not be pruned automatically.
+- Set `prune: false` on the Flux Kustomization for Istio - CRDs and cluster-level resources should not be pruned automatically.
 - Use Flux's `timeout` field on the Kustomization to allow for longer Istio reconciliation time, as some components take minutes to become healthy.
 - Test manifest upgrades in a staging cluster before committing to the production branch, using Flux's environment-per-branch pattern.
 
 ## Conclusion
 
-Managing `istioctl`-generated manifests through Flux CD bridges the gap between the familiar `istioctl` workflow and GitOps practices. The manifests become the versioned source of truth, Istio upgrades become pull requests, and the cluster continuously reconciles to the committed mesh configuration — all without requiring `istioctl` to be run directly against production clusters.
+Managing `istioctl`-generated manifests through Flux CD bridges the gap between the familiar `istioctl` workflow and GitOps practices. The manifests become the versioned source of truth, Istio upgrades become pull requests, and the cluster continuously reconciles to the committed mesh configuration - all without requiring `istioctl` to be run directly against production clusters.

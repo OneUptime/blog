@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, gRPC, Health Checking, Service Monitoring
+Tags: OpenTelemetry, GRPC, Health Checking, Service Monitoring
 
 Description: Monitor gRPC health checking service status transitions with OpenTelemetry metrics to track service availability and detect flapping.
 

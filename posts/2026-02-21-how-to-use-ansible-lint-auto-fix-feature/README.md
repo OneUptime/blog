@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Automation, Code Quality
+Tags: Ansible, Ansible-lint, Automation, Code Quality
 
 Description: Learn how to use ansible-lint's auto-fix feature to automatically correct common playbook issues including FQCN names, formatting, and deprecated syntax.
 

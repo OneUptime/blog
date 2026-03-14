@@ -10,7 +10,7 @@ Description: Deploy Rook-Ceph CephFS for ReadWriteMany persistent volumes on Kub
 
 ## Introduction
 
-CephFS (Ceph Filesystem) provides a POSIX-compliant distributed filesystem backed by Ceph's object storage. It is the right storage solution when multiple pods need to simultaneously read and write to the same volume — a use case that RBD block storage cannot satisfy. CephFS supports `ReadWriteMany` (RWX) access mode, making it ideal for shared content, configuration stores, and workloads like JupyterHub that require shared home directories.
+CephFS (Ceph Filesystem) provides a POSIX-compliant distributed filesystem backed by Ceph's object storage. It is the right storage solution when multiple pods need to simultaneously read and write to the same volume - a use case that RBD block storage cannot satisfy. CephFS supports `ReadWriteMany` (RWX) access mode, making it ideal for shared content, configuration stores, and workloads like JupyterHub that require shared home directories.
 
 Rook manages CephFS through the `CephFilesystem` CRD, and the CSI driver exposes it as a Kubernetes StorageClass. Deploying through Flux CD gives you GitOps control over filesystem configuration, metadata pools, and data pools.
 
@@ -247,10 +247,10 @@ kubectl exec -n default reader-pod -- cat /data/shared.log
 ## Best Practices
 
 - Set `activeStandby: true` to maintain a hot-standby MDS that takes over within seconds if the active MDS fails.
-- Remove the `debug` mount option before production — it adds overhead to every filesystem operation.
+- Remove the `debug` mount option before production - it adds overhead to every filesystem operation.
 - Use CephFS subvolumes for multi-tenant scenarios where you need per-user quotas and isolation.
 - Monitor MDS cache size and client metadata requests with Prometheus to detect performance bottlenecks.
-- Prefer CephFS over NFS for shared workloads — it provides better performance and native Ceph redundancy.
+- Prefer CephFS over NFS for shared workloads - it provides better performance and native Ceph redundancy.
 
 ## Conclusion
 

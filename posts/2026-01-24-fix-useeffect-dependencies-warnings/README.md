@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, useEffect, Hooks, Dependencies, ESLint, JavaScript, TypeScript, Debugging
+Tags: React, UseEffect, Hooks, Dependencies, ESLint, JavaScript, TypeScript, Debugging
 
 Description: Learn how to fix React useEffect dependency warnings by understanding the dependency array and implementing proper patterns for side effects.
 

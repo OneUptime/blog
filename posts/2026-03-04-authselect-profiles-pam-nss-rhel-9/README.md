@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, authselect, PAM, NSS, Linux
+Tags: RHEL, Authselect, PAM, NSS, Linux
 
 Description: A practical guide to using authselect on RHEL to manage PAM and NSS configurations, covering built-in profiles, features, custom profiles, and migration from authconfig.
 

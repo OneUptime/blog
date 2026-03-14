@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Testing, Integration-testing, Testcontainers, Docker, Golang, CI/CD
+Tags: GRPC, Testing, Integration-testing, Testcontainers, Docker, Golang, CI/CD
 
 Description: Learn how to write comprehensive integration tests for gRPC services using Testcontainers to spin up real dependencies like databases and external services.
 

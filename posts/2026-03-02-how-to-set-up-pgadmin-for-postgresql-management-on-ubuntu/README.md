@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, PostgreSQL, pgAdmin, Database
+Tags: Ubuntu, PostgreSQL, PgAdmin, Database
 
 Description: Install and configure pgAdmin 4 on Ubuntu to manage PostgreSQL databases through a web-based graphical interface with secure access controls.
 

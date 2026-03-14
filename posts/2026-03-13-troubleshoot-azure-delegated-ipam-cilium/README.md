@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, azure, ipam, delegated-ipam, aks, troubleshooting, networking
+Tags: Cilium, Kubernetes, AKS, Azure, EBPF
 
 Description: A troubleshooting guide for diagnosing IP address management issues when using Azure's delegated IPAM mode with Cilium on AKS clusters.
 
@@ -112,7 +112,7 @@ kubectl logs -n kube-system -l name=cilium-operator -f | grep -E "release|reclai
 
 ## Best Practices
 
-- Size delegated subnets generously—plan for 2x your expected pod count to allow for rolling updates
+- Size delegated subnets generously-plan for 2x your expected pod count to allow for rolling updates
 - Monitor Cilium IPAM utilization using Cilium's built-in metrics
 - Enable Azure Monitor alerts for subnet IP exhaustion
 - Regularly audit CiliumNode IPAM state against actual pod allocations

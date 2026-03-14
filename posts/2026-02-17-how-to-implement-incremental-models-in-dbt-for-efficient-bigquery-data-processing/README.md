@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Incremental Models, Data Engineering
+Tags: GCP, BigQuery, Dbt, Incremental Models, Data Engineering
 
 Description: Learn how to build incremental dbt models for BigQuery that process only new and changed data instead of rebuilding entire tables, saving both time and money.
 

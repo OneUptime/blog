@@ -85,7 +85,7 @@ spec:
       cpu: 2
     replicas: 3
 
-  # Session mode: no job spec — accepts submitted jobs
+  # Session mode: no job spec - accepts submitted jobs
   mode: session
 ```
 
@@ -105,7 +105,7 @@ metadata:
     pipeline: customer-etl
     version: "1.4.0"
 spec:
-  # Do not retry on failure — re-trigger from Git if needed
+  # Do not retry on failure - re-trigger from Git if needed
   backoffLimit: 2
   # Clean up completed jobs after 24 hours
   ttlSecondsAfterFinished: 86400

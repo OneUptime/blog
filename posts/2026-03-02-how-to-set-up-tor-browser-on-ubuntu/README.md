@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Privacy, Security, Tor, Networking
+Tags: Ubuntu, Privacy, Security, ToR, Networking
 
 Description: A practical guide to installing and configuring Tor Browser on Ubuntu for anonymous, private web browsing and accessing .onion services.
 

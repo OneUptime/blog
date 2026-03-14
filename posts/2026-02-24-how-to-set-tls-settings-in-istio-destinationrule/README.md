@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, DestinationRule, Security, mTLS
+Tags: Istio, TLS, DestinationRule, Security, MTLS
 
 Description: Configure TLS settings in Istio DestinationRule to control encryption between your services and external endpoints.
 

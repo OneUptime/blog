@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Caching, Decorators, Performance, Redis, functools
+Tags: Python, Caching, Decorators, Performance, Redis, Functools
 
 Description: Learn how to build effective cache decorators in Python for function memoization and performance optimization. This guide covers lru_cache, TTL caching, and distributed caching with Redis.
 

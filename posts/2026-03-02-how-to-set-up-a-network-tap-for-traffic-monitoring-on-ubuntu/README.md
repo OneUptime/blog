@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Traffic Monitoring, tcpdump, Wireshark
+Tags: Ubuntu, Networking, Traffic Monitoring, Tcpdump, Wireshark
 
 Description: Set up network traffic monitoring on Ubuntu using software taps, port mirroring, and packet capture tools to inspect and analyze network traffic.
 

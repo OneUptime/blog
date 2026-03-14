@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, TypeScript, Mobile Development, iOS, Android, Project Setup
+Tags: React Native, TypeScript, Mobile Development, IOS, Android, Project Setup
 
 Description: Learn how to set up a production-ready React Native project with TypeScript, including proper configuration, ESLint, Prettier, and essential tooling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hub, Silent Push, Background Sync, Mobile Development, iOS, Android
+Tags: Azure, Notification Hub, Silent Push, Background Sync, Mobile Development, IOS, Android
 
 Description: Learn how to implement silent push notifications with Azure Notification Hubs to trigger background data synchronization on iOS and Android devices.
 

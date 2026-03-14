@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, XMPP, Prosody, ejabberd, Messaging, Self-Hosted, Communication
+Tags: Docker, XMPP, Prosody, Ejabberd, Messaging, Self-Hosted, Communication
 
 Description: Learn how to deploy XMPP messaging servers like Prosody and ejabberd using Docker containers for real-time communication.
 

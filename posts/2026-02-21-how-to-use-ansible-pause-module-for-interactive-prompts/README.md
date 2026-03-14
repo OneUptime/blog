@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, pause Module, Interactive, Prompts, Automation
+Tags: Ansible, Pause Module, Interactive, Prompts, Automation
 
 Description: Use the Ansible pause module for interactive prompts, timed delays, and user confirmations during playbook execution.
 

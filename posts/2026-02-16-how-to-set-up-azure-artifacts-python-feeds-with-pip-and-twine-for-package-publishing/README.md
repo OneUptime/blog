@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Artifacts, Python, pip, twine, Package Management, Azure DevOps, CI/CD
+Tags: Azure Artifacts, Python, Pip, Twine, Package Management, Azure DevOps, CI/CD
 
 Description: A practical guide to setting up Azure Artifacts Python feeds for publishing and consuming internal Python packages using pip and twine.
 

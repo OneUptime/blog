@@ -10,9 +10,9 @@ Description: Mirror production traffic to a new service version using Flux CD an
 
 ## Introduction
 
-Shadow traffic (also called traffic mirroring or traffic shadowing) sends a copy of every production request to a new version of your service simultaneously. The new version receives identical requests, processes them, and produces responses — but those responses are discarded. Users see only the responses from the stable version. This lets you test the new version against the full breadth and volume of production traffic before routing any real users to it.
+Shadow traffic (also called traffic mirroring or traffic shadowing) sends a copy of every production request to a new version of your service simultaneously. The new version receives identical requests, processes them, and produces responses - but those responses are discarded. Users see only the responses from the stable version. This lets you test the new version against the full breadth and volume of production traffic before routing any real users to it.
 
-Unlike dark launch (where the application code decides whether to call a new path), shadow traffic is implemented at the infrastructure layer — the ingress controller or service mesh mirrors requests transparently. In a GitOps workflow with Flux CD, the mirroring configuration is declared in Git as Istio `VirtualService` resources and managed by Flux like any other manifest.
+Unlike dark launch (where the application code decides whether to call a new path), shadow traffic is implemented at the infrastructure layer - the ingress controller or service mesh mirrors requests transparently. In a GitOps workflow with Flux CD, the mirroring configuration is declared in Git as Istio `VirtualService` resources and managed by Flux like any other manifest.
 
 This guide uses Istio for traffic mirroring, deployed and managed via Flux CD.
 
@@ -224,8 +224,8 @@ The shadow traffic flow:
 graph TD
     User -->|Request| Ingress
     Ingress --> Istio[Istio VirtualService]
-    Istio -->|100% — real response| Stable[Stable v2.4.0]
-    Istio -->|Mirror — response discarded| Shadow[Shadow v2.5.0]
+    Istio -->|100% - real response| Stable[Stable v2.4.0]
+    Istio -->|Mirror - response discarded| Shadow[Shadow v2.5.0]
     Stable -->|Response| User
     Shadow -->|Logs only| Monitoring[Observability Stack]
 ```
@@ -256,8 +256,8 @@ git push origin main
 - Start with a lower mirror percentage (10-25%) if resource headroom is limited, then increase as you gain confidence.
 - Shadow requests may have side effects (database writes, email sends, payment charges). Ensure your new version's test/shadow behavior does not cause real-world side effects.
 - Set up log correlation between stable and shadow using a shared request ID header so you can compare specific request handling.
-- Clean up shadow deployments promptly — running two full deployments indefinitely is expensive.
+- Clean up shadow deployments promptly - running two full deployments indefinitely is expensive.
 
 ## Conclusion
 
-Shadow traffic mirroring managed by Flux CD and Istio lets you validate a new service version against 100% of production traffic with zero risk to users. The mirroring configuration is a Git-managed `VirtualService` — enabling, adjusting, or disabling mirroring is a merge operation subject to normal review and approval. When the shadow version passes validation, promotion is another Git commit, and Flux reconciles the cluster to the new stable state.
+Shadow traffic mirroring managed by Flux CD and Istio lets you validate a new service version against 100% of production traffic with zero risk to users. The mirroring configuration is a Git-managed `VirtualService` - enabling, adjusting, or disabling mirroring is a merge operation subject to normal review and approval. When the shadow version passes validation, promotion is another Git commit, and Flux reconciles the cluster to the new stable state.

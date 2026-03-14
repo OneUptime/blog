@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Hubble, Observability, Networking, eBPF
+Tags: Cilium, Kubernetes, Hubble, Observability, Networking, EBPF
 
 Description: Use Hubble Relay to aggregate and search network flows across all nodes in a Cilium cluster, enabling cluster-wide traffic analysis and policy debugging.
 
@@ -41,7 +41,7 @@ hubble status
 
 Expected output:
 
-```
+```plaintext
 Healthcheck (via localhost:4245): Ok
 Current/Max Flows: 8192/8192
 Flows/s: 47.23

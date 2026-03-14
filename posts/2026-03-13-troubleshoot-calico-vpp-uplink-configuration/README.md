@@ -10,7 +10,7 @@ Description: Diagnose and resolve common Calico VPP uplink configuration failure
 
 ## Introduction
 
-Calico VPP uplink configuration failures are among the most disruptive issues because they can leave a node with no network connectivity. When DPDK takes control of the NIC, any failure in VPP's initialization leaves the node unreachable until VPP either succeeds or the NIC is re-bound to its Linux driver. Having out-of-band console access is not just recommended — it's a hard prerequisite before attempting DPDK-mode uplink configuration.
+Calico VPP uplink configuration failures are among the most disruptive issues because they can leave a node with no network connectivity. When DPDK takes control of the NIC, any failure in VPP's initialization leaves the node unreachable until VPP either succeeds or the NIC is re-bound to its Linux driver. Having out-of-band console access is not just recommended - it's a hard prerequisite before attempting DPDK-mode uplink configuration.
 
 ## Prerequisites
 

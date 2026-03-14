@@ -147,4 +147,4 @@ echo "Archive: ${AUDIT_DIR}.tar.gz"
 
 ## Conclusion
 
-Operationalizing Calico FIPS mode requires a structured approach to daily monitoring, upgrade processes, incident response, and audit evidence collection. By establishing clear ownership, runbooks for common scenarios, and automated evidence collection, you transform FIPS compliance from a snapshot state into a continuous, defensible posture. The most important operational habit is treating any FIPS drift alert as a P1 incident — the compliance clock starts the moment a violation occurs, and fast response is essential.
+Operationalizing Calico FIPS mode requires a structured approach to daily monitoring, upgrade processes, incident response, and audit evidence collection. By establishing clear ownership, runbooks for common scenarios, and automated evidence collection, you transform FIPS compliance from a snapshot state into a continuous, defensible posture. The most important operational habit is treating any FIPS drift alert as a P1 incident - the compliance clock starts the moment a violation occurs, and fast response is essential.

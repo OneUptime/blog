@@ -10,7 +10,7 @@ Description: Configure GPU resource requests and limits in Flux CD managed workl
 
 ## Introduction
 
-Kubernetes treats GPU resources as extended resources — they are not automatically divisible like CPU and memory. Requesting GPUs incorrectly leads to workloads stuck in a Pending state, wasted capacity, or OOM-killed containers. Getting resource requests right is foundational to running AI/ML workloads reliably.
+Kubernetes treats GPU resources as extended resources - they are not automatically divisible like CPU and memory. Requesting GPUs incorrectly leads to workloads stuck in a Pending state, wasted capacity, or OOM-killed containers. Getting resource requests right is foundational to running AI/ML workloads reliably.
 
 Flux CD lets you define and version-control these resource configurations declaratively. By managing GPU requests through GitOps, you can enforce standards across teams, track changes over time, and roll back misconfigured resource quotas instantly.
 
@@ -24,7 +24,7 @@ This guide covers how to configure GPU resource requests and limits in Flux-mana
 
 ## Step 1: Understand GPU Resource Model in Kubernetes
 
-GPUs use the `nvidia.com/gpu` extended resource. Unlike CPU, you must set `requests` equal to `limits` for GPU resources — Kubernetes does not support fractional GPU allocation natively.
+GPUs use the `nvidia.com/gpu` extended resource. Unlike CPU, you must set `requests` equal to `limits` for GPU resources - Kubernetes does not support fractional GPU allocation natively.
 
 ```yaml
 resources:

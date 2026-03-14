@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, cni, installation, networking, getting-started
+Tags: Cilium, Kubernetes, Networking, EBPF
 
-Description: Learn how to perform a new Cilium installation on a Kubernetes cluster using the cilium CLI and Helm, covering pre-flight checks, installation options, and post-install validation. This guide provides a reliable step-by-step process for first-time Cilium deployments.
+Description: Learn how to perform a new Cilium installation on a Kubernetes cluster using the cilium CLI and Helm, covering pre-flight checks, installation options, and post-install validation.
 
 ---
 
@@ -82,7 +82,7 @@ kubeProxyReplacement: true
 k8sServiceHost: "<api-server-ip>"
 k8sServicePort: "6443"
 
-# IPAM mode — kubernetes uses pod CIDR from node spec
+# IPAM mode - kubernetes uses pod CIDR from node spec
 ipam:
   mode: kubernetes
 
@@ -143,7 +143,7 @@ hubble observe --last 20
 - Enable Hubble relay and UI from day one for observability
 - Set resource limits on Cilium pods to prevent agent resource contention
 - Test in a non-production cluster before installing on production
-- Document your chosen `kubeProxyReplacement` setting — changing it later requires careful planning
+- Document your chosen `kubeProxyReplacement` setting - changing it later requires careful planning
 
 ## Conclusion
 

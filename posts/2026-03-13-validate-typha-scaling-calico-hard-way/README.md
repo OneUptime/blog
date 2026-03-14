@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Validation, CNI, Networking, Reliability
+Tags: Calico, Typha, Kubernetes, Networking, Scaling, Validation, Hard Way
 
-Description: Systematically validate a Typha deployment in a manifest-based Calico installation — confirming correct replica counts, Felix connectivity, policy propagation timing, and Prometheus metric availability before declaring the deployment production-ready.
+Description: Systematically validate a Typha deployment in a manifest-based Calico installation - confirming correct replica counts, Felix connectivity, policy propagation timing, and Prometheus metric...
 
 ---
 
@@ -159,7 +159,7 @@ kill %1
 
 ```bash
 #!/bin/bash
-# typha-validate.sh — run this after any Typha deployment or configuration change
+# typha-validate.sh - run this after any Typha deployment or configuration change
 PASS=0; FAIL=0
 
 check() {
@@ -200,7 +200,7 @@ echo "Results: $PASS passed, $FAIL failed"
 
 - Run the full validation checklist after every deployment, configuration change, and Calico upgrade.
 - Record policy propagation times as part of your cluster performance baseline; values consistently above 500ms indicate Typha or Felix degradation.
-- Validate anti-affinity after every cluster resize — adding nodes can inadvertently allow Typha pods to co-locate on the same host.
+- Validate anti-affinity after every cluster resize - adding nodes can inadvertently allow Typha pods to co-locate on the same host.
 - Store validation outputs in your deployment pipeline artifacts for regression tracking over time.
 - Re-run validation after node pool scaling events to confirm Typha replica counts remain appropriate for the new cluster size.
 

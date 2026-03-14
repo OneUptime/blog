@@ -10,7 +10,7 @@ Description: Configure KEDA event-driven autoscaler scalers using Flux CD to aut
 
 ## Introduction
 
-KEDA (Kubernetes Event-Driven Autoscaling) extends the Kubernetes Horizontal Pod Autoscaler to support scaling based on external event sources — Kafka queue depth, message queue length, database row counts, Prometheus metrics, and dozens more. Unlike standard HPA which only scales on CPU and memory, KEDA can scale workloads to zero when there are no events to process and scale out rapidly when demand spikes.
+KEDA (Kubernetes Event-Driven Autoscaling) extends the Kubernetes Horizontal Pod Autoscaler to support scaling based on external event sources - Kafka queue depth, message queue length, database row counts, Prometheus metrics, and dozens more. Unlike standard HPA which only scales on CPU and memory, KEDA can scale workloads to zero when there are no events to process and scale out rapidly when demand spikes.
 
 Managing KEDA and its ScaledObjects through Flux CD ensures your autoscaling configuration is version-controlled and consistently applied. Changes to scaling thresholds, polling intervals, or event source connections flow through pull requests.
 
@@ -243,8 +243,8 @@ kubectl logs -n keda deployment/keda-operator --tail=50
 - Use `cooldownPeriod` to prevent rapid scale-down after a traffic burst, giving workloads time to finish processing in-flight work.
 - Store scaler connection strings in Kubernetes Secrets and reference them in `ScaledObject.spec.triggers[].authenticationRef` using `TriggerAuthentication` resources.
 - Use `ScaledJob` instead of `ScaledObject` for batch workloads where each unit of work should be processed by a dedicated Job pod.
-- Monitor KEDA metrics with Prometheus — KEDA exposes `keda_scaler_active`, `keda_scaler_metrics_value`, and `keda_scaler_errors_total` for each scaler.
+- Monitor KEDA metrics with Prometheus - KEDA exposes `keda_scaler_active`, `keda_scaler_metrics_value`, and `keda_scaler_errors_total` for each scaler.
 
 ## Conclusion
 
-KEDA deployed and configured through Flux CD gives your platform team a powerful, GitOps-governed autoscaling solution that goes far beyond CPU and memory. Autoscaling policies for dozens of event sources are defined in Git, reviewed as code, and automatically reconciled — enabling your workloads to scale precisely with demand while minimizing idle infrastructure costs.
+KEDA deployed and configured through Flux CD gives your platform team a powerful, GitOps-governed autoscaling solution that goes far beyond CPU and memory. Autoscaling policies for dozens of event sources are defined in Git, reviewed as code, and automatically reconciled - enabling your workloads to scale precisely with demand while minimizing idle infrastructure costs.

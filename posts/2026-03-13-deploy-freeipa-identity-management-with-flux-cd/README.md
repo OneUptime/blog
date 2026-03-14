@@ -246,7 +246,7 @@ Access the FreeIPA web UI at the LoadBalancer IP or through an Ingress pointing 
 ## Best Practices
 
 - Use a dedicated DNS entry for the FreeIPA server hostname; Kerberos is extremely sensitive to DNS resolution.
-- Enable `securityContext.capabilities` only for the FreeIPA container—do not use a permissive pod security policy cluster-wide.
+- Enable `securityContext.capabilities` only for the FreeIPA container-do not use a permissive pod security policy cluster-wide.
 - Schedule regular backups using `ipa-backup --data` and store the archives in object storage.
 - For production, deploy FreeIPA as a replica pair for high availability, following the upstream replication documentation.
 - Integrate FreeIPA with Keycloak or Authentik via LDAP federation for OIDC/SAML SSO without modifying FreeIPA directly.

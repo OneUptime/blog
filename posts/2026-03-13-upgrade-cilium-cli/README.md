@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, cli, upgrade, tooling, kubernetes, operations
+Tags: Cilium, CLI, Kubernetes, Tools
 
 Description: Learn how to upgrade the Cilium CLI tool to stay current with new features and ensure compatibility with your Cilium cluster version, including verification and troubleshooting steps.
 
@@ -144,7 +144,7 @@ hubble status
 - Always verify the SHA256 checksum after downloading the CLI binary
 - Keep the Cilium CLI version aligned with the Cilium version in your clusters
 - Add the Cilium CLI upgrade to your platform team's regular maintenance checklist
-- In CI/CD pipelines, pin the Cilium CLI version explicitly — don't use `latest`
+- In CI/CD pipelines, pin the Cilium CLI version explicitly - don't use `latest`
 - Keep multiple CLI versions available when managing clusters on different Cilium versions
 
 ## Conclusion

@@ -10,7 +10,7 @@ Description: Sync database credentials from external secret stores using ESO and
 
 ## Introduction
 
-Database credentials are among the most sensitive secrets in any application. They grant direct access to your data and must be protected, rotated regularly, and audited carefully. Managing them through Kubernetes Secrets alone is insufficient — they are stored in etcd without encryption by default, and rotating them requires manual updates to Secret objects.
+Database credentials are among the most sensitive secrets in any application. They grant direct access to your data and must be protected, rotated regularly, and audited carefully. Managing them through Kubernetes Secrets alone is insufficient - they are stored in etcd without encryption by default, and rotating them requires manual updates to Secret objects.
 
 The External Secrets Operator solves this by keeping database credentials in a purpose-built secret store (AWS Secrets Manager, HashiCorp Vault, etc.) and syncing them into Kubernetes automatically. Combined with Flux CD managing the `ExternalSecret` configuration and Reloader triggering pod restarts on credential changes, you get a complete database credential rotation pipeline that requires zero manual intervention.
 

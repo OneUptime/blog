@@ -1,10 +1,10 @@
-# Install Calico on Self-Managed Azure Kubernetes
+# How to Install Calico on Self-Managed Azure Kubernetes Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Azure, Kubernetes, AKS, Networking, CNI, Self-Managed
+Tags: Calico, Kubernetes, Networking, CNI, Installation, Azure, Self-Managed
 
-Description: Guide to installing Calico as the CNI on self-managed Kubernetes clusters running on Azure Virtual Machines.
+Description: A step-by-step guide to installing Calico as the full CNI on self-managed Kubernetes clusters running on Azure VMs.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, parseint Function, Math, HCL, Infrastructure as Code, Type Conversion, Numeric Functions
+Tags: Terraform, Parseint Function, Math, HCL, Infrastructure as Code, Type Conversion, Numeric Functions
 
 Description: Learn how to use the parseint function in Terraform to convert string representations of numbers in various bases to integer values for infrastructure configuration.
 

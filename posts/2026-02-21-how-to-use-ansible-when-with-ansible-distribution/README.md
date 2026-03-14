@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, ansible_distribution, Cross-Platform, Linux
+Tags: Ansible, Conditional, Ansible_distribution, Cross-Platform, Linux
 
 Description: Learn how to use ansible_distribution and related facts to target specific Linux distributions and versions in Ansible tasks.
 

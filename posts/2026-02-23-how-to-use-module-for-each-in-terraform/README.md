@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, for_each, Infrastructure as Code, DevOps, Dynamic Configuration
+Tags: Terraform, Modules, For_each, Infrastructure as Code, DevOps, Dynamic Configuration
 
 Description: Learn how to use the for_each meta-argument with Terraform modules to create multiple instances of a module from maps and sets with stable resource addressing.
 

@@ -1,10 +1,10 @@
-# Deploy Grafana Alloy with Flux CD
+# How to Deploy Grafana Alloy with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Alloy, Flux CD, GitOps, Observability, Kubernetes
+Tags: Flux CD, Kubernetes, GitOps, Grafana Alloy, Grafana Agent, Observability, OpenTelemetry, HelmRelease
 
-Description: Learn how to deploy Grafana Alloy, the next-generation telemetry collector, on Kubernetes using Flux CD and GitOps principles. This guide covers HelmRelease configuration, pipeline setup, and best practices.
+Description: Deploy Grafana Alloy, the successor to Grafana Agent, using Flux CD HelmRelease for unified telemetry collection supporting metrics, logs, traces, and profiles.
 
 ---
 

@@ -16,9 +16,9 @@ Explaining Typha HA to different audiences requires different levels of technica
 
 The key operational question is: "What happens to the cluster if Typha goes down?"
 
-The answer is: "Existing network policy continues to be enforced. New policy changes don't propagate until Typha recovers. Recovery is automatic and takes as long as the pod restart time — typically under 60 seconds."
+The answer is: "Existing network policy continues to be enforced. New policy changes don't propagate until Typha recovers. Recovery is automatic and takes as long as the pod restart time - typically under 60 seconds."
 
-```
+```plaintext
 Typha outage impact by replica count:
 
 1 replica → All 500 nodes disconnect simultaneously
@@ -77,12 +77,12 @@ High counts per second indicate a reconnection storm.
 
 ## Analogies
 
-**For operations:** "Typha HA is like load balancers for a web application — you run at least two so that one can fail without taking the service down."
+**For operations:** "Typha HA is like load balancers for a web application - you run at least two so that one can fail without taking the service down."
 
-**For development:** "When Typha is down, your NetworkPolicy is like a law that's been passed but not yet enforced — the API accepts it, but the police (Felix) haven't received the update yet."
+**For development:** "When Typha is down, your NetworkPolicy is like a law that's been passed but not yet enforced - the API accepts it, but the police (Felix) haven't received the update yet."
 
 **For management:** "Three Typha replicas means a single failure causes zero user impact. One replica means a 60-second delay in new security policy enforcement during restarts."
 
 ## Conclusion
 
-Explaining Typha HA effectively requires matching the explanation to the audience's concern: failure modes for operations, policy propagation delays for development, and cost-versus-risk for management. The core message is that Typha is stateless — replicas are interchangeable, Felix reconnects automatically, and the cluster continues enforcing existing policy during brief Typha outages. The number of replicas determines how many Felix agents are affected by a single failure and whether a connection storm occurs on recovery.
+Explaining Typha HA effectively requires matching the explanation to the audience's concern: failure modes for operations, policy propagation delays for development, and cost-versus-risk for management. The core message is that Typha is stateless - replicas are interchangeable, Felix reconnects automatically, and the cluster continues enforcing existing policy during brief Typha outages. The number of replicas determines how many Felix agents are affected by a single failure and whether a connection storm occurs on recovery.

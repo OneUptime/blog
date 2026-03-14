@@ -1,4 +1,4 @@
-# How to Map ArgoCD ApplicationSet to Flux Kustomization with Variable Substitution
+# How to Map ArgoCD ApplicationSet to Flux Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

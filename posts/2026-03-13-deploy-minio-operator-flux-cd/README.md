@@ -251,9 +251,9 @@ mc cat prod/my-bucket/hello.txt
 
 ## Best Practices
 
-- Use at least 4 servers with 4 drives each (16 drives total) for production MinIO — this is the minimum for erasure coding with good performance.
+- Use at least 4 servers with 4 drives each (16 drives total) for production MinIO - this is the minimum for erasure coding with good performance.
 - Enable `requestAutoCert: true` to have the operator generate TLS certificates via cert-manager automatically.
-- Set `proxy-body-size: "0"` on the Ingress to allow large object uploads — the default 1 MiB limit will cause upload failures.
+- Set `proxy-body-size: "0"` on the Ingress to allow large object uploads - the default 1 MiB limit will cause upload failures.
 - Monitor MinIO's bucket and drive metrics via Prometheus using the built-in `prometheusOperator: true` integration.
 - Use MinIO's Identity and Access Management (IAM) to create service accounts for applications rather than using root credentials.
 

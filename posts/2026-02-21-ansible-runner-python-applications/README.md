@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, ansible-runner, API, Automation
+Tags: Ansible, Python, Ansible-runner, API, Automation
 
 Description: Integrate Ansible into Python applications using ansible-runner for simplified playbook execution, event handling, and result processing.
 

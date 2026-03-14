@@ -12,7 +12,7 @@ Description: Use Hubble's flow observability to identify the exact reason for dr
 
 When pods cannot communicate, the traditional debugging approach of tcpdump and iptables rule inspection no longer applies in a Cilium environment. Hubble provides a purpose-built alternative: it captures every network flow decision made by Cilium's eBPF datapath, including the specific reason each packet was dropped.
 
-Hubble's drop reasons map directly to Cilium's internal policy enforcement categories. This means you can pinpoint whether a drop was caused by a network policy, an identity mismatch, a route failure, or an endpoint not ready condition—without any additional tooling.
+Hubble's drop reasons map directly to Cilium's internal policy enforcement categories. This means you can pinpoint whether a drop was caused by a network policy, an identity mismatch, a route failure, or an endpoint not ready condition-without any additional tooling.
 
 ## Prerequisites
 

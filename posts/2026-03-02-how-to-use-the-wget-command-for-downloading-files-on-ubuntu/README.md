@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, wget, Networking, Shell
+Tags: Ubuntu, Linux, Wget, Networking, Shell
 
 Description: Learn how to use wget on Ubuntu for downloading files, resuming interrupted downloads, mirroring websites, recursive downloads, and scripting file retrieval workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Logging, journald, systemd, Centralized Logging
+Tags: Ubuntu, Logging, Journald, Systemd, Centralized Logging
 
 Description: Set up journald remote logging on Ubuntu to centralize logs from multiple hosts using systemd-journal-remote and systemd-journal-upload, with TLS encryption.
 

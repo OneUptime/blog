@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Traefik, Let's Encrypt, TLS, Ingress, HelmRelease, ACME
+Tags: Flux CD, Kubernetes, GitOps, Traefik, Let's Encrypt, TLS, Ingress, HelmRelease
 
 Description: Deploy Traefik ingress controller with automatic Let's Encrypt TLS certificate provisioning using Flux CD HelmRelease for production-ready HTTPS termination.
 
@@ -10,9 +10,9 @@ Description: Deploy Traefik ingress controller with automatic Let's Encrypt TLS 
 
 ## Introduction
 
-Traefik is a cloud-native reverse proxy and ingress controller that was built with Kubernetes and Let's Encrypt in mind from the start. Its native ACME client can automatically provision and renew TLS certificates from Let's Encrypt without any additional tooling like cert-manager — making the initial setup simpler and reducing the number of moving parts in your TLS infrastructure.
+Traefik is a cloud-native reverse proxy and ingress controller that was built with Kubernetes and Let's Encrypt in mind from the start. Its native ACME client can automatically provision and renew TLS certificates from Let's Encrypt without any additional tooling like cert-manager - making the initial setup simpler and reducing the number of moving parts in your TLS infrastructure.
 
-Deploying Traefik through Flux CD gives you a reproducible, version-controlled ingress layer that automatically manages TLS for all your services. When you add a new service to your cluster, a simple Ingress or IngressRoute resource is all you need — Traefik handles certificate provisioning, renewal, and HTTPS termination automatically.
+Deploying Traefik through Flux CD gives you a reproducible, version-controlled ingress layer that automatically manages TLS for all your services. When you add a new service to your cluster, a simple Ingress or IngressRoute resource is all you need - Traefik handles certificate provisioning, renewal, and HTTPS termination automatically.
 
 This guide deploys Traefik using Flux CD HelmRelease with Let's Encrypt ACME certificate provisioning using both HTTP-01 and DNS-01 challenges, configuring it for production use with proper resource limits and high availability.
 

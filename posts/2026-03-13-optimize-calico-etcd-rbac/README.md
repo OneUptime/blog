@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, etcd, RBAC, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Performance, Optimization
 
 Description: Techniques for optimizing Calico etcd RBAC configuration to reduce authentication overhead and improve etcd performance in large-scale Kubernetes deployments.
 
@@ -10,7 +10,7 @@ Description: Techniques for optimizing Calico etcd RBAC configuration to reduce 
 
 ## Introduction
 
-While etcd RBAC is a critical security control, a poorly structured RBAC configuration can introduce performance overhead. Each etcd request must pass through the RBAC authorization layer, and overly complex role structures or excessive permission checks can add latency to Calico's etcd operations — slowing down policy updates, IP allocations, and Felix synchronization.
+While etcd RBAC is a critical security control, a poorly structured RBAC configuration can introduce performance overhead. Each etcd request must pass through the RBAC authorization layer, and overly complex role structures or excessive permission checks can add latency to Calico's etcd operations - slowing down policy updates, IP allocations, and Felix synchronization.
 
 Optimization focuses on structuring roles to minimize authorization checks per request, tuning etcd performance parameters that affect the RBAC evaluation path, and reducing the total number of etcd operations that Calico components perform.
 

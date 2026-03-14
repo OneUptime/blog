@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service Account, Zero Trust
+Tags: Calico, Kubernetes, Network Policy, Service Accounts, Zero Trust
 
 Description: Implement zero trust workload identity using Calico service account-based network policies for cryptographically-verified traffic controls.
 
@@ -10,7 +10,7 @@ Description: Implement zero trust workload identity using Calico service account
 
 ## Introduction
 
-Service accounts are Kubernetes' built-in workload identity system. Using them as the basis for network policy creates a zero-trust model where network access is granted based on RBAC-controlled identity rather than mutable metadata. An attacker who compromises a pod cannot gain additional network access by modifying labels — they would need to change the pod's service account, which requires RBAC privileges.
+Service accounts are Kubernetes' built-in workload identity system. Using them as the basis for network policy creates a zero-trust model where network access is granted based on RBAC-controlled identity rather than mutable metadata. An attacker who compromises a pod cannot gain additional network access by modifying labels - they would need to change the pod's service account, which requires RBAC privileges.
 
 Calico's `serviceAccountSelector` in `projectcalico.org/v3` ties network policy enforcement directly to the Kubernetes identity plane. When combined with Istio or SPIFFE/SPIRE for cryptographic service account verification, you get true zero-trust identity for network traffic.
 

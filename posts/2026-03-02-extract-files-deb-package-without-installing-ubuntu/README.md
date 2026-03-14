@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, dpkg, Package Management, System Administration, Debian
+Tags: Ubuntu, Dpkg, Package Management, System Administration, Debian
 
 Description: Learn multiple methods to extract files from a .deb package without installing it on Ubuntu, including dpkg-deb, ar, and how to inspect package contents and metadata.
 

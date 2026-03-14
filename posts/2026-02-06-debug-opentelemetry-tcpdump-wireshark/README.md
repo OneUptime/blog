@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, tcpdump, Wireshark, Network Debugging, gRPC, OTLP, Packet Analysis, Troubleshooting
+Tags: OpenTelemetry, Tcpdump, Wireshark, Network Debugging, GRPC, OTLP, Packet Analysis, Troubleshooting
 
 Description: A hands-on guide to using tcpdump and Wireshark to capture and analyze OpenTelemetry OTLP traffic for debugging export failures and network issues.
 

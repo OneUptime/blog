@@ -132,7 +132,7 @@ spec:
     - 198.51.100.0/28  # Partner B
 ```
 
-Add new partners by updating the NetworkSet — no policy changes needed:
+Add new partners by updating the NetworkSet - no policy changes needed:
 
 ```bash
 calicoctl get networkset partner-apis -n integrations -o yaml > partner-apis.yaml
@@ -173,4 +173,4 @@ spec:
 
 ## Conclusion
 
-Calico NetworkSet resources are most valuable for IP lists that change over time — threat intelligence feeds, cloud provider CIDRs, partner IP ranges, and geographic allowlists. By separating IP list management from policy definition, NetworkSets enable automation pipelines to keep IP lists current without requiring policy modifications. This decoupling is a key operational advantage for maintaining up-to-date network security posture.
+Calico NetworkSet resources are most valuable for IP lists that change over time - threat intelligence feeds, cloud provider CIDRs, partner IP ranges, and geographic allowlists. By separating IP list management from policy definition, NetworkSets enable automation pipelines to keep IP lists current without requiring policy modifications. This decoupling is a key operational advantage for maintaining up-to-date network security posture.

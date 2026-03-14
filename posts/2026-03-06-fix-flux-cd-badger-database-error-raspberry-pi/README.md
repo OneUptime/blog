@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Raspberry Pi, ARM, badger, Database, Embedded, GitOps, Kubernetes, Troubleshooting
+Tags: Flux CD, Raspberry Pi, ARM, Badger, Database, Embedded, GitOps, Kubernetes, Troubleshooting
 
 Description: A troubleshooting guide for resolving Badger database errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
 

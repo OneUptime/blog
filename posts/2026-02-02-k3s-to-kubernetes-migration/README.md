@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Kubernetes, Migration, DevOps, kubeadm, Container Orchestration
+Tags: K3s, Kubernetes, Migration, DevOps, Kubeadm, Container Orchestration
 
 Description: A comprehensive guide to migrating your workloads from K3s to a full Kubernetes cluster using kubeadm, including backup strategies, resource export techniques, and production deployment patterns.
 

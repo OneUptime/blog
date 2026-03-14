@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Routing, istioctl, Kubernetes, Service Mesh
+Tags: Istio, Envoy, Routing, Istioctl, Kubernetes, Service Mesh
 
 Description: A practical guide to inspecting Envoy route configuration in Istio to debug traffic routing, URL matching, and request handling rules.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, broadcom, nsx, vmware, kubernetes, troubleshooting, networking
+Tags: Cilium, Kubernetes, VMware, NSX, EBPF
 
 Description: A troubleshooting guide for diagnosing and resolving integration issues when running Cilium in Kubernetes environments managed by Broadcom NSX network virtualization.
 

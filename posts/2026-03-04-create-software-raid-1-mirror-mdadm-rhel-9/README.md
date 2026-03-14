@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID 1, mdadm, Storage, Linux
+Tags: RHEL, RAID 1, Mdadm, Storage, Linux
 
 Description: A hands-on guide to creating a software RAID 1 mirror with mdadm on RHEL, giving you real-time disk redundancy for critical data.
 

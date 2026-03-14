@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, xfs_growfs, Storage, Linux
+Tags: RHEL, XFS, Xfs_growfs, Storage, Linux
 
 Description: Learn how to grow an XFS file system on RHEL using xfs_growfs, including expanding the underlying device, growing on LVM, and verifying the new size.
 

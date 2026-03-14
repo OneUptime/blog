@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Inventory, host_vars, DevOps, Configuration Management
+Tags: Ansible, Inventory, Host_vars, DevOps, Configuration Management
 
 Description: Learn how to use the host_vars directory to manage per-host configuration in Ansible with file organization, vault encryption, and real-world project layouts.
 

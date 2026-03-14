@@ -12,7 +12,7 @@ Description: Set up monitoring for Calico networking on Azure using NSG flow log
 
 Monitoring Calico on Azure combines the platform-level visibility of Azure NSG Flow Logs and Azure Monitor with Calico's Felix metrics. NSG Flow Logs capture all traffic allowed or denied at the Azure network layer, providing an audit trail and anomaly detection source that is independent of Calico itself. Felix metrics provide deep insight into policy enforcement at the pod level.
 
-On Azure, it's particularly valuable to monitor for IP Forwarding configuration drift — if IP Forwarding gets disabled on a VM NIC (which can happen during certain Azure maintenance operations or VM recreations), pod networking silently breaks.
+On Azure, it's particularly valuable to monitor for IP Forwarding configuration drift - if IP Forwarding gets disabled on a VM NIC (which can happen during certain Azure maintenance operations or VM recreations), pod networking silently breaks.
 
 ## Prerequisites
 

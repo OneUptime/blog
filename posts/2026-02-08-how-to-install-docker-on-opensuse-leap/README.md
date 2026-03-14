@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, openSUSE, Leap, Linux, Installation, DevOps, Containers, Zypper
+Tags: Docker, OpenSUSE, Leap, Linux, Installation, DevOps, Containers, Zypper
 
 Description: Complete walkthrough for installing Docker on openSUSE Leap, from repository setup to container networking and Btrfs storage driver configuration.
 

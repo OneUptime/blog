@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Thanos, Prometheus, Long-term Storage, Object Storage, Observability, HelmRelease
+Tags: Flux CD, Kubernetes, GitOps, Thanos, Prometheus, Long-Term Storage, Object Storage, Observability
 
 Description: Deploy Thanos sidecar alongside Prometheus for long-term metrics storage using Flux CD, enabling multi-cluster querying and metrics retention beyond Prometheus's local storage limits.
 
@@ -12,7 +12,7 @@ Description: Deploy Thanos sidecar alongside Prometheus for long-term metrics st
 
 Prometheus is excellent for real-time metrics and short-term storage, but its local storage model has practical limits: typically 15-30 days of data before disk costs become prohibitive. Thanos solves this by adding a sidecar to Prometheus that continuously uploads metric blocks to object storage (S3, GCS, or Azure Blob), enabling indefinite retention at storage costs orders of magnitude cheaper than Prometheus's local disk.
 
-Thanos also enables global querying across multiple Prometheus instances — essential for multi-cluster observability where you want a single dashboard showing metrics from all your clusters. The Thanos Sidecar is the first component in this architecture, acting as the bridge between Prometheus and the Thanos ecosystem.
+Thanos also enables global querying across multiple Prometheus instances - essential for multi-cluster observability where you want a single dashboard showing metrics from all your clusters. The Thanos Sidecar is the first component in this architecture, acting as the bridge between Prometheus and the Thanos ecosystem.
 
 This guide deploys the Thanos Sidecar alongside Prometheus using Flux CD, configuring S3 object storage for long-term metrics retention and setting up the Thanos store components for serving historical data.
 

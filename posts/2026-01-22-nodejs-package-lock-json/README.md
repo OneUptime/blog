@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, Dependencies, PackageManagement, Lockfile
+Tags: NodeJS, Npm, Dependencies, PackageManagement, Lockfile
 
 Description: Learn what package-lock.json does, why it exists, when to commit it, and how to resolve common lock file issues in Node.js projects.
 

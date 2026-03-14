@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dm-crypt, LUKS, Encryption, Security, Linux
+Tags: RHEL, Dm-crypt, LUKS, Encryption, Security, Linux
 
 Description: Learn how to use dm-crypt and cryptsetup to encrypt block devices at the low level on RHEL, providing full-disk encryption for sensitive data at rest.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificates, Monitoring, Observability
+Tags: Istio, MTLS, Certificates, Monitoring, Observability
 
 Description: Monitor the health and status of mTLS certificates across your entire Istio service mesh to catch expiration issues and rotation failures before they cause outages.
 

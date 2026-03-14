@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, TLS, Certificates, x509
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, TLS, Certificates, X509
 
 Description: Learn how to diagnose and fix the 'x509 certificate signed by unknown authority' error in Flux when connecting to services with custom or self-signed certificates.
 

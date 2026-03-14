@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, APT, Package Management, reprepro, System Administration
+Tags: Ubuntu, APT, Package Management, Reprepro, System Administration
 
 Description: Learn how to create a private APT repository using reprepro on Ubuntu to host and distribute your own .deb packages across your infrastructure with GPG signing and nginx serving.
 

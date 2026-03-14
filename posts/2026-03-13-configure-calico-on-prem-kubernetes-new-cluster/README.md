@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, On-Premises, Configuration
+Tags: Calico, Kubernetes, Networking, CNI, On-Premise, Configuration
 
-Description: A guide to configuring Calico's core settings — IP pools, BGP, encapsulation, and Felix — for a newly installed on-premises Kubernetes cluster.
+Description: A guide to configuring Calico's core settings - IP pools, BGP, encapsulation, and Felix - for a newly installed on-premises Kubernetes cluster.
 
 ---
 
 ## Introduction
 
-After installing Calico on an on-premises cluster, the default configuration works but is not optimized for your specific environment. On-prem clusters often have layer-2 or layer-3 connectivity between nodes, physical router infrastructure that can participate in BGP routing, and specific MTU values set by the network team. Calico's default settings assume none of this — configuring it to match your environment unlocks its full potential.
+After installing Calico on an on-premises cluster, the default configuration works but is not optimized for your specific environment. On-prem clusters often have layer-2 or layer-3 connectivity between nodes, physical router infrastructure that can participate in BGP routing, and specific MTU values set by the network team. Calico's default settings assume none of this - configuring it to match your environment unlocks its full potential.
 
 The Tigera Operator exposes Calico's core configuration through the `Installation` and `FelixConfiguration` CRDs. BGP configuration is managed through `BGPConfiguration` and `BGPPeer` resources. Understanding how these interact lets you build a networking layer that integrates cleanly with your on-prem infrastructure.
 

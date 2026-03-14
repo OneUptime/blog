@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, Service Mesh, Kubernetes, ztunnel
+Tags: Istio, Ambient Mesh, Service Mesh, Kubernetes, Ztunnel
 
 Description: Learn how to deploy Istio ambient mesh for sidecar-free service mesh architecture.
 

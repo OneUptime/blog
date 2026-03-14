@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Privilege Escalation, Linux
+Tags: Ansible, Sudo, Privilege Escalation, Linux
 
 Description: A practical guide to running Ansible tasks with sudo using become, become_user, and become_method for privilege escalation.
 

@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Prometheus, Federation, Multi-Cluster, Flux CD, GitOps, Kubernetes, Monitoring
+Tags: Flux CD, Kubernetes, GitOps, Prometheus, Federation, Multi-Cluster, Observability
 
-Description: Set up Prometheus federation on Kubernetes using Flux CD to aggregate metrics from multiple cluster-level Prometheus instances into a single global Prometheus. This guide covers federation scrape configuration, label preservation, and GitOps management.
+Description: Set up Prometheus federation on Kubernetes using Flux CD to aggregate metrics from multiple cluster-level Prometheus instances into a single global Prometheus.
 
 ---
 
@@ -70,7 +70,7 @@ spec:
             honor_labels: true
             metrics_path: "/federate"
             params:
-              # Match metric families to federate — keep high-value aggregated metrics
+              # Match metric families to federate - keep high-value aggregated metrics
               "match[]":
                 - '{__name__=~"job:.*"}'
                 - '{__name__=~"node_.*"}'

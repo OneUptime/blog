@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Resource Management
+Tags: Kubernetes, Kubectl, Resource Management
 
 Description: Master kubectl top command to quickly identify resource-hungry pods and nodes, sort by CPU and memory usage, and find optimization opportunities in your Kubernetes cluster.
 

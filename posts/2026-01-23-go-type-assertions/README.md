@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Type Assertion, interface, Type Safety, Type Switch
+Tags: Go, Golang, Type Assertion, Interface, Type Safety, Type Switch
 
 Description: Master Go's type assertion syntax for safely extracting concrete types from interfaces, including the comma-ok idiom and type switches for clean polymorphic code.
 

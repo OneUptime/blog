@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, Service Mesh, Kubernetes, Cilium, Performance, Cloud Native
+Tags: EBPF, Service Mesh, Kubernetes, Cilium, Performance, Cloud Native
 
 Description: Learn how to use eBPF to implement service mesh functionality without sidecar proxies.
 

@@ -10,7 +10,7 @@ Description: Monitor Calico IPAM health with Prometheus alerts on IP utilization
 
 ## Introduction
 
-Calico IPAM monitoring focuses on two signals: utilization (are we running out of IPs?) and consistency (are there leaked allocations?). Both signals are invisible to standard Kubernetes monitoring — TigeraStatus does not report IPAM utilization, and kubelet events only show exhaustion after it occurs. Dedicated IPAM monitoring catches these issues before pod scheduling fails.
+Calico IPAM monitoring focuses on two signals: utilization (are we running out of IPs?) and consistency (are there leaked allocations?). Both signals are invisible to standard Kubernetes monitoring - TigeraStatus does not report IPAM utilization, and kubelet events only show exhaustion after it occurs. Dedicated IPAM monitoring catches these issues before pod scheduling fails.
 
 ## Felix IPAM Prometheus Metrics
 

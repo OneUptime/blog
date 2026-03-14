@@ -10,7 +10,7 @@ Description: Monitor Calico HTTP method-based network policies using Istio to co
 
 ## Introduction
 
-HTTP Method Policies with Calico and Istio combines Calico's network-layer enforcement with Istio's application-layer visibility. This powerful combination lets you write policies that reference HTTP attributes — methods, paths, headers — in addition to network-level properties like IP addresses and ports.
+HTTP Method Policies with Calico and Istio combines Calico's network-layer enforcement with Istio's application-layer visibility. This powerful combination lets you write policies that reference HTTP attributes - methods, paths, headers - in addition to network-level properties like IP addresses and ports.
 
 Calico's `projectcalico.org/v3` ApplicationPolicy (available with Istio integration) allows you to write rules that are evaluated by Istio's Envoy sidecar proxies rather than at the network layer. This enables fine-grained control like "allow GET requests to /api/health but deny POST requests to /api/admin."
 

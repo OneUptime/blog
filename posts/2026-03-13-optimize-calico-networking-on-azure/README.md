@@ -12,7 +12,7 @@ Description: Performance optimization strategies for Calico networking on Azure,
 
 Azure offers several performance features that significantly improve Calico networking throughput when properly leveraged. Accelerated Networking (SR-IOV) bypasses the hypervisor for NIC operations and dramatically reduces latency and CPU overhead. For clusters where VXLAN encapsulation overhead is a concern, Azure route table-based native routing eliminates encapsulation entirely for pods in the same VNet.
 
-On Azure, MTU sizing is also critical — Azure's default MTU varies by networking mode, and VXLAN adds overhead that can cause fragmentation if not properly configured. This guide covers the key optimization techniques for Calico on Azure.
+On Azure, MTU sizing is also critical - Azure's default MTU varies by networking mode, and VXLAN adds overhead that can cause fragmentation if not properly configured. This guide covers the key optimization techniques for Calico on Azure.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, VMware Engine, vSphere, NSX-T, Private Cloud, Migration
+Tags: GCP, Google Cloud, VMware Engine, VSphere, NSX-T, Private Cloud, Migration
 
 Description: A complete guide to creating a Google Cloud VMware Engine private cloud with vSphere and NSX-T networking for running VMware workloads natively on GCP.
 

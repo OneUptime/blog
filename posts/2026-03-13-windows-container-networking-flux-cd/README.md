@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Windows Containers, Networking, CNI, GitOps, Services, Ingress
+Tags: Flux CD, Kubernetes, Windows Containers, Networking, CNI, GitOps
 
 Description: Manage Windows container networking configuration using Flux CD, covering CNI plugins, service types, and network policy considerations specific to Windows nodes.
 
@@ -241,12 +241,12 @@ spec:
 ## Best Practices
 
 - Use NGINX ingress (on Linux nodes) to terminate TLS rather than configuring TLS directly on Windows containers.
-- Test NetworkPolicy on Windows in a staging environment first — Windows CNI policy support has subtle differences from Linux.
+- Test NetworkPolicy on Windows in a staging environment first - Windows CNI policy support has subtle differences from Linux.
 - Use session cookie affinity in the ingress for Web Forms applications that rely on in-memory session state.
-- Configure generous proxy timeouts in the ingress for Windows backends — startup time and GC pauses can cause response delays.
-- Document which CNI features are supported on your Windows nodes — check the Windows-specific CNI documentation.
+- Configure generous proxy timeouts in the ingress for Windows backends - startup time and GC pauses can cause response delays.
+- Document which CNI features are supported on your Windows nodes - check the Windows-specific CNI documentation.
 - Use `type: ClusterIP` for internal Windows services and let the NGINX ingress handle external access.
 
 ## Conclusion
 
-Windows container networking in Kubernetes requires careful configuration, but all the necessary resources — Services, Ingress, NetworkPolicy — can be managed through Flux CD's GitOps workflow. The key is understanding Windows CNI limitations, using an NGINX ingress on Linux nodes for TLS termination, and configuring appropriate timeouts for the slower response characteristics of Windows workloads. With these configurations committed to Git, Flux ensures consistent networking across all Windows workload deployments.
+Windows container networking in Kubernetes requires careful configuration, but all the necessary resources - Services, Ingress, NetworkPolicy - can be managed through Flux CD's GitOps workflow. The key is understanding Windows CNI limitations, using an NGINX ingress on Linux nodes for TLS termination, and configuring appropriate timeouts for the slower response characteristics of Windows workloads. With these configurations committed to Git, Flux ensures consistent networking across all Windows workload deployments.

@@ -111,4 +111,4 @@ kubectl exec frontend -- wget http://backend:8080  # New connection
 
 ## Conclusion
 
-NetworkPolicy troubleshooting requires systematic elimination of potential causes: verify selector matching, check policy ordering for unexpected allow interactions, confirm Felix has programmed the policy, and test with new connections (not existing ones). The most common issue is a lower-order allow policy that fires before a deny rule — always review the full policy order chain for the affected pods when a policy doesn't seem to be working.
+NetworkPolicy troubleshooting requires systematic elimination of potential causes: verify selector matching, check policy ordering for unexpected allow interactions, confirm Felix has programmed the policy, and test with new connections (not existing ones). The most common issue is a lower-order allow policy that fires before a deny rule - always review the full policy order chain for the affected pods when a policy doesn't seem to be working.

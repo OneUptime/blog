@@ -10,7 +10,7 @@ Description: An in-depth look at the technical configuration details of Calico V
 
 ## Introduction
 
-Understanding Calico VPP's technical details enables more precise configuration and better troubleshooting. VPP's node graph architecture — where packets flow through a directed acyclic graph of processing nodes — is fundamentally different from the Linux kernel's networking stack. Each VPP node performs a specific operation (IP lookup, ACL check, NAT, etc.) and passes processed packet vectors to the next node.
+Understanding Calico VPP's technical details enables more precise configuration and better troubleshooting. VPP's node graph architecture - where packets flow through a directed acyclic graph of processing nodes - is fundamentally different from the Linux kernel's networking stack. Each VPP node performs a specific operation (IP lookup, ACL check, NAT, etc.) and passes processed packet vectors to the next node.
 
 Calico VPP adds specific graph nodes for Calico's policy model, IPAM integration, and Kubernetes service load balancing. Configuring these nodes correctly requires understanding their interdependencies and the startup configuration parameters that control their behavior.
 
@@ -39,7 +39,7 @@ graph LR
 
 ### Memory Configuration
 
-```
+```plaintext
 # /etc/vpp/startup.conf
 buffers {
   # Total packet buffer memory
@@ -53,7 +53,7 @@ buffers {
 
 ### DPDK Configuration
 
-```
+```plaintext
 dpdk {
   dev 0000:00:0a.0 {            # PCI address of NIC
     name eth0                   # VPP interface name
@@ -74,7 +74,7 @@ dpdk {
 
 ### Thread/CPU Configuration
 
-```
+```plaintext
 cpu {
   main-core 0                  # Core for VPP main thread
   corelist-workers 2-5         # Cores for packet processing workers

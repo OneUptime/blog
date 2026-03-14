@@ -26,7 +26,7 @@ This guide covers building and pushing Helm charts in CI using both approaches, 
 
 ## Step 1: Structure Your Helm Chart
 
-```
+```plaintext
 charts/
   myapp/
     Chart.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Swift, Core Data, iOS, Persistence, Database
+Tags: Swift, Core Data, IOS, Persistence, Database
 
 Description: Learn how to use Core Data for local data persistence in iOS applications, covering model setup, CRUD operations, relationships, and performance optimization.
 

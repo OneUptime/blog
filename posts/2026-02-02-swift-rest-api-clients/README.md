@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Swift, iOS, REST API, Networking, URLSession
+Tags: Swift, IOS, REST API, Networking, URLSession
 
 Description: Learn how to build robust REST API clients in Swift using URLSession, covering request building, response handling, error management, and modern async/await patterns.
 

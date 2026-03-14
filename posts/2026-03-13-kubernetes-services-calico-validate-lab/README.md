@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Lab, Testing, Validation, kube-proxy, eBPF
+Tags: Calico, Kubernetes, Services, CNI, Lab, Testing, Validation, Kube-proxy, EBPF
 
 Description: Step-by-step validation tests for Kubernetes service connectivity and network policy enforcement for service traffic in a Calico lab cluster.
 
@@ -172,9 +172,9 @@ kubectl exec client -- nslookup backend-headless.default.svc.cluster.local
 
 ## Best Practices
 
-- Validate service connectivity from pods, not from the node — node connectivity bypasses Calico pod policy
+- Validate service connectivity from pods, not from the node - node connectivity bypasses Calico pod policy
 - Use `kubectl get endpoints backend-svc` to verify that backend pods are in the service endpoints list
-- Test headless services separately — they bypass kube-proxy entirely and have different DNS behavior
+- Test headless services separately - they bypass kube-proxy entirely and have different DNS behavior
 
 ## Conclusion
 

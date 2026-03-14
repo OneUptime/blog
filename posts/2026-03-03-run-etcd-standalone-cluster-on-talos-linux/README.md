@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Kubernetes, Distributed Systems, Key-Value Store, DevOps
+Tags: Talos Linux, Etcd, Kubernetes, Distributed Systems, Key-Value Store, DevOps
 
 Description: Deploy a standalone etcd cluster on Talos Linux for application-level key-value storage separate from the Kubernetes control plane etcd.
 

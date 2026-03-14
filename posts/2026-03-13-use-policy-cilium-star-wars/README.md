@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, eBPF, Network Policy, CiliumNetworkPolicy, Tutorial
+Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
 
 Description: A hands-on guide to writing, applying, and iterating on CiliumNetworkPolicy resources using the Star Wars demo as a learning environment.
 
@@ -10,9 +10,9 @@ Description: A hands-on guide to writing, applying, and iterating on CiliumNetwo
 
 ## Introduction
 
-Writing `CiliumNetworkPolicy` is a skill that develops through practice. The Star Wars demo provides the ideal sandbox: a small, understandable application where policy changes have immediate, visible effects. This guide takes you through writing policies from scratch, applying them, observing their effects, and refining them — the same workflow you will use in production.
+Writing `CiliumNetworkPolicy` is a skill that develops through practice. The Star Wars demo provides the ideal sandbox: a small, understandable application where policy changes have immediate, visible effects. This guide takes you through writing policies from scratch, applying them, observing their effects, and refining them - the same workflow you will use in production.
 
-The key habit to develop is writing policies incrementally. Start with L3/L4 to establish connection-level boundaries, observe whether legitimate traffic still flows, then add L7 rules to restrict specific HTTP methods and paths. Each layer of policy adds security but also adds risk of breaking legitimate traffic — always verify after each change.
+The key habit to develop is writing policies incrementally. Start with L3/L4 to establish connection-level boundaries, observe whether legitimate traffic still flows, then add L7 rules to restrict specific HTTP methods and paths. Each layer of policy adds security but also adds risk of breaking legitimate traffic - always verify after each change.
 
 This guide also introduces the `cilium policy trace` command, which is your most important tool for verifying policies before applying them. It allows you to predict whether Cilium will allow or deny a specific traffic flow based on the current policy set.
 
@@ -151,4 +151,4 @@ spec:
 
 ## Conclusion
 
-Writing `CiliumNetworkPolicy` follows a clear pattern: select the endpoint, define ingress/egress rules with identity selectors, optionally add L7 rules. The Star Wars demo gives you immediate feedback — every policy change is verifiable with a `curl` command. Use `cilium policy trace` before applying and `cilium monitor` after to build confidence in your policies before deploying to production.
+Writing `CiliumNetworkPolicy` follows a clear pattern: select the endpoint, define ingress/egress rules with identity selectors, optionally add L7 rules. The Star Wars demo gives you immediate feedback - every policy change is verifiable with a `curl` command. Use `cilium policy trace` before applying and `cilium monitor` after to build confidence in your policies before deploying to production.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, System Administration, File Management
+Tags: Ubuntu, Systemd, System Administration, File Management
 
 Description: Learn how to use systemd-tmpfiles to create, manage, and automatically clean temporary files and directories on Ubuntu with persistent configuration across reboots.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sudo, Ansible, System Roles, Linux
+Tags: RHEL, Sudo, Ansible, System Roles, Linux
 
 Description: Use the RHEL System Role for sudo to automate sudoers configuration across your fleet with Ansible, ensuring consistent and auditable policies.
 

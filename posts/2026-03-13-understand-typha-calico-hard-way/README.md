@@ -10,9 +10,9 @@ Description: An explanation of what Typha is, why it exists, and how it fits int
 
 ## Introduction
 
-Typha is a fan-out component in the Calico architecture that sits between the Kubernetes API server and the Felix agents running on each node. Without Typha, every Felix instance watches the Kubernetes API directly. In clusters with hundreds or thousands of nodes, this creates significant API server load — each Felix maintains its own watch connection and processes all events independently.
+Typha is a fan-out component in the Calico architecture that sits between the Kubernetes API server and the Felix agents running on each node. Without Typha, every Felix instance watches the Kubernetes API directly. In clusters with hundreds or thousands of nodes, this creates significant API server load - each Felix maintains its own watch connection and processes all events independently.
 
-Typha solves this by acting as a single aggregating proxy: it maintains one watch connection to the API server and fans out updates to all connected Felix agents. This reduces API server load linearly with the number of nodes and also provides a coalescing function — if the same resource is updated multiple times in rapid succession, Typha sends only the final state to Felix, eliminating redundant processing.
+Typha solves this by acting as a single aggregating proxy: it maintains one watch connection to the API server and fans out updates to all connected Felix agents. This reduces API server load linearly with the number of nodes and also provides a coalescing function - if the same resource is updated multiple times in rapid succession, Typha sends only the final state to Felix, eliminating redundant processing.
 
 ## Why Typha Matters in Hard Way Installations
 
@@ -27,19 +27,19 @@ Understanding Typha is essential in hard way installations because:
 
 ## How Typha Works
 
-```
+```plaintext
 Felix on each node
   └──► Typha (1-3 replicas)
            └──► Kubernetes API server (1 watch connection per Typha replica)
 ```
 
 Without Typha (small clusters, <50 nodes):
-```
+```plaintext
 Felix (x50) ──► Kubernetes API server (50 watch connections)
 ```
 
 With Typha (large clusters, >50 nodes):
-```
+```plaintext
 Felix (x500) ──► Typha (x3) ──► Kubernetes API server (3 watch connections)
 ```
 
@@ -54,7 +54,7 @@ When a NetworkPolicy or GlobalNetworkPolicy is created or modified:
 3. Typha fans the update out to all connected Felix agents
 4. Each Felix programs the update into iptables/nftables on its node
 
-Typha coalesces rapid policy changes — if a policy is modified three times in one second, Typha sends only the final state. This reduces the number of dataplane reprogram cycles on each node.
+Typha coalesces rapid policy changes - if a policy is modified three times in one second, Typha sends only the final state. This reduces the number of dataplane reprogram cycles on each node.
 
 ## When to Deploy Typha
 
@@ -78,4 +78,4 @@ kubectl logs -n calico-system deployment/calico-typha | grep "Connecting to"
 
 ## Conclusion
 
-Typha is a scalability component that reduces Kubernetes API server load in large Calico deployments by aggregating watch connections and coalescing policy updates. In hard way installations, Typha must be manually deployed, configured with TLS certificates, and scaled as the cluster grows. Understanding Typha's role in the Calico architecture — particularly its fan-out and coalescing functions — is the foundation for correctly deploying and operating it in a manually managed cluster.
+Typha is a scalability component that reduces Kubernetes API server load in large Calico deployments by aggregating watch connections and coalescing policy updates. In hard way installations, Typha must be manually deployed, configured with TLS certificates, and scaled as the cluster grows. Understanding Typha's role in the Calico architecture - particularly its fan-out and coalescing functions - is the foundation for correctly deploying and operating it in a manually managed cluster.

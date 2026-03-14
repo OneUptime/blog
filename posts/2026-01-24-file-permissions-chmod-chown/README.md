@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, File Permissions, chmod, chown, Security, System Administration
+Tags: Linux, File Permissions, Chmod, Chown, Security, System Administration
 
 Description: Learn how to manage file permissions and ownership in Linux using chmod and chown commands with practical examples for securing your system.
 

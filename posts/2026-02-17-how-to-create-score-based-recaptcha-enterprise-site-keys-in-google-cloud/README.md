@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, reCAPTCHA Enterprise, Bot Protection, Security, Web Security
+Tags: GCP, ReCAPTCHA Enterprise, Bot Protection, Security, Web Security
 
 Description: A step-by-step guide to creating and configuring score-based reCAPTCHA Enterprise site keys in Google Cloud for invisible bot detection on your web applications.
 

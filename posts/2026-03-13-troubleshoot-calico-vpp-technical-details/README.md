@@ -10,7 +10,7 @@ Description: Advanced troubleshooting techniques for Calico VPP technical issues
 
 ## Introduction
 
-Advanced Calico VPP troubleshooting requires the ability to trace packets through VPP's node graph, interpret VPP error counters, and understand how the Calico agent translates policies into VPP ACLs. Standard network debugging tools like `tcpdump` don't work directly with DPDK interfaces — VPP has its own packet tracing mechanism that must be used instead.
+Advanced Calico VPP troubleshooting requires the ability to trace packets through VPP's node graph, interpret VPP error counters, and understand how the Calico agent translates policies into VPP ACLs. Standard network debugging tools like `tcpdump` don't work directly with DPDK interfaces - VPP has its own packet tracing mechanism that must be used instead.
 
 This guide covers VPP-specific debugging techniques that go beyond the operational troubleshooting in the host networking guide.
 
@@ -37,7 +37,7 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 Example trace output:
 
-```
+```plaintext
 Packet 1
 00:00:00:000001: dpdk-input
   GigabitEthernet0/0/0 rx queue 0
@@ -64,7 +64,7 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 
 Key nodes with drop counters:
 
-```
+```plaintext
 acl-plugin-out-ip4-fa    -- ACL policy deny
 dpdk-input/no_buffers   -- VPP out of buffer memory (need more hugepages)
 ip4-icmp-error          -- ICMP unreachables sent

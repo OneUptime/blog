@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Bug Report, Troubleshooting, Kubernetes
+Tags: Istio, Istioctl, Bug Report, Troubleshooting, Kubernetes
 
 Description: Learn how to use istioctl bug-report to collect comprehensive diagnostic information from your Istio mesh for troubleshooting and bug reports.
 

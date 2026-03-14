@@ -43,17 +43,17 @@ spec:
     name: flux-system     # SSH deploy key secret
 ```
 
-Apply any change to this source only through a merged PR — never by pushing directly to `main`.
+Apply any change to this source only through a merged PR - never by pushing directly to `main`.
 
 ## Step 2: Enable Branch Protection on GitHub
 
 In your GitHub repository go to **Settings → Branches → Add rule** and configure the following for the `main` branch:
 
-- **Require a pull request before merging** — enable this and set at least 1 required approving review.
-- **Dismiss stale pull request approvals when new commits are pushed** — prevents re-using an approval after the diff changes.
-- **Require status checks to pass before merging** — add the CI job name from Step 3.
-- **Require branches to be up to date before merging** — ensures the PR is tested against the latest main.
-- **Do not allow bypassing the above settings** — applies the rules even to repository admins.
+- **Require a pull request before merging** - enable this and set at least 1 required approving review.
+- **Dismiss stale pull request approvals when new commits are pushed** - prevents re-using an approval after the diff changes.
+- **Require status checks to pass before merging** - add the CI job name from Step 3.
+- **Require branches to be up to date before merging** - ensures the PR is tested against the latest main.
+- **Do not allow bypassing the above settings** - applies the rules even to repository admins.
 
 With these rules in place no commit can land on `main` without passing CI and receiving a human approval.
 
@@ -110,7 +110,7 @@ The `validate` job name is what you reference in the branch protection status ch
 
 A `CODEOWNERS` file automatically requests reviews from the right team when paths they own are changed.
 
-```
+```plaintext
 # .github/CODEOWNERS
 
 # Platform team must review any changes to cluster infrastructure
@@ -167,7 +167,7 @@ If the reconciliation fails, fix the issue in a new PR rather than pushing direc
 ## Best Practices
 
 - Never grant anyone (including admins) permission to bypass branch protection on the Flux-watched branch.
-- Keep PRs small and focused — one logical change per PR makes review and rollback easier.
+- Keep PRs small and focused - one logical change per PR makes review and rollback easier.
 - Add a PR template that asks authors to confirm they have tested the change in a lower environment.
 - Use `flux diff kustomization` in CI to surface a human-readable diff of what will change in the cluster.
 - Store Flux image automation commits in a separate branch if you want automated image updates to also go through PR review.
@@ -175,4 +175,4 @@ If the reconciliation fails, fix the issue in a new PR rather than pushing direc
 
 ## Conclusion
 
-A PR review workflow transforms Flux from a fast reconciler into a governed deployment pipeline. By combining branch protection rules, automated YAML validation, and CODEOWNERS-based review assignment, every change to your cluster passes through a consistent, auditable gate. The result is a GitOps practice that is both fast and safe — changes flow quickly once approved, and every approval is recorded permanently in Git history.
+A PR review workflow transforms Flux from a fast reconciler into a governed deployment pipeline. By combining branch protection rules, automated YAML validation, and CODEOWNERS-based review assignment, every change to your cluster passes through a consistent, auditable gate. The result is a GitOps practice that is both fast and safe - changes flow quickly once approved, and every approval is recorded permanently in Git history.

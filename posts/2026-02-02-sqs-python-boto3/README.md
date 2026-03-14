@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, SQS, Python, boto3, Message Queue, Distributed Systems, Cloud
+Tags: AWS, SQS, Python, Boto3, Message Queue, Distributed Systems, Cloud
 
 Description: Learn how to use Amazon SQS with Python and boto3.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, SAN, Certificates, mTLS, SPIFFE, Security
+Tags: Istio, SAN, Certificates, MTLS, SPIFFE, Security
 
 Description: Learn how Subject Alternative Names work in Istio certificates, how SPIFFE URIs map to workload identities, and how to configure custom SANs for your services.
 

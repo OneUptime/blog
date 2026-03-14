@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Performance Monitoring, Linux, System Administration, sysstat
+Tags: Ubuntu, Performance Monitoring, Linux, System Administration, Sysstat
 
 Description: Learn how to use sar on Ubuntu to review historical CPU, memory, network, and disk performance data for post-incident analysis and capacity planning.
 

@@ -10,7 +10,7 @@ Description: How to validate Calico Tier resources to confirm the tier hierarchy
 
 ## Introduction
 
-Validating Calico Tier configuration requires confirming that tiers exist with the correct order values, that policies are assigned to the intended tiers, and that the resulting evaluation order enforces the expected security hierarchy. A misconfigured tier order — such as platform tier at order 100 and security tier at order 500 — would allow platform policies to take precedence over security baselines, undermining the entire layered model.
+Validating Calico Tier configuration requires confirming that tiers exist with the correct order values, that policies are assigned to the intended tiers, and that the resulting evaluation order enforces the expected security hierarchy. A misconfigured tier order - such as platform tier at order 100 and security tier at order 500 - would allow platform policies to take precedence over security baselines, undermining the entire layered model.
 
 ## Prerequisites
 

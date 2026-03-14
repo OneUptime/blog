@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, tc, Bandwidth, Traffic Control, Linux
+Tags: RHEL, Tc, Bandwidth, Traffic Control, Linux
 
 Description: A practical guide to using the tc (traffic control) command on RHEL to limit and manage network bandwidth on specific interfaces, for specific applications, or for specific traffic types.
 

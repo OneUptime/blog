@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Load Testing, k6, Performance, Stress Testing, API
+Tags: Load Testing, K6, Performance, Stress Testing, API
 
 Description: Learn how to use k6 for load testing APIs including writing test scripts, defining scenarios, and analyzing results.
 

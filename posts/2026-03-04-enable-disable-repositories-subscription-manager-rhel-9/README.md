@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Repositories, subscription-manager, Red Hat, Linux
+Tags: RHEL, Repositories, Subscription-manager, Red Hat, Linux
 
 Description: Learn how to list, enable, and disable Red Hat software repositories on RHEL using subscription-manager, giving you control over what packages are available on your system.
 

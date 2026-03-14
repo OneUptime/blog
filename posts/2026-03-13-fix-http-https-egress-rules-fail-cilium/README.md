@@ -1,4 +1,4 @@
-# How to Fix HTTP and HTTPS Egress Rules That Still Fail in Cilium Network Policies
+# How to Fix HTTP and HTTPS Egress Rules in Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

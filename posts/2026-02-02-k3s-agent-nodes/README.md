@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: k3s, Kubernetes, DevOps, Cluster Management, Lightweight Kubernetes
+Tags: K3s, Kubernetes, DevOps, Cluster Management, Lightweight Kubernetes
 
 Description: A practical guide to managing K3s agent nodes, covering installation, configuration, scaling, troubleshooting, and production best practices for lightweight Kubernetes deployments.
 

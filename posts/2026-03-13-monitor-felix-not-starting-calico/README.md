@@ -10,7 +10,7 @@ Description: Monitor for Felix startup and runtime failures in Calico using read
 
 ## Introduction
 
-Monitoring for Felix failures requires tracking the calico-node pod's readiness state (which reflects Felix health) and watching Felix-specific log patterns that indicate startup or runtime errors. Felix exposes a readiness endpoint at `/readiness` on port 9099 that returns 200 when healthy — this is the most direct health signal.
+Monitoring for Felix failures requires tracking the calico-node pod's readiness state (which reflects Felix health) and watching Felix-specific log patterns that indicate startup or runtime errors. Felix exposes a readiness endpoint at `/readiness` on port 9099 that returns 200 when healthy - this is the most direct health signal.
 
 ## Symptoms
 

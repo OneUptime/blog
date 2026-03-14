@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Security, sudo, DevOps
+Tags: Ansible, Security, Sudo, DevOps
 
 Description: Learn how to configure and manage sudo passwords in Ansible playbooks using various methods including vault encryption and command-line prompts.
 

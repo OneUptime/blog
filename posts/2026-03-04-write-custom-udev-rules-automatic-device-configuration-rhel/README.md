@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, udev, Device Management, Automation, Hardware, Linux
+Tags: RHEL, Udev, Device Management, Automation, Hardware, Linux
 
 Description: Write custom udev rules on RHEL to automatically configure devices when they are connected, including setting permissions, running scripts, and creating persistent device names.
 

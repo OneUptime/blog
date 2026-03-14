@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, PHP, Localization, i18n, Web Development, Backend
+Tags: Laravel, PHP, Localization, I18n, Web Development, Backend
 
 Description: A practical guide to building multi-language Laravel applications using language files, translation helpers, middleware, and Blade directives.
 

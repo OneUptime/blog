@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, mTLS, Certificate Rotation, Kubernetes
+Tags: OpenTelemetry, MTLS, Certificate Rotation, Kubernetes
 
 Description: Fix the issue where certificate rotation breaks mTLS connections in the Collector until the pod is manually restarted.
 

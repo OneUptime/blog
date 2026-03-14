@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Rancher, Kubernetes, RKE, Networking, Migration, CNI
+Tags: Calico, Kubernetes, Networking, Migration, Rancher, CNI
 
 Description: A step-by-step guide to replacing Canal or Flannel with Calico on Rancher-managed Kubernetes clusters, enabling advanced network policy enforcement across your Rancher fleet.
 
@@ -179,4 +179,4 @@ calicoctl apply -f rancher-calico-policy.yaml
 
 ## Conclusion
 
-Migrating to Calico on Rancher-managed clusters unlocks the full Calico feature set — including IPAM, BGP, and eBPF — within Rancher's multi-cluster management framework. By provisioning new clusters with Calico and migrating workloads systematically, you can achieve a clean migration without in-place CNI replacement risks. Integrate OneUptime monitoring with your Rancher environment for continuous network health validation across your entire fleet.
+Migrating to Calico on Rancher-managed clusters unlocks the full Calico feature set - including IPAM, BGP, and eBPF - within Rancher's multi-cluster management framework. By provisioning new clusters with Calico and migrating workloads systematically, you can achieve a clean migration without in-place CNI replacement risks. Integrate OneUptime monitoring with your Rancher environment for continuous network health validation across your entire fleet.

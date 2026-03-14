@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, etcd, Cluster Recovery, Node Removal
+Tags: Talos Linux, Kubernetes, Etcd, Cluster Recovery, Node Removal
 
 Description: Step-by-step instructions for force removing an etcd member in Talos Linux when a node is offline or unresponsive.
 

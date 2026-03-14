@@ -156,7 +156,7 @@ flux get helmrelease crossplane -n crossplane-system
 ```
 
 Expected output for the pods:
-```
+```plaintext
 NAME                                       READY   STATUS    RESTARTS   AGE
 crossplane-7d9c4b8f6-xk9p2                1/1     Running   0          2m
 crossplane-rbac-manager-5b4f7d6c8-mj3q1   1/1     Running   0          2m

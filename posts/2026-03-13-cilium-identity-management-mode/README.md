@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Identity Management, eBPF, Security
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A deep dive into Cilium's identity management modes including CRD-based and kvstore-based allocation, how to configure the right mode for your cluster, and how to troubleshoot identity allocation failures.
+Description: A deep dive into Cilium's identity management modes including CRD-based and kvstore-based allocation, how to configure the right mode for your cluster, and how to troubleshoot identity allocation...
 
 ---
 
 ## Introduction
 
-Cilium's security model is built on the concept of identities — numeric labels assigned to groups of endpoints that share the same security-relevant labels. These identities are used by eBPF programs in the kernel to make fast allow/deny decisions without needing to look up policies for individual IP addresses. The way identities are allocated and stored — the identity management mode — significantly affects how Cilium operates and scales.
+Cilium's security model is built on the concept of identities - numeric labels assigned to groups of endpoints that share the same security-relevant labels. These identities are used by eBPF programs in the kernel to make fast allow/deny decisions without needing to look up policies for individual IP addresses. The way identities are allocated and stored - the identity management mode - significantly affects how Cilium operates and scales.
 
 Cilium supports two identity allocation modes: **CRD-based** (the default since Cilium 1.9) where identities are stored as `CiliumIdentity` Kubernetes custom resources, and **kvstore-based** where identities are stored in an external etcd or Consul key-value store. The CRD mode is simpler to operate since it reuses the Kubernetes API server, while the kvstore mode provides better performance at very large scales (thousands of nodes) at the cost of additional infrastructure.
 

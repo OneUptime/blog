@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Resource Inspection, talosctl, Node Management
+Tags: Talos Linux, Kubernetes, Resource Inspection, Talosctl, Node Management
 
 Description: A comprehensive guide to using talosctl get for inspecting resources on Talos Linux nodes, from system state to network configuration.
 

@@ -1,10 +1,10 @@
-# Cilium IPAM Cluster Scope (Default): Configure, Troubleshoot, Validate, and Monitor
+# Cilium IPAM Cluster Scope (Default)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPAM, Cluster-Pool, Networking
+Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
 
-Description: A deep dive into Cilium's default cluster-pool IPAM mode, including how the Operator allocates per-node CIDRs from a cluster-wide pool, configuration options, troubleshooting allocation issues, and monitoring pool health.
+Description: A deep dive into Cilium's default cluster-pool IPAM mode, including how the Operator allocates per-node CIDRs from a cluster-wide pool, configuration options, troubleshooting allocation issues,...
 
 ---
 
@@ -12,7 +12,7 @@ Description: A deep dive into Cilium's default cluster-pool IPAM mode, including
 
 Cilium's default IPAM mode, `cluster-pool`, uses a centrally managed IP address pool from which the Cilium Operator allocates per-node CIDRs. When a new node joins the cluster, the Operator assigns it a dedicated CIDR (e.g., `/24` with 254 usable addresses) from the configured cluster pool (e.g., `10.244.0.0/16`). Each Cilium Agent on a node then sub-allocates individual IPs from its node CIDR for pods.
 
-This "cluster scope" IPAM model provides clean separation between cluster-level IP management (handled by the Operator) and node-level allocation (handled by individual agents). The Operator ensures no two nodes receive overlapping CIDRs, preventing IP conflicts at the routing level. Because the entire pool is configured in advance and stored in CiliumNode CRDs, IPAM is fully decoupled from the underlying infrastructure — the same model works on bare metal, VMs, and cloud instances without overlay networking requirements.
+This "cluster scope" IPAM model provides clean separation between cluster-level IP management (handled by the Operator) and node-level allocation (handled by individual agents). The Operator ensures no two nodes receive overlapping CIDRs, preventing IP conflicts at the routing level. Because the entire pool is configured in advance and stored in CiliumNode CRDs, IPAM is fully decoupled from the underlying infrastructure - the same model works on bare metal, VMs, and cloud instances without overlay networking requirements.
 
 This guide covers configuring cluster-pool IPAM, troubleshooting allocation failures, validating correct operation, and monitoring pool health over time.
 

@@ -87,4 +87,4 @@ kubectl exec linux-test -- ping -c3 $WIN_IP
 
 ## Conclusion
 
-Migrating Windows workloads to Calico in Rancher-managed RKE2 clusters can be initiated through Rancher's cluster edit UI, which handles the CNI change and cluster update orchestration. Post-migration steps — IP pool configuration for Windows, Windows node drain/uncordon, and network policy re-application — complete the migration to a correctly configured Calico networking environment for Windows pods.
+Migrating Windows workloads to Calico in Rancher-managed RKE2 clusters can be initiated through Rancher's cluster edit UI, which handles the CNI change and cluster update orchestration. Post-migration steps - IP pool configuration for Windows, Windows node drain/uncordon, and network policy re-application - complete the migration to a correctly configured Calico networking environment for Windows pods.

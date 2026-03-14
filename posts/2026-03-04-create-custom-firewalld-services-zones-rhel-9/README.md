@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, firewalld, Custom Services, Security, Linux
+Tags: RHEL, Firewalld, Custom Services, Security, Linux
 
 Description: Learn how to create custom firewalld services and zones on RHEL for applications that do not have predefined firewall definitions, with practical examples.
 

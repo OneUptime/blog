@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: eBPF, SSL, TLS, Security, Networking, Linux
+Tags: EBPF, SSL, TLS, Security, Networking, Linux
 
 Description: Learn how to use eBPF for SSL/TLS traffic inspection without modifying applications.
 

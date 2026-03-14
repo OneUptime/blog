@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, kubernetes, cost-optimization, scaling, gitops, non-production
+Tags: Flux-cd, Kubernetes, Cost-Optimization, Scaling, GitOps, Non-Production
 
-Description: Learn how to automate the scale-down of non-production Kubernetes clusters during off-hours using Flux CD, reducing compute costs by scaling workloads to zero outside business hours. This guide covers scheduled scaling, Flux Kustomizations for environment-specific replicas, and safe scale-down procedures.
+Description: Learn how to automate the scale-down of non-production Kubernetes clusters during off-hours using Flux CD, reducing compute costs by scaling workloads to zero outside business hours.
 
 ---
 
 ## Introduction
 
-Non-production clusters — development, staging, and QA environments — often run 24/7 at full capacity even though engineers only use them during business hours. Scaling these clusters down overnight and on weekends can reduce compute costs by 60–70% with minimal impact on developer workflows.
+Non-production clusters - development, staging, and QA environments - often run 24/7 at full capacity even though engineers only use them during business hours. Scaling these clusters down overnight and on weekends can reduce compute costs by 60–70% with minimal impact on developer workflows.
 
 Flux CD enables automated scale-down through a combination of Kustomize overlays and scheduled CronJobs that suspend Flux reconciliations during off-hours. By managing replica counts as environment-specific configuration, you can define "business hours" and "off-hours" states in Git and let Flux automatically apply them on a schedule.
 
@@ -157,11 +157,11 @@ roleRef:
 
 ## Best Practices
 
-- Always notify developers via Slack when automated scale-down begins — avoid surprise outages
+- Always notify developers via Slack when automated scale-down begins - avoid surprise outages
 - Keep a manual override process for when engineers need to work outside business hours
 - Scale down node groups too (via Cluster Autoscaler or cloud provider APIs) to reduce node costs
-- Test scale-up procedures thoroughly — verify all workloads come back healthy automatically
-- Use environment-specific schedules — QA may need later off-hours than dev
+- Test scale-up procedures thoroughly - verify all workloads come back healthy automatically
+- Use environment-specific schedules - QA may need later off-hours than dev
 - Monitor scale-down CronJob failures via Flux notifications to detect scheduling drift
 
 ## Conclusion

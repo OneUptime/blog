@@ -1,10 +1,10 @@
-# Install Calico on GKE Step by Step
+# How to Install Calico on GKE Step by Step
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, GKE, Google Cloud, Kubernetes, Networking, Network Policy
+Tags: Calico, Kubernetes, Networking, CNI, Installation, GKE, Google Cloud
 
-Description: Step-by-step guide to installing Calico on Google Kubernetes Engine for advanced network policy enforcement beyond GKE's native capabilities.
+Description: A step-by-step guide to installing Calico network policies on Google Kubernetes Engine clusters.
 
 ---
 

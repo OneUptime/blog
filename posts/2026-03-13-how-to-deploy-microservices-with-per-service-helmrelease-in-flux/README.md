@@ -182,7 +182,7 @@ spec:
   chart:
     spec:
       chart: auth-service
-      version: "1.5.0"  # Pinned — auth changes rarely
+      version: "1.5.0"  # Pinned - auth changes rarely
       sourceRef:
         kind: HelmRepository
         name: internal-charts

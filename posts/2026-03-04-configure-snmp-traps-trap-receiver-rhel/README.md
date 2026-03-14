@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SNMP, Traps, Monitoring, snmptrapd, Linux
+Tags: RHEL, SNMP, Traps, Monitoring, Snmptrapd, Linux
 
 Description: Set up an SNMP trap receiver on RHEL using snmptrapd to receive and process asynchronous notifications from network devices and servers.
 

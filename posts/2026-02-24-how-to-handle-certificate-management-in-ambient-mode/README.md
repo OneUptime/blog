@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Ambient Mesh, mTLS, Security, Kubernetes
+Tags: Istio, Certificates, Ambient Mesh, MTLS, Security, Kubernetes
 
 Description: Practical guide to managing TLS certificates in Istio ambient mode including rotation, custom CAs, and troubleshooting certificate issues.
 

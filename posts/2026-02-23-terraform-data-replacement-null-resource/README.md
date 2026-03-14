@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, terraform_data, null_resource, Infrastructure as Code, DevOps
+Tags: Terraform, Terraform_data, Null_resource, Infrastructure as Code, DevOps
 
 Description: Learn how to use the terraform_data managed resource as a modern built-in replacement for null_resource, with input and output tracking, triggers, and provisioner support.
 

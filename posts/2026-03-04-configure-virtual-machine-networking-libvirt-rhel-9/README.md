@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Networking, libvirt, Virtualization, Linux
+Tags: RHEL, KVM, Networking, Libvirt, Virtualization, Linux
 
 Description: Learn how to configure NAT, bridged, and isolated virtual networks for KVM virtual machines using libvirt on RHEL 9.
 

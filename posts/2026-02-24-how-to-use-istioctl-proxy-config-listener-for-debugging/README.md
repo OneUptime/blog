@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, Envoy, Listeners, Kubernetes
+Tags: Istio, Debugging, Istioctl, Envoy, Listeners, Kubernetes
 
 Description: A hands-on guide to inspecting Envoy listener configuration with istioctl proxy-config listener for debugging traffic routing in Istio.
 

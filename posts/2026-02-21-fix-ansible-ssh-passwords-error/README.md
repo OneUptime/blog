@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSH, sshpass, Troubleshooting, Authentication
+Tags: Ansible, SSH, Sshpass, Troubleshooting, Authentication
 
 Description: Resolve the Ansible error requiring sshpass for SSH password authentication by installing sshpass or switching to key-based auth.
 

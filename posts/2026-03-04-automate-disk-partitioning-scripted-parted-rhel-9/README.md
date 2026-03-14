@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, parted, Scripting, Automation, Linux
+Tags: RHEL, Parted, Scripting, Automation, Linux
 
 Description: Automate disk partitioning on RHEL using scripted parted commands for repeatable, consistent storage provisioning across multiple servers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Multipass, cloud-init, Automation, Virtualization
+Tags: Ubuntu, Multipass, Cloud-init, Automation, Virtualization
 
 Description: A practical guide to using cloud-init configuration files with Multipass to automate VM setup, install packages, configure users, and run custom scripts at first boot.
 

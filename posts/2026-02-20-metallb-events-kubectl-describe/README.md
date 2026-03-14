@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Events, kubectl, Debugging
+Tags: Kubernetes, MetalLB, Events, Kubectl, Debugging
 
 Description: Learn how to use kubectl describe to check MetalLB events on LoadBalancer services for troubleshooting IP assignment and advertisement issues.
 

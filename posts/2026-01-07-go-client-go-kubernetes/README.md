@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Kubernetes, client-go, API, DevOps
+Tags: Go, Kubernetes, Client-go, API, DevOps
 
 Description: Use client-go to programmatically interact with Kubernetes clusters for managing resources, watching events, and building automation tools.
 

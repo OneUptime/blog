@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, nftables, Connection Tracking, Conntrack, Firewall, Linux
+Tags: RHEL, Nftables, Connection Tracking, Conntrack, Firewall, Linux
 
 Description: Learn how to use nftables connection tracking (conntrack) on RHEL to build stateful firewall rules that intelligently handle established, related, and new connections.
 

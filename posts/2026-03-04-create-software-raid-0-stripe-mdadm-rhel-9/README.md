@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID 0, mdadm, Storage, Linux
+Tags: RHEL, RAID 0, Mdadm, Storage, Linux
 
 Description: Learn how to set up a software RAID 0 striped array using mdadm on RHEL for maximum disk throughput when redundancy is not required.
 

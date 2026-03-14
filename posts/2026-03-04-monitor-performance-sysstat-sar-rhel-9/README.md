@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sysstat, sar, Performance Monitoring, Linux, System Administration
+Tags: RHEL, Sysstat, Sar, Performance Monitoring, Linux, System Administration
 
 Description: Learn how to install and use sysstat and sar on RHEL to collect and analyze system performance data over time.
 

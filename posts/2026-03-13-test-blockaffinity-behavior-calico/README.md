@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, ipam, blockaffinity, kubernetes, networking, testing
+Tags: Calico, IPAM, BlockAffinity, Kubernetes, Networking, Testing
 
 Description: Understand and test Calico's BlockAffinity mechanism that assigns IP address blocks to nodes, and learn how to verify correct block allocation and release behavior in your cluster.
 

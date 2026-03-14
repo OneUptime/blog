@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, platform9, Managed kubernetes, pmk, GitOps, Continuous Delivery, Hybrid Cloud
+Tags: Flux CD, Platform9, Managed kubernetes, Pmk, GitOps, Continuous Delivery, Hybrid Cloud
 
 Description: A comprehensive guide to deploying Flux CD on Platform9 Managed Kubernetes for GitOps-driven application delivery across hybrid cloud environments.
 

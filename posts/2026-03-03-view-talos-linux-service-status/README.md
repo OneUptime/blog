@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Service Management, Troubleshooting, talosctl
+Tags: Talos Linux, Kubernetes, Service Management, Troubleshooting, Talosctl
 
 Description: Learn how to view and interpret service status on Talos Linux nodes using talosctl services and related commands.
 

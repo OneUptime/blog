@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Boot Targets, Runlevels, Linux
+Tags: RHEL, Systemd, Boot Targets, Runlevels, Linux
 
 Description: Learn how systemd targets replace traditional runlevels in RHEL, and how to switch between multi-user, graphical, rescue, and emergency modes for day-to-day server administration.
 

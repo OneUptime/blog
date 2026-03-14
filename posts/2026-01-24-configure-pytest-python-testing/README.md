@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, pytest, Testing, Configuration, Fixtures, Unit Tests, Test Automation, CI/CD
+Tags: Python, Pytest, Testing, Configuration, Fixtures, Unit Tests, Test Automation, CI/CD
 
 Description: Learn how to configure pytest for effective Python testing, including project setup, fixtures, plugins, markers, and CI/CD integration.
 

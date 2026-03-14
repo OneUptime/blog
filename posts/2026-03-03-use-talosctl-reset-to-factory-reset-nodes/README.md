@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Factory Reset, talosctl, Node Lifecycle
+Tags: Talos Linux, Kubernetes, Factory Reset, Talosctl, Node Lifecycle
 
 Description: A complete guide to using talosctl reset for factory resetting Talos Linux nodes, covering all options and use cases.
 

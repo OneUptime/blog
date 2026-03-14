@@ -271,10 +271,10 @@ kubectl exec -n clickhouse chi-demo-cluster1-0-0-0 -- clickhouse-client \
 
 ## Best Practices
 
-- Use `ReplicatedMergeTree` engine for all production tables — it coordinates replication through ZooKeeper automatically.
+- Use `ReplicatedMergeTree` engine for all production tables - it coordinates replication through ZooKeeper automatically.
 - Create `Distributed` tables on top of local `ReplicatedMergeTree` tables for transparent cross-shard querying.
 - Set `max_memory_usage` per query to prevent a single heavy query from exhausting all node memory.
-- Use `ORDER BY` clauses that match your most frequent query filters — ClickHouse uses this as a sparse index.
+- Use `ORDER BY` clauses that match your most frequent query filters - ClickHouse uses this as a sparse index.
 - Monitor ClickHouse with the Grafana ClickHouse datasource plugin and the operator's built-in metrics endpoint.
 
 ## Conclusion

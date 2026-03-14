@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Bandwidth Monitoring, bmon, System Administration
+Tags: Ubuntu, Networking, Bandwidth Monitoring, Bmon, System Administration
 
 Description: Learn how to install and use bmon on Ubuntu to monitor network bandwidth usage in real-time, visualize traffic across multiple interfaces, and capture bandwidth data for analysis.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, asyncio, Concurrency, Async/Await, Performance
+Tags: Python, Asyncio, Concurrency, Async/Await, Performance
 
 Description: Master Python's asyncio library for writing concurrent code. Learn async/await syntax, running tasks concurrently, and handling real-world scenarios like API calls and file I/O.
 

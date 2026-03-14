@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, containerd, Container Runtime, Kubernetes, Service Mesh
+Tags: Istio, Containerd, Container Runtime, Kubernetes, Service Mesh
 
 Description: Guide to running Istio on Kubernetes clusters using the containerd container runtime including configuration best practices and troubleshooting.
 

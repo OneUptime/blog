@@ -1,10 +1,10 @@
-# How to Deploy CoreDNS Custom Configuration with Flux CD
+# CoreDNS Custom Config with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, CoreDNS, DNS, Kubernetes, Networking, GitOps, ConfigMap
+Tags: Flux-cd, CoreDNS, DNS, Kubernetes, GitOps, Networking
 
-Description: Learn how to manage CoreDNS ConfigMap customizations using Flux CD GitOps to add custom DNS zones, forwarders, and rewrite rules.
+Description: Learn how to customize CoreDNS configuration using Flux CD to add custom DNS zones, stub resolvers, and forwarding rules as version-controlled GitOps resources.
 
 ---
 
@@ -29,7 +29,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 Default Corefile:
 
-```
+```plaintext
 .:53 {
     errors
     health {

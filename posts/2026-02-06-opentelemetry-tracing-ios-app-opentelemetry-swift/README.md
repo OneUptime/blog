@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Swift, iOS, opentelemetry-swift, Mobile, Tracing
+Tags: OpenTelemetry, Swift, IOS, Opentelemetry-swift, Mobile, Tracing
 
 Description: Learn how to integrate OpenTelemetry tracing into your iOS application using the opentelemetry-swift SDK with practical examples and best practices.
 

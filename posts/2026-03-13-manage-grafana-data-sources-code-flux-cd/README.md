@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: grafana, flux-cd, gitops, kubernetes, data-sources, observability, prometheus
+Tags: Flux CD, Kubernetes, GitOps, Grafana, Data Source, Observability, Prometheus
 
 Description: Learn how to manage Grafana data sources as code using Kubernetes Secrets and ConfigMaps with Flux CD, ensuring consistent and auditable data source configuration across environments.
 
@@ -178,4 +178,4 @@ spec:
 
 ## Conclusion
 
-Managing Grafana data sources as code with Flux CD provides the same GitOps benefits for your observability stack as for your application workloads. Data source configurations are reviewed, versioned, and automatically reconciled—making your monitoring infrastructure reproducible, auditable, and consistent across all environments.
+Managing Grafana data sources as code with Flux CD provides the same GitOps benefits for your observability stack as for your application workloads. Data source configurations are reviewed, versioned, and automatically reconciled-making your monitoring infrastructure reproducible, auditable, and consistent across all environments.

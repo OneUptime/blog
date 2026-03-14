@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Envoy, gRPC, Load Balancing, HTTP/2, Kubernetes, Microservices, Service Mesh, Observability
+Tags: Envoy, GRPC, Load Balancing, HTTP/2, Kubernetes, Microservices, Service Mesh, Observability
 
 Description: A comprehensive guide to configuring Envoy proxy for gRPC load balancing, covering HTTP/2 settings, health checking, load balancing algorithms.
 

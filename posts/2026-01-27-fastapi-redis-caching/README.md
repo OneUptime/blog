@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, FastAPI, Redis, Caching, Performance, Async, redis-py
+Tags: Python, FastAPI, Redis, Caching, Performance, Async, Redis-py
 
 Description: Learn how to integrate Redis with FastAPI for high-performance caching using async connections, connection pooling, cache decorators, and advanced TTL strategies.
 

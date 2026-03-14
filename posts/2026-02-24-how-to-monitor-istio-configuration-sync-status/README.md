@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration, xDS, Monitoring, Envoy, Troubleshooting
+Tags: Istio, Configuration, XDS, Monitoring, Envoy, Troubleshooting
 
 Description: A hands-on guide to monitoring whether Istio configuration is properly synced across all proxies in your service mesh.
 

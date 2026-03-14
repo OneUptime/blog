@@ -10,7 +10,7 @@ Description: Monitor external API access failures from Calico pods using egress 
 
 ## Introduction
 
-External API access failures from pods are often silent from the cluster operator's perspective — the application fails, but the failure mode looks like a network or API issue rather than a Calico policy issue. Proactive monitoring closes this gap by continuously testing external API reachability from within pods and alerting when policy or connectivity changes cause failures.
+External API access failures from pods are often silent from the cluster operator's perspective - the application fails, but the failure mode looks like a network or API issue rather than a Calico policy issue. Proactive monitoring closes this gap by continuously testing external API reachability from within pods and alerting when policy or connectivity changes cause failures.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, pip, virtualenv
+Tags: Ansible, Python, Pip, Virtualenv
 
 Description: Learn how to create and manage Python virtual environments with the Ansible pip module for isolated application deployments.
 

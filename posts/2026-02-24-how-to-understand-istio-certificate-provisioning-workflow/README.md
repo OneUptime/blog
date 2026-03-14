@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Security, mTLS, Service Mesh
+Tags: Istio, Certificates, Security, MTLS, Service Mesh
 
 Description: A detailed walkthrough of how Istio provisions, distributes, and rotates certificates for workload identity and mutual TLS encryption.
 

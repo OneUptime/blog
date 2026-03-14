@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Custom Rules, Code Quality
+Tags: Ansible, Ansible-lint, Custom Rules, Code Quality
 
 Description: Learn how to create and use custom ansible-lint rules to enforce your organization's specific Ansible coding standards and conventions.
 

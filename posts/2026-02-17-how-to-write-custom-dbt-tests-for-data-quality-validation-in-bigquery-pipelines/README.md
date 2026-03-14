@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, dbt, Data Quality, Testing, Data Validation
+Tags: GCP, BigQuery, Dbt, Data Quality, Testing, Data Validation
 
 Description: Learn how to write custom dbt tests beyond the built-in ones to validate data quality in BigQuery pipelines, including singular tests, generic tests, and test macros.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Linux Administration, Boot Management
+Tags: Ubuntu, Systemd, Linux Administration, Boot Management
 
 Description: Learn how systemd targets replace traditional SysV runlevels on Ubuntu, how to switch between them, and how to set a default boot target for your system.
 

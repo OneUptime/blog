@@ -27,7 +27,7 @@ In this guide you will learn how to create individual Flux Kustomization resourc
 
 Structure each microservice with its own directory containing a kustomization.yaml.
 
-```
+```plaintext
 apps/
 ├── frontend/
 │   ├── kustomization.yaml

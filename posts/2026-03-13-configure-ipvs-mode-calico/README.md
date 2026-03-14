@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPVS, kube-proxy, Networking
+Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
 
 Description: Configure Kubernetes kube-proxy in IPVS mode with Calico to improve service routing performance using kernel-level load balancing.
 
@@ -75,4 +75,4 @@ graph LR
 
 ## Conclusion
 
-IPVS mode provides superior service routing performance compared to iptables mode, especially at scale with many services. Calico and IPVS mode work together effectively — Calico handles pod connectivity and network policy while IPVS handles service load balancing. After migrating to IPVS mode, validate that all services are represented in the IPVS table and that service connectivity functions correctly.
+IPVS mode provides superior service routing performance compared to iptables mode, especially at scale with many services. Calico and IPVS mode work together effectively - Calico handles pod connectivity and network policy while IPVS handles service load balancing. After migrating to IPVS mode, validate that all services are represented in the IPVS table and that service connectivity functions correctly.

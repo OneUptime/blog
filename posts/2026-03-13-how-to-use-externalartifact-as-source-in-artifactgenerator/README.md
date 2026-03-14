@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, artifactgenerator, externalartifact, GitOps, Kubernetes, OCI
+Tags: Flux, Fluxcd, Artifactgenerator, Externalartifact, GitOps, Kubernetes, OCI
 
 Description: Learn how to use ExternalArtifact resources as source inputs for ArtifactGenerator in Flux to integrate external artifact sources.
 

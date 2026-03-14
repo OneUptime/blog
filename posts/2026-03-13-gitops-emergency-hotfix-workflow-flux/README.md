@@ -12,7 +12,7 @@ Description: Create a fast-track hotfix workflow that allows critical fixes to b
 
 Normal GitOps workflows prioritize safety over speed: every change goes through a PR, waits for CI, and requires multiple approvals. That discipline is essential for routine deployments, but it becomes a liability during a live incident. When production is down, a multi-hour approval cycle makes the outage worse.
 
-An emergency hotfix workflow threads this needle by creating a documented fast path. It is not a backdoor — every change still goes through Git and is still applied by Flux. The difference is that approval requirements are reduced, the path to production is shorter, and the fix can land in minutes rather than hours. Critically, a follow-up PR must still reconcile the hotfix into the normal workflow so no shadow configuration accumulates.
+An emergency hotfix workflow threads this needle by creating a documented fast path. It is not a backdoor - every change still goes through Git and is still applied by Flux. The difference is that approval requirements are reduced, the path to production is shorter, and the fix can land in minutes rather than hours. Critically, a follow-up PR must still reconcile the hotfix into the normal workflow so no shadow configuration accumulates.
 
 This guide defines the hotfix workflow, the Flux resources that support it, and the process for backporting the fix into the regular change flow afterward.
 
@@ -66,7 +66,7 @@ spec:
 
 In GitHub configure the `hotfix` branch with relaxed (but not absent) protection:
 
-```
+```plaintext
 Branch name pattern: hotfix
 
 Settings:
@@ -188,12 +188,12 @@ flux get kustomization apps-production
 ## Best Practices
 
 - Pre-create the hotfix GitRepository and Kustomization resources so there is no delay in activating them during an incident.
-- Limit the list of incident commanders who can bypass PR requirements — this should be a small, named group.
+- Limit the list of incident commanders who can bypass PR requirements - this should be a small, named group.
 - Always require at least basic manifest validation CI even on the hotfix branch.
 - File an incident report that references the Git commit SHA of the hotfix so the change is traceable.
-- Never leave the hotfix Flux resources active after the incident is resolved — the cleanup step is mandatory.
+- Never leave the hotfix Flux resources active after the incident is resolved - the cleanup step is mandatory.
 - Run a post-incident review to determine if the hotfix could have been applied faster through the normal workflow, and whether the normal workflow needs adjustment.
 
 ## Conclusion
 
-An emergency hotfix workflow gives your team a documented, controlled fast path for critical fixes without abandoning GitOps principles. Every hotfix still flows through Git, is applied by Flux, and is ultimately merged back into the normal change flow. The audit trail is preserved, the fix is reproducible, and the incident can be referenced against a specific commit — all the properties that make GitOps trustworthy, delivered in minutes when they are needed most.
+An emergency hotfix workflow gives your team a documented, controlled fast path for critical fixes without abandoning GitOps principles. Every hotfix still flows through Git, is applied by Flux, and is ultimately merged back into the normal change flow. The audit trail is preserved, the fix is reproducible, and the incident can be referenced against a specific commit - all the properties that make GitOps trustworthy, delivered in minutes when they are needed most.

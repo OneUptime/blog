@@ -1,10 +1,10 @@
-# How to Validate Resolution of BIRD Not Ready Errors in Calico
+# Validate Resolution for BIRD Not Ready in Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Troubleshooting
+Tags: Calico, Kubernetes, BGP, BIRD, Troubleshooting
 
-Description: Verification steps to confirm that BIRD not ready errors in Calico have been fully resolved including BGP peer state, route table validation, and end-to-end connectivity tests.
+Description: Learn how to diagnose and resolve the BIRD not ready status in Calico, which indicates a BGP routing daemon failure that can disrupt pod-to-pod communication across nodes.
 
 ---
 

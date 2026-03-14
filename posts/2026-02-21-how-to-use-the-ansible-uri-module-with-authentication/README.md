@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Authentication, uri Module, Security
+Tags: Ansible, Authentication, Uri Module, Security
 
 Description: Learn how to authenticate HTTP requests in Ansible using basic auth, bearer tokens, OAuth, API keys, and client certificates.
 

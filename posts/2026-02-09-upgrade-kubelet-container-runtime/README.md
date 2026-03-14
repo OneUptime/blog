@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Container-Runtime
+Tags: Kubernetes, Kubelet, Container-Runtime
 
 Description: Learn how to safely upgrade kubelet and container runtimes like containerd and CRI-O on Kubernetes worker nodes with graceful pod migration and minimal service disruption.
 

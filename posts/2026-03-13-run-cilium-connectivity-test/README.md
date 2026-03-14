@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, kubernetes, networking, connectivity, testing, validation
+Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
 
-Description: Learn how to run Cilium's built-in connectivity test suite to validate network policy enforcement, pod-to-pod communication, external access, and DNS resolution after installation or upgrades. This guide covers test execution, interpreting results, and troubleshooting common failures.
+Description: Learn how to run Cilium's built-in connectivity test suite to validate network policy enforcement, pod-to-pod communication, external access, and DNS resolution after installation or upgrades.
 
 ---
 
 ## Introduction
 
-After installing or upgrading Cilium, verifying that the networking stack works correctly is critical before deploying workloads. The `cilium connectivity test` command runs a comprehensive suite of end-to-end network tests that validate pod connectivity, network policy enforcement, DNS resolution, and external egress — all in a few minutes.
+After installing or upgrading Cilium, verifying that the networking stack works correctly is critical before deploying workloads. The `cilium connectivity test` command runs a comprehensive suite of end-to-end network tests that validate pod connectivity, network policy enforcement, DNS resolution, and external egress - all in a few minutes.
 
 The connectivity test suite deploys test pods into a dedicated namespace, runs hundreds of traffic scenarios between them, and reports which tests pass and fail. This gives you confidence that Cilium is functioning correctly and that no regression was introduced by a configuration change or upgrade.
 
@@ -53,7 +53,7 @@ cilium connectivity test --timeout 10m
 ```
 
 The test suite covers:
-```
+```plaintext
 ✅ no-policies                     - Basic pod connectivity without any policies
 ✅ no-policies-extra               - Additional connectivity scenarios
 ✅ allow-all-except-world          - Ingress allow-all with world-deny

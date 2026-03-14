@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue, Vue 3, Reactivity, ref, Reactive, Debugging, Composition API, JavaScript
+Tags: Vue, Vue 3, Reactivity, Ref, Reactive, Debugging, Composition API, JavaScript
 
 Description: A comprehensive guide to diagnosing and fixing reactivity issues in Vue 3, covering common pitfalls with ref, reactive, and the Composition API.
 

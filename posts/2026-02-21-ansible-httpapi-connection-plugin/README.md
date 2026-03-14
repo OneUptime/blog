@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, httpapi, REST API, Network Automation
+Tags: Ansible, Httpapi, REST API, Network Automation
 
 Description: Learn how to use the Ansible httpapi connection plugin to automate network devices through their REST APIs for faster, structured management.
 

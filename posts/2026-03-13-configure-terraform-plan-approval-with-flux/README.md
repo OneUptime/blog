@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Tofu Controller, Terraform, Plan Approval, GitOps, Kubernetes, Change Management
+Tags: Flux CD, Tofu Controller, Terraform, Plan Approval, GitOps, Kubernetes
 
 Description: Set up a manual plan approval workflow for Terraform resources with the Tofu Controller and Flux CD, enabling human review before infrastructure changes are applied.
 
@@ -12,7 +12,7 @@ Description: Set up a manual plan approval workflow for Terraform resources with
 
 Running `terraform apply` automatically on every commit is powerful but risky for production infrastructure. The Tofu Controller's manual approval workflow gives teams the best of both worlds: Terraform plans are generated automatically whenever code changes, but a human must explicitly approve the plan before it is applied to real infrastructure.
 
-This approval model mirrors standard engineering change control processes. A developer opens a pull request, the Tofu Controller generates a plan against the production environment, a senior engineer reviews the plan diff, and—only after approval—the apply runs. The plan is cryptographically tied to the specific code revision that generated it, so what was reviewed is exactly what gets applied.
+This approval model mirrors standard engineering change control processes. A developer opens a pull request, the Tofu Controller generates a plan against the production environment, a senior engineer reviews the plan diff, and-only after approval-the apply runs. The plan is cryptographically tied to the specific code revision that generated it, so what was reviewed is exactly what gets applied.
 
 This guide walks through configuring manual plan approval, reviewing plans in the cluster, and approving them via `kubectl` annotations.
 
@@ -107,7 +107,7 @@ kubectl get terraform production-database \
 ```
 
 Example plan summary output:
-```
+```plaintext
 Plan: 2 to add, 1 to change, 0 to destroy.
 ```
 

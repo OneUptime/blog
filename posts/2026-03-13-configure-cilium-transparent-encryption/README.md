@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Encryption, Security, WireGuard, IPsec, eBPF
+Tags: Cilium, Kubernetes, Encryption, Security, WireGuard, IPsec, EBPF
 
 Description: Configure Cilium transparent encryption to encrypt all pod-to-pod traffic automatically using either WireGuard or IPsec without modifying application code.
 

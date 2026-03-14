@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Logging, Operations
 
-Description: Set up centralized log collection for Calico components including calico-node, calico-typha, and calico-kube-controllers, with log level configuration and structured output for log aggregation systems.
+Description: Set up centralized log collection for Calico components including calico-node, calico-typha, and calico-kube-controllers, with log level configuration and structured output for log aggregation...
 
 ---
 
 ## Introduction
 
-Calico's three main components — calico-node (Felix), calico-typha, and calico-kube-controllers — each write logs to stdout, which Kubernetes captures. Setting up structured log collection means configuring appropriate log levels, enabling JSON log formatting for log aggregators, and ensuring your logging infrastructure can ingest the high-volume output from calico-node on busy clusters.
+Calico's three main components - calico-node (Felix), calico-typha, and calico-kube-controllers - each write logs to stdout, which Kubernetes captures. Setting up structured log collection means configuring appropriate log levels, enabling JSON log formatting for log aggregators, and ensuring your logging infrastructure can ingest the high-volume output from calico-node on busy clusters.
 
 ## Prerequisites
 
@@ -111,4 +111,4 @@ kubectl describe node <any-node> | head -5
 
 ## Conclusion
 
-Setting up Calico log collection requires configuring the right log level (Info for production), ensuring logs are written to stdout where Kubernetes captures them, and configuring your log shipper to filter and forward calico-system namespace logs to your aggregation backend. The most important configuration is keeping Felix log level at Info during normal operations — Debug logging can generate hundreds of MB per hour per node and overwhelm log pipelines.
+Setting up Calico log collection requires configuring the right log level (Info for production), ensuring logs are written to stdout where Kubernetes captures them, and configuring your log shipper to filter and forward calico-system namespace logs to your aggregation backend. The most important configuration is keeping Felix log level at Info during normal operations - Debug logging can generate hundreds of MB per hour per node and overwhelm log pipelines.

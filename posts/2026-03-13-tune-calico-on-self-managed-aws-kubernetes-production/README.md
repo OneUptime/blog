@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, aws, kubernetes, networking, production, performance-tuning, ec2
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, AWS, Self-Managed
 
 Description: A comprehensive guide to tuning Calico networking on self-managed Kubernetes clusters running on AWS EC2, covering VPC-aware IPAM, MTU optimization, and BGP configurations for production readiness.
 
@@ -10,7 +10,7 @@ Description: A comprehensive guide to tuning Calico networking on self-managed K
 
 ## Introduction
 
-Running Calico on self-managed Kubernetes clusters on AWS EC2 gives you full control over networking configuration — but also full responsibility for tuning it. Unlike EKS with managed node groups, self-managed clusters require you to explicitly configure Calico to work optimally within the AWS VPC networking model.
+Running Calico on self-managed Kubernetes clusters on AWS EC2 gives you full control over networking configuration - but also full responsibility for tuning it. Unlike EKS with managed node groups, self-managed clusters require you to explicitly configure Calico to work optimally within the AWS VPC networking model.
 
 AWS EC2 instances communicate over Elastic Network Interfaces (ENIs) with a default network MTU of 9001 bytes (jumbo frames) within a VPC. Calico can leverage these large MTUs to dramatically improve throughput when properly configured. Additionally, AWS VPC routing can be used in place of VXLAN or IPIP overlays when pod CIDRs are advertised via BGP.
 

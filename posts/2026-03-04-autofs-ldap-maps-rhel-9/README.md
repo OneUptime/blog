@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, LDAP, NFS, SSSD, Linux
+Tags: RHEL, Autofs, LDAP, NFS, SSSD, Linux
 
 Description: Configure autofs on RHEL to retrieve automount maps from an LDAP directory, enabling centralized management of mount points across all clients.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React Native, Background Tasks, Background Fetch, iOS, Android, Mobile Development
+Tags: React Native, Background Tasks, Background Fetch, IOS, Android, Mobile Development
 
 Description: Learn how to implement background fetch and background tasks in React Native for data sync and periodic updates.
 

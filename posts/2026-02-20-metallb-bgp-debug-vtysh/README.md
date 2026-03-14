@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, BGP, vtysh, FRR, Debugging
+Tags: Kubernetes, MetalLB, BGP, Vtysh, FRR, Debugging
 
 Description: Learn how to use vtysh commands inside MetalLB FRR containers to debug BGP sessions, check routing tables, and troubleshoot peering issues.
 

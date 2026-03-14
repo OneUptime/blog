@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPAM, Static IPs, Networking
+Tags: Calico, Kubernetes, IPAM, Static IP, Networking
 
 Description: Learn how to validate static IP address persistence for pods in Calico, ensuring that critical workloads retain their IP addresses across pod restarts and node rescheduling events.
 
@@ -12,7 +12,7 @@ Description: Learn how to validate static IP address persistence for pods in Cal
 
 In most Kubernetes deployments, pod IPs change when pods are rescheduled. For stateless microservices, this is acceptable since services handle routing. However, for stateful workloads like databases, message brokers, or applications with IP-based licensing, IP persistence is a hard requirement.
 
-Calico supports static pod IPs through IPAM annotations that reserve specific addresses. The challenge is not just assigning the IP initially, but validating that the IP persists correctly across the pod lifecycle — restarts, node failures, and cluster upgrades. This guide covers the full validation workflow for static pod IPs in Calico.
+Calico supports static pod IPs through IPAM annotations that reserve specific addresses. The challenge is not just assigning the IP initially, but validating that the IP persists correctly across the pod lifecycle - restarts, node failures, and cluster upgrades. This guide covers the full validation workflow for static pod IPs in Calico.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ Calico supports static pod IPs through IPAM annotations that reserve specific ad
 Assign a static IP using Calico IPAM annotations on the pod template.
 
 ```yaml
-# statefulset-static-ip.yaml — StatefulSet with static IP assignment
+# statefulset-static-ip.yaml - StatefulSet with static IP assignment
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -146,4 +146,4 @@ calicoctl ipam check --show-all-ips
 
 ## Conclusion
 
-Static pod IPs in Calico require careful validation across the full pod lifecycle — initial assignment, restarts, and node rescheduling. By using Calico IPAM annotations and validating persistence through each scenario, you can reliably provide stable addressing for workloads that require it. Always combine static IP validation with IPAM consistency checks to prevent allocation leaks over time.
+Static pod IPs in Calico require careful validation across the full pod lifecycle - initial assignment, restarts, and node rescheduling. By using Calico IPAM annotations and validating persistence through each scenario, you can reliably provide stable addressing for workloads that require it. Always combine static IP validation with IPAM consistency checks to prevent allocation leaks over time.

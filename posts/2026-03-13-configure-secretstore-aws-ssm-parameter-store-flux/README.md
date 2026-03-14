@@ -192,7 +192,7 @@ kubectl get secret myapp-config -n default -o jsonpath='{.data}' | \
 
 - Use SecureString parameters (KMS-encrypted) for all sensitive values; use String parameters only for non-sensitive configuration.
 - Use hierarchical parameter paths (`/app/env/key`) for clean organization and granular IAM path-based access control.
-- Prefer `dataFrom` with `find` for syncing application configuration blocks rather than listing parameters individually — it reduces `ExternalSecret` manifest verbosity and automatically picks up new parameters under the path.
+- Prefer `dataFrom` with `find` for syncing application configuration blocks rather than listing parameters individually - it reduces `ExternalSecret` manifest verbosity and automatically picks up new parameters under the path.
 - Set `refreshInterval` based on how frequently parameters change; 30 minutes is a good default for most configuration values.
 - Avoid using `GetParametersByPath` with very broad paths in production as it can hit API rate limits for large parameter hierarchies.
 

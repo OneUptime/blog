@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Deployment Management
+Tags: Kubernetes, Kubectl, Deployment Management
 
 Description: Learn how to use kubectl set commands to update container images, environment variables, resource limits, and other deployment settings without editing YAML files directly.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, RAID, Hot Spare, mdadm, Linux
+Tags: RHEL, RAID, Hot Spare, Mdadm, Linux
 
 Description: Learn how to add hot spare disks to mdadm RAID arrays on RHEL so that automatic rebuilds start the moment a disk fails.
 

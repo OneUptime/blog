@@ -242,4 +242,4 @@ curl -X POST http://localhost:8001/services/example-service/routes \
 
 ## Conclusion
 
-Kong Gateway with PostgreSQL, deployed through Flux CD, provides a production-grade API management platform with GitOps governance. Your Kong infrastructure is reproducible, auditable, and automatically reconciled — while Kong's database backend gives you the dynamic configuration capabilities needed for complex routing scenarios and plugin management at scale.
+Kong Gateway with PostgreSQL, deployed through Flux CD, provides a production-grade API management platform with GitOps governance. Your Kong infrastructure is reproducible, auditable, and automatically reconciled - while Kong's database backend gives you the dynamic configuration capabilities needed for complex routing scenarios and plugin management at scale.

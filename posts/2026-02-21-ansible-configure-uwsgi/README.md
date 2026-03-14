@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, uWSGI, WSGI, Web Server
+Tags: Ansible, Python, UWSGI, WSGI, Web Server
 
 Description: Configure uWSGI application server with Ansible for Python web applications including worker management and performance tuning.
 

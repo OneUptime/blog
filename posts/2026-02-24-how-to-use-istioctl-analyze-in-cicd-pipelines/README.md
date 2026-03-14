@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, CI/CD, Validation, Service Mesh
+Tags: Istio, Istioctl, CI/CD, Validation, Service Mesh
 
 Description: A deep look at using istioctl analyze in CI/CD pipelines for automated Istio configuration validation with message codes, suppressions, and output parsing.
 

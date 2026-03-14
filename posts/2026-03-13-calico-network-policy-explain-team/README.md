@@ -10,7 +10,7 @@ Description: A practical guide for teaching Calico network policy concepts to en
 
 ## Introduction
 
-Network policy is the mechanism by which Kubernetes achieves zero-trust networking — where every communication must be explicitly authorized. Explaining this to developers who are used to traditional firewall rules (IP-based, perimeter-focused) requires helping them make the mental shift to identity-based, pod-level policy.
+Network policy is the mechanism by which Kubernetes achieves zero-trust networking - where every communication must be explicitly authorized. Explaining this to developers who are used to traditional firewall rules (IP-based, perimeter-focused) requires helping them make the mental shift to identity-based, pod-level policy.
 
 The most effective teaching approach combines a clear analogy for the policy model, a live demonstration of policy enforcement, and a hands-on exercise where team members write and test their own policies. This post provides all three.
 
@@ -26,7 +26,7 @@ Traditional network security thinks in terms of zones: "the DMZ can reach the ba
 
 Introduce Calico policy using the passport analogy:
 
-> "Each pod has an identity — defined by its labels. Network policy is like a passport check at the pod's door: 'You can enter only if you have the right identity credentials (labels) and you're from the right namespace.' The check happens on every connection, for every pod, every time."
+> "Each pod has an identity - defined by its labels. Network policy is like a passport check at the pod's door: 'You can enter only if you have the right identity credentials (labels) and you're from the right namespace.' The check happens on every connection, for every pod, every time."
 
 This reframes security from "which network segment is this from?" to "who is this pod and does it have permission to connect here?"
 
@@ -36,16 +36,16 @@ Walk your team through three steps:
 
 **Step 1: Show the open default**
 ```bash
-# No policy applied — all pods can reach all pods
+# No policy applied - all pods can reach all pods
 kubectl exec frontend-pod -- curl -s http://backend-svc
-# Success — the "open door" default
+# Success - the "open door" default
 ```
 
 **Step 2: Close the door**
 ```bash
 kubectl apply -f deny-all-ingress.yaml
 kubectl exec frontend-pod -- curl --max-time 5 -s http://backend-svc
-# Timeout — door closed to everyone
+# Timeout - door closed to everyone
 ```
 
 **Step 3: Issue a passport**
@@ -67,9 +67,9 @@ spec:
 ```bash
 kubectl apply -f allow-frontend-to-backend.yaml
 kubectl exec frontend-pod -- curl -s http://backend-svc
-# Success — frontend has a "passport" to enter
+# Success - frontend has a "passport" to enter
 kubectl exec other-pod -- curl --max-time 5 -s http://backend-svc
-# Timeout — other-pod doesn't have the right passport
+# Timeout - other-pod doesn't have the right passport
 ```
 
 The three steps make the policy model concrete and immediately comprehensible.
@@ -100,7 +100,7 @@ A: You should write a policy for every service you want to restrict. Start with 
 A: Use a lab cluster first. Production policy changes should go through code review. We can also start in "log only" mode with Calico to observe what would be blocked before enforcing.
 
 **Q: Can two policies conflict?**
-A: Ingress rules from multiple policies that select the same pod are merged with OR logic — a packet is allowed if ANY policy allows it. This means a more permissive policy can unintentionally override a more restrictive one.
+A: Ingress rules from multiple policies that select the same pod are merged with OR logic - a packet is allowed if ANY policy allows it. This means a more permissive policy can unintentionally override a more restrictive one.
 
 ## Workshop Exercise
 

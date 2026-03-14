@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Loki, S3, Object Storage, Flux CD, GitOps, Kubernetes, Logging
+Tags: Flux CD, Kubernetes, GitOps, Grafana Loki, Logging, S3, Observability, HelmRelease
 
-Description: Deploy Grafana Loki in Simple Scalable mode with an S3-compatible object storage backend on Kubernetes using Flux CD. This guide covers chunk storage, ruler configuration, and production-ready GitOps patterns.
+Description: Deploy Grafana Loki in Simple Scalable mode with an S3-compatible object storage backend on Kubernetes using Flux CD.
 
 ---
 
@@ -36,7 +36,7 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  # AWS credentials for S3 bucket access — encrypt with SOPS
+  # AWS credentials for S3 bucket access - encrypt with SOPS
   AWS_ACCESS_KEY_ID: "AKIAIOSFODNN7EXAMPLE"
   AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 ```

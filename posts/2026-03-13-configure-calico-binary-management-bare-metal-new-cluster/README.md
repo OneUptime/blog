@@ -10,7 +10,7 @@ Description: A guide to managing Calico configuration for a new bare metal clust
 
 ## Introduction
 
-When Calico is installed via binary management on bare metal, configuration lives in two places: the systemd service unit files on each node and the Calico CRDs in the Kubernetes API. A good binary management setup treats both as code — templating the service unit files through your configuration management tool and managing the Calico CRDs through version-controlled YAML files applied with `calicoctl`.
+When Calico is installed via binary management on bare metal, configuration lives in two places: the systemd service unit files on each node and the Calico CRDs in the Kubernetes API. A good binary management setup treats both as code - templating the service unit files through your configuration management tool and managing the Calico CRDs through version-controlled YAML files applied with `calicoctl`.
 
 This dual-source configuration model is the key distinction of binary management Calico deployments. Changes to node-level settings require re-running the configuration management playbook, while changes to cluster-wide networking settings are applied through `calicoctl` without touching the nodes. Understanding this separation helps you design a maintainable configuration strategy.
 

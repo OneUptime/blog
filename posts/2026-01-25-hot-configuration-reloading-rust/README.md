@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Configuration, Hot Reload, arc-swap, DevOps
+Tags: Rust, Configuration, Hot Reload, Arc-swap, DevOps
 
 Description: Learn how to build configuration systems in Rust that update without restarting your application, using arc-swap for lock-free atomic swaps and file watchers for automatic detection.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multi-Cluster, Trust, Security, mTLS, Kubernetes
+Tags: Istio, Multi-Cluster, Trust, Security, MTLS, Kubernetes
 
 Description: Step-by-step instructions for establishing cross-cluster trust in Istio multi-cluster deployments using shared root CAs and trust domains.
 

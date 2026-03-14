@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, containerd, NRI, Resource Management, Performance
+Tags: Kubernetes, Containerd, NRI, Resource Management, Performance
 
 Description: Learn how to use containerd's Node Resource Interface (NRI) plugins to implement custom resource management policies and optimize container resource allocation in Kubernetes clusters.
 

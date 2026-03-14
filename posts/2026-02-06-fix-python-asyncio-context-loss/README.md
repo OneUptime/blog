@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, asyncio, Context Propagation
+Tags: OpenTelemetry, Python, Asyncio, Context Propagation
 
 Description: Fix the problem where OpenTelemetry trace context is lost when creating asyncio tasks in Python async applications.
 

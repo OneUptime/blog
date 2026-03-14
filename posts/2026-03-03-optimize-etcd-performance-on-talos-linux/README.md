@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Kubernetes, Performance Tuning, Storage
+Tags: Talos Linux, Etcd, Kubernetes, Performance Tuning, Storage
 
 Description: A complete guide to optimizing etcd performance on Talos Linux for faster and more reliable Kubernetes clusters
 

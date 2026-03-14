@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HTTP POST, uri Module, REST API
+Tags: Ansible, HTTP POST, Uri Module, REST API
 
 Description: Learn how to send POST requests from Ansible playbooks for creating resources, submitting data, and triggering webhooks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DNS, node-cache, Networking
+Tags: Calico, Kubernetes, DNS, Node-cache, Networking
 
 Description: Optimize NodeLocal DNSCache performance in Calico by tuning cache TTLs, configuring upstream servers, and scaling for high-DNS-query workloads.
 

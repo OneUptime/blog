@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, autofs, Timeout, Caching, NFS, Linux
+Tags: RHEL, Autofs, Timeout, Caching, NFS, Linux
 
 Description: Configure autofs timeout and caching parameters on RHEL to control when idle mounts are unmounted and how map data is cached.
 

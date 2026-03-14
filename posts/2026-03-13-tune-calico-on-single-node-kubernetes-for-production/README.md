@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: calico, kubernetes, single-node, edge, production, performance-tuning
+Tags: Calico, Kubernetes, Networking, Performance, Tuning, Single-Node
 
 Description: Learn how to tune Calico networking on single-node Kubernetes deployments for production use cases such as edge computing, embedded systems, and resource-constrained environments.
 
@@ -10,9 +10,9 @@ Description: Learn how to tune Calico networking on single-node Kubernetes deplo
 
 ## Introduction
 
-Single-node Kubernetes deployments are increasingly common in edge computing, IoT gateways, retail kiosks, and branch office scenarios where full cluster infrastructure is impractical. Running Calico in production on a single node requires a different tuning philosophy than multi-node clusters — the focus shifts from distributed routing to minimizing resource overhead while maintaining security policy enforcement.
+Single-node Kubernetes deployments are increasingly common in edge computing, IoT gateways, retail kiosks, and branch office scenarios where full cluster infrastructure is impractical. Running Calico in production on a single node requires a different tuning philosophy than multi-node clusters - the focus shifts from distributed routing to minimizing resource overhead while maintaining security policy enforcement.
 
-On a single node, Calico's BGP peering, VXLAN tunnels, and Typha are all unnecessary — all pod-to-pod traffic stays local. Stripping away these distributed components and tuning for local traffic patterns dramatically reduces memory usage and CPU overhead, making Calico viable on constrained hardware like Raspberry Pi, industrial PCs, and edge servers.
+On a single node, Calico's BGP peering, VXLAN tunnels, and Typha are all unnecessary - all pod-to-pod traffic stays local. Stripping away these distributed components and tuning for local traffic patterns dramatically reduces memory usage and CPU overhead, making Calico viable on constrained hardware like Raspberry Pi, industrial PCs, and edge servers.
 
 This guide covers practical Calico tuning for single-node Kubernetes production deployments, focusing on minimal resource footprint while preserving full NetworkPolicy enforcement capabilities.
 
@@ -47,7 +47,7 @@ metadata:
   name: single-node-pool
 spec:
   cidr: 10.244.0.0/16
-  # Disable all overlay modes — not needed on single node
+  # Disable all overlay modes - not needed on single node
   ipipMode: Never
   vxlanMode: Never
   natOutgoing: true
@@ -116,7 +116,7 @@ calicoctl patch felixconfiguration default \
 Even on a single node, network policies provide critical security isolation between namespaces and workloads.
 
 ```yaml
-# Default deny all ingress policy — explicit allow rules required per namespace
+# Default deny all ingress policy - explicit allow rules required per namespace
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
@@ -131,7 +131,7 @@ spec:
 
 ## Best Practices
 
-- Disable node-to-node BGP mesh on single-node clusters — it wastes resources
+- Disable node-to-node BGP mesh on single-node clusters - it wastes resources
 - Use `iptablesRefreshInterval: 300s` to reduce periodic iptables scans
 - Set Prometheus metrics to disabled unless you have a monitoring stack running
 - Use resource limits on calico-node to prevent memory pressure on edge hardware

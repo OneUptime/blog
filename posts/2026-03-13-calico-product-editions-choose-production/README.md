@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, CNI, Production, Decision Framework, Calico Cloud, Calico Enterprise
 
-Description: A decision framework for selecting the right Calico edition — Open Source, Cloud, or Enterprise — for production Kubernetes workloads based on compliance, team size, and operational requirements.
+Description: A decision framework for selecting the right Calico edition - Open Source, Cloud, or Enterprise - for production Kubernetes workloads based on compliance, team size, and operational requirements.
 
 ---
 
 ## Introduction
 
-Selecting a Calico edition for production is not a purely technical decision — it involves operational capacity, compliance obligations, budget, and long-term support requirements. Making the wrong call means either paying for features you don't use or discovering a critical compliance capability is missing during an audit.
+Selecting a Calico edition for production is not a purely technical decision - it involves operational capacity, compliance obligations, budget, and long-term support requirements. Making the wrong call means either paying for features you don't use or discovering a critical compliance capability is missing during an audit.
 
 Production selection requires a structured evaluation process. This post provides a decision framework with concrete criteria for each edition so you can make and defend the choice with your organization's stakeholders.
 
@@ -25,7 +25,7 @@ The framework covers four primary dimensions: compliance requirements, team oper
 
 ## Decision Dimension 1: Compliance Requirements
 
-Start with compliance — it is usually the most constrained dimension.
+Start with compliance - it is usually the most constrained dimension.
 
 | Requirement | Open Source | Cloud | Enterprise |
 |---|---|---|---|
@@ -66,7 +66,7 @@ If your list contains only the first item, Open Source is the right choice. If y
 
 ## Decision Dimension 4: Total Cost of Ownership
 
-Open Source is not free — it requires engineering time for installation, upgrades, observability tooling, and debugging. A realistic TCO calculation for Open Source includes:
+Open Source is not free - it requires engineering time for installation, upgrades, observability tooling, and debugging. A realistic TCO calculation for Open Source includes:
 
 - CNI upgrade time per cluster per quarter (~2–4 hours)
 - Building and maintaining Prometheus/Grafana dashboards for network metrics
@@ -76,7 +76,7 @@ Commercial editions consolidate these costs into a predictable subscription but 
 
 ## Best Practices
 
-- Do not choose an edition based solely on initial installation simplicity — evaluate the full two-year lifecycle cost
+- Do not choose an edition based solely on initial installation simplicity - evaluate the full two-year lifecycle cost
 - Lock in a 90-day trial of Cloud or Enterprise before signing a contract so you can validate the specific compliance features you need
 - Confirm your cloud provider managed Kubernetes service (EKS, GKE, AKS) is supported before purchasing Enterprise
 - Plan for the upgrade path: Open Source → Cloud/Enterprise migrations are supported without re-installing the CNI

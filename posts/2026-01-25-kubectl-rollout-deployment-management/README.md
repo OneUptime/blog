@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubectl, Deployments, Rollout, DevOps, CI/CD
+Tags: Kubernetes, Kubectl, Deployments, Rollout, DevOps, CI/CD
 
 Description: Learn how to use kubectl rollout commands to manage Kubernetes deployments effectively.
 

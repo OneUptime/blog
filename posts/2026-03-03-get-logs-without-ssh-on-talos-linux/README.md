@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Logging, talosctl, Kubernetes, Debugging, Observability
+Tags: Talos Linux, Logging, Talosctl, Kubernetes, Debugging, Observability
 
 Description: Complete guide to accessing system and application logs on Talos Linux nodes without SSH using talosctl and Kubernetes tools.
 

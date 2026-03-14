@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, YAML, Formatting
+Tags: Ansible, Ansible-lint, YAML, Formatting
 
 Description: Practical fixes for common ansible-lint YAML formatting warnings including line length, truthy values, indentation, and document markers.
 

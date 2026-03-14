@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Velero, MinIO, On-Premises, GitOps, Kubernetes, Backup, Self-Hosted
+Tags: Flux CD, Velero, MinIO, On-Premise, GitOps, Kubernetes, Backup, Self-Hosted
 
 Description: Configure Velero to use self-hosted MinIO for backup storage with Flux CD for on-premises or air-gapped Kubernetes backup.
 

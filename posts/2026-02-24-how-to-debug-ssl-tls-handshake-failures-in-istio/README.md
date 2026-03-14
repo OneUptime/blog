@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, SSL, mTLS, Debugging, Security
+Tags: Istio, TLS, SSL, MTLS, Debugging, Security
 
 Description: Step-by-step guide to diagnosing SSL/TLS handshake failures in Istio, including mTLS mismatches, certificate errors, expired certs, and protocol version conflicts.
 

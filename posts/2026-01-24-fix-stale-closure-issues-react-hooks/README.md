@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Hooks, JavaScript, Closures, useState, useEffect, useCallback, Debugging
+Tags: React, Hooks, JavaScript, Closures, UseState, UseEffect, UseCallback, Debugging
 
 Description: Learn how to identify and fix stale closure issues in React hooks that cause components to reference outdated state values.
 

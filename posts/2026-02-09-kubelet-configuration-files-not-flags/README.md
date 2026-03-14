@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubelet, Configuration Management
+Tags: Kubernetes, Kubelet, Configuration Management
 
 Description: Learn how to migrate from kubelet command-line flags to configuration files for better maintainability, version control, and consistency across your Kubernetes cluster nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Service Management, Configuration
+Tags: Ubuntu, Systemd, Service Management, Configuration
 
 Description: Learn how to use systemd drop-in files to customize service parameters on Ubuntu without modifying the original unit files provided by packages.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, terraform output, Outputs, DevOps, Infrastructure as Code
+Tags: Terraform, Terraform output, Outputs, DevOps, Infrastructure as Code
 
 Description: Learn how to define and use terraform output values to export information about your infrastructure for scripts, other configurations, and team communication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, GraphQL, async-graphql, API, Type Safety
+Tags: Rust, GraphQL, Async-graphql, API, Type Safety
 
 Description: A practical guide to building GraphQL APIs in Rust using async-graphql, covering schema design, resolvers, subscriptions, and integration with popular web frameworks.
 

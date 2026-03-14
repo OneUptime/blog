@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, etcd, Key-Value Store, Distributed Systems, Kubernetes, Tutorial
+Tags: Ubuntu, Etcd, Key-Value Store, Distributed Systems, Kubernetes, Tutorial
 
 Description: Complete guide to installing etcd distributed key-value store on Ubuntu for configuration management and service discovery.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, systemd-resolved, Privacy, Networking
+Tags: Ubuntu, DNS, Systemd-resolved, Privacy, Networking
 
 Description: Learn how to configure systemd-resolved with DNS over TLS (DoT) on Ubuntu to encrypt DNS queries using the built-in resolver without installing additional software.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, kubelet, Kubernetes, Troubleshooting, Node Management
+Tags: Talos Linux, Kubelet, Kubernetes, Troubleshooting, Node Management
 
 Description: Learn how to reset kubelet state on Talos Linux nodes to fix pod scheduling issues, stale containers, and kubelet configuration problems.
 

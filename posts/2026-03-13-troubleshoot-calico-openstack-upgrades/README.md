@@ -1,8 +1,8 @@
-# How to Troubleshoot Calico on OpenStack Upgrades
+# How to  Calico on OpenStack Upgrades - Troubleshoot
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, OpenStack, Kubernetes, Networking, Upgrades
+Tags: Calico, OpenStack, Kubernetes, Networking, Upgrade
 
 Description: Diagnose and resolve Calico upgrade failures specific to OpenStack, including Neutron agent conflicts, etcd connectivity issues, and compute node networking.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Context Managers, Resource Management, with Statement, contextlib
+Tags: Python, Context Managers, Resource Management, With Statement, Contextlib
 
 Description: Learn how to build and use Python context managers for safe resource handling. This guide covers the with statement, contextlib utilities, and async context managers.
 

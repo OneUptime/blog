@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, nftables, Firewall, Security, Networking
+Tags: Ubuntu, Nftables, Firewall, Security, Networking
 
 Description: Configure nftables on Ubuntu for stateful packet filtering, including table and chain setup, connection tracking, rate limiting, and practical production rulesets.
 

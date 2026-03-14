@@ -10,9 +10,9 @@ Description: A guide to tuning Calico VPP for production performance on OpenShif
 
 ## Introduction
 
-Production tuning for Calico VPP on OpenShift uses the Machine Config Operator (MCO) for all OS-level performance settings — CPU isolation for VPP workers, hugepage allocation, and NUMA topology hints. This MCO-based approach ensures that performance settings persist across node reboots and are applied consistently to all worker nodes that match the MachineConfigPool selector.
+Production tuning for Calico VPP on OpenShift uses the Machine Config Operator (MCO) for all OS-level performance settings - CPU isolation for VPP workers, hugepage allocation, and NUMA topology hints. This MCO-based approach ensures that performance settings persist across node reboots and are applied consistently to all worker nodes that match the MachineConfigPool selector.
 
-VPP data plane tuning — buffer sizes, worker counts, and interface queue configuration — is managed through the VPP ConfigMap and the VPP startup configuration, which are applied as Kubernetes resources without requiring node restarts.
+VPP data plane tuning - buffer sizes, worker counts, and interface queue configuration - is managed through the VPP ConfigMap and the VPP startup configuration, which are applied as Kubernetes resources without requiring node restarts.
 
 ## Prerequisites
 

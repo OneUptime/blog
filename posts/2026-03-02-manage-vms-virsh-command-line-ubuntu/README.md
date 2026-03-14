@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, virsh, Virtualization
+Tags: Ubuntu, KVM, Virsh, Virtualization
 
 Description: Master the virsh command-line tool for managing KVM virtual machines on Ubuntu, covering VM lifecycle, networking, storage, and resource management operations.
 

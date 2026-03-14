@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, WordPress, wpscan, Vulnerability Scanning
+Tags: Ubuntu, Security, WordPress, Wpscan, Vulnerability Scanning
 
 Description: Learn how to install and use WPScan on Ubuntu to identify vulnerabilities in WordPress installations, plugins, themes, and user accounts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, parted, Partition Recovery, TestDisk, Disk
+Tags: Ubuntu, Parted, Partition Recovery, TestDisk, Disk
 
 Description: Guide to recovering lost or accidentally deleted partitions on Ubuntu using GNU Parted, TestDisk, and partition scanning tools with step-by-step examples.
 

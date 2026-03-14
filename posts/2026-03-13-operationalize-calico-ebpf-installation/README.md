@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, eBPF, Installation, Operations
+Tags: Calico, Kubernetes, Networking, EBPF, Installation, Operations
 
 Description: Build a repeatable, documented Calico eBPF installation process including cluster templates, installation runbooks, and handoff procedures for production clusters.
 
@@ -76,7 +76,7 @@ spec:
    ```
    kubectl create -f tigera-operator.yaml
    kubectl rollout status deploy/tigera-operator -n tigera-operator
-   ```
+   ```plaintext
 
 2. Create API Server ConfigMap
    ```
@@ -84,18 +84,18 @@ spec:
      -o jsonpath='{.subsets[0].addresses[0].ip}')
    # Apply cluster-templates/ebpf-standard/calico-config.yaml
    # Replace ${API_SERVER_HOST} with ${API_IP}
-   ```
+   ```plaintext
 
 3. Apply Installation
    ```
    kubectl apply -f calico-config.yaml
    kubectl wait --for=condition=Available tigerastatus/calico --timeout=300s
-   ```
+   ```plaintext
 
 4. Run Validation Script
    ```
    ./validate-calico-ebpf-installation.sh
-   ```
+   ```plaintext
 
 ## Acceptance Criteria (for handoff)
 - [ ] All nodes in Ready state

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Encryption, Secrets, etcd Security
+Tags: Talos Linux, Kubernetes, Encryption, Secrets, Etcd Security
 
 Description: Step-by-step guide to configuring encryption at rest for Kubernetes secrets stored in etcd on Talos Linux clusters with key rotation procedures.
 

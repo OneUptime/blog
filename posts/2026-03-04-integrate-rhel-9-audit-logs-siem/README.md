@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, auditd, SIEM, Security, Linux
+Tags: RHEL, Auditd, SIEM, Security, Linux
 
 Description: Learn how to forward RHEL audit logs to a SIEM platform using audisp-remote, rsyslog, and other methods for centralized security monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ARM, x86, Kubernetes, Multi-Architecture
+Tags: Istio, ARM, X86, Kubernetes, Multi-Architecture
 
 Description: Learn how to configure Istio service mesh in heterogeneous clusters with both x86 and ARM nodes running side by side.
 

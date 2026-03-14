@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Traffic Director, gRPC, Service Mesh, Proxyless
+Tags: GCP, Traffic Director, GRPC, Service Mesh, Proxyless
 
 Description: Learn how to configure Traffic Director for gRPC services without sidecar proxies, using gRPC's native xDS support for service mesh capabilities directly in your application.
 

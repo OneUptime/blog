@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing Calico as the networking backend
 
 ## Introduction
 
-Installing Calico on Red Hat Enterprise Linux (RHEL) based OpenStack deployments follows a similar architecture to Ubuntu — the Calico Neutron plugin on the controller and Felix on compute nodes — but uses RPM packages instead of Debian packages, and integrates with RHEL's systemd and SELinux differently. SELinux in particular requires specific policy configuration to allow Calico's Felix daemon to manage iptables and create network interfaces.
+Installing Calico on Red Hat Enterprise Linux (RHEL) based OpenStack deployments follows a similar architecture to Ubuntu - the Calico Neutron plugin on the controller and Felix on compute nodes - but uses RPM packages instead of Debian packages, and integrates with RHEL's systemd and SELinux differently. SELinux in particular requires specific policy configuration to allow Calico's Felix daemon to manage iptables and create network interfaces.
 
 Red Hat OpenStack Platform (RHOSP) has its own packaging and deployment mechanisms through Director (TripleO). This guide covers community OpenStack on RHEL rather than RHOSP, since RHOSP has vendor-specific deployment tools.
 
@@ -103,4 +103,4 @@ calicoctl get workloadendpoints -A
 
 ## Conclusion
 
-Installing Calico on RHEL-based OpenStack requires the additional step of configuring SELinux to allow Felix's privileged network management operations and opening BGP port 179 in firewalld. Beyond these RHEL-specific steps, the installation mirrors the Ubuntu workflow — etcd on the controller, the Calico Neutron plugin, and Felix on compute nodes.
+Installing Calico on RHEL-based OpenStack requires the additional step of configuring SELinux to allow Felix's privileged network management operations and opening BGP port 179 in firewalld. Beyond these RHEL-specific steps, the installation mirrors the Ubuntu workflow - etcd on the controller, the Calico Neutron plugin, and Felix on compute nodes.

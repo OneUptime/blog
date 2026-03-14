@@ -12,7 +12,7 @@ Description: Diagnose external network connectivity failures after Calico upgrad
 
 External connectivity failures after a Calico upgrade typically stem from changes to default behaviors between Calico versions. Common breaking changes include modifications to the default IP-in-IP mode, natOutgoing behavior, or encapsulation protocol changes that affect how outbound pod traffic is routed to external destinations.
 
-When pods lose external connectivity after an upgrade, they can no longer reach services outside the cluster (internet, external databases, corporate services). The failure is often asymmetric — inbound traffic from the load balancer to pods may still work, but outbound pod-initiated traffic fails.
+When pods lose external connectivity after an upgrade, they can no longer reach services outside the cluster (internet, external databases, corporate services). The failure is often asymmetric - inbound traffic from the load balancer to pods may still work, but outbound pod-initiated traffic fails.
 
 ## Symptoms
 

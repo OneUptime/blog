@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cilium, AWS, EKS, Kubernetes, eBPF, Networking, CNI
+Tags: Cilium, AWS, EKS, Kubernetes, EBPF, Networking, CNI
 
 Description: Learn how to deploy and configure Cilium as the CNI for AWS EKS clusters, replacing the default AWS VPC CNI with eBPF-powered networking.
 

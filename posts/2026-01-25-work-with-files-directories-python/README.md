@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, File, Directories, pathlib, os, File Handling
+Tags: Python, File, Directories, Pathlib, Os, File Handling
 
 Description: Learn how to read, write, and manipulate files and directories in Python using both the modern pathlib module and traditional os module approaches.
 

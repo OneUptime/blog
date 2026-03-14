@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, EPHEMERAL Partition, etcd, Reset, Kubernetes, Partition Management
+Tags: Talos Linux, EPHEMERAL Partition, Etcd, Reset, Kubernetes, Partition Management
 
 Description: Learn how to wipe the EPHEMERAL partition in Talos Linux to reset etcd data and prepare nodes for recovery or fresh bootstrap.
 

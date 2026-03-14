@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Network Bridge, nmcli, Linux
+Tags: RHEL, Network Bridge, Nmcli, Linux
 
 Description: A focused guide on creating and managing network bridges using nmcli on RHEL, covering bridge options, STP settings, and common configurations.
 

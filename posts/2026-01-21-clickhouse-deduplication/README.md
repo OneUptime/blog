@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Deduplication, ReplacingMergeTree, FINAL, argMax, Data Quality, Insert Idempotency, Database
+Tags: ClickHouse, Deduplication, ReplacingMergeTree, FINAL, ArgMax, Data Quality, Insert Idempotency, Database
 
 Description: A comprehensive guide to implementing deduplication in ClickHouse using ReplacingMergeTree, FINAL queries, argMax patterns, and strategies for ensuring data uniqueness in high-throughput scenarios.
 

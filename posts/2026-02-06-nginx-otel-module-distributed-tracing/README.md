@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, NGINX, Distributed Tracing, ngx_otel_module
+Tags: OpenTelemetry, NGINX, Distributed Tracing, Ngx_otel_module
 
 Description: Configure the NGINX ngx_otel_module to enable distributed tracing with OTLP gRPC export to the OpenTelemetry Collector for request visibility.
 

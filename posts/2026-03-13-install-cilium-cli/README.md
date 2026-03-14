@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, CLI, Kubernetes, Installation, Networking, eBPF
+Tags: Cilium, CLI, Kubernetes, Tools
 
 Description: How to install the Cilium CLI tool on various operating systems and use it to install, manage, and troubleshoot Cilium on Kubernetes clusters.
 
@@ -10,7 +10,7 @@ Description: How to install the Cilium CLI tool on various operating systems and
 
 ## Introduction
 
-The Cilium CLI is the primary tool for installing, managing, and troubleshooting Cilium on Kubernetes clusters. It provides commands for installation, status checks, connectivity testing, and Hubble management — all from a single binary.
+The Cilium CLI is the primary tool for installing, managing, and troubleshooting Cilium on Kubernetes clusters. It provides commands for installation, status checks, connectivity testing, and Hubble management - all from a single binary.
 
 This guide covers installing the Cilium CLI on Linux, macOS, and Windows, and walks through the key commands used for day-to-day Cilium operations.
 

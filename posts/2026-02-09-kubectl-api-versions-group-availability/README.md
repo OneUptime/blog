@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API, kubectl
+Tags: Kubernetes, API, Kubectl
 
 Description: Learn how to use kubectl api-versions to discover available API groups, troubleshoot version compatibility issues, and understand which resources your cluster supports.
 

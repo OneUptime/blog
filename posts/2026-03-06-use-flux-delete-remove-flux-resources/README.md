@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, Delete, Cleanup, CLI, Resource-Management
+Tags: Flux, Fluxcd, GitOps, Kubernetes, Delete, Cleanup, CLI, Resource-Management
 
 Description: Learn how to use the flux delete command to safely remove Flux CD resources from your Kubernetes cluster with practical examples and safety considerations.
 

@@ -26,7 +26,7 @@ The most effective way to introduce ingress policy to developers is the firewall
 
 > "Think of each pod as having its own personal firewall. By default, that firewall allows all inbound connections. We can configure it to only allow connections from specific sources. Calico NetworkPolicy is how we configure that per-pod firewall."
 
-This analogy works because developers already understand firewalls. The key extension: unlike traditional firewalls that use IP addresses, Calico's firewall uses Kubernetes labels — so you can write rules like "allow connections from pods with label `app=frontend`" instead of specifying IPs that change as pods restart.
+This analogy works because developers already understand firewalls. The key extension: unlike traditional firewalls that use IP addresses, Calico's firewall uses Kubernetes labels - so you can write rules like "allow connections from pods with label `app=frontend`" instead of specifying IPs that change as pods restart.
 
 ## Live Demo: From Open to Controlled
 
@@ -45,14 +45,14 @@ kubectl apply -f deny-all-ingress.yaml
 
 # Frontend can no longer reach backend
 kubectl exec frontend-pod -- wget --timeout=5 -qO- http://backend-service
-# Timeout — policy is working
+# Timeout - policy is working
 
 # Add a specific allow rule
 kubectl apply -f allow-frontend-to-backend.yaml
 
 # Now frontend can reach backend again, but nothing else can
 kubectl exec kubectl-exec -- wget --timeout=5 -qO- http://backend-service
-# Still times out — only frontend is allowed
+# Still times out - only frontend is allowed
 ```
 
 This sequence makes the policy model tangible.
@@ -86,7 +86,7 @@ For engineers who will write policies, explain what Calico adds over standard Ku
 | Global scope | No | Yes (GlobalNetworkPolicy) |
 | Service account selector | No | Yes |
 
-The most commonly needed extension is explicit deny — Calico's `action: Deny` lets you write policies that explicitly reject traffic and log the denial, rather than relying on implicit drop.
+The most commonly needed extension is explicit deny - Calico's `action: Deny` lets you write policies that explicitly reject traffic and log the denial, rather than relying on implicit drop.
 
 ## Common Questions and Answers
 
@@ -98,7 +98,7 @@ A: Use Calico's `GlobalNetworkPolicy` (not standard Kubernetes NetworkPolicy). I
 
 ## Best Practices
 
-- Use live demos with a real cluster rather than slides — policy behavior is counterintuitive until seen in action
+- Use live demos with a real cluster rather than slides - policy behavior is counterintuitive until seen in action
 - Start with a deny-all policy and add allows incrementally rather than starting open and adding denies
 - Give developers a policy template for common patterns (allow from frontend, allow health checks)
 

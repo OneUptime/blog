@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, sudo, Privilege Escalation, Linux, DevOps
+Tags: Ansible, Sudo, Privilege Escalation, Linux, DevOps
 
 Description: Master Ansible become directive to run tasks with sudo for root-level operations on remote Linux servers
 

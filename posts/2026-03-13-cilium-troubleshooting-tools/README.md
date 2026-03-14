@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Troubleshooting, eBPF, Networking
+Tags: Cilium, Kubernetes, Troubleshooting, EBPF, Networking
 
 Description: Master Cilium's built-in troubleshooting toolkit including cilium-bugtool, connectivity tests, endpoint inspection commands, and BPF map inspection to diagnose networking issues.
 

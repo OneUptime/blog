@@ -239,7 +239,7 @@ velero backup-location get
 ```
 
 Expected backup storage location status:
-```
+```plaintext
 NAME      PROVIDER   BUCKET/PREFIX                        PHASE       LAST VALIDATED
 default   aws        my-cluster-velero-backups            Available   1m ago
 ```

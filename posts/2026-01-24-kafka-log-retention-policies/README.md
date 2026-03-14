@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Log Retention, Data Management, retention.ms, retention.bytes, Log Compaction, Storage Optimization
+Tags: Apache Kafka, Log Retention, Data Management, Retention.ms, Retention.bytes, Log Compaction, Storage Optimization
 
 Description: Learn how to configure Kafka log retention policies including time-based retention, size-based retention, and log compaction for different use cases.
 

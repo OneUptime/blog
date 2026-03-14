@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, journald, systemd, Logging, Linux
+Tags: RHEL, Journald, Systemd, Logging, Linux
 
 Description: Learn how to configure journald rate limiting and storage quotas on RHEL to prevent log flooding from consuming system resources while keeping important logs available.
 

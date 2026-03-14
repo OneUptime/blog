@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Egress, Debugging, eBPF
+Tags: Cilium, Kubernetes, Network Policy, Egress, Debugging, EBPF
 
 Description: Debug Cilium egress policies that silently block expected traffic by using Hubble flow data, policy status inspection, and eBPF map analysis.
 
@@ -10,7 +10,7 @@ Description: Debug Cilium egress policies that silently block expected traffic b
 
 ## Introduction
 
-One of the most frustrating problems in Cilium is when a network policy appears to be correct but traffic is still blocked. This occurs because Cilium's policy model is additive and default-deny when any policy applies to an endpoint. A missing allow rule—even for unrelated traffic—can cause unexpected drops.
+One of the most frustrating problems in Cilium is when a network policy appears to be correct but traffic is still blocked. This occurs because Cilium's policy model is additive and default-deny when any policy applies to an endpoint. A missing allow rule-even for unrelated traffic-can cause unexpected drops.
 
 Debugging these situations requires tracing the path from the policy definition through the compiled eBPF rules to the actual packet drop. Hubble makes this process much faster by showing exactly which policy rule caused the drop.
 

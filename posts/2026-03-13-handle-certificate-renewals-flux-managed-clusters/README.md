@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, TLS, cert-manager, Certificates
+Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, TLS, Cert-Manager, Certificates
 
 Description: Automate and manage certificate renewals in Flux CD managed clusters using cert-manager deployed via GitOps so TLS certificates never expire unexpectedly.
 
@@ -10,7 +10,7 @@ Description: Automate and manage certificate renewals in Flux CD managed cluster
 
 ## Introduction
 
-Certificate expiration is one of the most preventable causes of production outages. A cluster with hundreds of services may have hundreds of TLS certificates, each with its own renewal schedule. Without automation, certificate management becomes a full-time job — and a single missed renewal can take down a critical service.
+Certificate expiration is one of the most preventable causes of production outages. A cluster with hundreds of services may have hundreds of TLS certificates, each with its own renewal schedule. Without automation, certificate management becomes a full-time job - and a single missed renewal can take down a critical service.
 
 Flux CD paired with cert-manager creates a completely automated certificate lifecycle. cert-manager is deployed and configured through Flux, which means the certificate issuers, certificate requests, and renewal policies are all version-controlled. cert-manager handles the actual renewal automatically, and Flux ensures cert-manager itself is always running in its desired state.
 
@@ -83,7 +83,7 @@ spec:
 ```yaml
 # infrastructure/cert-manager/cluster-issuers.yaml
 ---
-# Let's Encrypt production issuer (rate limited — use staging for testing)
+# Let's Encrypt production issuer (rate limited - use staging for testing)
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -136,7 +136,7 @@ spec:
 
 ## Step 3: Request Certificates as Git-Managed Resources
 
-Define Certificate objects in your application manifests — cert-manager will handle the actual issuance and renewal.
+Define Certificate objects in your application manifests - cert-manager will handle the actual issuance and renewal.
 
 ```yaml
 # deploy/certificates.yaml
@@ -149,7 +149,7 @@ spec:
   # The TLS secret that will be created/updated by cert-manager
   secretName: my-service-tls
 
-  # Certificate validity — cert-manager renews at 2/3 of duration
+  # Certificate validity - cert-manager renews at 2/3 of duration
   duration: 2160h     # 90 days
   renewBefore: 720h   # Renew 30 days before expiry
 
@@ -248,7 +248,7 @@ kubectl get certificates --all-namespaces \
 # Check a specific certificate's status
 kubectl describe certificate my-service-tls -n team-alpha
 
-# Force certificate renewal (delete the cert — cert-manager will re-issue)
+# Force certificate renewal (delete the cert - cert-manager will re-issue)
 kubectl delete secret my-service-tls -n team-alpha
 # cert-manager detects the secret is missing and issues a new certificate
 
@@ -289,7 +289,7 @@ flux get helmrelease cert-manager -n cert-manager --watch
 - Use DNS01 challenges instead of HTTP01 for wildcard certificates and private clusters
 - Store ACME account keys and CA private keys in an external secrets manager, synced via External Secrets Operator
 - Monitor the cert-manager controller logs regularly for ACME challenge failures
-- Keep a backup of your ACME account key — losing it means you cannot renew certificates with the same account
+- Keep a backup of your ACME account key - losing it means you cannot renew certificates with the same account
 - Test the full certificate issuance pipeline in staging with Let's Encrypt staging before using production
 
 ## Conclusion

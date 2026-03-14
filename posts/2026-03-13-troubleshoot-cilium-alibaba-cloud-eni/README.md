@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, alibaba-cloud, eni, kubernetes, troubleshooting, networking
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
 
 Description: A guide to diagnosing and resolving issues when running Cilium with Alibaba Cloud Elastic Network Interface (ENI) IPAM on ACK or self-managed Kubernetes clusters.
 
@@ -126,7 +126,7 @@ cilium connectivity test
 - Choose ECS instance types with sufficient ENI and IP limits for your pod density
 - Monitor ENI utilization and set alerts before reaching instance type limits
 - Use Cilium's pre-allocation settings to warm up ENI IPs before pod scheduling
-- Ensure RAM role policies are correct before deploying Cilium—ENI operations fail silently without permissions
+- Ensure RAM role policies are correct before deploying Cilium-ENI operations fail silently without permissions
 - Test ENI behavior during scale-out events to validate automatic ENI attachment
 
 ## Conclusion

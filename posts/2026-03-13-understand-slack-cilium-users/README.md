@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: cilium, slack, community, support, kubernetes, networking
+Tags: Cilium, Community, Slack, Support
 
 Description: Learn how to use the Cilium Slack workspace effectively, understand the key channels, and engage with the Cilium community to get faster answers and contribute to discussions.
 
@@ -12,7 +12,7 @@ Description: Learn how to use the Cilium Slack workspace effectively, understand
 
 The Cilium Slack workspace is the primary real-time communication channel for the Cilium community. With thousands of members ranging from first-time users to core maintainers, it's the fastest way to get help, discuss architectural decisions, and stay current with Cilium development.
 
-Understanding how to use Cilium Slack effectively is not just about knowing which channel to post in — it's about understanding community norms, how to provide context that gets fast responses, and how to contribute your own knowledge back to the community. The quality of your questions directly affects the quality and speed of responses you receive.
+Understanding how to use Cilium Slack effectively is not just about knowing which channel to post in - it's about understanding community norms, how to provide context that gets fast responses, and how to contribute your own knowledge back to the community. The quality of your questions directly affects the quality and speed of responses you receive.
 
 This guide covers the key Cilium Slack channels, how to join, what information to provide when asking questions, and how to engage productively with the community.
 
@@ -79,7 +79,7 @@ Structure your Slack message for maximum response efficiency.
 
 A good Slack message template:
 
-```
+```plaintext
 **Problem**: [1-2 sentence description of what's wrong]
 
 **Environment**:
@@ -98,7 +98,7 @@ A good Slack message template:
 **Relevant output**:
 ```
 [paste relevant logs or command output here]
-```
+```plaintext
 
 **Sysdump attached**: yes/no
 ```
@@ -112,7 +112,7 @@ Productive community engagement follows consistent norms.
 # Use Slack's search: Cmd+K or Ctrl+K and type your keywords
 
 # After receiving help, acknowledge the solution with a checkmark emoji
-# and summarize what fixed your issue — this helps future searchers
+# and summarize what fixed your issue - this helps future searchers
 
 # If your question is resolved, update the thread:
 # "Resolved: the issue was X, fixed by Y"
@@ -120,12 +120,12 @@ Productive community engagement follows consistent norms.
 
 ## Best Practices
 
-- Post in the most relevant channel — avoid posting the same question in multiple channels
+- Post in the most relevant channel - avoid posting the same question in multiple channels
 - Use threads to continue discussions rather than replying in the main channel
 - Include a one-line summary in your initial message before providing details
 - Tag Slack messages with `:resolved:` when your issue is fixed to help others
-- Share your solutions back in Slack — every resolved question helps the next person
-- Be patient — community volunteers respond based on their availability
+- Share your solutions back in Slack - every resolved question helps the next person
+- Be patient - community volunteers respond based on their availability
 
 ## Conclusion
 

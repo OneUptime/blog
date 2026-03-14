@@ -10,7 +10,7 @@ Description: A safe, step-by-step process for upgrading Calico to a newer versio
 
 ## Introduction
 
-Upgrading Calico on a production cluster requires care. The CNI plugin is in the critical path for all pod networking — an upgrade that goes wrong can take down inter-pod communication across entire nodes. On self-managed clusters running on DigitalOcean Droplets, you have full control over the upgrade process, which allows you to move methodically and roll back if necessary.
+Upgrading Calico on a production cluster requires care. The CNI plugin is in the critical path for all pod networking - an upgrade that goes wrong can take down inter-pod communication across entire nodes. On self-managed clusters running on DigitalOcean Droplets, you have full control over the upgrade process, which allows you to move methodically and roll back if necessary.
 
 Calico's upgrade path depends on whether you installed with the Tigera Operator or directly with manifests. Both paths are covered here. In either case, the goal is to upgrade the control plane components first, verify stability, then let the DaemonSet roll out across nodes with zero downtime.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Health Checking, Microservices, Load Balancing, Kubernetes
+Tags: GRPC, Health Checking, Microservices, Load Balancing, Kubernetes
 
 Description: Learn how to implement and configure gRPC health checking for reliable service discovery and load balancing in distributed systems.
 

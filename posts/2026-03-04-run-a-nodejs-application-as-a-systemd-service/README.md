@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, System Administration, Node.js, JavaScript, Linux
+Tags: RHEL, Systemd, System Administration, Node.js, JavaScript, Linux
 
 Description: Learn how to run a Node.js Application as a systemd Service on RHEL with step-by-step instructions, configuration examples, and best practices.
 

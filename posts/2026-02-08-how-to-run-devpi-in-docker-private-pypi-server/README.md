@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Devpi, PyPI, Python, Package Registry, Docker Compose, pip
+Tags: Docker, Devpi, PyPI, Python, Package Registry, Docker Compose, Pip
 
 Description: Deploy Devpi in Docker as a private PyPI server for hosting internal Python packages and caching public ones
 

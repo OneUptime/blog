@@ -23,7 +23,7 @@ This guide provides a systematic mapping of ArgoCD Application fields to Flux CD
 
 ## Step 1: Understand the Conceptual Mapping
 
-```
+```plaintext
 ArgoCD Application                    Flux CD Resources
 ─────────────────────────────────     ─────────────────────────────────────
 spec.source.repoURL          ──►      GitRepository.spec.url
@@ -244,4 +244,4 @@ kubectl get all -n myapp
 
 ## Conclusion
 
-The conversion from ArgoCD Application to Flux Kustomization is straightforward for most applications. The split into a separate Source and Kustomization resource is more verbose but provides better composability—one GitRepository source can serve many Kustomizations. The migration effort is primarily in the health check and ignoreDifferences mappings, which require understanding Flux's different approach to resource health and field management.
+The conversion from ArgoCD Application to Flux Kustomization is straightforward for most applications. The split into a separate Source and Kustomization resource is more verbose but provides better composability-one GitRepository source can serve many Kustomizations. The migration effort is primarily in the health check and ignoreDifferences mappings, which require understanding Flux's different approach to resource health and field management.

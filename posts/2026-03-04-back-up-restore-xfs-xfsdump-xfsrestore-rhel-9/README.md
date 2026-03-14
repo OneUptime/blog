@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, xfsdump, xfsrestore, Backup, Storage, Linux
+Tags: RHEL, XFS, Xfsdump, Xfsrestore, Backup, Storage, Linux
 
 Description: Learn how to use xfsdump and xfsrestore on RHEL to create full and incremental backups of XFS file systems and restore them reliably.
 

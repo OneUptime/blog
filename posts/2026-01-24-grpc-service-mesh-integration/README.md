@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Service Mesh, Istio, Linkerd, Kubernetes, Load Balancing, mTLS, Observability
+Tags: GRPC, Service Mesh, Istio, Linkerd, Kubernetes, Load Balancing, MTLS, Observability
 
 Description: A comprehensive guide to integrating gRPC services with service meshes like Istio and Linkerd, covering load balancing, mTLS, traffic management, and observability.
 

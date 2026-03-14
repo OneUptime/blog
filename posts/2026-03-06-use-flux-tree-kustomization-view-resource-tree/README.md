@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, tree, Kustomization, Visualization, DevOps
+Tags: Flux, Fluxcd, GitOps, Kubernetes, CLI, Tree, Kustomization, Visualization, DevOps
 
 Description: A practical guide to using the flux tree kustomization command to visualize the resource hierarchy managed by a Flux CD Kustomization.
 

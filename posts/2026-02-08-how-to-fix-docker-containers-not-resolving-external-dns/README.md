@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DNS, Networking, Troubleshooting, Containers, docker-compose, resolve
+Tags: Docker, DNS, Networking, Troubleshooting, Containers, Docker-compose, Resolve
 
 Description: Fix Docker containers that cannot resolve external DNS names by configuring custom DNS servers, daemon settings, and network options.
 

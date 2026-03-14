@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Jinja2, YAML
+Tags: Ansible, Ansible-lint, Jinja2, YAML
 
 Description: Fix ansible-lint Jinja2 spacing warnings including variable braces, filter pipes, conditional expressions, and template formatting issues.
 

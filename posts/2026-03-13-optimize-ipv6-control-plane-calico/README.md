@@ -152,7 +152,7 @@ flowchart TD
 - Use ULA (fd00::/8) addresses for pod CIDRs to avoid global routing conflicts
 - Set IPv6 block size to `/122` for most clusters; increase to `/120` for high-density nodes
 - Ensure all BGP peers support MP-BGP (Multiprotocol BGP) for IPv6 route exchange
-- Test IPv6 network policies alongside IPv4 policies—they must be applied separately
+- Test IPv6 network policies alongside IPv4 policies-they must be applied separately
 - Monitor IPv6 BGP session state independently from IPv4 sessions
 
 ## Conclusion

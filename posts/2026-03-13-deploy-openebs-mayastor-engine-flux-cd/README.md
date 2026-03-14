@@ -238,9 +238,9 @@ kubectl run fio-bench --image=wallnerryan/fiotools \
 
 ## Best Practices
 
-- Dedicate at least 2 CPU cores to Mayastor's I/O engine — these cores are polled 100% of the time for minimal latency.
+- Dedicate at least 2 CPU cores to Mayastor's I/O engine - these cores are polled 100% of the time for minimal latency.
 - Configure hugepages in the Linux kernel boot parameters (`GRUB_CMDLINE_LINUX`) rather than `sysctl` to ensure they are allocated before NUMA memory fragmentation occurs.
-- Use `repl: "3"` only when you have NVMe devices on at least 3 nodes — synchronous 3-way replication adds write latency when nodes are geographically separated.
+- Use `repl: "3"` only when you have NVMe devices on at least 3 nodes - synchronous 3-way replication adds write latency when nodes are geographically separated.
 - Monitor Mayastor volume health with `kubectl get mayastorvolume -n openebs` and alert on degraded state.
 - Benchmark with `fio` before going to production to verify your NVMe devices and hugepages configuration are correct.
 

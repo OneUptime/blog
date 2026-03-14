@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, etcd, Prometheus, Kubernetes, Metrics Scraping
+Tags: OpenTelemetry, Etcd, Prometheus, Kubernetes, Metrics Scraping
 
 Description: Configure the OpenTelemetry Collector to scrape the etcd Prometheus metrics endpoint in Kubernetes with proper TLS and RBAC setup.
 

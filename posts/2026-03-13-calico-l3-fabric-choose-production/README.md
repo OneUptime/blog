@@ -10,7 +10,7 @@ Description: A decision framework for choosing Calico's L3 BGP routing for produ
 
 ## Introduction
 
-Choosing L3 BGP routing for production Calico deployments is the right decision when your infrastructure supports it — it provides the lowest latency, highest throughput, and most transparent networking model. But it requires coordination with your network team and careful BGP topology design.
+Choosing L3 BGP routing for production Calico deployments is the right decision when your infrastructure supports it - it provides the lowest latency, highest throughput, and most transparent networking model. But it requires coordination with your network team and careful BGP topology design.
 
 This post provides a production decision framework for L3 BGP: when to choose it, how to design the BGP topology, and what external peering decisions to make.
 
@@ -47,12 +47,12 @@ graph TD
 
 ## Decision 3: Internal vs. External BGP Topology
 
-**Internal BGP (iBGP) — All nodes in same AS**:
+**Internal BGP (iBGP) - All nodes in same AS**:
 - Simpler configuration
 - Requires route reflectors to avoid iBGP split-horizon issues
 - Suitable for clusters not peering with external infrastructure
 
-**External BGP (eBGP) — Nodes peer with ToR as separate AS**:
+**External BGP (eBGP) - Nodes peer with ToR as separate AS**:
 - More complex configuration
 - Natural support for ToR peering
 - Enables pod routes to be advertised externally
@@ -112,7 +112,7 @@ spec:
 
 ## Best Practices
 
-- Always deploy route reflectors in HA pairs — a single route reflector is a SPOF for all routing
+- Always deploy route reflectors in HA pairs - a single route reflector is a SPOF for all routing
 - Coordinate your BGP AS number with your network team to avoid conflicts with existing enterprise BGP infrastructure
 - Document the full BGP topology (which nodes peer with which) in your cluster runbook
 - Test BGP session recovery (simulate route reflector failure) before production rollout

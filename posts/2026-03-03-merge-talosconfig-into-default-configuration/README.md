@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosconfig, Configuration Management, talosctl, Multi-Cluster
+Tags: Talos Linux, Talosconfig, Configuration Management, Talosctl, Multi-Cluster
 
 Description: Learn how to merge talosconfig files to manage multiple Talos Linux clusters from a single configuration.
 

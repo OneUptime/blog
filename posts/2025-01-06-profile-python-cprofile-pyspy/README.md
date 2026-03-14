@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Profiling, Performance, cProfile, py-spy, Debugging, Optimization
+Tags: Python, Profiling, Performance, CProfile, Py-spy, Debugging, Optimization
 
 Description: Learn how to identify CPU and memory bottlenecks in Python applications using cProfile, py-spy, and memory profilers. This guide covers both development-time and production profiling techniques.
 

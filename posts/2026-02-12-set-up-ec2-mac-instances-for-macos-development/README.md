@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Mac Instances, macOS, CI/CD, Apple Development
+Tags: AWS, EC2, Mac Instances, MacOS, CI/CD, Apple Development
 
 Description: Step-by-step guide to setting up EC2 Mac instances for macOS and iOS development, including CI/CD pipelines, Xcode installation, and cost optimization.
 

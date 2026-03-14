@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Monitoring, kubectl, Kubernetes
+Tags: Flagger, Canary, Monitoring, Kubectl, Kubernetes
 
 Description: Learn how to use kubectl commands to monitor Flagger canary deployment status, track rollout progress, and debug failed releases.
 

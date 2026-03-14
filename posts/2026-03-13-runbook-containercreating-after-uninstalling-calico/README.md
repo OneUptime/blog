@@ -100,4 +100,4 @@ flowchart TD
 
 ## Conclusion
 
-ContainerCreating after Calico removal is resolved by restoring a functioning CNI — either reinstalling Calico or completing the replacement CNI installation. After CNI is fixed, delete all ContainerCreating pods to trigger rescheduling. The entire recovery should complete within 15-20 minutes.
+ContainerCreating after Calico removal is resolved by restoring a functioning CNI - either reinstalling Calico or completing the replacement CNI installation. After CNI is fixed, delete all ContainerCreating pods to trigger rescheduling. The entire recovery should complete within 15-20 minutes.

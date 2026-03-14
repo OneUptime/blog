@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, HTTP, eBPF
+Tags: Cilium, Kubernetes, Network Policy, HTTP, EBPF
 
 Description: Enforce HTTP-aware network policies with Cilium that filter traffic based on request methods, URL paths, and headers to secure REST APIs at the network layer.
 
@@ -12,7 +12,7 @@ Description: Enforce HTTP-aware network policies with Cilium that filter traffic
 
 HTTP network policies in Cilium enable security enforcement at the REST API level, going beyond port-based access control to understand the semantics of HTTP requests. This means you can allow GET requests to `/api/v1/users` while blocking DELETE requests to the same path, enforce that all requests include a required header, or restrict access to admin endpoints to specific callers. All of this happens transparently in the data plane without application changes.
 
-Cilium implements HTTP policy enforcement by transparently redirecting HTTP traffic through a local Envoy proxy when L7 rules are present. The Envoy proxy evaluates rules based on HTTP method, path regex, and header matches, then either forwards the request or returns a 403 response. The original application sees normal HTTP traffic — it has no visibility into the policy enforcement happening underneath.
+Cilium implements HTTP policy enforcement by transparently redirecting HTTP traffic through a local Envoy proxy when L7 rules are present. The Envoy proxy evaluates rules based on HTTP method, path regex, and header matches, then either forwards the request or returns a 403 response. The original application sees normal HTTP traffic - it has no visibility into the policy enforcement happening underneath.
 
 This guide covers configuring HTTP policies for common REST API security patterns, testing policy enforcement, and observing policy decisions through Hubble.
 

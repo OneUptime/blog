@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, Service, Safe Rollout
+Tags: Calico, Kubernetes, Network Policy, Services, Safe Rollout
 
 Description: Roll Out Calico service-based network policies without disrupting running workloads.
 

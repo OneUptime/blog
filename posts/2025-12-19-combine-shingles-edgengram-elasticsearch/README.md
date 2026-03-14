@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Shingles, edgeNgram, Search, Text Analysis, Autocomplete
+Tags: Elasticsearch, Shingles, EdgeNgram, Search, Text Analysis, Autocomplete
 
 Description: Learn how to combine shingles and edge ngrams in Elasticsearch to create a powerful search experience that handles both phrase matching and prefix-based autocomplete effectively.
 

@@ -87,4 +87,4 @@ Repeat Steps 3-6 for each Windows node.
 
 ## Conclusion
 
-Upgrading Calico on Windows nodes requires manual binary replacement because the Tigera Operator only manages Linux nodes. The process — cordon, stop services, extract new binaries, reinstall, uncordon — should be applied to one Windows node at a time, with connectivity verification after each node to ensure the upgrade is proceeding correctly.
+Upgrading Calico on Windows nodes requires manual binary replacement because the Tigera Operator only manages Linux nodes. The process - cordon, stop services, extract new binaries, reinstall, uncordon - should be applied to one Windows node at a time, with connectivity verification after each node to ensure the upgrade is proceeding correctly.

@@ -10,7 +10,7 @@ Description: Policy design practices that ensure DNS always works when Calico de
 
 ## Introduction
 
-Preventing Calico policies from blocking DNS requires making UDP/TCP port 53 to kube-system an untouchable baseline in every egress policy deployment. DNS is so fundamental that blocking it is almost never intentional — it is always an omission error. Making DNS allow a required element of any default-deny policy template prevents this omission.
+Preventing Calico policies from blocking DNS requires making UDP/TCP port 53 to kube-system an untouchable baseline in every egress policy deployment. DNS is so fundamental that blocking it is almost never intentional - it is always an omission error. Making DNS allow a required element of any default-deny policy template prevents this omission.
 
 ## Symptoms
 

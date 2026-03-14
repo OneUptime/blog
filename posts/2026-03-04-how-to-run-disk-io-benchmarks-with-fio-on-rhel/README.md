@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, fio, Disk I/O, Benchmarking, Performance, Storage
+Tags: RHEL, Fio, Disk I/O, Benchmarking, Performance, Storage
 
 Description: Learn how to use fio on RHEL to benchmark disk I/O performance, including sequential and random read/write tests.
 

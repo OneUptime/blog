@@ -10,7 +10,7 @@ Description: A safe step-by-step process for upgrading Calico to a newer version
 
 ## Introduction
 
-Upgrading Calico on Kind requires care to avoid disrupting pod networking during the transition. While Kind is primarily a development tool, upgrade testing is a valid use case — especially when you want to validate that a Calico version upgrade does not break your network policies or connectivity before applying it to production clusters.
+Upgrading Calico on Kind requires care to avoid disrupting pod networking during the transition. While Kind is primarily a development tool, upgrade testing is a valid use case - especially when you want to validate that a Calico version upgrade does not break your network policies or connectivity before applying it to production clusters.
 
 Calico upgrades typically involve updating the calico-node DaemonSet, calico-kube-controllers Deployment, and associated CRDs. The Calico project follows semantic versioning and publishes upgrade guides for each release. Minor version upgrades are usually straightforward, while major version upgrades may require additional steps.
 

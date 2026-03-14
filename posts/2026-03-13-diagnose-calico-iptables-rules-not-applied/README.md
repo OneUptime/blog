@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Felix
+Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Felix
 
 Description: Diagnose cases where Calico iptables rules are not being applied to a node, covering Felix health checks, iptables chain inspection, and FelixConfiguration validation.
 
@@ -12,7 +12,7 @@ Description: Diagnose cases where Calico iptables rules are not being applied to
 
 Calico uses Felix to program iptables rules that enforce network policies and handle pod routing. When iptables rules are not applied, network policies stop being enforced on the affected node and all traffic to pods on that node may be allowed regardless of configured policies.
 
-The symptoms are subtle — connectivity works but security controls are absent. Diagnosing this requires confirming whether Felix is running and healthy, whether Calico iptables chains exist on the node, and whether the Felix configuration allows iptables programming.
+The symptoms are subtle - connectivity works but security controls are absent. Diagnosing this requires confirming whether Felix is running and healthy, whether Calico iptables chains exist on the node, and whether the Felix configuration allows iptables programming.
 
 ## Prerequisites
 

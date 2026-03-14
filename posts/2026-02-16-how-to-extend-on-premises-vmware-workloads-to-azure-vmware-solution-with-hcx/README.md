@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VMware, HCX, Migration, Hybrid Cloud, Workload Mobility, vSphere
+Tags: Azure, VMware, HCX, Migration, Hybrid Cloud, Workload Mobility, VSphere
 
 Description: Step-by-step guide to extending on-premises VMware workloads to Azure VMware Solution using VMware HCX for seamless migration and network extension.
 
