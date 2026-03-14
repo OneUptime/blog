@@ -80,7 +80,7 @@ kubectl run mtu-test --image=busybox --rm -it --restart=Never -- \
 # If this fails but ping -s 1400 works, there is an MTU issue
 
 # For VXLAN tunnels, effective MTU = NIC MTU - 50 (VXLAN header)
-# For WireGuard, effective MTU = NIC MTU - 60 (WireGuard header)
+# For WireGuard, effective MTU = NIC MTU - 80 (WireGuard header)
 ```
 
 Fix MTU:

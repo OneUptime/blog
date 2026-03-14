@@ -47,7 +47,7 @@ spec:
 ```
 
 - `bpfEnabled: false` uses the standard iptables dataplane (default and most battle-tested).
-- `bpfEnabled: true` switches to the eBPF dataplane, which provides better performance and avoids kube-proxy, but requires Linux kernel 5.3+.
+- `bpfEnabled: true` switches to the eBPF dataplane, which provides better performance and avoids kube-proxy, but requires Linux kernel 5.3+ (5.8+ strongly recommended for CO-RE support).
 
 ### Encapsulation Settings
 

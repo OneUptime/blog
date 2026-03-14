@@ -118,7 +118,7 @@ graph TD
     A[Low WireGuard Throughput] --> B{WireGuard kernel module loaded?}
     B -->|No| C[Install wireguard-tools and load module]
     B -->|Yes| D{MTU test passes at 1350?}
-    D -->|No| E[Fix MTU: set to 1380 or lower]
+    D -->|No| E[Fix MTU: set to 1420 or lower]
     D -->|Yes| F{CPU saturated during test?}
     F -->|Yes| G[Check NUMA, enable jumbo frames, reduce streams]
     F -->|No| H{Encrypted < 60% of unencrypted?}
@@ -206,4 +206,4 @@ Include the following in any escalation:
 
 ## Conclusion
 
-Troubleshooting WireGuard throughput in Cilium follows a systematic approach: verify WireGuard is active and using the kernel module, check MTU for fragmentation, profile CPU for crypto overhead, and compare against unencrypted baseline. Most issues resolve by ensuring the kernel WireGuard module is loaded (not userspace fallback), fixing MTU to account for WireGuard's 60-byte overhead, and ensuring CPUs have enough capacity for ChaCha20-Poly1305 operations.
+Troubleshooting WireGuard throughput in Cilium follows a systematic approach: verify WireGuard is active and using the kernel module, check MTU for fragmentation, profile CPU for crypto overhead, and compare against unencrypted baseline. Most issues resolve by ensuring the kernel WireGuard module is loaded (not userspace fallback), fixing MTU to account for WireGuard's 80-byte overhead, and ensuring CPUs have enough capacity for ChaCha20-Poly1305 operations.

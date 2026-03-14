@@ -213,4 +213,4 @@ These diagnostic tools form a comprehensive toolkit for understanding exactly wh
 
 ## Conclusion
 
-Properly diagnosinging packet server issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly diagnosing packet server issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

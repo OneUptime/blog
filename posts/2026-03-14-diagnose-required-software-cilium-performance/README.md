@@ -192,4 +192,4 @@ These diagnostic tools form a comprehensive toolkit for understanding exactly wh
 
 ## Conclusion
 
-Properly diagnosinging required software issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly diagnosing required software issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

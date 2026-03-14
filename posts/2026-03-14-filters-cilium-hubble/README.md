@@ -147,8 +147,8 @@ hubble:
       enabled: true
       filePath: /var/run/cilium/hubble/events.log
 
-      # Allow list: only export flows matching these criteria
-      allowList:
+      # Include filters: only export flows matching these criteria
+      includeFilters:
         # Export all dropped packets
         - '{"verdict":["DROPPED"]}'
         # Export flows from production namespace
@@ -156,8 +156,8 @@ hubble:
         # Export DNS queries
         - '{"destination_port":["53"]}'
 
-      # Deny list: exclude flows matching these criteria
-      denyList:
+      # Exclude filters: exclude flows matching these criteria
+      excludeFilters:
         # Exclude health checks
         - '{"source_pod":["kube-system/kube-probe"]}'
         # Exclude node-to-node traffic
@@ -168,7 +168,7 @@ hubble:
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
   --set hubble.export.static.enabled=true \
-  --set-json 'hubble.export.static.allowList=["{\"verdict\":[\"DROPPED\"]}"]'
+  --set-json 'hubble.export.static.includeFilters=["{\"verdict\":[\"DROPPED\"]}"]'
 ```
 
 ## Real-World Filter Recipes
@@ -236,7 +236,7 @@ hubble observe --verdict DROPPED --last 1000 -o json 2>/dev/null | wc -l
 
 - **L7 filters not working**: L7 visibility requires either a CiliumNetworkPolicy with L7 rules or explicit visibility annotations. Without these, only L3/L4 data is available.
 
-- **Exporter filters too aggressive**: If the export file is empty, your allow list may be too restrictive. Remove the allow list temporarily to verify flows are being generated.
+- **Exporter filters too aggressive**: If the export file is empty, your include filters may be too restrictive. Remove the include filters temporarily to verify flows are being generated.
 
 ## Conclusion
 

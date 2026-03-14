@@ -26,18 +26,18 @@ This guide provides practical examples of using `calicoctl ipam split` for commo
 ## Basic Usage
 
 ```bash
-# Split a /24 block into /26 blocks
-calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+# Split the IP pool containing 10.244.0.0/24 into 4 smaller pools
+calicoctl ipam split 4 --cidr=10.244.0.0/24
 ```
 
-This divides one block of 256 IPs into four blocks of 64 IPs each, allowing them to be distributed across multiple nodes.
+This divides one pool into four equally sized smaller pools. The number of splits must be a power of 2 (2, 4, 8, 16, etc.).
 
-## Understanding Block Splitting
+## Understanding Pool Splitting
 
-Calico allocates IP addresses in blocks. The default block size is /26 (64 IPs). Sometimes you need to split larger allocations into smaller blocks for better distribution:
+Calico allocates IP addresses from IP pools. Sometimes you need to split a larger pool into smaller pools for better management and distribution:
 
 ```
-Before split: 10.244.0.0/24 (256 IPs, one node)
+Before split: 10.244.0.0/24 (256 IPs, one pool)
 After split:  10.244.0.0/26   (64 IPs)
               10.244.0.64/26  (64 IPs)
               10.244.0.128/26 (64 IPs)
@@ -46,25 +46,25 @@ After split:  10.244.0.0/26   (64 IPs)
 
 ## When to Split Blocks
 
-- **Uneven IP distribution**: One node holds a large block while others are starved
+- **Uneven IP distribution**: One node holds a large pool while others are starved
 - **After changing block size**: When reducing the default block size in an IP pool
 - **During cluster rebalancing**: Redistributing IPs after node additions
-- **IP utilization optimization**: Breaking up underutilized large blocks
+- **IP utilization optimization**: Breaking up underutilized large pools
 
-## Practical Example: Rebalancing After Block Size Change
+## Practical Example: Rebalancing After Pool Split
 
 ```bash
-# Step 1: Check current block allocation
+# Step 1: Check current pool allocation
 calicoctl ipam show --show-blocks
 
-# Step 2: Identify large blocks that need splitting
-# Look for blocks larger than the desired size
+# Step 2: Identify large pools that need splitting
+calicoctl get ippools -o wide
 
-# Step 3: Split the blocks
-calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+# Step 3: Split the pool into 4 smaller pools (must be a power of 2)
+calicoctl ipam split 4 --cidr=10.244.0.0/24
 
 # Step 4: Verify the split
-calicoctl ipam show --show-blocks
+calicoctl get ippools -o wide
 ```
 
 ## Planning a Split Operation
@@ -76,23 +76,26 @@ calicoctl ipam show --show-blocks
 
 echo "=== IPAM Split Planning ==="
 
-TARGET_SIZE=26  # Desired block size (/26 = 64 IPs)
+TARGET_SIZE=26  # Desired pool size (/26 = 64 IPs)
 
-echo "Current block allocation:"
-calicoctl ipam show --show-blocks
+echo "Current pool allocation:"
+calicoctl get ippools -o wide
 
 echo ""
 echo "Recommended splits:"
-# This analysis would identify blocks larger than the target size
+# This analysis would identify pools larger than the target size
 # and suggest split operations
 
-calicoctl ipam show --show-blocks 2>/dev/null | grep "Block" | while read -r line; do
-  CIDR=$(echo "$line" | awk '{print $4}')
-  PREFIX=$(echo "$CIDR" | cut -d/ -f2)
-  if [ -n "$PREFIX" ] && [ "$PREFIX" -lt "$TARGET_SIZE" ]; then
-    echo "  Split: $CIDR -> /$TARGET_SIZE blocks"
-  fi
-done
+calicoctl get ippools -o json 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for pool in data.get('items', []):
+    cidr = pool['spec']['cidr']
+    prefix = int(cidr.split('/')[1])
+    if prefix < $TARGET_SIZE:
+        num_splits = 2 ** ($TARGET_SIZE - prefix)
+        print(f'  Split: {cidr} into {num_splits} pools (calicoctl ipam split {num_splits} --name={pool[\"metadata\"][\"name\"]})')
+"
 ```
 
 ## Pre-Split Validation
@@ -101,24 +104,26 @@ done
 #!/bin/bash
 # pre-split-check.sh
 
-BLOCK="$1"
-TARGET_SIZE="$2"
+POOL_NAME="$1"
+NUM_SPLITS="$2"
 
-echo "Pre-split validation for $BLOCK -> /$TARGET_SIZE"
+echo "Pre-split validation for pool $POOL_NAME into $NUM_SPLITS parts"
 
-# Check the block exists
-calicoctl ipam show --ip=$(echo "$BLOCK" | cut -d/ -f1)
+# Check the pool exists
+echo "Current pool details:"
+calicoctl get ippool "$POOL_NAME" -o wide
 
 # Check how many IPs are in use
 echo "Current utilization:"
-calicoctl ipam show --show-blocks | grep "$BLOCK"
+calicoctl ipam show
 
 echo ""
-echo "After split, the block will become:"
-# Calculate the number of sub-blocks
-CURRENT_PREFIX=$(echo "$BLOCK" | cut -d/ -f2)
-NUM_BLOCKS=$((1 << (TARGET_SIZE - CURRENT_PREFIX)))
-echo "  $NUM_BLOCKS blocks of /$TARGET_SIZE"
+# Verify num_splits is a power of 2
+if (( NUM_SPLITS & (NUM_SPLITS - 1) )); then
+  echo "ERROR: Number of splits must be a power of 2"
+  exit 1
+fi
+echo "Will split into $NUM_SPLITS equal pools"
 ```
 
 

@@ -203,4 +203,4 @@ Document your acceptance criteria clearly so that validation results can be obje
 
 ## Conclusion
 
-Properly validatinging required software for cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly validating required software for Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

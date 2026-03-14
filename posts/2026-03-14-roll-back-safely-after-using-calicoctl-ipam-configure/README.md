@@ -22,7 +22,7 @@ IPAM configuration changes can have immediate effects on pod IP allocation. If e
 
 ```bash
 # Check current setting
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Revert to the previous setting
 # If you enabled strict affinity and need to revert:
@@ -32,7 +32,7 @@ calicoctl ipam configure --strictaffinity=false
 calicoctl ipam configure --strictaffinity=true
 
 # Verify
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 ## Post-Rollback Verification
@@ -45,7 +45,7 @@ echo "=== Post-IPAM Rollback Verification ==="
 
 # 1. Check configuration
 echo "IPAM Configuration:"
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # 2. Check IP utilization
 echo ""

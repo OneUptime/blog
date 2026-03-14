@@ -24,10 +24,10 @@ This guide addresses each category of error that checksystem can report and prov
 ## Kernel Version Errors
 
 ```
-ERROR: kernel version 3.10.0 is below minimum 4.9.0
+ERROR: kernel version 3.10.0 is below minimum 5.10.0
 ```
 
-Calico requires kernel 4.9+ for full functionality:
+Calico requires kernel 5.10+ for full functionality:
 
 ```bash
 # Check current kernel version

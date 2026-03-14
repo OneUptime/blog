@@ -29,10 +29,9 @@ This guide provides optimization steps for both protocols and the migration proc
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=wireguard \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set bpf.hostLegacyRouting=false \
-  --set MTU=1380
+  --set mtu=1380
 ```
 
 Kernel tuning for WireGuard:
@@ -47,8 +46,7 @@ sysctl -w net.core.wmem_max=26214400
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
   --set encryption.type=ipsec \
-  --set encryption.ipsec.keyFile=/etc/ipsec/keys \
-  --set tunnel=disabled \
+  --set encryption.ipsec.keyFile=keys \
   --set routingMode=native
 
 # Verify hardware offload is active

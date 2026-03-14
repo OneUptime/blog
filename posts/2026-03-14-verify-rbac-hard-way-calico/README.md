@@ -37,7 +37,7 @@ metadata:
   name: calico-network-admin
 rules:
   # Full access to Calico custom resources
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - globalnetworkpolicies
       - globalnetworksets
@@ -49,7 +49,7 @@ rules:
       - clusterinformations
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Full access to namespace-scoped Calico resources
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - networkpolicies
       - networksets
@@ -62,13 +62,13 @@ metadata:
   name: calico-namespace-network-admin
 rules:
   # Only namespace-scoped Calico resources
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - networkpolicies
       - networksets
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Read-only access to global resources for context
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - globalnetworkpolicies
       - ippools
@@ -80,7 +80,7 @@ kind: ClusterRole
 metadata:
   name: calico-network-viewer
 rules:
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]
 ```
@@ -122,27 +122,27 @@ Use `kubectl auth can-i` to systematically verify permissions for each role.
 
 echo "=== Cluster Admin Permissions ==="
 # Should all return "yes"
-kubectl auth can-i create globalnetworkpolicies.projectcalico.org \
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-cluster-admin
-kubectl auth can-i delete ippools.projectcalico.org \
+kubectl auth can-i delete ippools.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-cluster-admin
 
 echo ""
 echo "=== Namespace Admin Permissions ==="
 # Should return "yes" for namespace-scoped resources
-kubectl auth can-i create networkpolicies.projectcalico.org \
+kubectl auth can-i create networkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-ns-admin -n default
 # Should return "no" for global resources
-kubectl auth can-i create globalnetworkpolicies.projectcalico.org \
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-ns-admin
 
 echo ""
 echo "=== Viewer Permissions ==="
 # Should return "yes" for read operations
-kubectl auth can-i get globalnetworkpolicies.projectcalico.org \
+kubectl auth can-i get globalnetworkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-viewer
 # Should return "no" for write operations
-kubectl auth can-i create networkpolicies.projectcalico.org \
+kubectl auth can-i create networkpolicies.crd.projectcalico.org \
   --as=system:serviceaccount:default:test-viewer -n default
 ```
 
@@ -152,7 +152,7 @@ graph LR
     A -->|Full Access| C[IP Pools]
     A -->|Full Access| D[Namespace Policies]
     E[Namespace Admin] -->|Read Only| B
-    E -->|No Access| C
+    E -->|Read Only| C
     E -->|Full Access| D
     F[Viewer] -->|Read Only| B
     F -->|Read Only| C
@@ -193,7 +193,7 @@ kubectl apply -f test-calico-policy.yaml \
 # Expected: forbidden error
 
 # Clean up test resources
-kubectl delete networkpolicy.projectcalico.org rbac-test-policy -n default
+kubectl delete networkpolicy.crd.projectcalico.org rbac-test-policy -n default
 ```
 
 ## Verification
@@ -211,7 +211,7 @@ for sa in test-cluster-admin test-ns-admin test-viewer; do
   echo "--- Service Account: ${sa} ---"
   for resource in globalnetworkpolicies networkpolicies ippools hostendpoints; do
     for verb in get create delete; do
-      result=$(kubectl auth can-i ${verb} ${resource}.projectcalico.org \
+      result=$(kubectl auth can-i ${verb} ${resource}.crd.projectcalico.org \
         --as=system:serviceaccount:default:${sa} 2>&1)
       echo "${verb} ${resource}: ${result}"
     done
@@ -222,7 +222,7 @@ done
 ## Troubleshooting
 
 - **Unexpected "yes" for restricted users**: Check for overly broad ClusterRoleBindings. Run `kubectl get clusterrolebindings -o json` and filter by subject name to find all bindings for that account.
-- **Cluster admin gets "no"**: Verify the ClusterRoleBinding exists and references the correct ClusterRole. Check for typos in API group names (`projectcalico.org` not `crd.projectcalico.org`).
+- **Cluster admin gets "no"**: Verify the ClusterRoleBinding exists and references the correct ClusterRole. Check for typos in API group names (use `crd.projectcalico.org` for CRD-based access, not `projectcalico.org` which requires the Calico API server).
 - **RBAC works with kubectl but not calicoctl**: Ensure calicoctl is configured to use the same authentication context. When using Kubernetes API datastore, calicoctl respects Kubernetes RBAC.
 - **Namespace admin can access other namespaces**: Verify you used RoleBinding (not ClusterRoleBinding) for namespace-scoped roles.
 

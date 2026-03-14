@@ -47,7 +47,7 @@ while IFS=',' read -r pod node; do
   echo "Collecting from $node..."
 
   OUTPUT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null || echo "FAILED")
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null || echo "FAILED")
 
   echo "$OUTPUT" > "$OUTPUT_DIR/${node}.txt"
 
@@ -89,7 +89,7 @@ spec:
               FAIL=0
               for pod in $PODS; do
                 OUTPUT=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-                  cilium-dbg bgp routes 2>/dev/null || echo "FAILED")
+                  cilium-dbg bgp routes available ipv4 unicast 2>/dev/null || echo "FAILED")
                 if [ "$OUTPUT" = "FAILED" ]; then
                   FAIL=$((FAIL + 1))
                 fi
@@ -110,7 +110,7 @@ PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 
 for pod in $PODS; do
   OUTPUT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null || echo "FAILED")
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null || echo "FAILED")
   if [ "$OUTPUT" = "FAILED" ]; then
     NODE=$(kubectl -n "$NAMESPACE" get pod "$pod" -o jsonpath='{.spec.nodeName}')
     echo "ALERT: bgp routes check failed on $NODE"
@@ -126,7 +126,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Verify command works
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes 2>/dev/null && echo "Command succeeded"
+  cilium-dbg bgp routes available ipv4 unicast 2>/dev/null && echo "Command succeeded"
 
 # Verify automation/parsing
 bash collect-bgp-routes-state.sh

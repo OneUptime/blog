@@ -95,8 +95,7 @@ cilium bpf ct list global | wc -l
 ## Kernel TCP Tuning for Low Latency
 
 ```bash
-# Disable Nagle's algorithm effect by reducing delays
-sysctl -w net.ipv4.tcp_low_latency=1
+# Note: net.ipv4.tcp_low_latency is obsolete since kernel 4.14 and has no effect
 
 # Reduce TIME_WAIT sockets
 sysctl -w net.ipv4.tcp_tw_reuse=1

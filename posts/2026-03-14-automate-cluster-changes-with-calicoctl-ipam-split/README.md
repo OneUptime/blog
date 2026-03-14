@@ -41,7 +41,7 @@ spec:
             - -c
             - |
               echo "Running calicoctl ipam split at $(date)"
-              calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+              calicoctl ipam split 4 --cidr=10.244.0.0/24
               echo "Complete."
           restartPolicy: Never
 ```
@@ -58,7 +58,7 @@ for CTX in $CONTEXTS; do
   echo "=== $CTX ==="
   kubectl --context="$CTX" exec -n calico-system \
     $(kubectl --context="$CTX" get pod -n calico-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) \
-    -- calicoctl ipam split 10.244.0.0/24 --cidr-size=26 2>/dev/null || echo "  Failed"
+    -- calicoctl ipam split 4 --cidr=10.244.0.0/24 2>/dev/null || echo "  Failed"
   echo ""
 done
 ```
@@ -76,7 +76,7 @@ jobs:
     steps:
       - name: Run calicoctl ipam split
         run: |
-          calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+          calicoctl ipam split 4 --cidr=10.244.0.0/24
 ```
 
 ## Verification

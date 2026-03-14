@@ -108,10 +108,8 @@ bpf:
   masquerade: true
   # Automatically size BPF maps based on node capacity
   mapDynamicSizeRatio: 0.0025
-
-# Connection tracking settings
-# Adjust based on connection patterns in your workloads
-bpf:
+  # Connection tracking settings
+  # Adjust based on connection patterns in your workloads
   ctTcpTimeout: "21600s"
   ctAnyTimeout: "60s"
 

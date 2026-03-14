@@ -161,12 +161,14 @@ numactl --membind=0 --cpunodebind=0 -- <application command>
 ## Verification
 
 ```bash
-# Verify CPU assignment
-kubectl exec my-app -- cat /sys/fs/cgroup/cpuset/cpuset.cpus
+# Verify CPU assignment (cgroup v2)
+kubectl exec my-app -- cat /sys/fs/cgroup/cpuset.cpus
 # Should show specific CPUs like "2-3"
+# Note: On cgroup v1, the path is /sys/fs/cgroup/cpuset/cpuset.cpus
 
-# Verify no throttling
-kubectl exec my-app -- cat /sys/fs/cgroup/cpu/cpu.stat
+# Verify no throttling (cgroup v2)
+kubectl exec my-app -- cat /sys/fs/cgroup/cpu.stat
+# Note: On cgroup v1, the path is /sys/fs/cgroup/cpu/cpu.stat
 # nr_throttled should be 0
 
 # Run benchmark and check CPU distribution

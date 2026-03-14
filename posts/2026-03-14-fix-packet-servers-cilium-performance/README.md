@@ -203,4 +203,4 @@ Document the fix, its impact, and any follow-up actions needed in your team's ru
 
 ## Conclusion
 
-Properly fixinging packet server issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly fixing packet server issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

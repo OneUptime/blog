@@ -76,11 +76,11 @@ echo "NIC on NUMA node: $NIC_NUMA"
 
 ## MTU Optimization
 
-WireGuard adds 60 bytes of overhead. Adjust MTU to avoid fragmentation:
+WireGuard adds 80 bytes of overhead (32-byte message header + 40-byte outer IP header + 8-byte UDP header). Adjust MTU to avoid fragmentation:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=1380  # 1440 - 60 for WireGuard overhead
+  --set MTU=1420  # 1500 - 80 for WireGuard overhead
 ```
 
 Alternatively, if your network supports jumbo frames:
@@ -91,7 +91,7 @@ ip link set eth0 mtu 9000
 
 # Set Cilium MTU for WireGuard
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=8880  # 9000 - 60 - 60 (WireGuard + potential tunnel)
+  --set MTU=8870  # 9000 - 80 - 50 (WireGuard + potential VXLAN tunnel)
 ```
 
 ## Enabling BPF Host Routing with WireGuard

@@ -233,4 +233,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Properly preventinging required software issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly preventing required software issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

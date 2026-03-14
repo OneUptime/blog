@@ -52,8 +52,8 @@ Key metrics:
 
 ```promql
 # Endpoints by state
-cilium_endpoint_state{endpoint_state="ready"}
-cilium_endpoint_state{endpoint_state="not-ready"}
+cilium_endpoint_state{state="ready"}
+cilium_endpoint_state{state="not-ready"}
 
 # Endpoint regeneration duration
 histogram_quantile(0.99, rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m]))
@@ -104,7 +104,7 @@ spec:
     - name: cilium-endpoints
       rules:
         - alert: CiliumEndpointsNotReady
-          expr: sum(cilium_endpoint_state{endpoint_state="not-ready"}) > 0
+          expr: sum(cilium_endpoint_state{state="not-ready"}) > 0
           for: 10m
           labels:
             severity: warning

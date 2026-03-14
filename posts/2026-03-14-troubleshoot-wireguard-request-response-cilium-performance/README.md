@@ -53,7 +53,7 @@ kubectl exec -n kube-system ds/cilium -- sh -c \
 
 # Fix: set MTU to account for WireGuard overhead
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=1380
+  --set MTU=1420
 ```
 
 ## Step 3: Profile Crypto Overhead
@@ -90,7 +90,7 @@ graph TD
     A[High WG Latency] --> B{Overhead > 30%?}
     B -->|No| C[Within normal WG range]
     B -->|Yes| D{MTU fragmentation?}
-    D -->|Yes| E[Fix MTU to 1380]
+    D -->|Yes| E[Fix MTU to 1420]
     D -->|No| F{CPU has SIMD?}
     F -->|No| G[Upgrade hardware or reduce encryption scope]
     F -->|Yes| H{Userspace WG?}

@@ -63,7 +63,7 @@ mount | grep bpf
 ```
 
 Required kernel features:
-- Kernel 5.10+ (5.15+ recommended)
+- Kernel 4.19+ minimum (5.10+ recommended for full feature support)
 - BPF filesystem mounted at `/sys/fs/bpf`
 - Required modules: `bpf`, `vxlan` (if using tunnel mode)
 
@@ -110,7 +110,7 @@ kubectl get pods --all-namespaces | grep -v Running
 ## Troubleshooting
 
 - **"BPF filesystem is not mounted"**: Mount it with `mount bpffs /sys/fs/bpf -t bpf` or add to `/etc/fstab`.
-- **"Unable to load BPF program"**: Kernel too old. Upgrade to 5.10+.
+- **"Unable to load BPF program"**: Kernel too old. Upgrade to 4.19+ minimum (5.10+ recommended).
 - **Agents running but pods stuck in ContainerCreating**: Check CNI binary and config. Verify `/opt/cni/bin/cilium-cni` exists.
 - **Operator crashlooping**: Check RBAC permissions. The operator needs cluster-wide access for IPAM and CRD management.
 

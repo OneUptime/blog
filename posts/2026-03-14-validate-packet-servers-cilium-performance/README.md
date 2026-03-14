@@ -216,4 +216,4 @@ This continuous validation approach ensures performance requirements are met at 
 
 ## Conclusion
 
-Properly validatinging packet server configuration in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly validating packet server configuration in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

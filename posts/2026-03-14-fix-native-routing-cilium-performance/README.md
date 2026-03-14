@@ -58,6 +58,9 @@ spec:
     neighbors:
     - peerAddress: "10.0.0.1/32"
       peerASN: 65000
+# Note: CiliumBGPPeeringPolicy (v2alpha1) is legacy.
+# For new deployments, use CiliumBGPClusterConfig, CiliumBGPPeerConfig,
+# and CiliumBGPAdvertisement resources instead.
 YAML
 ```
 

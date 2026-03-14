@@ -105,8 +105,8 @@ kind: Service
 metadata:
   name: my-global-service
   annotations:
-    io.cilium/global-service: "true"
-    io.cilium/shared-service: "true"
+    service.cilium.io/global: "true"
+    service.cilium.io/shared: "true"
 spec:
   ports:
     - port: 80

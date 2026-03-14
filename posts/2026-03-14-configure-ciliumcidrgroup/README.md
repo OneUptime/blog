@@ -52,7 +52,7 @@ spec:
     matchLabels:
       app: api-server
   egress:
-    - toGroups:
+    - toCIDRSet:
         - cidrGroupRef: external-database-servers
       toPorts:
         - ports:

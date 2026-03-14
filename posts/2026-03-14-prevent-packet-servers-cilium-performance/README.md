@@ -241,4 +241,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Properly preventinging packet server issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly preventing packet server issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

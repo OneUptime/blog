@@ -10,7 +10,7 @@ Description: Safe procedures for reverting changes or recovering from issues aft
 
 ## Introduction
 
-Understanding how to recover from unexpected results when using `calicoctl ipam show` is an important operational skill. Whether the command produced unintended side effects or revealed issues that require remediation, having a clear rollback strategy ensures you can recover quickly.
+The `calicoctl ipam show` command is read-only and does not modify any cluster state. There is nothing to roll back from running this command itself. However, actions taken in response to its output (such as releasing IP addresses or modifying IP pools) may need to be rolled back if they cause issues.
 
 ## Prerequisites
 
@@ -77,4 +77,4 @@ kubectl delete pod recovery-test --grace-period=0
 
 ## Conclusion
 
-Recovery from `calicoctl ipam show` operations depends on whether the command modified state. For read-only commands, focus on correct interpretation. For state-modifying commands, verify IPAM health and remediate any issues using the check and show commands.
+Since `calicoctl ipam show` is a read-only command, no rollback is needed for the command itself. Focus on correctly interpreting its output before taking any remediation actions, and always back up IPAM state before making changes based on its findings.

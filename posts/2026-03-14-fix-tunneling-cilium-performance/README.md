@@ -29,7 +29,6 @@ This guide provides the specific steps for each aspect of tunnel performance man
 ```bash
 # The most impactful fix: disable tunneling entirely
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8"
@@ -49,16 +48,16 @@ Ensure your network can route pod CIDRs between nodes. For cloud providers:
 ```bash
 # Use Geneve over VXLAN (better extensibility, similar overhead)
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=geneve
+  --set tunnelProtocol=geneve
 
 # Optimize MTU for tunnel
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=1450  # For VXLAN/Geneve on 1500 MTU network
+  --set mtu=1450  # For VXLAN/Geneve on 1500 MTU network
 
 # If jumbo frames are available
 # Physical MTU: 9000
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set MTU=8900  # Accounting for tunnel overhead
+  --set mtu=8900  # Accounting for tunnel overhead
 ```
 
 ## Enable BPF Host Routing with Tunnel

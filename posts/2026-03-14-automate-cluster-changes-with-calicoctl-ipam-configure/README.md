@@ -40,7 +40,7 @@ for CLUSTER in $CLUSTERS; do
   # Check current state
   CURRENT=$(kubectl --context="$CLUSTER" exec -n calico-system \
     $(kubectl --context="$CLUSTER" get pod -n calico-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) \
-    -- calicoctl ipam configure show 2>/dev/null | grep StrictAffinity | awk '{print $2}')
+    -- calicoctl ipam show --show-configuration 2>/dev/null | grep StrictAffinity | awk '{print $2}')
   
   echo "  Current: StrictAffinity=$CURRENT"
   
@@ -87,7 +87,7 @@ jobs:
       - name: Apply IPAM configuration
         run: |
           calicoctl ipam configure --strictaffinity=$(grep strictAffinity ipam-config/production.yaml | awk '{print $2}')
-          calicoctl ipam configure show
+          calicoctl ipam show --show-configuration
 ```
 
 ## IPAM Configuration Drift Detection
@@ -98,7 +98,7 @@ jobs:
 
 EXPECTED_STRICT_AFFINITY="true"
 
-ACTUAL=$(calicoctl ipam configure show | grep StrictAffinity | awk '{print $2}')
+ACTUAL=$(calicoctl ipam show --show-configuration | grep StrictAffinity | awk '{print $2}')
 
 if [ "$ACTUAL" = "$EXPECTED_STRICT_AFFINITY" ]; then
   echo "OK: IPAM configuration matches expected state"

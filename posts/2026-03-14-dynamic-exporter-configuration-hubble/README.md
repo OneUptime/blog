@@ -45,8 +45,6 @@ hubble:
       config:
         # ConfigMap to watch for dynamic export rules
         configMapName: cilium-hubble-export-config
-        # How often to check for ConfigMap changes (seconds)
-        watchInterval: 10
 ```
 
 ```bash
@@ -76,7 +74,7 @@ data:
       "fileMaxSizeMb": 10,
       "fileMaxBackups": 3,
       "end": "2026-04-14T00:00:00Z",
-      "allowList": [
+      "includeFilters": [
         {"verdict": ["DROPPED"]}
       ],
       "fieldMask": [
@@ -95,7 +93,7 @@ data:
       "filePath": "/var/run/cilium/hubble/production-flows.log",
       "fileMaxSizeMb": 20,
       "fileMaxBackups": 5,
-      "allowList": [
+      "includeFilters": [
         {"source_pod": ["production/"]}
       ],
       "fieldMask": [
@@ -143,7 +141,7 @@ cat >> /tmp/investigation-rule.json << 'EOF'
   "fileMaxSizeMb": 50,
   "fileMaxBackups": 2,
   "end": "2026-03-15T00:00:00Z",
-  "allowList": [
+  "includeFilters": [
     {"source_pod": ["default/suspicious-app"]},
     {"destination_pod": ["default/suspicious-app"]}
   ],
@@ -174,7 +172,7 @@ kubectl -n kube-system create configmap cilium-hubble-export-config \
   --from-file=investigation.json=/tmp/investigation-rule.json \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Cilium will pick up the change within the watch interval (default 10s)
+# Cilium will pick up the change within ~60s due to ConfigMap propagation delay
 # No restart needed!
 
 # Verify the new exporter is active
@@ -250,7 +248,7 @@ kubectl -n kube-system get configmap cilium-hubble-export-config -o jsonpath='{.
 
 ## Troubleshooting
 
-- **Dynamic exporter not picking up ConfigMap changes**: Check the `watchInterval` setting. Default is 10 seconds. Also verify the ConfigMap name matches the Helm configuration.
+- **Dynamic exporter not picking up ConfigMap changes**: Changes should be reflected within ~60 seconds due to ConfigMap propagation delay. Verify the ConfigMap name matches the Helm configuration.
 
 - **Export file not created for new rule**: Check Cilium agent logs for parsing errors: `kubectl -n kube-system logs ds/cilium --tail=50 | grep -i "export\|configmap"`.
 

@@ -44,7 +44,7 @@ echo "Operator: $USER"
 echo "Cluster: $(kubectl config current-context)"
 echo "Date: $(date)"
 echo ""
-calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+calicoctl ipam split 4 --cidr=10.244.0.0/24
 echo ""
 echo "=== Complete ==="
 ```
@@ -77,7 +77,7 @@ spec:
           containers:
           - name: task
             image: calico/ctl:v3.27.0
-            command: ["/bin/sh", "-c", "calicoctl ipam split 10.244.0.0/24 --cidr-size=26"]
+            command: ["/bin/sh", "-c", "calicoctl ipam split 4 --cidr=10.244.0.0/24"]
           restartPolicy: Never
 ```
 

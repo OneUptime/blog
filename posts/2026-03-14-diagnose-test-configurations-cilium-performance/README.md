@@ -189,4 +189,4 @@ These diagnostic tools form a comprehensive toolkit for understanding exactly wh
 
 ## Conclusion
 
-Properly diagnosinging test configuration issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly diagnosing test configuration issues in Cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.

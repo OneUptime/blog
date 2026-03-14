@@ -33,7 +33,8 @@ Apply the following Helm values to configure advantages of the encapsulation mod
 # Configuration leveraging encapsulation advantages
 
 # VXLAN overlay works on any L3 network
-tunnel: vxlan
+routingMode: tunnel
+tunnelProtocol: vxlan
 
 # Pod CIDRs are isolated - no conflict with infrastructure IPs
 ipam:

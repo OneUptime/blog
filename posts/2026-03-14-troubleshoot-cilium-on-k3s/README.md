@@ -156,7 +156,7 @@ cilium endpoint list | grep -v "ready"
 
 - **Cilium agent logs show "context deadline exceeded" connecting to K8s API**: The `k8sServiceHost` in the Helm values does not resolve or is not reachable from the node. Update to the correct node IP with `helm upgrade cilium cilium/cilium --set k8sServiceHost=CORRECT_IP`.
 - **Pods stuck in ContainerCreating after Cilium install**: Cilium may still be initializing. Wait for `cilium status` to show all components as OK. If it persists, check BPF filesystem mount with `mount | grep bpf`.
-- **eBPF programs fail to load**: The kernel may be too old. Check with `uname -r`. Cilium requires kernel 4.19+ for basic features and 5.4+ for full features. Consider upgrading the host OS.
+- **eBPF programs fail to load**: The kernel may be too old. Check with `uname -r`. Cilium requires kernel 4.19.57+ (as of Cilium 1.13+) and recommends kernel 5.10+ for the latest versions with full feature support. Consider upgrading the host OS.
 - **Hubble not showing flows**: Verify Hubble is enabled with `cilium config view | grep hubble`. If enabled but not working, restart the Hubble relay with `kubectl rollout restart deployment hubble-relay -n kube-system`.
 
 ## Conclusion

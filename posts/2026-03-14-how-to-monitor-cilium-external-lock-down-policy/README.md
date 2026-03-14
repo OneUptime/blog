@@ -21,11 +21,11 @@ Monitoring external lock-down policies reveals which pods attempt external acces
 ## Monitoring Egress Drops
 
 ```promql
-# Egress drops by policy
-rate(hubble_drop_total{reason="POLICY_DENIED", direction="EGRESS"}[5m])
+# Drops by policy denial reason
+rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])
 
-# Egress traffic by destination
-rate(hubble_flows_processed_total{direction="EGRESS", verdict="DROPPED"}[5m])
+# Dropped flows by verdict
+rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])
 ```
 
 ```bash
@@ -64,8 +64,7 @@ spec:
         - alert: UnexpectedExternalAccessAttempt
           expr: >
             rate(hubble_drop_total{
-              reason="POLICY_DENIED",
-              direction="EGRESS"}[5m]) > 50
+              reason="POLICY_DENIED"}[5m]) > 50
           for: 10m
           labels:
             severity: warning

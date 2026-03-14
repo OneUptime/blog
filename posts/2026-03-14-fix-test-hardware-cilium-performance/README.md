@@ -229,4 +229,4 @@ Document the fix, its impact, and any follow-up actions needed in your team's ru
 
 ## Conclusion
 
-Properly fixinging test hardware issues in cilium performance is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
+Properly fixing test hardware issues is essential for reliable Cilium performance testing. Each component plays a role in the accuracy and reproducibility of benchmark results.
