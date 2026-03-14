@@ -583,6 +583,7 @@
 - Application Events
 - Application Factory
 - Application Gateway
+- Application Gateway for Containers
 - Application Groups
 - Application Insights
 - Application Layer

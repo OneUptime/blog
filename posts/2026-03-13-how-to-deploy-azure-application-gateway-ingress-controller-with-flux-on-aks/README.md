@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Azure, AKS, Application Gateway, AGIC, Ingress, Networking, Gateway API, Application Gateway for Containers
 
-Description: Learn how to deploy and manage the Azure Application Gateway Ingress Controller on AKS using Flux CD for a fully GitOps-driven ingress setup. Also covers Microsoft's recommended successor, Application Gateway for Containers with Gateway API.
+Description: Deploy Azure Application Gateway Ingress Controller on AKS with Flux CD. Includes guidance on migrating to Application Gateway for Containers.
 
 ---
 
