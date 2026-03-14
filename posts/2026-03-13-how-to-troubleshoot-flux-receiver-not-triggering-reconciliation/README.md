@@ -180,7 +180,7 @@ kubectl -n flux-system get gitrepository flux-system
 kubectl -n flux-system get kustomization flux-system
 ```
 
-The `apiVersion` must match exactly. For example, `source.toolkit.fluxcd.io/v1` is different from `source.toolkit.fluxcd.io/v1beta2`.
+The `apiVersion` must match exactly. For example, `source.toolkit.fluxcd.io/v1` is different from `source.toolkit.fluxcd.io/v1`.
 
 ## Step 7: Check for Network Policies
 

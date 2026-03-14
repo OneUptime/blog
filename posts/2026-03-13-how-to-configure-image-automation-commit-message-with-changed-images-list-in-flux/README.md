@@ -36,7 +36,7 @@ The `.Changed.Objects` variable groups changes by Kubernetes resource, and `.Cha
 The simplest approach lists each change on its own line:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -219,7 +219,7 @@ spec:
 Given a setup with three services tracked by Flux, the full configuration:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates

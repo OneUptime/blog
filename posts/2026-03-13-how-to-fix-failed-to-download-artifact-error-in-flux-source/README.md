@@ -107,7 +107,7 @@ kubectl create secret docker-registry regcred \
 Reference it in your source:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-oci-repo

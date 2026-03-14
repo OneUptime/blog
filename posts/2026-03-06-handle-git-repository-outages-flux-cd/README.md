@@ -28,7 +28,7 @@ This means your cluster is stable but frozen. No new changes will be applied.
 
 ```yaml
 # alerts/git-outage-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -39,7 +39,7 @@ spec:
   secretRef:
     name: pagerduty-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: git-outage-alert

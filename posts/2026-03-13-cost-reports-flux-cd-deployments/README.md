@@ -41,7 +41,7 @@ spec:
 ---
 # infrastructure/opencost/helmrelease.yaml
 # Flux HelmRelease deploying OpenCost for Kubernetes cost monitoring
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: opencost
@@ -81,7 +81,7 @@ Ensure Flux deployments include labels that OpenCost can use for cost breakdown.
 ```yaml
 # infrastructure/my-app/helmrelease.yaml
 # HelmRelease with cost attribution labels for FinOps reporting
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-application

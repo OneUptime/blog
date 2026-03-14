@@ -30,7 +30,7 @@ Apache Beam uses Flink as the backend runner for production Kubernetes deploymen
 
 ```yaml
 # clusters/production/infrastructure/beam-flink-session-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: beam-flink-session

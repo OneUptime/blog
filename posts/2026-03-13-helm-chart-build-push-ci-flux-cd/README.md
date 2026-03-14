@@ -132,7 +132,7 @@ For teams using ChartMuseum or GitHub Pages:
 
 ```yaml
 # clusters/production/sources/myapp-chart.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: myapp-chart
@@ -150,7 +150,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/myapp-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp

@@ -36,7 +36,7 @@ All of these formats share a key property: lexicographic or numerical ordering c
 ## Setting Up the ImageRepository
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -51,7 +51,7 @@ spec:
 For images tagged with plain Unix timestamps like `1710345622`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -74,7 +74,7 @@ The pattern matches exactly ten digits (a Unix timestamp) and extracts them for 
 For tags in the format `20260313143022`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-datetime
@@ -97,7 +97,7 @@ This matches fourteen-digit date-time strings. Because the format starts with th
 For tags like `build-1710345622`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prefixed
@@ -120,7 +120,7 @@ The filter strips the `build-` prefix and extracts only the numerical timestamp 
 A popular format combines a timestamp with a Git SHA for traceability. Tags look like `20260313143022-abc1234`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-ts-sha

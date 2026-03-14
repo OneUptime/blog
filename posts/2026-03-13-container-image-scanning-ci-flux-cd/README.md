@@ -161,7 +161,7 @@ Tag scanned images with a `-scanned` suffix or use a separate registry path to s
 
 ```yaml
 # Option: Use a filterTags pattern to only deploy images pushed by CI (not manual pushes)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp

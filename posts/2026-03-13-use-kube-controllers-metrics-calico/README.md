@@ -16,7 +16,7 @@ Calico kube-controllers exposes Prometheus metrics on port 9094 that provide vis
 
 ```bash
 # Test kube-controllers metrics endpoint
-POD=$(kubectl get pods -n calico-system -l app=calico-kube-controllers   -o jsonpath='{.items[0].metadata.name}')
+POD=$(kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9094/metrics | head -30
 ```
@@ -32,7 +32,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-kube-controllers
+      k8s-app: calico-kube-controllers
   endpoints:
     - port: metrics
       path: /metrics
@@ -51,7 +51,7 @@ spec:
   groups:
     - name: calico.kube-controllers
       rules:
-        - alert: CalicoKube-ControllersMetricsDown
+        - alert: CalicoKubeControllersMetricsDown
           expr: up{job="calico-kube-controllers-metrics"} == 0
           for: 5m
           annotations:

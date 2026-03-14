@@ -99,7 +99,7 @@ spec:
   interval: 24h
   url: https://aquasecurity.github.io/helm-charts/
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: trivy-operator
@@ -204,7 +204,7 @@ spec:
   interval: 24h
   url: https://falcosecurity.github.io/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: falco
@@ -326,7 +326,7 @@ echo "Report generated: $OUTPUT"
 
 ```yaml
 # clusters/production/monitoring/compliance-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: compliance-scan-failure

@@ -172,7 +172,7 @@ kubectl logs -n webhook-namespace deployment/webhook-server
 5. **Use Flux notification alerts** filtered on severity to detect flapping early:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flapping-detector

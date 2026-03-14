@@ -80,7 +80,7 @@ Note that for Docker Hub receivers, the `events` field is optional. The receiver
 For the Receiver to be most effective, you need the image automation pipeline configured:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -91,7 +91,7 @@ spec:
   secretRef:
     name: dockerhub-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

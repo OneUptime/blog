@@ -91,7 +91,7 @@ graph LR
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: source.toolkit.fluxcd.io/v1beta2
+      apiVersion: source.toolkit.fluxcd.io/v1
       kind: HelmRepository
       metadata:
         name: "{{ item.name }}"

@@ -20,7 +20,7 @@ Validating Calico node health requires confirming four signals per node: Felix i
 PASS=0
 FAIL=0
 
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
 
   NODE=$(kubectl get pod -n calico-system "${pod}" \

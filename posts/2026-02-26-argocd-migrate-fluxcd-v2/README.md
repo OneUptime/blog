@@ -166,7 +166,7 @@ Key differences to note:
 A Flux HelmRelease:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress

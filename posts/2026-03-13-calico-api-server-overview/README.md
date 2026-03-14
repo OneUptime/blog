@@ -71,7 +71,7 @@ Without the API server:
 
 ```bash
 # Check if the Calico API server is running
-kubectl get pods -n calico-system -l app=calico-apiserver
+kubectl get pods -n calico-system -l k8s-app=calico-apiserver
 # Expected: calico-apiserver pods in Running state
 
 # Verify API registration

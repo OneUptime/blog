@@ -36,7 +36,7 @@ kubectl get pods -n flux-system | grep image
 Create an ImageRepository resource to scan your container registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api-gateway-image
@@ -65,7 +65,7 @@ For public registries, omit the secretRef.
 Create an ImagePolicy to specify which tags to select:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-gateway-policy
@@ -82,7 +82,7 @@ Use different policy types for various tagging strategies:
 
 ```yaml
 # Semver policy for semantic versioning
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: backend-semver
@@ -95,7 +95,7 @@ spec:
       range: ">=1.0.0 <2.0.0"  # Major version 1 only
 ---
 # Alphabetical policy for date-based tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: batch-job-alpha
@@ -108,7 +108,7 @@ spec:
       order: asc  # Oldest first, or desc for newest
 ---
 # Numerical policy for build numbers
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend-numerical
@@ -126,7 +126,7 @@ spec:
 Filter tags before applying policy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: production-only
@@ -145,7 +145,7 @@ spec:
 Extract semantic version from complex tags:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: extract-version
@@ -166,7 +166,7 @@ spec:
 Create an ImageUpdateAutomation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-automation
@@ -251,7 +251,7 @@ Set up separate automations for different environments:
 
 ```yaml
 # Production automation
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-automation
@@ -278,7 +278,7 @@ spec:
     strategy: Setters
 ---
 # Staging automation
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-automation
@@ -303,7 +303,7 @@ Use different ImagePolicies per environment:
 
 ```yaml
 # Staging accepts any tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: staging-policy
@@ -316,7 +316,7 @@ spec:
       range: '*'  # Any version
 ---
 # Production only accepts stable releases
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: production-policy
@@ -336,7 +336,7 @@ spec:
 Create automation that opens pull requests instead of direct commits:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: pr-based-automation
@@ -431,7 +431,7 @@ kubectl describe imageupdateautomation production-automation -n flux-system
 Get notified when images are updated:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-update-alert
@@ -446,7 +446,7 @@ spec:
   - kind: ImagePolicy
     name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack

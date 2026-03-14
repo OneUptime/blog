@@ -145,13 +145,13 @@ Track Calico policy metrics to understand egress policy activity.
 ```bash
 # Check Felix egress policy metrics
 kubectl exec -n calico-system \
-  $(kubectl get pods -n calico-system -l app=calico-node -o name | head -1) -- \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null | \
   grep -E "felix_active_local_policies|felix_ipsets"
 
 # Track denied egress connections via conntrack
 kubectl exec -n calico-system \
-  $(kubectl get pods -n calico-system -l app=calico-node -o name | head -1) -- \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   conntrack -L 2>/dev/null | grep UNREPLIED | wc -l
 ```
 

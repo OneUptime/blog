@@ -48,7 +48,7 @@ clusters/
 
 ```yaml
 # clusters/my-cluster/apps/myapp/imagepolicy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -64,7 +64,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/myapp/imageupdateautomation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp
@@ -143,7 +143,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/chaos/flux-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: myapp-deployment-chaos-trigger
@@ -162,7 +162,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/chaos/flux-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: chaos-webhook-provider

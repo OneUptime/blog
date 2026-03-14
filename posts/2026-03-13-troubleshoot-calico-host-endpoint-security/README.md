@@ -32,7 +32,7 @@ This is the most dangerous scenario. When a HostEndpoint is created without suff
 calicoctl get hostendpoints -o wide
 
 # Review Felix logs for deny actions
-kubectl logs -n calico-system -l app=calico-node --since=5m | grep -i "denied\|drop"
+kubectl logs -n calico-system -l k8s-app=calico-node --since=5m | grep -i "denied\|drop"
 ```
 
 **Resolution:**
@@ -99,7 +99,7 @@ sudo iptables -L -n -v | grep cali
 Restart Felix on the node:
 
 ```bash
-kubectl delete pod -n calico-system -l app=calico-node --field-selector spec.nodeName=node1
+kubectl delete pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=node1
 ```
 
 ## Common Issue 4: Unexpected Traffic Allowed

@@ -161,7 +161,7 @@ GDPR Article 30 requires records of processing activities. Configure Flux to log
 
 ```yaml
 # clusters/eu-west-1/monitoring/gdpr-audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gdpr-audit-log
@@ -179,7 +179,7 @@ spec:
     - kind: HelmRelease
       namespace: personal-data
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gdpr-audit-system

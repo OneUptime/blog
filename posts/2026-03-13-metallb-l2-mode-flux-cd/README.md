@@ -33,7 +33,7 @@ spec:
   url: https://metallb.github.io/metallb
 ---
 # clusters/production/infrastructure/metallb.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: metallb

@@ -69,7 +69,8 @@ for src_image in "${IMAGES[@]}"; do
   crane copy "${src}" "${dest}"
 
   digest=$(crane digest "${dest}")
-  echo "${image_name}=${digest}" >> "${DIGEST_FILE}"
+  var_name="${image_name//-/_}"
+  echo "${var_name}=${digest}" >> "${DIGEST_FILE}"
   echo "  Digest: ${digest}"
 done
 
@@ -98,11 +99,11 @@ spec:
     - image: "calico/node"
       digest: "${node}"
     - image: "calico/kube-controllers"
-      digest: "${kube-controllers}"
+      digest: "${kube_controllers}"
     - image: "calico/typha"
       digest: "${typha}"
     - image: "calico/pod2daemon-flexvol"
-      digest: "${pod2daemon-flexvol}"
+      digest: "${pod2daemon_flexvol}"
     - image: "calico/apiserver"
       digest: "${apiserver}"
     - image: "tigera/operator"

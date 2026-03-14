@@ -40,7 +40,7 @@ while true; do
     else
       echo "  PENDING: ${node}"
     fi
-  done < <(kubectl get pods -n calico-system -l app=calico-node \
+  done < <(kubectl get pods -n calico-system -l k8s-app=calico-node \
     -o jsonpath='{range .items[*]}{.spec.nodeName}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}')
 
   echo ""

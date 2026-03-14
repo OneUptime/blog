@@ -32,7 +32,7 @@ Without digest tracking, Flux sees the same tag `latest` and determines nothing 
 First, set up the ImageRepository to scan your registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -49,7 +49,7 @@ The interval controls how often Flux checks the registry. For fixed tags, you ma
 To track a specific fixed tag and use its digest in deployments:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-latest
@@ -125,7 +125,7 @@ Alternatively, consider switching to unique tags (like SemVer or timestamps) rat
 You can track several fixed tags with separate policies:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-stable
@@ -139,7 +139,7 @@ spec:
     alphabetical:
       order: asc
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-edge

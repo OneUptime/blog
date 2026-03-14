@@ -46,7 +46,7 @@ kubectl create secret generic slack-webhook-url \
 Create a Provider resource:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -62,7 +62,7 @@ spec:
 Create an Alert to send notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-deployments
@@ -100,7 +100,7 @@ kubectl create secret generic teams-webhook-url \
 Create Teams Provider:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -115,7 +115,7 @@ spec:
 Configure alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: teams-production-alerts
@@ -140,7 +140,7 @@ Create severity-based alerts:
 
 ```yaml
 # Info-level for successful deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-success
@@ -157,7 +157,7 @@ spec:
   - ".*healthy.*"
 ---
 # Error-level for failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-failures
@@ -184,7 +184,7 @@ Route different environments to different channels:
 
 ```yaml
 # Production to #production-deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-production
@@ -195,7 +195,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-only
@@ -209,7 +209,7 @@ spec:
     namespace: production
 ---
 # Staging to #staging-deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-staging
@@ -220,7 +220,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-only
@@ -239,7 +239,7 @@ spec:
 Send notifications to custom endpoints:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook
@@ -262,7 +262,7 @@ stringData:
 Configure webhook payload format:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webhook-alert
@@ -291,7 +291,7 @@ metadata:
 stringData:
   address: https://discord.com/api/webhooks/xxx/xxx
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord
@@ -303,7 +303,7 @@ spec:
   secretRef:
     name: discord-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: discord-notifications
@@ -332,7 +332,7 @@ metadata:
 stringData:
   token: your-pagerduty-integration-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -342,7 +342,7 @@ spec:
   secretRef:
     name: pagerduty-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-failures
@@ -366,7 +366,7 @@ spec:
 Prevent notification spam with summary alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: summary-alert
@@ -389,7 +389,7 @@ spec:
 Include additional context:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: enriched-notifications
@@ -412,7 +412,7 @@ spec:
 Get notified of automatic image updates:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-updates
@@ -454,7 +454,7 @@ kubectl logs -n flux-system deployment/notification-controller -f
 Customize message format (in Provider spec):
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-custom
@@ -483,7 +483,7 @@ kubectl describe alert production-deployments -n flux-system
 Configure retry policy in Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: resilient-alert

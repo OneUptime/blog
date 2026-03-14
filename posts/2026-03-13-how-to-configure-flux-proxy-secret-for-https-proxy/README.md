@@ -105,7 +105,7 @@ spec:
 HelmRepository (type `default`) does not support `proxySecretRef`. If you need proxy support for Helm charts, use an OCIRepository source instead:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: ingress-nginx

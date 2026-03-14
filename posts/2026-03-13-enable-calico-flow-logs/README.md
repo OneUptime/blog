@@ -49,7 +49,7 @@ kubectl get felixconfiguration default -o yaml | grep -i flow
 
 ```bash
 # Check flow log files on a node
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \

@@ -368,7 +368,7 @@ Set up Flux notifications to monitor deployments:
 
 ```yaml
 # clusters/hetzner-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord
@@ -380,7 +380,7 @@ spec:
     name: discord-webhook-url
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: hetzner-alerts

@@ -121,7 +121,7 @@ spec:
 
 ```yaml
 # Use OCIRepository pointing at local cache
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: edge-manifests-cache

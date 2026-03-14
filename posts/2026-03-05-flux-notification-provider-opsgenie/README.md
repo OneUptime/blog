@@ -41,7 +41,7 @@ Define a Provider resource for Opsgenie.
 ```yaml
 # provider-opsgenie.yaml
 # Configures Flux to send notifications to Opsgenie
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: opsgenie-provider
@@ -70,7 +70,7 @@ For incident management platforms, you typically want to forward only error even
 ```yaml
 # alert-opsgenie.yaml
 # Routes Flux error events to Opsgenie
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: opsgenie-alert
@@ -141,7 +141,7 @@ The notification controller uses the Opsgenie Alert API to create alerts. Opsgen
 If your Opsgenie instance is in the EU region:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: opsgenie-eu-provider
@@ -160,7 +160,7 @@ You can include all events and let Opsgenie handle routing, or create separate p
 
 ```yaml
 # Provider for the platform team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: opsgenie-platform
@@ -172,7 +172,7 @@ spec:
     name: opsgenie-platform-key
 ---
 # Provider for the application team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: opsgenie-apps
@@ -184,7 +184,7 @@ spec:
     name: opsgenie-apps-key
 ---
 # Route infrastructure errors to platform team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: opsgenie-platform-alert
@@ -198,7 +198,7 @@ spec:
       name: "infrastructure"
 ---
 # Route application errors to app team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: opsgenie-apps-alert

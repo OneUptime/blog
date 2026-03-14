@@ -34,7 +34,7 @@ Look for `calico: enabled` in the add-ons list and `microk8s is running` status.
 
 ```bash
 microk8s kubectl get pods -n kube-system -l k8s-app=calico-node
-microk8s kubectl get pods -n kube-system -l app=calico-kube-controllers
+microk8s kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 ## Step 3: Check Calico Node Status

@@ -33,7 +33,7 @@ for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   echo "Node: ${node}"
 
   program_count=$(kubectl exec \
-    $(kubectl get pod -n calico-system -l app=calico-node \
+    $(kubectl get pod -n calico-system -l k8s-app=calico-node \
       --field-selector=spec.nodeName=${node} -o jsonpath='{.items[0].metadata.name}') \
     -n calico-system -c calico-node -- \
     bpftool prog list 2>/dev/null | grep "calico" | wc -l)

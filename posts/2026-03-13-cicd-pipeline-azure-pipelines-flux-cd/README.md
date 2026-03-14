@@ -168,7 +168,7 @@ stages:
 
 ```yaml
 # clusters/aks-production/apps/myapp-image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -178,7 +178,7 @@ spec:
   interval: 1m
   # AKS managed identity handles pull access; no secretRef needed
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp

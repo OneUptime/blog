@@ -432,7 +432,7 @@ Track feature flag changes with Flux notifications:
 
 ```yaml
 # clusters/my-cluster/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -443,7 +443,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: feature-flag-changes

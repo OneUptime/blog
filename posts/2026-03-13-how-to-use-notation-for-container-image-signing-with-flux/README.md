@@ -147,7 +147,7 @@ Configure an OCIRepository resource that uses Notation for verification:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-notation.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

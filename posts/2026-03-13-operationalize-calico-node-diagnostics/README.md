@@ -26,7 +26,7 @@ Operationalizing Calico node diagnostics means defining repeatable processes for
 kubectl get pod <failing-pod> -n <ns> -o jsonpath='{.spec.nodeName}'
 
 ### Step 2: Find the Node's calico-node Pod
-kubectl get pods -n calico-system -l app=calico-node \
+kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector=spec.nodeName=<affected-node>
 
 ### Step 3: Check Felix Health

@@ -63,7 +63,7 @@ Define a Provider resource for NATS.
 ```yaml
 # provider-nats.yaml
 # Configures Flux to publish events to NATS
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: nats-provider
@@ -92,7 +92,7 @@ Create an Alert that defines which events are published to NATS.
 ```yaml
 # alert-nats.yaml
 # Publishes Flux events to NATS
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: nats-alert
@@ -167,7 +167,7 @@ NATS supports hierarchical subjects with wildcard subscriptions. You can leverag
 
 ```yaml
 # Provider that publishes to a hierarchical subject
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: nats-kustomizations
@@ -179,7 +179,7 @@ spec:
   secretRef:
     name: nats-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: nats-helmreleases

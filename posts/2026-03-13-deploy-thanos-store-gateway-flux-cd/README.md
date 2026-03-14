@@ -51,7 +51,7 @@ Configure the Store Gateway with an in-memory index cache and persistent data di
 
 ```yaml
 # clusters/my-cluster/thanos/store-gateway/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: thanos-storegateway

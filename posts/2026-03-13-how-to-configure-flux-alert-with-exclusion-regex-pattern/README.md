@@ -36,7 +36,7 @@ This is the inverse of the `inclusionList`. While inclusion acts as a whitelist,
 The most common exclusion pattern targets progress-related events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: no-progress-alerts
@@ -63,7 +63,7 @@ The pattern `.*Progressing.*` matches any event message containing the word "Pro
 Build a comprehensive noise filter by listing multiple patterns:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: clean-production-alerts
@@ -95,7 +95,7 @@ Each pattern is evaluated independently. An event is suppressed if it matches an
 Event messages sometimes contain namespace information. You can exclude events referencing specific namespaces:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: no-staging-alerts
@@ -121,7 +121,7 @@ This suppresses events where the message references staging or development resou
 Some error messages are known and expected. You can suppress them:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-error-alerts
@@ -148,7 +148,7 @@ Rate limits, timeouts, and connection errors are often transient. Flux will retr
 Use the Go regex inline flag for case-insensitive matching:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: case-insensitive-exclusion
@@ -174,7 +174,7 @@ The `(?i)` prefix makes the pattern match "Warning", "WARNING", "warning", and a
 Here is a comprehensive exclusion setup suitable for production clusters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts
@@ -215,7 +215,7 @@ This configuration monitors all major Flux resource types while excluding the mo
 You can use both lists simultaneously. The inclusion list is evaluated first, then the exclusion list filters the results:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: combined-filter-alerts

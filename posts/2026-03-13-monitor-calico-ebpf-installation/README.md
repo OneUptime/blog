@@ -51,7 +51,7 @@ while true; do
 
   echo ""
   echo "--- BPF Programs (first calico-node pod) ---"
-  POD=$(kubectl get pod -n calico-system -l app=calico-node \
+  POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
   if [[ -n "${POD}" ]]; then
     kubectl exec -n calico-system "${POD}" -c calico-node -- \

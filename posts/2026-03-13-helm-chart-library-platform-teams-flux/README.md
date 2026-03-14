@@ -201,7 +201,7 @@ jobs:
 
 ```yaml
 # infrastructure/sources/platform-helm-repo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: platform-charts
@@ -220,7 +220,7 @@ Developers use a minimal HelmRelease that exposes only the curated values interf
 
 ```yaml
 # team-alpha-apps/deploy/api-service/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: api-service

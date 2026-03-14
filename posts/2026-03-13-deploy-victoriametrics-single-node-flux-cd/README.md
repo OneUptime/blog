@@ -46,7 +46,7 @@ Create the HelmRelease for the VictoriaMetrics single-node deployment.
 
 ```yaml
 # infrastructure/victoriametrics/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: victoria-metrics-single
@@ -147,7 +147,7 @@ Use VMAgent instead of Prometheus for efficient metrics scraping directly into V
 
 ```yaml
 # infrastructure/victoriametrics/vmagent-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: victoria-metrics-agent

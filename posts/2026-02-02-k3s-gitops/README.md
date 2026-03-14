@@ -581,7 +581,7 @@ Flux manages Helm releases through the HelmRelease custom resource:
 ```yaml
 # infrastructure/base/monitoring/helmrelease.yaml
 # HelmRelease for Flux-managed Prometheus deployment
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -706,7 +706,7 @@ Automatically update container image tags in Git when new versions are pushed:
 ```yaml
 # infrastructure/base/image-automation/image-repository.yaml
 # ImageRepository scans container registries for new tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -716,7 +716,7 @@ spec:
   interval: 1m0s
 ---
 # ImagePolicy selects which tags should trigger updates
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: nginx
@@ -735,7 +735,7 @@ Configure automatic Git commits when images update:
 ```yaml
 # infrastructure/base/image-automation/image-update.yaml
 # ImageUpdateAutomation commits image tag changes to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

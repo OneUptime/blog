@@ -97,7 +97,7 @@ kubectl auth can-i create globalnetworkpolicies.projectcalico.org \
 
 ```bash
 # Check Felix metrics for active policies per tier
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system $NODE_POD -- \
   curl -s localhost:9091/metrics | grep felix_active_local_policies
 ```

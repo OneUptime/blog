@@ -91,7 +91,7 @@ For large clusters, ensure Typha replicas handle approximately equal connection 
 
 ```bash
 # Check distribution
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   COUNT=$(kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null | \
     grep typha_connections_active | awk '{print $2}')

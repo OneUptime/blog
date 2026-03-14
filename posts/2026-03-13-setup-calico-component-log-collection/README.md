@@ -51,16 +51,16 @@ spec:
 
 ```bash
 # calico-node (Felix) logs
-kubectl logs -n calico-system -l app=calico-node -c calico-node | tail -20
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | tail -20
 
 # calico-typha logs
-kubectl logs -n calico-system -l app=calico-typha | tail -20
+kubectl logs -n calico-system -l k8s-app=calico-typha | tail -20
 
 # calico-kube-controllers logs
-kubectl logs -n calico-system -l app=calico-kube-controllers | tail -20
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers | tail -20
 
 # Follow logs from all calico-node pods simultaneously
-kubectl logs -n calico-system -l app=calico-node -c calico-node --follow
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --follow
 ```
 
 ## Log Collection Architecture

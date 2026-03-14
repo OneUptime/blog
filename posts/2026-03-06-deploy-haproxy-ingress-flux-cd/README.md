@@ -539,7 +539,7 @@ spec:
 
 ```yaml
 # clusters/production/monitoring/haproxy-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: haproxy-ingress-alerts

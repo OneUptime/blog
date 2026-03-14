@@ -69,10 +69,8 @@ spec:
             - -c
             - |
               NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
-              if [ "$NODE_COUNT" -lt 50 ]; then
-                REPLICAS=0
-              elif [ "$NODE_COUNT" -lt 200 ]; then
-                REPLICAS=1
+              if [ "$NODE_COUNT" -lt 200 ]; then
+                REPLICAS=2
               elif [ "$NODE_COUNT" -lt 500 ]; then
                 REPLICAS=2
               else
@@ -152,21 +150,21 @@ spec:
               fi
 
               # Record baseline connection count
-              BEFORE=$(kubectl get pods -n calico-system -l app=calico-typha -o name | \
+              BEFORE=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | \
                 xargs -I{} kubectl exec -n calico-system {} -- \
-                wget -qO- http://localhost:9093/metrics | grep typha_connections_active | \
+                wget -qO- http://localhost:9091/metrics | grep typha_connections_active | \
                 awk '{sum += $2} END {print sum}')
 
               # Delete one Typha pod
               kubectl delete pod -n calico-system \
-                $(kubectl get pods -n calico-system -l app=calico-typha -o name | head -1 | sed 's|pod/||')
+                $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1 | sed 's|pod/||')
 
               sleep 60
 
               # Check connections recovered
-              AFTER=$(kubectl get pods -n calico-system -l app=calico-typha -o name | \
+              AFTER=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | \
                 xargs -I{} kubectl exec -n calico-system {} -- \
-                wget -qO- http://localhost:9093/metrics | grep typha_connections_active | \
+                wget -qO- http://localhost:9091/metrics | grep typha_connections_active | \
                 awk '{sum += $2} END {print sum}')
 
               if [ "$AFTER" -ge "$((BEFORE * 9 / 10))" ]; then
@@ -217,7 +215,7 @@ EOF
             minAvailable: 1
             selector:
               matchLabels:
-                app: calico-typha
+                k8s-app: calico-typha
 ```
 
 ## Conclusion

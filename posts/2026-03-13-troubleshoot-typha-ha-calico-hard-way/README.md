@@ -17,7 +17,7 @@ Typha HA issues are subtler than single-replica failures. The most common proble
 **Symptom:** One Typha replica has all connections, others have zero.
 
 ```bash
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   echo "=== $pod ===" && kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active
 done
@@ -45,7 +45,7 @@ Resolution: Remove `externalTrafficPolicy: Local` from the Service.
 **Symptom:** Two or more Typha pods on the same node.
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha -o wide | awk '{print $7}' | sort | uniq -d
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide | awk '{print $7}' | sort | uniq -d
 ```
 
 **Cause:** Anti-affinity is configured incorrectly or uses `preferred` when the cluster has fewer nodes than replicas.
@@ -106,7 +106,7 @@ kubectl describe pod -n calico-system <pending-typha-pod> | grep -A10 "Events:"
 **Resolution:** Check available nodes.
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 kubectl describe node <candidate-node> | grep -A10 "Conditions:\|Taints:"
 ```
 

@@ -27,7 +27,7 @@ while true; do
   # Calico progress
   echo "--- Calico Upgrade Progress ---"
   TOTAL=$(kubectl get nodes --no-headers | wc -l)
-  UPDATED=$(kubectl get pods -n calico-system -l app=calico-node \
+  UPDATED=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
     -o jsonpath='{range .items[*]}{.spec.containers[0].image}{"\n"}{end}' | \
     grep -c "${TARGET_VERSION}" || echo 0)
   echo "Nodes updated: ${UPDATED}/${TOTAL}"

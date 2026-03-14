@@ -115,7 +115,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
 EOF
 ```
 
@@ -124,7 +124,7 @@ With this PDB, `kubectl drain` will not evict the last Typha replica, preventing
 ## Step 5: Verify Replicas Are on Different Nodes
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 ```
 
 Each Typha pod should show a different node name in the `NODE` column.
@@ -133,7 +133,7 @@ Each Typha pod should show a different node name in the `NODE` column.
 
 ```bash
 # Check connection counts on each Typha pod
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   echo "=== $pod ==="
   kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics | grep typha_connections_active
@@ -148,7 +148,7 @@ Simulate a Typha replica failure.
 
 ```bash
 # Delete one Typha pod
-TYPHA_POD=$(kubectl get pods -n calico-system -l app=calico-typha -o name | head -1)
+TYPHA_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1)
 kubectl delete $TYPHA_POD -n calico-system
 
 # Observe policy propagation continues (test with a policy change)

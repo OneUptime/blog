@@ -27,7 +27,7 @@ This guide shows you how to configure Flux to checkout from one branch and push 
 The key is setting different values for the checkout branch and the push branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -140,7 +140,7 @@ jobs:
 For multiple environments, create separate automations each pushing to different branches:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-image-updates
@@ -165,7 +165,7 @@ spec:
     path: ./clusters/staging
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-image-updates

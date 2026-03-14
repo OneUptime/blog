@@ -46,7 +46,7 @@ metadata:
 
 ```yaml
 # infrastructure/databases/mongodb-community/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: community-operator

@@ -409,7 +409,7 @@ Shared infrastructure upgrades need careful coordination:
 
 ```yaml
 # Pin versions in the infra manifests
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRelease
 metadata:
   name: cert-manager

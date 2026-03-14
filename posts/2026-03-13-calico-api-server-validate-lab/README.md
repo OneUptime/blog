@@ -21,10 +21,10 @@ Validating the Calico API server requires confirming four things: the API server
 ## Validation 1: API Server Pod Health
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-apiserver
+kubectl get pods -n calico-system -l k8s-app=calico-apiserver
 # Expected: All pods in Running state
 
-kubectl logs -n calico-system -l app=calico-apiserver | tail -20
+kubectl logs -n calico-system -l k8s-app=calico-apiserver | tail -20
 # Expected: No error messages; server startup logs visible
 ```
 

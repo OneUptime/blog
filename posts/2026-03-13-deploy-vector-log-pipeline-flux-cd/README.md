@@ -53,7 +53,7 @@ Vector's pipeline is defined inline in the `customConfig` block. This example co
 
 ```yaml
 # infrastructure/logging/vector-agent.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vector-agent
@@ -167,7 +167,7 @@ For large clusters, run a separate Vector aggregator that agents forward to, red
 
 ```yaml
 # infrastructure/logging/vector-aggregator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vector-aggregator

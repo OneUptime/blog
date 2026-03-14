@@ -334,7 +334,7 @@ Configure Flux to pull images from a shared ECR registry in the management accou
 
 ```yaml
 # base/sources/ecr-registry.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: shared-charts
@@ -385,7 +385,7 @@ Configure Flux notifications to alert on deployments across all clusters:
 
 ```yaml
 # clusters/production-cluster/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -396,7 +396,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts

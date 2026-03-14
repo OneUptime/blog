@@ -16,11 +16,11 @@ Calico IPAM monitoring focuses on two signals: utilization (are we running out o
 
 ```bash
 # Felix exposes IPAM-related metrics on port 9091
-kubectl exec -n calico-system -l app=calico-node -c calico-node -- \
+kubectl exec -n calico-system -l k8s-app=calico-node -c calico-node -- \
   wget -qO- http://localhost:9091/metrics | grep -i ipam
 
 # Key metrics:
-# felix_ipam_blocks_owned          - Blocks assigned to this node
+# _owned          - Blocks assigned to this node
 # felix_ipam_allocations_per_second - IP allocation rate
 ```
 

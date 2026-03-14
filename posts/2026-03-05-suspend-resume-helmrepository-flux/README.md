@@ -255,7 +255,7 @@ You can also set up Flux notifications to alert your team when a source is suspe
 
 ```yaml
 # Alert on HelmRepository suspension changes
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-repo-suspension-alerts

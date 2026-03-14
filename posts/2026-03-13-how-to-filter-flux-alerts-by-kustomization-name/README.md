@@ -33,7 +33,7 @@ The Alert resource is part of the `notification.toolkit.fluxcd.io` API group, an
 Below is a complete example that sends alerts only when the Kustomization named `app-frontend` produces events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: frontend-alert
@@ -54,7 +54,7 @@ In this configuration, the Alert named `frontend-alert` references a Provider ca
 You can list multiple Kustomization names in the `eventSources` array to monitor several workloads with a single Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-apps-alert
@@ -79,7 +79,7 @@ This Alert triggers only when `app-frontend`, `app-backend`, or `app-database` K
 If your Kustomization lives in a different namespace than the Alert, you must specify the namespace in the event source and enable cross-namespace references:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-frontend-alert
@@ -101,7 +101,7 @@ For cross-namespace event sources to work, the referenced Kustomization must not
 For completeness, here is an example Slack Provider resource that the Alert references:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -155,7 +155,7 @@ If the alert is configured correctly, you should receive a notification in your 
 You can further refine your alerts by combining the Kustomization name filter with severity filtering. For example, to only receive error notifications for a specific Kustomization:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: frontend-errors-only
@@ -176,7 +176,7 @@ Setting `eventSeverity: error` ensures you only receive alerts when the `app-fro
 A common production pattern is to create separate alerts for each environment, each routing to a different notification channel:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alert
@@ -189,7 +189,7 @@ spec:
     - kind: Kustomization
       name: production-apps
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-alert

@@ -653,7 +653,7 @@ flowchart LR
 ```yaml
 # slack-provider.yaml
 # Configure Slack as a notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -683,7 +683,7 @@ stringData:
 ```yaml
 # teams-provider.yaml
 # Configure Microsoft Teams notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -709,7 +709,7 @@ stringData:
 ```yaml
 # discord-provider.yaml
 # Configure Discord notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord
@@ -734,7 +734,7 @@ stringData:
 ```yaml
 # github-provider.yaml
 # Post deployment status to GitHub commits
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -761,7 +761,7 @@ stringData:
 ```yaml
 # alerts.yaml
 # Define what events trigger notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -794,7 +794,7 @@ spec:
   summary: "Flux deployment alert in production cluster"
 ---
 # Separate alert for successful deployments (info level)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-success
@@ -818,7 +818,7 @@ spec:
 ```yaml
 # webhook-provider.yaml
 # Send events to any HTTP endpoint (like OneUptime)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: oneuptime-webhook
@@ -847,7 +847,7 @@ stringData:
 # Production-ready notification configuration
 ---
 # Slack provider for all notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-deployments
@@ -860,7 +860,7 @@ spec:
     name: slack-webhook
 ---
 # GitHub status provider for commit status
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -872,7 +872,7 @@ spec:
     name: github-token
 ---
 # Alert for deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-failures
@@ -893,7 +893,7 @@ spec:
       name: '*'
 ---
 # Alert for deployment successes
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-success
@@ -912,7 +912,7 @@ spec:
     - ".*Reconciliation finished.*"
 ---
 # GitHub commit status updates
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-commit-status
@@ -935,7 +935,7 @@ Monitor your Flux deployments alongside your application metrics in [OneUptime](
 ```yaml
 # oneuptime-provider.yaml
 # Send Flux events to OneUptime
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: oneuptime
@@ -954,7 +954,7 @@ metadata:
 stringData:
   token: your-oneuptime-api-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: oneuptime-alerts

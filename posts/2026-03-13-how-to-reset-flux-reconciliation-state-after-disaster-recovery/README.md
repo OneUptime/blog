@@ -289,7 +289,7 @@ flux get kustomizations -A --watch
 5. **Monitor Flux health continuously** with automated checks and alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-system-alerts

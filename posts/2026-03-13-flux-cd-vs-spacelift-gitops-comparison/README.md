@@ -108,7 +108,7 @@ Spacelift provisions the EKS cluster and VPC, Flux CD manages the application wo
 
 ```yaml
 # OPA Gatekeeper deployed via Flux
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gatekeeper

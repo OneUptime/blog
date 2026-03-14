@@ -389,7 +389,7 @@ Monitor External Secrets synchronization status.
 ```yaml
 # alert-external-secrets.yaml
 # Flux alert for ExternalSecret sync failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: external-secrets-alert

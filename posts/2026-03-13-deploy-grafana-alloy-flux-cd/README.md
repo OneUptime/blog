@@ -52,7 +52,7 @@ Define a HelmRelease that deploys Alloy as a DaemonSet so every node ships telem
 
 ```yaml
 # clusters/my-cluster/grafana-alloy/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana-alloy

@@ -112,7 +112,7 @@ data:
 
 ```yaml
 # clusters/my-cluster/backstage/backstage-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: backstage
@@ -194,7 +194,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: backstage
       namespace: backstage

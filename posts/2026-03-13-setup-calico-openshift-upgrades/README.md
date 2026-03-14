@@ -69,7 +69,7 @@ oc get scc | grep calico
 oc get scc calico-node -o yaml | grep -A5 "users:"
 
 # Verify calico-node pods can use privileged SCC
-oc describe pod -n calico-system -l app=calico-node | \
+oc describe pod -n calico-system -l k8s-app=calico-node | \
   grep -i "scc\|security"
 ```
 

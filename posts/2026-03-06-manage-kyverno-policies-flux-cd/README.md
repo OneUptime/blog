@@ -594,7 +594,7 @@ Alert on policy deployment changes.
 
 ```yaml
 # infrastructure/notifications/policy-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: kyverno-policy-alert

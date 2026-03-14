@@ -58,7 +58,7 @@ Deploy Elasticsearch using a `HelmRelease`. The values configure a three-node cl
 
 ```yaml
 # clusters/my-cluster/logging/elasticsearch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: elasticsearch
@@ -100,7 +100,7 @@ Fluentd runs as a DaemonSet so it collects logs from every node. Configure its o
 
 ```yaml
 # clusters/my-cluster/logging/fluentd.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluentd
@@ -133,7 +133,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/logging/kibana.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kibana

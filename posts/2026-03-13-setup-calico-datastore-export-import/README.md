@@ -58,12 +58,12 @@ DATASTORE_TYPE=etcdv3 \
 # Import the exported data into Kubernetes API datastore
 DATASTORE_TYPE=kubernetes \
   KUBECONFIG=~/.kube/config \
-  calicoctl datastore migrate import < calico-datastore-backup.yaml
+  calicoctl datastore migrate import -f calico-datastore-backup.yaml
 
 # Verify import
 calicoctl get felixconfiguration
 calicoctl get bgppeer
-calicoctl get globalnetworkpolicy --all-namespaces
+calicoctl get globalnetworkpolicy
 ```
 
 ## Datastore Migration Architecture

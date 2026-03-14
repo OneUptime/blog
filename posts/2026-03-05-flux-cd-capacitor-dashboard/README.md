@@ -259,7 +259,7 @@ When a resource shows a failed status in Capacitor, click on it to see the detai
 Capacitor is great for at-a-glance monitoring, but pair it with Flux notifications for active alerting:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -270,7 +270,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-errors

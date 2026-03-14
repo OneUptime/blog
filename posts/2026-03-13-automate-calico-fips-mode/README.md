@@ -56,7 +56,7 @@ flowchart TD
   notify: reboot host
 
 - name: Enable FIPS mode (Ubuntu)
-  command: ua enable fips
+  command: pro enable fips
   when:
     - ansible_distribution == "Ubuntu"
     - "'1' not in fips_check.stdout"
@@ -194,7 +194,7 @@ jobs:
       - name: Run FIPS validation
         run: |
           chmod +x validate-fips-compliance.sh
-          ./validate-fips-compliance.sh
+          ./validate-fips-compliance.sh | tee compliance-report.txt
       - name: Upload compliance report
         uses: actions/upload-artifact@v4
         with:

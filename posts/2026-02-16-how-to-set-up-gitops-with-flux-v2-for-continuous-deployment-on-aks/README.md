@@ -232,7 +232,7 @@ Create an ImageRepository to watch for new tags.
 ```yaml
 # apps/production/my-app/image-policy.yaml
 # Watch ACR for new image tags matching semver pattern
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -243,7 +243,7 @@ spec:
   provider: azure
 ---
 # Only use tags that match semantic versioning
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

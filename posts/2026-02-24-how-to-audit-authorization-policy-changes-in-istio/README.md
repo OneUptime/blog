@@ -181,7 +181,7 @@ If you manage Istio policies through GitOps, every change has a Git commit with 
 Set up a Flux notification for policy changes:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: istio-policy-changes

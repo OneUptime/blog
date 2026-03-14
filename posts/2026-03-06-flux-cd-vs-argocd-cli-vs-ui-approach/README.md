@@ -153,7 +153,7 @@ spec:
 
 ---
 # Step 3: Configure alerts for the deployment
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webapp-alerts

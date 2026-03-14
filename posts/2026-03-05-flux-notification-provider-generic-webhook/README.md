@@ -53,7 +53,7 @@ Define a Provider resource using the generic type.
 ```yaml
 # provider-generic-webhook.yaml
 # Configures Flux to send notifications via generic HTTP webhook
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: generic-webhook-provider
@@ -80,7 +80,7 @@ Create an Alert that defines which events are forwarded to the webhook.
 ```yaml
 # alert-generic-webhook.yaml
 # Routes Flux events to the generic webhook provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: generic-webhook-alert
@@ -177,7 +177,7 @@ Here is an example of a simple receiver application that processes Flux events:
 
 ```yaml
 # provider for a custom deployment tracker
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: deployment-tracker
@@ -188,7 +188,7 @@ spec:
     name: deployment-tracker-secret
 ---
 # Only track deployment-related events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-tracker-alert
@@ -223,7 +223,7 @@ The notification controller will include a signature header that can be verified
 Create separate providers for different endpoints:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook-analytics
@@ -233,7 +233,7 @@ spec:
   secretRef:
     name: analytics-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook-audit

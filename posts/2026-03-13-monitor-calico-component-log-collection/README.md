@@ -76,7 +76,7 @@ spec:
 ```bash
 #!/bin/bash
 # Check log rates per calico-node pod (useful for detecting Debug logging)
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
   LINES=$(kubectl logs -n calico-system "${pod}" -c calico-node \
     --since=1m --timestamps=false 2>/dev/null | wc -l)

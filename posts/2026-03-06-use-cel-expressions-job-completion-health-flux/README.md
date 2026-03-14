@@ -368,7 +368,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/job-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: job-failure-alert

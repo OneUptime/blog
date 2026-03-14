@@ -35,7 +35,7 @@ spec:
   interval: 1h
   url: https://submariner-io.github.io/submariner-charts/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: submariner-k8s-broker
@@ -60,7 +60,7 @@ spec:
 
 ```yaml
 # clusters/cluster-01/infrastructure/submariner.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: submariner-operator

@@ -61,7 +61,7 @@ graph LR
 
 ```yaml
 # clusters/production/infrastructure/postgresql-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: postgresql
@@ -93,7 +93,7 @@ spec:
 
 ```yaml
 # clusters/production/infrastructure/rabbitmq-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: rabbitmq
@@ -120,7 +120,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/auth-service-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: auth-service
@@ -149,7 +149,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/config-service-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: config-service
@@ -175,7 +175,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/backend-api-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: backend-api
@@ -208,7 +208,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/background-worker-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: background-worker
@@ -236,7 +236,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/api-gateway-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: api-gateway

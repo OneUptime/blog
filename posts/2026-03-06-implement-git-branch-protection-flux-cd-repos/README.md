@@ -310,7 +310,7 @@ Alert your team when branch protection rules are triggered or bypassed.
 ```yaml
 # clusters/production/notifications/git-alerts.yaml
 # Flux notification for source reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: git-events-slack
@@ -321,7 +321,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: git-source-alerts

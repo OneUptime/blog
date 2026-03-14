@@ -26,7 +26,7 @@ Configure Flux or ArgoCD with change control requirements:
 
 ```yaml
 # flux-change-control.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: production-manifests
@@ -46,7 +46,7 @@ spec:
       name: git-pgp-public-keys
 
 ---
-apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: production-apps

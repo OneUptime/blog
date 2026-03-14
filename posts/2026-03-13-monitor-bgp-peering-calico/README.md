@@ -35,7 +35,7 @@ calicoctl patch felixconfiguration default --type merge \
 Verify metrics are exposed:
 
 ```bash
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- wget -qO- http://localhost:9091/metrics | grep bgp
 ```
 

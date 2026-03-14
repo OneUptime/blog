@@ -41,7 +41,7 @@ kubectl logs -n calico-system calico-node-abc123 -c calico-node
 # calico-node pod running on the SOURCE or DESTINATION node
 
 # CORRECT: Collect from all calico-node pods with prefix
-kubectl logs -n calico-system -l app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=500 --prefix=true > all-calico-node.log
 # The --prefix=true flag identifies which pod each line came from
 ```
@@ -50,11 +50,11 @@ kubectl logs -n calico-system -l app=calico-node \
 
 ```bash
 # WRONG: Collecting only logs for a support ticket
-kubectl logs -n calico-system -l app=calico-node -c calico-node > logs.txt
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node > logs.txt
 # Submitting this to Tigera support without CRD state
 
 # CORRECT: Always collect CRD state alongside logs
-kubectl logs -n calico-system -l app=calico-node -c calico-node > calico-node.log
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node > calico-node.log
 kubectl get tigerastatus -o yaml > tigerastatus.yaml
 kubectl get felixconfiguration -o yaml > felixconfiguration.yaml
 kubectl get installation -o yaml > installation.yaml

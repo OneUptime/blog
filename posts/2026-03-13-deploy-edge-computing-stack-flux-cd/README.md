@@ -60,7 +60,7 @@ infrastructure/
 
 ```yaml
 # apps/base/edge-stack/mqtt-broker/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mosquitto
@@ -118,7 +118,7 @@ data:
 
 ```yaml
 # apps/base/edge-stack/influxdb/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: influxdb
@@ -224,7 +224,7 @@ patches:
 ```yaml
 # apps/overlays/edge-industrial/site-config.yaml
 # Industrial sites need more storage for high-frequency sensor data
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: influxdb

@@ -311,7 +311,7 @@ Set up Flux notifications that integrate with Azure AD-secured endpoints.
 ```yaml
 # notification-provider.yaml
 # Configures Flux to send notifications to an Azure AD-protected webhook
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azure-webhook
@@ -324,7 +324,7 @@ spec:
 ---
 # notification-alert.yaml
 # Sends alerts for Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-reconciliation-alert

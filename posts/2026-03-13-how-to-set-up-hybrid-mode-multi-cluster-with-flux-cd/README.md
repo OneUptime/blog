@@ -303,7 +303,7 @@ patches:
 A natural workflow with hybrid mode is to promote changes through environments. Use Git branches or image automation:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: app-policy
@@ -322,7 +322,7 @@ spec:
 For production, pin to specific tags using a semver policy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: app-policy

@@ -10,15 +10,15 @@ Description: Configure Prometheus alerts for Calico typha metrics to detect dist
 
 ## Introduction
 
-Calico typha exposes Prometheus metrics on port 9093 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
+Calico Typha exposes Prometheus metrics on port 9091 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
 
 ## Enable Metrics Collection
 
 ```bash
 # Test typha metrics endpoint
-POD=$(kubectl get pods -n calico-system -l app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
+POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9093/metrics | head -30
+kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9091/metrics | head -30
 ```
 
 ## ServiceMonitor
@@ -32,7 +32,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   endpoints:
     - port: metrics
       path: /metrics
@@ -62,7 +62,7 @@ spec:
 
 ```mermaid
 flowchart LR
-    A[calico-typha\nport 9093] --> B[Prometheus]
+    A[calico-typha\nport 9091] --> B[Prometheus]
     B --> C[Grafana]
     B --> D[Alertmanager]
 ```

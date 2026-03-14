@@ -90,7 +90,7 @@ validate_new_node() {
   echo "Kernel: ${kernel}"
 
   # Check calico-node is running eBPF on this node
-  pod=$(kubectl get pod -n calico-system -l app=calico-node \
+  pod=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=${node} -o jsonpath='{.items[0].metadata.name}')
 
   bpf_programs=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
@@ -133,7 +133,7 @@ total=$(kubectl get nodes --no-headers | wc -l)
 ebpf_nodes=0
 
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  pod=$(kubectl get pod -n calico-system -l app=calico-node \
+  pod=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=${node} \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
   [[ -z "${pod}" ]] && continue

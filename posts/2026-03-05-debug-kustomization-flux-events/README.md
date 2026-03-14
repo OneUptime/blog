@@ -204,7 +204,7 @@ Flux can send events to external systems for alerting and audit logging. While n
 
 ```yaml
 # Alert provider configuration for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -216,7 +216,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that triggers on Kustomization failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: kustomization-failures

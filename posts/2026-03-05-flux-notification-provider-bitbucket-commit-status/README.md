@@ -47,7 +47,7 @@ Define a Provider resource for Bitbucket commit status updates.
 ```yaml
 # provider-bitbucket-commit-status.yaml
 # Configures Flux to update Bitbucket commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: bitbucket-status-provider
@@ -76,7 +76,7 @@ Create an Alert that triggers commit status updates.
 ```yaml
 # alert-bitbucket-commit-status.yaml
 # Updates Bitbucket commit statuses based on Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: bitbucket-status-alert
@@ -153,7 +153,7 @@ Create separate providers for each Bitbucket repository:
 
 ```yaml
 # Provider for the platform repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: bitbucket-platform
@@ -165,7 +165,7 @@ spec:
     name: bitbucket-token
 ---
 # Provider for the services repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: bitbucket-services
@@ -177,7 +177,7 @@ spec:
     name: bitbucket-token
 ---
 # Alert for platform repository resources
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: bitbucket-platform-alert
@@ -191,7 +191,7 @@ spec:
       name: platform
 ---
 # Alert for services repository resources
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: bitbucket-services-alert
@@ -210,7 +210,7 @@ spec:
 For Bitbucket Server (self-hosted), update the address to your instance:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: bitbucket-server-status

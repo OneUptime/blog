@@ -32,7 +32,7 @@ The ordering for a typical release cycle looks like this: `1.2.0-alpha.1 < 1.2.0
 By default, a SemVer range in Flux will match pre-release tags if they fall within the range. To track only stable releases and exclude pre-releases, use a range that does not explicitly include them:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-stable
@@ -52,7 +52,7 @@ If your registry contains `1.0.0`, `1.1.0-beta.1`, and `1.1.0`, this policy sele
 To explicitly include pre-release versions, you need to specify a range that covers them. The way Flux handles this follows the standard SemVer range library behavior:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-with-prereleases
@@ -72,7 +72,7 @@ The `-0` suffix in the range lower bound tells the SemVer library to include pre
 If you want to track only release candidates for a specific version:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-rc
@@ -92,7 +92,7 @@ This range includes all release candidate tags for version `1.2.0` but excludes 
 To track both beta and release candidate tags for a version:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-pre
@@ -112,7 +112,7 @@ Since `beta` sorts before `rc` lexically, this range captures both beta and rc p
 A common pattern is to run pre-release versions in staging while keeping stable versions in production. Here is the staging ImagePolicy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -128,7 +128,7 @@ spec:
 And the production ImagePolicy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-production
@@ -160,7 +160,7 @@ containers:
 Make sure your ImageRepository is configured to scan the registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

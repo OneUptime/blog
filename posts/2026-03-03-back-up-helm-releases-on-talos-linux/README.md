@@ -156,7 +156,7 @@ With Flux, your HelmRelease resources look like this:
 
 ```yaml
 # helmrelease.yaml stored in your Git repository
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

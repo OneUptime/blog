@@ -104,7 +104,7 @@ Verify that Calico's iptables rules correctly handle MySQL traffic.
 
 ```bash
 # Check iptables on the primary's node for rules affecting port 3306
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${PRIMARY_NODE} -o name | head -1)
 
 kubectl exec -n calico-system "${CALICO_POD}" -- \

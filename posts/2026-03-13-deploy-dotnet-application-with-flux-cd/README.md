@@ -260,7 +260,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/my-dotnet-app/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-dotnet-app
@@ -271,7 +271,7 @@ spec:
   secretRef:
     name: ghcr-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-dotnet-app
@@ -283,7 +283,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-dotnet-app

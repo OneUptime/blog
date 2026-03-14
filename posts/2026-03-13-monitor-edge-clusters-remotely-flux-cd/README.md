@@ -30,7 +30,7 @@ Deliver monitoring components to each edge cluster through Flux.
 ```yaml
 # infrastructure/base/monitoring/helmrelease.yaml
 # Deploy kube-prometheus-stack to edge clusters
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -87,7 +87,7 @@ spec:
 ```yaml
 # infrastructure/base/monitoring/flux-provider.yaml
 # Send Flux events to central monitoring
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: central-monitoring-webhook
@@ -102,7 +102,7 @@ spec:
 
 ```yaml
 # infrastructure/base/monitoring/flux-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-events
@@ -157,7 +157,7 @@ For push-based (firewall-friendly) metrics, the `remoteWrite` config in Step 1 h
 ```yaml
 # infrastructure/base/monitoring/loki-agent.yaml
 # Promtail on edge cluster ships logs to central Loki
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: promtail

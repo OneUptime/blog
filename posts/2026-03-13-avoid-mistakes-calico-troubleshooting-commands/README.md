@@ -39,7 +39,7 @@ kubectl exec -n calico-system calico-node-abc -c calico-node -- calicoctl node s
 # Result: shows BGP peers seen FROM node-A only
 
 # CORRECT approach: run on multiple nodes
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== ${pod} ==="
   kubectl exec -n calico-system "${pod}" -c calico-node -- calicoctl node status
@@ -57,7 +57,7 @@ calicoctl version
 
 # CORRECT: Always match versions
 CLUSTER_VERSION=$(kubectl get pods -n calico-system \
-  -l app=calico-node \
+  -l k8s-app=calico-node \
   -o jsonpath='{.items[0].spec.containers[0].image}' | cut -d: -f2)
 echo "Cluster version: ${CLUSTER_VERSION}"
 # Download matching calicoctl

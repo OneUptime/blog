@@ -27,7 +27,7 @@ Start by excluding the most common noisy event, which is a reconciliation that f
 
 ```yaml
 # Alert with a single exclusion rule
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: alert-with-exclusions
@@ -58,7 +58,7 @@ Add multiple patterns to filter out various types of routine events.
 
 ```yaml
 # Alert with a comprehensive set of exclusion rules
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: comprehensive-exclusions
@@ -97,7 +97,7 @@ Use regex to exclude events that mention specific resource names.
 
 ```yaml
 # Alert excluding events related to specific resources
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: resource-filtered-alert
@@ -125,7 +125,7 @@ Filter out events that reference resources in certain namespaces within their me
 
 ```yaml
 # Alert excluding events referencing specific namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: namespace-filtered-alert
@@ -151,7 +151,7 @@ Go regex supports flags for case-insensitive matching using the `(?i)` prefix.
 
 ```yaml
 # Alert with case-insensitive exclusion patterns
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: case-insensitive-exclusions

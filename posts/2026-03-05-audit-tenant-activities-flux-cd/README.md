@@ -41,7 +41,7 @@ Set up Flux notifications to send audit events to an external system. This creat
 
 ```yaml
 # infrastructure/audit/notification-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: audit-webhook
@@ -57,7 +57,7 @@ Create an Alert that captures events from all tenant Kustomizations.
 
 ```yaml
 # infrastructure/audit/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: tenant-audit
@@ -90,7 +90,7 @@ Create separate audit alerts for each tenant so events are routed to the right t
 
 ```yaml
 # tenants/team-alpha/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-audit
@@ -101,7 +101,7 @@ spec:
   secretRef:
     name: team-alpha-slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-audit

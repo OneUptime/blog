@@ -379,7 +379,7 @@ spec:
 
 ```yaml
 # alerts/rollback-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rollback-alert

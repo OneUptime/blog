@@ -47,7 +47,7 @@ Define a Provider resource for Discord.
 ```yaml
 # provider-discord.yaml
 # Configures Flux to send notifications to a Discord channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord-provider
@@ -75,7 +75,7 @@ Create an Alert to define which events are forwarded to Discord.
 ```yaml
 # alert-discord.yaml
 # Routes Flux events to the Discord provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: discord-alert
@@ -148,7 +148,7 @@ Discord renders the message as an embed with details such as the resource kind, 
 You can set a custom username for the Discord bot:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord-provider-custom
@@ -167,7 +167,7 @@ You can create separate providers for different Discord channels and route diffe
 
 ```yaml
 # Provider for the deployments channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord-deployments
@@ -178,7 +178,7 @@ spec:
     name: discord-deployments-webhook
 ---
 # Provider for the alerts channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord-alerts
@@ -189,7 +189,7 @@ spec:
     name: discord-alerts-webhook
 ---
 # Route errors to the alerts channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: discord-error-alert
@@ -205,7 +205,7 @@ spec:
       name: "*"
 ---
 # Route all events to the deployments channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: discord-info-alert

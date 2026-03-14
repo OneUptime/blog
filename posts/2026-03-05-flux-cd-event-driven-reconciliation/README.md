@@ -264,7 +264,7 @@ Flux emits Kubernetes events during reconciliation. You can forward these events
 
 ```yaml
 # Provider for sending notifications to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -276,7 +276,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that sends notifications for reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-alerts

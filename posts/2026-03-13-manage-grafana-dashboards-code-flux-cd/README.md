@@ -29,7 +29,7 @@ Deploy Grafana using the official Helm chart with the dashboard sidecar enabled.
 
 ```yaml
 # grafana/helm-release.yaml - Grafana HelmRelease with dashboard sidecar enabled
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana

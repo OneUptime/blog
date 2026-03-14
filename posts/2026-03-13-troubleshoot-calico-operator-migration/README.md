@@ -69,7 +69,7 @@ NETWORK:.status.conditions[?(@.type=="NetworkReady")].status'
 # Check the affected node's calico-node log
 NODE="<node-name>"
 kubectl logs -n calico-system \
-  $(kubectl get pod -n calico-system -l app=calico-node \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=${NODE} -o jsonpath='{.items[0].metadata.name}')
 ```
 

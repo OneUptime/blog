@@ -89,7 +89,7 @@ The `acr` type tells the notification controller to expect ACR's webhook payload
 Configure the image automation pipeline pointing to your ACR instance:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -99,7 +99,7 @@ spec:
   interval: 1h
   provider: azure
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

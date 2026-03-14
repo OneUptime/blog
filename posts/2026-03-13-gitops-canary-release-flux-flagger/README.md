@@ -38,7 +38,7 @@ spec:
   interval: 24h
   url: https://flagger.app
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

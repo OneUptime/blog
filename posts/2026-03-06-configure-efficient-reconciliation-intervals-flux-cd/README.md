@@ -241,7 +241,7 @@ spec:
       namespace: flux-system
 ---
 # Alert to notify on successful reconciliation
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: app-reconciliation

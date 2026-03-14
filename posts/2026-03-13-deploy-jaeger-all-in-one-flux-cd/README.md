@@ -28,7 +28,7 @@ The Jaeger Operator's webhook requires cert-manager for TLS certificate generati
 
 ```yaml
 # clusters/my-cluster/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -62,7 +62,7 @@ spec:
   url: https://jaegertracing.github.io/helm-charts
 ---
 # clusters/my-cluster/jaeger/helmrelease-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: jaeger-operator

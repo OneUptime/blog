@@ -31,7 +31,7 @@ The `spec.summary` field on the Alert resource prepends a custom message to ever
 
 ```yaml
 # Alert with a summary field for environment context
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alert
@@ -59,7 +59,7 @@ Create multiple alerts with distinct summaries to differentiate notifications.
 
 ```yaml
 # Staging alert with environment context
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-context-alert
@@ -77,7 +77,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Production alert with cluster and region context
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-context-alert
@@ -106,7 +106,7 @@ The generic webhook provider sends a JSON payload containing all event metadata.
 
 ```yaml
 # Generic provider that sends raw event data to a custom endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: custom-webhook
@@ -143,7 +143,7 @@ Create a simple webhook handler that formats notifications with custom templates
 
 ```yaml
 # Alert routing events to the custom webhook handler
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: custom-formatted-alert
@@ -171,7 +171,7 @@ Use different Slack channels for different types of notifications by creating se
 
 ```yaml
 # Provider for deployment notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-deployments
@@ -183,7 +183,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for security notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-security
@@ -195,7 +195,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for infrastructure notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-infra
@@ -213,7 +213,7 @@ Create alerts with summaries that include team ownership information.
 
 ```yaml
 # Alert for the platform team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: platform-team-alert
@@ -234,7 +234,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Alert for the application team
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: app-team-alert

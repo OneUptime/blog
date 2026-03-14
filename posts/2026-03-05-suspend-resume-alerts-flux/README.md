@@ -50,7 +50,7 @@ For GitOps workflows, update the alert manifest in your repository with the susp
 
 ```yaml
 # Alert resource with suspend set to true
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts
@@ -82,7 +82,7 @@ Update the manifest to set `suspend` to `false` or remove the field entirely.
 
 ```yaml
 # Alert resource resumed (suspend set to false)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts

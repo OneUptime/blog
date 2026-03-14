@@ -118,7 +118,7 @@ spec:
 # Add to node bootstrap script or monitoring:
 check_ebpf_after_reboot() {
   # Wait for calico-node to be ready
-  until kubectl get pods -n calico-system -l app=calico-node \
+  until kubectl get pods -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=$(hostname) \
     -o jsonpath='{.items[0].status.phase}' | grep -q Running; do
     sleep 5

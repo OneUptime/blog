@@ -124,7 +124,7 @@ PCI DSS Requirement 10 requires audit logs for all access and changes. Configure
 
 ```yaml
 # clusters/cde/monitoring/pci-audit-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pci-audit-system
@@ -136,7 +136,7 @@ spec:
     name: audit-webhook-token
 ---
 # Alert on ALL Flux events in CDE namespaces (info level for full audit trail)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pci-full-audit
@@ -159,7 +159,7 @@ PCI DSS Requirement 6.3.3 requires all system components are protected from know
 
 ```yaml
 # apps/payment-processor/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: payment-processor

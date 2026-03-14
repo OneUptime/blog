@@ -72,7 +72,7 @@ Calico Enterprise includes a dedicated API server that enables `kubectl` to mana
 **Fix**: Verify the API server is running after Enterprise installation:
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-apiserver
+kubectl get pods -n calico-system -l k8s-app=calico-apiserver
 ```
 
 ## Best Practices

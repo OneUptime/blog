@@ -29,7 +29,7 @@ If ExternalDNS is not already managing your DNS records, deploy it through Flux.
 
 ```yaml
 # infrastructure/controllers/external-dns/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns

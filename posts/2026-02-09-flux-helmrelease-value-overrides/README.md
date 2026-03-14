@@ -24,7 +24,7 @@ Define common configuration shared across environments:
 
 ```yaml
 # base/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress
@@ -64,7 +64,7 @@ resources:
 - ../../base
 patches:
 - patch: |
-    apiVersion: helm.toolkit.fluxcd.io/v2beta1
+    apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
       name: nginx-ingress
@@ -98,7 +98,7 @@ resources:
 - ../../base
 patches:
 - patch: |
-    apiVersion: helm.toolkit.fluxcd.io/v2beta1
+    apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
       name: nginx-ingress
@@ -136,7 +136,7 @@ data:
         annotations:
           service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-1:xxx
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress
@@ -174,7 +174,7 @@ stringData:
         password: super-secret-password
         database: production_db
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: postgresql
@@ -202,7 +202,7 @@ spec:
 Merge values from multiple sources:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: application
@@ -239,7 +239,7 @@ Flux merges values in order: inline values, then ConfigMap values, then Secret v
 Apply surgical changes with JSON patches:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -275,7 +275,7 @@ spec:
 Modify deeply nested values:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -322,7 +322,7 @@ resources:
 - ../../base/helmrelease.yaml
 patches:
 - patch: |
-    apiVersion: helm.toolkit.fluxcd.io/v2beta1
+    apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
       name: application
@@ -339,7 +339,7 @@ resources:
 - ../../base/helmrelease.yaml
 patches:
 - patch: |
-    apiVersion: helm.toolkit.fluxcd.io/v2beta1
+    apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
       name: application
@@ -356,7 +356,7 @@ Control features per environment:
 
 ```yaml
 # Production
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: api-gateway
@@ -368,7 +368,7 @@ spec:
       analytics: true
 ---
 # Staging
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: api-gateway
@@ -385,7 +385,7 @@ spec:
 Reference values from Git:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: application
@@ -425,7 +425,7 @@ resources:
     memory: 2Gi
 
 # Reference in HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: app
@@ -442,7 +442,7 @@ spec:
 Use HelmRelease test:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: application

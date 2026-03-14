@@ -29,7 +29,7 @@ Use the official Istio Helm charts for a fully GitOps-managed installation.
 
 ```yaml
 # infrastructure/sources/istio-helm.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: istio
@@ -41,7 +41,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/istio/base.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
@@ -64,7 +64,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/istio/istiod.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
@@ -211,7 +211,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/kiali/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kiali-operator

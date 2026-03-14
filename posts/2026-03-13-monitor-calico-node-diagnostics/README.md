@@ -24,7 +24,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-node
+      k8s-app: calico-node
   endpoints:
     - port: http-metrics
       path: /metrics
@@ -55,7 +55,7 @@ spec:
 
         - alert: CalicoFelixHighDropCount
           expr: |
-            increase(felix_calc_graph_output_events{type="PolicyDrop"}[5m]) > 100
+            increase(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           labels:
             severity: warning
@@ -87,7 +87,7 @@ spec:
       "title": "Felix Policy Drops by Node",
       "type": "graph",
       "targets": [{
-        "expr": "rate(felix_calc_graph_output_events{type='PolicyDrop'}[5m])",
+        "expr": "rate(felix_int_dataplane_failures[5m])",
         "legendFormat": "{{instance}}"
       }]
     }

@@ -206,7 +206,7 @@ The notification-controller handles both inbound and outbound events. It watches
 
 ```yaml
 # Provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -218,7 +218,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that sends failure events to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-failures

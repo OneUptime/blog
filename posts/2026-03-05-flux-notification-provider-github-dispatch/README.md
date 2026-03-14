@@ -42,7 +42,7 @@ Define a Provider resource for GitHub dispatch.
 ```yaml
 # provider-github-dispatch.yaml
 # Configures Flux to trigger GitHub Actions via repository dispatch
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-dispatch-provider
@@ -71,7 +71,7 @@ Create an Alert that triggers dispatch events for specific Flux resources.
 ```yaml
 # alert-github-dispatch.yaml
 # Triggers GitHub repository dispatch on Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-dispatch-alert
@@ -181,7 +181,7 @@ You can use this payload in your GitHub Actions workflow to make decisions about
 You can scope the Alert to specific resources so that only certain deployments trigger the workflow:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dispatch-production-only
@@ -202,7 +202,7 @@ Trigger workflows in different repositories based on different events:
 
 ```yaml
 # Dispatch to the test repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: dispatch-tests
@@ -214,7 +214,7 @@ spec:
     name: github-dispatch-token
 ---
 # Dispatch to the monitoring repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: dispatch-monitoring

@@ -34,7 +34,7 @@ calicoctl node status
 For a specific node, exec into the Calico node pod:
 
 ```bash
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node \
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=<node-name> -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show protocols
 ```

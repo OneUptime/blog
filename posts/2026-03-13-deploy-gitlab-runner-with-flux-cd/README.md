@@ -57,7 +57,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/gitlab-runner/runner-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gitlab-runner
@@ -138,7 +138,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: gitlab-runner
       namespace: gitlab-runner

@@ -29,19 +29,19 @@ Flux emits Kubernetes Events and also sends notifications via its alerting syste
 
 ```yaml
 # clusters/production/monitoring/audit-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: audit-log
   namespace: flux-system
 spec:
   type: generic        # Generic webhook — compatible with any HTTP endpoint
-  url: https://log-ingestion.example.com/flux-events
+  address: https://log-ingestion.example.com/flux-events
   secretRef:
     name: audit-webhook-secret
 ---
 # clusters/production/monitoring/audit-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-audit-trail
@@ -202,7 +202,7 @@ spec:
 
 ```yaml
 # Alert when Flux detects and corrects drift
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-correction-alert

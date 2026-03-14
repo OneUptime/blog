@@ -36,7 +36,7 @@ Verify all Calico pods are running:
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 Confirm nodes are Ready:

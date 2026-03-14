@@ -30,7 +30,7 @@ Flux can send a webhook to GitHub's workflow dispatch endpoint when a reconcilia
 
 ```yaml
 # clusters/staging/notifications/github-e2e-trigger.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-dispatch
@@ -41,7 +41,7 @@ spec:
   secretRef:
     name: github-dispatch-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: e2e-trigger-on-deploy
@@ -74,7 +74,7 @@ For CI systems without native GitHub dispatch support, use a generic webhook:
 
 ```yaml
 # clusters/staging/notifications/generic-webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: e2e-webhook
@@ -85,7 +85,7 @@ spec:
   secretRef:
     name: webhook-hmac-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: trigger-e2e-on-success
@@ -189,7 +189,7 @@ jobs:
 Use a custom webhook body template to pass deployment metadata to the E2E trigger:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-e2e

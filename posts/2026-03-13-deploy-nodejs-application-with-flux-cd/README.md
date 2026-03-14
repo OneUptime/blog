@@ -169,7 +169,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/my-node-app/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-node-app
@@ -180,7 +180,7 @@ spec:
   secretRef:
     name: ghcr-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-node-app
@@ -192,7 +192,7 @@ spec:
     semver:
       range: ">=1.0.0"   # Track all 1.x semantic version releases
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-node-app

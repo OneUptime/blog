@@ -50,7 +50,7 @@ Tell Flux to watch the container registry for new image tags.
 
 ```yaml
 # tenants/overlays/team-alpha/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-service
@@ -68,7 +68,7 @@ Specify which image tags are eligible for automatic deployment. Use semantic ver
 
 ```yaml
 # tenants/overlays/team-alpha/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-service
@@ -84,7 +84,7 @@ spec:
 For teams using date-based tags from CI:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-service-latest
@@ -106,7 +106,7 @@ Tell Flux to write image tag updates back to Git automatically.
 
 ```yaml
 # tenants/overlays/team-alpha/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: team-alpha-apps

@@ -75,7 +75,7 @@ A local pull-through cache (using Harbor, Nexus, or a cloud provider's registry 
 Configure Flux to pull from your mirror instead of the upstream registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -127,7 +127,7 @@ spec:
 Flux's ImageRepository will report errors when it cannot reach the registry, but it will retain the last-known tag list. Use a longer interval to reduce the frequency of failed checks during an outage.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

@@ -26,11 +26,11 @@ grep "^kind:" calico-backup.yaml | sort | uniq -c
 calicoctl datastore migrate lock
 
 # Import to destination datastore
-calicoctl datastore migrate import < calico-backup.yaml
+calicoctl datastore migrate import -f calico-backup.yaml
 
 # Verify import
 calicoctl get felixconfiguration
-calicoctl get globalnetworkpolicy --all-namespaces | wc -l
+calicoctl get globalnetworkpolicy | wc -l
 ```
 
 ## Operation Flow

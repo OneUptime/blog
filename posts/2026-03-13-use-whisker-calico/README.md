@@ -19,8 +19,8 @@ Whisker's primary value is in troubleshooting network policy issues. The denied 
 kubectl get pods -n calico-system | grep whisker
 
 # Access Whisker UI
-kubectl port-forward -n calico-system svc/whisker 8080:8080
-# Open: http://localhost:8080
+kubectl port-forward -n calico-system svc/whisker 8081:8081
+# Open: http://localhost:8081
 
 # Check Whisker logs for issues
 kubectl logs -n calico-system -l app=whisker --tail=50

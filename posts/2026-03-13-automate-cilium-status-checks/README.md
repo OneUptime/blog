@@ -167,15 +167,12 @@ spec:
           restartPolicy: Never
           containers:
             - name: checker
-              image: quay.io/cilium/cilium:v1.15.0
+              image: quay.io/cilium/cilium-cli:latest
               command:
                 - /bin/sh
                 - -c
-                # Run cilium status and exit non-zero if any component is not OK
-                - "cilium status --brief || exit 1"
-              env:
-                - name: KUBERNETES_SERVICE_HOST
-                  value: "kubernetes.default.svc"
+                # Use cilium-cli to check cluster-wide Cilium status
+                - "cilium status --wait --wait-duration 30s || exit 1"
 ```
 
 ## Best Practices

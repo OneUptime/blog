@@ -43,7 +43,7 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 Monitor actual usage.
 
 ```bash
-kubectl top pod -n calico-system -l app=calico-typha
+kubectl top pod -n calico-system -l k8s-app=calico-typha
 ```
 
 Increase memory if Typha approaches the limit during policy rollouts.

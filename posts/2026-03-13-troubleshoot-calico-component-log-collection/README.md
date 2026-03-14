@@ -16,7 +16,7 @@ Calico log collection failures fall into two categories: logs that are not being
 
 ```bash
 # Check if calico-node pods are generating logs at all
-kubectl logs -n calico-system -l app=calico-node -c calico-node --tail=5
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=5
 
 # If empty: check the log level setting
 kubectl get felixconfiguration default \
@@ -24,7 +24,7 @@ kubectl get felixconfiguration default \
 # If unset or "Fatal": change to "Info"
 
 # Check that the container name is correct
-kubectl get pod -n calico-system -l app=calico-node \
+kubectl get pod -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].spec.containers[*].name}'
 # Use the correct container name in logs command
 ```

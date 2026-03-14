@@ -20,7 +20,7 @@ Define a notification provider in the tenant's namespace. This example uses Slac
 
 ```yaml
 # tenants/team-alpha/notification-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -47,7 +47,7 @@ Create an Alert that watches the tenant's Flux resources and sends events to the
 
 ```yaml
 # tenants/team-alpha/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-deployment-alerts
@@ -74,7 +74,7 @@ Tenants may want different channels for different severity levels or different a
 
 ```yaml
 # tenants/team-alpha/providers.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-slack-info
@@ -85,7 +85,7 @@ spec:
   secretRef:
     name: team-alpha-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-slack-errors
@@ -96,7 +96,7 @@ spec:
   secretRef:
     name: team-alpha-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-pagerduty
@@ -113,7 +113,7 @@ Create alerts routed to the appropriate channels.
 ```yaml
 # tenants/team-alpha/multi-alerts.yaml
 # Info-level deployments go to the deployments channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-info-alerts
@@ -131,7 +131,7 @@ spec:
     - ".*error.*"
 ---
 # Errors go to the alerts channel and PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-error-alerts
@@ -146,7 +146,7 @@ spec:
     - kind: GitRepository
       name: team-alpha-apps
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-pagerduty-alerts
@@ -166,7 +166,7 @@ For teams using Microsoft Teams instead of Slack.
 
 ```yaml
 # tenants/team-beta/teams-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-beta-teams
@@ -184,7 +184,7 @@ For custom audit systems or logging platforms, use the generic webhook provider.
 
 ```yaml
 # tenants/team-alpha/webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-webhook
@@ -205,7 +205,7 @@ In addition to tenant-specific alerts, the platform admin should have alerts tha
 
 ```yaml
 # infrastructure/notifications/global-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: platform-alerts
@@ -216,7 +216,7 @@ spec:
   secretRef:
     name: platform-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: global-reconciliation-errors
@@ -239,7 +239,7 @@ Add notification setup to your tenant onboarding template so every tenant gets n
 
 ```yaml
 # tenants/base/notification-template.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: tenant-slack
@@ -249,7 +249,7 @@ spec:
   secretRef:
     name: tenant-slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: tenant-alerts

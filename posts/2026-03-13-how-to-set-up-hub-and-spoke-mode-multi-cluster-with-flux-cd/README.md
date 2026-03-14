@@ -300,7 +300,7 @@ flux events --for Kustomization/spoke-cluster-1-apps
 You can also set up Flux notifications to alert on failures:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: spoke-failures

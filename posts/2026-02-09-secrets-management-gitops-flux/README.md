@@ -18,7 +18,7 @@ Create a HelmRepository for External Secrets:
 
 ```yaml
 # infrastructure/sources/external-secrets.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: external-secrets
@@ -32,7 +32,7 @@ Deploy External Secrets Operator:
 
 ```yaml
 # infrastructure/controllers/external-secrets.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets

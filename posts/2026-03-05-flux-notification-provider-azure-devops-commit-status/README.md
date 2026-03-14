@@ -46,7 +46,7 @@ Define a Provider resource for Azure DevOps commit status updates.
 ```yaml
 # provider-azure-devops-commit-status.yaml
 # Configures Flux to update Azure DevOps commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azuredevops-status-provider
@@ -76,7 +76,7 @@ Create an Alert that triggers commit status updates.
 ```yaml
 # alert-azure-devops-commit-status.yaml
 # Updates Azure DevOps commit statuses based on Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: azuredevops-status-alert
@@ -153,7 +153,7 @@ Create separate providers for each Azure DevOps repository:
 
 ```yaml
 # Provider for the infrastructure repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azuredevops-infra
@@ -165,7 +165,7 @@ spec:
     name: azuredevops-token
 ---
 # Provider for the application repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azuredevops-apps
@@ -182,7 +182,7 @@ spec:
 For on-premises Azure DevOps Server, update the address to your server URL:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azuredevops-onprem

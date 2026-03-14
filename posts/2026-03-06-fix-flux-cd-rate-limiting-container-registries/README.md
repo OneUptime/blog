@@ -315,7 +315,7 @@ curl -s -I -H "Authorization: Bearer $TOKEN" \
 
 ```yaml
 # Alert when image scanning fails (including rate limits)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-scan-failures

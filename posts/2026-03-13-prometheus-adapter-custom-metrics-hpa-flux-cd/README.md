@@ -32,7 +32,7 @@ spec:
   interval: 1h
   url: https://prometheus-community.github.io/helm-charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus-adapter

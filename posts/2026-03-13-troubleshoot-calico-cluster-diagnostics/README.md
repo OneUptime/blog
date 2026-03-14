@@ -24,7 +24,7 @@ kubectl get tigerastatus -o yaml | \
   grep -A5 "conditions:"
 
 # Check Tigera Operator logs for reconciliation errors
-kubectl logs -n tigera-operator -l app=tigera-operator | \
+kubectl logs -n tigera-operator -l k8s-app=tigera-operator | \
   grep -i "error\|degraded\|reconcile" | tail -30
 
 # Common messages:
@@ -52,20 +52,20 @@ calicoctl ipam show --show-blocks | grep "100%"
 
 ```bash
 # Check calico-typha pod status
-kubectl get pods -n calico-system -l app=calico-typha
+kubectl get pods -n calico-system -l k8s-app=calico-typha
 
 # If CrashLoopBackOff: check logs
-kubectl logs -n calico-system -l app=calico-typha | tail -50
+kubectl logs -n calico-system -l k8s-app=calico-typha | tail -50
 
 # Check Felix pods waiting for typha
-kubectl logs -n calico-system -l app=calico-node -c calico-node | \
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
   grep -i "typha" | tail -10
 ```
 
 ## Symptom 4: calico-kube-controllers Not Syncing
 
 ```bash
-kubectl logs -n calico-system -l app=calico-kube-controllers | \
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers | \
   grep -i "error\|sync" | tail -30
 
 # Check if controllers are reporting health

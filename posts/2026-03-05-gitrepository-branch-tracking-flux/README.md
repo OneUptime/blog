@@ -249,7 +249,7 @@ To set up alerts when a branch tracking source fails, you can use the Flux notif
 
 ```yaml
 # alert-git-failures.yaml - Alert when GitRepository reconciliation fails
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: git-source-failures

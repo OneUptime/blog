@@ -58,7 +58,7 @@ Create the HelmRelease resource to deploy the Kubecost cost-analyzer chart with 
 
 ```yaml
 # infrastructure/kubecost/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kubecost

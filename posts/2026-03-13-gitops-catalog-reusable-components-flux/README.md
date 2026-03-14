@@ -193,7 +193,7 @@ Teams reference catalog components using Flux OCIRepository sources.
 
 ```yaml
 # tenants/overlays/team-alpha/redis-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: catalog-redis

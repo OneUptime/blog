@@ -407,7 +407,7 @@ spec:
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -419,7 +419,7 @@ spec:
     name: slack-webhook
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: lke-alerts

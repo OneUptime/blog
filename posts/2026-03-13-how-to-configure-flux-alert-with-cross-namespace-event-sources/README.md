@@ -87,7 +87,7 @@ spec:
 Set up a centralized provider in the flux-system namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: central-slack
@@ -104,7 +104,7 @@ spec:
 Here is the core configuration. Note the `namespace` field on each event source entry:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cross-namespace-alert
@@ -138,7 +138,7 @@ Each source entry specifies its `namespace` explicitly. You can mix specific res
 To watch everything in several namespaces without listing individual resources:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: multi-namespace-all-resources
@@ -175,7 +175,7 @@ Using `name: "*"` with explicit namespace references captures all resources of t
 Cross-namespace alerts work well with inclusion and exclusion filters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-cross-namespace
@@ -209,7 +209,7 @@ This configuration monitors all Kustomizations and HelmReleases across both team
 You can create separate alerts for each team while keeping them all in the flux-system namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: frontend-team-alert
@@ -230,7 +230,7 @@ spec:
       name: "*"
       namespace: team-frontend
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: backend-team-alert

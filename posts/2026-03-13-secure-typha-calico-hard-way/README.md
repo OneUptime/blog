@@ -64,7 +64,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   ingress:
   - from:
     - podSelector:

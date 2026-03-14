@@ -34,7 +34,7 @@ calicoctl patch felixconfiguration default \
 
 # Verify metrics endpoint is accessible from the calico-node pod
 kubectl exec -n calico-system \
-  $(kubectl get pods -n calico-system -l app=calico-node -o name | head -1) -- \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   wget -qO- http://localhost:9091/metrics | grep "iptables" | head -10
 ```
 
@@ -149,7 +149,7 @@ Track these specific Felix metrics in your Grafana dashboard.
 
 # Check current values
 kubectl exec -n calico-system \
-  $(kubectl get pods -n calico-system -l app=calico-node -o name | head -1) -- \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null | \
   grep -E "felix_iptables|felix_ipsets|felix_active"
 ```

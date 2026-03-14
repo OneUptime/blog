@@ -31,14 +31,14 @@ Test API server IPv6 connectivity:
 
 ```bash
 # Get the API server IPv6 address from the Calico node logs
-kubectl -n calico-system logs -l app=calico-node -c calico-node | grep "api-server\|apiserver"
+kubectl -n calico-system logs -l k8s-app=calico-node -c calico-node | grep "api-server\|apiserver"
 
 # From a node, test connectivity to the API server IPv6 address
 APISERVER_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
 echo "API Server IP: $APISERVER_IP"
 
 # Test reachability from a calico-node pod
-NODE_POD=$(kubectl -n calico-system get pods -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl -n calico-system get pods -l k8s-app=calico-node -o name | head -1)
 kubectl -n calico-system exec -it $NODE_POD -- \
   curl -k -6 https://[$APISERVER_IP]:6443/healthz
 ```
@@ -51,7 +51,7 @@ Inspect BGP IPv6 session state:
 
 ```bash
 # Check BIRD6 protocol status for IPv6 BGP sessions
-NODE_POD=$(kubectl -n calico-system get pods -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl -n calico-system get pods -l k8s-app=calico-node -o name | head -1)
 kubectl -n calico-system exec -it $NODE_POD -- birdcl6 show protocols
 
 # List IPv6 BGP peers configured in Calico
@@ -69,10 +69,10 @@ Verify Typha is accessible over IPv6:
 
 ```bash
 # Get Typha pod and its IPv6 address
-kubectl -n calico-system get pods -l app=calico-typha -o wide
+kubectl -n calico-system get pods -l k8s-app=calico-typha -o wide
 
 # Check Felix logs for connection errors to Typha
-kubectl -n calico-system logs -l app=calico-node -c calico-node | grep -i "typha\|connection"
+kubectl -n calico-system logs -l k8s-app=calico-node -c calico-node | grep -i "typha\|connection"
 
 # Verify Typha service IPv6 endpoint
 kubectl -n calico-system get endpoints calico-typha -o yaml

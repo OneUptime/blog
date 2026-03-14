@@ -384,7 +384,7 @@ Set up alerts for ACK resource status changes:
 ```yaml
 # ack-alerts.yaml
 # Alert for ACK resource changes managed by Flux CD
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: ack-resource-alerts

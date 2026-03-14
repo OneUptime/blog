@@ -148,7 +148,7 @@ Configure each cluster's notification-controller to send alerts to shared channe
 In each cluster, create a Provider and Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-central
@@ -159,7 +159,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-resources
@@ -185,7 +185,7 @@ The `summary` field includes the cluster name so recipients can identify which c
 For a more structured approach, send events to a central webhook endpoint:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: central-webhook

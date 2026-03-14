@@ -107,7 +107,7 @@ Measure Typha CPU usage during a rolling restart.
 
 ```bash
 # Watch CPU during restart
-kubectl top pod -n calico-system -l app=calico-typha --containers -w
+kubectl top pod -n calico-system -l k8s-app=calico-typha --containers -w
 ```
 
 CPU spikes above the limit indicate that Typha is CPU-throttled during handshakes, which will slow Felix reconnections.

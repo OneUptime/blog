@@ -760,7 +760,7 @@ Set up notifications to stay informed about Flux reconciliation events.
 ```yaml
 # notification-provider.yaml
 # Configure Slack as notification destination
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -786,7 +786,7 @@ stringData:
 ```yaml
 # alert.yaml
 # Define which events trigger notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts

@@ -182,7 +182,7 @@ If you are using Flux notifications, configure the Alert resource to filter out 
 
 ```yaml
 # Alert with exclusion filtering
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts

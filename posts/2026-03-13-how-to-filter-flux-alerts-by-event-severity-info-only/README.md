@@ -38,7 +38,7 @@ The `eventSeverity` field on the Alert resource acts as a threshold filter:
 To capture all events from your Flux resources, set `eventSeverity` to `info`:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-events-alert
@@ -81,7 +81,7 @@ Plus all error events:
 Info-level alerts are ideal for non-production environments where you want full visibility:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-full-visibility
@@ -106,7 +106,7 @@ spec:
 To track every deployment as it happens across your cluster:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-tracker
@@ -129,7 +129,7 @@ This gives your team a real-time feed of all deployments, useful for correlating
 Info-level alerts serve as an audit trail of all changes applied to your cluster:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: audit-trail
@@ -156,7 +156,7 @@ spec:
 To get full visibility for specific critical resources without flooding your channel with all cluster events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-app-full-alerts
@@ -185,7 +185,7 @@ Info-level alerts can generate high volumes of notifications. Here are strategie
 Route info-level alerts to a dedicated low-priority channel:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-info-channel
@@ -202,7 +202,7 @@ spec:
 Create separate alerts for info and error events, routed to different channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: info-events
@@ -215,7 +215,7 @@ spec:
     - kind: Kustomization
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: error-events

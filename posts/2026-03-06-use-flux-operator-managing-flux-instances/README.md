@@ -464,7 +464,7 @@ kubectl get fluxinstance flux -n flux-system \
 ```yaml
 # flux-operator-alert.yaml
 # Alert for FluxInstance reconciliation failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-operator-alert

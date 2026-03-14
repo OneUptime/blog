@@ -259,7 +259,7 @@ kubectl describe k8srequiredannotations require-oncall-annotation
 Configure notifications when Flux reconciliation fails due to policy violations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: policy-violations

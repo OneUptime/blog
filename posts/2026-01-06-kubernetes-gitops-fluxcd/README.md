@@ -508,7 +508,7 @@ subjects:
 Notifications keep your team informed about deployment events. The Alert resource filters events by severity and source, sending them to configured providers like Slack.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -519,7 +519,7 @@ spec:
   secretRef:
     name: slack-webhook            # Secret containing webhook URL
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -540,7 +540,7 @@ spec:
 GitHub commit status integration shows deployment status directly on commits and pull requests. This provides visibility into whether changes have been successfully deployed.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github
@@ -551,7 +551,7 @@ spec:
   secretRef:
     name: github-token             # Secret with GitHub token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status

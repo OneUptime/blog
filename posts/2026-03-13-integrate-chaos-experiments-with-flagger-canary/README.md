@@ -28,7 +28,7 @@ This guide covers setting up Flagger with Chaos Mesh, configuring a canary resou
 
 ```yaml
 # clusters/my-cluster/flagger/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -90,7 +90,7 @@ In practice, use a purpose-built webhook adapter or the Flagger load tester with
 
 ```yaml
 # clusters/my-cluster/flagger/loadtester-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger-loadtester

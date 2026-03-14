@@ -151,7 +151,7 @@ Create a Flux Bucket source that points to your S3 bucket:
 
 ```yaml
 # clusters/production/s3-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: app-artifacts
@@ -247,7 +247,7 @@ You can also store Helm chart archives in S3:
 
 ```yaml
 # clusters/production/helm-from-s3.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: helm-charts

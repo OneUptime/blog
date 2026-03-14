@@ -376,7 +376,7 @@ spec:
 ```yaml
 # clusters/production/notifications/cert-alerts.yaml
 # Notification provider and alerts for certificate-related events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: certs-slack
@@ -387,7 +387,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: certificate-alerts

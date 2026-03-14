@@ -226,7 +226,7 @@ spec:
 
 ```yaml
 # notifications/slack-alert.yaml -- Standard Slack alert for Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-coe
@@ -237,7 +237,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: REPLACE_APP_NAME-alerts

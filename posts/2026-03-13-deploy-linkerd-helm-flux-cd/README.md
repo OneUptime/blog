@@ -69,7 +69,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/linkerd/helmrelease-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-crds
@@ -91,7 +91,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/linkerd/helmrelease-control-plane.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-control-plane
@@ -149,7 +149,7 @@ spec:
   url: https://helm.linkerd.io/stable
 ---
 # clusters/my-cluster/linkerd/helmrelease-viz.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-viz

@@ -390,7 +390,7 @@ Set up alerts for when tagging policies block resource creation.
 ```yaml
 # clusters/production/notifications/tagging-alerts.yaml
 # Alert configuration for tagging policy violations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: tagging-slack
@@ -401,7 +401,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: tagging-violations

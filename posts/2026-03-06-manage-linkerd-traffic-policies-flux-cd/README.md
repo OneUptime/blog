@@ -539,7 +539,7 @@ Configure Flux CD alerts for traffic policy changes:
 ```yaml
 # policy-alerts.yaml
 # Alert for Linkerd traffic policy changes
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: linkerd-policy-alerts

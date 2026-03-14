@@ -58,7 +58,7 @@ stringData:
 
 ```yaml
 # clusters/production/apps/prefect-worker-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prefect-worker

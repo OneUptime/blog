@@ -116,7 +116,7 @@ Use Flux Image Automation to automatically update image tags when new optimized 
 
 ```yaml
 # clusters/production/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api-server
@@ -128,7 +128,7 @@ spec:
   secretRef:
     name: registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-server
@@ -141,7 +141,7 @@ spec:
     semver:
       range: ">=1.0.0 <2.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: api-server

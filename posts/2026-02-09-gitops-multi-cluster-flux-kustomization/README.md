@@ -128,7 +128,7 @@ metadata:
 
 ---
 # infrastructure/base/ingress-nginx/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -171,7 +171,7 @@ patches:
 
 ---
 # infrastructure/overlays/production/ingress-nginx-patch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -380,7 +380,7 @@ Automate image updates across clusters:
 
 ```yaml
 # clusters/production-east/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api
@@ -390,7 +390,7 @@ spec:
   interval: 5m
 
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api
@@ -403,7 +403,7 @@ spec:
       range: 1.x.x
 
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

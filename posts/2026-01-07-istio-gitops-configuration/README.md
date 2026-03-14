@@ -576,7 +576,7 @@ FluxCD can automatically update container images in your Istio configurations wh
 # ImagePolicy defines which image tags to track
 # This enables automatic updates when new images are pushed
 
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: istio-proxy
@@ -592,7 +592,7 @@ spec:
 # flux-system/image-automation/image-repository.yaml
 # ImageRepository monitors a container registry for new tags
 
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: istio-proxy
@@ -604,7 +604,7 @@ spec:
 # flux-system/image-automation/image-update.yaml
 # ImageUpdateAutomation commits image updates back to Git
 
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: istio-config
@@ -645,7 +645,7 @@ Set up notifications to alert your team when Istio configurations change:
 # Provider configuration for sending notifications to Slack
 # This enables visibility into GitOps operations
 
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -660,7 +660,7 @@ spec:
 # Alert configuration for Istio-related events
 # Sends notifications on sync failures and successful updates
 
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: istio-config-alerts

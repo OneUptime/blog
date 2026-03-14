@@ -131,7 +131,7 @@ spec:
 ## Step 6: Reference the CA Secret in a Bucket Source
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: internal-bucket

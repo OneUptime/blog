@@ -124,7 +124,7 @@ Manage the Calico Helm release via Flux for automated GitOps deployments.
 
 ```yaml
 # flux-calico-helmrelease.yaml — Flux HelmRelease for production Calico
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: calico

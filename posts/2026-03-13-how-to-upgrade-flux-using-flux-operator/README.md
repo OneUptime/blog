@@ -211,7 +211,7 @@ Configure the Flux Operator to notify your team when upgrades complete or fail b
 ```yaml
 # upgrade-notification.yaml
 # Alert for Flux upgrade events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-upgrade-alerts
@@ -225,7 +225,7 @@ spec:
       name: flux
       namespace: flux-system
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack

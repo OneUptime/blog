@@ -272,10 +272,10 @@ kubectl get gitrepository -n flux-system -o jsonpath='{.items[0].apiVersion}'
 kubectl get crd gitrepositories.source.toolkit.fluxcd.io -o jsonpath='{.spec.versions[*].name}'
 ```
 
-If the source uses `source.toolkit.fluxcd.io/v1beta2` and the target expects `v1`, update the apiVersion in your exported manifests:
+If the source uses `source.toolkit.fluxcd.io/v1` and the target expects `v1`, update the apiVersion in your exported manifests:
 
 ```bash
-sed -i 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' migration/git-sources.yaml
+sed -i 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' migration/git-sources.yaml
 ```
 
 ## Troubleshooting

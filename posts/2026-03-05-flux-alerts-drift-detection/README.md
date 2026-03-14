@@ -28,7 +28,7 @@ Create an alert that captures Kustomization events where drift was detected and 
 
 ```yaml
 # Alert for drift detection on Kustomization resources
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-detection-alert
@@ -64,7 +64,7 @@ Track drift detection across multiple namespaces and environments.
 
 ```yaml
 # Drift detection alert across all environments
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cluster-drift-alert
@@ -96,7 +96,7 @@ Create a dedicated drift alert that goes to a security or compliance channel, se
 
 ```yaml
 # Drift alert sent to a security-focused channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: security-drift-alert
@@ -127,7 +127,7 @@ HelmRelease resources can also experience drift when someone manually modifies H
 
 ```yaml
 # Drift alert for HelmRelease-managed resources
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-drift-alert
@@ -155,7 +155,7 @@ Combine drift detection with error alerts for complete visibility.
 
 ```yaml
 # Combined drift and error alert
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-and-errors-alert

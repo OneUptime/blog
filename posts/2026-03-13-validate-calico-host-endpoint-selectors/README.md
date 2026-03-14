@@ -73,7 +73,7 @@ graph LR
 Felix logs show which policies are applied to which endpoints:
 
 ```bash
-kubectl logs -n calico-system -l app=calico-node --tail=200 | grep "selector\|endpoint"
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=200 | grep "selector\|endpoint"
 ```
 
 ## Step 5: Check for Selector Mismatches

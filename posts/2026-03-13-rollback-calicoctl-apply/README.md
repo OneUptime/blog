@@ -17,7 +17,7 @@ calicoctl is the primary CLI for managing Calico resources. This guide covers sa
 ```bash
 # List Calico resources
 calicoctl get felixconfiguration
-calicoctl get globalnetworkpolicy --all-namespaces
+calicoctl get globalnetworkpolicy
 calicoctl get bgppeer
 calicoctl get ippool -o wide
 

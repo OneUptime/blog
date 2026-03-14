@@ -73,9 +73,11 @@ kubectl exec netperf-client -- netperf \
 
 ```bash
 kubectl run iperf-server --image=networkstatic/iperf3 -- iperf3 -s
-kubectl run iperf-client --image=networkstatic/iperf3 -- \
-  iperf3 -c $(kubectl get pod iperf-server -o jsonpath='{.status.podIP}') \
-  -t 30 -P 4
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
+
+SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
+kubectl run iperf-client --image=networkstatic/iperf3 --rm -it --restart=Never -- \
+  iperf3 -c "$SERVER_IP" -t 30 -P 4
 ```
 
 ## Compare Configurations

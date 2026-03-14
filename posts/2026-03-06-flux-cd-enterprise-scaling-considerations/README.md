@@ -272,7 +272,7 @@ Enterprise teams need notifications routed to the right people. Flux supports mu
 
 ```yaml
 # Alert configuration for production issues
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-platform
@@ -283,7 +283,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-critical
@@ -295,7 +295,7 @@ spec:
     name: pagerduty-token
 ---
 # Route critical failures to PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-failures
@@ -313,7 +313,7 @@ spec:
       namespace: "*"
 ---
 # Route all events to Slack for visibility
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-events

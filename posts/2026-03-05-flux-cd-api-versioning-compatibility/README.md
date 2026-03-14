@@ -52,7 +52,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 
 # Notification API - v1beta3 is the latest
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 
 # Image Automation API - v1 is stable
@@ -86,10 +86,10 @@ Before upgrading Flux, you should check whether your manifests use deprecated AP
 
 ```bash
 # Search for deprecated v1beta2 source API usage in your manifests
-grep -r "source.toolkit.fluxcd.io/v1beta2" ./clusters/
+grep -r "source.toolkit.fluxcd.io/v1" ./clusters/
 
 # Search for deprecated v2beta1 helm API usage
-grep -r "helm.toolkit.fluxcd.io/v2beta1" ./clusters/
+grep -r "helm.toolkit.fluxcd.io/v2" ./clusters/
 
 # Use flux to check the overall system health
 flux check
@@ -105,7 +105,7 @@ The old `v2beta1` format.
 
 ```yaml
 # Deprecated v2beta1 HelmRelease format
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -189,7 +189,7 @@ patches:
     patch: |
       - op: replace
         path: /apiVersion
-        value: helm.toolkit.fluxcd.io/v2beta1
+        value: helm.toolkit.fluxcd.io/v2
 ```
 
 ## Best Practices for API Version Management
@@ -205,10 +205,10 @@ patches:
 #!/bin/bash
 DEPRECATED_APIS=(
   "source.toolkit.fluxcd.io/v1beta1"
-  "source.toolkit.fluxcd.io/v1beta2"
-  "helm.toolkit.fluxcd.io/v2beta1"
+  "source.toolkit.fluxcd.io/v1"
+  "helm.toolkit.fluxcd.io/v2"
   "kustomize.toolkit.fluxcd.io/v1beta1"
-  "kustomize.toolkit.fluxcd.io/v1beta2"
+  "kustomize.toolkit.fluxcd.io/v1"
 )
 
 for api in "${DEPRECATED_APIS[@]}"; do

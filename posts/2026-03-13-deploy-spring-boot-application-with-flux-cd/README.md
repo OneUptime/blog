@@ -35,7 +35,7 @@ WORKDIR /app
 # Copy the fat JAR built by Maven/Gradle
 COPY target/my-app-*.jar app.jar
 # Extract layers; Spring Boot writes layers.idx describing layer order
-RUN java -Djarmode=layertools -jar app.jar extract
+RUN java -Djarmode=tools -jar app.jar extract --layers --destination extracted
 
 FROM eclipse-temurin:21-jre-alpine AS runner
 WORKDIR /app
@@ -43,10 +43,10 @@ WORKDIR /app
 RUN addgroup -S spring && adduser -S spring -G spring
 
 # Copy layers in order (least to most frequently changing)
-COPY --from=extractor --chown=spring:spring /app/dependencies ./
-COPY --from=extractor --chown=spring:spring /app/spring-boot-loader ./
-COPY --from=extractor --chown=spring:spring /app/snapshot-dependencies ./
-COPY --from=extractor --chown=spring:spring /app/application ./
+COPY --from=extractor --chown=spring:spring /app/extracted/dependencies ./
+COPY --from=extractor --chown=spring:spring /app/extracted/spring-boot-loader ./
+COPY --from=extractor --chown=spring:spring /app/extracted/snapshot-dependencies ./
+COPY --from=extractor --chown=spring:spring /app/extracted/application ./
 
 USER spring
 EXPOSE 8080
@@ -214,7 +214,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/apps/my-spring-app/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-spring-app
@@ -225,7 +225,7 @@ spec:
   secretRef:
     name: ghcr-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-spring-app
@@ -237,7 +237,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-spring-app

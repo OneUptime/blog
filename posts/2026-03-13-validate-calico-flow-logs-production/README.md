@@ -35,7 +35,7 @@ sleep 20
 # Find the flow on the node where flow-test-client is running
 CLIENT_NODE=$(kubectl get pod flow-test-client \
   -o jsonpath='{.spec.nodeName}')
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector="spec.nodeName=${CLIENT_NODE}" \
   -o jsonpath='{.items[0].metadata.name}')
 

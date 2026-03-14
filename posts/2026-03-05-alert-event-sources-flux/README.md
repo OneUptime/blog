@@ -32,7 +32,7 @@ The simplest configuration watches a single named resource.
 
 ```yaml
 # Alert watching a single Kustomization resource
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: single-source-alert
@@ -54,7 +54,7 @@ Use a wildcard (`*`) for the name to match all resources of a given kind in a na
 
 ```yaml
 # Alert watching all HelmRelease resources in flux-system
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-helmreleases-alert
@@ -76,7 +76,7 @@ Combine different resource kinds in a single alert for broader coverage.
 
 ```yaml
 # Alert watching multiple resource kinds
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: multi-kind-alert
@@ -115,7 +115,7 @@ Add entries for the same kind in different namespaces to monitor cross-namespace
 
 ```yaml
 # Alert watching resources across multiple namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cross-namespace-alert
@@ -150,7 +150,7 @@ You can mix wildcard and named entries to create targeted monitoring.
 
 ```yaml
 # Alert combining wildcard and specific resource names
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: mixed-sources-alert
@@ -183,7 +183,7 @@ For complete pipeline monitoring, include all relevant source and deployment res
 
 ```yaml
 # Comprehensive alert covering the full GitOps pipeline
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: full-pipeline-alert

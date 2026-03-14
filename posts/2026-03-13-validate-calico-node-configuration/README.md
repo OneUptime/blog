@@ -77,7 +77,7 @@ kubectl debug node/worker-1 -it --image=ubuntu -- \
 ## Step 4: Validate Felix Is Running on All Nodes
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-node -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-node -o wide
 # All pods should be Running, 1/1 or 2/2 Ready
 
 # Check for any pods that have been restarting

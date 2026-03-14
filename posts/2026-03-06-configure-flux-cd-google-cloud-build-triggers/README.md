@@ -341,7 +341,7 @@ Configure Flux to send alerts about deployment status back to your team.
 
 ```yaml
 # infrastructure/notifications/flux-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: google-chat
@@ -350,7 +350,7 @@ spec:
   type: googlechat
   address: "https://chat.googleapis.com/v1/spaces/SPACE_ID/messages?key=KEY&token=TOKEN"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts

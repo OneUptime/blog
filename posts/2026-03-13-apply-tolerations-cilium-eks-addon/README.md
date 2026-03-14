@@ -22,17 +22,14 @@ Without proper tolerations, Cilium agents won't run on tainted nodes, leaving th
 
 ## Understand the Problem
 
-Default Cilium tolerations include standard Kubernetes taints:
+The default Cilium agent DaemonSet toleration is a single wildcard entry:
 
 ```yaml
 tolerations:
   - operator: Exists
-    effect: NoExecute
-  - operator: Exists
-    effect: NoSchedule
 ```
 
-However, some node group taints may not be covered by this default.
+This tolerates all taints by default. However, if you customize tolerations (e.g., via Helm values), the defaults are replaced, which may cause Cilium to stop scheduling on some tainted nodes.
 
 ## View Current Cilium DaemonSet Tolerations
 
@@ -53,27 +50,20 @@ flowchart TD
     F --> G[Pod scheduling fails]
 ```
 
-## Add Tolerations via EKS Add-On Configuration
+## Add Tolerations via Helm Values
+
+Cilium is not an AWS-managed EKS addon and must be installed via Helm. To apply tolerations, update your Helm values:
 
 ```bash
-aws eks update-addon \
-  --cluster-name <cluster-name> \
-  --addon-name aws-cilium \
-  --configuration-values '{
-    "tolerations": [
-      {
-        "key": "dedicated",
-        "value": "gpu",
-        "effect": "NoSchedule",
-        "operator": "Equal"
-      },
-      {
-        "key": "spot",
-        "effect": "NoSchedule",
-        "operator": "Exists"
-      }
-    ]
-  }'
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --set tolerations[0].key=dedicated \
+  --set tolerations[0].value=gpu \
+  --set tolerations[0].effect=NoSchedule \
+  --set tolerations[0].operator=Equal \
+  --set tolerations[1].key=spot \
+  --set tolerations[1].effect=NoSchedule \
+  --set tolerations[1].operator=Exists
 ```
 
 ## Add Tolerations via Helm
@@ -93,7 +83,7 @@ helm upgrade cilium cilium/cilium \
 ## Verify Scheduling on Tainted Nodes
 
 ```bash
-# Check which nodes have tainted labels
+# Check which nodes have taints
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
 # Verify Cilium is running on all nodes

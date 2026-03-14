@@ -224,7 +224,7 @@ In addition to Prometheus alerts, Flux CD has a built-in notification controller
 
 ```yaml
 # flux-provider.yaml - Configure Flux native alerting to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -235,7 +235,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-controller-errors

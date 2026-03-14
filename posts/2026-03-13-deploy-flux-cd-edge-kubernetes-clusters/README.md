@@ -170,7 +170,7 @@ flux push artifact oci://my-registry.example.com/fleet/edge-apps:latest \
 
 ```yaml
 # On edge cluster - use OCIRepository instead of GitRepository
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: edge-apps
@@ -190,7 +190,7 @@ Use Flux's notification system to report edge cluster health to a central monito
 
 ```yaml
 # Send Flux events to a central webhook
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: central-monitoring
@@ -202,7 +202,7 @@ spec:
     name: monitoring-webhook-secret
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: edge-health

@@ -109,11 +109,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   template:
     metadata:
       labels:
-        app: calico-typha
+        k8s-app: calico-typha
     spec:
       serviceAccountName: calico-typha
       containers:

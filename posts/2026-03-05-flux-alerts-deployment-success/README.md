@@ -26,7 +26,7 @@ The simplest approach is to create an info-level alert that captures all events,
 
 ```yaml
 # Alert that captures all events including success notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-success-alert
@@ -51,7 +51,7 @@ To receive only success events and suppress noise from routine non-change reconc
 
 ```yaml
 # Alert focused on meaningful success events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: success-only-alert
@@ -95,7 +95,7 @@ Create separate success alerts for different environments.
 
 ```yaml
 # Success alert for staging deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-success-alert
@@ -117,7 +117,7 @@ spec:
     - ".*waiting for.*"
 ---
 # Success alert for production deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-success-alert
@@ -145,7 +145,7 @@ Track the full deployment pipeline from source update through successful deploym
 
 ```yaml
 # Alert covering source updates and deployment success
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pipeline-success-alert
@@ -180,7 +180,7 @@ For critical applications, create a dedicated success alert that tracks a specif
 
 ```yaml
 # Success alert for a specific critical application
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-app-success

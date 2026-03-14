@@ -76,7 +76,7 @@ calicoctl node status
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
   echo "=== $node ==="
   kubectl exec -n calico-system \
-    $(kubectl get pod -n calico-system -l app=calico-node \
+    $(kubectl get pod -n calico-system -l k8s-app=calico-node \
       --field-selector spec.nodeName=${node} -o name | head -1) \
     -- birdcl show protocols
 done

@@ -200,7 +200,7 @@ Configure image policies per environment:
 
 ```yaml
 # Development: Use any new image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-dev-policy
@@ -213,7 +213,7 @@ spec:
       range: '*'
 ---
 # Staging: Only release candidates
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-staging-policy
@@ -228,7 +228,7 @@ spec:
       range: '>=1.0.0-rc.0'
 ---
 # Production: Stable releases only
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-prod-policy

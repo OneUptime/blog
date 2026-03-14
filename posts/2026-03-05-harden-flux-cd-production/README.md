@@ -267,7 +267,7 @@ Set up comprehensive monitoring for your Flux installation:
 ```yaml
 # flux-alerts.yaml
 # Alert configuration for production Flux monitoring
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: production-alerts
@@ -278,7 +278,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-flux-events

@@ -36,7 +36,7 @@ When you specify `eventMetadata`, only events that carry all the specified key-v
 Here is a basic example that matches events containing a specific metadata key-value pair:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: metadata-filtered-alert
@@ -85,7 +85,7 @@ The labels and annotations on the Flux resource are carried through to the event
 You can specify multiple metadata fields for more precise filtering:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-env-alert
@@ -111,7 +111,7 @@ Both conditions must be satisfied. Only events with metadata containing both `en
 Track deployments of specific Git revisions:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: revision-tracking-alert
@@ -136,7 +136,7 @@ This is useful when you want to track events related to changes from a specific 
 Metadata matching works alongside `inclusionList` and `exclusionList`:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: combined-metadata-regex
@@ -164,7 +164,7 @@ The metadata filter runs first to select events from the production environment,
 Create per-team alerts using metadata fields:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: frontend-team-alert
@@ -182,7 +182,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: backend-team-alert
@@ -208,7 +208,7 @@ Each team receives only the events from their own resources, routed to their spe
 Use metadata to implement priority levels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: high-priority-alert
@@ -226,7 +226,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: low-priority-alert

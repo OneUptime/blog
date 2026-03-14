@@ -35,7 +35,7 @@ The key insight is that ISO-style date formats sort correctly in both numerical 
 For tags like `build-20260313`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -44,7 +44,7 @@ spec:
   image: registry.example.com/my-app
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -67,7 +67,7 @@ The `\d{8}` pattern matches exactly 8 digits, corresponding to YYYYMMDD. The num
 For tags like `deploy-20260313143000`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -90,7 +90,7 @@ The 14-digit pattern captures the full timestamp. Since `20260313143000` is a va
 For tags like `release-2026-03-13`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -113,7 +113,7 @@ Since the date contains hyphens, it cannot be treated as a number. However, the 
 For tags like `main-20260313-3` where `3` is the build number within that day:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -138,7 +138,7 @@ For non-padded build numbers, consider using a different tag format or concatena
 For tags like `v1.0-2026.03.13T14.30.00`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -161,7 +161,7 @@ The dotted date-time format sorts correctly alphabetically. The version prefix i
 For tags like `weekly-2026-w11` (year and ISO week number):
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -55,7 +55,7 @@ The values below configure Fluent Bit to tail all container logs, enrich them wi
 
 ```yaml
 # infrastructure/logging/fluent-bit.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluent-bit

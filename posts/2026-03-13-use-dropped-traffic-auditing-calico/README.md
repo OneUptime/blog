@@ -29,7 +29,7 @@ kubectl patch felixconfiguration default \
 calicoctl node status
 
 # View metrics
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
   wget -qO- http://localhost:9091/metrics | grep felix | head -20
@@ -60,7 +60,7 @@ spec:
     - name: calico.network
       rules:
         - alert: CalicoHighDenyRate
-          expr: rate(felix_calc_graph_output_events{type="PolicyDrop"}[5m]) > 10
+          expr: rate(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           annotations:
             summary: "High Calico policy deny rate on {{ $labels.instance }}"

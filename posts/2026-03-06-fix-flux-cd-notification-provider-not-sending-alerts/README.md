@@ -35,7 +35,7 @@ A healthy Provider should show `Ready: True` in its conditions.
 
 ```yaml
 # Example Slack Provider configuration
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -96,7 +96,7 @@ The Alert resource controls which events are forwarded to the Provider.
 
 ```yaml
 # Example Alert configuration
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call-alerts
@@ -233,7 +233,7 @@ kubectl run -n flux-system curl-test --rm -it --restart=Never \
 ### Slack
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -249,7 +249,7 @@ spec:
 ### Microsoft Teams
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -263,7 +263,7 @@ spec:
 ### Generic Webhook
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: generic-webhook
@@ -293,7 +293,7 @@ stringData:
 If notifications are partially working but you are missing specific events, check for exclusion rules.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-alerts

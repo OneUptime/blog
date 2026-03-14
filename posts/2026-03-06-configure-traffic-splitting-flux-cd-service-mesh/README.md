@@ -427,7 +427,7 @@ Monitor traffic splitting changes with Flux alerts.
 
 ```yaml
 # infrastructure/notifications/traffic-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: traffic-split-alert

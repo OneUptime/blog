@@ -80,7 +80,7 @@ calicoctl node status
 REPLICA_NODE=$(kubectl get pod mysql-1 -n database -o jsonpath='{.spec.nodeName}')
 PRIMARY_IP=$(kubectl get pod mysql-0 -n database -o jsonpath='{.status.podIP}')
 
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${REPLICA_NODE} -o name | head -1)
 
 kubectl exec -n calico-system "${CALICO_POD}" -- \

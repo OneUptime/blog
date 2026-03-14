@@ -59,7 +59,7 @@ metadata:
 
 ```yaml
 # 1. ImageRepository: polls the container registry
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -72,7 +72,7 @@ spec:
 
 ---
 # 2. ImagePolicy: which tags to track (replaces allow-tags + update-strategy)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -88,7 +88,7 @@ spec:
 
 ---
 # 3. ImageUpdateAutomation: commits updated tags to Git (replaces write-back-method: git)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: fleet

@@ -339,7 +339,7 @@ Configure automatic image updates:
 
 ```yaml
 # clusters/production/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: webapp
@@ -398,7 +398,7 @@ Create alerts for reconciliation failures:
 
 ```yaml
 # clusters/production/alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -409,7 +409,7 @@ spec:
   secretRef:
     name: slack-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: kustomization-failures

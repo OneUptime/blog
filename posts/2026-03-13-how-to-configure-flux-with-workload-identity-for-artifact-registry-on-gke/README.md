@@ -118,7 +118,7 @@ The `provider: gcp` field tells Flux to use the GCP metadata service for authent
 If you are pulling generic OCI artifacts rather than Helm charts, use an `OCIRepository` resource:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-manifests

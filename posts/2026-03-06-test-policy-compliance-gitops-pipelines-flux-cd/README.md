@@ -386,7 +386,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/compliance/compliance-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: compliance-slack
@@ -398,7 +398,7 @@ spec:
     name: slack-webhook-url
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: compliance-failures

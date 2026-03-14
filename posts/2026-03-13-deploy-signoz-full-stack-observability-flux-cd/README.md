@@ -44,7 +44,7 @@ Configure SigNoz with persistent ClickHouse storage and the OTEL collector.
 
 ```yaml
 # clusters/my-cluster/signoz/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: signoz

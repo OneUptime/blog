@@ -45,9 +45,9 @@ calicoctl ipam show --show-borrowed > "${BUNDLE}/ipam-borrowed.txt" 2>/dev/null 
 calicoctl get globalnetworkpolicy -o yaml > "${BUNDLE}/gnp.yaml" 2>/dev/null || true
 
 # Component logs (last 500 lines each)
-kubectl logs -n calico-system -l app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=500 --prefix=true > "${BUNDLE}/calico-node.log" 2>/dev/null || true
-kubectl logs -n calico-system -l app=calico-typha \
+kubectl logs -n calico-system -l k8s-app=calico-typha \
   --tail=200 --prefix=true > "${BUNDLE}/calico-typha.log" 2>/dev/null || true
 
 tar -czf "${BUNDLE}.tar.gz" "${BUNDLE}/"
@@ -62,7 +62,7 @@ echo "Diagnostic bundle: ${BUNDLE}.tar.gz"
 # Returns 0 if all BGP peers are Established, non-zero otherwise
 FAILURES=0
 
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
   STATUS=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
     calicoctl node status 2>/dev/null | grep -c "Established" || echo 0)

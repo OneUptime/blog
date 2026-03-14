@@ -146,7 +146,7 @@ Now configure Flux to scan your ECR repository for new images:
 
 ```yaml
 # clusters/production/ecr-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -165,7 +165,7 @@ Set up an image policy to track new image versions:
 
 ```yaml
 # clusters/production/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -182,7 +182,7 @@ Set up image update automation:
 
 ```yaml
 # clusters/production/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

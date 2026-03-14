@@ -26,7 +26,7 @@ Flagger is a Kubernetes operator that automates canary analysis using Prometheus
 
 ```yaml
 # Deploy Flagger via Flux HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

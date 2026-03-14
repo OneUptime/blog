@@ -30,8 +30,8 @@ calicoctl get nodes -o json | python3 -c 'import json,sys; [print(n["metadata"][
 diff /tmp/k8s-nodes.txt /tmp/calico-nodes.txt
 
 # Check calico-node pod status on the missing node
-kubectl get pods -n calico-system -l app=calico-node -o wide | grep <node-name>
-kubectl logs -n calico-system -l app=calico-node --field-selector spec.nodeName=<node-name>
+kubectl get pods -n calico-system -l k8s-app=calico-node -o wide | grep <node-name>
+kubectl logs -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=<node-name>
 ```
 
 **Fix**: If calico-node pod is crashing, resolve the pod startup issue (often a datastore connectivity problem or incorrect environment variables).
@@ -95,7 +95,7 @@ for n in data['items']:
 
 ```bash
 # Check BIRD status on the node
-NODE_POD=$(kubectl get pod -n calico-system -o name -l app=calico-node | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -o name -l k8s-app=calico-node | head -1)
 kubectl exec -n calico-system $NODE_POD -- birdcl show protocols all | grep -A5 BGP
 
 # Check Felix logs for BGP-related errors
@@ -108,7 +108,7 @@ kubectl logs -n calico-system ds/calico-node | grep -i "bgp\|bird\|peer" | tail 
 # Force calico-node to re-sync by restarting it on the affected node
 kubectl rollout restart daemonset/calico-node -n calico-system
 # Or delete the specific pod to trigger restart
-kubectl delete pod -n calico-system -l app=calico-node --field-selector spec.nodeName=<node-name>
+kubectl delete pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=<node-name>
 ```
 
 ## Conclusion

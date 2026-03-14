@@ -78,7 +78,7 @@ graph LR
 
 ```bash
 # Identify and fix IPAM leaks
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 
 # Garbage collect leaked allocations
 calicoctl ipam gc

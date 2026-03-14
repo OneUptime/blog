@@ -50,7 +50,7 @@ calicoctl get hostendpoint node1-eth0 -o yaml
 Felix is the Calico agent that programs policies into the kernel. Check Felix logs for host endpoint processing:
 
 ```bash
-kubectl logs -n calico-system -l app=calico-node --tail=100 | grep -i "hostendpoint\|policy"
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=100 | grep -i "hostendpoint\|policy"
 ```
 
 Verify Felix status on a node:

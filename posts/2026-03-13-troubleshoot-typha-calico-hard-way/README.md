@@ -30,7 +30,7 @@ kubectl delete pod dns-test
 **Check 2:** Is the Typha pod running and endpoints populated?
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha
+kubectl get pods -n calico-system -l k8s-app=calico-typha
 kubectl get endpoints calico-typha -n calico-system
 ```
 
@@ -108,7 +108,7 @@ kubectl auth can-i watch networkpolicies --as=system:serviceaccount:calico-syste
 **Symptom:** Typha pod OOMKilled.
 
 ```bash
-kubectl describe pod -n calico-system -l app=calico-typha | grep -A3 "OOMKilled\|Last State"
+kubectl describe pod -n calico-system -l k8s-app=calico-typha | grep -A3 "OOMKilled\|Last State"
 ```
 
 **Resolution:** Increase memory limit.

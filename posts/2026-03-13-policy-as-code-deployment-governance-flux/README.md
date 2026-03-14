@@ -38,7 +38,7 @@ spec:
   interval: 24h
   url: https://open-policy-agent.github.io/gatekeeper/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gatekeeper
@@ -250,7 +250,7 @@ Configure alerting when Gatekeeper rejects a resource in production:
 
 ```yaml
 # clusters/production/monitoring/policy-violation-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: policy-violation-alert

@@ -395,7 +395,7 @@ Configure Flux to send alerts through DingTalk, which is commonly used with Alib
 
 ```yaml
 # clusters/ack-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook-provider
@@ -408,7 +408,7 @@ spec:
     name: dingtalk-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: ack-alerts

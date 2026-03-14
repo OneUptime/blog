@@ -460,7 +460,7 @@ The promotion workflow becomes:
 ```yaml
 # clusters/production/alerts.yaml
 # Alert on any production deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -471,7 +471,7 @@ spec:
   secretRef:
     name: pagerduty-routing-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-failures

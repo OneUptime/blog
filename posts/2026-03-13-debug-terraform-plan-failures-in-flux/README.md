@@ -154,7 +154,7 @@ terraform force-unlock LOCK_ID
 
 ```yaml
 # infrastructure/tofu-controller/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tofu-controller

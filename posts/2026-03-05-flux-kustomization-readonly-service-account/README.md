@@ -169,7 +169,7 @@ Configure Flux notifications to alert when the read-only Kustomization detects d
 ```yaml
 # alert-drift-detection.yaml
 # Alert on drift detection failures from the read-only Kustomization
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-alerts
@@ -180,7 +180,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-detection

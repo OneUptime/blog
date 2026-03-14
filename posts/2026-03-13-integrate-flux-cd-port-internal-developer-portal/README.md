@@ -29,7 +29,7 @@ Port provides a Helm chart for the Kubernetes exporter that syncs cluster resour
 
 ```yaml
 # infrastructure/port/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: port-k8s-exporter
@@ -73,7 +73,7 @@ spec:
                       suspended: .spec.suspend // false
 
           # Sync Flux HelmReleases
-          - kind: helm.toolkit.fluxcd.io/v2beta2/helmreleases
+          - kind: helm.toolkit.fluxcd.io/v2/helmreleases
             port:
               entity:
                 mappings:

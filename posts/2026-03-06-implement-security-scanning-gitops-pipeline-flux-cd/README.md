@@ -354,7 +354,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/security/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: security-alert
@@ -372,7 +372,7 @@ spec:
       namespace: flux-system
   summary: "Security policy violation detected in GitOps pipeline"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-security

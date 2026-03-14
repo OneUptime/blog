@@ -41,7 +41,7 @@ Define a Provider resource for Datadog. The `address` field should point to your
 ```yaml
 # provider-datadog.yaml
 # Configures Flux to send notifications to Datadog
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: datadog-provider
@@ -75,7 +75,7 @@ Create an Alert that sends Flux events to Datadog.
 ```yaml
 # alert-datadog.yaml
 # Routes Flux events to Datadog
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: datadog-alert
@@ -155,7 +155,7 @@ Make sure to use the correct Datadog API endpoint for your region:
 
 ```yaml
 # Example for EU region
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: datadog-eu-provider
@@ -172,7 +172,7 @@ spec:
 If you prefer to send only errors to Datadog:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: datadog-errors

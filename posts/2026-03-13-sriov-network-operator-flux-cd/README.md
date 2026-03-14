@@ -47,7 +47,7 @@ spec:
   url: https://k8snetworkplumbingwg.github.io/sriov-network-operator
 ---
 # clusters/production/infrastructure/sriov-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: sriov-network-operator

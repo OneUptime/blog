@@ -69,7 +69,7 @@ Healthy output looks like this:
 > source-controller: deployment ready
 > source-controller: ghcr.io/fluxcd/source-controller:v1.2.4
 > checking crds
-> alerts.notification.toolkit.fluxcd.io/v1beta3
+> alerts.notification.toolkit.fluxcd.io/v1
 > buckets.source.toolkit.fluxcd.io/v1
 > gitrepositories.source.toolkit.fluxcd.io/v1
 > helmcharts.source.toolkit.fluxcd.io/v1
@@ -77,7 +77,7 @@ Healthy output looks like this:
 > helmrepositories.source.toolkit.fluxcd.io/v1
 > kustomizations.kustomize.toolkit.fluxcd.io/v1
 > ocirepositories.source.toolkit.fluxcd.io/v1
-> providers.notification.toolkit.fluxcd.io/v1beta3
+> providers.notification.toolkit.fluxcd.io/v1
 > receivers.notification.toolkit.fluxcd.io/v1
 > all checks passed
 ```

@@ -28,7 +28,7 @@ Check that pod block routes appear in the BGP routing table on the external peer
 
 ```bash
 # On Calico node: check what routes are being advertised
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route export BGP_<peer_ip>
 
 # Check kernel route table on node

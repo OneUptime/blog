@@ -391,7 +391,7 @@ Configure Flux notification controller to forward events:
 
 ```yaml
 # File: monitoring/flux-event-forwarder.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azure-event-hub
@@ -402,7 +402,7 @@ spec:
   secretRef:
     name: azure-event-hub-credentials
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-events

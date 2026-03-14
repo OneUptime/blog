@@ -87,7 +87,7 @@ Update the NATS HelmRelease to use the resolver:
 
 ```yaml
 # infrastructure/messaging/nats/nats-cluster.yaml (updated values)
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nats

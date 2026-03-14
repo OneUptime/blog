@@ -54,7 +54,7 @@ If `app-backend` or `app-database` has not reconciled successfully, the `app-fro
 Here is a Microsoft Teams provider configuration for reference:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams-provider
@@ -80,7 +80,7 @@ stringData:
 To monitor dependency health specifically, create an Alert that only captures `DependencyNotReady` events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dependency-not-ready-alerts
@@ -105,7 +105,7 @@ The `inclusionList` regex pattern ensures only events containing the `Dependency
 For your main alert channel, you likely want to filter out dependency-related noise while keeping all other important events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: general-alerts-no-dependency
@@ -136,7 +136,7 @@ This configuration forwards all events except those related to unready dependenc
 You can build more sophisticated filtering by combining multiple patterns. For example, to exclude both dependency and retry noise:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: clean-alerts
@@ -163,7 +163,7 @@ Each entry in the `exclusionList` is evaluated independently. If an event matche
 When you have critical dependency chains that require close monitoring, create a targeted alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-dependency-alert
@@ -190,7 +190,7 @@ This narrows the scope to only the resources you care about, preventing alerts f
 Adding contextual metadata gives your team immediate context about what the alert means. Use the `eventMetadata` field to attach key-value annotations to the alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dependency-alert-with-metadata

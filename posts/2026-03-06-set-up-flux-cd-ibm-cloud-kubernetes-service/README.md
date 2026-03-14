@@ -361,7 +361,7 @@ Configure Flux notifications for deployment events:
 
 ```yaml
 # clusters/iks-production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -373,7 +373,7 @@ spec:
     name: slack-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: iks-alerts

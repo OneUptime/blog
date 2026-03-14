@@ -26,7 +26,7 @@ This guide walks through a systematic verification process using kubectl, calico
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 All pods should show `Running` status with ready containers.

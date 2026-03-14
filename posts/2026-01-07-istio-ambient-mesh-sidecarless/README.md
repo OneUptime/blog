@@ -1148,7 +1148,7 @@ istioctl dashboard prometheus
 ```yaml
 # Save this as ztunnel-resources.yaml
 # Example resource configuration for ztunnel in production
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ztunnel

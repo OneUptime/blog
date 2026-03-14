@@ -81,7 +81,7 @@ while true; do
   echo "Legacy kube-system calico-node pods: ${OLD_PODS}"
 
   # New pods (should increase to node count)
-  NEW_PODS=$(kubectl get pods -n calico-system -l app=calico-node \
+  NEW_PODS=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
     --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l)
   TOTAL_NODES=$(kubectl get nodes --no-headers | wc -l)
   echo "New calico-system calico-node pods: ${NEW_PODS}/${TOTAL_NODES}"

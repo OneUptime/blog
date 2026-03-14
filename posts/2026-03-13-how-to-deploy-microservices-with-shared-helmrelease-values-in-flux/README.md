@@ -119,7 +119,7 @@ Use `valuesFrom` to pull shared values and add service-specific overrides inline
 
 ```yaml
 # clusters/production/apps/backend-api-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: backend-api
@@ -163,7 +163,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/auth-service-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: auth-service

@@ -232,7 +232,7 @@ Configure Flux CD alerts to notify you when Terraform state changes:
 ```yaml
 # terraform-alerts.yaml
 # Alert provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -244,7 +244,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that triggers on Terraform resource events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: terraform-alerts

@@ -126,7 +126,7 @@ parameters:
 ```yaml
 # infrastructure/velero/helmrelease.yaml (updated values section)
 # Add this to the Velero HelmRelease values:
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: velero

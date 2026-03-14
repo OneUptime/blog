@@ -422,7 +422,7 @@ spec:
 ```yaml
 # infrastructure/notifications/failover-alerts.yaml
 # Notify the team when failover-related changes are reconciled
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -433,7 +433,7 @@ spec:
   secretRef:
     name: pagerduty-routing-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: failover-alert

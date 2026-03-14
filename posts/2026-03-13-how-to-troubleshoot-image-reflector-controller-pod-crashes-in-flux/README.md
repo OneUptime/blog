@@ -65,7 +65,7 @@ kubectl patch deployment image-reflector-controller -n flux-system --type='json'
 Also consider reducing the scope of image scanning by using tag filters in your ImagePolicy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -113,7 +113,7 @@ kubectl get imagerepositories --all-namespaces | wc -l
 If you have a large number, consider reducing scan intervals for non-critical images:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: non-critical-app
@@ -148,7 +148,7 @@ kubectl logs -n flux-system deploy/image-reflector-controller | grep -i "rate li
 Increase scan intervals and authenticate with the registry to get higher rate limits:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

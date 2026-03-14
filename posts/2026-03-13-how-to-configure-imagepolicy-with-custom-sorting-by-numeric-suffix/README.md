@@ -34,7 +34,7 @@ The `order` field determines sorting direction:
 For tags like `myapp-build-42`, `myapp-build-100`, `myapp-build-7`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -43,7 +43,7 @@ spec:
   image: registry.example.com/my-app
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -66,7 +66,7 @@ With ascending order, Flux selects `myapp-build-100` because `100` is the highes
 For tags like `deploy-1710300000`, `deploy-1710400000`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -89,7 +89,7 @@ Unix timestamps naturally increase over time, so ascending numerical order picks
 For tags like `abc1234-42` where the first part is a Git SHA and the second is a build number:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -112,7 +112,7 @@ The regex matches any hex string followed by a hyphen and digits. Only the numer
 For tags like `v1.5.0-42` where `42` is a build sequence number and you want to sort by the build number within a specific version:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -135,7 +135,7 @@ This locks the version to `v1.5.0` and sorts only by the build number suffix. To
 For tags using numeric dates like `20260313001` (YYYYMMDD + sequence):
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

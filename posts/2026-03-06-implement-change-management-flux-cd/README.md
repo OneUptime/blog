@@ -331,7 +331,7 @@ Configure Flux notifications to integrate with change management systems.
 
 ```yaml
 # Send deployment events to a change management webhook
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: change-management-system
@@ -342,7 +342,7 @@ spec:
   secretRef:
     name: change-mgmt-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: change-tracking

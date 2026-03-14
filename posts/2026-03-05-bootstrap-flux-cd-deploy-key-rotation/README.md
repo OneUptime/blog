@@ -254,7 +254,7 @@ Set up alerts to know when key rotation occurs or fails.
 
 ```yaml
 # key-rotation/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: key-rotation-alert

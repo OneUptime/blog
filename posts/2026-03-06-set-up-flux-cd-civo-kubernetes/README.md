@@ -395,7 +395,7 @@ spec:
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: discord
@@ -406,7 +406,7 @@ spec:
     name: discord-webhook-url
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: civo-alerts

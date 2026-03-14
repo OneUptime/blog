@@ -28,7 +28,7 @@ Deploy the multicluster extension on both clusters:
 
 ```yaml
 # clusters/cluster-west/linkerd-multicluster/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-multicluster

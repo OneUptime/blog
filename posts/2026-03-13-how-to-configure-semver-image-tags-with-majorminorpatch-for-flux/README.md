@@ -26,7 +26,7 @@ This guide shows you how to set up an ImageRepository and ImagePolicy to track i
 The ImageRepository tells Flux which container registry and image to scan for tags:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -47,7 +47,7 @@ This resource scans the `docker.io/myorg/my-app` repository every five minutes a
 The simplest SemVer policy selects the latest image whose tag matches a version range:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -67,7 +67,7 @@ This policy selects the highest SemVer tag that is `1.0.0` or greater. If your r
 To track only a specific major version, use a range constraint:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -85,7 +85,7 @@ This selects the highest tag within the `1.x.x` range. If the registry has `1.0.
 You can also use the shorthand tilde and caret operators:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-minor
@@ -105,7 +105,7 @@ The caret `^1.0.0` is equivalent to `>=1.0.0 <2.0.0`, allowing minor and patch u
 To only receive patch updates for a specific minor version:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-patch-only
@@ -125,7 +125,7 @@ The tilde `~1.5.0` is equivalent to `>=1.5.0 <1.6.0`. This is the most conservat
 If you need to pin to an exact version and only update when you change the policy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-pinned
@@ -172,7 +172,7 @@ The comment `# {"$imagepolicy": "flux-system:my-app"}` tells the image automatio
 To complete the automation loop, configure the ImageUpdateAutomation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation

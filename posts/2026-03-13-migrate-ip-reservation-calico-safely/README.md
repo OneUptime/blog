@@ -105,7 +105,7 @@ kubectl get pod ipam-test -o jsonpath='{.status.podIP}'
 # It should NOT be 172.16.0.1, 172.16.0.2, 172.16.0.10, etc.
 
 # Attempt to manually allocate a reserved IP to confirm it is blocked
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 
 # Clean up
 kubectl delete pod ipam-test

@@ -31,7 +31,7 @@ Multi-architecture images use a manifest list (or OCI image index) that maps a s
 The Flux ImageRepository scans tags from the registry and works with multi-arch images by default. The tag scanning process reads the tag list, which is architecture-agnostic:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -48,7 +48,7 @@ This scans all tags regardless of architecture. The ImageRepository does not fil
 If your images are properly built as multi-arch manifests, a standard ImagePolicy works without any special configuration:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -68,7 +68,7 @@ Since multi-arch images share a single tag across all architectures, the policy 
 Some registries use architecture-specific tags like `1.2.3-amd64` and `1.2.3-arm64` instead of manifest lists. In this case, you need to filter tags for a specific architecture:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-amd64
@@ -87,7 +87,7 @@ spec:
 And for arm64 nodes:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-arm64
@@ -162,7 +162,7 @@ spec:
 If your registry contains a mix of single-arch and multi-arch tags, and you want to ensure you only select tags with manifest lists, you can use a naming convention. For example, tag multi-arch images without an architecture suffix and single-arch images with one:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-multiarch

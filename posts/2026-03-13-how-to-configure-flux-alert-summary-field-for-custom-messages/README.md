@@ -35,7 +35,7 @@ The summary is static text defined at configuration time. It does not support te
 Add a simple descriptive summary to an alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts
@@ -59,7 +59,7 @@ Every notification from this alert will include the text "Production cluster eve
 In multi-environment setups, summaries help distinguish alerts from different clusters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-alerts
@@ -75,7 +75,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts
@@ -99,7 +99,7 @@ The summary prefixes make it instantly clear whether an alert requires immediate
 Include team ownership information so alerts route to the right people:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: platform-team-alerts
@@ -127,7 +127,7 @@ This summary tells the recipient who owns the resources, where to find the runbo
 Create separate alerts with different summaries based on severity:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: info-alerts
@@ -145,7 +145,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: error-alerts
@@ -169,7 +169,7 @@ Error events go to PagerDuty with an urgent summary, while informational events 
 When managing multiple clusters, include the cluster name in the summary:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cluster-alerts
@@ -195,7 +195,7 @@ When this alert fires, the summary immediately identifies which cluster generate
 The summary works alongside inclusion and exclusion filters:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -222,7 +222,7 @@ The summary explains the context of the filtered events, so recipients understan
 When using a generic webhook provider, structure your summary for machine parsing:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webhook-alerts
@@ -246,7 +246,7 @@ Downstream systems receiving the webhook can parse the key-value pairs from the 
 Include direct links to runbooks for faster incident response:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: database-alerts

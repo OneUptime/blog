@@ -171,7 +171,7 @@ jobs:
 
 ```yaml
 # Production policy: tracks SemVer releases
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp-production
@@ -182,7 +182,7 @@ spec:
   secretRef:
     name: ghcr-auth
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-production
@@ -195,7 +195,7 @@ spec:
       range: ">=1.0.0 <2.0.0"
 ---
 # Staging policy: tracks latest timestamp-tagged build
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-staging

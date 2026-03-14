@@ -26,7 +26,7 @@ This alert watches all ImagePolicy resources in the `flux-system` namespace.
 
 ```yaml
 # Alert monitoring all ImagePolicy events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: imagepolicy-alerts
@@ -55,7 +55,7 @@ For environments with many image policies, you may prefer to receive notificatio
 
 ```yaml
 # Alert that only captures ImagePolicy errors
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: imagepolicy-error-alerts
@@ -77,7 +77,7 @@ Track a specific application's image policy by name.
 
 ```yaml
 # Alert for a specific ImagePolicy resource
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webapp-imagepolicy-alert
@@ -98,7 +98,7 @@ For full image automation visibility, monitor both ImagePolicy and ImageReposito
 
 ```yaml
 # Combined alert for image automation components
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-automation-alerts
@@ -124,7 +124,7 @@ Monitor the entire image update pipeline from scanning to Git commit by includin
 
 ```yaml
 # Full image automation pipeline alert
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-pipeline-alerts
@@ -154,7 +154,7 @@ Reduce noise by excluding routine events.
 
 ```yaml
 # Alert with exclusion rules for ImagePolicy events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-imagepolicy-alerts

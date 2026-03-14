@@ -16,7 +16,7 @@ Flow log-based alerts complement Prometheus metric alerts by providing connectio
 
 ```bash
 # View flow logs directly from a calico-node pod
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node   -o jsonpath='{.items[0].metadata.name}')
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   tail -20 /var/log/calico/flowlogs/flows.log 2>/dev/null
 
@@ -29,18 +29,25 @@ kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
 
 ## Flow Log Format
 
-```
-# Example flow log entry (abbreviated):
-# StartTime | EndTime | SrcIP | DstIP | Proto | SrcPort | DstPort | 
-# Packets | Bytes | Action | SrcNamespace | SrcPod | DstNamespace | DstSvc
-
-# Allowed flow example:
-# 2026-03-13T10:00:00 | 192.168.1.5 | 192.168.2.10 | TCP | 54321 | 8080 | 
-# 12 pkts | 1500 bytes | Allow | default | frontend-abc | production | backend
-
-# Denied flow example:
-# 2026-03-13T10:00:05 | 192.168.1.5 | 192.168.3.1 | TCP | 54322 | 5432 |
-# 1 pkt | 60 bytes | Deny | default | frontend-abc | database | postgres
+```json
+// Example flow log entry (JSON format):
+{
+  "start_time": "2026-03-13T10:00:00Z",
+  "end_time": "2026-03-13T10:00:15Z",
+  "source_ip": "192.168.1.5",
+  "dest_ip": "192.168.2.10",
+  "proto": "TCP",
+  "source_port": 54321,
+  "dest_port": 8080,
+  "num_flows": 12,
+  "bytes_in": 1500,
+  "bytes_out": 3200,
+  "action": "Allow",
+  "source_namespace": "default",
+  "source_name": "frontend-abc",
+  "dest_namespace": "production",
+  "dest_name": "backend"
+}
 ```
 
 ## Architecture
@@ -49,7 +56,7 @@ kubectl get felixconfiguration default -o yaml |   grep -i "flowLog"
 flowchart LR
     A[Connections] --> B[Felix captures flow metadata]
     B --> C[/var/log/calico/flowlogs/]
-    C --> D[Fluent Bit DaemonSet]
+    C --> D[Fluentd DaemonSet]
     D --> E[Elasticsearch / Loki]
     E --> F[Grafana / Kibana dashboards]
     E --> G[Alerting rules]

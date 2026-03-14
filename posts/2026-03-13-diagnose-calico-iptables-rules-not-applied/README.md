@@ -27,7 +27,7 @@ Felix must be running and passing readiness checks before it will program iptabl
 ```bash
 # Find the calico-node pod on the affected node
 NODE="worker-01"
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${NODE} -o name | head -1)
 
 # Check if Felix readiness probe passes

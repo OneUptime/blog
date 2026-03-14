@@ -122,7 +122,7 @@ jobs:
 
 ```yaml
 # clusters/production/sources/myapp-manifests.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: myapp-manifests

@@ -57,7 +57,7 @@ for node in data['items']:
 calicoctl node status
 
 # Check from a specific calico-node pod
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system $NODE_POD -- birdcl show protocols
 ```
 

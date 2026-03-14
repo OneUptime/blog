@@ -30,7 +30,7 @@ Configure baseline rate limiting for all NGINX-managed routes through the global
 
 ```yaml
 # infrastructure/nginx-ingress/helmrelease.yaml (partial - add to values.controller.config)
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

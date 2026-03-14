@@ -404,7 +404,7 @@ Set up Flux to report deployment status back to GitLab:
 
 ```yaml
 # clusters/production/gitlab-notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-commit-status
@@ -418,7 +418,7 @@ spec:
     name: gitlab-token
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitlab-deployment-status

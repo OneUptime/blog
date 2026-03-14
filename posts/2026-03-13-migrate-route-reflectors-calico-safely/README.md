@@ -66,7 +66,7 @@ spec:
 
 ```bash
 # On a worker node, check sessions are with RRs only
-RR_NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node \
+RR_NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=rr-node-1 -o name | head -1)
 kubectl exec -n calico-system ${RR_NODE_POD} -- birdcl show protocols
 

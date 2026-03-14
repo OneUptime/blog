@@ -125,7 +125,7 @@ for item in data['items']:
 
 ```bash
 # Extract all selector expressions from policies and verify corresponding NetworkSets have matching labels
-calicoctl get globalnetworkpolicies -A -o json | python3 -c "
+calicoctl get globalnetworkpolicies -o json | python3 -c "
 import json, sys, re
 data = json.load(sys.stdin)
 selectors = set()

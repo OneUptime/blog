@@ -29,7 +29,7 @@ Gitea is a lightweight, self-hosted Git service ideal for running inside your Ku
 
 ```yaml
 # Gitea HelmRelease managed by Flux
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gitea

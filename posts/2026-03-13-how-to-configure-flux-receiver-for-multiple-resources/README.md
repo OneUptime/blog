@@ -94,10 +94,10 @@ spec:
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: HelmRepository
       name: podinfo
-    - apiVersion: source.toolkit.fluxcd.io/v1beta2
+    - apiVersion: source.toolkit.fluxcd.io/v1
       kind: OCIRepository
       name: manifests
-    - apiVersion: source.toolkit.fluxcd.io/v1beta2
+    - apiVersion: source.toolkit.fluxcd.io/v1
       kind: Bucket
       name: artifacts
     # Deployment resources
@@ -108,7 +108,7 @@ spec:
       kind: HelmRelease
       name: podinfo
     # Image automation
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       name: app-image
 ```

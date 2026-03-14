@@ -152,7 +152,7 @@ kubectl annotate terraform production-database \
 
 ```yaml
 # clusters/my-cluster/notifications/plan-ready-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: plan-ready-notification

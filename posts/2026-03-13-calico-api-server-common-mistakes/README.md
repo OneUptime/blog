@@ -66,11 +66,11 @@ The Calico API server needs to reach the Kubernetes API. A misconfigured kubecon
 ```bash
 # Check if the API server pod can reach the Kubernetes API
 kubectl logs -n calico-apiserver \
-  -l app=calico-apiserver --tail=50 | grep -i "error\|fail\|warn"
+  -l k8s-app=calico-apiserver --tail=50 | grep -i "error\|fail\|warn"
 
 # Verify the service account token is mounted
 kubectl exec -n calico-apiserver \
-  "$(kubectl get pod -n calico-apiserver -l app=calico-apiserver -o name | head -1)" \
+  "$(kubectl get pod -n calico-apiserver -l k8s-app=calico-apiserver -o name | head -1)" \
   -- ls /var/run/secrets/kubernetes.io/serviceaccount/
 
 # Confirm the API service is registered and available

@@ -356,7 +356,7 @@ Set up alerts for certificate expiration using Flux notifications.
 
 ```yaml
 # infrastructure/mtls/certificate-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cert-expiry-alert
@@ -377,7 +377,7 @@ spec:
 
 ```yaml
 # infrastructure/mtls/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

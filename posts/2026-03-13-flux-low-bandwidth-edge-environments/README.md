@@ -69,7 +69,7 @@ On edge clusters, switch from GitRepository to OCIRepository:
 
 ```yaml
 # Replace GitRepository with OCIRepository
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-edge-apps
@@ -152,7 +152,7 @@ flux push artifact \
 
 ```yaml
 # Edge cluster: Use separate OCIRepositories with different intervals
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-infrastructure
@@ -164,7 +164,7 @@ spec:
     tag: v1.0.0  # Pinned version - only update manually
 
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-apps

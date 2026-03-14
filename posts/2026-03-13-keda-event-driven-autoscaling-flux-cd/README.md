@@ -31,7 +31,7 @@ spec:
   interval: 1h
   url: https://kedacore.github.io/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keda

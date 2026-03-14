@@ -78,7 +78,7 @@ eksctl create iamserviceaccount \
 
 ```yaml
 # infrastructure/messaging/amazon-mq/ack-mq-controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-mq-controller

@@ -29,7 +29,7 @@ Use Flux to install and manage KEDA in the cluster.
 ```yaml
 # infrastructure/keda/helmrelease.yaml
 # HelmRelease deploying KEDA for event-driven autoscaling
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keda

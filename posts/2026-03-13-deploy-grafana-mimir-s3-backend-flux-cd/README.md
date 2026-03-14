@@ -61,7 +61,7 @@ Configure Mimir in monolithic mode with S3 blocks, ruler, and alertmanager stora
 
 ```yaml
 # clusters/my-cluster/mimir/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mimir

@@ -51,7 +51,7 @@ Define a Provider resource that tells Flux how to send messages to Slack.
 ```yaml
 # provider-slack.yaml
 # Configures Flux to send notifications to a Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -80,7 +80,7 @@ The Provider on its own does not send anything. You need an Alert resource that 
 ```yaml
 # alert-slack.yaml
 # Sends alerts for Kustomization and HelmRelease events to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack-alert
@@ -158,7 +158,7 @@ graph LR
 You can further customize the Provider with additional fields:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider-custom
@@ -177,7 +177,7 @@ spec:
 If you only want to receive error notifications (and skip informational messages), set the severity filter in the Alert:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack-errors-only

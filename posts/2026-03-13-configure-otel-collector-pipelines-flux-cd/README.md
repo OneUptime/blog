@@ -53,7 +53,7 @@ Create a HelmRelease that deploys the Collector with a custom pipeline configura
 ```yaml
 # infrastructure/otel-collector/helmrelease.yaml
 # HelmRelease deploying the OpenTelemetry Collector with configured pipelines
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: otel-collector
@@ -125,7 +125,7 @@ Extend the Collector configuration with a logs pipeline using a ConfigMap patch.
 ```yaml
 # infrastructure/otel-collector/logs-pipeline-patch.yaml
 # Kustomize patch adding a logs pipeline to the OTel Collector HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: otel-collector

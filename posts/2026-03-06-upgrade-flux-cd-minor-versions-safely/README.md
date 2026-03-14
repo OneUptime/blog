@@ -244,7 +244,7 @@ Set up monitoring to catch any issues that surface after the upgrade.
 ```yaml
 # alert.yaml
 # Configure alerts for reconciliation failures after upgrade
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: post-upgrade-monitor
@@ -266,7 +266,7 @@ spec:
     name: slack-provider
 ---
 # alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -284,7 +284,7 @@ Minor versions may introduce new API versions. Update your resources to use the 
 
 ```yaml
 # Before: using older API version
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: bitnami

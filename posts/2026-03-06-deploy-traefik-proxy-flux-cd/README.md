@@ -537,7 +537,7 @@ spec:
 
 ```yaml
 # clusters/production/monitoring/traefik-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: traefik-alerts

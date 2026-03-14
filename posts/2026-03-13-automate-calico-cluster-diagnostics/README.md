@@ -39,13 +39,13 @@ calicoctl ipam show --show-blocks > "${BUNDLE}/ipam-blocks.txt" 2>/dev/null || t
 calicoctl ipam check > "${BUNDLE}/ipam-check.txt" 2>/dev/null || true
 
 # Component logs
-kubectl logs -n calico-system -l app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=200 --prefix=true > "${BUNDLE}/calico-node.log"
-kubectl logs -n calico-system -l app=calico-typha \
+kubectl logs -n calico-system -l k8s-app=calico-typha \
   --tail=200 --prefix=true > "${BUNDLE}/calico-typha.log"
-kubectl logs -n calico-system -l app=calico-kube-controllers \
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers \
   --tail=100 > "${BUNDLE}/calico-kube-controllers.log"
-kubectl logs -n tigera-operator -l app=tigera-operator \
+kubectl logs -n tigera-operator -l k8s-app=tigera-operator \
   --tail=100 > "${BUNDLE}/tigera-operator.log"
 
 tar -czf "${BUNDLE}.tar.gz" "${BUNDLE}/"

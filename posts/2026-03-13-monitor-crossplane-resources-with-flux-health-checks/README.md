@@ -91,7 +91,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-infrastructure
@@ -119,7 +119,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/notifications/infrastructure-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: crossplane-health-alert
@@ -149,7 +149,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/notifications/provider-health-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: crossplane-provider-alert

@@ -126,7 +126,7 @@ Incident: Calico policy propagation failure
 Severity: P1 (if new policies are not taking effect)
 
 Investigation steps:
-1. kubectl get pods -n calico-system -l app=calico-typha
+1. kubectl get pods -n calico-system -l k8s-app=calico-typha
 2. kubectl logs -n calico-system deployment/calico-typha | tail -50
 3. Check typha_connections_active metric
 4. Verify TLS certificate validity

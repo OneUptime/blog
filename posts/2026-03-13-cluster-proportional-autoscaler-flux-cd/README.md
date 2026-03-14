@@ -31,7 +31,7 @@ spec:
   interval: 1h
   url: https://kubernetes-sigs.github.io/cluster-proportional-autoscaler
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: coredns-autoscaler

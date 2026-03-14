@@ -362,7 +362,7 @@ Set up alerts for the Weave GitOps Dashboard itself:
 ```yaml
 # weave-gitops-alert.yaml
 # Alert configuration to notify when the dashboard has issues
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: weave-gitops-alert

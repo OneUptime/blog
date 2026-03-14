@@ -35,7 +35,7 @@ These events are normal in dynamic environments but can flood notification chann
 If you have not yet created a Provider, here is a basic Slack example that your Alert will reference:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -71,7 +71,7 @@ kubectl apply -f secret.yaml
 To receive alerts exclusively for `ProgressingWithRetry` events, configure the Alert resource with the `inclusionList` field using a regex pattern that matches this reason:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: progressing-retry-alerts
@@ -98,7 +98,7 @@ In this configuration, the `inclusionList` field accepts a list of regex pattern
 In many production environments, the opposite approach is more useful. You want all alerts except the noisy retry events. Use the `exclusionList` field for this:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-except-retry-alerts
@@ -125,7 +125,7 @@ This configuration forwards every event to Slack unless the event message or rea
 You can further refine your alerts by combining the reason filter with severity levels. For example, to only see error-level events that are not retries:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: errors-no-retry
@@ -150,7 +150,7 @@ Setting `eventSeverity` to `error` limits the alert to error events only. Combin
 Rather than monitoring all resources, you can narrow the scope to specific event sources:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: specific-resource-retry-alert

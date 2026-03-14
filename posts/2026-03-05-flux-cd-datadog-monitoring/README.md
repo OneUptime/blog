@@ -196,7 +196,7 @@ Additional monitors to configure:
 In addition to metrics, send Flux events to Datadog for correlation:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: datadog-provider
@@ -207,7 +207,7 @@ spec:
   secretRef:
     name: datadog-api-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: datadog-events

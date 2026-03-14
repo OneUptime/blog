@@ -135,13 +135,13 @@ kubectl patch deployment calico-typha -n calico-system --patch '{
 
 ```bash
 # Check topology spread
-kubectl get pods -n calico-system -l app=calico-typha -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone'
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone'
 
 # Check PDB
 kubectl get pdb calico-typha-pdb -n calico-system
 
 # Check connection balance across replicas
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   COUNT=$(kubectl exec -n calico-system $pod -- wget -qO- http://localhost:9093/metrics | grep typha_connections_active | awk '{print $2}')
   echo "$pod: $COUNT connections"
 done

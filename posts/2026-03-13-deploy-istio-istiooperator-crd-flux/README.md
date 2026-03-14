@@ -50,7 +50,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/istio/helmrelease-base.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
@@ -70,7 +70,7 @@ spec:
     defaultRevision: default
 ---
 # clusters/my-cluster/istio/helmrelease-istiod.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
@@ -113,7 +113,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/istio/helmrelease-gateway.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-ingressgateway

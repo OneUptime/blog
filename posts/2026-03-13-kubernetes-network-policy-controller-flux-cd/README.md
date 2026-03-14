@@ -34,7 +34,7 @@ spec:
   interval: 1h
   url: https://helm.cilium.io/
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium
@@ -85,7 +85,7 @@ spec:
   interval: 1h
   url: https://docs.tigera.io/calico/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: calico

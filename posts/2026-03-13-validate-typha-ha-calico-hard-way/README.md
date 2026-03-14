@@ -17,7 +17,7 @@ Validating Typha HA confirms that the redundancy configuration actually provides
 Confirm all Typha replicas are on different nodes.
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha -o wide | awk '{print $7}' | sort | uniq -d
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide | awk '{print $7}' | sort | uniq -d
 ```
 
 If this command produces output, two Typha replicas are on the same node — anti-affinity is not working correctly. Expected output: empty (no duplicates).
@@ -25,7 +25,7 @@ If this command produces output, two Typha replicas are on the same node — ant
 ## Step 2: Validate Zone Distribution (Multi-Zone Clusters)
 
 ```bash
-kubectl get pods -n calico-system -l app=calico-typha -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}' | \
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeName}{"\n"}{end}' | \
   while read pod node; do
     zone=$(kubectl get node $node -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
     echo "$pod -> $node -> $zone"
@@ -41,7 +41,7 @@ NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 TYPHA_REPLICAS=$(kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.replicas}')
 EXPECTED_PER_REPLICA=$((NODE_COUNT / TYPHA_REPLICAS))
 
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   CONNECTIONS=$(kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null | \
     grep typha_connections_active | awk '{print $2}')
@@ -69,7 +69,7 @@ spec:
 EOF
 
 # Delete one Typha pod (simulate failure)
-TYPHA_POD=$(kubectl get pods -n calico-system -l app=calico-typha -o name | head -1)
+TYPHA_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1)
 kubectl delete $TYPHA_POD -n calico-system &
 
 # Immediately apply a new policy
@@ -100,7 +100,7 @@ kubectl delete networkpolicy ha-validation-baseline ha-validation-during-failure
 During simulated maintenance (node drain), confirm PDB prevents Typha from going to zero replicas.
 
 ```bash
-NODE=$(kubectl get pods -n calico-system -l app=calico-typha -o jsonpath='{.items[0].spec.nodeName}')
+NODE=$(kubectl get pods -n calico-system -l k8s-app=calico-typha -o jsonpath='{.items[0].spec.nodeName}')
 
 # Attempt to drain the node — this should be blocked by PDB if it would violate minAvailable
 kubectl drain $NODE --ignore-daemonsets --delete-emptydir-data --dry-run | grep typha
@@ -116,13 +116,13 @@ After deleting a Typha pod, measure how long it takes for Felix agents to reconn
 START=$(date +%s)
 
 # Delete a Typha pod
-kubectl delete pod -n calico-system $(kubectl get pods -n calico-system -l app=calico-typha -o name | head -1 | sed 's|pod/||')
+kubectl delete pod -n calico-system $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1 | sed 's|pod/||')
 
 # Wait until all expected connections are restored
 TARGET=$(($(kubectl get nodes --no-headers | wc -l) * 9 / 10))
 while true; do
   TOTAL=0
-  for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+  for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
     COUNT=$(kubectl exec -n calico-system $pod -- wget -qO- http://localhost:9093/metrics 2>/dev/null | grep typha_connections_active | awk '{print $2}')
     TOTAL=$((TOTAL + COUNT))
   done

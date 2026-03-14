@@ -29,7 +29,7 @@ Enable the Grafana sidecar that watches for ConfigMaps containing data source pr
 
 ```yaml
 # grafana/helm-release.yaml - Grafana HelmRelease with datasource sidecar enabled
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana

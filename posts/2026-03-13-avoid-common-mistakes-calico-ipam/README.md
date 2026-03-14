@@ -27,10 +27,10 @@ The IPAM system tracks allocations in the Calico datastore (Kubernetes CRDs or e
 calicoctl ipam show --show-blocks
 
 # Check IP pool utilization
-calicoctl ipam show --summary
+calicoctl ipam show --show-configuration
 
 # View node block assignments
-kubectl get ippamhandles -A
+kubectl get ipamhandles -A
 
 # Check for leaked allocations
 calicoctl ipam check
@@ -71,13 +71,10 @@ graph TB
 
 ```bash
 # Run IPAM consistency check
-calicoctl ipam check --output=report
-
-# List all allocated IPs
-calicoctl ipam show --ip=all
+calicoctl ipam check -o ipam-report.json
 
 # Check for orphaned allocations
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 ```
 
 ## Conclusion

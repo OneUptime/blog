@@ -107,7 +107,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
 EOF
 ```
 

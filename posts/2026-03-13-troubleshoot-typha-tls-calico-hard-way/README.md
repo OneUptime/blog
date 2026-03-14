@@ -16,7 +16,7 @@ Typha TLS failures are the most common cause of Felix-to-Typha connectivity issu
 
 ```
 Felix cannot connect to Typha
-  ├─ Is Typha pod running? → kubectl get pods -n calico-system -l app=calico-typha
+  ├─ Is Typha pod running? → kubectl get pods -n calico-system -l k8s-app=calico-typha
   ├─ Is the Typha service endpoint populated? → kubectl get endpoints calico-typha -n calico-system
   └─ TLS investigation:
        ├─ Are certificates expired?
@@ -111,7 +111,7 @@ kubectl get deployment calico-typha -n calico-system -o yaml | grep TYPHA_CLIENT
 **Symptom:** Typha starts but logs show it is using a self-generated certificate.
 
 ```bash
-kubectl describe pod -n calico-system -l app=calico-typha | grep -A10 "Volumes:"
+kubectl describe pod -n calico-system -l k8s-app=calico-typha | grep -A10 "Volumes:"
 ```
 
 If `calico-typha-tls` is not listed in volumes, update the Deployment to mount the Secret.

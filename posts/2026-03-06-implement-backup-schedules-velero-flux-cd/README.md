@@ -371,7 +371,7 @@ Configure Flux CD notifications for backup-related events.
 ```yaml
 # clusters/production/notifications/backup-alerts.yaml
 # Alert configuration for backup events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: backup-slack
@@ -382,7 +382,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: velero-alerts

@@ -38,7 +38,7 @@ An unfiltered alphabetical policy would select `v1.2.0`, but if someone pushes a
 The most reliable approach is to use a positive match pattern that only allows tags matching your expected format. This implicitly ignores everything else.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -61,7 +61,7 @@ This pattern only matches tags that start with `v`, followed by exactly three do
 If your tags have varied formats but you want to exclude tags with certain prefixes, use a negative lookahead:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -84,7 +84,7 @@ The negative lookahead assertions `(?!debug-)`, `(?!test-)`, and `(?!nightly-)` 
 The `latest` tag is a common source of problems. To exclude it specifically:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -107,7 +107,7 @@ The `(?!latest$)` assertion ensures the entire tag `latest` is excluded. Combine
 To exclude pre-release versions like `v1.2.0-rc.1` or `v1.2.0-beta.2`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -130,7 +130,7 @@ By anchoring the pattern with `$` right after the three-part version number, any
 To ignore tags ending in `-dirty` or `-snapshot`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -151,7 +151,7 @@ spec:
 For complex scenarios, you can chain multiple negative lookaheads:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

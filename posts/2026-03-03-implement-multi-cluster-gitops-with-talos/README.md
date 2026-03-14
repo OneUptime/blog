@@ -142,7 +142,7 @@ resources:
 
 ```yaml
 # infrastructure/base/monitoring/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -174,7 +174,7 @@ patches:
       kind: HelmRelease
       name: kube-prometheus-stack
     patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v2beta2
+      apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       metadata:
         name: kube-prometheus-stack
@@ -292,7 +292,7 @@ For automated image promotion, Flux's Image Automation Controller can watch cont
 
 ```yaml
 # image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-server
@@ -303,7 +303,7 @@ spec:
     semver:
       range: ">=2.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: api-server

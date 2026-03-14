@@ -442,7 +442,7 @@ Set up deployment notifications.
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -454,7 +454,7 @@ spec:
     name: slack-webhook-url
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: scaleway-alerts

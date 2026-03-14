@@ -22,7 +22,7 @@ set -euo pipefail
 BUNDLE_DIR="calico-node-diags-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${BUNDLE_DIR}"
 
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
 
   NODE=$(kubectl get pod -n calico-system "${pod}" \
@@ -64,7 +64,7 @@ TOTAL=0
 HEALTHY=0
 ISSUES=0
 
-for pod in $(kubectl get pods -n calico-system -l app=calico-node \
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[*].metadata.name}'); do
 
   NODE=$(kubectl get pod -n calico-system "${pod}" \

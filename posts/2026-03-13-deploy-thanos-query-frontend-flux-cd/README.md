@@ -27,7 +27,7 @@ A shared Memcached cache allows multiple Query Frontend replicas to share result
 
 ```yaml
 # clusters/my-cluster/thanos/memcached-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: thanos-memcached
@@ -56,7 +56,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/thanos/query-frontend-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: thanos-query-frontend

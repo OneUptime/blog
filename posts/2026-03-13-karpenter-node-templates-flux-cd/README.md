@@ -43,7 +43,7 @@ spec:
 
 ```yaml
 # karpenter-helmrelease.yaml - Deploy Karpenter via Flux HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: karpenter

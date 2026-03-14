@@ -26,7 +26,7 @@ This guide shows you how to configure custom Git author names for Flux image aut
 The author name is configured in the `commit.author` section of the ImageUpdateAutomation spec:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -69,7 +69,7 @@ The author name should clearly communicate that the commit is automated. Common 
 For clusters with multiple environments, you can use different author names to distinguish which environment triggered the commit:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-updates
@@ -94,7 +94,7 @@ spec:
     path: ./clusters/staging
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates
@@ -189,7 +189,7 @@ Make sure the GPG key was generated with the same email address (`flux@example.c
 When you have multiple ImageUpdateAutomation resources, each can have its own author:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: app-updates
@@ -203,7 +203,7 @@ spec:
       messageTemplate: "chore: update app images"
   # ... rest of spec
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: infra-updates

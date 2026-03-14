@@ -381,7 +381,7 @@ spec:
   groups:
     - name: argocd
       rules:
-        - alert: ArgoCD-AppOutOfSync
+        - alert: ArgoCDAppOutOfSync
           expr: argocd_app_info{sync_status="OutOfSync"} == 1
           for: 30m
           labels:
@@ -389,7 +389,7 @@ spec:
           annotations:
             summary: "Application {{ $labels.name }} has been OutOfSync for 30 minutes"
 
-        - alert: ArgoCD-AppUnhealthy
+        - alert: ArgoCDAppUnhealthy
           expr: argocd_app_info{health_status!="Healthy"} == 1
           for: 15m
           labels:
@@ -397,7 +397,7 @@ spec:
           annotations:
             summary: "Application {{ $labels.name }} is unhealthy"
 
-        - alert: ArgoCD-HighMemory
+        - alert: ArgoCDHighMemory
           expr: container_memory_working_set_bytes{namespace="argocd"} > 2e9
           for: 5m
           labels:

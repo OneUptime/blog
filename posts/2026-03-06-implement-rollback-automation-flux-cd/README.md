@@ -235,7 +235,7 @@ Get immediately notified when a rollback occurs.
 
 ```yaml
 # Notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-rollbacks
@@ -247,7 +247,7 @@ spec:
     name: slack-webhook
 ---
 # Alert on rollback events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rollback-alerts

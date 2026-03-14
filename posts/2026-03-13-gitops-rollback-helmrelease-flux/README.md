@@ -29,7 +29,7 @@ The `upgrade.remediation` and `install.remediation` sections of a HelmRelease de
 
 ```yaml
 # apps/production/my-app/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -170,7 +170,7 @@ Configure Flux alerting to notify your team when a HelmRelease fails or rolls ba
 
 ```yaml
 # clusters/production/alerts/helmrelease-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helmrelease-failures

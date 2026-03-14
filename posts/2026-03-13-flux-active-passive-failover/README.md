@@ -164,7 +164,7 @@ echo "==> Monitor: flux get all -A --context $STANDBY_CONTEXT"
 
 ```yaml
 # Flux alert for standby drift detection
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: standby-drift-alert

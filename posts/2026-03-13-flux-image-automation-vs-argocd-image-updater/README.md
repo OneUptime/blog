@@ -26,7 +26,7 @@ Flux CD requires three resources for image automation:
 
 ```yaml
 # 1. ImageRepository: polls the container registry
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -38,7 +38,7 @@ spec:
     name: ghcr-credentials
 ---
 # 2. ImagePolicy: defines which tags to track
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -53,7 +53,7 @@ spec:
       range: ">=1.0.0"
 ---
 # 3. ImageUpdateAutomation: commits updated tags to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp

@@ -79,7 +79,7 @@ ArgoCD's application controller maintains watches on all managed resources. When
 
 ```yaml
 # Alert on reconciliation failures (which indicate drift that couldn't be fixed)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-alert

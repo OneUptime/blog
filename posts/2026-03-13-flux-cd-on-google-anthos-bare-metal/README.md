@@ -98,7 +98,7 @@ metadata:
 
 ```yaml
 # clusters/anthos-bare-metal/flux-system/artifact-registry-imagerepository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -128,7 +128,7 @@ spec:
 
 ```yaml
 # clusters/anthos-bare-metal/apps/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp

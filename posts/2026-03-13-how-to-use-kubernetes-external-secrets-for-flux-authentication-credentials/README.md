@@ -392,7 +392,7 @@ kubectl get externalsecret -n flux-system flux-git-credentials \
 Create a Flux alert to notify you if credential syncing fails.
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: external-secrets-alert

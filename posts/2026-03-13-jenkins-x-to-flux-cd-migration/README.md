@@ -99,7 +99,7 @@ spec:
   interval: 1h
   url: https://charts.my-org.com
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

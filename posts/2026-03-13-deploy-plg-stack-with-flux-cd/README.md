@@ -53,7 +53,7 @@ Deploy Loki in single-binary mode suitable for small to medium clusters. For pro
 
 ```yaml
 # infrastructure/logging/loki.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: loki
@@ -100,7 +100,7 @@ Promtail is deployed as a DaemonSet and automatically discovers pod logs using K
 
 ```yaml
 # infrastructure/logging/promtail.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: promtail
@@ -149,7 +149,7 @@ Pre-configure the Loki datasource so Grafana is ready to query logs immediately 
 
 ```yaml
 # infrastructure/logging/grafana.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana

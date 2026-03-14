@@ -283,7 +283,7 @@ Configure Flux to notify GitHub about deployment status:
 
 ```yaml
 # clusters/production/github-notification.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -296,7 +296,7 @@ spec:
     name: github-token
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-deploy-status

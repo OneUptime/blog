@@ -28,7 +28,7 @@ Operationalizing Calico troubleshooting commands means embedding them into team 
 3. `calicoctl get felixconfiguration -o yaml | grep logSeverity`
    → Is Debug logging enabled? (If yes, revert immediately)
 
-4. `kubectl logs -n calico-system -l app=calico-node -c calico-node --tail=30 | grep -i error`
+4. `kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=30 | grep -i error`
    → Any Felix errors related to the symptom?
 
 5. `calicoctl ipam show`

@@ -82,7 +82,7 @@ Create an OCIRepository resource that uses keyless verification by specifying th
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-keyless.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -105,7 +105,7 @@ For more flexible identity matching, use regular expressions:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-keyless-regexp.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-flexible
@@ -128,7 +128,7 @@ Verify Flux's own controller images using keyless verification:
 
 ```yaml
 # clusters/my-cluster/flux-system/verify-flux.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: flux-manifests
@@ -151,7 +151,7 @@ If your images may be signed by different CI/CD systems, configure multiple iden
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-multi-identity.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-multi

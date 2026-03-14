@@ -79,7 +79,7 @@ Check that Felix has programmed the masquerade rules for outbound traffic.
 ```bash
 # Find calico-node on the test pod's node
 POD_NODE=$(kubectl get pod connectivity-test -o jsonpath='{.spec.nodeName}')
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${POD_NODE} -o name | head -1)
 
 # Check NAT masquerade rules are in iptables

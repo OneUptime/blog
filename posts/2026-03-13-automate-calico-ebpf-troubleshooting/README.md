@@ -53,7 +53,7 @@ collect_component "nodes" \
 
 # 2. eBPF state from each node
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  POD=$(kubectl get pod -n calico-system -l app=calico-node \
+  POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=${node} \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
@@ -139,7 +139,7 @@ TOTAL_NODES=$(kubectl get nodes --no-headers | wc -l)
 EBPF_NODES=0
 
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  POD=$(kubectl get pod -n calico-system -l app=calico-node \
+  POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=${node} \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 

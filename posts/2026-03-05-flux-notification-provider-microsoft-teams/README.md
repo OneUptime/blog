@@ -47,7 +47,7 @@ Define a Provider resource that points to Microsoft Teams.
 ```yaml
 # provider-msteams.yaml
 # Configures Flux to send notifications to Microsoft Teams
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: msteams-provider
@@ -75,7 +75,7 @@ Create an Alert that specifies which events should be forwarded to Teams.
 ```yaml
 # alert-msteams.yaml
 # Routes Flux events to the Microsoft Teams provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: msteams-alert
@@ -138,7 +138,7 @@ graph LR
 To receive only error notifications in Teams:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: msteams-errors
@@ -160,7 +160,7 @@ spec:
 Rather than watching all resources, you can target specific ones:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: msteams-production
@@ -195,7 +195,7 @@ You can create multiple Providers pointing to different Teams channels and route
 
 ```yaml
 # Provider for the development team channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: msteams-dev
@@ -206,7 +206,7 @@ spec:
     name: msteams-dev-webhook
 ---
 # Provider for the operations team channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: msteams-ops

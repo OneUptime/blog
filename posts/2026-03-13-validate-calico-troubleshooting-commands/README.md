@@ -25,7 +25,7 @@ calicoctl version
 # If "Cluster Calico Version" is different or missing:
 # calicoctl version mismatch - download matching version
 CALICO_VERSION=$(kubectl get pods -n calico-system \
-  -l app=calico-node -o jsonpath='{.items[0].spec.containers[0].image}' | \
+  -l k8s-app=calico-node -o jsonpath='{.items[0].spec.containers[0].image}' | \
   cut -d: -f2)
 echo "Cluster Calico version: ${CALICO_VERSION}"
 ```
@@ -70,7 +70,7 @@ CONFIGURED_PEERS=$(calicoctl get bgppeer --no-headers 2>/dev/null | wc -l)
 echo "Configured BGPPeer resources: ${CONFIGURED_PEERS}"
 
 # BGP state shown in calico-node pod
-FIRST_NODE=$(kubectl get pods -n calico-system -l app=calico-node \
+FIRST_NODE=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${FIRST_NODE}" -c calico-node -- \
   calicoctl node status 2>/dev/null | grep -i "peer"

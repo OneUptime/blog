@@ -24,7 +24,7 @@ For recommendation-only mode, you only need the VPA Recommender (not the Updater
 
 ```yaml
 # clusters/production/infrastructure/vpa-recommender.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa

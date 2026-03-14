@@ -26,7 +26,7 @@ Set up separate providers for general and critical notification channels.
 
 ```yaml
 # Provider for general informational notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-general
@@ -38,7 +38,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for critical error notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-critical
@@ -50,7 +50,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for paging on critical failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-oncall
@@ -77,7 +77,7 @@ Create separate alerts for info and error severity levels.
 
 ```yaml
 # Info-level alert to general Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: info-severity-alert
@@ -106,7 +106,7 @@ spec:
     - ".*waiting for.*"
 ---
 # Error-level alert to critical Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: error-severity-alert
@@ -128,7 +128,7 @@ spec:
       namespace: flux-system
 ---
 # Error-level alert to PagerDuty for on-call paging
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pagerduty-error-alert
@@ -162,7 +162,7 @@ Vary severity routing based on the environment.
 
 ```yaml
 # Development: info-level to dev channel (low priority)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dev-info-alert
@@ -182,7 +182,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Staging: error-only to staging channel (medium priority)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-error-alert
@@ -200,7 +200,7 @@ spec:
       namespace: staging
 ---
 # Production: error to critical channel AND PagerDuty (high priority)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-error-slack
@@ -217,7 +217,7 @@ spec:
       name: "*"
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-error-pagerduty
@@ -241,7 +241,7 @@ Create a three-tier routing strategy using info, filtered info, and error alerts
 
 ```yaml
 # Tier 1: All events to audit log (webhook)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: audit-all-events
@@ -262,7 +262,7 @@ spec:
       namespace: flux-system
 ---
 # Tier 2: Meaningful info events to team channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-info-events
@@ -286,7 +286,7 @@ spec:
     - ".*dependency.*"
 ---
 # Tier 3: Errors to critical channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-errors

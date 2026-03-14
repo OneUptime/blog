@@ -67,7 +67,7 @@ eksctl create iamserviceaccount \
 
 ```yaml
 # infrastructure/logging/fluent-bit.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluent-bit

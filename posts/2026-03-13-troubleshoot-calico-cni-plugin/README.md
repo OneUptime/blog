@@ -82,7 +82,7 @@ graph TD
 
 ```bash
 # Check for stuck IPAM handles
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 
 # Release leaked allocations
 calicoctl ipam release --ip=192.168.0.55

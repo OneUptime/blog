@@ -350,7 +350,7 @@ Set up Flux notifications to receive alerts when deployments fail or succeed:
 
 ```yaml
 # clusters/k0s-cluster/apps/notification-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -361,7 +361,7 @@ spec:
   secretRef:
     name: github-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: k0s-alerts

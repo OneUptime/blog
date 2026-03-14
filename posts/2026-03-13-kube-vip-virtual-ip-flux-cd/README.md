@@ -40,7 +40,7 @@ spec:
   interval: 1h
   url: https://kube-vip.io/helm-charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-vip-cloud-provider

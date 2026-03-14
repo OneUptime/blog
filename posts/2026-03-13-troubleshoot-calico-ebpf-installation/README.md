@@ -48,7 +48,7 @@ kubectl get pods -n calico-system 2>/dev/null || echo "calico-system namespace n
 
 echo ""
 echo "6. BPF Programs on First Available Node"
-POD=$(kubectl get pod -n calico-system -l app=calico-node \
+POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 if [[ -n "${POD}" ]]; then
   kubectl exec -n calico-system "${POD}" -c calico-node -- \

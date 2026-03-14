@@ -191,7 +191,7 @@ resource "kubernetes_manifest" "app_source" {
 # Create a HelmRepository source for third-party charts
 resource "kubernetes_manifest" "helm_repo" {
   manifest = {
-    apiVersion = "source.toolkit.fluxcd.io/v1beta2"
+    apiVersion = "source.toolkit.fluxcd.io/v1"
     kind       = "HelmRepository"
 
     metadata = {
@@ -280,7 +280,7 @@ Use Terraform to create HelmRelease resources that Flux will manage.
 # Create a HelmRelease for an application
 resource "kubernetes_manifest" "nginx_release" {
   manifest = {
-    apiVersion = "helm.toolkit.fluxcd.io/v2beta2"
+    apiVersion = "helm.toolkit.fluxcd.io/v2"
     kind       = "HelmRelease"
 
     metadata = {
@@ -370,7 +370,7 @@ Configure Flux to send notifications about deployment status.
 # Create a notification provider for Slack
 resource "kubernetes_manifest" "slack_provider" {
   manifest = {
-    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
+    apiVersion = "notification.toolkit.fluxcd.io/v1"
     kind       = "Provider"
 
     metadata = {
@@ -391,7 +391,7 @@ resource "kubernetes_manifest" "slack_provider" {
 # Create an alert for Flux events
 resource "kubernetes_manifest" "flux_alert" {
   manifest = {
-    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
+    apiVersion = "notification.toolkit.fluxcd.io/v1"
     kind       = "Alert"
 
     metadata = {

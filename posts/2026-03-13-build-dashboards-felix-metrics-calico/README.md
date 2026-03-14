@@ -19,12 +19,12 @@ Felix metric dashboards provide operational visibility into the Calico data plan
 kubectl patch felixconfiguration default   --type=merge   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
 # Test Felix metrics endpoint
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node   -o jsonpath='{.items[0].metadata.name}')
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | head -30
 
 # Key Felix metrics to check:
-kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | grep -E   "^felix_int_dataplane_failures|^felix_calc_graph|^felix_ipam_blocks"
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http://localhost:9091/metrics | grep -E   "^felix_int_dataplane_failures|^felix_calc_graph"
 ```
 
 ## ServiceMonitor for Felix
@@ -38,7 +38,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-node
+      k8s-app: calico-node
   endpoints:
     - port: http-metrics
       path: /metrics

@@ -146,7 +146,7 @@ spec:
   interval: 1h
   url: https://kyverno.github.io/kyverno/
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
@@ -189,7 +189,7 @@ flux check
 ```bash
 # Install Capacitor (open-source Flux UI)
 cat > clusters/production/infrastructure/capacitor.yaml << 'EOF'
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: capacitor

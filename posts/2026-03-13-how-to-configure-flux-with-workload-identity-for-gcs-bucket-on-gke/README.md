@@ -85,7 +85,7 @@ kubectl rollout restart deployment/source-controller -n flux-system
 Create a `Bucket` resource that points to your GCS bucket. Set the provider to `gcp` to use Workload Identity:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-manifests

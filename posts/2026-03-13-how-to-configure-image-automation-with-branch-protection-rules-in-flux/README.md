@@ -37,7 +37,7 @@ Branch protection typically includes one or more of these requirements:
 The most compatible approach is to push image updates to a separate branch and create a pull request:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -145,7 +145,7 @@ spec:
 Then the automation can push directly to the protected branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -176,7 +176,7 @@ spec:
 If branch protection requires signed commits, configure GPG signing:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

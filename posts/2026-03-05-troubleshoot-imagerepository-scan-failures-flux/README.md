@@ -207,7 +207,7 @@ Set up alerts to catch scan failures early.
 ```yaml
 # alert-image-scan.yaml
 # Alert on ImageRepository scan failures via a notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-scan-failures

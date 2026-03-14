@@ -258,7 +258,7 @@ Set up alerts so the platform admin is notified when tenants approach their quot
 
 ```yaml
 # tenants/team-alpha/quota-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-quota-alert

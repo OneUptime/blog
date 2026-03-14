@@ -64,7 +64,7 @@ spec:
 The key configuration is setting both the checkout branch and push branch to the same value:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

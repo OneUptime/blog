@@ -48,7 +48,7 @@ Configure Flux alerting to forward events to a webhook that writes them to a dat
 
 ```yaml
 # clusters/production/reporting/report-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: deployment-reporter
@@ -59,7 +59,7 @@ spec:
   secretRef:
     name: reporter-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-deployments

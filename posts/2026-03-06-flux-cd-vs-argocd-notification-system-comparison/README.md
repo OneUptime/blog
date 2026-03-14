@@ -67,7 +67,7 @@ Flux CD uses CRDs to define notification providers and alert rules.
 
 ```yaml
 # Step 1: Define the notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-engineering
@@ -92,7 +92,7 @@ stringData:
   address: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ---
 # Step 2: Define an alert that references the provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -128,7 +128,7 @@ Multiple providers for different severity levels:
 
 ```yaml
 # Provider for critical alerts via PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-oncall
@@ -140,7 +140,7 @@ spec:
     name: pagerduty-token
 ---
 # Alert for errors only
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-alerts
@@ -367,7 +367,7 @@ data:
 ### Flux CD: Teams Provider
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams-notifications
@@ -378,7 +378,7 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: teams-alerts
@@ -432,7 +432,7 @@ data:
 
 ```yaml
 # Send notifications to any HTTP endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: custom-webhook

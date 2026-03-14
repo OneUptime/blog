@@ -39,7 +39,7 @@ spec:
 
 ```yaml
 # infrastructure/databases/tidb/operator-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tidb-operator-crds
@@ -58,7 +58,7 @@ spec:
 
 ```yaml
 # infrastructure/databases/tidb/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tidb-operator

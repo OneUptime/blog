@@ -59,9 +59,9 @@ kubectl logs -n calico-system -l app=whisker | tail -20
 
 ```bash
 # Port-forward to access Whisker locally
-kubectl port-forward -n calico-system svc/whisker 8080:8080
+kubectl port-forward -n calico-system svc/whisker 8081:8081
 
-# Open in browser: http://localhost:8080
+# Open in browser: http://localhost:8081
 ```
 
 ## Whisker Architecture

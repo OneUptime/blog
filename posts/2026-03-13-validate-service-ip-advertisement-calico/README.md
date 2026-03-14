@@ -24,12 +24,12 @@ A successfully advertised service IP route on an external router does not guaran
 
 ```bash
 # Check what service CIDRs are being advertised
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route | grep "10.96"
 
 # Verify from each node
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
-  POD=$(kubectl get pod -n calico-system -l app=calico-node \
+  POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=${node} -o name | head -1)
   echo "=== $node ==="
   kubectl exec -n calico-system ${POD} -- birdcl show route | grep "10.96"

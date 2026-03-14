@@ -308,7 +308,7 @@ spec:
 ```yaml
 # clusters/production/notifications/dependency-alerts.yaml
 # Notify the team about dependency update events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: deps-slack
@@ -319,7 +319,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-update-alerts

@@ -329,7 +329,7 @@ When a migration fails, the deployment should be blocked and alerts should fire.
 
 ```yaml
 # clusters/production/notifications/migration-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: migration-failures
@@ -343,7 +343,7 @@ spec:
       name: "my-app-migration"
   summary: "Database migration failed. Deployment is blocked."
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack

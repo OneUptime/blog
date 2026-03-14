@@ -27,7 +27,7 @@ This guide shows you how to set up a complete workflow where Flux detects new im
 First, configure Flux to push image updates to a dedicated branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -177,7 +177,7 @@ For environments where you want automatic merging after checks pass, enable auto
 Create separate automation resources and branches per environment:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-updates

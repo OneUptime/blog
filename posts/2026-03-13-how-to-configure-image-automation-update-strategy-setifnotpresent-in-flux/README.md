@@ -31,7 +31,7 @@ Flux supports two update strategies:
 ## Configuring SetIfNotPresent
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -157,7 +157,7 @@ You can also switch from `Setters` to `SetIfNotPresent` to freeze current versio
 A pattern where staging uses continuous updates and production uses controlled initialization:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-updates
@@ -182,7 +182,7 @@ spec:
     path: ./clusters/staging
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-init

@@ -54,7 +54,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/hydra/postgresql-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: hydra-postgresql
@@ -85,7 +85,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/hydra/hydra-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: hydra
@@ -214,7 +214,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: hydra
       namespace: hydra

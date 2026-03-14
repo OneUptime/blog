@@ -132,7 +132,7 @@ spec:
 
 ```yaml
 # Track the ML model OCI artifact with Flux
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: defect-detector-model

@@ -22,7 +22,7 @@ Automating IPAM release workflows requires a careful approach: the detection and
 echo "=== Calico IPAM Leak Detection $(date) ==="
 
 # Get all allocated IPs from IPAM
-ALLOCATED_IPS=$(calicoctl ipam show --show-all-ips 2>/dev/null | \
+ALLOCATED_IPS=$(calicoctl ipam check --show-all-ips 2>/dev/null | \
   grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u)
 
 # Get all pod IPs currently running

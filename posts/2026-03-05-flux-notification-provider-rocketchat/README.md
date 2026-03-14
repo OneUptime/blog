@@ -52,7 +52,7 @@ Define a Provider resource for Rocket.Chat.
 ```yaml
 # provider-rocketchat.yaml
 # Configures Flux to send notifications to Rocket.Chat
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: rocketchat-provider
@@ -81,7 +81,7 @@ Create an Alert that defines which events to forward.
 ```yaml
 # alert-rocketchat.yaml
 # Routes Flux events to the Rocket.Chat provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rocketchat-alert
@@ -141,7 +141,7 @@ graph LR
 To reduce noise and only receive error notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rocketchat-errors
@@ -164,7 +164,7 @@ Create separate providers for different channels:
 
 ```yaml
 # Provider for production alerts
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: rocketchat-prod
@@ -176,7 +176,7 @@ spec:
     name: rocketchat-webhook-url
 ---
 # Provider for development updates
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: rocketchat-dev

@@ -103,10 +103,10 @@ flowchart TD
     A[CronJob: weekly ipam check] --> B{Consistent?}
     B -->|No| C[Alert: Slack/PagerDuty]
     B -->|Yes| D[Log: healthy]
-    E[CronJob: daily utilization] --> F{>80%?}
-    F -->|Yes| G[Alert: Warning]
-    F -->|No| H{>90%?}
-    H -->|Yes| I[Alert: Critical]
+    E[CronJob: daily utilization] --> F{>90%?}
+    F -->|Yes| G[Alert: Critical]
+    F -->|No| H{>80%?}
+    H -->|Yes| I[Alert: Warning]
     H -->|No| J[Log: OK]
 ```
 

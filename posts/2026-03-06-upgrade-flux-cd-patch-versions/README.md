@@ -260,7 +260,7 @@ Set up notifications to be alerted when new patch versions are available.
 ```yaml
 # patch-update-alert.yaml
 # Alert when Flux controllers are updated
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-patch-updates
@@ -275,7 +275,7 @@ spec:
   providerRef:
     name: slack-provider
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

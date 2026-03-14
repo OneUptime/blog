@@ -214,7 +214,7 @@ If you use Flux Image Automation, configure it to scan the cached ECR repository
 
 ```yaml
 # clusters/my-cluster/image-automation/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx-cached
@@ -227,7 +227,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: nginx-cached

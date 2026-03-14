@@ -35,7 +35,7 @@ spec:
         # IPAM utilization high
         - alert: CalicoIPAMHighUtilization
           expr: |
-            (felix_ipam_blocks_used / felix_ipam_blocks_total) > 0.85
+            (_used / _total) > 0.85
           for: 10m
           annotations:
             summary: "Calico IPAM utilization above 85%"
@@ -99,7 +99,7 @@ flowchart LR
     {
       "title": "IPAM Utilization",
       "type": "gauge",
-      "targets": [{"expr": "felix_ipam_blocks_used / felix_ipam_blocks_total * 100"}],
+      "targets": [{"expr": "_used / _total * 100"}],
       "thresholds": [{"color": "green", "value": 0}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]
     }
   ]

@@ -26,7 +26,7 @@ This alert watches every GitRepository resource in the `flux-system` namespace.
 
 ```yaml
 # Alert monitoring all GitRepository events in flux-system
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitrepository-alerts
@@ -55,7 +55,7 @@ If you only want to be notified when source fetching fails, filter by error seve
 
 ```yaml
 # Alert that only triggers on GitRepository errors
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitrepository-error-alerts
@@ -77,7 +77,7 @@ When you need to track a particular repository closely, specify it by name.
 
 ```yaml
 # Alert targeting a specific GitRepository named "app-source"
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: app-source-alert
@@ -98,7 +98,7 @@ For full pipeline visibility, monitor GitRepository events alongside the Kustomi
 
 ```yaml
 # Alert covering the full GitOps pipeline from source to deployment
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitops-pipeline-alerts
@@ -124,7 +124,7 @@ Reduce noise by excluding routine events that do not require attention.
 
 ```yaml
 # Alert with exclusion rules for GitRepository events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-gitrepo-alerts
@@ -149,7 +149,7 @@ If your team uses GitRepository resources in multiple namespaces, aggregate them
 
 ```yaml
 # Alert watching GitRepository resources in multiple namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: multi-ns-gitrepo-alerts

@@ -43,7 +43,7 @@ Create a provider for GitLab commit status updates:
 
 ```yaml
 # gitlab-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-status
@@ -59,7 +59,7 @@ For self-managed GitLab instances, use your instance URL:
 
 ```yaml
 # gitlab-self-managed-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-status
@@ -83,7 +83,7 @@ Configure alerts that post to GitLab on reconciliation events:
 
 ```yaml
 # gitlab-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: mr-deployment-status
@@ -100,7 +100,7 @@ spec:
       name: "*"
       namespace: flux-system
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: mr-error-notifications
@@ -154,7 +154,7 @@ GitLab displays commit statuses in the merge request pipeline view. Configure Fl
 
 ```yaml
 # gitlab-pipeline-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-pipeline
@@ -165,7 +165,7 @@ spec:
   secretRef:
     name: gitlab-mr-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pipeline-status
@@ -189,7 +189,7 @@ For multi-environment setups, create separate providers or use event metadata to
 
 ```yaml
 # multi-env-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-mr-status
@@ -204,7 +204,7 @@ spec:
       namespace: flux-system
   summary: "[STAGING] ${message}"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-mr-status

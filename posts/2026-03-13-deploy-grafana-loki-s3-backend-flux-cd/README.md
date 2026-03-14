@@ -61,7 +61,7 @@ Configure the HelmRelease with Simple Scalable mode and S3 storage configuration
 
 ```yaml
 # clusters/my-cluster/loki/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: loki

@@ -43,7 +43,7 @@ Create a provider for Gitea commit status and comment notifications:
 
 ```yaml
 # gitea-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitea-status
@@ -102,7 +102,7 @@ Configure alerts for Gitea pull request notifications:
 
 ```yaml
 # gitea-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitea-deployment-status
@@ -121,7 +121,7 @@ spec:
   inclusionList:
     - ".*reconciliation.*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitea-error-status
@@ -175,7 +175,7 @@ If your Gitea instance is behind a reverse proxy or uses a non-standard port, ad
 
 ```yaml
 # gitea-proxy-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitea-status

@@ -52,7 +52,7 @@ Harness CD is a commercial CD platform with powerful pipeline orchestration, app
 **Flux HelmRelease equivalent**:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: your-org-charts
@@ -61,7 +61,7 @@ spec:
   interval: 10m
   url: https://charts.your-org.com
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -98,7 +98,7 @@ resources:
   - ../base
 patches:
   - patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v2beta2
+      apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       metadata:
         name: myapp
@@ -184,7 +184,7 @@ spec:
 Harness automatic rollback can be replaced with Flux HelmRelease remediation:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp

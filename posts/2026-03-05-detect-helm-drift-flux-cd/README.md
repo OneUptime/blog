@@ -191,7 +191,7 @@ Configure Flux alerts to send notifications when drift is detected:
 
 ```yaml
 # Alert provider for sending drift notifications to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -203,7 +203,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that triggers on drift detection events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-drift-alert

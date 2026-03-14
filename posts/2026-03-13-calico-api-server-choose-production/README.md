@@ -134,7 +134,7 @@ calicoctl get networkpolicies --all-namespaces
 
 # Check API server audit logs are enabled
 kubectl logs -n calico-apiserver \
-  -l app=calico-apiserver --tail=50
+  -l k8s-app=calico-apiserver --tail=50
 
 # Confirm TigeraStatus shows API server as Available
 kubectl get tigerastatus apiserver -o jsonpath='{.status.conditions}' | jq .

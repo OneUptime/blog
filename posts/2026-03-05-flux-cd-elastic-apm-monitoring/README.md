@@ -225,7 +225,7 @@ Create alerting rules in Kibana for Flux CD issues. Navigate to **Kibana > Stack
 Send Flux reconciliation events directly to Elasticsearch using the notification controller:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: elastic-provider
@@ -236,7 +236,7 @@ spec:
   secretRef:
     name: elastic-credentials
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: elastic-events

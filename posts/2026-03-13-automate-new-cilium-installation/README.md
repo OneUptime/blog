@@ -121,9 +121,9 @@ helm upgrade --install cilium cilium/cilium \
   --version "${CILIUM_VERSION}" \
   --namespace "${CILIUM_NAMESPACE}" \
   --values "${VALUES_FILE}" \
-  --wait \                           # Wait for all pods to be ready
+  --wait \
   --timeout "${WAIT_TIMEOUT}" \
-  --atomic \                         # Roll back automatically on failure
+  --atomic \
   --create-namespace
 
 echo "Cilium installed. Waiting for full readiness..."
@@ -158,7 +158,7 @@ spec:
   interval: 1h
   url: https://helm.cilium.io/
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium

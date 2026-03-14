@@ -56,10 +56,10 @@ spec:
 kubectl get pods -A -o wide | awk '{print $8}' | sort -u | head -20
 
 # Check pool utilization
-calicoctl ipam show --summary
+calicoctl ipam show --show-configuration
 
 # Validate consistency
-calicoctl ipam check --output=report
+calicoctl ipam check -o ipam-report.json
 ```
 
 ## Architecture

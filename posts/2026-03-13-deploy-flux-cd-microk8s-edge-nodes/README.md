@@ -158,7 +158,7 @@ sudo snap set microk8s refresh.timer=mon5,04:00  # Update only Monday mornings
 
 ```yaml
 # Monitor the Kubernetes version via Flux alert
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: microk8s-health
@@ -175,7 +175,7 @@ spec:
 
 ```yaml
 # Flux Provider for Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-edge-ops

@@ -90,7 +90,7 @@ Configure the HelmRelease to mount the LDAP config from the Secret and enable LD
 
 ```yaml
 # clusters/my-cluster/grafana/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana

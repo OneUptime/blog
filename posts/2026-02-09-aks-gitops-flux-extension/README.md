@@ -196,7 +196,7 @@ Create HelmRelease manifest in your repository:
 
 ```yaml
 # charts/nginx-ingress/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress
@@ -397,7 +397,7 @@ Enable notifications for sync failures:
 
 ```yaml
 # infrastructure/alerts/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -406,7 +406,7 @@ spec:
   type: msteams
   address: https://outlook.office.com/webhook/...
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-alerts

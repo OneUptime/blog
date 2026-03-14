@@ -53,7 +53,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/nexus/nexus-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nexus
@@ -131,7 +131,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: nexus
       namespace: nexus

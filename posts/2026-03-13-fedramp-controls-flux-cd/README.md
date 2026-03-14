@@ -118,7 +118,7 @@ FedRAMP requires comprehensive, tamper-evident audit logging. Configure Flux to 
 
 ```yaml
 # clusters/fedramp/monitoring/fedramp-audit.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: fedramp-audit-siem
@@ -131,7 +131,7 @@ spec:
   secretRef:
     name: siem-webhook-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: fedramp-full-audit-trail
@@ -193,7 +193,7 @@ FedRAMP requires continuous monitoring of system configuration. Configure drift 
 
 ```yaml
 # clusters/fedramp/monitoring/drift-detection.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: configuration-drift-alert

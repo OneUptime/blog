@@ -46,7 +46,7 @@ else
 fi
 
 # All calico-node images should be target version
-WRONG_VERSION_PODS=$(kubectl get pods -n calico-system -l app=calico-node \
+WRONG_VERSION_PODS=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' | \
   grep -v "${TARGET_VERSION}" | wc -l)
 if [[ "${WRONG_VERSION_PODS}" -eq 0 ]]; then
@@ -89,7 +89,7 @@ check "IP pools exist" \
   "calicoctl get ippools --no-headers | grep -q ."
 
 check "No IPAM conflicts" \
-  "calicoctl ipam check --show-problem-ips 2>&1 | grep -q 'No problems found'"
+  "calicoctl ipam check --show-all-ips 2>&1 | grep -q 'No problems found'"
 
 echo ""
 echo "=== Validation Complete: ${FAILURES} failure(s) ==="
@@ -109,7 +109,7 @@ calicoctl ipam check
 # No problems found.
 
 # If problems found:
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 # This shows which IPs are leaked or have conflicts
 # Follow up with: calicoctl ipam release <problem-ip>
 ```

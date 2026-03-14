@@ -484,7 +484,7 @@ Set up alerts specifically for post-deployment failures:
 
 ```yaml
 # clusters/production/notifications/post-deploy-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: post-deploy-failures

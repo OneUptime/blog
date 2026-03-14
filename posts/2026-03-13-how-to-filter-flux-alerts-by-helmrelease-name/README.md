@@ -31,7 +31,7 @@ The Flux Alert resource uses `spec.eventSources` to declare which resources shou
 Here is a minimal Alert that monitors only a HelmRelease named `ingress-nginx`:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: ingress-nginx-alert
@@ -52,7 +52,7 @@ This Alert sends notifications to the `slack-provider` whenever the `ingress-ngi
 To watch several HelmReleases with a single Alert, add multiple entries to the `eventSources` array:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: infra-helm-alerts
@@ -77,7 +77,7 @@ All three infrastructure HelmReleases now route their events to the same Slack c
 You can mix different Flux resource kinds in a single Alert. This is useful when a HelmRelease is deployed through a Kustomization and you want to capture events from both:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: full-stack-alert
@@ -98,7 +98,7 @@ spec:
 Helm upgrades can be noisy during normal operations. To only receive alerts when something goes wrong, set `eventSeverity` to `error`:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-errors-alert
@@ -121,7 +121,7 @@ This sends notifications only when `payment-service` or `auth-service` HelmRelea
 When the HelmRelease exists in a different namespace than the Alert, specify the namespace in the event source:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: monitoring-helm-alert
@@ -144,7 +144,7 @@ spec:
 For reference, here is a typical Slack provider setup:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider
@@ -190,7 +190,7 @@ flux reconcile helmrelease ingress-nginx -n flux-system
 A practical approach is routing HelmRelease alerts by team ownership:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: platform-team-alerts
@@ -210,7 +210,7 @@ spec:
       name: kube-prometheus-stack
       namespace: monitoring
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: backend-team-alerts

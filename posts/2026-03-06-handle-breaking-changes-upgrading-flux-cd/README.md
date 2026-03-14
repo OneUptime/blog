@@ -79,8 +79,8 @@ echo "Scanning $REPO_PATH for deprecated Flux CD fields..."
 echo "=== Deprecated API Versions ==="
 grep -rn "source.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
 grep -rn "kustomize.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
-grep -rn "helm.toolkit.fluxcd.io/v2beta1" "$REPO_PATH" --include="*.yaml"
-grep -rn "notification.toolkit.fluxcd.io/v1beta1" "$REPO_PATH" --include="*.yaml"
+grep -rn "helm.toolkit.fluxcd.io/v2" "$REPO_PATH" --include="*.yaml"
+grep -rn "notification.toolkit.fluxcd.io/v1" "$REPO_PATH" --include="*.yaml"
 
 # Check for deprecated fields
 echo "=== Deprecated Fields ==="
@@ -99,7 +99,7 @@ The most common breaking change is the graduation of API versions from beta to s
 
 ```yaml
 # BEFORE: Using deprecated v1beta2 API
-apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: my-app
@@ -156,7 +156,7 @@ spec:
 
 ```yaml
 # BEFORE: Using v2beta1 API
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx
@@ -207,7 +207,7 @@ spec:
 
 ```yaml
 # BEFORE: GitRepository with deprecated fields
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: flux-config

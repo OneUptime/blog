@@ -44,7 +44,7 @@ Define a Provider resource for Grafana.
 ```yaml
 # provider-grafana.yaml
 # Configures Flux to send annotations to Grafana dashboards
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: grafana-provider
@@ -73,7 +73,7 @@ Create an Alert that sends deployment events as Grafana annotations.
 ```yaml
 # alert-grafana.yaml
 # Sends Flux events as annotations to Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: grafana-alert
@@ -149,7 +149,7 @@ Annotations will now appear as vertical lines on all panels in the dashboard.
 For Grafana Cloud, use your Grafana Cloud instance URL:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: grafana-cloud-provider
@@ -167,7 +167,7 @@ spec:
 To only annotate failures:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: grafana-errors
@@ -193,7 +193,7 @@ If you have separate Grafana instances for different environments:
 
 ```yaml
 # Production Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: grafana-prod
@@ -205,7 +205,7 @@ spec:
     name: grafana-prod-token
 ---
 # Staging Grafana
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: grafana-staging

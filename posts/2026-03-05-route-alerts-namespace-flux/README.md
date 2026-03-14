@@ -26,7 +26,7 @@ Create separate providers for each namespace or team channel.
 
 ```yaml
 # Provider for development team notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-dev-team
@@ -38,7 +38,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for staging notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-staging-team
@@ -50,7 +50,7 @@ spec:
     name: slack-webhook
 ---
 # Provider for production notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-production-team
@@ -75,7 +75,7 @@ Create separate alerts for each namespace, routing to the appropriate provider.
 
 ```yaml
 # Alert for development namespace
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dev-namespace-alert
@@ -97,7 +97,7 @@ spec:
     - ".*is not ready$"
 ---
 # Alert for staging namespace
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-namespace-alert
@@ -119,7 +119,7 @@ spec:
     - ".*is not ready$"
 ---
 # Alert for production namespace
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-namespace-alert
@@ -154,7 +154,7 @@ In multi-tenant clusters, route alerts from team-owned namespaces to team-specif
 
 ```yaml
 # Alert for Team Alpha's namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-alert
@@ -187,7 +187,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Alert for Team Beta's namespaces
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-beta-alert
@@ -226,7 +226,7 @@ Separate infrastructure alerts from application alerts using namespace-based rou
 
 ```yaml
 # Infrastructure namespace alert
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: infra-namespace-alert
@@ -253,7 +253,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Application namespace alert
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: apps-namespace-alert

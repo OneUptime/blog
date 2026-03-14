@@ -49,7 +49,7 @@ metadata:
 
 ```yaml
 # infrastructure/logging/elasticsearch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: elasticsearch
@@ -123,7 +123,7 @@ data:
 
 ```yaml
 # infrastructure/logging/logstash.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: logstash
@@ -169,7 +169,7 @@ spec:
 
 ```yaml
 # infrastructure/logging/kibana.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kibana

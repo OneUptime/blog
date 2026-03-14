@@ -61,11 +61,11 @@ echo "Result: $?"
 ## Verification
 
 ```bash
-# Check policy hit counters
-curl -s http://localhost:9091/metrics | grep felix_denied
-
-# Review flow logs
-tail -f /var/log/calico/flow-logs/flows.log | grep "DENY"
+# Check policy hit counters (requires Felix metrics to be enabled first)
+# kubectl patch felixconfiguration default --type merge -p '{"spec":{"prometheusMetricsEnabled":true}}'
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
+  wget -qO- http://localhost:9091/metrics | grep felix_denied
 ```
 
 ## Architecture

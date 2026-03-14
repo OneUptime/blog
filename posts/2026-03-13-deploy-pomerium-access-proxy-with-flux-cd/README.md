@@ -65,7 +65,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/pomerium/pomerium-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: pomerium
@@ -190,7 +190,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: pomerium
       namespace: pomerium

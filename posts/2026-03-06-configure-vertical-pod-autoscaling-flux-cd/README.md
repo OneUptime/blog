@@ -377,7 +377,7 @@ flux get kustomizations vpa-resources
 
 ```yaml
 # clusters/my-cluster/vpa-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: vpa-alerts

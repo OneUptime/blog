@@ -422,7 +422,7 @@ Set up alerts for your Score-generated deployments:
 
 ```yaml
 # clusters/production/monitoring/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: score-workloads
@@ -443,7 +443,7 @@ spec:
 
 ```yaml
 # clusters/production/monitoring/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-notifications

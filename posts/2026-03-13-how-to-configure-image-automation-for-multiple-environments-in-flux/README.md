@@ -46,7 +46,7 @@ clusters/
 All environments share the same ImageRepository since they track the same container images:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api
@@ -55,7 +55,7 @@ spec:
   image: docker.io/myorg/api
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: web
@@ -71,7 +71,7 @@ Each environment has its own ImagePolicy with different version constraints:
 
 ```yaml
 # Development - track latest builds
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-dev
@@ -87,7 +87,7 @@ spec:
       order: asc
 ---
 # Staging - track pre-release versions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-staging
@@ -100,7 +100,7 @@ spec:
       range: ">=1.0.0-0"
 ---
 # Production - track stable releases only
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-production
@@ -116,7 +116,7 @@ spec:
 Repeat similar policies for the web service:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-dev
@@ -131,7 +131,7 @@ spec:
     numerical:
       order: asc
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-staging
@@ -143,7 +143,7 @@ spec:
     semver:
       range: ">=1.0.0-0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-production
@@ -192,7 +192,7 @@ Each environment gets its own automation with appropriate settings:
 
 ```yaml
 # Development - fast updates, direct commits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: dev-updates
@@ -218,7 +218,7 @@ spec:
     strategy: Setters
 ---
 # Staging - moderate updates, direct commits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-updates
@@ -249,7 +249,7 @@ spec:
     strategy: Setters
 ---
 # Production - reviewed updates via PR branch
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates

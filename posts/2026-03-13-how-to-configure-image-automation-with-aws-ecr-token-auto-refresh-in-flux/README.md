@@ -67,7 +67,7 @@ metadata:
 With IRSA configured, create an ImageRepository that points to your ECR repository. Use the `provider` field set to `aws` to enable automatic token refresh:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -99,7 +99,7 @@ stringData:
 Then reference the secret in your ImageRepository and set the provider to aws:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -119,7 +119,7 @@ The controller uses these credentials to call `ecr:GetAuthorizationToken` and ge
 If your images are in a different AWS account, ensure the IAM role or credentials have cross-account access. The ECR repository policy in the source account must allow the target account:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: shared-base-image
@@ -137,7 +137,7 @@ The `provider: aws` configuration handles token refresh for cross-account scenar
 Here is a full example showing the ImageRepository, ImagePolicy, and ImageUpdateAutomation working together with ECR:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -147,7 +147,7 @@ spec:
   interval: 5m
   provider: aws
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -159,7 +159,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

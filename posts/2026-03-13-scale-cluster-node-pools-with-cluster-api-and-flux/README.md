@@ -114,7 +114,7 @@ spec:
 
 ```yaml
 # apps/production-cluster/cluster-autoscaler.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler

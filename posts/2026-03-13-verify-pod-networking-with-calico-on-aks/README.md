@@ -26,7 +26,7 @@ This guide focuses on the AKS-specific verification steps for Calico policy enfo
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 All should be `Running` with no excess restarts.

@@ -31,7 +31,7 @@ Each entry in `spec.eventSources` can include a `namespace` field. When specifie
 To receive alerts for all Kustomizations in a specific namespace, use the `*` wildcard for the name:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-namespace-alert
@@ -53,7 +53,7 @@ The `name: '*'` wildcard matches all Kustomization resources in the `production`
 You can combine multiple namespace-scoped entries to monitor several namespaces:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: app-namespaces-alert
@@ -84,7 +84,7 @@ This Alert captures events from both Kustomizations and HelmReleases across the 
 A common production pattern is routing alerts from different namespaces to different notification channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-alerts
@@ -101,7 +101,7 @@ spec:
       name: '*'
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-alerts
@@ -118,7 +118,7 @@ spec:
       name: '*'
       namespace: staging
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: dev-alerts
@@ -143,7 +143,7 @@ Production errors go to PagerDuty for immediate response. Staging and developmen
 You can mix wildcard namespace entries with specifically named entries:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: targeted-alert
@@ -168,7 +168,7 @@ This captures all Kustomization events in `production` plus events from a specif
 You can also filter source controller resources like GitRepository and HelmRepository by namespace:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: source-alerts
@@ -193,7 +193,7 @@ This captures source-level errors like failed Git clones or Helm repository inde
 Here is an example provider for reference:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

@@ -311,7 +311,7 @@ If one HelmRepository fails, it does not affect others. Each source is reconcile
 
 ```yaml
 # Alert provider for Slack notifications on source failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -323,7 +323,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert on HelmRepository failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-source-alerts

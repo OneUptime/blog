@@ -42,7 +42,7 @@ spec:
 
 ```yaml
 # infrastructure/vpa/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
@@ -75,7 +75,7 @@ With VPA running, deploy the Goldilocks controller and dashboard.
 
 ```yaml
 # infrastructure/goldilocks/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: goldilocks

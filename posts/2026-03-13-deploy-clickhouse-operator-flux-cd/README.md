@@ -47,7 +47,7 @@ metadata:
 
 ```yaml
 # infrastructure/databases/clickhouse/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: clickhouse-operator
@@ -182,7 +182,7 @@ spec:
 
 ```yaml
 # infrastructure/databases/clickhouse/zookeeper.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: zookeeper

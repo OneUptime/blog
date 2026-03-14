@@ -265,7 +265,7 @@ spec:
 
 ```yaml
 # sources/helm-repos.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: bitnami
@@ -275,7 +275,7 @@ spec:
   url: https://charts.bitnami.com/bitnami
   
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: ingress-nginx
@@ -285,7 +285,7 @@ spec:
   url: https://kubernetes.github.io/ingress-nginx
 
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: jetstack
@@ -299,7 +299,7 @@ spec:
 
 ```yaml
 # sources/oci-repo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: podinfo
@@ -317,7 +317,7 @@ spec:
 
 ```yaml
 # apps/base/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -344,7 +344,7 @@ spec:
 
 ```yaml
 # apps/production/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -397,7 +397,7 @@ spec:
 
 ```yaml
 # apps/base/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -438,7 +438,7 @@ spec:
 
 ```yaml
 # apps/base/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -555,7 +555,7 @@ configMapGenerator:
 
 ```yaml
 # apps/production/myapp/helmrelease-patch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -587,7 +587,7 @@ configMapGenerator:
 
 ```yaml
 # apps/staging/myapp/helmrelease-patch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -606,7 +606,7 @@ spec:
 
 ```yaml
 # image-automation/image-repos.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -622,7 +622,7 @@ spec:
 
 ```yaml
 # image-automation/image-policies.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -636,7 +636,7 @@ spec:
       
 ---
 # Latest tag policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-latest
@@ -656,7 +656,7 @@ spec:
 
 ```yaml
 # image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp
@@ -691,7 +691,7 @@ spec:
 
 ```yaml
 # apps/base/myapp/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: myapp
@@ -709,7 +709,7 @@ spec:
 
 ```yaml
 # notifications/providers.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -725,7 +725,7 @@ spec:
 
 ```yaml
 # notifications/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts

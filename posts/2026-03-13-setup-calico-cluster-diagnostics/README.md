@@ -23,7 +23,7 @@ Calico cluster diagnostics assess the health of the entire Calico installation a
 ```bash
 # Collect comprehensive cluster diagnostic bundle
 # Must be run from within a calico-node pod
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
@@ -45,7 +45,7 @@ kubectl get tigerastatus -o yaml | \
   yq '.items[] | select(.status.conditions[].status == "False") | .metadata.name'
 
 # Check operator logs for reconciliation errors
-kubectl logs -n tigera-operator -l app=tigera-operator | \
+kubectl logs -n tigera-operator -l k8s-app=tigera-operator | \
   grep -i "error\|degraded" | tail -20
 ```
 

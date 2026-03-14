@@ -16,7 +16,7 @@ Validating Typha after deployment confirms that the fan-out layer is functioning
 
 ```bash
 kubectl get deployment calico-typha -n calico-system
-kubectl get pods -n calico-system -l app=calico-typha -o wide
+kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 ```
 
 All Typha pods should show `1/1` Running. If replicas are configured, all should be ready.
@@ -41,7 +41,7 @@ The number of active connections should equal the number of nodes.
 On a node, check Felix logs to confirm it connected to Typha.
 
 ```bash
-kubectl logs -n calico-system -l app=calico-node -c calico-node | grep -i "typha\|Connecting" | tail -10
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | grep -i "typha\|Connecting" | tail -10
 ```
 
 Expect lines like:

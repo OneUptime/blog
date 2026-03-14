@@ -39,7 +39,7 @@ spec:
   url: https://charts.bitnami.com/bitnami
 ---
 # clusters/my-cluster/jaeger/cassandra-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cassandra
@@ -99,7 +99,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/jaeger/jaeger-operator-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: jaeger-operator

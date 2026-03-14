@@ -86,7 +86,7 @@ Reference the secrets in Flux Provider resources:
 ```yaml
 # providers.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -98,7 +98,7 @@ spec:
     name: slack-webhook-url
 ---
 # PagerDuty notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -110,7 +110,7 @@ spec:
     name: pagerduty-routing-key
 ---
 # GitHub commit status provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status

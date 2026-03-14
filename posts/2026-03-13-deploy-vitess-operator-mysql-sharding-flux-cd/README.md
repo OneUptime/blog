@@ -47,7 +47,7 @@ metadata:
 
 ```yaml
 # infrastructure/databases/vitess/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vitess-operator

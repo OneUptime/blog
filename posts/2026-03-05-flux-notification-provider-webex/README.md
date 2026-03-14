@@ -45,7 +45,7 @@ Define a Provider resource for Webex.
 ```yaml
 # provider-webex.yaml
 # Configures Flux to send notifications to Webex
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webex-provider
@@ -74,7 +74,7 @@ Create an Alert that defines which Flux events are forwarded to Webex.
 ```yaml
 # alert-webex.yaml
 # Routes Flux events to the Webex provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webex-alert
@@ -136,7 +136,7 @@ The notification controller authenticates with the Webex API using the bot token
 To only receive error notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webex-errors
@@ -158,7 +158,7 @@ Create separate providers for different Webex spaces by using different room IDs
 
 ```yaml
 # Provider for production space
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webex-prod
@@ -170,7 +170,7 @@ spec:
     name: webex-secret
 ---
 # Provider for staging space
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webex-staging

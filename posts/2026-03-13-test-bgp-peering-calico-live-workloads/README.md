@@ -75,7 +75,7 @@ Observe how long the ping latency spikes or drops packets — this is your BGP c
 Manually restart the BGP session on a node to test Graceful Restart:
 
 ```bash
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node \
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=node-1 -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- birdcl restart BGP_<peer_ip>
 ```

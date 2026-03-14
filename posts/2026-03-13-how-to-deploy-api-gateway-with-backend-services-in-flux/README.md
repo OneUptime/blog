@@ -54,7 +54,7 @@ Deploy each backend service as an independent HelmRelease.
 
 ```yaml
 # clusters/production/apps/users-service-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: users-service
@@ -95,7 +95,7 @@ spec:
 
 ```yaml
 # clusters/production/apps/orders-service-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: orders-service
@@ -133,7 +133,7 @@ Deploy Kong as the API gateway with `dependsOn` ensuring backend services are re
 
 ```yaml
 # clusters/production/apps/api-gateway-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: api-gateway

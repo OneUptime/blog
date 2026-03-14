@@ -130,11 +130,10 @@ echo "Generated Flux resources for $APP_NAME"
 For each application migration:
 
 1. Add the Flux Kustomization to the fleet repo (commit to main)
-2. Suspend the ArgoCD Application (disable auto-sync)
+2. Disable ArgoCD auto-sync for the application
 3. Verify Flux is reconciling the same resources
 4. Compare resource states between ArgoCD and Flux
-5. Delete the ArgoCD Application
-6. Remove the ArgoCD suspension
+5. Delete the ArgoCD Application (resources persist, now managed by Flux)
 
 ```bash
 # Step 1: Commit Flux resources
@@ -142,9 +141,8 @@ git add clusters/production/apps/myapp.yaml
 git commit -m "feat: migrate myapp to Flux CD"
 git push
 
-# Step 2: Suspend ArgoCD Application (prevents double-management)
-kubectl patch application myapp -n argocd \
-  --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+# Step 2: Disable ArgoCD auto-sync (prevents double-management)
+argocd app set myapp --sync-policy none
 
 # Step 3: Verify Flux is reconciling
 flux get kustomizations myapp -n flux-system

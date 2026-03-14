@@ -383,7 +383,7 @@ Configure Flux to send notifications when deployments succeed or fail:
 ```yaml
 # flux-humanitec-notification.yaml
 # Provider for sending webhook notifications to Humanitec
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: humanitec-webhook
@@ -396,7 +396,7 @@ spec:
     name: humanitec-webhook-secret
 ---
 # Alert configuration for deployment events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: humanitec-deployment-alerts

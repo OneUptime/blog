@@ -239,7 +239,7 @@ Integrate Flux with Slack or Teams for approval-based deployments.
 
 ```yaml
 # Notification provider for sending deployment requests
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-approvals
@@ -251,7 +251,7 @@ spec:
     name: slack-webhook
 ---
 # Alert on pending deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-notifications

@@ -88,7 +88,7 @@ calicoctl get hostendpoints
 sudo iptables -L -n | grep CALICO
 
 # Check Felix status on node
-kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
+kubectl exec -n calico-system calico-node-xxx -c calico-node -- calico-node -felix-live
 ```
 
 ## Architecture

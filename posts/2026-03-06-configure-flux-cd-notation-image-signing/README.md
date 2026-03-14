@@ -350,7 +350,7 @@ Get notified when image verification fails:
 
 ```yaml
 # clusters/my-cluster/notifications/verification-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-verification-alert
@@ -368,7 +368,7 @@ spec:
   providerRef:
     name: slack-security
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-security

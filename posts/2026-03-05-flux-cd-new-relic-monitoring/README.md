@@ -158,7 +158,7 @@ Set the threshold to above 120 seconds for at least 15 minutes with warning prio
 One advantage of New Relic is the ability to correlate Flux CD deployment events with application performance. Forward Flux events to New Relic as deployment markers:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: newrelic-provider
@@ -169,7 +169,7 @@ spec:
   secretRef:
     name: newrelic-api-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: newrelic-deployments

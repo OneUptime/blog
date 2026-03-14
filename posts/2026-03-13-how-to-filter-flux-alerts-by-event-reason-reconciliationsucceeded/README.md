@@ -39,7 +39,7 @@ The event reason appears in the event message that Flux emits, which is what the
 Use the `inclusionList` field to match events containing the reconciliation succeeded message:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-succeeded-alert
@@ -74,7 +74,7 @@ Key points:
 A practical use case is tracking every successful deployment:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: successful-deployments
@@ -101,7 +101,7 @@ This sends a notification every time a Kustomization or HelmRelease in the produ
 You can combine `inclusionList` with specific resource names to track successful reconciliations for particular workloads:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: api-deployment-success
@@ -124,7 +124,7 @@ spec:
 Combine the success alert with a webhook provider to feed deployment events into an external system:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: deployment-log-webhook
@@ -133,7 +133,7 @@ spec:
   type: generic
   address: https://your-deployment-tracker.example.com/api/deployments
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-log
@@ -158,7 +158,7 @@ Every successful reconciliation sends a webhook payload to your deployment track
 A common pattern pairs success alerts on one channel with failure alerts on another:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: success-notifications
@@ -175,7 +175,7 @@ spec:
     - kind: HelmRelease
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: failure-notifications

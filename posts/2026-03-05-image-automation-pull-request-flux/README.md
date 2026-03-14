@@ -86,7 +86,7 @@ First, configure a notification provider that targets a webhook endpoint.
 ```yaml
 # notification-provider.yaml
 # Provider that triggers a webhook when Flux pushes image updates
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pr-creator
@@ -103,7 +103,7 @@ Then create an Alert that fires when the ImageUpdateAutomation pushes.
 ```yaml
 # alert-image-update.yaml
 # Alert that triggers PR creation when image updates are pushed
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-update-pr

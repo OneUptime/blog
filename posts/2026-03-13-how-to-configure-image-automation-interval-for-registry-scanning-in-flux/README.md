@@ -31,7 +31,7 @@ Before you begin, ensure you have:
 The ImageRepository resource tells Flux which container image to monitor. The `spec.interval` field controls how often Flux scans the registry for new tags:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -48,7 +48,7 @@ In this example, Flux queries the registry every 5 minutes to check for new tags
 To change how frequently Flux scans for new images, modify the `interval` field. A 1-minute interval provides near real-time detection of new images and is suitable for development environments where you want fast feedback on new builds:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -61,7 +61,7 @@ spec:
 For production environments where image updates are less frequent and controlled, a longer interval is appropriate:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -76,7 +76,7 @@ spec:
 When scanning private registries, combine the interval setting with registry credentials:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -108,7 +108,7 @@ For registries with rate limits like Docker Hub, use a longer interval to avoid 
 To reduce the amount of data fetched on each scan, you can exclude tags that are not relevant:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -128,7 +128,7 @@ The `exclusionList` uses regular expressions to skip tags that match the pattern
 In a typical setup, you may monitor multiple images with different scan frequencies based on their importance:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -137,7 +137,7 @@ spec:
   image: ghcr.io/myorg/frontend
   interval: 2m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend-api
@@ -146,7 +146,7 @@ spec:
   image: ghcr.io/myorg/backend-api
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: batch-processor
@@ -163,7 +163,7 @@ Critical services like the frontend can use a shorter interval for faster update
 The ImageRepository scan interval works together with the ImagePolicy resource, which defines the rules for selecting which tag to use:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -18,7 +18,7 @@ Ensure each Typha replica exposes metrics. The metrics endpoint is on each pod, 
 
 ```bash
 # Test metrics access for each replica
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   echo "=== $pod ==="
   kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics | grep typha_connections_active
@@ -41,7 +41,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   podMetricsEndpoints:
   - port: metrics
     path: /metrics
@@ -144,14 +144,14 @@ echo "=== Typha HA Health Check ==="
 echo "Timestamp: $(date)"
 
 REPLICA_COUNT=$(kubectl get deployment calico-typha -n calico-system -o jsonpath='{.spec.replicas}')
-RUNNING_COUNT=$(kubectl get pods -n calico-system -l app=calico-typha --field-selector=status.phase=Running --no-headers | wc -l)
+RUNNING_COUNT=$(kubectl get pods -n calico-system -l k8s-app=calico-typha --field-selector=status.phase=Running --no-headers | wc -l)
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 
 echo "Expected replicas: $REPLICA_COUNT | Running: $RUNNING_COUNT"
 echo "Cluster nodes: $NODE_COUNT"
 
 TOTAL_CONNECTIONS=0
-for pod in $(kubectl get pods -n calico-system -l app=calico-typha -o name); do
+for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name); do
   COUNT=$(kubectl exec -n calico-system $pod -- \
     wget -qO- http://localhost:9093/metrics 2>/dev/null | \
     grep typha_connections_active | awk '{print $2}')

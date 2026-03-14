@@ -35,7 +35,7 @@ The commit message template has access to several variables:
 A simple commit message with the automation name:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

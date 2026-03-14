@@ -121,7 +121,7 @@ kubectl apply -f external-connectivity-alerts.yaml
 ```bash
 # Check felix_nat_outgoing_active metric on all nodes
 kubectl exec -n calico-system \
-  $(kubectl get pods -n calico-system -l app=calico-node -o name | head -1) -- \
+  $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name | head -1) -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null | \
   grep "felix_nat_outgoing"
 

@@ -59,7 +59,7 @@ kubectl logs -n flux-system deploy/notification-controller | grep -c "Dispatchin
 If the event volume is very high, consider reducing the number of Alert resources or making their event selectors more specific:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-alerts

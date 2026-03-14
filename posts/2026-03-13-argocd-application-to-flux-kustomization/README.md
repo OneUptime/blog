@@ -93,19 +93,9 @@ spec:
     kind: GitRepository
     name: fleet-repo
   targetNamespace: myapp # replaces destination.namespace
-  # CreateNamespace equivalent
-  patches:
-    - patch: |
-        apiVersion: v1
-        kind: Namespace
-        metadata:
-          name: myapp
-      target:
-        kind: Namespace
-        name: myapp
 ```
 
-Note: Flux creates the namespace if it appears in the manifests path; use a `Namespace` manifest in your path or manage it separately.
+Note: Unlike ArgoCD's `CreateNamespace=true`, Flux does not have a built-in flag to auto-create namespaces. Instead, include a `Namespace` manifest in your source path, or create a separate Kustomization that deploys the namespace before the application resources.
 
 ## Step 3: Application with Source Repository Auth
 
@@ -154,10 +144,33 @@ spec:
         - /spec/replicas  # Ignore HPA-managed replicas
 ```
 
-**Flux CD equivalent** using SSA force annotation:
+**Flux CD equivalent**: The recommended approach is to simply omit the `spec.replicas` field from your Deployment manifest entirely. When the replicas field is not present in the source manifest, Flux will not manage it, and the HPA will control the replica count without conflict.
 
 ```yaml
-# In your application manifests directory
+# In your Deployment manifest (apps/myapp/deployment.yaml)
+# Simply remove the spec.replicas field:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  # replicas: 3  <-- Remove this line; let HPA manage it
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: myapp:latest
+```
+
+If you cannot remove the replicas field from the source manifest, you can use a kustomize patch to strip it:
+
+```yaml
 # apps/myapp/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -165,27 +178,11 @@ resources:
   - deployment.yaml
 patches:
   - patch: |
-      - op: add
-        path: /metadata/annotations/kustomize.toolkit.fluxcd.io~1ssa-merge-key
-        value: "{}"
+      - op: remove
+        path: /spec/replicas
     target:
       kind: Deployment
       name: myapp
-```
-
-Or use Flux's `spec.patches` with a strategic merge to ignore the field:
-
-```yaml
-# In the Flux Kustomization
-spec:
-  patches:
-    - patch: |
-        - op: replace
-          path: /spec/replicas
-          value: 1  # This value will be set but HPA will override it
-      target:
-        kind: Deployment
-        name: myapp
 ```
 
 ## Step 5: Application with Health Checks

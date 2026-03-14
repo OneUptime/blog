@@ -36,7 +36,7 @@ This behavior is fundamentally different from the `exclusionList`, which drops m
 The simplest use case is matching a specific keyword in event messages:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-complete-alerts
@@ -61,7 +61,7 @@ This alert only fires when a reconciliation succeeds. All other events, includin
 You can specify multiple patterns to capture several types of events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: success-and-failure-alerts
@@ -88,7 +88,7 @@ Each pattern is evaluated independently. An event that matches any one of the th
 Event messages often include the name of the resource. You can use this to filter for specific resources within the message content:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-resource-alerts
@@ -114,7 +114,7 @@ This captures events where the message references any resource with a name start
 Go regex syntax supports inline flags. To perform case-insensitive matching:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: case-insensitive-alerts
@@ -140,7 +140,7 @@ The `(?i)` flag makes the pattern match regardless of letter casing, catching me
 When monitoring image or chart updates, you might want to alert only for specific version patterns:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: major-version-alerts
@@ -165,7 +165,7 @@ This pattern matches messages containing version strings like `v2.0.0` or `v10.0
 The inclusion list works alongside the `eventSeverity` field:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: info-reconciliation-alerts
@@ -188,7 +188,7 @@ Setting `eventSeverity: info` means both info and error events are candidates. T
 A common production pattern is to alert only on meaningful state changes:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-state-alerts

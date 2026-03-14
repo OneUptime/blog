@@ -31,7 +31,7 @@ Before you begin, ensure you have:
 First, configure a notification provider that will receive the filtered alerts. Here is an example using Slack:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-alerts
@@ -57,7 +57,7 @@ stringData:
 The Alert resource in Flux supports filtering by event metadata including the event reason. To filter for only `ReconciliationFailed` events, use the `inclusionList` field with a regex pattern:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-failures
@@ -84,7 +84,7 @@ The `inclusionList` accepts regular expressions that are matched against the eve
 Combining severity filtering with reason filtering provides precise control. The `ReconciliationFailed` reason typically generates error-severity events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-failures
@@ -117,7 +117,7 @@ This configuration only sends alerts when an error-severity event with the Recon
 You can narrow the alert scope to specific resources rather than using wildcards:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-failures
@@ -146,7 +146,7 @@ This sends ReconciliationFailed alerts only for the specified production resourc
 To monitor resources across multiple namespaces, list specific namespace and name combinations:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-namespace-failures
@@ -174,7 +174,7 @@ spec:
 You can use both `inclusionList` and `exclusionList` to fine-tune which ReconciliationFailed events trigger alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: filtered-failures
@@ -201,7 +201,7 @@ This configuration sends alerts for all ReconciliationFailed events except those
 For critical failure events, you may want to notify multiple channels. Create separate Alert resources pointing to different providers:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: failures-to-slack
@@ -218,7 +218,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: failures-to-pagerduty

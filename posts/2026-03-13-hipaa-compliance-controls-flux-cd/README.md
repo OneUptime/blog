@@ -98,7 +98,7 @@ Install Sealed Secrets via Flux:
 
 ```yaml
 # infrastructure/controllers/sealed-secrets.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: sealed-secrets
@@ -162,7 +162,7 @@ HIPAA §164.312(b) — Audit Controls requires recording and examining activity 
 ```yaml
 # clusters/hipaa/monitoring/flux-audit-alert.yaml
 # Send all Flux events to the audit log system
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: hipaa-audit-log
@@ -181,7 +181,7 @@ spec:
 
 ```yaml
 # clusters/hipaa/monitoring/audit-webhook-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: audit-log-webhook
@@ -242,7 +242,7 @@ kubectl create job drift-check \
 
 ```yaml
 # Flux Alert for any reconciliation failure in PHI namespace
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: phi-drift-alert

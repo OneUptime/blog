@@ -56,7 +56,7 @@ Create a notification provider configured for GitHub pull request comments:
 
 ```yaml
 # github-pr-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-pr-comments
@@ -72,7 +72,7 @@ For pull request-specific comments, use the `github` provider type with the comm
 
 ```yaml
 # github-commit-status-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -96,7 +96,7 @@ Configure alerts that trigger on reconciliation events and post to the GitHub pr
 
 ```yaml
 # github-pr-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pr-deployment-status
@@ -150,7 +150,7 @@ For richer PR comments that include resource details, set up a dedicated comment
 
 ```yaml
 # github-comment-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-comments
@@ -161,7 +161,7 @@ spec:
   secretRef:
     name: github-pr-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pr-detailed-status
@@ -186,7 +186,7 @@ Create a separate alert for deployment failures that posts error details to pull
 
 ```yaml
 # github-error-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pr-error-notifications

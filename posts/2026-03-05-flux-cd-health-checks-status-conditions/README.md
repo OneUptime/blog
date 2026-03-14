@@ -203,7 +203,7 @@ You can use Flux's notification controller to send alerts when health checks fai
 
 ```yaml
 # Alert configuration to notify on health check failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: health-check-alerts

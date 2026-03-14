@@ -168,7 +168,7 @@ spec:
 
 ```yaml
 # infrastructure/sources/helm-repositories.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: bitnami
@@ -177,7 +177,7 @@ spec:
   interval: 1h
   url: https://charts.bitnami.com/bitnami
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: ingress-nginx
@@ -186,7 +186,7 @@ spec:
   interval: 1h
   url: https://kubernetes.github.io/ingress-nginx
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: jetstack
@@ -241,7 +241,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress-nginx/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -387,7 +387,7 @@ flux bootstrap github \
 
 ```yaml
 # apps/production/frontend/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -403,7 +403,7 @@ spec:
 
 ```yaml
 # apps/production/frontend/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend
@@ -427,7 +427,7 @@ spec:
 
 ```yaml
 # apps/production/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system
@@ -537,7 +537,7 @@ sops --encrypt --in-place secret.yaml
 
 ```yaml
 # infrastructure/controllers/sealed-secrets/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: sealed-secrets
@@ -577,7 +577,7 @@ spec:
 
 ```yaml
 # Set up Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -588,7 +588,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call

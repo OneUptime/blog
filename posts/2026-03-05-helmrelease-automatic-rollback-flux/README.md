@@ -186,7 +186,7 @@ The following example configures a Flux Alert to notify you when a HelmRelease f
 
 ```yaml
 # Alert provider configuration (e.g., Slack)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-alerts
@@ -198,7 +198,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert configuration for HelmRelease failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helmrelease-failures

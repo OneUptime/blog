@@ -34,7 +34,7 @@ In the Rancher UI:
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 All pods should show `Running` with no restarts.

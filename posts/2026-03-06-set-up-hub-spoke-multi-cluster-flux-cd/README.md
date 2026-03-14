@@ -311,7 +311,7 @@ Configure Flux notifications on the hub to alert when spoke reconciliation fails
 ```yaml
 # clusters/hub/notifications.yaml
 # Provider for sending alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -323,7 +323,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert that fires when any spoke Kustomization fails
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: spoke-reconciliation-alert

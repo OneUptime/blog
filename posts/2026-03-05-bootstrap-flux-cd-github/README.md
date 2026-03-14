@@ -201,7 +201,7 @@ Set up GitHub commit status notifications so you can see the sync status directl
 ```yaml
 # clusters/production/notifications/github-provider.yaml
 # Configure Flux to report status to GitHub
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -212,7 +212,7 @@ spec:
   secretRef:
     name: github-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status

@@ -26,7 +26,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   ingress:
   - from:
     - podSelector:
@@ -122,7 +122,7 @@ In a multi-replica HA setup, Typha replicas do not need to communicate with each
 
 ```bash
 # Check if any Typha pod is connecting to another Typha pod
-kubectl exec -n calico-system $(kubectl get pods -n calico-system -l app=calico-typha -o name | head -1) -- \
+kubectl exec -n calico-system $(kubectl get pods -n calico-system -l k8s-app=calico-typha -o name | head -1) -- \
   ss -tnp | grep 5473
 ```
 

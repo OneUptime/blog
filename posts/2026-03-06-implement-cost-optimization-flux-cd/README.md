@@ -338,7 +338,7 @@ Set up Flux CD alerts to notify your team about cost-related events.
 ```yaml
 # clusters/production/notifications/cost-alerts.yaml
 # Provider for sending cost alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: cost-alerts-slack
@@ -350,7 +350,7 @@ spec:
     name: slack-webhook-url
 ---
 # Alert for resource quota and scaling events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cost-optimization-alerts

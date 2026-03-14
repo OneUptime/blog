@@ -25,7 +25,7 @@ Flux CD manages Helm through two controllers:
 
 ```yaml
 # Flux HelmRelease example
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress
@@ -152,7 +152,7 @@ Both tools support OCI charts, but Flux CD's OCIRepository is a first-class sour
 
 ```yaml
 # Flux OCI source with semver tracking
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: podinfo

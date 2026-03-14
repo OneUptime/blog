@@ -345,7 +345,7 @@ Configure Flux to send notifications about deployment status.
 
 ```yaml
 # clusters/my-cluster/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-notifications
@@ -357,7 +357,7 @@ spec:
     name: slack-webhook-url
 ---
 # clusters/my-cluster/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts

@@ -27,7 +27,7 @@ This guide covers deploying cert-manager via Flux, configuring ClusterIssuers fo
 
 ```yaml
 # infrastructure/sources/cert-manager.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: cert-manager
@@ -39,7 +39,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

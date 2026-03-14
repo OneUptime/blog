@@ -46,7 +46,7 @@ kubectl get tigerastatus                    # Operator component health
 kubectl get pods -n calico-system           # Pod status
 
 # === FELIX / POLICY ===
-kubectl logs -n calico-system -l app=calico-node -c calico-node --tail=50
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50
 calicoctl get felixconfiguration -o yaml    # Felix configuration
 
 # === BGP ===
@@ -107,7 +107,7 @@ calicoctl ipam show --show-blocks 2>/dev/null
 
 echo ""
 echo "=== Recent Felix Errors ==="
-kubectl logs -n calico-system -l app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=20 | grep -i error
 ```
 

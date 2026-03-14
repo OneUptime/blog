@@ -26,7 +26,7 @@ This guide covers how to configure custom Git email addresses for Flux ImageUpda
 The email is configured alongside the author name in the `commit.author` section:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -190,7 +190,7 @@ git log --invert-grep --author="flux" --oneline
 Here is a full ImageUpdateAutomation with properly configured author email:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-image-updates

@@ -60,7 +60,7 @@ Configure the stack with persistent storage, Slack alerting, and production-read
 
 ```yaml
 # clusters/my-cluster/monitoring/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

@@ -89,7 +89,7 @@ The `harbor` type tells the notification controller to expect Harbor's webhook p
 Configure the image automation pipeline to work with your Harbor registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -100,7 +100,7 @@ spec:
   secretRef:
     name: harbor-registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -54,7 +54,7 @@ Commit both files to your GitOps repository so Flux picks them up on the next re
 
 ```yaml
 # clusters/my-cluster/gpu-operator/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: gpu-operator

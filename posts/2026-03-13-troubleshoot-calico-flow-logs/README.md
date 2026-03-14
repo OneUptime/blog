@@ -16,7 +16,7 @@ Flow log troubleshooting focuses on two categories: logs not being written (Feli
 
 ```bash
 # View flow logs directly from a calico-node pod
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node   -o jsonpath='{.items[0].metadata.name}')
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   tail -20 /var/log/calico/flowlogs/flows.log 2>/dev/null
 

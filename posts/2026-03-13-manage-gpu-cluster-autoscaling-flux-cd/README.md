@@ -57,7 +57,7 @@ spec:
   url: https://kubernetes.github.io/autoscaler
 ---
 # clusters/my-cluster/cluster-autoscaler/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler

@@ -283,7 +283,7 @@ Configure Flux alerts that only trigger when changes occur in specific paths.
 ```yaml
 # flux-system/alert-team-alpha.yaml
 # Alert provider for team-alpha's Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -295,7 +295,7 @@ spec:
     name: slack-webhook-team-alpha
 ---
 # Alert that fires only for team-alpha's Kustomization changes
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-alerts

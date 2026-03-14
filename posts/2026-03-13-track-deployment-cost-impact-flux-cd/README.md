@@ -30,7 +30,7 @@ Set up a Flux notification provider to send deployment events to your communicat
 
 ```yaml
 # infrastructure/notifications/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-cost-channel
@@ -64,7 +64,7 @@ Configure Flux Alert resources to fire when HelmReleases or Kustomizations are a
 
 ```yaml
 # infrastructure/notifications/deployment-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-events

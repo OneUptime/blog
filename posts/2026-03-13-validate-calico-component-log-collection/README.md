@@ -52,7 +52,7 @@ exit ${FAIL}
 # Count calico-node pods vs nodes to ensure no pod is missing
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 CALICO_NODE_COUNT=$(kubectl get pods -n calico-system \
-  -l app=calico-node --no-headers | grep Running | wc -l)
+  -l k8s-app=calico-node --no-headers | grep Running | wc -l)
 
 echo "Nodes: ${NODE_COUNT}"
 echo "calico-node pods Running: ${CALICO_NODE_COUNT}"
@@ -60,7 +60,7 @@ echo "calico-node pods Running: ${CALICO_NODE_COUNT}"
 if [ "${NODE_COUNT}" -ne "${CALICO_NODE_COUNT}" ]; then
   echo "MISMATCH: Some nodes are missing calico-node pods"
   # Find which nodes are missing
-  kubectl get pods -n calico-system -l app=calico-node \
+  kubectl get pods -n calico-system -l k8s-app=calico-node \
     -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort > /tmp/pods-on-nodes.txt
   kubectl get nodes --no-headers -o custom-columns='NAME:.metadata.name' | sort > /tmp/all-nodes.txt
   diff /tmp/all-nodes.txt /tmp/pods-on-nodes.txt
@@ -71,7 +71,7 @@ fi
 
 ```bash
 # Verify calico-node logs are parseable as structured text
-kubectl logs -n calico-system -l app=calico-node -c calico-node --tail=5 | \
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=5 | \
   while IFS= read -r line; do
     # Calico logs include timestamp, level, and component
     if echo "${line}" | grep -qE "^[0-9]{4}-[0-9]{2}-[0-9]{2}"; then

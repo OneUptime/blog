@@ -192,7 +192,7 @@ flux reconcile kustomization my-app --with-source
 4. **Set up a Flux notification provider** to send alerts to Slack or other channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call

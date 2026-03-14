@@ -109,7 +109,7 @@ Flux will install its controllers and begin reconciling from the specified Git r
 With the ACR attachment in place, the kubelet identity already has pull access. Create an OCIRepository source that points to your ACR:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -149,7 +149,7 @@ spec:
 If you want Flux to automatically update image tags when new versions are pushed to ACR, set up an ImageRepository:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -163,7 +163,7 @@ spec:
 Then define an ImagePolicy to select the latest semver tag:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -199,7 +199,7 @@ If you use Flux image automation that pushes back to CodeCommit, the source-cont
 
 ```yaml
 # clusters/production/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

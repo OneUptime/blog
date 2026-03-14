@@ -58,7 +58,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/keycloak/postgresql-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keycloak-postgresql
@@ -94,7 +94,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/keycloak/keycloak-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keycloak
@@ -190,7 +190,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: keycloak
       namespace: keycloak

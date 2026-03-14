@@ -179,7 +179,7 @@ This scopes secrets to only the jobs that need them.
 
 ```yaml
 # clusters/production/apps/myapp-image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -188,7 +188,7 @@ spec:
   image: docker.io/your-org/myapp
   interval: 1m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp

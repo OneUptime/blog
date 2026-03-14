@@ -142,7 +142,7 @@ Configure Flux sources to use the AWS provider:
 
 ```yaml
 # clusters/production/ecr-source.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

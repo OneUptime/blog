@@ -167,7 +167,7 @@ Make sure you are using the correct API version for the Kustomization resource:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 
 # Older - v1beta2 (also supports postBuild)
-apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 ```
 
 The `postBuild` field is available in both versions, but if you are using an older Flux installation, make sure the API version matches what your cluster supports.

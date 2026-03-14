@@ -474,7 +474,7 @@ Flux v2 has built-in notification support that was not available in v1.
 ```yaml
 # clusters/my-cluster/notifications.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -486,7 +486,7 @@ spec:
     name: slack-webhook
 ---
 # Alert on reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call-alerts

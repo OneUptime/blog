@@ -43,7 +43,7 @@ Now create the provider resources.
 
 ```yaml
 # Slack provider for general notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-general
@@ -55,7 +55,7 @@ spec:
     name: slack-webhook
 ---
 # Slack provider for critical alerts
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-critical
@@ -67,7 +67,7 @@ spec:
     name: slack-webhook
 ---
 # Microsoft Teams provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams-provider
@@ -78,7 +78,7 @@ spec:
     name: teams-webhook
 ---
 # Generic webhook provider for logging
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook-logger
@@ -105,7 +105,7 @@ Create separate alerts that route different events to different providers.
 
 ```yaml
 # Info-level alert to Slack general channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack-info-alert
@@ -126,7 +126,7 @@ spec:
     - ".*is not ready$"
 ---
 # Error-level alert to Slack critical channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack-error-alert
@@ -147,7 +147,7 @@ spec:
       namespace: flux-system
 ---
 # Error alert to Microsoft Teams
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: teams-error-alert
@@ -165,7 +165,7 @@ spec:
       namespace: flux-system
 ---
 # All events to webhook logger for audit
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: webhook-audit-alert
@@ -202,7 +202,7 @@ Route alerts from different environments to appropriate providers.
 
 ```yaml
 # Staging alerts to Slack only
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-slack-alert
@@ -222,7 +222,7 @@ spec:
     - "^Reconciliation finished.*no changes$"
 ---
 # Production errors to both Slack and Teams
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-slack-alert
@@ -239,7 +239,7 @@ spec:
       name: "*"
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-teams-alert

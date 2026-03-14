@@ -52,7 +52,7 @@ The minimum eBPF knowledge for on-call rotation:
 
 ### Step 1: Identify Scope
 ```bash
-kubectl exec -n calico-system -l app=calico-node -- \
+kubectl exec -n calico-system -l k8s-app=calico-node -- \
   sh -c 'bpftool prog list 2>/dev/null | grep -c calico || echo 0'
 ```
 - If 0 on all nodes: cluster-wide regression
@@ -71,7 +71,7 @@ kubectl logs -n calico-system ds/calico-node -c calico-node | \
 Based on root cause:
 A. BPF filesystem not mounted:
    kubectl debug node/<node> -it --image=ubuntu:22.04 -- mount -t bpf bpffs /sys/fs/bpf
-   kubectl delete pod -n calico-system -l app=calico-node --field-selector=spec.nodeName=<node>
+   kubectl delete pod -n calico-system -l k8s-app=calico-node --field-selector=spec.nodeName=<node>
 
 B. Installation changed:
    kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'

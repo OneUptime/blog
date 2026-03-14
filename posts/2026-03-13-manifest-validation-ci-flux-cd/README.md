@@ -124,7 +124,7 @@ jobs:
           # Validate HelmRelease resources
           find . -name '*.yaml' -exec grep -l 'kind: HelmRelease' {} \; | while read f; do
             echo "Checking HelmRelease in $f"
-            grep -q 'apiVersion: helm.toolkit.fluxcd.io/v2beta2' "$f" || \
+            grep -q 'apiVersion: helm.toolkit.fluxcd.io/v2' "$f" || \
               echo "WARNING: $f may use deprecated HelmRelease API version"
           done
 ```

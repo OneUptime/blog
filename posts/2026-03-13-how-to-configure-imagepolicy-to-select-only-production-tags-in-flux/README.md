@@ -26,7 +26,7 @@ This guide covers several strategies for ensuring your production cluster only r
 If your pipeline tags production images with a `prod-` prefix (e.g., `prod-v1.5.0`):
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -49,7 +49,7 @@ Only tags matching the `prod-v` prefix with a valid semver suffix are considered
 If production images use clean semantic version tags like `v1.5.0` while pre-releases use `v1.5.0-rc.1`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -72,7 +72,7 @@ The strict regex `^\d+\.\d+\.\d+$` (after extracting past the `v` prefix) ensure
 Some teams use a channel-based tagging system with tags like `stable-v1.5.0`, `beta-v1.6.0-rc.1`, and `canary-v1.6.0-alpha.1`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-stable
@@ -95,7 +95,7 @@ Only images explicitly tagged for the `stable` channel are selected.
 You can use semver ranges to restrict which major or minor versions are eligible for production:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -118,7 +118,7 @@ This constrains the policy to only select `v2.x.x` images, preventing accidental
 Make sure your ImageRepository is configured:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -185,7 +185,7 @@ Look for the `Ready` condition to confirm the policy is reconciling without erro
 To complete the automation loop, configure an ImageUpdateAutomation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: prod-image-updates

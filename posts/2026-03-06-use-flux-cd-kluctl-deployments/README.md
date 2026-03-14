@@ -447,7 +447,7 @@ kubectl get kluctldeployment my-application -n kluctl-system \
 
 ```yaml
 # clusters/production/monitoring/kluctl-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: kluctl-deployments

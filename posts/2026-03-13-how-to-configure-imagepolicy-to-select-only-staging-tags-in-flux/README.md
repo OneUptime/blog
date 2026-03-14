@@ -26,7 +26,7 @@ This guide demonstrates multiple approaches to selecting staging-specific tags u
 If your CI pipeline produces tags like `staging-v1.5.0`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -35,7 +35,7 @@ spec:
   image: registry.example.com/my-app
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -58,7 +58,7 @@ The regex requires the `staging-v` prefix and extracts the semantic version. The
 Many teams use release candidate tags like `v1.5.0-rc.1`, `v1.5.0-rc.2` for staging. To select only RC tags:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -81,7 +81,7 @@ The semver range `>=1.0.0-rc.0` ensures that pre-release versions with the `rc` 
 If images built from a `release` branch are tagged like `release-20260313-abc1234`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -104,7 +104,7 @@ This extracts the date portion and uses numerical sorting to select the most rec
 To accept both beta and RC versions for staging while rejecting alpha builds:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -127,7 +127,7 @@ The regex alternation `(beta|rc)` matches both beta and RC tags. Alpha versions 
 Connect the staging policy to an automation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-image-updates

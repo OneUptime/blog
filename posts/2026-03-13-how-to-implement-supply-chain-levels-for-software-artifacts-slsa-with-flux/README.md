@@ -174,7 +174,7 @@ Set up Flux OCIRepository resources that verify provenance attestations:
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-slsa.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

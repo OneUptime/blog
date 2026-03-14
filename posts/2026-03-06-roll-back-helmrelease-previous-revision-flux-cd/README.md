@@ -271,7 +271,7 @@ flux reconcile helmrelease my-app -n default
 
 ```yaml
 # alerts/helmrelease-rollback-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-helm
@@ -282,7 +282,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helmrelease-rollback

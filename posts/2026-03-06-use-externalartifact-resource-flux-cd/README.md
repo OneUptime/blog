@@ -268,7 +268,7 @@ kubectl get externalartifact my-app-artifact -n flux-system \
 
 ```yaml
 # clusters/my-cluster/alerts/artifact-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: artifact-alert

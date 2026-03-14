@@ -44,7 +44,7 @@ flux check
 
 ```yaml
 # apps/base/windows-workloads/iis-app/imagerepository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: iis-app
@@ -67,7 +67,7 @@ spec:
 
 ```yaml
 # apps/base/windows-workloads/iis-app/imagepolicy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: iis-app
@@ -109,7 +109,7 @@ The `# {"$imagepolicy": "flux-system:iis-app"}` comment tells Flux image automat
 
 ```yaml
 # clusters/production/flux-system/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: windows-image-updates

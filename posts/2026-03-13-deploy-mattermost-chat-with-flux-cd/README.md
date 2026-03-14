@@ -53,7 +53,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/mattermost/postgresql-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mattermost-postgresql
@@ -84,7 +84,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/mattermost/mattermost-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mattermost
@@ -165,7 +165,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: mattermost
       namespace: mattermost

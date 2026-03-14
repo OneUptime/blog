@@ -26,7 +26,7 @@ kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.nodeName}'
 
 # Get the calico-node pod running on that node
 PROBLEM_NODE="<node-name>"
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector=spec.nodeName="${PROBLEM_NODE}" \
   -o jsonpath='{.items[0].metadata.name}')
 echo "calico-node pod on ${PROBLEM_NODE}: ${CALICO_POD}"

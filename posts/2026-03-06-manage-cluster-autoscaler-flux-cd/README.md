@@ -293,7 +293,7 @@ Configure Flux to notify you when autoscaler configuration changes are applied.
 
 ```yaml
 # clusters/my-cluster/notifications/autoscaler-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: autoscaler-alerts

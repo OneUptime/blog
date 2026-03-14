@@ -272,7 +272,7 @@ Implement continuous verification through monitoring:
 ```yaml
 # zero-trust-monitoring.yaml
 # Alert on any reconciliation failure or security event
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: security-alerts
@@ -283,7 +283,7 @@ spec:
   secretRef:
     name: security-slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: zero-trust-alerts

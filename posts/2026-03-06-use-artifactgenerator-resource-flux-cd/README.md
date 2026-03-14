@@ -353,7 +353,7 @@ Configure alerts for generation failures:
 
 ```yaml
 # monitoring/artifact-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: artifact-generator-alerts
@@ -370,7 +370,7 @@ spec:
   providerRef:
     name: slack-provider
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

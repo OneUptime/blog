@@ -88,7 +88,7 @@ The `quay` type instructs the notification controller to parse Quay's webhook pa
 Configure Flux to track images in your Quay repository:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -99,7 +99,7 @@ spec:
   secretRef:
     name: quay-registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -215,7 +215,7 @@ Set up a notification in each Quay repository pointing to the same webhook URL.
 When using a self-hosted Quay instance, update the ImageRepository to point to your instance:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -277,7 +277,7 @@ spec:
 For CI/CD pipelines that push images using Quay robot accounts, ensure the same repository has the webhook configured:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

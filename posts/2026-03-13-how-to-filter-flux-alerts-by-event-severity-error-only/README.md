@@ -30,7 +30,7 @@ The `eventSeverity` field on an Alert resource acts as a minimum threshold. When
 Here is a minimal configuration that only fires on errors:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: error-alert
@@ -67,7 +67,7 @@ With `eventSeverity: error`, you will receive notifications for:
 For a comprehensive error monitoring setup that covers all Flux resource types:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: cluster-error-alerts
@@ -98,7 +98,7 @@ This catches errors at every stage of the GitOps pipeline, from source fetching 
 Route production errors to PagerDuty and staging errors to Slack:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-errors
@@ -115,7 +115,7 @@ spec:
       name: '*'
       namespace: production
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-errors
@@ -138,7 +138,7 @@ spec:
 For specific high-priority resources that should trigger immediate response:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-errors
@@ -161,7 +161,7 @@ spec:
 Error alerts often warrant more urgent notification channels. Here is a PagerDuty provider example:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-provider
@@ -177,7 +177,7 @@ spec:
 A common setup pairs error-only alerts with info-level alerts on separate channels:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: errors-pagerduty
@@ -192,7 +192,7 @@ spec:
     - kind: HelmRelease
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-events-slack

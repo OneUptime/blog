@@ -213,7 +213,7 @@ Set up notifications to alert when policies fail to resolve.
 ```yaml
 # alert-imagepolicy.yaml
 # Alert when ImagePolicy resources enter a failing state
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: image-policy-failures

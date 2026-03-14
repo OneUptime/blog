@@ -88,7 +88,7 @@ DATASTORE_TYPE=etcdv3 calicoctl datastore migrate lock
 # If already locked, this returns an error indicating locked state
 
 # To check lock from Felix perspective:
-kubectl logs -n calico-system -l app=calico-node -c calico-node | \
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node | \
   grep -i "locked\|migration"
 ```
 

@@ -16,7 +16,7 @@ Calico node diagnostic mistakes most often come from scope confusion: running di
 
 ```bash
 # WRONG: Running BGP diagnostics on a random node
-RANDOM_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+RANDOM_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${RANDOM_POD}" -c calico-node -- \
   calicoctl node status
@@ -26,7 +26,7 @@ kubectl exec -n calico-system "${RANDOM_POD}" -c calico-node -- \
 PROBLEM_POD_NODE=$(kubectl get pod <failing-pod> -n <ns> \
   -o jsonpath='{.spec.nodeName}')
 AFFECTED_CALICO_POD=$(kubectl get pods -n calico-system \
-  -l app=calico-node \
+  -l k8s-app=calico-node \
   --field-selector="spec.nodeName=${PROBLEM_POD_NODE}" \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${AFFECTED_CALICO_POD}" -c calico-node -- \

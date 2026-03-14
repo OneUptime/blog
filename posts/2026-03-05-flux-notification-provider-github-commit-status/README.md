@@ -44,7 +44,7 @@ Define a Provider resource for GitHub commit status updates.
 ```yaml
 # provider-github-commit-status.yaml
 # Configures Flux to update GitHub commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status-provider
@@ -73,7 +73,7 @@ Create an Alert that triggers commit status updates for relevant Flux resources.
 ```yaml
 # alert-github-commit-status.yaml
 # Updates GitHub commit statuses based on Flux reconciliation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status-alert
@@ -146,7 +146,7 @@ If Flux manages resources from multiple repositories, create a provider for each
 
 ```yaml
 # Provider for the infrastructure repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status-infra
@@ -158,7 +158,7 @@ spec:
     name: github-token
 ---
 # Provider for the applications repository
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status-apps
@@ -170,7 +170,7 @@ spec:
     name: github-token
 ---
 # Alert for infrastructure Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status-infra-alert
@@ -184,7 +184,7 @@ spec:
       name: infrastructure
 ---
 # Alert for application Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status-apps-alert

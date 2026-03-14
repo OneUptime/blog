@@ -71,7 +71,7 @@ calicoctl get globalnetworkpolicy block-threat-ips -o yaml | grep "selector:"
 kubectl logs -n calico-system ds/calico-node --since=5m | grep -i "networkset\|ipset"
 
 # Force Felix to resync
-kubectl delete pod -n calico-system -l app=calico-node --field-selector spec.nodeName=worker-1
+kubectl delete pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=worker-1
 ```
 
 ## Issue 4: Invalid CIDR Notation

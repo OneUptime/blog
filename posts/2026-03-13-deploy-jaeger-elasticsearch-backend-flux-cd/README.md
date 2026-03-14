@@ -43,7 +43,7 @@ Deploy a 3-node Elasticsearch cluster with persistent SSD-backed storage.
 
 ```yaml
 # clusters/my-cluster/jaeger/elasticsearch-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: elasticsearch

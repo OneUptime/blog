@@ -46,7 +46,7 @@ stringData:
 
 ```yaml
 # infrastructure/search/opensearch-dashboards.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: opensearch-dashboards

@@ -89,7 +89,7 @@ microk8s kubectl get nodes
 
 # Verify Dqlite (HA datastore) is healthy
 microk8s kubectl -n kube-system get pod \
-  -l app=calico-kube-controllers
+  -l k8s-app=calico-kube-controllers
 ```
 
 ## Step 5: Configure kubectl Access from Your Workstation
@@ -142,7 +142,7 @@ spec:
 
 ```yaml
 # clusters/microk8s-ha/addons/ingress-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

@@ -59,7 +59,7 @@ Define a Provider resource for Telegram.
 ```yaml
 # provider-telegram.yaml
 # Configures Flux to send notifications to Telegram
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: telegram-provider
@@ -88,7 +88,7 @@ Create an Alert that defines which events are forwarded to Telegram.
 ```yaml
 # alert-telegram.yaml
 # Routes Flux events to Telegram
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: telegram-alert
@@ -150,7 +150,7 @@ The notification controller formats Flux events into messages and sends them to 
 To reduce noise, only receive error notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: telegram-errors
@@ -172,7 +172,7 @@ Route different events to different Telegram chats or groups:
 
 ```yaml
 # Provider for the ops team group
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: telegram-ops
@@ -184,7 +184,7 @@ spec:
     name: telegram-bot-token
 ---
 # Provider for the dev team group
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: telegram-dev
@@ -196,7 +196,7 @@ spec:
     name: telegram-bot-token
 ---
 # Errors go to ops
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: telegram-ops-errors
@@ -212,7 +212,7 @@ spec:
       name: "*"
 ---
 # All events go to dev
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: telegram-dev-all
@@ -233,7 +233,7 @@ spec:
 You can also send notifications to a personal Telegram chat by using your personal chat ID instead of a group chat ID:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: telegram-personal

@@ -120,7 +120,7 @@ Use the reloader pattern to automatically restart deployments when secrets or Co
 
 ```yaml
 # Install Stakater Reloader via Flux HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: reloader

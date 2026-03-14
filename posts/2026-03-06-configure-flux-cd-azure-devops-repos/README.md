@@ -309,7 +309,7 @@ Configure Flux to send notifications to Azure DevOps pull requests:
 
 ```yaml
 # File: clusters/my-cluster/notifications/azure-devops-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azure-devops
@@ -320,7 +320,7 @@ spec:
   secretRef:
     name: azure-devops-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-alerts

@@ -53,7 +53,7 @@ Consider a repository with the following structure:
 The simplest approach uses the `update.path` field to scope the automation to a single directory tree:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates
@@ -86,7 +86,7 @@ This scans everything under `./clusters/production` including both `apps/` and `
 To restrict the automation to only the `apps/` directory within production, keeping infrastructure manifests unaffected:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-app-updates
@@ -117,7 +117,7 @@ spec:
 Create separate automation resources for different directory scopes:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-app-updates
@@ -142,7 +142,7 @@ spec:
     path: ./clusters/production/apps
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-infra-updates
@@ -175,7 +175,7 @@ This setup lets you run app image updates every ten minutes while checking infra
 To restrict automation to a single application:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: api-updates
@@ -219,7 +219,7 @@ This is the broadest scope and will find image policy markers anywhere in the re
 For a multi-environment setup where each environment has its own directory:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-updates
@@ -244,7 +244,7 @@ spec:
     path: ./clusters/staging/apps
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates

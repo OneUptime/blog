@@ -38,7 +38,7 @@ metadata:
   name: flagger-system
 ---
 # infrastructure/flagger/release.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: flagger
@@ -47,7 +47,7 @@ spec:
   interval: 1h
   url: https://flagger.app
 ---
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

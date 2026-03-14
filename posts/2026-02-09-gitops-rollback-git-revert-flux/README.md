@@ -213,7 +213,7 @@ Integrate with monitoring for automatic rollbacks:
 
 ```yaml
 # Flux alert for failed deployments
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: auto-rollback-trigger
@@ -226,7 +226,7 @@ spec:
   providerRef:
     name: webhook-rollback
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta1
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: webhook-rollback

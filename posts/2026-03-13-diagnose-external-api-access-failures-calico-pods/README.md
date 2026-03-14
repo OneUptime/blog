@@ -111,7 +111,7 @@ calicoctl get ippools -o yaml | grep natOutgoing
 
 # Check iptables masquerade on the node
 POD_NODE=$(kubectl get pod api-diag -o jsonpath='{.spec.nodeName}')
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${POD_NODE} -o name | head -1)
 kubectl exec -n calico-system "${CALICO_POD}" -- \
   iptables -t nat -L cali-nat-outgoing -n

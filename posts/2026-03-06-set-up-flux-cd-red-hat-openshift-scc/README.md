@@ -485,7 +485,7 @@ Set up alerts for SCC violations that might affect Flux-managed workloads:
 
 ```yaml
 # clusters/openshift/apps/scc-monitoring.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -496,7 +496,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: scc-alerts

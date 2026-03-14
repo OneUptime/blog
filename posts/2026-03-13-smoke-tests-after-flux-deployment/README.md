@@ -81,7 +81,7 @@ Use a Flux Alert to apply the smoke test Job after reconciliation completes:
 
 ```yaml
 # clusters/staging/notifications/smoke-test-trigger.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: smoke-test-webhook
@@ -92,7 +92,7 @@ spec:
   secretRef:
     name: smoke-test-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: smoke-test-on-deploy

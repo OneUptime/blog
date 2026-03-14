@@ -67,7 +67,7 @@ metadata:
   name: flux-system
 ---
 # clusters/production/tf-controller/helmrepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: tf-controller
@@ -77,7 +77,7 @@ spec:
   url: https://flux-iac.github.io/tofu-controller/
 ---
 # clusters/production/tf-controller/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tf-controller
@@ -331,7 +331,7 @@ Set up alerts for failed reconciliations:
 
 ```yaml
 # clusters/production/monitoring/tf-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: terraform-alerts

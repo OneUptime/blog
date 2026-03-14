@@ -79,7 +79,7 @@ kubectl logs -n flux-system deploy/image-automation-controller | grep -i "confli
 Ensure each ImageUpdateAutomation writes to its own branch or uses a dedicated automation branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation

@@ -79,7 +79,7 @@ Kustomizations migrated from `v1beta2` to `v1`:
 ```bash
 # Before migration (old API version)
 cat <<'YAML'
-apiVersion: kustomize.toolkit.fluxcd.io/v1beta2
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: my-app
@@ -115,7 +115,7 @@ YAML
 ```bash
 # Before migration
 cat <<'YAML'
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   name: my-app
@@ -149,7 +149,7 @@ HelmReleases migrated from `v2beta1` to `v2`:
 ```bash
 # Before migration
 cat <<'YAML'
-apiVersion: helm.toolkit.fluxcd.io/v2beta1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx
@@ -282,7 +282,7 @@ Notification APIs also undergo version changes:
 # Migrate alert and provider resources
 # Before (v1beta2)
 cat <<'YAML'
-apiVersion: notification.toolkit.fluxcd.io/v1beta2
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: my-alert
@@ -298,7 +298,7 @@ YAML
 
 # After (v1beta3)
 cat <<'YAML'
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: my-alert
@@ -365,19 +365,19 @@ For simple API version updates, you can use sed as a fallback:
 ```bash
 # Update Kustomization API version from v1beta2 to v1
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|kustomize.toolkit.fluxcd.io/v1beta2|kustomize.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i '' 's|kustomize.toolkit.fluxcd.io/v1|kustomize.toolkit.fluxcd.io/v1|g' {} \;
 
 # Update GitRepository API version from v1beta2 to v1
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i '' 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' {} \;
 
 # Update HelmRelease API version from v2beta1 to v2
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|helm.toolkit.fluxcd.io/v2beta1|helm.toolkit.fluxcd.io/v2|g' {} \;
+  sed -i '' 's|helm.toolkit.fluxcd.io/v2|helm.toolkit.fluxcd.io/v2|g' {} \;
 
 # Update HelmRepository API version
 find ./clusters/ -name "*.yaml" -exec \
-  sed -i '' 's|source.toolkit.fluxcd.io/v1beta2|source.toolkit.fluxcd.io/v1|g' {} \;
+  sed -i '' 's|source.toolkit.fluxcd.io/v1|source.toolkit.fluxcd.io/v1|g' {} \;
 ```
 
 Note: The `sed` approach only handles API version strings. The `flux migrate` command is preferred because it can also handle field renames and structural changes.

@@ -62,7 +62,7 @@ Felix on each node detects the config change, flushes existing iptables chains, 
 
 ```bash
 # Watch Felix logs on a node
-kubectl logs -n calico-system -l app=calico-node -c calico-node -f | grep -i "nft\|iptables\|dataplane"
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node -f | grep -i "nft\|iptables\|dataplane"
 ```
 
 ## Step 4: Verify nftables Rules Are Active

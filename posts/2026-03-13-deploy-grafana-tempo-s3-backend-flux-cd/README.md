@@ -62,7 +62,7 @@ Configure Tempo with S3 block storage and OTLP ingestion.
 
 ```yaml
 # clusters/my-cluster/tempo/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tempo

@@ -173,7 +173,7 @@ kubectl get deployment my-app -n production -o yaml > /tmp/emergency-patch.yaml
 
 ```yaml
 # Flux alert when a site reconnects (source becomes ready after being unhealthy)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: site-reconnection

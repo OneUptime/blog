@@ -58,7 +58,7 @@ Define a HelmRelease that installs the `litmus` chart into the `litmus` namespac
 
 ```yaml
 # clusters/my-cluster/litmus/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: litmus

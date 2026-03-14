@@ -220,7 +220,7 @@ Configure Flux to update commit statuses in GitLab so your team can see deployme
 ```yaml
 # clusters/production/notifications/gitlab-provider.yaml
 # Provider for GitLab commit status updates
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-status
@@ -231,7 +231,7 @@ spec:
   secretRef:
     name: gitlab-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitlab-status

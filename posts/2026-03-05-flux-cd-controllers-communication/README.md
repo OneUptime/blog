@@ -170,7 +170,7 @@ The notification-controller matches events against `Alert` resources to determin
 
 ```yaml
 # Alert configuration that filters events by source and severity
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-alerts

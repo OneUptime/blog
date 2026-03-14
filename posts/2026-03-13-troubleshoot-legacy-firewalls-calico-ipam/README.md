@@ -35,7 +35,7 @@ Distinguish firewall drops from Calico policy drops:
 kubectl exec <pod-name> -- curl -v http://<external-service>
 
 # Check Felix logs for Calico policy drops (if Felix drops it, it's a network policy issue)
-kubectl -n calico-system logs -l app=calico-node -c calico-node | grep "DROP" | tail -20
+kubectl -n calico-system logs -l k8s-app=calico-node -c calico-node | grep "DROP" | tail -20
 
 # Test the same connection from a node (not a pod) to confirm it's not firewall-blocked
 # If it works from the node but not from the pod, the pod's IPAM-assigned IP is blocked

@@ -47,7 +47,7 @@ Two CRDs manage notifications:
 
 ```yaml
 # clusters/production/notifications/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-deployments
@@ -73,7 +73,7 @@ kubectl create secret generic slack-webhook-url \
 # clusters/production/notifications/deployment-alerts.yaml
 
 # Alert for successful reconciliations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-success
@@ -94,7 +94,7 @@ spec:
   summary: "Production deployment succeeded"
 ---
 # Alert for failed reconciliations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-failure
@@ -120,7 +120,7 @@ spec:
 
 ```yaml
 # clusters/production/notifications/pagerduty-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty
@@ -130,7 +130,7 @@ spec:
   secretRef:
     name: pagerduty-integration-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-failure-pagerduty
@@ -159,7 +159,7 @@ kubectl create secret generic pagerduty-integration-key \
 ## Step 5: Configure Microsoft Teams Notification
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -169,7 +169,7 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: teams-deployments
@@ -187,7 +187,7 @@ spec:
 ## Step 6: Configure a Generic Webhook for Custom Integrations
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: custom-webhook
@@ -201,7 +201,7 @@ spec:
   # certSecretRef:
   #   name: webhook-ca-cert
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: custom-webhook-alert

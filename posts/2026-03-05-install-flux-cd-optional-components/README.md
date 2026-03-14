@@ -170,7 +170,7 @@ Slack notification provider:
 
 ```yaml
 # slack-provider.yaml - Sends Flux alerts to a Slack channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -195,7 +195,7 @@ Create an Alert resource to define which events trigger notifications:
 
 ```yaml
 # alert.yaml - Defines which Flux events should trigger Slack notifications
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: on-call-alerts

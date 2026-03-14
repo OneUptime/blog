@@ -34,7 +34,7 @@ Since these tags are not SemVer compliant, you cannot use the `semver` policy. I
 ## Setting Up the ImageRepository
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -49,7 +49,7 @@ spec:
 To track the latest image from the `main` branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -72,7 +72,7 @@ However, alphabetical ordering on SHA hashes does not give you the most recent c
 The recommended approach is to include a timestamp in your image tag. Modify your CI pipeline to produce tags like `main-1678901234-abc1234` where the middle segment is a Unix timestamp or a sortable date:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -95,7 +95,7 @@ This configuration filters tags that start with `main-`, extracts the timestamp 
 To track images from a feature branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-feature
@@ -116,7 +116,7 @@ spec:
 Some CI pipelines produce tags with date formats like `main-20260313-abc1234`. You can handle these with numerical extraction:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-dated

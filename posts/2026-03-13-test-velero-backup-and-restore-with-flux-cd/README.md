@@ -250,7 +250,7 @@ spec:
 
 ```yaml
 # infrastructure/velero/alerts/backup-health-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: velero-backup-failure

@@ -122,7 +122,7 @@ FluxCD relies on Kubernetes RBAC, which gives you cluster-level access control b
 FluxCD's built-in image automation is more tightly integrated than ArgoCD's separate Image Updater. The image reflector controller watches registries and the image automation controller updates Git repos.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -133,7 +133,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app
@@ -166,7 +166,7 @@ FluxCD's controller-based architecture means you can install only what you need.
 FluxCD was early to support OCI artifacts as a first-class source. You can store both Helm charts and Kustomize configurations as OCI artifacts.
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

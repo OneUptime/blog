@@ -110,7 +110,7 @@ jobs:
 
 ```yaml
 # clusters/edge-site-001/flux-system/oci-sources.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-edge-apps
@@ -135,7 +135,7 @@ spec:
 ```
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-edge-infrastructure
@@ -252,7 +252,7 @@ Update the OCIRepository to use the local cache first:
 
 ```yaml
 # Point OCIRepository at local cache proxy
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-edge-apps

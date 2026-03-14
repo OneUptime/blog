@@ -82,7 +82,7 @@ data:
 Add the `signingKey` reference to your ImageUpdateAutomation:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates
@@ -142,7 +142,7 @@ With this setting, all commits including automated ones must be signed. Flux's G
 The signing configuration works the same way when pushing to a separate branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

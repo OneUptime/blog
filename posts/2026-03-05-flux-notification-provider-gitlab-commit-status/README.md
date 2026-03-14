@@ -42,7 +42,7 @@ Define a Provider resource for GitLab commit status updates.
 ```yaml
 # provider-gitlab-commit-status.yaml
 # Configures Flux to update GitLab commit statuses
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-status-provider
@@ -77,7 +77,7 @@ Create an Alert that triggers commit status updates.
 ```yaml
 # alert-gitlab-commit-status.yaml
 # Updates GitLab commit statuses based on Flux events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitlab-status-alert
@@ -153,7 +153,7 @@ When commit statuses are configured, they appear as external pipeline statuses i
 For self-hosted GitLab instances:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-self-hosted
@@ -173,7 +173,7 @@ Ensure the cluster can reach your self-hosted GitLab instance on the network.
 Create separate providers for each GitLab project:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-infra
@@ -184,7 +184,7 @@ spec:
   secretRef:
     name: gitlab-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: gitlab-apps

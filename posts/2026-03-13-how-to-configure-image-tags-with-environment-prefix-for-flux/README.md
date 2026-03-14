@@ -26,7 +26,7 @@ This guide walks you through configuring an ImagePolicy resource in Flux to filt
 Before configuring the ImagePolicy, you need an ImageRepository resource that tells Flux which container registry to scan.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -47,7 +47,7 @@ The ImagePolicy resource defines which tag to select from the scanned list. To f
 To select only tags prefixed with `prod-` and then sort by semantic versioning:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -70,7 +70,7 @@ In this configuration, `filterTags.pattern` uses a named capture group `(?P<vers
 For a staging environment, change the prefix in the pattern:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -93,7 +93,7 @@ The semver range `>=0.1.0-0` includes pre-release versions, which is useful for 
 For development, you might want to select the most recent tag by timestamp rather than semver:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-dev

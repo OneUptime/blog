@@ -44,7 +44,7 @@ calicoctl ipam check --show-all-ips 2>/dev/null | grep "leak\|no workload"
 calicoctl ipam release --ip=<leaked-ip> 2>/dev/null || true
 
 # Or use the automated cleanup
-calicoctl ipam check --output=report.json 2>/dev/null
+calicoctl ipam check -o ipam-report.json.json 2>/dev/null
 # Review report and release IPs with no corresponding workload
 
 # After cleanup, verify free IPs

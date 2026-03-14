@@ -228,7 +228,7 @@ Flux has excellent Helm support through the HelmRelease CRD. First, define a Hel
 
 ```yaml
 # infrastructure/sources/bitnami.yaml - Helm repository source
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: bitnami
@@ -242,7 +242,7 @@ Then create a HelmRelease:
 
 ```yaml
 # apps/production/redis.yaml - Helm release for Redis
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
@@ -295,7 +295,7 @@ Flux can automatically update image tags in your Git repository when new contain
 
 ```yaml
 # image-repo.yaml - Watch ECR for new images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -305,7 +305,7 @@ spec:
   interval: 5m
 ---
 # image-policy.yaml - Define which tags to follow
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -333,7 +333,7 @@ Set up alerts for deployment events:
 
 ```yaml
 # notification.yaml - Send Flux alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: slack-alerts
@@ -348,7 +348,7 @@ spec:
     - kind: HelmRelease
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack

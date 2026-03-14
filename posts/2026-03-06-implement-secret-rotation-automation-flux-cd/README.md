@@ -358,7 +358,7 @@ Set up alerts for secret rotation failures and expiration warnings.
 ```yaml
 # clusters/production/notifications/secret-alerts.yaml
 # Alert configuration for secret rotation events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: secrets-slack
@@ -369,7 +369,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: secret-rotation-alerts

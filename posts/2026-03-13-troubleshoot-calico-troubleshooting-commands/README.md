@@ -42,7 +42,7 @@ kubectl get crd | grep tigerastatus
 kubectl get pods -n tigera-operator
 
 # Check operator logs
-kubectl logs -n tigera-operator -l app=tigera-operator | tail -30
+kubectl logs -n tigera-operator -l k8s-app=tigera-operator | tail -30
 ```
 
 ## Symptom 3: calicoctl Commands Return Empty Output
@@ -63,11 +63,11 @@ kubectl auth can-i list globalnetworkpolicies
 # calicoctl node status requires exec into a calico-node pod
 # If calico-node pods are crash-looping, the command will fail
 
-kubectl get pods -n calico-system -l app=calico-node
+kubectl get pods -n calico-system -l k8s-app=calico-node
 # Check for CrashLoopBackOff or Error
 
 # Alternative: use the Felix metrics port to check BGP state
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
   birdcl show protocols | grep BGP

@@ -40,7 +40,7 @@ Flux supports the following resource kinds in Alert event sources:
 To receive alerts only for GitRepository events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: git-source-alerts
@@ -61,7 +61,7 @@ The `name: '*'` wildcard captures events from all GitRepository resources. Only 
 A practical pattern is splitting alerts into source-level alerts and reconciliation-level alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: source-alerts
@@ -80,7 +80,7 @@ spec:
     - kind: OCIRepository
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-alerts
@@ -103,7 +103,7 @@ Source alerts capture problems fetching code or charts, such as authentication f
 If your cluster relies heavily on Helm, you might want a dedicated alert for all Helm-related kinds:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helm-pipeline-alerts
@@ -128,7 +128,7 @@ This captures the full Helm pipeline: repository index updates, chart fetches, a
 For clusters using OCI artifacts for GitOps:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: oci-alerts
@@ -147,7 +147,7 @@ spec:
 You can combine kind filtering with namespace filtering for precise targeting:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-kustomization-alerts
@@ -169,7 +169,7 @@ This only alerts on Kustomization errors in the production namespace, ignoring a
 Different teams often care about different resource kinds. The platform team monitors sources, while application teams monitor reconciliation:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: platform-team-alerts
@@ -188,7 +188,7 @@ spec:
     - kind: Bucket
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: app-team-alerts

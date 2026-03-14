@@ -394,7 +394,7 @@ Replace Spinnaker's notification stages with Flux notifications.
 ```yaml
 # notifications/providers.yaml
 # Slack notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -406,7 +406,7 @@ spec:
     name: slack-webhook
 ---
 # GitHub commit status provider
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: github-status
@@ -421,7 +421,7 @@ spec:
 ```yaml
 # notifications/alerts.yaml
 # Alert on deployment events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -439,7 +439,7 @@ spec:
     name: slack
 ---
 # Update GitHub commit status on reconciliation
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: github-status-updates

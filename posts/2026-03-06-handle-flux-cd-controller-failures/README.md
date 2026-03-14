@@ -71,7 +71,7 @@ spec:
 
 ```yaml
 # alerts/slack-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-alert
@@ -83,7 +83,7 @@ spec:
     name: slack-webhook-url
 ---
 # alerts/controller-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: controller-failure-alert

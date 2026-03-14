@@ -32,7 +32,7 @@ Instead of excluding directories, narrow your include path to cover only the dir
 ```yaml
 # Instead of scanning ./clusters/production and excluding ./clusters/production/legacy
 # Use a more specific path:
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-updates
@@ -65,7 +65,7 @@ By pointing to `./clusters/production/apps` instead of `./clusters/production`, 
 When you need to include multiple non-contiguous directories while excluding others, create separate automation resources:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-apps-updates
@@ -90,7 +90,7 @@ spec:
     path: ./clusters/production/apps
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-monitoring-updates
@@ -166,7 +166,7 @@ spec:
     branch: main
 ---
 # ImageUpdateAutomation for automated apps only
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: app-updates

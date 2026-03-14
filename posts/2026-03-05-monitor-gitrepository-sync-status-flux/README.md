@@ -96,7 +96,7 @@ The Flux notification controller can send alerts to external systems when GitRep
 ```yaml
 # slack-provider.yaml
 # Notification provider for sending alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -121,7 +121,7 @@ stringData:
 ```yaml
 # gitrepository-alert.yaml
 # Alert configuration for GitRepository status changes
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: gitrepository-alerts

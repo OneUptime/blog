@@ -72,7 +72,7 @@ Set up alerting for drift events. Flux generates `ReconciliationFailed` events w
 
 ```yaml
 # clusters/production/monitoring/drift-alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-ops
@@ -83,7 +83,7 @@ spec:
   secretRef:
     name: slack-webhook-secret
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-critical
@@ -94,7 +94,7 @@ spec:
     name: pagerduty-integration-key   # Secret containing the routing key
 ---
 # Slack alert for drift detection in all production Kustomizations
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: drift-detected-slack
@@ -115,7 +115,7 @@ spec:
 
 ```yaml
 # PagerDuty alert for persistent drift (reconciliation failing for > 15 minutes)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: persistent-drift-pagerduty

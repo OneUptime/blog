@@ -65,7 +65,7 @@ echo "Result: $?"
 curl -s http://localhost:9091/metrics | grep felix_denied
 
 # Review flow logs
-tail -f /var/log/calico/flow-logs/flows.log | grep "DENY"
+tail -f /var/log/calico/felix.log | grep "DENY"
 ```
 
 ## Architecture

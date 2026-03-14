@@ -268,7 +268,7 @@ spec:
 You can also set up alerts for drift detection:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: istio-drift-alert

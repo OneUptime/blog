@@ -63,7 +63,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/oauth2-proxy/oauth2-proxy-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: oauth2-proxy

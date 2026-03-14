@@ -417,7 +417,7 @@ Set up alerts for pre-deployment failures:
 
 ```yaml
 # clusters/production/notifications/pre-deploy-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pre-deploy-failures

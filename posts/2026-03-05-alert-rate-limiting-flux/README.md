@@ -26,7 +26,7 @@ The most effective way to limit alert volume is to use `spec.exclusionList` to f
 
 ```yaml
 # Alert with aggressive exclusion rules to reduce volume
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rate-limited-alert
@@ -74,7 +74,7 @@ Switching to error severity dramatically reduces notification volume by only sen
 
 ```yaml
 # Error-only alert for minimal notification volume
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: errors-only-alert
@@ -102,7 +102,7 @@ Reduce volume by watching only specific resources instead of using wildcards.
 
 ```yaml
 # Alert watching only critical resources instead of all
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: targeted-alert
@@ -146,7 +146,7 @@ Create a tiered alert system where high-volume events go to low-priority destina
 
 ```yaml
 # High-volume, low-priority: all info events to a webhook/log
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: high-volume-log
@@ -164,7 +164,7 @@ spec:
       namespace: flux-system
 ---
 # Low-volume, high-priority: errors only to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: low-volume-critical
@@ -182,7 +182,7 @@ spec:
       namespace: flux-system
 ---
 # Medium-volume: filtered info events to general Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: medium-volume-info
@@ -214,7 +214,7 @@ For true rate limiting, use a generic provider that points to a custom webhook s
 
 ```yaml
 # Provider pointing to a rate-limiting proxy
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: rate-limited-webhook
@@ -225,7 +225,7 @@ spec:
     name: rate-limiter-secret
 ---
 # Alert using the rate-limited proxy
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: rate-limited-via-proxy

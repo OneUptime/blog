@@ -56,7 +56,7 @@ Deploy Ambassador with the HelmRelease, configuring TLS and the Admin UI.
 
 ```yaml
 # infrastructure/ambassador/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ambassador

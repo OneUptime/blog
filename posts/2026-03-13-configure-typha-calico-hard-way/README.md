@@ -54,7 +54,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   endpoints:
   - port: metrics
     interval: 30s

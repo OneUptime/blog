@@ -53,7 +53,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/openldap/openldap-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: openldap
@@ -125,7 +125,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/openldap/phpldapadmin-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: phpldapadmin
@@ -181,7 +181,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v2beta2
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: openldap
       namespace: openldap

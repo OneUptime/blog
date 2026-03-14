@@ -26,7 +26,7 @@ This guide provides a systematic checklist for verifying Calico on Minikube, cov
 
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 All pods must be in `Running` state with all containers ready (e.g., `1/1` or `2/2`).

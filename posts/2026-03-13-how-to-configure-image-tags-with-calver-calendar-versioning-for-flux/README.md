@@ -36,7 +36,7 @@ The key property of all these formats is that lexicographic sorting gives chrono
 ## Setting Up the ImageRepository
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -51,7 +51,7 @@ spec:
 When your CalVer tags use a three-component format like `2026.03.13` or `2026.3.1`, they happen to be valid SemVer strings. You can use the SemVer policy directly:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-calver
@@ -71,7 +71,7 @@ This selects the highest version starting from 2026. If your registry has `2026.
 To only track releases from a specific year:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-2026
@@ -89,7 +89,7 @@ spec:
 To track only releases from a specific month:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-march
@@ -107,7 +107,7 @@ spec:
 For two-component CalVer tags like `2026.03`, you cannot use SemVer (which requires three components). Instead, use tag filtering with alphabetical ordering:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-ym
@@ -130,7 +130,7 @@ Since the format is zero-padded, alphabetical ordering gives the correct chronol
 Some projects append a build number to the CalVer date, producing tags like `2026.03.13-1` or `2026.03.13-2` for multiple releases on the same day:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-calver-build
@@ -151,7 +151,7 @@ spec:
 If your tags use a `v` prefix like `v2026.03.13`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-v-calver

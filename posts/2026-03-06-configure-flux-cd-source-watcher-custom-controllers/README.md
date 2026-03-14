@@ -485,7 +485,7 @@ Send notifications from your custom controller to Flux notification system:
 
 ```yaml
 # notifications/watcher-alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: source-watcher-alerts
@@ -502,7 +502,7 @@ spec:
   providerRef:
     name: slack-provider
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

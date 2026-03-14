@@ -47,12 +47,12 @@ kubectl get pdb -A | grep calico
 
 ```bash
 # Check what version is running on each node
-kubectl get pods -n calico-system -l app=calico-node \
+kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.spec.nodeName}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}'
 
 # This is expected during a rolling upgrade but should complete
 # If stuck for >30 minutes, check node health:
-for node in $(kubectl get pods -n calico-system -l app=calico-node \
+for node in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}'); do
   echo -n "${node}: "
   kubectl get node ${node} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
@@ -66,14 +66,14 @@ done
 # If pods can't connect after upgrade:
 
 # 1. Check if all calico-node pods are on the new version
-kubectl get pods -n calico-system -l app=calico-node \
+kubectl get pods -n calico-system -l k8s-app=calico-node \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | \
   grep -v "v3.28.0"  # Replace with target version
 
 # 2. Check Felix logs on affected nodes for errors
 NODE_WITH_ISSUE="<node-name>"
 kubectl logs -n calico-system \
-  $(kubectl get pod -n calico-system -l app=calico-node \
+  $(kubectl get pod -n calico-system -l k8s-app=calico-node \
     --field-selector=spec.nodeName=${NODE_WITH_ISSUE} \
     -o jsonpath='{.items[0].metadata.name}') | \
   grep -E "ERROR|FATAL|error" | tail -20

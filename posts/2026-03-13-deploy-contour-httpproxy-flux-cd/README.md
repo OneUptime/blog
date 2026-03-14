@@ -46,7 +46,7 @@ Install the Contour Ingress Controller with Envoy as the data plane.
 
 ```yaml
 # infrastructure/contour/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: contour

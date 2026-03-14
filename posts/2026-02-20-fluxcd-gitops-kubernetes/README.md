@@ -285,7 +285,7 @@ sequenceDiagram
 ```yaml
 # clusters/production/image-automation.yaml
 # Scan the container registry for new images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -295,7 +295,7 @@ spec:
   interval: 5m
 ---
 # Define which tags to track using a semver policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -309,7 +309,7 @@ spec:
       range: "1.x"
 ---
 # Automatically commit image updates back to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app
@@ -394,7 +394,7 @@ Configure Flux to send alerts when deployments succeed or fail.
 ```yaml
 # clusters/production/notifications.yaml
 # Send alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -405,7 +405,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts

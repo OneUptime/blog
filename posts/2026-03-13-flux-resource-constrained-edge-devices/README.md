@@ -203,7 +203,7 @@ flux reconcile source oci fleet-edge-apps
 Switch to OCIRepository for the lowest memory profile:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-edge-apps

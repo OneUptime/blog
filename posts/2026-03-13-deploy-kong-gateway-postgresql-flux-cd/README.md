@@ -46,7 +46,7 @@ Deploy a dedicated PostgreSQL instance for Kong's configuration storage.
 
 ```yaml
 # infrastructure/kong/postgresql-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kong-postgresql
@@ -105,7 +105,7 @@ Deploy Kong in database mode, pointing to the PostgreSQL instance.
 
 ```yaml
 # infrastructure/kong/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kong

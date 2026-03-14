@@ -100,7 +100,7 @@ kubectl get node <deleted-node-name>   # Should return "not found"
 calicoctl ipam release --ip=<orphaned-block-start-ip>
 
 # Alternatively, run a full IPAM garbage collection
-calicoctl ipam check --show-problem-ips
+calicoctl ipam check --show-all-ips
 ```
 
 ## Step 5: Create a BlockAffinity Monitoring Dashboard

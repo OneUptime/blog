@@ -398,7 +398,7 @@ Configure Flux notifications to monitor all clusters from a central location.
 ```yaml
 # clusters/management/notification.yaml
 # Centralized notification provider for all cluster events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: central-slack
@@ -409,7 +409,7 @@ spec:
   secretRef:
     name: slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: all-resources

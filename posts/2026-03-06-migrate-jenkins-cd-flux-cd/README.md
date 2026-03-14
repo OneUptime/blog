@@ -353,7 +353,7 @@ Set up alerts to monitor Flux CD during and after migration:
 
 ```yaml
 # clusters/production/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -368,7 +368,7 @@ spec:
     - kind: HelmRelease
       name: "*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack

@@ -124,7 +124,7 @@ Set up a Flux notification alert when quota-related events occur:
 ```yaml
 # monitoring/quota-alert.yaml
 # Flux alert notifying when quota enforcement causes pod failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: quota-violation-alert

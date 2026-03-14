@@ -47,7 +47,7 @@ Define a Provider resource for Sentry.
 ```yaml
 # provider-sentry.yaml
 # Configures Flux to send notifications to Sentry
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: sentry-provider
@@ -76,7 +76,7 @@ Create an Alert that specifies which events are sent to Sentry.
 ```yaml
 # alert-sentry.yaml
 # Routes Flux events to Sentry
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: sentry-alert
@@ -141,7 +141,7 @@ Use the `channel` field to set the Sentry environment:
 
 ```yaml
 # Provider for production environment
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: sentry-prod
@@ -153,7 +153,7 @@ spec:
     name: sentry-dsn
 ---
 # Provider for staging environment
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: sentry-staging
@@ -170,7 +170,7 @@ spec:
 If you want to track all deployment events in Sentry, not just errors:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: sentry-all-events

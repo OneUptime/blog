@@ -428,7 +428,7 @@ Set up alerts for policy violations using Flux CD notifications.
 
 ```yaml
 # clusters/my-cluster/image-policies/alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: policy-slack
@@ -441,7 +441,7 @@ spec:
 
 ---
 # clusters/my-cluster/image-policies/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: policy-violations

@@ -44,7 +44,7 @@ Each cluster in the mesh must have a unique ID (1-255):
 
 ```yaml
 # clusters/cluster-west/cilium/helmrelease-clustermesh.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium-clustermesh

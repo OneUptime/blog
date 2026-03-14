@@ -192,7 +192,7 @@ spec:
 Flux also has a built-in notification system through the notification-controller. You can use it to complement Alertmanager-based alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: flux-errors
@@ -209,7 +209,7 @@ spec:
     - kind: GitRepository
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

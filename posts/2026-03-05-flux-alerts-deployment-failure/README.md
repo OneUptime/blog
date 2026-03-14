@@ -26,7 +26,7 @@ The most direct way to capture failure notifications is to set `eventSeverity` t
 
 ```yaml
 # Alert that only captures deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-failure-alert
@@ -58,7 +58,7 @@ For production environments, route failure alerts to a high-priority channel or 
 
 ```yaml
 # Production failure alert routed to a critical channel
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: production-failure-alert
@@ -82,7 +82,7 @@ Source fetch failures (Git clone errors, authentication issues) can cause downst
 
 ```yaml
 # Alert covering both source and deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: full-pipeline-failure-alert
@@ -114,7 +114,7 @@ For mission-critical applications, create targeted failure alerts.
 
 ```yaml
 # Failure alert for critical services
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: critical-service-failures
@@ -141,7 +141,7 @@ Send failure alerts from different environments to different channels.
 
 ```yaml
 # Staging failure alert (lower priority)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: staging-failure-alert
@@ -159,7 +159,7 @@ spec:
       namespace: staging
 ---
 # Production failure alert (high priority)
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: prod-failure-alert

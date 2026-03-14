@@ -425,7 +425,7 @@ Replace Octopus deployment notifications with Flux alerts.
 
 ```yaml
 # clusters/production/notifications/teams-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: teams
@@ -436,7 +436,7 @@ spec:
   secretRef:
     name: teams-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: deployment-status

@@ -35,7 +35,7 @@ When Flux evaluates the policy, it applies the regex to each tag. Tags that do n
 Suppose your CI pipeline produces tags like `build-42-v1.3.7` where `42` is the build number and `v1.3.7` is the semantic version.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -58,7 +58,7 @@ This pattern matches tags starting with `build-`, followed by any number of digi
 Some pipelines produce tags like `abc1234-20260313120000` combining a short Git SHA with a timestamp.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -81,7 +81,7 @@ The regex matches a 7-character hex string followed by a 14-digit timestamp. The
 For tags like `release-1.5.0-linux-amd64`, you may want to filter by architecture and extract the version:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-amd64
@@ -104,7 +104,7 @@ This filters only `linux-amd64` tags and extracts the semantic version for sorti
 If your registry has tags like `main-20260313-abc1234` and `feature-xyz-20260313-def5678`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-main
@@ -127,7 +127,7 @@ This selects only tags from the `main` branch and sorts them by the date compone
 For tags like `stable-v2.1.0`, `beta-v2.2.0-rc.1`, `alpha-v2.3.0-alpha.5`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-stable

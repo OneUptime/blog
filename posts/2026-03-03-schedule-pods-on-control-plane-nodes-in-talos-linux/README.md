@@ -250,11 +250,11 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-node
+      k8s-app: calico-node
   template:
     metadata:
       labels:
-        app: calico-node
+        k8s-app: calico-node
     spec:
       hostNetwork: true
       tolerations:

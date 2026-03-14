@@ -381,7 +381,7 @@ Use Flux's notification system to alert on chaos failures:
 
 ```yaml
 # clusters/my-cluster/litmus/chaos-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: chaos-alert
@@ -396,7 +396,7 @@ spec:
       namespace: flux-system
   summary: "Chaos experiment failed - application may not be resilient"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

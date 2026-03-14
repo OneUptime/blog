@@ -104,7 +104,7 @@ Configure the HelmRelease to run Kong in DB-less mode, mounting the ConfigMap as
 
 ```yaml
 # infrastructure/kong/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kong

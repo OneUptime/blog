@@ -103,7 +103,7 @@ If Felix was restarted or iptables rules were flushed, force Felix to reprogram 
 ```bash
 # Restart the calico-node pod on the affected node to force Felix rule reprogramming
 NODE="worker-01"
-CALICO_POD=$(kubectl get pods -n calico-system -l app=calico-node \
+CALICO_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=${NODE} -o name | head -1)
 
 kubectl delete "${CALICO_POD}" -n calico-system
@@ -113,7 +113,7 @@ kubectl rollout status daemonset calico-node -n calico-system
 
 # Verify NAT rules are back
 kubectl exec -n calico-system \
-  "$(kubectl get pods -n calico-system -l app=calico-node \
+  "$(kubectl get pods -n calico-system -l k8s-app=calico-node \
     --field-selector spec.nodeName=${NODE} -o name | head -1)" -- \
   iptables -t nat -L cali-nat-outgoing -n 2>/dev/null
 ```

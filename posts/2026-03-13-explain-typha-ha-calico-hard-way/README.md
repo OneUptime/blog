@@ -44,7 +44,7 @@ This can lead to a confusing situation where `kubectl get networkpolicy` shows t
 
 ```bash
 # Check if Typha is healthy before expecting policy to take effect
-kubectl get pods -n calico-system -l app=calico-typha
+kubectl get pods -n calico-system -l k8s-app=calico-typha
 kubectl get endpoints calico-typha -n calico-system
 ```
 

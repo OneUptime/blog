@@ -324,7 +324,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/k6/load-test-alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: load-test-alert

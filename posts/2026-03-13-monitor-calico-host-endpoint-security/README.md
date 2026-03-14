@@ -74,7 +74,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-node
+      k8s-app: calico-node
   namespaceSelector:
     matchNames:
       - calico-system

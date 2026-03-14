@@ -107,7 +107,7 @@ For GitOps deployments, update the Helm values file in Git:
 ```yaml
 # Update version in HelmRelease manifest for Flux GitOps
 # flux-calico-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: calico

@@ -63,7 +63,7 @@ stringData:
 
 ```yaml
 # clusters/production/apps/mlflow-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mlflow
@@ -163,7 +163,7 @@ If you prefer to run MinIO in-cluster for artifact storage:
 
 ```yaml
 # clusters/production/apps/minio-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: minio

@@ -27,7 +27,7 @@ This guide provides a targeted verification checklist for Calico on single-node 
 ```bash
 kubectl get pods -n kube-system | grep calico
 kubectl get pods -n kube-system -l k8s-app=calico-node
-kubectl get pods -n kube-system -l app=calico-kube-controllers
+kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 ```
 
 All should show `Running` with all containers in `Ready` state.

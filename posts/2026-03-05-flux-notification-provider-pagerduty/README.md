@@ -41,7 +41,7 @@ Define a Provider resource for PagerDuty.
 ```yaml
 # provider-pagerduty.yaml
 # Configures Flux to send notifications to PagerDuty
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-provider
@@ -70,7 +70,7 @@ For PagerDuty, you typically want to forward only error events to avoid creating
 ```yaml
 # alert-pagerduty.yaml
 # Routes Flux error events to PagerDuty to create incidents
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pagerduty-alert
@@ -141,7 +141,7 @@ The notification controller sends events to the PagerDuty Events API v2 endpoint
 The `channel` field in the Provider can be used to set the PagerDuty event severity:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-warning
@@ -160,7 +160,7 @@ Route production and staging alerts to different PagerDuty services:
 
 ```yaml
 # Provider for production service
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-prod
@@ -172,7 +172,7 @@ spec:
     name: pagerduty-prod-key
 ---
 # Provider for staging service
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: pagerduty-staging
@@ -184,7 +184,7 @@ spec:
     name: pagerduty-staging-key
 ---
 # Alert for production errors
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pagerduty-prod-alert
@@ -198,7 +198,7 @@ spec:
       name: "production-*"
 ---
 # Alert for staging errors
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pagerduty-staging-alert

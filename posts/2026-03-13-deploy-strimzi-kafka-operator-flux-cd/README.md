@@ -49,7 +49,7 @@ metadata:
 
 ```yaml
 # infrastructure/messaging/strimzi/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2beta2
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: strimzi-kafka-operator

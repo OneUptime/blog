@@ -22,7 +22,7 @@ kubectl rollout restart ds/calico-node -n calico-system
 
 # CORRECT - restart only the specific affected pod
 AFFECTED_NODE="node-xyz"
-AFFECTED_POD=$(kubectl get pod -n calico-system -l app=calico-node \
+AFFECTED_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
   --field-selector=spec.nodeName=${AFFECTED_NODE} \
   -o jsonpath='{.items[0].metadata.name}')
 kubectl delete pod -n calico-system "${AFFECTED_POD}"

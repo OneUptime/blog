@@ -100,7 +100,7 @@ kubectl describe kustomization secrets -n flux-system
 Create an event-driven alerting system with Flux notification controller:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: secret-changes
@@ -120,7 +120,7 @@ spec:
 Configure the notification provider:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-webhook

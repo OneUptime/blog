@@ -16,7 +16,7 @@ Calico typha exposes Prometheus metrics on port 9093 that provide visibility int
 
 ```bash
 # Test typha metrics endpoint
-POD=$(kubectl get pods -n calico-system -l app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
+POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9093/metrics | head -30
 ```
@@ -32,7 +32,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: calico-typha
+      k8s-app: calico-typha
   endpoints:
     - port: metrics
       path: /metrics

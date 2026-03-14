@@ -302,7 +302,7 @@ Configure Flux to send deployment notifications so you can track the status of d
 ```yaml
 # clusters/my-cluster/notification-provider.yaml
 # Send notifications to a webhook endpoint
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: woodpecker-webhook
@@ -317,7 +317,7 @@ spec:
 ```yaml
 # clusters/my-cluster/notification-alert.yaml
 # Alert on deployment events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: myapp-deployment

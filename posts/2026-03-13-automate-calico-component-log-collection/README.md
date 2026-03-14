@@ -25,19 +25,19 @@ mkdir -p "${BUNDLE_DIR}"
 echo "Collecting Calico component logs..."
 
 # calico-node logs from all nodes
-kubectl logs -n calico-system -l app=calico-node -c calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node \
   --tail=1000 --prefix=true > "${BUNDLE_DIR}/calico-node.log"
 
 # calico-typha logs
-kubectl logs -n calico-system -l app=calico-typha \
+kubectl logs -n calico-system -l k8s-app=calico-typha \
   --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-typha.log"
 
 # calico-kube-controllers logs
-kubectl logs -n calico-system -l app=calico-kube-controllers \
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers \
   --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-kube-controllers.log"
 
 # calico-apiserver logs (if Enterprise/EE)
-kubectl logs -n calico-system -l app=calico-apiserver \
+kubectl logs -n calico-system -l k8s-app=calico-apiserver \
   --tail=500 --prefix=true > "${BUNDLE_DIR}/calico-apiserver.log" 2>/dev/null || true
 
 # Calico resource state
@@ -109,7 +109,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  kubectl logs -n calico-system -l app=calico-node \
+                  kubectl logs -n calico-system -l k8s-app=calico-node \
                     -c calico-node --tail=500 --prefix=true \
                     > /archive/calico-node-$(date +%Y%m%d%H).log
               volumeMounts:

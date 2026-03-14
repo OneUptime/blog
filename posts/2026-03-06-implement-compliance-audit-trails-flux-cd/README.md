@@ -231,7 +231,7 @@ Capture all Flux reconciliation events for compliance reporting.
 
 ```yaml
 # Forward Flux events to an external audit log system
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: audit-log
@@ -243,7 +243,7 @@ spec:
     name: audit-webhook-secret
 ---
 # Capture all events for the audit trail
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: audit-all-events

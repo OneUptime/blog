@@ -205,7 +205,7 @@ Events:
 kubectl get pods -n kube-system | grep -E 'calico|weave|flannel|cilium'
 
 # Check CNI plugin logs
-kubectl logs -n kube-system -l app=calico-node
+kubectl logs -n kube-system -l k8s-app=calico-node
 
 # Check node network configuration
 kubectl get nodes -o wide

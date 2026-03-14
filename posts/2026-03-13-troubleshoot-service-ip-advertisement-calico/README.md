@@ -46,7 +46,7 @@ kubectl logs -n calico-system deployment/calico-kube-controllers | grep -i servi
 ## Check Route Advertisement from Nodes
 
 ```bash
-NODE_POD=$(kubectl get pod -n calico-system -l app=calico-node -o name | head -1)
+NODE_POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1)
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route | grep -E "10.96|192.168.100"
 ```
 

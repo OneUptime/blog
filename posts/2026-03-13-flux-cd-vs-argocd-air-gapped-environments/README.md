@@ -89,7 +89,7 @@ spec:
     name: internal-ca-cert
 ---
 # Use local Harbor registry for Helm charts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: internal-charts

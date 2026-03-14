@@ -399,7 +399,7 @@ Set up Flux to notify your team when a promoted HelmRelease is deployed:
 
 ```yaml
 # clusters/production/notifications.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack
@@ -411,7 +411,7 @@ spec:
     name: slack-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: helmrelease-alerts

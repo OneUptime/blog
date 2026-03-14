@@ -245,7 +245,7 @@ Configure Flux to alert you when PDB-related issues occur:
 
 ```yaml
 # clusters/my-cluster/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: pdb-alerts
@@ -260,7 +260,7 @@ spec:
       name: pod-disruption-budgets
       namespace: flux-system
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: slack-provider

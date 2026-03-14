@@ -474,7 +474,7 @@ Set up Flux notifications through Terraform.
 # Create a Slack notification provider
 resource "kubectl_manifest" "slack_provider" {
   yaml_body = yamlencode({
-    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
+    apiVersion = "notification.toolkit.fluxcd.io/v1"
     kind       = "Provider"
     metadata = {
       name      = "slack"
@@ -496,7 +496,7 @@ resource "kubectl_manifest" "reconciliation_alert" {
   depends_on = [kubectl_manifest.slack_provider]
 
   yaml_body = yamlencode({
-    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
+    apiVersion = "notification.toolkit.fluxcd.io/v1"
     kind       = "Alert"
     metadata = {
       name      = "reconciliation-failures"

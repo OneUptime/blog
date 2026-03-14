@@ -252,7 +252,7 @@ Give tenants visibility into their deployment status by setting up notifications
 
 ```yaml
 # tenants/team-alpha/notification.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: team-alpha-slack
@@ -263,7 +263,7 @@ spec:
   secretRef:
     name: team-alpha-slack-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: team-alpha-alerts

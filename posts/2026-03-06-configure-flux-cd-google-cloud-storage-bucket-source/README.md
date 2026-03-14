@@ -467,7 +467,7 @@ gcloud alpha monitoring policies create \
 ```yaml
 # alert-bucket-sync.yaml
 # Flux notification for bucket sync events
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: bucket-sync-alert

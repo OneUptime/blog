@@ -34,9 +34,6 @@ cilium connectivity test
 # Run a quick subset for faster feedback (useful for CI)
 cilium connectivity test --test pod-to-pod --test pod-to-service
 
-# List all available test names
-cilium connectivity test --list-tests
-
 # Run tests with verbose output for debugging
 cilium connectivity test --verbose
 ```
@@ -51,7 +48,7 @@ Wrap the connectivity test in a script that handles timeouts, cleanup, and exit 
 # Runs Cilium connectivity tests and exits with a non-zero code on failure
 # Designed for use in CI/CD pipelines
 
-set -euo pipefail
+set -uo pipefail
 
 # Configuration
 TIMEOUT=${CONNECTIVITY_TEST_TIMEOUT:-300}   # 5 minute timeout
@@ -72,9 +69,9 @@ cilium connectivity test \
   --test-namespace "${TEST_NAMESPACE}" \
   --timeout "${TIMEOUT}s" \
   --junit-file connectivity-test-results.xml \
-  --all-flows
+  --all-flows || TEST_EXIT_CODE=$?
 
-TEST_EXIT_CODE=$?
+TEST_EXIT_CODE=${TEST_EXIT_CODE:-0}
 
 # Clean up the test namespace after completion
 echo "Cleaning up test namespace..."
@@ -158,8 +155,8 @@ cilium connectivity test --test network-policy
 # Run service connectivity tests only (for service mesh changes)
 cilium connectivity test --test pod-to-service --test pod-to-external-service
 
-# Skip tests that require specific features not enabled in your cluster
-cilium connectivity test --test-skip host-to-pod --test-skip pod-to-remote-nodeport
+# Skip specific tests by using negation patterns with --test
+cilium connectivity test --test '!host-to-pod' --test '!pod-to-remote-nodeport'
 ```
 
 ## Best Practices

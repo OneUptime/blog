@@ -74,7 +74,7 @@ kubectl get pods -n calico-apiserver -o yaml | \
 
 # Verify the API server can reach the Kubernetes API (for auth)
 kubectl logs -n calico-apiserver \
-  -l app=calico-apiserver --tail=20 | grep -i "auth\|connect"
+  -l k8s-app=calico-apiserver --tail=20 | grep -i "auth\|connect"
 ```
 
 ## Step 4: Validate Admission Webhook Traffic Path

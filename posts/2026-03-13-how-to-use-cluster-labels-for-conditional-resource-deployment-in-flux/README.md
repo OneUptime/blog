@@ -353,7 +353,7 @@ kubectl --context=production-eu-west get pods -n gpu-operator 2>&1
 - Use Flux alerts to catch misconfigurations when a cluster is missing expected labels
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: substitution-errors

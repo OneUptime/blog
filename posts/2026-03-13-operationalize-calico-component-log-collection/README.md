@@ -45,11 +45,11 @@ BUNDLE="calico-incident-${INCIDENT_ID}-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${BUNDLE}"
 
 # Component logs (last 2000 lines per component)
-kubectl logs -n calico-system -l app=calico-node \
+kubectl logs -n calico-system -l k8s-app=calico-node \
   -c calico-node --tail=2000 --prefix=true > "${BUNDLE}/calico-node.log"
-kubectl logs -n calico-system -l app=calico-typha \
+kubectl logs -n calico-system -l k8s-app=calico-typha \
   --tail=1000 --prefix=true > "${BUNDLE}/calico-typha.log"
-kubectl logs -n calico-system -l app=calico-kube-controllers \
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers \
   --tail=500 --prefix=true > "${BUNDLE}/calico-kube-controllers.log"
 
 # CRD state

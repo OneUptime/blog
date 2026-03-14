@@ -170,7 +170,7 @@ az storage blob upload \
 Define a Bucket source that points to your Azure Blob Storage container:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: azure-blob-source

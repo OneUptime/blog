@@ -81,7 +81,7 @@ Define a Provider resource for Azure Event Hub.
 ```yaml
 # provider-azure-eventhub.yaml
 # Configures Flux to send notifications to Azure Event Hub
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: azure-eventhub-provider
@@ -110,7 +110,7 @@ Create an Alert that streams Flux events to Azure Event Hub.
 ```yaml
 # alert-azure-eventhub.yaml
 # Routes Flux events to Azure Event Hub
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: azure-eventhub-alert
