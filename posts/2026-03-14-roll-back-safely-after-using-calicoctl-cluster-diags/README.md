@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Cluster Diagnostics, Rollback, Kubernetes
+Tags: Calico, Calicoctl, Cluster Diagnostics, Rollback, Kubernetes
 
 Description: Understand that calicoctl cluster diags is a read-only command and learn how to use collected diagnostics to guide safe rollback of cluster-wide Calico changes.
 

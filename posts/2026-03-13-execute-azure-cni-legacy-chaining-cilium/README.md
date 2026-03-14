@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to chain Cilium onto Azure CNI (legacy mode) on Azure Kubernetes Service to enhance network policy enforcement with eBPF while retaining Azure VNet IP addressing for pods.
 

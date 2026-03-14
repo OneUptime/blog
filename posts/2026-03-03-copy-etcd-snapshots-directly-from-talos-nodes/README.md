@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Snapshots, Backup, Kubernetes, Data Transfer
+Tags: Talos Linux, etcd, Snapshots, Backup, Kubernetes, Data Transfer
 
 Description: Learn how to copy etcd snapshot files directly from Talos Linux nodes to your local machine or remote storage for backup purposes.
 

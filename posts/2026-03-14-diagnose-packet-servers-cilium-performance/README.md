@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Packet Processing, Servers
+Tags: Cilium, Kubernetes, Performance, Packet Processing, Server
 
 Description: How to diagnose packet server configuration issues affecting Cilium performance, including netserver, iperf3, and workload deployment problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to configure and monitor node pool taints in Cilium-managed Kubernetes clusters, ensuring Cilium correctly handles tainted nodes and that workload scheduling aligns with network policy...
 

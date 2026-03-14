@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, GRPC, Spring Boot, Java, Microservices
+Tags: GCP, Cloud Run, gRPC, Spring Boot, Java, Microservices
 
 Description: Build a gRPC service using Spring Boot with the grpc-spring-boot-starter, define Protocol Buffer schemas, and deploy to Cloud Run with HTTP/2 support.
 

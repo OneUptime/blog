@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Kubernetes, Cluster Configuration, Control Plane
+Tags: Talos Linux, etcd, Kubernetes, Cluster Configuration, Control Plane
 
 Description: Learn how to configure etcd settings in Talos Linux for optimal cluster performance, reliability, and data consistency.
 

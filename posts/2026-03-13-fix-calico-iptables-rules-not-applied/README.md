@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Felix
+Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Felix
 
 Description: Fix Calico iptables rules not being applied by resolving Felix configuration errors, clearing iptables conflicts, and restarting calico-node to trigger rule reprogramming.
 

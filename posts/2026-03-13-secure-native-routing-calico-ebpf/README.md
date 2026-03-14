@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, Networking, Performance
 
 Description: Secure Calico eBPF native routing by auditing BPF program permissions, enabling WireGuard encryption, and verifying policy enforcement.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: An explanation of the Cilium community support ecosystem - Slack, GitHub, documentation, and enterprise support - and how to navigate it effectively when you need help.
 

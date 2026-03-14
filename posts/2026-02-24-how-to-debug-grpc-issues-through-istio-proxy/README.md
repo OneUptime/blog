@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Debugging, Envoy, Kubernetes, Troubleshooting
+Tags: Istio, gRPC, Debugging, Envoy, Kubernetes, Troubleshooting
 
 Description: A hands-on guide to debugging gRPC issues when traffic flows through Istio's Envoy proxy, covering access logs, stats, config dumps, and common failure modes.
 

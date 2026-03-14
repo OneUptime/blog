@@ -1,4 +1,4 @@
-# Validating the Resolution of Namespace Selector Problems with Unlabeled Namespaces in Calico
+# Validating the Resolution of Namespace Selector Problems with Unlabeled
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

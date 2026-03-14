@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Envoy, OTLP, GRPC, Distributed Tracing, Proxy, Observability
+Tags: OpenTelemetry, Envoy, OTLP, gRPC, Distributed Tracing, Proxy, Observability
 
 Description: A practical guide to configuring Envoy proxy to export distributed traces using the OpenTelemetry Protocol (OTLP) over gRPC to an OpenTelemetry Collector.
 

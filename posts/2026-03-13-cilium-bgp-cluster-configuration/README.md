@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, EBPF
+Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
 Description: Configure Cilium's cluster-wide BGP settings using CiliumBGPClusterConfig to define BGP instances, peer references, and advertisement policies at scale.
 

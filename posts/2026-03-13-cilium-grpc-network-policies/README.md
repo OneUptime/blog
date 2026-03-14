@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, GRPC, EBPF
+Tags: Cilium, Kubernetes, Network Policy, gRPC, eBPF
 
 Description: Secure gRPC services with Cilium network policies that enforce access control at the service and method level, controlling which callers can invoke specific gRPC procedures.
 

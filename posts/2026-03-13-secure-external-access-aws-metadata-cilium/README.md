@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AWS, Security, IMDS, Network Policy, EBPF
+Tags: Cilium, Kubernetes, AWS, Security, IMDS, Network Policy, eBPF
 
 Description: Use Cilium network policies to control and secure access to the AWS EC2 Instance Metadata Service (IMDS) endpoint from pods running on EKS.
 

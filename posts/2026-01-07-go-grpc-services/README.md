@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, GRPC, Protobuf, Microservices, API
+Tags: Go, gRPC, Protobuf, Microservices, API
 
 Description: Build high-performance gRPC services in Go with Protocol Buffers, covering code generation, unary calls, and streaming patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, Init Containers
+Tags: Kubernetes, DaemonSet, Init Containers
 
 Description: Master the use of init containers in DaemonSets to prepare nodes before the main application starts, ensuring proper system configuration and prerequisites.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, HTTP, EBPF
+Tags: Cilium, Kubernetes, Network Policy, HTTP, eBPF
 
 Description: Enforce HTTP-aware network policies with Cilium that filter traffic based on request methods, URL paths, and headers to secure REST APIs at the network layer.
 

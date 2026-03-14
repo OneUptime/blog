@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, MTLS, Security, SDK
+Tags: OpenTelemetry, mTLS, Security, SDK
 
 Description: Step-by-step guide to diagnosing mutual TLS authentication errors between OpenTelemetry SDKs and the Collector.
 

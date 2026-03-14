@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Machine Learning, Deployments, Endpoints, Real-Time, MLOps, Inference
+Tags: Azure, Machine Learning, Deployments, Endpoint, Real-Time, MLOps, Inference
 
 Description: Deploy a trained machine learning model as a real-time REST API endpoint in Azure Machine Learning with scoring scripts, managed compute, and monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A technical deep dive into Cilium's internals including the eBPF datapath architecture, identity-based security model, XDP acceleration, and kernel-level packet processing for advanced Kubernetes...
 

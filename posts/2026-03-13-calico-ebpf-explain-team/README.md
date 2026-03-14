@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, CNI, Team Communication, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, CNI, Team Communication, Networking, Performance
 
 Description: A practical guide for explaining Calico's eBPF dataplane benefits to engineering teams without requiring deep Linux kernel expertise.
 

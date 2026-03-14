@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Observability, Grafana, Troubleshooting, Monitoring
 
-Description: Diagnose and resolve common Grafana access and display issues when visualizing Cilium observability data, including authentication failures, datasource errors, dashboard rendering problems, and permission issues.
+Description: Diagnose and resolve common Grafana access and display issues when visualizing Cilium observability data, including authentication failures, datasource errors, dashboard rendering problems, and...
 
 ---
 

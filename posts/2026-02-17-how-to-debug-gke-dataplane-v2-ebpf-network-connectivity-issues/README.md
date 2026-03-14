@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, Dataplane V2, EBPF, Cilium, Networking, Troubleshooting, GCP
+Tags: GKE, Kubernetes, Dataplane V2, eBPF, Cilium, Networking, Troubleshooting, GCP
 
 Description: Diagnose and resolve network connectivity issues specific to GKE Dataplane V2 (Cilium-based eBPF networking), covering pod connectivity, service routing, and network policy enforcement.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Production, EBPF, Kube-proxy, Decision Framework
+Tags: Calico, Kubernetes, Services, CNI, Production, eBPF, Kube-proxy, Decision Framework
 
 Description: A decision framework for choosing between kube-proxy and Calico eBPF service routing, and for configuring service types correctly for production Kubernetes workloads.
 

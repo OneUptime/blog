@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to run and interpret Cilium status checks using the cilium CLI and kubectl, covering agent health, eBPF map status, endpoint status, and common indicators of configuration problems.
 

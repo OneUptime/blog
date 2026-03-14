@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Cluster Diagnostics, Troubleshooting, Kubernetes
+Tags: Calico, Calicoctl, Cluster Diagnostics, Troubleshooting, Kubernetes
 
 Description: Resolve errors encountered when running calicoctl cluster diags, including RBAC issues, datastore connectivity problems, and incomplete collection.
 
@@ -22,7 +22,7 @@ This guide addresses common errors and provides solutions to ensure you can alwa
 
 ## Error: Unable to Connect to Datastore
 
-```
+```text
 Failed to collect diagnostics: unable to connect to Calico datastore
 ```
 
@@ -42,7 +42,7 @@ kubectl cluster-info
 
 ## Error: RBAC Permission Denied
 
-```
+```yaml
 Error: forbidden: User cannot list resource "globalnetworkpolicies"
 ```
 

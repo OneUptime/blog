@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to plan Cilium deployment in chained mode on top of Azure CNI (legacy) in AKS clusters, enabling advanced network policy enforcement while retaining Azure VNet IP assignment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Security
+Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Security
 
 Description: Implement security controls for Calico eBPF troubleshooting access, ensuring diagnostic tools are available when needed but restricted to authorized users.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that CiliumCIDRGroup custom resource for managing groups of CIDR ranges in Cilium network policies is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that CiliumCIDRGroup custom resource for managing groups of CIDR ranges in Cilium network policies is correctly configured and functioning as expected in your Kubernetes...
 
 ---
 

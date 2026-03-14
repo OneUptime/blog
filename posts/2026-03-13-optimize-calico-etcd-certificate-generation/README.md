@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Performance, Optimization
 
 Description: Techniques for optimizing Calico etcd TLS certificate configuration to reduce connection establishment overhead and improve throughput between Calico components and etcd.
 

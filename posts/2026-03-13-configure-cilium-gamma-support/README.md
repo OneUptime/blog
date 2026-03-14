@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, EBPF
+Tags: Cilium, Kubernetes, GAMMA, Gateway API, Service Mesh, eBPF
 
 Description: A guide to configuring Cilium GAMMA (Gateway API for Mesh Management and Administration) support to enable service mesh capabilities without a sidecar proxy.
 

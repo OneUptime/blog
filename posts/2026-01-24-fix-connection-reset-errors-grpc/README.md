@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Troubleshooting, Networking, Go, DevOps, Microservices
+Tags: gRPC, Troubleshooting, Networking, Go, DevOps, Microservices
 
 Description: Learn how to diagnose and resolve gRPC connection reset errors caused by timeouts, load balancer misconfigurations, keepalive settings, and resource exhaustion.
 

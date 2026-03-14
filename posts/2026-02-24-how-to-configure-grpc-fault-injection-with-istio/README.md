@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Fault Injection, Chaos Engineering, Kubernetes
+Tags: Istio, gRPC, Fault Injection, Chaos Engineering, Kubernetes
 
 Description: Use Istio fault injection to test gRPC service resilience by injecting delays and abort errors without modifying application code.
 

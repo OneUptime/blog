@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: Guide to installing Cilium on Kubernetes clusters running on VMware ESXi or vSphere infrastructure for on-premises eBPF networking.
 

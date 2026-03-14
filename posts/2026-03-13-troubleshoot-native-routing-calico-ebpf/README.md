@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, Networking, Performance
 
 Description: Diagnose native routing failures in Calico eBPF mode including map lookup errors, BPF program failures, and kernel compatibility issues.
 

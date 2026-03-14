@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Network Policy, Security, EBPF, Zero Trust
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Network Policy, Security, eBPF, Zero Trust
 
 Description: Manage Cilium Network Policy resources using Flux CD GitOps to enforce zero-trust network security with L3/L4/L7 policy controls.
 

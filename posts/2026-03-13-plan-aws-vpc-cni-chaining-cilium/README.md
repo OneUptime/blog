@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: Learn how to plan and deploy Cilium in chained mode on top of AWS VPC CNI in EKS clusters, enabling Cilium network policies and observability while retaining native VPC IP allocation.
 

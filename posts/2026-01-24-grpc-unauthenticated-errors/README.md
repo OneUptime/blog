@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Authentication, Security, JWT, TLS, Error Handling
+Tags: gRPC, Authentication, Security, JWT, TLS, Error Handling
 
 Description: A practical guide to diagnosing and fixing UNAUTHENTICATED errors in gRPC services, covering credential configuration, interceptor setup, token validation, and common authentication pitfalls.
 

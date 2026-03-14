@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Docker Swarm, Log Collection, DaemonSets
+Tags: OpenTelemetry, Docker Swarm, Log Collection, DaemonSet
 
 Description: Deploy the OpenTelemetry Collector as a global service in Docker Swarm to collect logs from all nodes using the DaemonSet pattern.
 

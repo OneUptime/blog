@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, TLS, MTLS, Security, Encryption, Certificates
+Tags: OpenTelemetry, OTLP, TLS, mTLS, Security, Encryption, Certificates
 
 Description: Learn how to configure TLS and mutual TLS (mTLS) for OTLP exporters in Java, Python, Go, and Node.js to secure telemetry data in transit.
 

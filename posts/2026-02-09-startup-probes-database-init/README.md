@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Database
+Tags: Kubernetes, Health Check, Database
 
 Description: Configure startup probes with appropriate timeouts for applications that run database migrations or initialization scripts at startup, preventing premature container restarts.
 

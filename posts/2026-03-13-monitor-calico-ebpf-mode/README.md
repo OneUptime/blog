@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Monitoring, Performance
+Tags: Calico, Kubernetes, Networking, eBPF, Monitoring, Performance
 
 Description: Set up comprehensive monitoring for Calico eBPF mode, tracking BPF program health, network performance metrics, and detecting eBPF-specific failures.
 

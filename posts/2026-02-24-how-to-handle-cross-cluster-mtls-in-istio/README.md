@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Multi-Cluster, Security, Service Mesh
+Tags: Istio, mTLS, Multi-Cluster, Security, Service Mesh
 
 Description: How to configure and troubleshoot mutual TLS authentication across clusters in an Istio multi-cluster service mesh deployment.
 

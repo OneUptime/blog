@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, EBPF
+Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
 Description: Attach BGP communities to routes advertised by Cilium to control routing policy and traffic engineering decisions in your upstream network fabric.
 

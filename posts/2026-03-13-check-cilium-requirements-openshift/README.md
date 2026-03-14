@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, OpenShift, EBPF
+Tags: Cilium, Kubernetes, OpenShift, eBPF
 
 Description: Learn how to verify that your OpenShift cluster meets the prerequisites for installing Cilium as the CNI, including OVN-Kubernetes replacement, RHCOS kernel requirements, and OpenShift-specific...
 

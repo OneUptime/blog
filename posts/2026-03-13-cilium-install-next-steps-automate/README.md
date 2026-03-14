@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to automating Cilium post-installation steps using Helm, ArgoCD, Flux, and CI/CD pipelines for reproducible, consistent deployments.
 

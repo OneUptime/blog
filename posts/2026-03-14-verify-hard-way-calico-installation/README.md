@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Verification, Production, Installation
 
-Description: A thorough verification checklist and procedure for validating a manually installed Calico cluster before promoting it to production, covering component health, connectivity, policy enforcement, and performance.
+Description: A thorough verification checklist and procedure for validating a manually installed Calico cluster before promoting it to production, covering component health, connectivity, policy enforcement,...
 
 ---
 

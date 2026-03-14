@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: Learn how to validate CNI chaining configurations where Cilium operates as a chained plugin alongside another primary CNI, ensuring both CNI plugins coexist correctly and policy enforcement works...
 

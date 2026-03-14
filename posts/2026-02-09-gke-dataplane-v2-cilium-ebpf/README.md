@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, GCP, GKE, Cilium, EBPF, Networking
+Tags: Kubernetes, GCP, GKE, Cilium, eBPF, Networking
 
 Description: Learn how to enable and configure GKE Dataplane V2 with Cilium for high-performance eBPF-based networking, network policies, and observability in Google Kubernetes Engine.
 

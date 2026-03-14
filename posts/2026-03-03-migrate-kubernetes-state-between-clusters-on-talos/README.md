@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Cluster Migration, Etcd, State Management, Disaster Recovery
+Tags: Talos Linux, Kubernetes, Cluster Migration, etcd, State Management, Disaster Recovery
 
 Description: Learn how to migrate Kubernetes state including resources, secrets, and configurations between Talos Linux clusters using multiple approaches.
 

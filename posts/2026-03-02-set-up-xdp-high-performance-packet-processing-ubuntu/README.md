@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, XDP, Networking, EBPF, Performance
+Tags: Ubuntu, XDP, Networking, eBPF, Performance
 
 Description: Set up XDP (eXpress Data Path) on Ubuntu for high-performance packet processing at the network driver level using eBPF programs, bypassing kernel overhead.
 

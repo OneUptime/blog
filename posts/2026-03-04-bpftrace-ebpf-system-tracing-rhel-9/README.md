@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Bpftrace, EBPF, Tracing, Performance, Linux, Debugging
+Tags: RHEL, Bpftrace, eBPF, Tracing, Performance, Linux, Debugging
 
 Description: Learn how to use bpftrace on RHEL to write eBPF-based tracing scripts for system analysis and troubleshooting.
 

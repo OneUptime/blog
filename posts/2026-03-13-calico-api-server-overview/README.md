@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, API Server, CNI, calicoctl
+Tags: Calico, Kubernetes, API Server, CNI, Calicoctl
 
 Description: A comprehensive guide to Calico's API server - what it does, how it differs from the Kubernetes API server, and how it enables kubectl-native Calico resource management.
 

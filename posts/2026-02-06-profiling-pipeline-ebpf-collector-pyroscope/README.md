@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, EBPF, Profiling, Pyroscope
+Tags: OpenTelemetry, eBPF, Profiling, Pyroscope
 
 Description: Build an end-to-end profiling pipeline from eBPF agent through OpenTelemetry Collector to Pyroscope storage backend.
 

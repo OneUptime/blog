@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Envoy, Proxy, GRPC, Load Balancing, Linux
+Tags: RHEL, Envoy, Proxy, gRPC, Load Balancing, Linux
 
 Description: Learn how to configure Envoy for gRPC Load Balancing on RHEL 9 with step-by-step instructions, configuration examples, and best practices.
 

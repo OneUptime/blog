@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, Scheduling
+Tags: Kubernetes, DaemonSet, Scheduling
 
 Description: Discover how to use pod affinity rules in DaemonSets to ensure node services run only on nodes hosting specific application workloads.
 

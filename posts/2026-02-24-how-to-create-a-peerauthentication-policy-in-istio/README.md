@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, PeerAuthentication, Kubernetes, Service Mesh, Security
+Tags: Istio, mTLS, PeerAuthentication, Kubernetes, Service Mesh, Security
 
 Description: Learn how to create and apply PeerAuthentication policies in Istio to enforce mutual TLS between services in your mesh.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Rollback, Kubernetes
+Tags: Calico, Calicoctl, BGP, Rollback, Kubernetes
 
 Description: Strategies for recovering from issues detected by calicoctl node status, including restoring BGP configurations, fixing broken peering, and reverting networking changes.
 

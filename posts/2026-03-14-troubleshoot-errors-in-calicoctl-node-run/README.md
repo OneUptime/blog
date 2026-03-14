@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Node, Troubleshooting, Kubernetes, Docker
+Tags: Calico, Calicoctl, Node, Troubleshooting, Kubernetes, Docker
 
 Description: Diagnose and resolve common errors encountered when starting the Calico node with calicoctl node run, from container runtime issues to networking configuration problems.
 
@@ -28,7 +28,7 @@ The majority of these issues occur in bare-metal and Docker-based deployments wh
 
 ### Error: Docker Not Running
 
-```
+```text
 Cannot connect to the Docker daemon at unix:///var/run/docker.sock
 ```
 
@@ -48,7 +48,7 @@ sudo calicoctl node run
 
 ### Error: Image Pull Failed
 
-```
+```text
 Error response from daemon: manifest for calico/node:v3.27.0 not found
 ```
 
@@ -66,7 +66,7 @@ sudo calicoctl node run --node-image=registry.internal.company.com/calico/node:v
 
 ### Error: Container Already Exists
 
-```
+```yaml
 Conflict: container name "/calico-node" already in use
 ```
 
@@ -83,7 +83,7 @@ sudo calicoctl node run
 
 ### Error: Unable to Connect to etcd
 
-```
+```text
 Failed to connect to etcd cluster: dial tcp 10.0.1.5:2379: connect: connection refused
 ```
 
@@ -106,7 +106,7 @@ ls -la /etc/calico/certs/
 
 ### Error: Certificate Verification Failed
 
-```
+```yaml
 x509: certificate signed by unknown authority
 ```
 
@@ -125,7 +125,7 @@ openssl x509 -in /etc/calico/certs/ca.pem -noout -subject
 
 ### Error: IP Auto-Detection Failed
 
-```
+```text
 Unable to auto-detect IPv4 address: no valid host interfaces found
 ```
 
@@ -142,7 +142,7 @@ sudo calicoctl node run --ip=10.0.1.10
 
 ### Error: Conflicting IP Address
 
-```
+```text
 Node IP address conflict: 10.0.1.10 already assigned to another node
 ```
 
@@ -159,7 +159,7 @@ sudo calicoctl node run --name=unique-node-name --ip=10.0.1.10
 
 ### Error: BGP Port Already in Use
 
-```
+```yaml
 bind: address already in use (port 179)
 ```
 
@@ -187,7 +187,7 @@ docker logs calico-node 2>&1 | grep -i "felix"
 
 ### Error: Felix Unable to Connect to Datastore
 
-```
+```text
 Felix is not ready: Failed to connect to datastore
 ```
 
@@ -201,7 +201,7 @@ docker exec calico-node calicoctl get nodes
 
 ### Error: Felix iptables Errors
 
-```
+```text
 Failed to execute iptables command: iptables v1.8.9: can't initialize iptables table 'filter'
 ```
 

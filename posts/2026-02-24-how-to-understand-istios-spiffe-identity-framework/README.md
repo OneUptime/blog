@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, SPIFFE, Identity, Security, MTLS
+Tags: Istio, SPIFFE, Identity, Security, mTLS
 
 Description: A comprehensive guide to how Istio uses the SPIFFE identity framework to assign and verify workload identities for secure service-to-service communication.
 

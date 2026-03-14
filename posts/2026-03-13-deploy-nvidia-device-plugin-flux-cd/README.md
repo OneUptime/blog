@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, NVIDIA, GPU, Device Plugin, DaemonSets, MLOps
+Tags: Flux CD, Kubernetes, GitOps, NVIDIA, GPU, Device Plugin, DaemonSet, MLOps
 
 Description: Deploy the NVIDIA device plugin DaemonSet to Kubernetes using Flux CD to expose GPU resources to your workloads without the full GPU Operator.
 

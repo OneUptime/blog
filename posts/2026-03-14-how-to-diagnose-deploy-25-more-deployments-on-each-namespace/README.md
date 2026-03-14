@@ -1,4 +1,4 @@
-# How to Diagnose Deploy 25 more deployments on each namespace in Cilium performance
+# How to Diagnose Deploy 25 more deployments on each namespace
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

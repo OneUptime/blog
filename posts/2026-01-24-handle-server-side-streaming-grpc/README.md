@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Streaming, Go, Python, Real-Time, Microservices
+Tags: gRPC, Streaming, Go, Python, Real-Time, Microservices
 
 Description: Learn how to implement server-side streaming in gRPC for real-time updates, large data transfers, and event-driven architectures with practical examples in Go and Python.
 

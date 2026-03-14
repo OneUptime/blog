@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Observability, Hubble, Networking
 
-Description: Learn how to leverage Kubernetes-native tools alongside Cilium and Hubble for comprehensive network observability, including flow monitoring, service map visualization, and integration with the Kubernetes API.
+Description: Learn how to leverage Kubernetes-native tools alongside Cilium and Hubble for comprehensive network observability, including flow monitoring, service map visualization, and integration with the...
 
 ---
 

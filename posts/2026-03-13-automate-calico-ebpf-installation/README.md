@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Installation, Automation
+Tags: Calico, Kubernetes, Networking, eBPF, Installation, Automation
 
 Description: Automate the full Calico eBPF installation process including cluster bootstrapping, kube-proxy disablement, and operator configuration using Terraform and Ansible.
 

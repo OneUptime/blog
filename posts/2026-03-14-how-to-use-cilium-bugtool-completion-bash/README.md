@@ -31,24 +31,24 @@ This guide covers generating, installing, and using bash completions for cilium-
 ### Quick Setup
 
 \`\`\`bash
-# Generate bash completion and source it immediately
+## Generate bash completion and source it immediately
 source <(cilium-bugtool completion bash)
 
-# Test it works
+## Test it works
 cilium-bugtool <TAB>
 \`\`\`
 
 ### Persistent Installation
 
 \`\`\`bash
-# System-wide installation (requires root)
+## System-wide installation (requires root)
 cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
 
-# User-local installation
+## User-local installation
 mkdir -p ~/.local/share/bash-completion/completions
 cilium-bugtool completion bash > ~/.local/share/bash-completion/completions/cilium-bugtool
 
-# Add to .bashrc for guaranteed loading
+## Add to .bashrc for guaranteed loading
 echo 'source <(cilium-bugtool completion bash)' >> ~/.bashrc
 \`\`\`
 
@@ -67,17 +67,17 @@ kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-bugtool c
 Once installed, completions work for:
 
 \`\`\`bash
-# Complete subcommands
+## Complete subcommands
 cilium-bugtool <TAB>
-# Shows: completion, help, etc.
+## Shows: completion, help, etc.
 
-# Complete flags
+## Complete flags
 cilium-bugtool --<TAB>
-# Shows: --archive-type, --commands, --tmp, etc.
+## Shows: --archive-type, --commands, --tmp, etc.
 
-# Complete completion subcommands
+## Complete completion subcommands
 cilium-bugtool completion <TAB>
-# Shows: bash, fish, powershell, zsh
+## Shows: bash, fish, powershell, zsh
 \`\`\`
 
 

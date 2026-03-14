@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Networking, Kubernetes, Cluster Configuration
+Tags: Talos Linux, etcd, Networking, Kubernetes, Cluster Configuration
 
 Description: Learn how to configure etcd advertised subnets in Talos Linux to control which network interface etcd uses for peer communication and client traffic.
 

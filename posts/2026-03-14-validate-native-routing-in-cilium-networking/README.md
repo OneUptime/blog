@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation is correctly configured and functioning...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, DaemonSets, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, DaemonSet, Kustomization
 
 Description: Learn how to configure custom health checks for DaemonSet resources in Flux Kustomization to verify node-level workloads are running correctly across your cluster.
 

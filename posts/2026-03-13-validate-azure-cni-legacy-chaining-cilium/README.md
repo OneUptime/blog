@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A guide to validating Azure CNI legacy chaining mode with Cilium, where Cilium acts as a chained CNI plugin for network policy enforcement while Azure CNI handles IP allocation.
 

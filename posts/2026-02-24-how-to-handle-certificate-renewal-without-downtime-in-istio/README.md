@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate Renewal, Zero Downtime, MTLS, Operations
+Tags: Istio, Certificate Renewal, Zero Downtime, mTLS, Operations
 
 Description: Techniques for renewing certificates in Istio without causing service disruptions, including workload cert rotation, CA cert rotation, and gateway certificate updates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Troubleshooting, Datastore
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Troubleshooting, Datastore
 
 Description: Diagnose and resolve issues related to Calico etcdv3 path data - including corrupted entries, missing paths, and data inconsistencies that cause policy or IPAM failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Troubleshooting, Networking
+Tags: Calico, Calicoctl, Kubernetes, Troubleshooting, Networking
 
 Description: A practical guide to diagnosing and resolving common errors encountered when running calicoctl version, including connection failures, version mismatches, and configuration issues.
 
@@ -33,7 +33,7 @@ calicoctl version
 
 Expected output:
 
-```
+```text
 Client Version:    v3.27.0
 Git commit:        abc1234def
 Cluster Version:   v3.27.0
@@ -46,7 +46,7 @@ The **Client Version** is the version of the calicoctl binary on your local mach
 
 ### Error: Connection Refused
 
-```
+```text
 Unable to connect to the Calico datastore.
 connection refused
 ```
@@ -78,7 +78,7 @@ calicoctl version
 
 ### Error: Unauthorized or Forbidden
 
-```
+```text
 Unable to connect to the Calico datastore.
 Unauthorized
 ```
@@ -119,7 +119,7 @@ kubectl apply -f calicoctl-rbac.yaml
 
 When the client and cluster versions differ significantly:
 
-```
+```yaml
 Client Version:    v3.27.0
 Cluster Version:   v3.24.0
 WARNING: Client and cluster versions differ.
@@ -137,7 +137,7 @@ sudo mv calicoctl /usr/local/bin/
 
 ### Error: Resource Not Found
 
-```
+```text
 the server could not find the requested resource
 ```
 

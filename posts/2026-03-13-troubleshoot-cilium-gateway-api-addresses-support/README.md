@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Gateway API, Networking, EBPF, Troubleshooting
+Tags: Cilium, Kubernetes, Gateway API, Networking, eBPF, Troubleshooting
 
 Description: A practical guide to diagnosing and resolving issues with Cilium's Gateway API addresses support, including IP allocation failures and listener binding problems.
 

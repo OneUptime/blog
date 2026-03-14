@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Etcd, Cluster Administration, Control Plane
+Tags: Talos Linux, Kubernetes, etcd, Cluster Administration, Control Plane
 
 Description: Learn how to list and inspect etcd members in a Talos Linux cluster to verify cluster composition and troubleshoot membership issues.
 

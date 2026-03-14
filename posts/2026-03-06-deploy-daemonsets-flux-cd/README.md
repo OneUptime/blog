@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, DaemonSets, GitOps, Node agents, Monitoring
+Tags: Flux CD, Kubernetes, DaemonSet, GitOps, Node agents, Monitoring
 
 Description: A practical guide to deploying and managing Kubernetes DaemonSets with Flux CD for node-level agents, log collectors, and monitoring tools.
 

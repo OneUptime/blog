@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Envoy, Kubernetes, Troubleshooting
+Tags: Istio, gRPC, Envoy, Kubernetes, Troubleshooting
 
 Description: Comprehensive guide to diagnosing and resolving gRPC connection and routing issues in an Istio service mesh environment.
 

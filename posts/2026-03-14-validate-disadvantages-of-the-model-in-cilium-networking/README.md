@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that the trade-offs and limitations of using Cilium encapsulation mode including MTU overhead, performance impact, and troubleshooting complexity is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that the trade-offs and limitations of using Cilium encapsulation mode including MTU overhead, performance impact, and troubleshooting complexity is correctly configured...
 
 ---
 

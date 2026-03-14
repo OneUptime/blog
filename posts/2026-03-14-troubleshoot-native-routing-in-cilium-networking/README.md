@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation using systematic debugging...
 
 ---
 

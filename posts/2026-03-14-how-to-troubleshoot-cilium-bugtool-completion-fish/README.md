@@ -32,49 +32,49 @@ This guide covers systematic troubleshooting of cilium-bugtool fish completion i
 ### Check if Completion File Exists
 
 \`\`\`bash
-# Check user completions
+## Check user completions
 ls -la ~/.config/fish/completions/cilium-bugtool.fish 2>/dev/null
 
-# Check system completions
+## Check system completions
 ls -la /usr/share/fish/vendor_completions.d/cilium-bugtool.fish 2>/dev/null
 
-# Check all fish completion directories
+## Check all fish completion directories
 fish -c 'echo $fish_complete_path' 2>/dev/null
 \`\`\`
 
 ### Validate Completion Script Syntax
 
 \`\`\`bash
-# Check for syntax errors
+## Check for syntax errors
 fish -c 'source ~/.config/fish/completions/cilium-bugtool.fish' 2>&1
 
-# Verify complete commands are present
+## Verify complete commands are present
 grep -c "^complete" ~/.config/fish/completions/cilium-bugtool.fish
 \`\`\`
 
 ### Fix File Location Issues
 
 \`\`\`bash
-# Ensure the completions directory exists
+## Ensure the completions directory exists
 mkdir -p ~/.config/fish/completions
 
-# Regenerate the completion file
+## Regenerate the completion file
 cilium-bugtool completion fish > ~/.config/fish/completions/cilium-bugtool.fish
 
-# Verify fish can see it
+## Verify fish can see it
 fish -c 'complete --do-complete="cilium-bugtool "' 2>/dev/null
 \`\`\`
 
 ### Fix Fish Version Compatibility
 
 \`\`\`bash
-# Check fish version
+## Check fish version
 fish --version
 
-# Fish 3.0+ is required for modern completions
-# Upgrade fish if needed:
-# macOS: brew install fish
-# Ubuntu: sudo apt install fish
+## Fish 3.0+ is required for modern completions
+## Upgrade fish if needed:
+## macOS: brew install fish
+## Ubuntu: sudo apt install fish
 \`\`\`
 
 ```mermaid

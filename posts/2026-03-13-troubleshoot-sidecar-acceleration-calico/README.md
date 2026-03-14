@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
 
 Description: Diagnose sidecar acceleration issues in Calico eBPF mode including compatibility problems with specific service mesh implementations.
 

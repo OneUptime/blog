@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GRPC, Troubleshooting, Protocol Buffers, API, Microservices
+Tags: gRPC, Troubleshooting, Protocol Buffers, API, Microservices
 
 Description: Learn how to diagnose and fix gRPC UNIMPLEMENTED status errors caused by missing methods, version mismatches, and incorrect service registration.
 

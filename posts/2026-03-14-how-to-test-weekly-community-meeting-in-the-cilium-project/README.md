@@ -33,7 +33,7 @@ This guide covers approaches to testing and validating Cilium weekly community m
 
 ### Process Evaluation Checklist
 
-```
+```json
 [ ] Meeting starts and ends on time
 [ ] Agenda is published at least 24 hours in advance
 [ ] All attendees can join without account restrictions

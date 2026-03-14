@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Protocol Buffers, Protobuf, GRPC, Microservices, Serialization
+Tags: Go, Golang, Protocol Buffers, Protobuf, gRPC, Microservices, Serialization
 
 Description: A practical guide to using Protocol Buffers in Go for efficient data serialization and gRPC service definitions.
 

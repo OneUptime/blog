@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Installation, Best Practices
+Tags: Calico, Kubernetes, Networking, eBPF, Installation, Best Practices
 
 Description: Avoid the most common mistakes when installing Calico with eBPF, including installation order issues, prerequisite oversights, and configuration pitfalls unique to fresh deployments.
 

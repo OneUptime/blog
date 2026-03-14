@@ -39,7 +39,7 @@ find proxylib/ -type d | sort
 
 The primary location for Go-based L7 parsers is `proxylib/`. Each protocol has its own subdirectory:
 
-```
+```text
 proxylib/
 ├── accesslog/
 ├── cassandra/

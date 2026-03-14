@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to perform a new Cilium installation on a Kubernetes cluster using the cilium CLI and Helm, covering pre-flight checks, installation options, and post-install validation.
 

@@ -1,4 +1,4 @@
-# How to Test OpenStack Multiple Regions with Calico in Production-Like Environments
+# How to Test OpenStack Multiple Regions with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

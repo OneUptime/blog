@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Security, Configuration
+Tags: Calico, Kubernetes, Networking, etcd, RBAC, Security, Configuration
 
 Description: A step-by-step guide to configuring etcd role-based access control for Calico to ensure each Calico component only has access to the etcd paths it requires.
 

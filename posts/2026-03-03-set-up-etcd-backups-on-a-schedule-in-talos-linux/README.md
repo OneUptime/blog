@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Backup, Kubernetes, Disaster Recovery
+Tags: Talos Linux, etcd, Backup, Kubernetes, Disaster Recovery
 
 Description: Learn how to set up automated scheduled etcd backups in Talos Linux to protect your Kubernetes cluster state from data loss.
 

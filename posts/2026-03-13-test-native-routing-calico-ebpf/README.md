@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, Networking, Performance
 
 Description: Benchmark Calico eBPF native routing performance with live workloads to quantify improvements over iptables mode.
 

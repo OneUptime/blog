@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Protocol, HTTP, GRPC, TCP, Service Mesh
+Tags: Istio, Protocol, HTTP, gRPC, TCP, Service Mesh
 
 Description: Configure Istio to properly handle services that expose multiple protocols like HTTP, gRPC, and TCP on different ports with correct protocol detection.
 

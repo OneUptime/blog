@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
 Description: Understand what 'current access' means in the Cilium Star Wars demo and why observing open access before applying policy is an essential step in any security hardening workflow.
 

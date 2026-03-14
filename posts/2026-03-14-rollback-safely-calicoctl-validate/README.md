@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Validation, calicoctl, Best Practices
+Tags: Calico, Kubernetes, Validation, Calicoctl, Best Practices
 
 Description: Understand why calicoctl validate is inherently safe, requires no rollback, and how to use it as the foundation for safe change management workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A practical guide to finding and getting effective help with Cilium through documentation, Slack, GitHub, and built-in diagnostic tools.
 

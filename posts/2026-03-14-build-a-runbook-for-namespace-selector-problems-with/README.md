@@ -1,4 +1,4 @@
-# Building a Runbook for Namespace Selector Problems with Unlabeled Namespaces in Calico
+# Building a Runbook for Namespace Selector Problems with Unlabeled Namespaces
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

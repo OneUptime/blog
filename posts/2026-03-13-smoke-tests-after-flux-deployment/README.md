@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Smoke Tests, GitOps, CI/CD, Kubernetes, Testing, Health Checks
+Tags: Flux CD, Smoke Tests, GitOps, CI/CD, Kubernetes, Testing, Health Check
 
 Description: Learn how to configure lightweight smoke tests that run automatically after Flux CD successfully reconciles a deployment to validate critical application functionality.
 

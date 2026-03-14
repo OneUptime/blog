@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Kubernetes, Health Checks, DevOps, Reliability, Monitoring
+Tags: Go, Kubernetes, Health Check, DevOps, Reliability, Monitoring
 
 Description: Build robust health checks in Go for Kubernetes liveness and readiness probes with dependency checks for databases, caches, and external services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, WireGuard, Encryption, Node Security, EBPF
+Tags: Cilium, Kubernetes, WireGuard, Encryption, Node Security, eBPF
 
 Description: Configure Cilium's WireGuard node-to-node encryption to encrypt all traffic between Kubernetes nodes including system and kubelet communications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Health Checks, Monitoring, Containers
+Tags: Ansible, Docker, Health Check, Monitoring, Containers
 
 Description: Configure Docker container health checks with Ansible to automatically detect and recover from unhealthy container states.
 

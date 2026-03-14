@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Documentation, Operations
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Documentation, Operations
 
 Description: How to document Calico etcdv3 path structure, data ownership, and maintenance procedures to support operations teams managing Calico's etcd datastore.
 

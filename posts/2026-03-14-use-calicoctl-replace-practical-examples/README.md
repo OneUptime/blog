@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, calicoctl, Network Policy, Configuration Management
+Tags: Calico, Kubernetes, Calicoctl, Network Policy, Configuration Management
 
 Description: Master calicoctl replace with practical examples covering policy updates, Felix configuration changes, IPPool modifications, and BGP configuration replacements.
 

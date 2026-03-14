@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, State Recovery, Etcd, Disaster Recovery, Cluster Management
+Tags: Talos Linux, Kubernetes, State Recovery, etcd, Disaster Recovery, Cluster Management
 
 Description: A guide to restoring and reconciling Kubernetes state after recovering a Talos Linux cluster from an etcd backup or disaster.
 

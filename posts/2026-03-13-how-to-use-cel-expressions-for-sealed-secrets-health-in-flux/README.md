@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, CEL, Sealed Secrets, Health Checks, Security
+Tags: Flux, GitOps, Kubernetes, CEL, Sealed Secrets, Health Check, Security
 
 Description: Learn how to use CEL expressions in Flux to verify that Sealed Secrets are properly decrypted and synced before dependent workloads deploy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Health Checks, MTLS, Service Mesh
+Tags: Istio, Kubernetes, Health Check, mTLS, Service Mesh
 
 Description: How to configure Kubernetes liveness and readiness probes to work correctly with Istio mTLS without causing unnecessary pod restarts.
 

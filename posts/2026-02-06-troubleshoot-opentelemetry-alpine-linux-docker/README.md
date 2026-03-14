@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Docker, Alpine Linux, Troubleshooting, GRPC, Python, Node.js, Containers
+Tags: OpenTelemetry, Docker, Alpine Linux, Troubleshooting, gRPC, Python, Node.js, Containers
 
 Description: Learn how to resolve common OpenTelemetry issues that arise specifically when using Alpine Linux-based Docker images, from gRPC compilation failures to missing system libraries.
 

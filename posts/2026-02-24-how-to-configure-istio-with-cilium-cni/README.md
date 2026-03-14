@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Cilium, CNI, Kubernetes, EBPF
+Tags: Istio, Cilium, CNI, Kubernetes, eBPF
 
 Description: A hands-on guide to running Istio service mesh on top of Cilium CNI with eBPF including configuration options, compatibility notes, and optimization tips.
 

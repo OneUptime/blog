@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, REST, Grpc-gateway, API, Transcoding, OpenAPI, Golang, Microservices
+Tags: gRPC, REST, Grpc-gateway, API, Transcoding, OpenAPI, Golang, Microservices
 
 Description: Learn how to expose your gRPC services as RESTful APIs using grpc-gateway with proto annotations, HTTP mapping, and automatic OpenAPI generation.
 

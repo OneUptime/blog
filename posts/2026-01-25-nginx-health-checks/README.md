@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NGINX, Health Checks, Load Balancing, High Availability, Monitoring
+Tags: NGINX, Health Check, Load Balancing, High Availability, Monitoring
 
 Description: Learn how to implement health checks in Nginx to automatically detect and route around failed backend servers, ensuring high availability for your applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, EBPF, Security
+Tags: Cilium, Kubernetes, Network Policy, eBPF, Security
 
 Description: Use CiliumClusterwideNetworkPolicy to enforce security policies across all namespaces simultaneously, including host networking and node-level traffic controls that namespace-scoped policies...
 

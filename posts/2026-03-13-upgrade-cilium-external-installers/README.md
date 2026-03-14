@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to upgrade Cilium when it was installed via external Kubernetes provisioning tools like kubeadm, kops, or kubespray, with tool-specific upgrade procedures and validation steps.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ServiceEntry, GRPC, Kubernetes, Service Mesh, HTTP2
+Tags: Istio, ServiceEntry, gRPC, Kubernetes, Service Mesh, HTTP2
 
 Description: Configure Istio ServiceEntry for external gRPC services with proper HTTP/2 settings, TLS, and traffic management for reliable connectivity.
 

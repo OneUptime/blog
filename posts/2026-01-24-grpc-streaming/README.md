@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GRPC, Streaming, Microservices, Real-Time, Go, Python
+Tags: gRPC, Streaming, Microservices, Real-Time, Go, Python
 
 Description: Learn how to implement and handle server streaming, client streaming, and bidirectional streaming in gRPC services.
 

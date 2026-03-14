@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, MTLS
+Tags: Kubernetes, Security, mTLS
 
 Description: Learn how to implement pod-to-pod mutual TLS authentication using cert-manager without deploying a full service mesh for lightweight secure communication in Kubernetes.
 

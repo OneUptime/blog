@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Troubleshooting, Cluster Management, Data Store
+Tags: Kubernetes, etcd, Troubleshooting, Cluster Management, Data Store
 
 Description: Learn how to diagnose and resolve etcd issues in Kubernetes, including performance problems, cluster health checks, data corruption recovery, and best practices for maintaining etcd reliability.
 

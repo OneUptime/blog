@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
 
 Description: Validate that Calico sidecar acceleration is correctly reducing latency for service mesh traffic through eBPF optimization.
 

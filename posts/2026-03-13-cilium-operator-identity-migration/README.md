@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A step-by-step guide to migrating an existing Cilium cluster from agent-distributed identity management to centralized Operator-managed identities with minimal disruption to running workloads.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that Cilium egress gateway and egress policies for controlling and routing outbound traffic from pods is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that Cilium egress gateway and egress policies for controlling and routing outbound traffic from pods is correctly configured and functioning as expected in your Kubernetes...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Talosctl, Etcd, Cluster Health, Kubernetes
+Tags: Talos Linux, Talosctl, etcd, Cluster Health, Kubernetes
 
 Description: Learn how to use talosctl etcd members to inspect and manage etcd cluster membership in your Talos Linux cluster
 

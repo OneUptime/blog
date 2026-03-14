@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Monitoring, Iptables, Felix, Prometheus
+Tags: Calico, Kubernetes, Networking, Monitoring, iptables, Felix, Prometheus
 
 Description: Set up monitoring to detect when Calico iptables rules are not being applied using Felix metrics, Prometheus alerts, and periodic validation checks.
 

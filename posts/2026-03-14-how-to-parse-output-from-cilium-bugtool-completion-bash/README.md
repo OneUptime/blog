@@ -32,30 +32,30 @@ This guide covers parsing techniques for extracting structured data from bash co
 
 
 \`\`\`bash
-# Generate and save the completion script
+## Generate and save the completion script
 cilium-bugtool completion bash > /tmp/bugtool-bash-completion.sh
 
-# Check file size
+## Check file size
 wc -l /tmp/bugtool-bash-completion.sh
 \`\`\`
 
 ### Extracting Commands
 
 \`\`\`bash
-# Extract registered command names
+## Extract registered command names
 grep -oP 'commands=\(\s*"\K[^"]+' /tmp/bugtool-bash-completion.sh | sort -u
 
-# Extract from case statements
+## Extract from case statements
 grep -oP "^\s+'[a-z][-a-z]*'\)" /tmp/bugtool-bash-completion.sh |   tr -d " ')" | sort -u
 \`\`\`
 
 ### Extracting Flags
 
 \`\`\`bash
-# Extract all long flags
+## Extract all long flags
 grep -oP '\-\-[a-z][-a-z0-9]*' /tmp/bugtool-bash-completion.sh | sort -u
 
-# Extract flags with their associated commands
+## Extract flags with their associated commands
 awk '/^__.*_flag_/ {cmd=$0} /--[a-z]/ {print cmd, $0}'   /tmp/bugtool-bash-completion.sh | head -20
 \`\`\`
 
@@ -98,7 +98,7 @@ if __name__ == '__main__':
 ### Generating Documentation
 
 \`\`\`bash
-# Convert parsed output to markdown
+## Convert parsed output to markdown
 python3 parse_bash_completion.py /tmp/bugtool-bash-completion.sh |   jq -r '.flags[]' | while read -r flag; do
     echo "- \\\`\$flag\\\`"
   done > /tmp/bugtool-flags.md

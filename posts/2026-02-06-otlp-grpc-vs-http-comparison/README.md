@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, GRPC, HTTP, Performance, Configuration
+Tags: OpenTelemetry, OTLP, gRPC, HTTP, Performance, Configuration
 
 Description: Choosing between OTLP/gRPC and OTLP/HTTP impacts performance, reliability, and operational complexity. This guide breaks down when to use each transport.
 

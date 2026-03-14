@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to detect and monitor pods that are not managed by Cilium to identify networking gaps, security policy blind spots, and CNI misconfiguration.
 

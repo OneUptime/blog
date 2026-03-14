@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: A comprehensive checklist of requirements for installing Cilium on AWS EKS, covering node type, kernel version, VPC CNI configuration, and IAM permissions.
 

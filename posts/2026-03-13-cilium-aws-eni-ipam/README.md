@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to configure Cilium's AWS Elastic Network Interface (ENI) IPAM mode on Amazon EKS and self-managed Kubernetes on EC2, enabling native VPC routing without overlay encapsulation overhead.
 

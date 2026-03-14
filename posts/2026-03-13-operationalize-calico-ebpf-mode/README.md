@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Operations
+Tags: Calico, Kubernetes, Networking, eBPF, Operations
 
 Description: Build sustainable operational processes for running Calico in eBPF mode, including upgrade procedures, incident response, and capacity planning for BPF maps.
 

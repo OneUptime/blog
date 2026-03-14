@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Control Plane, Debugging, Etcd, API Server, Cluster Management
+Tags: Talos Linux, Kubernetes, Control Plane, Debugging, etcd, API Server, Cluster Management
 
 Description: Step-by-step guide to debugging control plane readiness issues in Talos Linux clusters when nodes are not becoming ready.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A comprehensive introduction to Cilium's core concepts including endpoints, identities, policies, and the eBPF datapath with practical configuration, troubleshooting, and monitoring guidance.
 

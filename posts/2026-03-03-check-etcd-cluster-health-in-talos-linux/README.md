@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Etcd, Cluster Health, Distributed Systems
+Tags: Talos Linux, Kubernetes, etcd, Cluster Health, Distributed Systems
 
 Description: A thorough guide to checking and maintaining etcd cluster health in Talos Linux, including common issues and recovery steps.
 

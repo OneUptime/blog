@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, L7, EBPF
+Tags: Cilium, Kubernetes, Network Policy, L7, eBPF
 
 Description: Implement application-layer network policies in Cilium that filter traffic based on HTTP methods, paths, headers, and gRPC methods rather than just IP addresses and ports.
 

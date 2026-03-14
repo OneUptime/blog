@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to configure Azure CNI with Cilium as the network policy engine on Azure Kubernetes Service, combining Azure's native networking with Cilium's advanced policy capabilities.
 

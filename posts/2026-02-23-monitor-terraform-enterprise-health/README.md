@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Enterprise, Monitoring, Health Checks, Observability, DevOps
+Tags: Terraform, Terraform Enterprise, Monitoring, Health Check, Observability, DevOps
 
 Description: Learn how to set up comprehensive health monitoring for Terraform Enterprise, including health endpoints, metrics collection, alerting, and dashboard creation.
 

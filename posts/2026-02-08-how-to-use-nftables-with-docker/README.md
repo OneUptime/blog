@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Nftables, Firewall, Networking, Linux, Security, Iptables
+Tags: Docker, Nftables, Firewall, Networking, Linux, Security, iptables
 
 Description: Configure Docker to work with nftables, the modern Linux firewall framework that replaces iptables.
 

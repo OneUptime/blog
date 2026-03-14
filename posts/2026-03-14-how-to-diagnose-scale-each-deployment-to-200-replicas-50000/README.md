@@ -1,4 +1,4 @@
-# How to Diagnose Scale each deployment to 200 replicas (50000 pods in total) in Cilium performance
+# How to Diagnose Scale each deployment to 200 replicas (50000 pods in total)
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

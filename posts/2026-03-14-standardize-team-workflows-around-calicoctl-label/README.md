@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Labels, Team Workflows, Best Practices, Kubernetes
+Tags: Calico, Calicoctl, Labels, Team Workflows, Best Practices, Kubernetes
 
 Description: Establish consistent labeling conventions and team workflows for calicoctl label to ensure reliable network policy enforcement across your organization.
 
@@ -131,7 +131,7 @@ sys.exit(1 if errors > 0 else 0)
 
 Require all label changes to go through pull requests:
 
-```
+```text
 calico-labels/
   ├── label-taxonomy.yaml       # Label standards
   ├── production/

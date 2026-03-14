@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Elasticsearch, Security, Network Policy, EBPF
+Tags: Cilium, Kubernetes, Elasticsearch, Security, Network Policy, eBPF
 
 Description: Use Cilium network policies to control access to Elasticsearch, preventing unauthorized data access and protecting against exfiltration from within the cluster.
 

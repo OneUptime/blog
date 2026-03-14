@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VIP, Etcd, Leader Election, High Availability, Kubernetes
+Tags: Talos Linux, VIP, etcd, Leader Election, High Availability, Kubernetes
 
 Description: In-depth explanation of how Talos Linux uses etcd leader election to manage Virtual IP ownership and coordinate VIP failover across control plane nodes.
 

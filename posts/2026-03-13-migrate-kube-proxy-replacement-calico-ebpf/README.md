@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Kube-proxy, Networking
+Tags: Calico, Kubernetes, eBPF, Kube-proxy, Networking
 
 Description: Safely disable kube-proxy and enable Calico eBPF service routing in a live cluster.
 

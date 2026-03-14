@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A practical troubleshooting guide for the most common issues encountered when running Cilium with CRI-O, including CNI invocation failures, network namespace errors, and SELinux-related problems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to review and update Cilium's system requirements on Azure Kubernetes Service (AKS), ensuring your cluster meets all prerequisites before installing or upgrading Cilium.
 

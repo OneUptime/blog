@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to enable and configure the Cilium Operator's identity management mode (Beta), which centralizes identity allocation in the Operator to reduce API server load and improve scalability.
 

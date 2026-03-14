@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: Learn how to plan and architect CNI chaining configurations with Cilium, understanding when chaining is appropriate, what capabilities are available in chained mode, and how to design a migration...
 

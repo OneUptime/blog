@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
 Description: Configure Calico eBPF service handling for Kubernetes services including NodePort, ClusterIP, and LoadBalancer types.
 

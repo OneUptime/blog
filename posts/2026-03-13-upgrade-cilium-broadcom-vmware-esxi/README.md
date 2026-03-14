@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: A guide to upgrading Cilium on Kubernetes clusters running on Broadcom VMware ESXi hypervisors, covering vSphere-specific networking considerations and the upgrade procedure.
 

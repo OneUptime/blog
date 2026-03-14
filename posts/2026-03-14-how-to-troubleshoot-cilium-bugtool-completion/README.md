@@ -32,39 +32,39 @@ This guide provides systematic approaches to diagnose and resolve cilium-bugtool
 Start by checking whether completions are loaded:
 
 \`\`\`bash
-# Bash: check if completion function exists
+## Bash: check if completion function exists
 complete -p cilium-bugtool 2>/dev/null || echo "No completion registered"
 
-# Zsh: check if completion is in fpath
+## Zsh: check if completion is in fpath
 for dir in \$fpath; do
   [ -f "\$dir/_cilium-bugtool" ] && echo "Found: \$dir/_cilium-bugtool"
 done
 
-# Fish: check completion file
+## Fish: check completion file
 ls ~/.config/fish/completions/cilium-bugtool.fish 2>/dev/null || echo "Not found"
 \`\`\`
 
 ### Fixing Stale Cache (Zsh)
 
 \`\`\`bash
-# Remove zsh completion cache and rebuild
+## Remove zsh completion cache and rebuild
 rm -f ~/.zcompdump*
 autoload -Uz compinit && compinit
 
-# Verify after rebuild
+## Verify after rebuild
 echo \$_comps[cilium-bugtool]
 \`\`\`
 
 ### Fixing Bash Completion Not Loading
 
 \`\`\`bash
-# Check if bash-completion is installed
+## Check if bash-completion is installed
 pkg-config --exists bash-completion 2>/dev/null && echo "Installed" || echo "Not installed"
 
-# Verify the completion file exists
+## Verify the completion file exists
 ls /etc/bash_completion.d/cilium-bugtool 2>/dev/null
 
-# Source manually to test
+## Source manually to test
 source <(cilium-bugtool completion bash)
 cilium-bugtool <TAB>
 \`\`\`
@@ -72,10 +72,10 @@ cilium-bugtool <TAB>
 ### Binary Not Found
 
 \`\`\`bash
-# Check if the binary is in PATH
+## Check if the binary is in PATH
 which cilium-bugtool || echo "Not in PATH"
 
-# If only available in a pod, generate from there
+## If only available in a pod, generate from there
 CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool

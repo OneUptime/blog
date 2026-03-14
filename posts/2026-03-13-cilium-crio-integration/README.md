@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A complete guide to integrating Cilium with the CRI-O container runtime including socket configuration, troubleshooting common CRI-O-specific issues, and validating Cilium endpoint creation with...
 

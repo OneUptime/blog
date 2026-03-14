@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Kuryr, Scaling, Kubernetes
 
-Description: A practical guide to scaling OpenStack Kuryr integration with Calico for environments running Kubernetes on OpenStack, covering network coordination, pod-to-VM communication, and performance optimization.
+Description: A practical guide to scaling OpenStack Kuryr integration with Calico for environments running Kubernetes on OpenStack, covering network coordination, pod-to-VM communication, and performance...
 
 ---
 

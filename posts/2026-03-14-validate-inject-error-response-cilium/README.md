@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Validation, Error Injection, Testing
 
-Description: Validate that error response injection in Cilium L7 parsers produces correctly formatted, policy-compliant, and client-compatible error messages through protocol conformance testing and end-to-end verification.
+Description: Validate that error response injection in Cilium L7 parsers produces correctly formatted, policy-compliant, and client-compatible error messages through protocol conformance testing and end-to-end...
 
 ---
 

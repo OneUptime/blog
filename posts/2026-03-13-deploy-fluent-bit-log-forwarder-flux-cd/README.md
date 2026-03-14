@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Logging, Fluent Bit, Log Forwarding, DaemonSets
+Tags: Flux CD, Kubernetes, GitOps, Logging, Fluent Bit, Log Forwarding, DaemonSet
 
 Description: Deploy Fluent Bit as a lightweight log forwarder DaemonSet on Kubernetes using Flux CD for GitOps-managed log collection.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, RKE, Rancher, EBPF
+Tags: Cilium, Kubernetes, RKE, Rancher, eBPF
 
 Description: Learn how to verify that your RKE or RKE2 cluster meets all the prerequisites for installing Cilium as the CNI, including node OS requirements, existing CNI removal, and RKE-specific configuration.
 

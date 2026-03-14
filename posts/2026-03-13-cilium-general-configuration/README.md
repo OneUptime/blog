@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A comprehensive guide to Cilium's general configuration options covering Helm values, runtime configuration, environment-specific tuning, and operational best practices.
 

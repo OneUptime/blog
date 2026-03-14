@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Node Status, Kubernetes, Networking
+Tags: Calico, Calicoctl, BGP, Node Status, Kubernetes, Networking
 
 Description: Master calicoctl node status to monitor BGP peering health, diagnose connectivity issues, and understand your Calico network topology through practical examples.
 
@@ -32,7 +32,7 @@ sudo calicoctl node status
 
 Typical output:
 
-```
+```text
 Calico process is running.
 
 IPv4 BGP status
@@ -157,7 +157,7 @@ sudo calicoctl node status
 
 Output with route reflectors:
 
-```
+```text
 IPv4 BGP status
 +---------------+-------------------+-------+----------+-------------+
 | PEER ADDRESS  |     PEER TYPE     | STATE |  SINCE   |    INFO     |

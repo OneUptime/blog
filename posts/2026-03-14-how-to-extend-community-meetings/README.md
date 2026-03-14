@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Community, Meetings, Contributing, Open Source
+Tags: Cilium, Community, Meeting, Contributing, Open Source
 
 Description: Propose new topics, present at community meetings, and help grow the Cilium community meeting program.
 

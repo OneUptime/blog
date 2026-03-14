@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, XDP, Load Balancing, Networking, Linux, Performance
+Tags: eBPF, XDP, Load Balancing, Networking, Linux, Performance
 
 Description: A guide to implementing a high-performance load balancer using eBPF and XDP.
 

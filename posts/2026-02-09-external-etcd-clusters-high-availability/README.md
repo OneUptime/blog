@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, High Availability
+Tags: Kubernetes, etcd, High Availability
 
 Description: Learn how to deploy external etcd clusters for Kubernetes high availability, including installation, configuration, backup strategies, and monitoring for production-grade cluster state management.
 

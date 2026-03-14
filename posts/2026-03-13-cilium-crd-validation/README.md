@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A practical guide to validating Cilium Custom Resource Definitions including policy syntax checking, schema enforcement, dry-run testing, and automated validation pipelines for CiliumNetworkPolicies.
 

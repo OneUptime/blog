@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Database, PostgreSQL, MySQL, Kubernetes
+Tags: Istio, mTLS, Database, PostgreSQL, MySQL, Kubernetes
 
 Description: How to configure mutual TLS for database connections in Istio including PostgreSQL, MySQL, MongoDB, and Redis running in the mesh.
 

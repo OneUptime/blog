@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Log Collection, DaemonSets
+Tags: OpenTelemetry, Kubernetes, Log Collection, DaemonSet
 
 Description: Deploy the OpenTelemetry Collector as a Kubernetes DaemonSet to collect logs from every pod on every node automatically.
 

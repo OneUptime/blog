@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
 Description: Monitor Calico eBPF service routing health by tracking NAT map usage, connection counts, and error rates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, eBPF
 
 Description: Learn how to validate Cilium's Alibaba Cloud ENI (Elastic Network Interface) IPAM mode, ensuring pod IPs are correctly allocated from VPC ENIs and that network connectivity is functioning properly.
 

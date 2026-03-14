@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore Migration, Validation, Kubernetes
+Tags: Calico, Calicoctl, Datastore Migration, Validation, Kubernetes
 
 Description: Verify that calicoctl datastore migrate lock completed successfully by checking resource integrity, counts, and cluster connectivity.
 

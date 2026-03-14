@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Troubleshooting, Debugging, EBPF
+Tags: Cilium, Kubernetes, Troubleshooting, Debugging, eBPF
 
 Description: Enable and analyze Cilium debug logs to investigate data plane issues, policy calculation problems, and control plane errors that are not visible in standard log levels.
 

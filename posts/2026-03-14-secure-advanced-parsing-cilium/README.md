@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Advanced Parsing, L7 Proxy, Protocol Security
 
-Description: Learn how to implement secure advanced parsing techniques in Cilium L7 parsers, including nested structure handling, variable-length fields, and complex protocol state machines with proper security controls.
+Description: Learn how to implement secure advanced parsing techniques in Cilium L7 parsers, including nested structure handling, variable-length fields, and complex protocol state machines with proper...
 
 ---
 

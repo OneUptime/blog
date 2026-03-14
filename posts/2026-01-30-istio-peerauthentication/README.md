@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, ServiceMesh, MTLS
+Tags: Istio, Kubernetes, ServiceMesh, mTLS
 
 Description: Configure mutual TLS enforcement in Istio using PeerAuthentication policies for secure service-to-service communication.
 

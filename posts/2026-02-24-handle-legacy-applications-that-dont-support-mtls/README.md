@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Legacy Applications, Kubernetes, Security
+Tags: Istio, mTLS, Legacy Applications, Kubernetes, Security
 
 Description: Strategies for integrating legacy applications that cannot support mutual TLS into an Istio service mesh without compromising security.
 

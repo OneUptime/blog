@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, eBPF
 
 Description: A step-by-step guide to upgrading Cilium on Alibaba Cloud Kubernetes clusters using Elastic Network Interface (ENI) mode, including Alibaba Cloud-specific prerequisites and validation steps.
 

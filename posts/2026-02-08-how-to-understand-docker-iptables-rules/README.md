@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Iptables, Networking, Firewall, Linux, Security, Containers
+Tags: Docker, iptables, Networking, Firewall, Linux, Security, Containers
 
 Description: Understand how Docker uses iptables to manage container networking, port publishing, and traffic filtering.
 

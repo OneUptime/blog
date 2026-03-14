@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, EBPF, Libbpf, CO-RE, Kernel, Linux
+Tags: RHEL, eBPF, Libbpf, CO-RE, Kernel, Linux
 
 Description: A hands-on guide to building portable eBPF programs using libbpf and CO-RE (Compile Once, Run Everywhere) on RHEL, from setup to deployment.
 

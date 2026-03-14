@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A troubleshooting reference for diagnosing cluster-wide networking issues when Cilium is deployed alongside Azure CNI in Azure Kubernetes environments.
 

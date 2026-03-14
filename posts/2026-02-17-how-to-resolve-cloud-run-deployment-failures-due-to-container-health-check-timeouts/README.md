@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Health Checks, Containers, Deployments
+Tags: GCP, Cloud Run, Health Check, Containers, Deployments
 
 Description: Fix Cloud Run deployment failures caused by container health check timeouts by configuring startup probes, adjusting timeout settings, and optimizing container startup time.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Process, Linux, Monitoring, Security, Observability
+Tags: eBPF, Process, Linux, Monitoring, Security, Observability
 
 Description: Learn how to use eBPF to track process creation, execution, and termination events.
 

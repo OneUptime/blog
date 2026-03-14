@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with Cilium networking concepts including eBPF datapath, identity-based security, and service mesh integration using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with Cilium networking concepts including eBPF datapath, identity-based security, and service mesh integration using systematic debugging techniques and Cilium...
 
 ---
 

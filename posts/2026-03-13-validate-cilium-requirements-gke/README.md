@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
+Tags: Cilium, Kubernetes, GKE, Google Cloud, eBPF
 
 Description: A guide to validating that your Google Kubernetes Engine cluster meets all requirements for running Cilium, covering GKE-specific cluster settings, node OS requirements, and networking configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Troubleshooting, Best Practices, Iptables, EBPF
+Tags: Calico, Kubernetes, Data Path, CNI, Troubleshooting, Best Practices, iptables, eBPF
 
 Description: Common data path mistakes in Calico deployments - from MTU mismatches to stale iptables rules - and how to diagnose and fix them.
 

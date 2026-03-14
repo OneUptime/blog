@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Labels, Validation, Kubernetes
+Tags: Calico, Calicoctl, Labels, Validation, Kubernetes
 
 Description: Learn how to verify that calicoctl label operations succeeded and that labels are correctly reflected in network policy evaluations and resource selectors.
 

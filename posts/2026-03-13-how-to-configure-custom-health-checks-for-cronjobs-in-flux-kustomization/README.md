@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, CronJobs, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, CronJobs, Kustomization
 
 Description: Learn how to configure custom health checks for CronJob resources in Flux Kustomization to ensure scheduled workloads are properly deployed.
 

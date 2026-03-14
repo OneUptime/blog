@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Automation
+Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Automation
 
 Description: Automate Calico eBPF diagnostic data collection with scripts that gather BPF state, Felix logs, and connectivity test results for faster incident resolution.
 

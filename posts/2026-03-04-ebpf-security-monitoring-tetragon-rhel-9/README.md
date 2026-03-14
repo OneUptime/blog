@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, EBPF, Tetragon, Security, Monitoring, Linux
+Tags: RHEL, eBPF, Tetragon, Security, Monitoring, Linux
 
 Description: Learn how to deploy Cilium Tetragon on RHEL to monitor process execution, file access, and network connections using eBPF-based security observability.
 

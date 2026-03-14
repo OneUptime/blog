@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, Services, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, Services, Kustomization
 
 Description: Learn how to configure custom health checks for Service resources in Flux Kustomization to verify network endpoints are properly established.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
 
 Description: Ensure Calico sidecar acceleration does not bypass security controls by maintaining mTLS enforcement and network policy while enabling eBPF optimizations.
 

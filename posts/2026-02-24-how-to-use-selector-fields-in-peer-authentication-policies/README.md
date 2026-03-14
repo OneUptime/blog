@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, Selectors, Kubernetes, MTLS
+Tags: Istio, PeerAuthentication, Selectors, Kubernetes, mTLS
 
 Description: A detailed look at how selector fields work in Istio PeerAuthentication policies and how to use them effectively for targeting workloads.
 

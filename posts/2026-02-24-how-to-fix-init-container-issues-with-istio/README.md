@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Init Containers, Iptables, Troubleshooting, Kubernetes
+Tags: Istio, Init Containers, iptables, Troubleshooting, Kubernetes
 
 Description: Resolve Istio init container failures including iptables permission errors, CNI conflicts, security policy blocks, and network setup problems.
 

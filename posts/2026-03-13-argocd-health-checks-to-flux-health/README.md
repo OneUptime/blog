@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, Health Checks, Migration, GitOps, Kubernetes, Custom Resources
+Tags: Flux CD, ArgoCD, Health Check, Migration, GitOps, Kubernetes, Custom Resources
 
 Description: Learn how to convert ArgoCD custom health check configurations to Flux CD health check specifications for accurate deployment readiness detection.
 

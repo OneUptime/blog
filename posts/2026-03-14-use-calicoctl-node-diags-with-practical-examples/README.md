@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Diagnostics, Kubernetes, Troubleshooting
+Tags: Calico, Calicoctl, Diagnostics, Kubernetes, Troubleshooting
 
 Description: Learn how to collect comprehensive Calico node diagnostics using calicoctl node diags, including log collection, configuration dumps, and system information gathering.
 
@@ -32,7 +32,7 @@ sudo calicoctl node diags
 
 This creates a tar.gz file in the current directory containing all diagnostic data. The output tells you the filename:
 
-```
+```text
 Collecting diagnostics
 Using log dir /var/log/calico
 Dumping iptables
@@ -58,7 +58,7 @@ find . -type f | head -30
 
 Typical contents include:
 
-```
+```text
 ./date
 ./hostname
 ./ip-addr

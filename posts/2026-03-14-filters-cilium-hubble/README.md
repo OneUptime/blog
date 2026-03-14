@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Hubble, Filters, Observability, Network Monitoring
+Tags: Cilium, Hubble, Filter, Observability, Network Monitoring
 
 Description: A comprehensive guide to using Hubble filters for targeted network flow observation, covering CLI filters, API filters, and exporter filters for precise traffic analysis.
 

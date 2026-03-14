@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Iptables, Felix, Prevention
+Tags: Calico, Kubernetes, Networking, iptables, Felix, Prevention
 
 Description: Prevent Calico iptables rules from failing to apply by ensuring Felix prerequisites are met, using the correct iptables backend, and monitoring for iptables programming failures.
 

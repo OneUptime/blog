@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, Timeout, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, Timeout, Kustomization
 
 Description: Learn how to configure and optimize health check timeouts in Flux Kustomization for reliable deployments across different workload types.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Retries, Kubernetes, Resilience
+Tags: Istio, gRPC, Retries, Kubernetes, Resilience
 
 Description: Configure gRPC retry policies in Istio using VirtualService resources, with real examples covering retry conditions, backoff, and gRPC status codes.
 

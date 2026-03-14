@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, Etcd, Cluster Recovery
+Tags: Flux CD, Kubernetes, GitOps, Disaster Recovery, etcd, Cluster Recovery
 
 Description: Recover Flux state after catastrophic etcd data loss by combining etcd backup restoration with Flux's Git-based reconciliation.
 

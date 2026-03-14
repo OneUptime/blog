@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Guide to installing Cilium on Kubernetes using external installer tools including Helm, Kustomize, and Flux CD for GitOps-native management.
 

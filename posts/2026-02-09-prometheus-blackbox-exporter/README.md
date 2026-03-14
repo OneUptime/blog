@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Blackbox Exporter, Monitoring, Health Checks, Availability
+Tags: Prometheus, Blackbox Exporter, Monitoring, Health Check, Availability
 
 Description: Learn how to deploy and configure Prometheus BlackBox Exporter to monitor endpoint availability, SSL certificates, and perform synthetic monitoring.
 

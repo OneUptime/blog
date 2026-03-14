@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Iptables, Networking, Security, Firewall
+Tags: Ubuntu, iptables, Networking, Security, Firewall
 
 Description: Learn how to write iptables rules specifically for monitoring and debugging network traffic on Ubuntu, including logging, packet counting, and traffic analysis techniques.
 

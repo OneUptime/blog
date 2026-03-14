@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, K0s, EBPF
+Tags: Cilium, Kubernetes, K0s, eBPF
 
 Description: A guide to deploying and configuring Cilium as the CNI on k0s, the lightweight Kubernetes distribution, for production-grade networking with minimal overhead.
 

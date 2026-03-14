@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Health Checks, Monitoring, Linux, DevOps
+Tags: Ansible, Health Check, Monitoring, Linux, DevOps
 
 Description: Build automated system health check playbooks with Ansible to monitor CPU, memory, disk, services, and network connectivity.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Error Handling, Already Exists, Idempotency, Go, Python, Debugging
+Tags: gRPC, Error Handling, Already Exists, Idempotency, Go, Python, Debugging
 
 Description: A practical guide to handling and preventing ALREADY_EXISTS errors in gRPC services, including idempotency patterns, duplicate detection, and proper client-side error handling.
 

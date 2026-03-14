@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Netfilter, Connection Tracking, Firewall, Iptables
+Tags: Ubuntu, Netfilter, Connection Tracking, Firewall, iptables
 
 Description: Understand and configure Netfilter's connection tracking subsystem on Ubuntu, including conntrack table tuning, helper modules, and troubleshooting dropped connections.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Performance, Optimization
 
 Description: Techniques for optimizing Calico's use of etcdv3 key paths to reduce storage usage, improve read/write latency, and maintain healthy etcd performance in large clusters.
 

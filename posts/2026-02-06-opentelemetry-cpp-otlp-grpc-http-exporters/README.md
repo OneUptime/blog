@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, C++, OTLP, GRPC, HTTP, Exporter
+Tags: OpenTelemetry, C++, OTLP, gRPC, HTTP, Exporter
 
 Description: Learn how to configure and use OTLP gRPC and HTTP exporters in OpenTelemetry C++ applications to send telemetry data to backends like Jaeger, Tempo, and OneUptime.
 

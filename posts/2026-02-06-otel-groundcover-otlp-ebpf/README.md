@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Groundcover, Kubernetes, EBPF
+Tags: OpenTelemetry, Groundcover, Kubernetes, eBPF
 
 Description: Configure OpenTelemetry to send traces, metrics, and logs to Groundcover for eBPF-enhanced observability in Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Kubernetes, MTLS, Production
+Tags: Istio, Security, Kubernetes, mTLS, Production
 
 Description: Step-by-step guide to validating your Istio security configuration before deploying to production, covering mTLS, authorization policies, and more.
 

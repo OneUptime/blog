@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Monitoring
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Monitoring
 
 Description: Set up monitoring and alerting for Calico etcd TLS certificate expiry and renewal health to prevent certificate-related outages in your Kubernetes cluster.
 

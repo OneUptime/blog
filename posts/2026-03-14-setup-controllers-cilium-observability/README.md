@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Controllers, Observability, Kubernetes, Monitoring
+Tags: Cilium, Controller, Observability, Kubernetes, Monitoring
 
 Description: A step-by-step guide to setting up and configuring Cilium's internal controller subsystem for observability, including how to monitor controller health and reconciliation loops.
 

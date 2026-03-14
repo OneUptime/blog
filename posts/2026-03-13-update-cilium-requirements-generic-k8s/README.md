@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A comprehensive guide to checking and updating Cilium's system requirements on generic (self-managed) Kubernetes clusters, covering kernel version, Linux distribution, and network configuration...
 

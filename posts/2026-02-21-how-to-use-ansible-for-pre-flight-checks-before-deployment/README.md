@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Pre-Flight Checks, Deployments, Validation
+Tags: Ansible, Pre-flight Checks, Deployments, Validation
 
 Description: Implement comprehensive pre-flight checks with Ansible to validate infrastructure readiness before deployments and catch problems early.
 

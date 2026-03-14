@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Gateway, Kubernetes, HTTP/2
+Tags: Istio, gRPC, Gateway, Kubernetes, HTTP/2
 
 Description: How to properly configure an Istio Gateway to handle gRPC traffic including TLS setup, port naming, and routing configuration.
 

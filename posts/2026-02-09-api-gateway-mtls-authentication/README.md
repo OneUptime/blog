@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: API Gateway, MTLS, Security
+Tags: API Gateway, mTLS, Security
 
 Description: Configure mutual TLS authentication in API gateways for secure service-to-service communication with certificate management, validation policies, and monitoring strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, TLS, MTLS, Security, API Gateway, Infrastructure as Code
+Tags: Terraform, AWS, TLS, mTLS, Security, API Gateway, Infrastructure as Code
 
 Description: Learn how to configure TLS mutual authentication (mTLS) with Terraform for API Gateway and Application Load Balancers, ensuring both client and server identity verification.
 

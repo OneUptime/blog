@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to automate a production-ready Cilium installation using Helm and the Cilium CLI, with configuration management through GitOps and post-install validation steps.
 

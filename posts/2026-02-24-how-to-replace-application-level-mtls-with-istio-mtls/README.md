@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Security, Certificate Management, Service Mesh
+Tags: Istio, mTLS, Security, Certificate Management, Service Mesh
 
 Description: Migrate from application-managed mutual TLS to Istio's automatic mTLS, eliminating manual certificate management and simplifying your security infrastructure.
 

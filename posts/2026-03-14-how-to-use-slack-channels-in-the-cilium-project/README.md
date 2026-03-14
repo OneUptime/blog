@@ -28,7 +28,7 @@ This guide covers practical steps for using Cilium project Slack channels in you
 
 The Cilium Slack workspace includes these essential channels:
 
-```
+```text
 #general           - General Cilium discussion
 #troubleshooting   - Help with Cilium issues
 #development       - Development discussion

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Iptables, Firewall, Network Security
+Tags: Ansible, iptables, Firewall, Network Security
 
 Description: Learn how to manage Linux firewall rules with the Ansible iptables module for controlling network traffic and securing servers.
 

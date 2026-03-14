@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Validation, Kubernetes, Networking
+Tags: Calico, Calicoctl, Validation, Kubernetes, Networking
 
 Description: Learn how to validate and interpret the output of calicoctl version to confirm your Calico installation is healthy and components are correctly aligned.
 
@@ -204,7 +204,7 @@ chmod +x full-calico-validation.sh
 
 Expected output for a healthy cluster:
 
-```
+```yaml
 === Calico Version Validation ===
 PASS: Versions aligned at v3.27.0
 PASS: All calico-node pods ready (3/3)

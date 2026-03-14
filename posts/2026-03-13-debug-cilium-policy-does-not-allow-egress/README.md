@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Egress, Debugging, EBPF
+Tags: Cilium, Kubernetes, Network Policy, Egress, Debugging, eBPF
 
 Description: Debug Cilium egress policies that silently block expected traffic by using Hubble flow data, policy status inspection, and eBPF map analysis.
 

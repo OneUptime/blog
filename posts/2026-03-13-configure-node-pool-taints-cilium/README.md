@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to configure Kubernetes node pool taints alongside Cilium CNI to control pod scheduling and ensure Cilium operates correctly on specialized node pools.
 

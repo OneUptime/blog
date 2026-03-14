@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
+Tags: Cilium, Kubernetes, Networking, Fragmentation, eBPF
 
 Description: A guide to validating how Cilium handles IP packet fragmentation, including testing fragment tracking, diagnosing MTU-related fragmentation issues, and confirming correct fragment reassembly behavior.
 

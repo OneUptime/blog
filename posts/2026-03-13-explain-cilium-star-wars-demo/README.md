@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, Networking, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, eBPF, Networking, Network Policy, Star Wars Demo
 
 Description: A deep-dive explanation of how the Cilium Star Wars demo works under the hood, covering eBPF identity enforcement and CiliumNetworkPolicy mechanics.
 

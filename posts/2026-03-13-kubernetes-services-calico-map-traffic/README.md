@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Traffic Flows, Networking, Kube-proxy, EBPF
+Tags: Calico, Kubernetes, Services, CNI, Traffic Flows, Networking, Kube-proxy, eBPF
 
 Description: A detailed walkthrough of how Kubernetes service traffic flows through Calico's networking components, from ClusterIP DNAT to policy enforcement.
 

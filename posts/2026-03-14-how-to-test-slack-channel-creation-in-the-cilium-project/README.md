@@ -26,7 +26,7 @@ This guide covers approaches to testing and validating the Cilium Slack channel 
 
 ### Process Testing Checklist
 
-```
+```json
 [ ] Channel request process is documented and findable
 [ ] Naming conventions are consistently applied
 [ ] New channels get proper topic and purpose set

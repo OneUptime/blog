@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, OpenShift, EBPF
+Tags: Cilium, Kubernetes, OpenShift, eBPF
 
 Description: A step-by-step guide to verifying Cilium prerequisites on Red Hat OpenShift, addressing OVN-Kubernetes replacement, RHCOS kernel requirements, and SCC configuration.
 

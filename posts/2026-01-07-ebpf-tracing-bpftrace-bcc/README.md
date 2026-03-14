@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Bpftrace, BCC, Tracing, Linux, Debugging
+Tags: eBPF, Bpftrace, BCC, Tracing, Linux, Debugging
 
 Description: Learn how to use bpftrace and BCC tools for system tracing and debugging with eBPF.
 

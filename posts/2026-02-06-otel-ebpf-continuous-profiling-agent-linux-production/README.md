@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, EBPF, Profiling, Linux
+Tags: OpenTelemetry, eBPF, Profiling, Linux
 
 Description: Deploy the OpenTelemetry eBPF-based continuous profiling agent on Linux to capture CPU profiles from production workloads with minimal overhead.
 

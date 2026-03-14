@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Semantics, Scaling, Networking
 
-Description: A guide to scaling the semantic mapping between OpenStack networking concepts and Calico data model at large scale, covering resource mapping optimization, metadata handling, and policy semantic translation.
+Description: A guide to scaling the semantic mapping between OpenStack networking concepts and Calico data model at large scale, covering resource mapping optimization, metadata handling, and policy semantic...
 
 ---
 

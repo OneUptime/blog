@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: EBPF, Networking, Linux, Performance, Kernel
+Tags: eBPF, Networking, Linux, Performance, Kernel
 
 Description: Master eBPF maps for high-performance packet processing with practical examples of hash maps, arrays, per-CPU maps, and LRU caches to build efficient network monitoring and filtering tools.
 

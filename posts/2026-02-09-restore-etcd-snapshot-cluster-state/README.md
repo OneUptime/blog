@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Etcd, Kubernetes, Disaster Recovery, Restore, Cluster State
+Tags: etcd, Kubernetes, Disaster Recovery, Restore, Cluster State
 
 Description: Master etcd snapshot restoration to recover Kubernetes cluster state after failures. Complete guide covering restoration procedures, validation, and troubleshooting techniques.
 

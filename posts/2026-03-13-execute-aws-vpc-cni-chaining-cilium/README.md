@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: Learn how to chain Cilium onto AWS VPC CNI on Amazon EKS to gain Cilium's advanced network policy enforcement and observability features while retaining native VPC networking and pod IP addressing.
 

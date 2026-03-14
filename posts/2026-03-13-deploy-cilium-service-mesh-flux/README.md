@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Service Mesh, EBPF, Sidecarless, CNI
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Service Mesh, eBPF, Sidecarless, CNI
 
 Description: Deploy Cilium as a service mesh with Flux CD using eBPF-based networking for high-performance, sidecarless mutual TLS and observability.
 

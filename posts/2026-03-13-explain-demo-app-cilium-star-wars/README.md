@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
 Description: An in-depth explanation of how the Star Wars demo application exposes HTTP endpoints and how Cilium uses them to demonstrate L7-aware policy enforcement.
 

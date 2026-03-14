@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Networking, Testing, Production
 
-Description: A comprehensive guide to testing OpenStack networking with Calico in environments that simulate production conditions, covering connectivity validation, security group testing, and performance benchmarking.
+Description: A comprehensive guide to testing OpenStack networking with Calico in environments that simulate production conditions, covering connectivity validation, security group testing, and performance...
 
 ---
 

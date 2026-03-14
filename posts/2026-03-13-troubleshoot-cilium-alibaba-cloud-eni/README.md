@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, eBPF
 
 Description: A guide to diagnosing and resolving issues when running Cilium with Alibaba Cloud Elastic Network Interface (ENI) IPAM on ACK or self-managed Kubernetes clusters.
 

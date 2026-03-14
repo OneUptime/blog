@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PCI DSS, Compliance, Security, MTLS, Kubernetes
+Tags: Istio, PCI DSS, Compliance, Security, mTLS, Kubernetes
 
 Description: How to configure Istio service mesh to meet PCI DSS requirements including encryption, access controls, logging, and network segmentation.
 

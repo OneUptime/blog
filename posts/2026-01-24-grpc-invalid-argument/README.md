@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Invalid Argument, Validation, Error Handling, Protocol Buffers, Debugging, Go, Python
+Tags: gRPC, Invalid Argument, Validation, Error Handling, Protocol Buffers, Debugging, Go, Python
 
 Description: A practical guide to diagnosing and fixing gRPC INVALID_ARGUMENT errors, covering input validation, protobuf field validation, and best practices for clear error messages.
 

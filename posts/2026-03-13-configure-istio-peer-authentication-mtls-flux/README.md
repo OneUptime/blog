@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, PeerAuthentication, MTLS, Service Mesh, Security
+Tags: Flux CD, Kubernetes, GitOps, Istio, PeerAuthentication, mTLS, Service Mesh, Security
 
 Description: Configure Istio PeerAuthentication for mutual TLS using Flux CD to enforce encrypted, authenticated communication between services.
 

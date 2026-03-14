@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, MTLS, Security, Certificate Debugging
+Tags: Istio, Ambient Mode, mTLS, Security, Certificate Debugging
 
 Description: Practical guide to diagnosing and fixing mutual TLS issues in Istio ambient mode including certificate problems and handshake failures.
 

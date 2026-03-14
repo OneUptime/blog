@@ -1,4 +1,4 @@
-# How to Document OpenStack Neutron API Integration with Calico for Operations Teams
+# How to Document OpenStack Neutron API Integration with Calico for Operations
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

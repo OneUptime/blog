@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Validation, Kubernetes, Network Health
+Tags: Calico, Calicoctl, BGP, Validation, Kubernetes, Network Health
 
 Description: Learn how to validate and interpret calicoctl node status output to confirm BGP peering health, detect routing anomalies, and verify network policy enforcement paths.
 

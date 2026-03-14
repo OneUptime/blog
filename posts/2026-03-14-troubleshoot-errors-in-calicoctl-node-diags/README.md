@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Diagnostics, Troubleshooting, Kubernetes
+Tags: Calico, Calicoctl, Diagnostics, Troubleshooting, Kubernetes
 
 Description: Resolve errors encountered when running calicoctl node diags, including permission issues, missing binaries, and incomplete diagnostic bundles.
 
@@ -23,7 +23,7 @@ This guide addresses common errors encountered when running `calicoctl node diag
 
 ## Error: Permission Denied
 
-```
+```yaml
 Error: permission denied while collecting diagnostics
 ```
 
@@ -39,7 +39,7 @@ kubectl exec -n calico-system <pod-name> -- calicoctl node diags
 
 ## Error: Disk Space Insufficient
 
-```
+```yaml
 Error: no space left on device
 ```
 
@@ -72,7 +72,7 @@ sudo -E calicoctl node diags
 
 ## Error: Cannot Access Log Files
 
-```
+```yaml
 Warning: unable to read log directory /var/log/calico
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, EBPF, Bpftool, Kernel, Tracing
+Tags: RHEL, eBPF, Bpftool, Kernel, Tracing
 
 Description: Use bpftool on RHEL to load, inspect, and manage eBPF programs for custom kernel tracing, networking, and security use cases.
 

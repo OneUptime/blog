@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Cilium, EBPF, Layer 7
+Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Cilium, eBPF, Layer 7
 
 Description: Use Cilium CiliumNetworkPolicy resources to secure Flux controllers with L3/L4 and L7 filtering, DNS-aware policies, and identity-based access control.
 

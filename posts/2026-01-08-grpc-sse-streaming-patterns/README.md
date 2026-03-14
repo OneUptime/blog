@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Streaming, SSE, Server-sent-events, Real-Time, Golang, Microservices, PubSub
+Tags: gRPC, Streaming, SSE, Server-sent-events, Real-Time, Golang, Microservices, PubSub
 
 Description: Learn how to implement SSE-like real-time communication patterns using gRPC server streaming with reconnection handling, broadcast patterns, and backpressure management.
 

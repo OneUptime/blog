@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Monitoring
 
-Description: Set up monitoring and alerting for the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation to detect issues before they impact application availability.
+Description: Set up monitoring and alerting for the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation to detect issues...
 
 ---
 

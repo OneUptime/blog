@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that iptables-based masquerading mode in Cilium networking as an alternative to eBPF-based masquerading is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that iptables-based masquerading mode in Cilium networking as an alternative to eBPF-based masquerading is correctly configured and functioning as expected in your...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, MTLS
+Tags: Flux CD, Kubernetes, GitOps, Istio, Service Mesh, IstioOperator, mTLS
 
 Description: Deploy and manage Istio using the IstioOperator CRD with Flux CD for declarative, GitOps-driven service mesh lifecycle management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Single Node, Control Plane, Disaster Recovery, Kubernetes, Etcd
+Tags: Talos Linux, Single Node, Control Plane, Disaster Recovery, Kubernetes, etcd
 
 Description: Recovery procedures for single control plane node Talos Linux clusters where there is no redundancy to fall back on.
 

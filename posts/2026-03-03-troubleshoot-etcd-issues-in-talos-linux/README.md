@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Kubernetes, Troubleshooting, Cluster Management
+Tags: Talos Linux, etcd, Kubernetes, Troubleshooting, Cluster Management
 
 Description: A practical troubleshooting guide for diagnosing and fixing common etcd problems in Talos Linux Kubernetes clusters.
 

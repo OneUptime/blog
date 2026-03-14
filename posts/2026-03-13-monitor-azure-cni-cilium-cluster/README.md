@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to monitor network health, connectivity, and policy enforcement in an Azure Kubernetes Service cluster using Azure CNI with Cilium as the networking and observability layer.
 

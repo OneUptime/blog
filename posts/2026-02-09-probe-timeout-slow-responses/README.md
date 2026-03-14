@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Performance
+Tags: Kubernetes, Health Check, Performance
 
 Description: Set appropriate probe timeouts to accommodate slow health check responses while avoiding false positives, balancing responsiveness with stability across different application types.
 

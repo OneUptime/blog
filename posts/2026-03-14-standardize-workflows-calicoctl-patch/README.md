@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Team Workflows, calicoctl, Best Practices
+Tags: Calico, Kubernetes, Team Workflows, Calicoctl, Best Practices
 
 Description: Learn how to standardize your team's calicoctl patch workflows with naming conventions, approval processes, documentation templates, and shared tooling for consistent network policy management.
 

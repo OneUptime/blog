@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Quorum, Kubernetes, Cluster Recovery, High Availability
+Tags: Talos Linux, etcd, Quorum, Kubernetes, Cluster Recovery, High Availability
 
 Description: Understanding and recovering from etcd quorum loss in Talos Linux clusters to restore Kubernetes control plane availability.
 

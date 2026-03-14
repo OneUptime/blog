@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Storage, Performance
+Tags: Kubernetes, etcd, Storage, Performance
 
 Description: Learn how to compact and defragment etcd databases to reclaim disk space, improve performance, and maintain healthy Kubernetes cluster storage with automated maintenance procedures.
 

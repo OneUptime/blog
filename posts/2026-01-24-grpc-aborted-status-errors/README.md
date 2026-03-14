@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Error Handling, Aborted, Concurrency, Transactions, Go, Python, Debugging
+Tags: gRPC, Error Handling, Aborted, Concurrency, Transactions, Go, Python, Debugging
 
 Description: A practical guide to understanding and fixing gRPC ABORTED status errors, including concurrency conflicts, transaction issues, and retry strategies.
 

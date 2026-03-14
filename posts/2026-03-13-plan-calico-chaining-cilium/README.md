@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: Learn how to plan a Cilium-over-Calico CNI chaining configuration, enabling a phased migration from Calico to Cilium while maintaining network continuity.
 

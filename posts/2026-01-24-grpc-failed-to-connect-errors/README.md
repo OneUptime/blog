@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Networking, Debugging, Connectivity, TLS, DNS, Kubernetes
+Tags: gRPC, Networking, Debugging, Connectivity, TLS, DNS, Kubernetes
 
 Description: A practical guide to diagnosing and resolving connection failures in gRPC applications, covering network issues, DNS resolution, TLS configuration, load balancer problems.
 

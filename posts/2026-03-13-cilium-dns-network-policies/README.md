@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, DNS, EBPF
+Tags: Cilium, Kubernetes, Network Policy, DNS, eBPF
 
 Description: Use Cilium FQDN-based DNS policies to control egress traffic based on fully qualified domain names rather than IP addresses, enabling dynamic external access control.
 

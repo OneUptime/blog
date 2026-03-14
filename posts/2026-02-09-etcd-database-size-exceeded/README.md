@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Troubleshooting
+Tags: Kubernetes, etcd, Troubleshooting
 
 Description: Learn how to diagnose and fix etcd database size exceeded errors in Kubernetes, including compaction strategies and prevention techniques to maintain cluster health.
 

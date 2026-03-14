@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nftables, Iptables, Migration, Linux
+Tags: RHEL, Nftables, iptables, Migration, Linux
 
 Description: Learn how to use iptables-restore-translate to bulk-convert your existing iptables rulesets into nftables format on RHEL, with tips for handling edge cases.
 

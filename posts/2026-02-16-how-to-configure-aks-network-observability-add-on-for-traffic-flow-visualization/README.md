@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Network Observability, Traffic Flows, Azure, Monitoring, EBPF
+Tags: AKS, Kubernetes, Network Observability, Traffic Flows, Azure, Monitoring, eBPF
 
 Description: Learn how to enable and configure the AKS network observability add-on to visualize network traffic flows, detect anomalies, and debug connectivity issues.
 

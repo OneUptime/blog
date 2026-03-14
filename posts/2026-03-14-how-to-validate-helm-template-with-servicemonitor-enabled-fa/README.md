@@ -1,4 +1,4 @@
-# How to Validate Helm template with serviceMonitor enabled fails in Cilium configuration
+# How to Validate Helm template with serviceMonitor enabled fails
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

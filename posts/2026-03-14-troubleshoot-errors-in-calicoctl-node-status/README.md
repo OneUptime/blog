@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Troubleshooting, Kubernetes, Networking
+Tags: Calico, Calicoctl, BGP, Troubleshooting, Kubernetes, Networking
 
 Description: Resolve common errors and unexpected output from calicoctl node status, including process not running, peer failures, and permission issues.
 
@@ -23,7 +23,7 @@ Because this command queries the local Calico node's BIRD daemon, errors can ori
 
 ## Error: Calico Process Is Not Running
 
-```
+```text
 Calico process is not running.
 ```
 
@@ -59,7 +59,7 @@ sudo modprobe ip_tables iptable_filter iptable_nat
 
 ## Error: Connection Refused to BIRD Socket
 
-```
+```text
 Error connecting to BIRD socket: dial unix /var/run/calico/bird.ctl: connect: connection refused
 ```
 
@@ -78,7 +78,7 @@ kubectl delete pod -n calico-system <calico-node-pod>
 
 ## Error: Permission Denied
 
-```
+```yaml
 Error: permission denied
 ```
 

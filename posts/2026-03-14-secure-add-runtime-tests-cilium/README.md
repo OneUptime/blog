@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Runtime Tests, Integration Testing, L7 Proxy
 
-Description: Build secure runtime integration tests for Cilium L7 parsers that validate parser behavior in a live Kubernetes cluster with real network traffic, policy enforcement, and observability pipeline verification.
+Description: Build secure runtime integration tests for Cilium L7 parsers that validate parser behavior in a live Kubernetes cluster with real network traffic, policy enforcement, and observability pipeline...
 
 ---
 

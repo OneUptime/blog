@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Troubleshooting, Kubernetes, calicoctl
+Tags: Calico, etcd, Troubleshooting, Kubernetes, Calicoctl
 
 Description: A systematic guide to diagnosing and fixing common calicoctl etcd configuration issues including connection failures, TLS errors, authentication problems, and data inconsistencies.
 

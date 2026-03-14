@@ -31,8 +31,8 @@ This guide covers automation patterns for cilium-dbg, from simple multi-node scr
 
 \`\`\`bash
 #!/bin/bash
-# cilium-dbg-all-nodes.sh
-# Run a cilium-dbg command on all Cilium agent pods
+## cilium-dbg-all-nodes.sh
+## Run a cilium-dbg command on all Cilium agent pods
 
 set -euo pipefail
 
@@ -50,7 +50,7 @@ done <<< "\$PODS"
 \`\`\`
 
 \`\`\`bash
-# Usage examples
+## Usage examples
 bash cilium-dbg-all-nodes.sh "status --brief"
 bash cilium-dbg-all-nodes.sh "endpoint list"
 bash cilium-dbg-all-nodes.sh "bpf ct list global"
@@ -59,7 +59,7 @@ bash cilium-dbg-all-nodes.sh "bpf ct list global"
 ### Scheduled Health Monitoring
 
 \`\`\`yaml
-# cilium-health-monitor.yaml
+## cilium-health-monitor.yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -97,25 +97,25 @@ spec:
 
 \`\`\`bash
 #!/bin/bash
-# cilium-dbg-metrics.sh
-# Export cilium-dbg data as Prometheus metrics
+## cilium-dbg-metrics.sh
+## Export cilium-dbg data as Prometheus metrics
 
 NAMESPACE="kube-system"
 CILIUM_POD=\$(kubectl -n "\$NAMESPACE" get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 NODE=\$(kubectl -n "\$NAMESPACE" get pod "\$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
 
-# Endpoint metrics
+## Endpoint metrics
 EP_JSON=\$(kubectl -n "\$NAMESPACE" exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json 2>/dev/null)
 
 TOTAL=\$(echo "\$EP_JSON" | jq length)
 READY=\$(echo "\$EP_JSON" | jq '[.[] | select(.status.state=="ready")] | length')
 
 cat << METRICS
-# HELP cilium_endpoints_total Total endpoints on node
-# TYPE cilium_endpoints_total gauge
+## HELP cilium_endpoints_total Total endpoints on node
+## TYPE cilium_endpoints_total gauge
 cilium_endpoints_total{node="\$NODE"} \$TOTAL
-# HELP cilium_endpoints_ready Ready endpoints on node
-# TYPE cilium_endpoints_ready gauge
+## HELP cilium_endpoints_ready Ready endpoints on node
+## TYPE cilium_endpoints_ready gauge
 cilium_endpoints_ready{node="\$NODE"} \$READY
 METRICS
 \`\`\`

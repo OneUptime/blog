@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Controllers, Security, Kubernetes, RBAC
+Tags: Cilium, Controller, Security, Kubernetes, RBAC
 
 Description: Learn how to secure Cilium's controller subsystem by applying RBAC policies, restricting metrics access, and hardening the controller management interface against unauthorized access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Proxy, Networking
+Tags: OpenTelemetry, gRPC, Proxy, Networking
 
 Description: Fix the issue where the OTLP gRPC exporter ignores NO_PROXY settings because of how gRPC handles DNS resolution.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cilium, Kubernetes, GitOps, Networking, CNI, EBPF, Network Policy
+Tags: Flux CD, Cilium, Kubernetes, GitOps, Networking, CNI, eBPF, Network Policy
 
 Description: A practical guide to deploying and managing Cilium CNI in Kubernetes using Flux CD for GitOps-driven network management with eBPF.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
 Description: Secure service traffic in Calico eBPF mode by combining network policies with eBPF connection tracking.
 

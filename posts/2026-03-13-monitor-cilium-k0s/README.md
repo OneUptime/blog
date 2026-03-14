@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, K0s, EBPF
+Tags: Cilium, Kubernetes, K0s, eBPF
 
 Description: Learn how to deploy and monitor Cilium on k0s, a minimal Kubernetes distribution, including health checks, Hubble observability, and network policy validation.
 

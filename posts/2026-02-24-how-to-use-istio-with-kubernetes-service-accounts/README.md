@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Accounts, Security, MTLS
+Tags: Istio, Kubernetes, Service Accounts, Security, mTLS
 
 Description: How Istio uses Kubernetes Service Accounts for workload identity, mTLS certificate issuance, and authorization policy enforcement in the service mesh.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, CO-RE, BTF, Linux, Portability, Programming
+Tags: eBPF, CO-RE, BTF, Linux, Portability, Programming
 
 Description: A guide to using CO-RE (Compile Once - Run Everywhere) for portable eBPF programs across kernel versions.
 

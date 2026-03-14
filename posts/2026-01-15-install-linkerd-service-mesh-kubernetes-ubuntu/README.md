@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Linkerd, Service Mesh, Ubuntu, MTLS, Observability, Microservices, DevOps
+Tags: Kubernetes, Linkerd, Service Mesh, Ubuntu, mTLS, Observability, Microservices, DevOps
 
 Description: A comprehensive guide to installing and configuring Linkerd service mesh on Ubuntu Kubernetes clusters, covering CLI installation, Helm deployment, traffic management, and observability features.
 

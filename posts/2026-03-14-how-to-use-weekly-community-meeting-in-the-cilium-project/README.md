@@ -34,7 +34,7 @@ The Cilium weekly community meeting takes place every Wednesday. Find current de
 
 ### Agenda and Preparation
 
-```
+```text
 Typical Agenda:
 1. Welcome and introductions
 2. Release updates

@@ -31,13 +31,13 @@ This guide provides structured troubleshooting for common cilium-dbg failures.
 \`\`\`bash
 CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
-# Check pod status
+## Check pod status
 kubectl -n kube-system get pod "\$CILIUM_POD" -o wide
 
-# Test basic exec
+## Test basic exec
 kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent -- echo "exec works"
 
-# Test agent API connectivity
+## Test agent API connectivity
 kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg status 2>&1 | head -5
 \`\`\`
 

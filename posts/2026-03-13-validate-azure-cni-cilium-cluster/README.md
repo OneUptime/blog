@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to comprehensively validate a Kubernetes cluster using Azure CNI with Cilium, ensuring all components are correctly installed, configured, and communicating as expected.
 

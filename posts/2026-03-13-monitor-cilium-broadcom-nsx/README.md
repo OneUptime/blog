@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: Learn how to monitor Cilium's integration with Broadcom NSX networking infrastructure, ensuring consistent policy enforcement and connectivity between Kubernetes workloads and NSX-managed network...
 

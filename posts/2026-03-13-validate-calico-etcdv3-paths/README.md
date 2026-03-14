@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Validation, Datastore
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Validation, Datastore
 
 Description: How to validate Calico etcdv3 path contents to ensure data consistency between the etcd datastore and actual cluster state across networking, policy, and IPAM data.
 

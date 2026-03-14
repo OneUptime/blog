@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, Etcd, Cluster Operations, Database Maintenance
+Tags: Flux CD, Kubernetes, GitOps, Day 2 Operations, etcd, Cluster Operations, Database Maintenance
 
 Description: Perform etcd maintenance operations in a Flux-managed cluster including compaction, defragmentation, and backup/restore while maintaining GitOps integrity.
 

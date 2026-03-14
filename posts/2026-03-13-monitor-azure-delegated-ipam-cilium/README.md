@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to monitor IP address allocation, pool utilization, and IPAM health in AKS clusters using Azure Delegated IPAM with Cilium for efficient IP management and observability.
 

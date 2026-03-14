@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Node Health, Observability, EBPF
+Tags: Cilium, Kubernetes, Node Health, Observability, eBPF
 
 Description: Monitor Cilium node health by inspecting the Cilium agent status, checking inter-node connectivity, and diagnosing issues with BPF program loading and kernel compatibility.
 

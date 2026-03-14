@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Security, EBPF
+Tags: Cilium, Kubernetes, Network Policy, Security, eBPF
 
 Description: Use Cilium's explicit deny policies to block specific traffic flows even when other allow rules would otherwise permit them, enabling fine-grained security exceptions in complex policy hierarchies.
 

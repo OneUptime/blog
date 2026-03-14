@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Debugging, Grpcurl, DevOps, Testing, CLI Tools
+Tags: gRPC, Debugging, Grpcurl, DevOps, Testing, CLI Tools
 
 Description: Learn how to use grpcurl to test, debug, and explore gRPC services from the command line, including reflection, streaming, authentication, and troubleshooting techniques.
 

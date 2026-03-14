@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Control Plane, Redundancy, High Availability, Kubernetes, Etcd
+Tags: Talos Linux, Control Plane, Redundancy, High Availability, Kubernetes, etcd
 
 Description: Learn how to configure and manage redundant control plane nodes in Talos Linux for a resilient Kubernetes cluster that tolerates node failures.
 

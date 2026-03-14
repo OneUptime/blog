@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, DaemonSets, Node Affinity, Kubernetes
+Tags: OpenTelemetry, DaemonSet, Node Affinity, Kubernetes
 
 Description: Troubleshoot and fix node affinity and toleration issues that prevent Collector DaemonSet pods from running on all nodes.
 

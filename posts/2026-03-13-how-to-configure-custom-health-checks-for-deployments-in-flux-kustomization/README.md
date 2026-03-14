@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, Deployments, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, Deployments, Kustomization
 
 Description: Learn how to configure custom health checks for Deployment resources in Flux Kustomization to ensure reliable rollouts and automated rollback.
 

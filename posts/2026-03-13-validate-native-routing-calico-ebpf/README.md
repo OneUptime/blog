@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, Networking, Performance
 
 Description: Validate that Calico eBPF native routing is correctly configured and delivering the expected performance improvements over iptables mode.
 

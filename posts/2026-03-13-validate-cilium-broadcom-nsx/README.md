@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: A guide to validating Cilium integration with Broadcom NSX, including verifying CNI chaining configuration, policy enforcement, and connectivity between Kubernetes pods and NSX-managed workloads.
 

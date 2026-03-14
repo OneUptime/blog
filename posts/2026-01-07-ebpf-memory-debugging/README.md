@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Memory, Debugging, Linux, Performance, Profiling
+Tags: eBPF, Memory, Debugging, Linux, Performance, Profiling
 
 Description: Learn how to use eBPF to detect memory leaks, track allocations, and debug memory issues.
 

@@ -32,35 +32,35 @@ This guide provides systematic troubleshooting for cilium-bugtool PowerShell com
 ### Check Execution Policy
 
 \`\`\`powershell
-# Check current execution policy
+## Check current execution policy
 Get-ExecutionPolicy
 
-# If Restricted, completions cannot load
-# Fix: Set to RemoteSigned (recommended)
+## If Restricted, completions cannot load
+## Fix: Set to RemoteSigned (recommended)
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 \`\`\`
 
 ### Verify Profile Loading
 
 \`\`\`powershell
-# Check if profile exists
+## Check if profile exists
 Test-Path \$PROFILE
 
-# Check profile content
+## Check profile content
 Get-Content \$PROFILE | Select-String "cilium"
 
-# Test profile manually
+## Test profile manually
 . \$PROFILE
 \`\`\`
 
 ### Check Completion Registration
 
 \`\`\`powershell
-# List all registered argument completers
+## List all registered argument completers
 Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" }
 
-# If empty, completions are not registered
-# Manually load and test
+## If empty, completions are not registered
+## Manually load and test
 cilium-bugtool completion powershell | Out-String | Invoke-Expression
 Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" }
 \`\`\`
@@ -68,12 +68,12 @@ Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" 
 ### Fix Common Issues
 
 \`\`\`powershell
-# Issue: "The term 'cilium-bugtool' is not recognized"
-# Fix: Ensure binary is in PATH
+## Issue: "The term 'cilium-bugtool' is not recognized"
+## Fix: Ensure binary is in PATH
 \$env:PATH += ";C:\path\to\cilium"
 
-# Issue: Profile throws errors
-# Fix: Test the completion script in isolation
+## Issue: Profile throws errors
+## Fix: Test the completion script in isolation
 try {
     cilium-bugtool completion powershell | Out-String | Invoke-Expression
     Write-Host "Completion loaded successfully"
@@ -81,10 +81,10 @@ try {
     Write-Host "Error: \$_"
 }
 
-# Issue: Completions load but do not show options
-# Fix: Check PowerShell version
+## Issue: Completions load but do not show options
+## Fix: Check PowerShell version
 \$PSVersionTable.PSVersion
-# Ensure version 5.1 or higher
+## Ensure version 5.1 or higher
 \`\`\`
 
 

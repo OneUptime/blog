@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A comprehensive reference guide to Cilium's core system requirements, covering kernel versions, Linux capabilities, container runtime support, and Kubernetes version compatibility.
 

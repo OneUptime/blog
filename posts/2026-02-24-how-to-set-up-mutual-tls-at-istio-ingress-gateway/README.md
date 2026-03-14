@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Mutual TLS, MTLS, Gateway, Security, Kubernetes
+Tags: Istio, Mutual TLS, mTLS, Gateway, Security, Kubernetes
 
 Description: Complete guide to configuring mutual TLS at the Istio Ingress Gateway for client certificate authentication.
 

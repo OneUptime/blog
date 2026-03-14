@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, Protocol, GRPC, HTTP, Data Export
+Tags: OpenTelemetry, OTLP, Protocol, gRPC, HTTP, Data Export
 
 Description: OTLP is the vendor-neutral wire protocol that makes OpenTelemetry truly portable. Understanding how it works helps you build telemetry pipelines that don't lock you into a single backend.
 

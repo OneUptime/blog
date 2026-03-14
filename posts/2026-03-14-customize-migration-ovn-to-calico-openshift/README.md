@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, OpenShift, OVN, Networking, Migration
 
-Description: A practical guide to customizing the migration from OVN-Kubernetes to Calico on OpenShift clusters, covering network policy translation, IP pool configuration, and workload-specific tuning for production environments.
+Description: A practical guide to customizing the migration from OVN-Kubernetes to Calico on OpenShift clusters, covering network policy translation, IP pool configuration, and workload-specific tuning for...
 
 ---
 

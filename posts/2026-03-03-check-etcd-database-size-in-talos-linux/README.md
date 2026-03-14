@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Database, Monitoring, Kubernetes
+Tags: Talos Linux, etcd, Database, Monitoring, Kubernetes
 
 Description: Learn multiple methods to check and monitor the etcd database size in Talos Linux and understand what the numbers mean.
 

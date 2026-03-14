@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Host Firewall, Security, EBPF, Node Security
+Tags: Cilium, Kubernetes, Host Firewall, Security, eBPF, Node Security
 
 Description: Configure the Cilium Host Firewall to secure node-level network traffic using CiliumNetworkPolicies applied to host endpoints.
 

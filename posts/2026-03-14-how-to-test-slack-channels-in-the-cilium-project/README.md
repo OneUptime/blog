@@ -26,7 +26,7 @@ This guide covers approaches to testing and validating Cilium project Slack chan
 
 ### Channel Audit Checklist
 
-```
+```json
 [ ] Each channel has a clear purpose statement
 [ ] Pinned messages are current and relevant
 [ ] Response times in help channels are reasonable

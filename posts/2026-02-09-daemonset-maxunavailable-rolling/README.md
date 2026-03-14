@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, Rolling Updates
+Tags: Kubernetes, DaemonSet, Rolling Updates
 
 Description: Learn how to configure maxUnavailable in DaemonSets to control the pace of rolling updates and minimize service disruption across your cluster nodes.
 

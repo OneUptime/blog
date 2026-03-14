@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation using systematic...
 
 ---
 

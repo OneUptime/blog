@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Advanced
+Tags: Kubernetes, Health Check, Advanced
 
 Description: Learn how to implement Kubernetes Pod Readiness Gates for custom health conditions beyond standard readiness probes. Control pod readiness with external systems and custom validation logic.
 

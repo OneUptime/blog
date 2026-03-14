@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Cilium, Egress Gateway, Network Security, EBPF
+Tags: Flux CD, Kubernetes, GitOps, Cilium, Egress Gateway, Network Security, eBPF
 
 Description: Configure Cilium Egress Gateway for controlled outbound traffic using Flux CD to provide stable source IPs for pods accessing external services.
 

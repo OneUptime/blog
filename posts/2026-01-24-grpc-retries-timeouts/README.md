@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Retries, Timeout, Deadlines, Resilience, Error Handling, Circuit Breaker
+Tags: gRPC, Retries, Timeout, Deadlines, Resilience, Error Handling, Circuit Breaker
 
 Description: A comprehensive guide to implementing retries and timeouts in gRPC services, covering deadline propagation, retry policies, exponential backoff, and circuit breaker patterns.
 

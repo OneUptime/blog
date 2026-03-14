@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to persistently mount the BPF filesystem using systemd for Cilium deployments, ensuring eBPF maps survive node reboots and preventing Cilium initialization failures on fresh nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, OAuth2, Authorization, Security, Identity Provider, Token, Scope
+Tags: gRPC, OAuth2, Authorization, Security, Identity Provider, Token, Scope
 
 Description: A comprehensive guide to implementing OAuth2 authorization in gRPC services, covering various OAuth2 flows, token introspection, scope-based access control.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GRPC, Gateway API, Routing, Service Mesh
+Tags: Cilium, Kubernetes, gRPC, Gateway API, Routing, Service Mesh
 
 Description: Configure gRPC routing in Cilium's Gateway API implementation using GRPCRoute resources to route gRPC service calls to backend pods.
 

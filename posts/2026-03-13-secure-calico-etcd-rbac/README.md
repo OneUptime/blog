@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Security, Hardening
+Tags: Calico, Kubernetes, Networking, etcd, RBAC, Security, Hardening
 
 Description: Best practices for hardening Calico etcd RBAC configurations to protect the etcd datastore from unauthorized access and prevent lateral movement through the Calico data plane.
 

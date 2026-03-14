@@ -32,7 +32,7 @@ This guide covers approaches to testing and validating Cilium monthly APAC commu
 
 ### Process Validation
 
-```
+```json
 [ ] Meeting time announced with APAC timezone conversions
 [ ] Agenda accessible to APAC participants
 [ ] Recording available for those who cannot attend

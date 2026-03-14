@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, EBPF, Data Plane, Kubernetes, Networking, Service Mesh
+Tags: Istio, eBPF, Data Plane, Kubernetes, Networking, Service Mesh
 
 Description: How to configure Istio to use eBPF for traffic redirection instead of iptables, reducing overhead and improving data plane performance.
 

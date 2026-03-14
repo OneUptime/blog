@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Node.js, Instrumentation
+Tags: OpenTelemetry, gRPC, Node.js, Instrumentation
 
 Description: Resolve the warning about grpc-js being loaded before OpenTelemetry instrumentation and restore gRPC span generation.
 

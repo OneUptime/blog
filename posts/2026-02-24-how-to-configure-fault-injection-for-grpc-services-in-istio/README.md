@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Fault Injection, VirtualService, Resilience Testing
+Tags: Istio, gRPC, Fault Injection, VirtualService, Resilience Testing
 
 Description: How to configure Istio fault injection specifically for gRPC services, including delay injection, abort injection with gRPC status codes, and testing patterns.
 

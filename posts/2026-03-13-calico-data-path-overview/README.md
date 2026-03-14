@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Iptables, EBPF, Networking, Packet Processing
+Tags: Calico, Kubernetes, Data Path, CNI, iptables, eBPF, Networking, Packet Processing
 
 Description: A deep dive into how packets flow through Calico's dataplane, covering the iptables and eBPF data paths and the role of each processing stage.
 

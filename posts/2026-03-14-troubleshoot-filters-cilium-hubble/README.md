@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Hubble, Filters, Troubleshooting, Observability
+Tags: Cilium, Hubble, Filter, Troubleshooting, Observability
 
 Description: Diagnose and fix Hubble filter issues including empty results, incorrect matching behavior, L7 filter failures, and exporter filter misconfiguration.
 

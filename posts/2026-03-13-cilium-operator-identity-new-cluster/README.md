@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Step-by-step guide to deploying a new Cilium cluster with Operator-managed identity from the start, including optimal configuration, early validation, and monitoring setup.
 

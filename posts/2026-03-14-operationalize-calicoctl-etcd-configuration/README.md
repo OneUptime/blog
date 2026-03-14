@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, DevOps, Operations, calicoctl
+Tags: Calico, etcd, DevOps, Operations, Calicoctl
 
 Description: Learn how to operationalize your calicoctl etcd configuration with backup strategies, certificate lifecycle management, disaster recovery plans, and standardized operational procedures.
 

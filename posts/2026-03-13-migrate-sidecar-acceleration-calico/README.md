@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Sidecar, Service Mesh
+Tags: Calico, Kubernetes, eBPF, Sidecar, Service Mesh
 
 Description: Safely enable Calico sidecar acceleration in an existing service mesh deployment without disrupting live traffic.
 

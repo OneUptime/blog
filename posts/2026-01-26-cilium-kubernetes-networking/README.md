@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, Service Mesh
+Tags: Cilium, Kubernetes, Networking, eBPF, Service Mesh
 
 Description: A beginner's guide to Cilium for Kubernetes networking, covering installation, network policies, observability with Hubble, and eBPF-based networking.
 

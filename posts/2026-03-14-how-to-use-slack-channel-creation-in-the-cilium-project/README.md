@@ -44,7 +44,7 @@ Request a new Slack channel when:
 
 ### Channel Naming Conventions
 
-```
+```text
 #sig-<area>          - SIG-specific channels
 #dev-<component>     - Development discussions
 #users-<topic>       - User-focused discussions

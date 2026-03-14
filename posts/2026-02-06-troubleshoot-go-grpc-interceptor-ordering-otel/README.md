@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, GRPC, Interceptors
+Tags: OpenTelemetry, Go, gRPC, Interceptors
 
 Description: Troubleshoot and fix gRPC interceptor ordering issues in Go that prevent OpenTelemetry trace propagation from working.
 

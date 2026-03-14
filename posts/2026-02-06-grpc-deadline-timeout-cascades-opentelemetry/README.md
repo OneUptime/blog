@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Timeout, Trace Analysis
+Tags: OpenTelemetry, gRPC, Timeout, Trace Analysis
 
 Description: Use OpenTelemetry trace waterfalls to detect gRPC deadline propagation issues and timeout cascade failures across services.
 

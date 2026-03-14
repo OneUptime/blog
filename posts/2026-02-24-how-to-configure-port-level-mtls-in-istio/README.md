@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Port Configuration, PeerAuthentication, Security
+Tags: Istio, mTLS, Port Configuration, PeerAuthentication, Security
 
 Description: Detailed guide to configuring different mutual TLS modes on different ports of the same service in Istio using PeerAuthentication.
 

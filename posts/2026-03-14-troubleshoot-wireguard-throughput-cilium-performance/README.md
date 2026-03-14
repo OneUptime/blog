@@ -152,7 +152,7 @@ Follow a structured methodology to avoid wasting time on false leads:
 
 Apply iterative root cause analysis:
 
-```
+```yaml
 Problem: Throughput is 50% below baseline
 Why 1: BPF programs are running slower (higher avg_ns)
 Why 2: Conntrack lookups are taking longer

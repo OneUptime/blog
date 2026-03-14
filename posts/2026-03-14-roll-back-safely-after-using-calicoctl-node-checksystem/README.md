@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, System Requirements, Rollback, Kubernetes
+Tags: Calico, Calicoctl, System Requirements, Rollback, Kubernetes
 
 Description: Understand that calicoctl node checksystem is read-only and learn how to revert system changes made to satisfy its requirements if those changes cause problems.
 

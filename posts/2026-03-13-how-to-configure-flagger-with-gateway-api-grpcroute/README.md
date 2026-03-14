@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Gateway API, GRPCRoute, Kubernetes, GRPC, Canary Deployments
+Tags: Flagger, Gateway API, GRPCRoute, Kubernetes, gRPC, Canary Deployments
 
 Description: Learn how to configure Flagger with Kubernetes Gateway API GRPCRoute for progressive delivery of gRPC services.
 

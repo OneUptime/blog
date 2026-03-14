@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Hubble, Kubernetes, Observability, Cilium, Cloud Native
+Tags: eBPF, Hubble, Kubernetes, Observability, Cilium, Cloud Native
 
 Description: A guide to deploying Hubble for deep network and application observability in Kubernetes.
 

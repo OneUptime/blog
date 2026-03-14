@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, PKI, Configuration
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, PKI, Configuration
 
 Description: A step-by-step guide to generating and configuring TLS certificates for Calico's etcd client connections using OpenSSL and cert-manager.
 

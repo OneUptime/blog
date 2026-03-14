@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Validation, Migration, calicoctl
+Tags: Calico, Kubernetes, Validation, Migration, Calicoctl
 
 Description: Learn how to validate that calicoctl convert produced correct Calico policies by comparing semantics, testing network behavior, and running automated equivalence checks.
 

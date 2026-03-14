@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: Learn how to validate that Cilium is correctly chained with the AWS VPC CNI plugin on EKS or self-managed AWS Kubernetes clusters, ensuring both IPAM and network policy functions are working...
 

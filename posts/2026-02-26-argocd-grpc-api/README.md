@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, GRPC, API
+Tags: ArgoCD, GitOps, Kubernetes, gRPC, API
 
 Description: Learn how to use the ArgoCD gRPC API for high-performance automation with streaming capabilities, type safety, and efficient binary serialization.
 

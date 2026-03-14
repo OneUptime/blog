@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A universal guide to validating system requirements for running Cilium on any Kubernetes cluster, covering kernel requirements, system configuration, and Kubernetes API server settings.
 

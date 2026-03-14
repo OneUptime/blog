@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, K0s, EBPF
+Tags: Cilium, Kubernetes, K0s, eBPF
 
 Description: A step-by-step guide to upgrading Cilium on k0s Kubernetes clusters managed by k0sctl, including k0s-specific configuration and the upgrade procedure for production deployments.
 

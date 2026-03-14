@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Recovery, Kubernetes, Troubleshooting, Cluster Health
+Tags: Talos Linux, etcd, Recovery, Kubernetes, Troubleshooting, Cluster Health
 
 Description: Diagnose and fix unhealthy etcd members in a Talos Linux cluster to restore full cluster operation and stability.
 

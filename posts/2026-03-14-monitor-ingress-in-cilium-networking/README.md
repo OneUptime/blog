@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Monitoring
 
-Description: Set up monitoring and alerting for Cilium Ingress controller and Gateway API support for routing external HTTP/HTTPS traffic to cluster services to detect issues before they impact application availability.
+Description: Set up monitoring and alerting for Cilium Ingress controller and Gateway API support for routing external HTTP/HTTPS traffic to cluster services to detect issues before they impact application...
 
 ---
 

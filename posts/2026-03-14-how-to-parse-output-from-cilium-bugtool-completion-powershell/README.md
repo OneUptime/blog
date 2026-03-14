@@ -31,7 +31,7 @@ This guide covers parsing techniques for cilium-bugtool PowerShell completion ou
 
 
 \`\`\`powershell
-# Generate and save the completion script
+## Generate and save the completion script
 cilium-bugtool completion powershell > C:\temp\bugtool-completion.ps1
 \`\`\`
 
@@ -40,7 +40,7 @@ cilium-bugtool completion powershell > C:\temp\bugtool-completion.ps1
 \`\`\`powershell
 \$content = Get-Content C:\temp\bugtool-completion.ps1 -Raw
 
-# Extract Register-ArgumentCompleter blocks
+## Extract Register-ArgumentCompleter blocks
 \$pattern = "Register-ArgumentCompleter.*?-CommandName\s+'([^']+)'"
 [regex]::Matches(\$content, \$pattern) | ForEach-Object {
     \$_.Groups[1].Value

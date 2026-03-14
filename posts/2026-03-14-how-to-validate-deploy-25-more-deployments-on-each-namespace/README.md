@@ -1,4 +1,4 @@
-# How to Validate Deploy 25 more deployments on each namespace in Cilium performance
+# How to Validate Deploy 25 more deployments on each namespace
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

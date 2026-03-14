@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Runbook
+Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Runbook
 
 Description: On-call runbook for responding to Calico iptables rules not being applied on a node, including Felix health triage, chain verification, and targeted restart procedures.
 

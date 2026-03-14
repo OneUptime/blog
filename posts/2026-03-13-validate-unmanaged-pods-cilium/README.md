@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to identify and validate unmanaged pods in a Cilium-managed cluster - pods that are not under Cilium's network policy enforcement - and understand when this is intentional versus a...
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, RBAC, Kubernetes, Security, Production
 
-Description: A guide to verifying that RBAC policies correctly control access to Calico network resources in a manually installed cluster, ensuring end users have appropriate permissions before production deployment.
+Description: A guide to verifying that RBAC policies correctly control access to Calico network resources in a manually installed cluster, ensuring end users have appropriate permissions before production...
 
 ---
 

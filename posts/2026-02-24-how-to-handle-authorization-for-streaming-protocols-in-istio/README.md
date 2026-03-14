@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Streaming, GRPC, WebSocket, Authorization, Kubernetes
+Tags: Istio, Streaming, gRPC, WebSocket, Authorization, Kubernetes
 
 Description: How to configure Istio authorization policies for streaming protocols including gRPC streaming, WebSocket connections, and server-sent events.
 

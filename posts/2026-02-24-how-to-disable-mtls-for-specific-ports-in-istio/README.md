@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Port Configuration, Kubernetes, Security
+Tags: Istio, mTLS, Port Configuration, Kubernetes, Security
 
 Description: How to exclude specific ports from mutual TLS enforcement in Istio for health checks, metrics scraping, and legacy integrations.
 

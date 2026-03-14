@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, BPF Maps, Troubleshooting
+Tags: Cilium, Kubernetes, eBPF, BPF Maps, Troubleshooting
 
 Description: Inspect Cilium's eBPF maps directly to debug data plane issues, verify policy state, examine connection tracking tables, and understand load balancer configuration at the kernel level.
 

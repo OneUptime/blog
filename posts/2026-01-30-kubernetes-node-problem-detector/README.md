@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Node Problem Detector, Monitoring, Health Checks
+Tags: Kubernetes, Node Problem Detector, Monitoring, Health Check
 
 Description: Learn to implement Node Problem Detector for detecting node issues with custom problem daemons, log monitors, and condition reporting.
 

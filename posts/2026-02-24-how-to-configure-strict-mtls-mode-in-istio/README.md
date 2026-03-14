@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Strict Mode, Security, Kubernetes
+Tags: Istio, mTLS, Strict Mode, Security, Kubernetes
 
 Description: Step-by-step instructions for configuring strict mutual TLS mode in Istio to reject all unencrypted service-to-service traffic.
 

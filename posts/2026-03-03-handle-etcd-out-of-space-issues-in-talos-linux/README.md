@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Troubleshooting, Storage, Kubernetes
+Tags: Talos Linux, etcd, Troubleshooting, Storage, Kubernetes
 
 Description: A practical guide to diagnosing and resolving etcd out of space (NOSPACE) issues in Talos Linux Kubernetes clusters.
 

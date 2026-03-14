@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, EBPF
+Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
 Description: Validate that Cilium is correctly advertising pod CIDRs and service IPs via BGP by inspecting route tables, peer state, and upstream router routing tables.
 

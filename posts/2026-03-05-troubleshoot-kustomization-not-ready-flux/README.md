@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Troubleshooting, Not Ready, Health Checks
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Troubleshooting, Not Ready, Health Check
 
 Description: Learn how to diagnose and resolve Kustomization resources stuck in a Not Ready state in Flux CD.
 

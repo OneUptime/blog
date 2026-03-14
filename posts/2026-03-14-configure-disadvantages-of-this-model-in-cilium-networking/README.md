@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Learn how to configure the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity in your Kubernetes cluster for optimal performance and security.
+Description: Learn how to configure the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity in your Kubernetes...
 
 ---
 

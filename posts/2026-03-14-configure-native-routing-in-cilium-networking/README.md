@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Learn how to configure Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation in your Kubernetes cluster for optimal performance and security.
+Description: Learn how to configure Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation in your Kubernetes cluster for optimal...
 
 ---
 

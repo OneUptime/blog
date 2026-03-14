@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, JWT, GRPC, Authentication, Kubernetes, Security
+Tags: Istio, JWT, gRPC, Authentication, Kubernetes, Security
 
 Description: Step-by-step guide to configuring JWT token validation for gRPC services running in an Istio service mesh with practical examples.
 

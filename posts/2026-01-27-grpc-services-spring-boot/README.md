@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, GRPC, Protocol Buffers, Microservices, API, Performance, RPC
+Tags: Java, Spring Boot, gRPC, Protocol Buffers, Microservices, API, Performance, RPC
 
 Description: Learn how to build high-performance gRPC services in Spring Boot. This guide covers Protocol Buffer definitions, service implementation, client setup, error handling, and streaming patterns.
 

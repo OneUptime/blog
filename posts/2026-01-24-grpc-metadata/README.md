@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Metadata, Headers, Authentication, Tracing, Context Propagation, Go, Python
+Tags: gRPC, Metadata, Headers, Authentication, Tracing, Context Propagation, Go, Python
 
 Description: A comprehensive guide to working with metadata in gRPC, covering authentication tokens, request tracing, custom headers, and best practices for context propagation across services.
 

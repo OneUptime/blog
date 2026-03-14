@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with Cilium networking architecture including the eBPF datapath, agent components, and operator interactions using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with Cilium networking architecture including the eBPF datapath, agent components, and operator interactions using systematic debugging techniques and Cilium...
 
 ---
 

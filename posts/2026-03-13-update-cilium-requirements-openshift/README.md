@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, OpenShift, EBPF
+Tags: Cilium, Kubernetes, OpenShift, eBPF
 
 Description: A guide to verifying and updating Cilium's system requirements on Red Hat OpenShift, including Security Context Constraints, kernel compatibility, and OVN-Kubernetes migration considerations.
 

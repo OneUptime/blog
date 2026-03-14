@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Error Handling, Microservices, Protocol Buffers, Status Codes, Debugging, Go, Python
+Tags: gRPC, Error Handling, Microservices, Protocol Buffers, Status Codes, Debugging, Go, Python
 
 Description: A comprehensive guide to understanding and handling gRPC error codes, including proper error propagation, custom error details, and best practices for building resilient microservices.
 

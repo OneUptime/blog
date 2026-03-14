@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Iptables, Kube-proxy, Networking, Services
+Tags: Kubernetes, iptables, Kube-proxy, Networking, Services
 
 Description: Understand and troubleshoot iptables rules created by kube-proxy for Kubernetes service routing, including NAT, load balancing, and packet filtering configurations.
 

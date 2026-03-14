@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, GRPC, Microservices, API, Protocol Buffers
+Tags: .NET, C#, gRPC, Microservices, API, Protocol Buffers
 
 Description: Learn how to build high-performance gRPC services in .NET.
 

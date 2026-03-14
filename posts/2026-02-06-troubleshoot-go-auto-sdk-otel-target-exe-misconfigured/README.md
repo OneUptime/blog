@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Go, Auto-Instrumentation, EBPF
+Tags: OpenTelemetry, Go, Auto-Instrumentation, eBPF
 
 Description: Troubleshoot Go auto-instrumentation issues caused by OTEL_GO_AUTO_TARGET_EXE pointing to the wrong binary or path.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, Debugging, MTLS, Troubleshooting
+Tags: Istio, PeerAuthentication, Debugging, mTLS, Troubleshooting
 
 Description: Practical techniques for debugging PeerAuthentication policy issues in Istio including connection failures and mTLS mismatches.
 

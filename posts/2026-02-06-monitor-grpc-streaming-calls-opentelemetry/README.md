@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Streaming, Tracing, Observability, Microservices
+Tags: OpenTelemetry, gRPC, Streaming, Tracing, Observability, Microservices
 
 Description: A practical guide to monitoring gRPC streaming calls with OpenTelemetry, covering server streaming, client streaming, and bidirectional streaming patterns.
 

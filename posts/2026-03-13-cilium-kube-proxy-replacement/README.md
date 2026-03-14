@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Kube-proxy, EBPF, Networking
+Tags: Cilium, Kubernetes, Kube-proxy, eBPF, Networking
 
 Description: Replace kube-proxy with Cilium's fully eBPF-based service implementation for better performance, higher scalability, and advanced load balancing features unavailable in iptables.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Patroni, High Availability, Failover, Etcd, Consul
+Tags: PostgreSQL, Patroni, High Availability, Failover, etcd, Consul
 
 Description: A comprehensive guide to setting up PostgreSQL high availability with Patroni, covering cluster configuration, automatic failover, switchover procedures, and production best practices.
 

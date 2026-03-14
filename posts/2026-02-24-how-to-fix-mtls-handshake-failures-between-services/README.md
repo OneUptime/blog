@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Security, Kubernetes, Troubleshooting
+Tags: Istio, mTLS, Security, Kubernetes, Troubleshooting
 
 Description: Complete troubleshooting guide for mutual TLS handshake failures between services in an Istio service mesh.
 

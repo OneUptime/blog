@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, Security, Backup, MTLS
+Tags: Istio, Certificates, Security, Backup, mTLS
 
 Description: Learn how to safely backup and manage Istio CA certificates, root certificates, and signing keys for disaster recovery and multi-cluster deployments.
 

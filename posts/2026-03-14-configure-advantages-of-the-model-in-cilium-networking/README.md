@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Learn how to configure the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation in your Kubernetes cluster for optimal performance and security.
+Description: Learn how to configure the benefits of using Cilium encapsulation (overlay) mode including simplified deployment, any-network compatibility, and pod IP isolation in your Kubernetes cluster for...
 
 ---
 

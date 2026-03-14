@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to validate Cilium installations deployed via external tools such as Helm, kubeadm, or cluster provisioners, ensuring correct configuration and functionality regardless of the...
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, EBPF, Kube-proxy, Kubernetes, Networking, Monitoring, Performance
+Tags: Calico, eBPF, Kube-proxy, Kubernetes, Networking, Monitoring, Performance
 
 Description: Learn how to enable and monitor Calico's eBPF-based kube-proxy replacement, which provides improved performance, lower latency, and better observability compared to iptables-based kube-proxy.
 

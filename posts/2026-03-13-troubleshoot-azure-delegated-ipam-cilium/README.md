@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A troubleshooting guide for diagnosing IP address management issues when using Azure's delegated IPAM mode with Cilium on AKS clusters.
 

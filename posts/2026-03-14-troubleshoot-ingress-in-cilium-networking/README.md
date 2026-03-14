@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with Cilium Ingress controller and Gateway API support for routing external HTTP/HTTPS traffic to cluster services using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with Cilium Ingress controller and Gateway API support for routing external HTTP/HTTPS traffic to cluster services using systematic debugging techniques and...
 
 ---
 

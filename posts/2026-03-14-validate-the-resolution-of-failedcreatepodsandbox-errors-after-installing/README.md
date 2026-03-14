@@ -1,4 +1,4 @@
-# Validating the Resolution of FailedCreatePodSandBox Errors After Installing Calico
+# Validating the Resolution of FailedCreatePodSandBox Errors After Installing
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

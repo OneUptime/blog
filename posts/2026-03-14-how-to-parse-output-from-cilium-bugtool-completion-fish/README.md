@@ -31,7 +31,7 @@ This guide covers extracting and analyzing data from cilium-bugtool fish complet
 
 
 \`\`\`bash
-# Capture the completion output
+## Capture the completion output
 cilium-bugtool completion fish > /tmp/bugtool-fish-completion.fish
 \`\`\`
 
@@ -40,10 +40,10 @@ cilium-bugtool completion fish > /tmp/bugtool-fish-completion.fish
 Fish completions use a consistent \`complete -c <command>\` format:
 
 \`\`\`bash
-# Extract subcommands with descriptions
+## Extract subcommands with descriptions
 grep -oP "complete -c cilium-bugtool.*-a\s+(\S+)\s+-d\s+'([^']+)'"   /tmp/bugtool-fish-completion.fish |   sed "s/complete.*-a //" | sed "s/ -d '/: /" | sed "s/'$//"
 
-# Extract all flags
+## Extract all flags
 grep -oP "(-l|--)\s*[a-z][-a-z0-9]*" /tmp/bugtool-fish-completion.fish | sort -u
 \`\`\`
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Error Injection, L7 Proxy, Policy Enforcement
 
-Description: Learn how to securely implement error response injection in Cilium L7 parsers to send protocol-appropriate denial messages when policy blocks a request, without introducing information leakage or denial-of-service risks.
+Description: Learn how to securely implement error response injection in Cilium L7 parsers to send protocol-appropriate denial messages when policy blocks a request, without introducing information leakage or...
 
 ---
 

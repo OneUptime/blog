@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Server Streaming, Stream Metrics
+Tags: OpenTelemetry, gRPC, Server Streaming, Stream Metrics
 
 Description: Trace gRPC server streaming RPCs with OpenTelemetry capturing stream duration, message counts, and per-message timing data.
 

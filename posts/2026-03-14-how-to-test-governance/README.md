@@ -26,7 +26,7 @@ This guide covers approaches to testing and validating Cilium project governance
 
 ### Process Audit Checklist
 
-```
+```json
 [ ] Governance documents are up to date
 [ ] Decision-making process is followed consistently
 [ ] Role transitions happen smoothly

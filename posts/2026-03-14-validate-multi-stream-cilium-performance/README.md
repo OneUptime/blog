@@ -68,7 +68,7 @@ done
 
 Expected results on a well-tuned 25G NIC:
 
-```
+```text
 Stream Count | Throughput (Gbps) | Scaling Efficiency
 -------------|-------------------|-------------------
 1            | 9.2               | 100%

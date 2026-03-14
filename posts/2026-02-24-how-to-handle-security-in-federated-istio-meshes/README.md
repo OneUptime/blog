@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Federation, Security, Authorization, MTLS, Kubernetes
+Tags: Istio, Federation, Security, Authorization, mTLS, Kubernetes
 
 Description: A comprehensive guide to securing federated Istio meshes with mTLS enforcement, authorization policies, and cross-mesh access controls.
 

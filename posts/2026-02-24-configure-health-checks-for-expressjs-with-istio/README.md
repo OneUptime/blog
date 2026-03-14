@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Express.js, Health Checks, Node.js, Kubernetes
+Tags: Istio, Express.js, Health Check, Node.js, Kubernetes
 
 Description: Complete guide to implementing robust health checks for Express.js applications running in an Istio service mesh with Kubernetes probes.
 

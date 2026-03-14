@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Streaming, Kubernetes, HTTP/2
+Tags: Istio, gRPC, Streaming, Kubernetes, HTTP/2
 
 Description: Learn how to configure Istio for gRPC streaming workloads including server streaming, client streaming, and bidirectional streaming RPCs.
 

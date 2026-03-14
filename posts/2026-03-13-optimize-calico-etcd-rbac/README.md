@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Performance, Optimization
+Tags: Calico, Kubernetes, Networking, etcd, RBAC, Performance, Optimization
 
 Description: Techniques for optimizing Calico etcd RBAC configuration to reduce authentication overhead and improve etcd performance in large-scale Kubernetes deployments.
 

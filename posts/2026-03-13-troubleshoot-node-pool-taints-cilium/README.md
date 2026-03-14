@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to diagnosing and resolving Cilium issues caused by node pool taints, covering DaemonSet tolerations, taint-based pod scheduling, and Cilium initialization on tainted nodes.
 

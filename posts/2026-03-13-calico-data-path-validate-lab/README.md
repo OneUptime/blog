@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Lab, Testing, Iptables, EBPF, Validation
+Tags: Calico, Kubernetes, Data Path, CNI, Lab, Testing, iptables, eBPF, Validation
 
 Description: Step-by-step instructions for validating Calico's data path in a lab cluster, including iptables chain inspection, eBPF program verification, and packet tracing.
 

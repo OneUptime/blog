@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Kubernetes, Health Checks, Readiness Probe, Liveness Probe, Grpc-health-probe, Cloud Native
+Tags: gRPC, Kubernetes, Health Check, Readiness Probe, Liveness Probe, Grpc-health-probe, Cloud Native
 
 Description: A complete guide to implementing gRPC health checking protocol for Kubernetes probes, including native support in Kubernetes 1.24+, grpc-health-probe tool, and health service implementation.
 

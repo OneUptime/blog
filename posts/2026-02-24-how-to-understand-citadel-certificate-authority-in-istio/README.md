@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Citadel, Certificate Authority, MTLS, Security
+Tags: Istio, Citadel, Certificate Authority, mTLS, Security
 
 Description: A practical guide to understanding Citadel, Istio's built-in certificate authority that handles identity management and mTLS certificate lifecycle.
 

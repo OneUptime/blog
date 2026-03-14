@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
+Tags: Cilium, Kubernetes, GKE, Google Cloud, eBPF
 
 Description: Learn how to verify and update Cilium's system requirements on Google Kubernetes Engine (GKE), including node image selection, kernel version requirements, and GKE-specific networking prerequisites.
 

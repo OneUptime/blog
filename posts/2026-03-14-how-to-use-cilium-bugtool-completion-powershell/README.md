@@ -30,10 +30,10 @@ This guide covers generating, installing, and using cilium-bugtool PowerShell co
 ### Quick Setup
 
 \`\`\`powershell
-# Generate and load completions in current session
+## Generate and load completions in current session
 cilium-bugtool completion powershell | Out-String | Invoke-Expression
 
-# Test completion
+## Test completion
 cilium-bugtool <TAB>
 \`\`\`
 
@@ -42,18 +42,18 @@ cilium-bugtool <TAB>
 Add to your PowerShell profile for automatic loading:
 
 \`\`\`powershell
-# Check your profile path
+## Check your profile path
 echo $PROFILE
 
-# Create profile if it does not exist
+## Create profile if it does not exist
 if (!(Test-Path -Path $PROFILE)) {
     New-Item -ItemType File -Path $PROFILE -Force
 }
 
-# Add completion loading to profile
+## Add completion loading to profile
 Add-Content -Path $PROFILE -Value "`ncilium-bugtool completion powershell | Out-String | Invoke-Expression"
 
-# Alternatively, save to a file and dot-source it
+## Alternatively, save to a file and dot-source it
 cilium-bugtool completion powershell > "$HOME\cilium-bugtool-completion.ps1"
 Add-Content -Path $PROFILE -Value ". $HOME\cilium-bugtool-completion.ps1"
 \`\`\`
@@ -61,17 +61,17 @@ Add-Content -Path $PROFILE -Value ". $HOME\cilium-bugtool-completion.ps1"
 ### Using the Completions
 
 \`\`\`powershell
-# Complete subcommands
+## Complete subcommands
 cilium-bugtool <TAB>
-# Cycles through: completion, help
+## Cycles through: completion, help
 
-# Complete flags
+## Complete flags
 cilium-bugtool --<TAB>
-# Shows available flags
+## Shows available flags
 
-# Complete completion shells
+## Complete completion shells
 cilium-bugtool completion <TAB>
-# Shows: bash, fish, powershell, zsh
+## Shows: bash, fish, powershell, zsh
 \`\`\`
 
 

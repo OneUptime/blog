@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Audit, Access Logging, Compliance
 
-Description: A structured security audit of access logging implementation in Cilium L7 parsers, examining log completeness, sensitive data handling, tamper resistance, and compliance with organizational logging policies.
+Description: A structured security audit of access logging implementation in Cilium L7 parsers, examining log completeness, sensitive data handling, tamper resistance, and compliance with organizational...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CLI, EBPF, Debugging, Operations
+Tags: Cilium, Kubernetes, CLI, eBPF, Debugging, Operations
 
 Description: Use the cilium-dbg bpf subcommand to inspect eBPF maps, connection tracking tables, bandwidth settings, and BPF program configuration in Cilium.
 

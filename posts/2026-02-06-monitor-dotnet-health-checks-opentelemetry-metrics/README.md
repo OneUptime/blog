@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET, Health Checks, Metrics, ASP.NET Core, Monitoring
+Tags: OpenTelemetry, .NET, Health Check, Metrics, ASP.NET Core, Monitoring
 
 Description: Complete guide to exposing .NET health check results as OpenTelemetry metrics for comprehensive application health monitoring and alerting.
 

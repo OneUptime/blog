@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Rollback, Kubernetes, Version Management
+Tags: Calico, Calicoctl, Rollback, Kubernetes, Version Management
 
 Description: Understand how to safely roll back calicoctl and Calico cluster versions when version-related issues are detected, with practical recovery strategies.
 

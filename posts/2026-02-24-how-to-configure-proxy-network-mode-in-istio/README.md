@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Network Mode, Traffic Interception, Iptables, Kubernetes
+Tags: Istio, Network Mode, Traffic Interception, iptables, Kubernetes
 
 Description: How to configure the Istio sidecar proxy network interception mode including REDIRECT and TPROXY options for different networking requirements.
 

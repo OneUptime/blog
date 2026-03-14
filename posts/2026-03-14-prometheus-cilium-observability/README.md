@@ -101,7 +101,7 @@ kubectl get servicemonitors -n kube-system | grep cilium
 
 You should see output similar to:
 
-```
+```text
 cilium-agent       9962   2m
 cilium-operator    9963   2m
 hubble             9965   2m

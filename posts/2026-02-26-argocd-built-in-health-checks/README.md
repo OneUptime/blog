@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Health Checks, Monitoring
+Tags: ArgoCD, GitOps, Kubernetes, Health Check, Monitoring
 
 Description: Learn how ArgoCD built-in health checks work for standard Kubernetes resources including Deployments, StatefulSets, Services, Jobs, and more.
 

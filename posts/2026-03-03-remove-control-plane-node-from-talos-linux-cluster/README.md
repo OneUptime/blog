@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Control Plane, Cluster Management, Etcd
+Tags: Talos Linux, Kubernetes, Control Plane, Cluster Management, etcd
 
 Description: Learn how to safely remove a control plane node from a Talos Linux cluster without disrupting cluster operations or losing etcd quorum.
 

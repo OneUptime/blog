@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Talosctl, Networking, Endpoints, Cluster Management
+Tags: Talos Linux, Talosctl, Networking, Endpoint, Cluster Management
 
 Description: Clear up the confusion between endpoints and nodes in talosctl and learn how to configure them correctly.
 

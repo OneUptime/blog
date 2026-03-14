@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Iptables, Envoy, Kubernetes, Networking
+Tags: Istio, Sidecar, iptables, Envoy, Kubernetes, Networking
 
 Description: A deep look at how Istio captures traffic through iptables rules and redirects it to the Envoy sidecar proxy for processing.
 

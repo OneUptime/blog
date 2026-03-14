@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Iptables, Networking, Troubleshooting, Kubernetes, Felix
+Tags: Calico, iptables, Networking, Troubleshooting, Kubernetes, Felix
 
 Description: Diagnose cases where Calico iptables rules are not being applied to a node, covering Felix health checks, iptables chain inspection, and FelixConfiguration validation.
 

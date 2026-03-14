@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
 Description: A hands-on guide to applying and validating Layer 7 HTTP-aware network policies using the Cilium Star Wars demo, demonstrating how to restrict API access by HTTP method and path.
 

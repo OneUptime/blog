@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, OpenTelemetry, Distributed Tracing, Observability, Microservices, Go, Node.js
+Tags: gRPC, OpenTelemetry, Distributed Tracing, Observability, Microservices, Go, Node.js
 
 Description: Learn how to implement distributed tracing in gRPC services using OpenTelemetry for end-to-end visibility across your microservices architecture.
 

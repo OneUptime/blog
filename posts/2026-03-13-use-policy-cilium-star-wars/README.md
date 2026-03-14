@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EBPF, Network Policy, Star Wars Demo
+Tags: Cilium, Kubernetes, eBPF, Network Policy, Star Wars Demo
 
 Description: A hands-on guide to writing, applying, and iterating on CiliumNetworkPolicy resources using the Star Wars demo as a learning environment.
 

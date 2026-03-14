@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to understanding the various Cilium support channels, how to effectively ask for help, and what information to provide when reporting issues or seeking community assistance.
 

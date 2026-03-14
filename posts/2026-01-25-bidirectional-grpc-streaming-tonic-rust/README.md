@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, GRPC, Tonic, Streaming, Bidirectional
+Tags: Rust, gRPC, Tonic, Streaming, Bidirectional
 
 Description: Learn how to implement bidirectional streaming gRPC services in Rust using tonic, with practical examples covering protocol definitions, server implementation, client handling, and error management.
 

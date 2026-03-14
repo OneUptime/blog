@@ -1,4 +1,4 @@
-# How to Prevent Deploy 5 namespaces with 25 deployments on each namespace in Cilium performance
+# How to Prevent Deploy 5 namespaces with 25 deployments on each namespace
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

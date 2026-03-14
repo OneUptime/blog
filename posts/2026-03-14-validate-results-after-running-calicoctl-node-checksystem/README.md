@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Validation, System Requirements, Kubernetes
+Tags: Calico, Calicoctl, Validation, System Requirements, Kubernetes
 
 Description: Interpret and validate calicoctl node checksystem output to confirm your hosts are fully prepared for Calico deployment, with guidance on which warnings matter.
 
@@ -26,7 +26,7 @@ This guide helps you interpret checksystem results in the context of your deploy
 
 Errors indicate requirements that are always necessary:
 
-```
+```yaml
 ERROR: net.ipv4.ip_forward = 0 (must be 1)
 ERROR: ip_tables - module not available
 ```
@@ -37,7 +37,7 @@ These must be resolved before deploying Calico.
 
 Warnings indicate features that may or may not be needed:
 
-```
+```yaml
 WARNING: ip_vs - module not loaded (required for kube-proxy IPVS mode)
 WARNING: vxlan - module not loaded (required for VXLAN encapsulation)
 ```

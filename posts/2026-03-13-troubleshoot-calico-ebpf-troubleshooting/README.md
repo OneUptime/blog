@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting
+Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting
 
 Description: Resolve issues with Calico's eBPF diagnostic tools themselves, including bpftool access problems, missing debug commands, and restricted environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Validation, Kubernetes
+Tags: Calico, Calicoctl, IPAM, Validation, Kubernetes
 
 Description: Verify that calicoctl ipam configure changes are correctly applied and that IP address allocation continues to work properly after IPAM configuration changes.
 

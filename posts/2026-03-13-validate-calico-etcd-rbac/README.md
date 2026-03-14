@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Validation
+Tags: Calico, Kubernetes, Networking, etcd, RBAC, Validation
 
 Description: How to validate that Calico etcd RBAC roles and permissions are correctly configured so each Calico component can only access its required etcd key paths.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Etcd, Kubernetes, Operations, Troubleshooting, Cluster
+Tags: etcd, Kubernetes, Operations, Troubleshooting, Cluster
 
 Description: Learn how to manage, backup, restore, and troubleshoot etcd in Kubernetes clusters for reliable control plane operations.
 

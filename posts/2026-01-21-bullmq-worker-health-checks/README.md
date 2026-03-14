@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Health Checks, Kubernetes, Monitoring, Observability
+Tags: BullMQ, Node.js, Redis, Health Check, Kubernetes, Monitoring, Observability
 
 Description: A comprehensive guide to implementing health checks for BullMQ workers, including liveness and readiness probes, Kubernetes integration, Redis connectivity checks.
 

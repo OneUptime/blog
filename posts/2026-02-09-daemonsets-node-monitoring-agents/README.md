@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, Monitoring, Node Metrics, Observability
+Tags: Kubernetes, DaemonSet, Monitoring, Node Metrics, Observability
 
 Description: Learn how to deploy node monitoring agents using Kubernetes DaemonSets to collect system metrics, performance data, and health information from every node in your cluster.
 

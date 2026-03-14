@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fluentd, Kubernetes, DaemonSets, Logging, EFK Stack
+Tags: Fluentd, Kubernetes, DaemonSet, Logging, EFK Stack
 
 Description: Learn how to deploy Fluentd as a DaemonSet on Kubernetes to collect pod logs from all nodes, parse container logs, and forward them to Elasticsearch for centralized log management.
 

@@ -31,7 +31,7 @@ This guide covers parsing techniques specific to zsh completion output.
 
 
 \`\`\`bash
-# Capture the completion output
+## Capture the completion output
 cilium-bugtool completion zsh > /tmp/bugtool-zsh-completion.zsh
 wc -l /tmp/bugtool-zsh-completion.zsh
 \`\`\`
@@ -39,14 +39,14 @@ wc -l /tmp/bugtool-zsh-completion.zsh
 ### Extracting Subcommands
 
 \`\`\`bash
-# Extract commands with descriptions
+## Extract commands with descriptions
 grep -oP "'[a-z][-a-z]*\[.*?\]" /tmp/bugtool-zsh-completion.zsh |   sed "s/'//g;s/\[/: /;s/\]//" | sort -u
 \`\`\`
 
 ### Extracting Flags
 
 \`\`\`bash
-# Extract flags with descriptions
+## Extract flags with descriptions
 grep -oP "'--[a-z][-a-z0-9]*\[.*?\]" /tmp/bugtool-zsh-completion.zsh |   sed "s/'//g;s/\[/: /;s/\]//" | sort -u
 \`\`\`
 

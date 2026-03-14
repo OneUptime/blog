@@ -30,8 +30,8 @@ This guide covers scripted installation, version-aware regeneration, and CI/CD i
 
 \`\`\`bash
 #!/bin/bash
-# install-bugtool-completions.sh
-# Automated installer for cilium-bugtool shell completions
+## install-bugtool-completions.sh
+## Automated installer for cilium-bugtool shell completions
 
 set -euo pipefail
 
@@ -76,8 +76,8 @@ esac
 
 \`\`\`bash
 #!/bin/bash
-# update-completions-on-upgrade.sh
-# Regenerate completions when cilium-bugtool version changes
+## update-completions-on-upgrade.sh
+## Regenerate completions when cilium-bugtool version changes
 
 VERSION_FILE="\$HOME/.cilium-bugtool-completion-version"
 CURRENT_VERSION=\$(cilium-bugtool --version 2>/dev/null | head -1)

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
 Description: Optimize Calico eBPF service handling with connection tracking tuning and service affinity configuration.
 

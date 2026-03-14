@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Collector, DaemonSets, Deployments, Infrastructure, Observability
+Tags: OpenTelemetry, Kubernetes, Collector, DaemonSet, Deployments, Infrastructure, Observability
 
 Description: Understand the differences between running the OpenTelemetry Collector as a DaemonSet and as a Deployment in Kubernetes, with practical configuration examples for both approaches.
 

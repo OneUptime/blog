@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Compression, Gzip, Snappy, Performance, Bandwidth, Optimization, Protobuf
+Tags: gRPC, Compression, Gzip, Snappy, Performance, Bandwidth, Optimization, Protobuf
 
 Description: Master gRPC message compression techniques using gzip, deflate, and snappy to reduce bandwidth consumption and improve network performance.
 

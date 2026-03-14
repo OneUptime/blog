@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Arrow, Compression, GRPC
+Tags: OpenTelemetry, OTel Arrow, Compression, gRPC
 
 Description: Configure dual-level compression in OTel Arrow combining gRPC transport compression with Arrow columnar encoding.
 

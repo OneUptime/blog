@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A detailed walkthrough of how Cilium handles the complete lifecycle of container networking from pod creation to packet delivery, including the eBPF control flow, policy enforcement path, and...
 

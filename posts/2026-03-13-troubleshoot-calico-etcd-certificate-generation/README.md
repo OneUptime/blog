@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Troubleshooting
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Troubleshooting
 
 Description: Diagnose and fix common TLS certificate issues that prevent Calico components from authenticating to etcd, including expiry, SAN mismatches, and chain-of-trust failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Circuit Breaking, Kubernetes, Resilience, Envoy
+Tags: Istio, gRPC, Circuit Breaking, Kubernetes, Resilience, Envoy
 
 Description: Set up circuit breaking for gRPC services in Istio using DestinationRule resources to prevent cascading failures and protect your microservices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Latency, Monitoring, Performance Tuning
+Tags: Talos Linux, etcd, Latency, Monitoring, Performance Tuning
 
 Description: A comprehensive guide to monitoring and understanding etcd latency metrics in Talos Linux for optimal Kubernetes performance.
 

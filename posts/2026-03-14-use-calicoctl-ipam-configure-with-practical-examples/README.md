@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, IP Address Management, Kubernetes
+Tags: Calico, Calicoctl, IPAM, IP Address Management, Kubernetes
 
 Description: Configure Calico's IP Address Management with calicoctl ipam configure, including strict affinity settings and IPAM behavior tuning for optimal IP allocation.
 
@@ -32,7 +32,7 @@ calicoctl ipam configure show
 
 Output:
 
-```
+```yaml
 StrictAffinity: false
 ```
 

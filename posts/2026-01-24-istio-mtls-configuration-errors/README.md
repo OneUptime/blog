@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Mesh, MTLS, Security, TLS, Encryption
+Tags: Istio, Kubernetes, Service Mesh, mTLS, Security, TLS, Encryption
 
 Description: Learn how to diagnose and fix mTLS configuration errors in Istio, including authentication policy mismatches, certificate issues, and migration strategies.
 

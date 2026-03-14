@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Disaster Recovery, Kubernetes, Cluster Restore, Etcd, Infrastructure
+Tags: Talos Linux, Disaster Recovery, Kubernetes, Cluster Restore, etcd, Infrastructure
 
 Description: A complete walkthrough for restoring a Talos Linux Kubernetes cluster after a catastrophic failure that has taken down all nodes.
 

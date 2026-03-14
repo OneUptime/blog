@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Benchmarking, EBPF, Networking
+Tags: Cilium, Kubernetes, Performance, Benchmarking, eBPF, Networking
 
 Description: Benchmark Cilium CNI performance using netperf and iperf3 to measure TCP throughput, request/response rates, and latency across different datapath configurations.
 

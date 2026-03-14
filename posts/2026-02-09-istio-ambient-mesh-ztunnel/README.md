@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mesh, Kubernetes, MTLS, Zero Trust
+Tags: Istio, Ambient Mesh, Kubernetes, mTLS, Zero Trust
 
 Description: Learn how to deploy Istio Ambient Mesh with ztunnel proxies to achieve sidecarless mutual TLS encryption in Kubernetes, reducing resource overhead while maintaining security and observability.
 

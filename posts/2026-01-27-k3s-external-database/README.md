@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, PostgreSQL, MySQL, Etcd, High Availability, Database, DevOps
+Tags: Kubernetes, K3s, PostgreSQL, MySQL, etcd, High Availability, Database, DevOps
 
 Description: A comprehensive guide to configuring K3s with external datastores including PostgreSQL, MySQL/MariaDB, and etcd for production-ready, highly available Kubernetes clusters.
 

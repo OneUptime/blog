@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Controllers, Observability, Kubernetes, eBPF
+Tags: Cilium, Controller, Observability, Kubernetes, eBPF
 
-Description: Learn how to leverage Cilium's internal controllers for operational observability, including querying controller state, interpreting run statistics, and using controller data to diagnose cluster issues.
+Description: Learn how to leverage Cilium's internal controllers for operational observability, including querying controller state, interpreting run statistics, and using controller data to diagnose cluster...
 
 ---
 

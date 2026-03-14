@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Confd, Configuration Management, Etcd, Automation, Linux
+Tags: RHEL, Confd, Configuration Management, etcd, Automation, Linux
 
 Description: Learn how to install and configure confd on RHEL to automatically generate configuration files from backend data stores like etcd, Consul, and environment variables.
 

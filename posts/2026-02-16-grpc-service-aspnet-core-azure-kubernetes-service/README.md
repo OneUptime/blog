@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, GRPC, ASP.NET Core, Kubernetes, AKS, C#, Microservices
+Tags: Azure, gRPC, ASP.NET Core, Kubernetes, AKS, C#, Microservices
 
 Description: Build a gRPC service in ASP.NET Core with Protocol Buffers and deploy it to Azure Kubernetes Service with load balancing and health checks.
 

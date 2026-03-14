@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Crossplane, Health Checks, Monitoring, GitOps, Kubernetes, Observability
+Tags: Flux CD, Crossplane, Health Check, Monitoring, GitOps, Kubernetes, Observability
 
 Description: Configure Flux health checks to monitor Crossplane managed resource status and create alerting pipelines for infrastructure provisioning failures.
 

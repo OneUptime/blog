@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Endpoint Health, Observability, EBPF
+Tags: Cilium, Kubernetes, Endpoint Health, Observability, eBPF
 
 Description: Monitor and troubleshoot Cilium endpoint health states to ensure pod network configurations are correctly applied and diagnose endpoints stuck in non-ready states.
 

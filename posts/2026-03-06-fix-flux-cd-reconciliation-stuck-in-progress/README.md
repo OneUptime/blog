@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Reconciliation, Kubernetes, Troubleshooting, GitOps, Health Checks, Stuck, Debugging
+Tags: Flux CD, Reconciliation, Kubernetes, Troubleshooting, GitOps, Health Check, Stuck, Debugging
 
 Description: A step-by-step guide to diagnosing and resolving stuck reconciliations in Flux CD, covering health check failures, dependency issues, and resource problems that prevent reconciliation from completing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Edge Computing, Security, MTLS, Authorization Policy
+Tags: Istio, Edge Computing, Security, mTLS, Authorization Policy
 
 Description: How to secure edge computing services using Istio security features including mTLS, authorization policies, and certificate management.
 

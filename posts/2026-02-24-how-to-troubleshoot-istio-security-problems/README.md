@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, MTLS, Authorization, Troubleshooting, Kubernetes
+Tags: Istio, Security, mTLS, Authorization, Troubleshooting, Kubernetes
 
 Description: Diagnose and fix Istio security issues including mTLS failures, authorization policy denials, certificate problems, and JWT validation errors.
 

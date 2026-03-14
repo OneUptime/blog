@@ -31,7 +31,7 @@ This guide covers techniques for extracting structured data from cilium-bugtool 
 
 
 \`\`\`bash
-# Capture completion output for analysis
+## Capture completion output for analysis
 cilium-bugtool completion bash > /tmp/bugtool-completion.bash
 cilium-bugtool completion zsh > /tmp/bugtool-completion.zsh
 \`\`\`
@@ -39,20 +39,20 @@ cilium-bugtool completion zsh > /tmp/bugtool-completion.zsh
 ### Extracting Subcommands
 
 \`\`\`bash
-# From bash completion, extract registered commands
+## From bash completion, extract registered commands
 grep -oP "commands=\(\K[^)]*" /tmp/bugtool-completion.bash |   tr ' ' '\n' | sed 's/"//g' | sort -u
 
-# From zsh completion, extract command descriptions
+## From zsh completion, extract command descriptions
 grep -oP "'[a-z][-a-z]*\[.*?\]" /tmp/bugtool-completion.zsh |   sed "s/'//g" | sort -u
 \`\`\`
 
 ### Extracting Flags
 
 \`\`\`bash
-# Extract all flags from bash completion
+## Extract all flags from bash completion
 grep -oP '\-\-[a-z][-a-z0-9]*' /tmp/bugtool-completion.bash | sort -u
 
-# Extract flags with descriptions from zsh completion
+## Extract flags with descriptions from zsh completion
 grep -oP "'--[a-z][-a-z0-9]*\[.*?\]" /tmp/bugtool-completion.zsh |   sed "s/'//g;s/\[/: /;s/\]//" | sort -u
 \`\`\`
 

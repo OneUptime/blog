@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, EBPF, Security
+Tags: Cilium, Kubernetes, Network Policy, eBPF, Security
 
 Description: Master CiliumNetworkPolicy for L3 and L4 traffic control, using endpoint selectors, CIDR-based rules, namespace selectors, and port-level policies to secure Kubernetes workloads.
 

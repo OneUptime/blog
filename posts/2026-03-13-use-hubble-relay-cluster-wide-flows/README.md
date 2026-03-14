@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Hubble, Observability, Networking, EBPF
+Tags: Cilium, Kubernetes, Hubble, Observability, Networking, eBPF
 
 Description: Use Hubble Relay to aggregate and search network flows across all nodes in a Cilium cluster, enabling cluster-wide traffic analysis and policy debugging.
 

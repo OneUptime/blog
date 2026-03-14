@@ -1,4 +1,4 @@
-# How to Configure Helm template with serviceMonitor enabled fails in Cilium configuration
+# How to Configure Helm template with serviceMonitor enabled fails
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

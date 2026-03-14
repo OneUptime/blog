@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, BGP, EBPF
+Tags: Cilium, Kubernetes, Networking, BGP, eBPF
 
 Description: Monitor Cilium BGP session health, route advertisement metrics, and peer state changes using Cilium's built-in metrics, Prometheus, and Grafana dashboards.
 

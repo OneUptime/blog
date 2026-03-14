@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, RPC, GRPC, Thrift, Semantic Conventions, Tracing, Microservices, Protobuf
+Tags: OpenTelemetry, RPC, gRPC, Thrift, Semantic Conventions, Tracing, Microservices, Protobuf
 
 Description: Learn how to apply OpenTelemetry RPC semantic conventions to gRPC and Thrift services for consistent tracing across your microservice communication layer.
 

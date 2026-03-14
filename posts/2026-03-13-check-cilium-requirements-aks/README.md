@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A checklist of all requirements to install and run Cilium on Azure Kubernetes Service, including node pool configuration, network plugin settings, and kernel version requirements.
 

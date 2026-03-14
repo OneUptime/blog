@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Certificate Rotation, Security, Kubernetes
+Tags: Istio, mTLS, Certificate Rotation, Security, Kubernetes
 
 Description: Rotate mTLS certificates in Istio without causing service disruptions using automatic rotation, custom CA integration, and graceful rollover strategies.
 

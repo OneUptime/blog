@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Interceptors, Middleware, Authentication, Logging
+Tags: gRPC, Interceptors, Middleware, Authentication, Logging
 
 Description: Learn how to implement and chain gRPC interceptors for logging, authentication, error handling, and cross-cutting concerns.
 

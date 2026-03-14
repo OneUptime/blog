@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Learn how to configure the trade-offs and limitations of using Cilium encapsulation mode including MTU overhead, performance impact, and troubleshooting complexity in your Kubernetes cluster for optimal performance and security.
+Description: Learn how to configure the trade-offs and limitations of using Cilium encapsulation mode including MTU overhead, performance impact, and troubleshooting complexity in your Kubernetes cluster for...
 
 ---
 

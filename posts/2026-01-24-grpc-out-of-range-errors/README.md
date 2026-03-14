@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Out of range, Error Handling, Validation, Status Codes, API Design, Microservices
+Tags: gRPC, Out of range, Error Handling, Validation, Status Codes, API Design, Microservices
 
 Description: A practical guide to understanding, handling, and preventing OUT_OF_RANGE errors in gRPC services with validation patterns and best practices.
 

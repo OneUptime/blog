@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, CNI, Networking, Dataplane, Performance
+Tags: Calico, Kubernetes, eBPF, CNI, Networking, Dataplane, Performance
 
 Description: A deep dive into how Calico uses eBPF as a high-performance dataplane, replacing iptables for packet processing in Kubernetes clusters.
 

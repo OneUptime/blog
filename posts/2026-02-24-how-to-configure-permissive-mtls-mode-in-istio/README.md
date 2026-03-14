@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Permissive Mode, Security, Kubernetes
+Tags: Istio, mTLS, Permissive Mode, Security, Kubernetes
 
 Description: Learn how to configure permissive mTLS mode in Istio so services accept both encrypted and plain text connections during migration.
 

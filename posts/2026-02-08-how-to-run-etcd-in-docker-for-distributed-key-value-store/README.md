@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Etcd, Distributed Systems, Key-Value Store, Kubernetes, DevOps
+Tags: Docker, etcd, Distributed Systems, Key-Value Store, Kubernetes, DevOps
 
 Description: Deploy etcd distributed key-value store in Docker with clustering, watches, and lease-based TTLs for service discovery
 

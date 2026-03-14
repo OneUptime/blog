@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A step-by-step guide to upgrading from Azure CNI to Cilium on Azure Kubernetes Service, covering pre-migration checks, the migration process, and post-upgrade validation.
 

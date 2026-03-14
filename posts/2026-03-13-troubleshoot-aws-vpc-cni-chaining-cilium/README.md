@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: A troubleshooting guide for diagnosing and resolving common issues when running Cilium in chained mode with the AWS VPC CNI plugin on EKS.
 

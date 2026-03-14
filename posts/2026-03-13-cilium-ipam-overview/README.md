@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A comprehensive introduction to Cilium's IP Address Management (IPAM) modes, how to select the right IPAM mode for your environment, and how to configure, troubleshoot, and monitor IPAM in...
 

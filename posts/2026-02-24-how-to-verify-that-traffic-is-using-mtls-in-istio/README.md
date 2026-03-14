@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Verification, Security, Observability
+Tags: Istio, mTLS, Verification, Security, Observability
 
 Description: Practical methods to verify that service-to-service traffic in your Istio mesh is actually encrypted with mutual TLS as expected.
 

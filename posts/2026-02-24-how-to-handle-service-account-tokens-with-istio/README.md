@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Account Tokens, Kubernetes, Security, MTLS
+Tags: Istio, Service Account Tokens, Kubernetes, Security, mTLS
 
 Description: A practical guide to managing Kubernetes service account tokens in Istio for secure workload identity and authentication.
 

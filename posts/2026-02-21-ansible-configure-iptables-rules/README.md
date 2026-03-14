@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Iptables, Firewall, Security, Linux
+Tags: Ansible, iptables, Firewall, Security, Linux
 
 Description: Learn how to manage iptables firewall rules with Ansible using the iptables module and template-based approaches for persistent configurations.
 

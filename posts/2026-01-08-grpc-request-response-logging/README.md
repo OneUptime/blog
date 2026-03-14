@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Logging, Debugging, Interceptors, Structured Logging, Observability, Go, Node.js
+Tags: gRPC, Logging, Debugging, Interceptors, Structured Logging, Observability, Go, Node.js
 
 Description: Learn how to implement comprehensive request and response logging for gRPC services with structured logging, sensitive data redaction, and correlation IDs.
 

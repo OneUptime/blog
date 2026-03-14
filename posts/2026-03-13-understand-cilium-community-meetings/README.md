@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Community, Open Source, Governance, Meetings
+Tags: Cilium, Community, Open Source, Governance, Meeting
 
 Description: Learn how Cilium's community meetings are structured, how to participate effectively, and how meetings connect to the project's development and governance processes.
 

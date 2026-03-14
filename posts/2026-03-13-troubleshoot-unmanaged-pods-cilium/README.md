@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to diagnosing and fixing issues with pods that were running before Cilium was installed or that were not properly picked up by Cilium after installation.
 

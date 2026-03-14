@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A practical guide to using the Cilium compatibility table to select the right Cilium version for your Kubernetes environment, troubleshoot version mismatches, and monitor for compatibility drift.
 

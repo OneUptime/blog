@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Hubble, Observability, EBPF
+Tags: Cilium, Kubernetes, Hubble, Observability, eBPF
 
 Description: Deploy and use Hubble, Cilium's built-in distributed observability platform, to gain deep visibility into network flows, security policy decisions, and service dependencies across your cluster.
 

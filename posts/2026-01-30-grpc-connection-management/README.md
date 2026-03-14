@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GRPC, Networking, Performance, Microservices
+Tags: gRPC, Networking, Performance, Microservices
 
 Description: Learn how to build efficient gRPC connection management with connection pooling, keepalive configuration, and load balancing for high-performance microservices.
 

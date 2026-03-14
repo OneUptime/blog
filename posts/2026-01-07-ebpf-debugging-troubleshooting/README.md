@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Debugging, Troubleshooting, Linux, Development
+Tags: eBPF, Debugging, Troubleshooting, Linux, Development
 
 Description: A practical guide to debugging common eBPF program issues and verifier errors.
 

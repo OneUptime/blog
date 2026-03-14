@@ -1,4 +1,4 @@
-# How to Fix Install Kubernetes v3 with EndpointSlice feature enabled in Cilium performance
+# How to Fix Install Kubernetes v3 with EndpointSlice feature enabled
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

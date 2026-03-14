@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, MTLS, Security, Kubernetes
+Tags: Istio, PeerAuthentication, mTLS, Security, Kubernetes
 
 Description: Complete reference for all PeerAuthentication fields in Istio including mTLS modes, port-level overrides, and workload selectors for mesh security.
 

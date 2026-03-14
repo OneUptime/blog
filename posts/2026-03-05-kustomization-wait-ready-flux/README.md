@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Health Checks, Wait, Readiness
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Health Check, Wait, Readiness
 
 Description: Learn how to configure Flux CD Kustomizations to wait for deployed resources to become ready before marking reconciliation as successful.
 

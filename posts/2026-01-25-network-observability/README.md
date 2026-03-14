@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, Observability, Monitoring, OpenTelemetry, EBPF, Traffic Analysis, Infrastructure
+Tags: Networking, Observability, Monitoring, OpenTelemetry, eBPF, Traffic Analysis, Infrastructure
 
 Description: A practical guide to implementing network observability in your infrastructure.
 

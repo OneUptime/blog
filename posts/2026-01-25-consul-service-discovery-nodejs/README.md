@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Consul, Service Discovery, Microservices, TypeScript, Health Checks
+Tags: Node.js, Consul, Service Discovery, Microservices, TypeScript, Health Check
 
 Description: A hands-on guide to building a Consul service discovery client in Node.js, covering service registration, health checks, discovery, and load balancing for microservices architectures.
 

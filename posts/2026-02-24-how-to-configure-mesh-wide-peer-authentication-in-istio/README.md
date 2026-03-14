@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, PeerAuthentication, Service Mesh, Security
+Tags: Istio, mTLS, PeerAuthentication, Service Mesh, Security
 
 Description: A practical guide to configuring mesh-wide PeerAuthentication in Istio to set a default mTLS mode across your entire service mesh.
 

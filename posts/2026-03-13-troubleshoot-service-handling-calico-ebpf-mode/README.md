@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Service Handling, Networking
+Tags: Calico, Kubernetes, eBPF, Service Handling, Networking
 
 Description: Diagnose service connectivity issues in Calico eBPF mode including DNAT failures and backend selection problems.
 

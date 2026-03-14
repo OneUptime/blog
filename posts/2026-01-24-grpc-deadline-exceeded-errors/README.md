@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GRPC, Troubleshooting, Timeout, Performance, Distributed Systems
+Tags: gRPC, Troubleshooting, Timeout, Performance, Distributed Systems
 
 Description: Learn how to diagnose and fix gRPC DEADLINE_EXCEEDED errors by configuring proper timeouts, optimizing performance, and implementing deadline propagation.
 

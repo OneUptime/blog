@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, GRPC-Web, React, TypeScript, Envoy, Frontend, Browser, Protocol Buffers, Web Development
+Tags: gRPC, GRPC-Web, React, TypeScript, Envoy, Frontend, Browser, Protocol Buffers, Web Development
 
 Description: A comprehensive guide to building gRPC clients in React applications using gRPC-Web, covering Envoy proxy setup, TypeScript integration, streaming patterns, and production deployment.
 

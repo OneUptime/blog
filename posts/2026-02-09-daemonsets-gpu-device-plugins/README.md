@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSets, GPU
+Tags: Kubernetes, DaemonSet, GPU
 
 Description: Learn how to deploy GPU device plugins using DaemonSets to expose GPU resources to Kubernetes workloads on accelerated compute nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, EBPF, Kernel, Observability, Linux, Networking, Performance
+Tags: OpenTelemetry, eBPF, Kernel, Observability, Linux, Networking, Performance
 
 Description: Learn how to combine eBPF with OpenTelemetry to gain kernel-level observability for network traffic, syscalls, and system performance without modifying application code.
 

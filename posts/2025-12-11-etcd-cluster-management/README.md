@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Etcd, Cluster Management, Distributed Systems, Kubernetes, High Availability
+Tags: etcd, Cluster Management, Distributed Systems, Kubernetes, High Availability
 
 Description: Learn how to manage etcd clusters including member operations, backup and restore, monitoring, maintenance tasks, and disaster recovery procedures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to diagnosing and resolving issues when Cilium has been installed via external cluster provisioning tools such as kops, Kubespray, Talos, or other third-party installers.
 

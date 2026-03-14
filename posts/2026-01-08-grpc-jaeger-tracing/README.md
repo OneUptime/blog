@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Jaeger, Distributed Tracing, Microservices, Observability, OpenTelemetry, Debugging
+Tags: gRPC, Jaeger, Distributed Tracing, Microservices, Observability, OpenTelemetry, Debugging
 
 Description: Learn how to set up Jaeger for distributed tracing of gRPC calls across microservices, including trace propagation, sampling strategies, and troubleshooting techniques.
 

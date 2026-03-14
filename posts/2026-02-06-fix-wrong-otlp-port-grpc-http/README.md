@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTLP, GRPC, HTTP, Networking
+Tags: OpenTelemetry, OTLP, gRPC, HTTP, Networking
 
 Description: Resolve OTLP connection errors by understanding the port differences between gRPC (4317) and HTTP/protobuf (4318) protocols.
 

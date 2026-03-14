@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with Cilium egress gateway and egress policies for controlling and routing outbound traffic from pods using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with Cilium egress gateway and egress policies for controlling and routing outbound traffic from pods using systematic debugging techniques and Cilium diagnostic...
 
 ---
 

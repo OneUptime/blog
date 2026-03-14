@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: Learn how to configure Cilium to work alongside Broadcom NSX (formerly VMware NSX-T) for Kubernetes clusters running on NSX-managed infrastructure, enabling both NSX and eBPF-based networking...
 

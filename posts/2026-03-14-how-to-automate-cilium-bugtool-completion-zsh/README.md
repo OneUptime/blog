@@ -30,13 +30,13 @@ This guide covers automation strategies for cilium-bugtool zsh completions.
 
 \`\`\`bash
 #!/bin/bash
-# install-bugtool-zsh-completion.sh
+## install-bugtool-zsh-completion.sh
 set -euo pipefail
 
 ZSH_COMP_DIR="\${ZSH_COMPLETION_DIR:-/usr/local/share/zsh/site-functions}"
 COMP_FILE="\$ZSH_COMP_DIR/_cilium-bugtool"
 
-# Generate completion
+## Generate completion
 if command -v cilium-bugtool &> /dev/null; then
   mkdir -p "\$ZSH_COMP_DIR"
   cilium-bugtool completion zsh > "\$COMP_FILE"
@@ -48,7 +48,7 @@ elif command -v kubectl &> /dev/null; then
   fi
 fi
 
-# Validate
+## Validate
 if [ -s "\$COMP_FILE" ] && grep -q "compdef\|#compdef" "\$COMP_FILE"; then
   echo "Installed valid zsh completion to \$COMP_FILE"
   echo "Run: rm -f ~/.zcompdump* && compinit"
@@ -61,7 +61,7 @@ fi
 ### Auto-Regeneration in .zshrc
 
 \`\`\`bash
-# Add to .zshrc - regenerate if binary is newer than completion
+## Add to .zshrc - regenerate if binary is newer than completion
 _update_bugtool_completion() {
   local comp_file="\${HOME}/.zsh/completions/_cilium-bugtool"
   local binary=\$(which cilium-bugtool 2>/dev/null)

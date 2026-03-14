@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: Understand CNI chaining with Cilium - what it is, when to use it, and how to configure Cilium as a secondary CNI plugin on top of any primary CNI for enhanced network policy enforcement and...
 

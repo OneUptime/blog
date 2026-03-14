@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, 503, Backend Service, Health Checks, Troubleshooting
+Tags: GCP, Load Balancer, 503, Backend Service, Health Check, Troubleshooting
 
 Description: How to diagnose and resolve 503 Service Unavailable errors from Google Cloud Load Balancers, including backend capacity, health check, and configuration issues.
 

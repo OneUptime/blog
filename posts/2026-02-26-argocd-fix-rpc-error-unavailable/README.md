@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, GRPC
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, gRPC
 
 Description: Resolve the gRPC Unavailable error in ArgoCD caused by server connectivity issues, TLS misconfigurations, load balancer problems, and service mesh conflicts.
 

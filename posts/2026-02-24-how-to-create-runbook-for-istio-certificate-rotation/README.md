@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Runbook, Certificates, MTLS
+Tags: Istio, Kubernetes, Runbook, Certificates, mTLS
 
 Description: A detailed runbook for rotating Istio root CA certificates, intermediate certificates, and workload certificates with zero-downtime procedures.
 

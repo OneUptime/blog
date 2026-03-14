@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Validation, Performance
+Tags: Calico, Kubernetes, Networking, eBPF, Validation, Performance
 
 Description: Validate that Calico eBPF mode is correctly active by checking BPF programs, service routing, network performance benchmarks, and policy enforcement.
 

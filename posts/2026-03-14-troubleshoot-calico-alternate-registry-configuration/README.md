@@ -42,7 +42,7 @@ kubectl describe pod -n calico-system <pod-name> | grep -A 5 "Events:"
 
 Common error messages and their meanings:
 
-```
+```text
 # ErrImagePull / ImagePullBackOff
 # The image cannot be pulled -- could be auth, network, or missing image
 

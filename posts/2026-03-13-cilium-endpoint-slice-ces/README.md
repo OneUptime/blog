@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, EndpointSlice
+Tags: Cilium, Kubernetes, Networking, eBPF, EndpointSlice
 
 Description: Learn how to configure, troubleshoot, validate, and monitor Cilium EndpointSlice (CES) for scalable Kubernetes service discovery and load balancing.
 

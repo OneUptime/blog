@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kube-proxy, IPVS, Iptables, Performance, Networking
+Tags: Kubernetes, Kube-proxy, IPVS, iptables, Performance, Networking
 
 Description: Learn how to migrate kube-proxy from iptables mode to IPVS mode for better performance, lower latency, and improved scalability in large Kubernetes clusters.
 

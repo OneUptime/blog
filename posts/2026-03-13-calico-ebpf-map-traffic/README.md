@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, CNI, Traffic Flows, Networking, Dataplane
+Tags: Calico, Kubernetes, eBPF, CNI, Traffic Flows, Networking, Dataplane
 
 Description: A packet-level walkthrough of how Calico's eBPF dataplane processes real Kubernetes traffic flows including pod-to-pod, service, and external ingress scenarios.
 

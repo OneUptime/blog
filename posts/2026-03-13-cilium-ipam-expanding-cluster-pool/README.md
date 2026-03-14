@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to safely expand Cilium's cluster-pool IPAM when the pod IP address space is running low, including step-by-step expansion procedures, validation, and ongoing capacity monitoring.
 

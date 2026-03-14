@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Backup
+Tags: Kubernetes, etcd, Backup
 
 Description: Learn how to create reliable etcd backups before Kubernetes cluster upgrades with automated backup scripts, verification procedures, and disaster recovery strategies for production clusters.
 

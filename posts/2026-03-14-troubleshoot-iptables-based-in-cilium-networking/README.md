@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with iptables-based masquerading mode in Cilium networking as an alternative to eBPF-based masquerading using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with iptables-based masquerading mode in Cilium networking as an alternative to eBPF-based masquerading using systematic debugging techniques and Cilium...
 
 ---
 

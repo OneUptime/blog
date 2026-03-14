@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Linux, Security, Networking, Firewall, Iptables, System Administration
+Tags: Linux, Security, Networking, Firewall, iptables, System Administration
 
 Description: A comprehensive guide to configuring iptables firewall rules in Linux, including chains, tables, common patterns, and best practices for securing your servers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, EBPF, Profiling, Cross-Language
+Tags: OpenTelemetry, eBPF, Profiling, Cross-Language
 
 Description: Learn how to deploy the OpenTelemetry eBPF profiler for cross-language profiling of C++, Rust, Python, and Node.js without any code changes.
 

@@ -26,7 +26,7 @@ This guide covers approaches to testing and validating Cilium Special Interest G
 
 ### SIG Health Checklist
 
-```
+```json
 [ ] Regular meetings happening on schedule
 [ ] Meeting attendance is sustainable
 [ ] New contributors are joining and staying

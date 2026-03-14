@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Protocol Specification, Corner Cases, Security Review
 
-Description: A systematic approach to reviewing protocol specifications for corner cases that could create security vulnerabilities in Cilium L7 parsers, covering ambiguous spec language, optional features, and edge conditions.
+Description: A systematic approach to reviewing protocol specifications for corner cases that could create security vulnerabilities in Cilium L7 parsers, covering ambiguous spec language, optional features,...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Logs, DaemonSets, Filelog Receiver
+Tags: OpenTelemetry, Logs, DaemonSet, Filelog Receiver
 
 Description: Fix incorrect filelog receiver path patterns that prevent the DaemonSet Collector from collecting logs from all pods.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Health Checks, Kustomization, Troubleshooting, Kubernetes, GitOps, Readiness
+Tags: Flux CD, Health Check, Kustomization, Troubleshooting, Kubernetes, GitOps, Readiness
 
 Description: A detailed guide to diagnosing and resolving 'health check failed' errors in Flux CD Kustomization resources caused by pod crashes, readiness probes, and timeouts.
 

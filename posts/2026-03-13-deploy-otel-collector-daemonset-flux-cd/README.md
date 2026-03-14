@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, OpenTelemetry, OTEL Collector, DaemonSets, Observability
+Tags: Flux CD, Kubernetes, GitOps, OpenTelemetry, OTEL Collector, DaemonSet, Observability
 
 Description: Deploy the OpenTelemetry Collector as a Kubernetes DaemonSet using Flux CD to collect node-level metrics, host logs, and application telemetry from every node in your cluster.
 

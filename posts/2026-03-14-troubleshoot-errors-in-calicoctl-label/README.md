@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Labels, Troubleshooting, Kubernetes
+Tags: Calico, Calicoctl, Labels, Troubleshooting, Kubernetes
 
 Description: Diagnose and fix common errors when using calicoctl label, including resource not found, validation failures, and permission issues.
 
@@ -27,7 +27,7 @@ This guide catalogs the most common errors from `calicoctl label` and provides s
 
 The most common error when labeling:
 
-```
+```text
 resource does not exist: Node(worker-1) with error: nodes.crd.projectcalico.org "worker-1" not found
 ```
 
@@ -46,7 +46,7 @@ calicoctl label nodes <exact-calico-node-name> env=production
 
 ## Error: Label Key Validation Failure
 
-```
+```text
 invalid label key: "my label"
 ```
 
@@ -74,7 +74,7 @@ Valid label rules:
 
 ## Error: Label Already Exists
 
-```
+```text
 label env already exists, use --overwrite to overwrite
 ```
 
@@ -90,7 +90,7 @@ calicoctl label nodes worker-1 env=staging --overwrite
 
 ## Error: Unauthorized Access
 
-```
+```text
 Unauthorized to label resource
 ```
 
@@ -126,7 +126,7 @@ kubectl apply -f calicoctl-label-rbac.yaml
 
 ## Error: Invalid Resource Type
 
-```
+```text
 unknown resource type: "pod"
 ```
 
@@ -151,7 +151,7 @@ Supported resource types for `calicoctl label`:
 
 ## Error: Connection to Datastore Failed
 
-```
+```text
 Failed to connect to datastore
 ```
 

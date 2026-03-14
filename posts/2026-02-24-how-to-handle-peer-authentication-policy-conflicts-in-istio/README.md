@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PeerAuthentication, MTLS, Troubleshooting, Policy Conflicts
+Tags: Istio, PeerAuthentication, mTLS, Troubleshooting, Policy Conflicts
 
 Description: How to identify, understand, and resolve PeerAuthentication policy conflicts in Istio when multiple policies affect the same workloads.
 

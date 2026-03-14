@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Mesh, Helm, MTLS, Observability
+Tags: Flux CD, Kubernetes, GitOps, Linkerd, Service Mesh, Helm, mTLS, Observability
 
 Description: Deploy Linkerd service mesh using Helm charts with Flux CD for lightweight, ultra-low latency mTLS and observability on Kubernetes.
 

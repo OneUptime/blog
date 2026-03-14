@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Hubble, Filters, Security, Data Protection
+Tags: Cilium, Hubble, Filter, Security, Data Protection
 
 Description: Learn how to use Hubble filters as a security control to limit data exposure, enforce data minimization principles, and protect sensitive flow information from unauthorized access.
 

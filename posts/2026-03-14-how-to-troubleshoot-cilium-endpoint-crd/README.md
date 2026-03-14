@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Troubleshooting, Endpoints, Networking
+Tags: Cilium, Kubernetes, Troubleshooting, Endpoint, Networking
 
 Description: A systematic guide to diagnosing and resolving common CiliumEndpoint CRD issues including missing endpoints, identity problems, policy enforcement failures, and state errors.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Team Workflows, Best Practices
+Tags: Calico, Calicoctl, IPAM, Team Workflows, Best Practices
 
 Description: Establish consistent team procedures for using calicoctl ipam show as part of regular IPAM operations and maintenance.
 

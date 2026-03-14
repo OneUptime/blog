@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Debugging, Connection Errors, OTLP, Collector, Networking, Troubleshooting
+Tags: OpenTelemetry, gRPC, Debugging, Connection Errors, OTLP, Collector, Networking, Troubleshooting
 
 Description: Learn how to diagnose and resolve the common gRPC 'Unavailable' connection error when sending OpenTelemetry telemetry data to collectors and backends.
 

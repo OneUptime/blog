@@ -200,6 +200,7 @@
 - Advanced Configuration
 - Advanced Docker
 - Advanced Filters
+- Advanced Parsing
 - Advanced Python
 - Advanced Queries
 - Advanced Security
@@ -436,6 +437,7 @@
 - AOF Persistence
 - AOP
 - AOT Compilation
+- APAC
 - Apache
 - Apache Airflow
 - Apache APISIX
@@ -1561,6 +1563,7 @@
 - Bug Report
 - Bug Tracking
 - Bugsnag
+- Bugtool
 - Build
 - Build Agents
 - Build Arguments
@@ -1840,6 +1843,7 @@
 - Change Tracking
 - Changefeeds
 - Changelog
+- Channel Creation
 - Channel Pool
 - Channel States
 - Channels
@@ -1935,6 +1939,7 @@
 - CICD
 - CIDR
 - CIDR Routing
+- CIDRGroup
 - CIFS
 - Cilium
 - cilium-agent
@@ -2202,6 +2207,7 @@
 - Cluster Computing
 - Cluster Configuration
 - Cluster Creation
+- Cluster Diagnostics
 - Cluster Discovery
 - Cluster Expansion
 - Cluster Extensions
@@ -2397,6 +2403,7 @@
 - CompletableFuture
 - Complete Deployment
 - Completeness
+- Completion
 - Completion Suggester
 - Complex Queries
 - Complexity
@@ -2538,6 +2545,7 @@
 - Connection Pool Metrics
 - Connection Pooling
 - Connection Profiles
+- Connection Rate
 - Connection Recovery
 - Connection Refused
 - Connection Reset
@@ -2730,6 +2738,7 @@
 - Controller-gen
 - Controller-runtime
 - ControllerAdvice
+- Controllers
 - ControlMaster
 - ControlPersist
 - Controlplane
@@ -2765,6 +2774,7 @@
 - Core Web Vitals
 - CoreDNS
 - CoreOS
+- Corner Cases
 - Corosync
 - Coroutines
 - Corporate
@@ -3122,6 +3132,7 @@
 - Daemon_reload
 - Daemon.json
 - Daemons
+- DaemonSet
 - DaemonSets
 - DAG
 - Dagger
@@ -3140,6 +3151,7 @@
 - Dashboard Management
 - Dashboard Templates
 - Dashboard Variables
+- Dashboards
 - Dashboards as Code
 - Dask
 - DAST
@@ -3239,6 +3251,7 @@
 - Data Masking
 - Data Mesh
 - Data Migration
+- Data Minimization
 - Data Model
 - Data Modeling
 - Data Mutations
@@ -3390,6 +3403,7 @@
 - DataSource
 - Datasources
 - Datastore
+- Datastore Migration
 - Datastream
 - DataSync
 - Dataverse
@@ -3582,6 +3596,7 @@
 - Deref
 - Derive
 - Derived Data
+- Derived Policy
 - Descheduler
 - Descriptors
 - Deserialization
@@ -4088,6 +4103,7 @@
 - Dynamic Dispatch
 - Dynamic DNS
 - Dynamic Environments
+- Dynamic Exporter
 - Dynamic Filtering
 - Dynamic Groups
 - Dynamic Include
@@ -4138,6 +4154,7 @@
 - EC2 Image Builder
 - ECDSA
 - Echo
+- Echo App
 - ECK
 - Eclipse Mosquitto
 - ECMP
@@ -4281,6 +4298,7 @@
 - End-to-End Encryption
 - End-to-End Testing
 - End-to-End Tracing
+- Endpoint
 - Endpoint Detection
 - Endpoint Discovery
 - Endpoint Filters
@@ -4390,6 +4408,7 @@
 - Error Handling
 - Error Hooks
 - Error Impact
+- Error Injection
 - Error Logs
 - Error Management
 - Error Messages
@@ -4727,6 +4746,7 @@
 - Field Data
 - Field Management
 - Field Manager
+- Field Mask
 - Field Transforms
 - Field Types
 - Field-Level Security
@@ -4807,6 +4827,7 @@
 - Filter Plugins
 - Filter Processor
 - Filtering
+- Filters
 - FIM
 - FINAL
 - Finalizer
@@ -5406,6 +5427,7 @@
 - Graphite
 - GraphQL
 - GraphQL-Ruby
+- Graphviz
 - Graviton
 - Graylog
 - GRE
@@ -5560,6 +5582,7 @@
 - Headless Service
 - Health
 - Health Apps
+- Health Check
 - Health Check Rewriting
 - Health Checking
 - Health Checks
@@ -5701,10 +5724,12 @@
 - Host Node
 - Host Order
 - Host Patterns
+- Host Policy
 - Host Pool
 - Host Project
 - Host Ranges
 - Host Resolution
+- Host Routes
 - Host Targeting
 - Host Traffic
 - Host Variables
@@ -6761,6 +6786,7 @@
 - Kubewarden
 - Kueue
 - Kuma
+- Kuryr
 - Kusto
 - Kusto Query
 - Kusto Query Language
@@ -6784,6 +6810,7 @@
 - L7
 - L7 Policies
 - L7 Policy
+- L7 Proxy
 - Lab
 - Lab Environment
 - Lab Results
@@ -7441,6 +7468,7 @@
 - Medical Transcription
 - Medusa
 - Medusa.js
+- Meeting
 - Meeting Management
 - Meeting Transcription
 - Meetings
@@ -7874,6 +7902,7 @@
 - Multi-Platform Testing
 - Multi-Port
 - Multi-Primary
+- Multi-Process
 - Multi-Project
 - Multi-Project Pipelines
 - Multi-Provider
@@ -7896,6 +7925,7 @@
 - Multi-Stage Build
 - Multi-Stage Pipeline
 - Multi-Step
+- Multi-Stream
 - Multi-Subscription
 - Multi-Team
 - Multi-Tenancy
@@ -8114,6 +8144,7 @@
 - Network Flows
 - Network Forensics
 - Network Functions
+- Network Health
 - Network Insights
 - Network Installation
 - Network Intelligence
@@ -8486,6 +8517,7 @@
 - Onboarding
 - ONBUILD
 - OnCall
+- OnData
 - One Function
 - One-Off Commands
 - One-Time Tokens
@@ -8704,6 +8736,7 @@
 - OVH
 - OVHcloud
 - OVMF
+- OVN
 - OVS
 - OWASP
 - OWASP ZAP
@@ -8739,6 +8772,7 @@
 - Packer
 - Packet Analysis
 - Packet Capture
+- Packet Drops
 - Packet Filtering
 - Packet Fragmentation
 - Packet Loss
@@ -8812,6 +8846,7 @@
 - Parent-Child Jobs
 - Parquet
 - Parseint Function
+- Parser
 - Parsers
 - Parsing
 - Parted
@@ -8874,6 +8909,7 @@
 - Path Resolution
 - Path Routing
 - Path Rules
+- Path Translation
 - Path Traversal
 - Path Triggers
 - Path Units
@@ -9189,6 +9225,7 @@
 - Pod Networking
 - Pod Placement
 - Pod Priority
+- Pod Sandbox
 - Pod Scheduling
 - Pod Security
 - Pod Security Admission
@@ -9223,6 +9260,7 @@
 - Policy
 - Policy Analyzer
 - Policy as Code
+- Policy Audit
 - Policy Automation
 - Policy Compliance
 - Policy Conditions
@@ -9236,6 +9274,7 @@
 - Policy Exceptions
 - Policy Exemptions
 - Policy Issuance
+- Policy Language
 - Policy Limits
 - Policy Management
 - Policy Objects
@@ -9347,6 +9386,7 @@
 - Pre-Deployment Validation
 - Pre-DNAT
 - Pre-Filtering
+- Pre-flight
 - Pre-Flight Checks
 - Pre-Hardened Images
 - Pre-Kubernetes
@@ -9584,8 +9624,11 @@
 - Protocol Detection
 - Protocol Error
 - Protocol Mismatch
+- Protocol Parsing
+- Protocol Security
 - Protocol Selection
 - Protocol Sniffing
+- Protocol Specification
 - Protocol Translation
 - Proton
 - Provenance
@@ -10494,6 +10537,7 @@
 - Route Handlers
 - Route Matching
 - Route Optimization
+- Route Policies
 - Route Reception
 - Route Reflector
 - Route Tables
@@ -10573,6 +10617,7 @@
 - Runtime Protection
 - Runtime Security
 - Runtime specification
+- Runtime Tests
 - Runtime/trace
 - RuntimeClass
 - Rust
@@ -10832,6 +10877,7 @@
 - Security Analysis
 - Security Analytics
 - Security Audit
+- Security Auditing
 - Security Automation
 - Security Baselines
 - Security Benchmarks
@@ -10861,6 +10907,7 @@
 - Security Posture
 - Security Profiles
 - Security Recommendations
+- Security Review
 - Security Rules
 - Security Scanning
 - Security Standards
@@ -10908,6 +10955,7 @@
 - Semantic Ranking
 - Semantic Search
 - Semantic Versioning
+- Semantics
 - Semaphore
 - Semi-Structured Data
 - SemVer
@@ -10981,6 +11029,7 @@
 - Serverless SQL
 - Serverless SQL Pool
 - Serverless VPC Access
+- Servers
 - ServerSpec
 - Service Account Auth
 - Service Account Impersonation
@@ -11010,6 +11059,7 @@
 - Service Hooks
 - Service Identity
 - Service Invocation
+- Service IPs
 - Service Level Objectives
 - Service Levels
 - Service Logs
@@ -11156,6 +11206,7 @@
 - Shell
 - Shell Access
 - Shell Commands
+- Shell Completion
 - Shell Configuration
 - Shell Module
 - Shell Script
@@ -11193,6 +11244,7 @@
 - SideroLink
 - SIEM
 - Sieve
+- SIG
 - SIGKILL
 - Sigma
 - Sign-In
@@ -11237,6 +11289,8 @@
 - Single Stat
 - Single-Board Computers
 - Single-Node
+- Single-Process
+- Single-Stream
 - Single-Table Design
 - Singleton
 - Sink Connector
@@ -11358,6 +11412,7 @@
 - Soft Delete
 - Soft-Delete
 - SoftEther
+- Software
 - Software Architecture
 - Software bill of materials
 - Software Collections
@@ -11610,6 +11665,7 @@
 - Stage Dependencies
 - Staged Configuration
 - Staged Policies
+- Staged Policy
 - Staged Rollout
 - Staged Upgrade
 - Stages
@@ -12143,6 +12199,8 @@
 - TCP Tuning
 - TCP Tunneling
 - TCP Wrappers
+- TCP_CRR
+- TCP_RR
 - TCP/IP
 - Tcpdump
 - TCPRoute
@@ -13414,6 +13472,7 @@
 - Website Search
 - WebSocket
 - WebSocket alternative
+- Weekly Meeting
 - Weight
 - Weighted
 - Weighted Load Balancing

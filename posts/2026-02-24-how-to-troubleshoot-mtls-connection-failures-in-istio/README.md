@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Troubleshooting, Debugging, Kubernetes
+Tags: Istio, mTLS, Troubleshooting, Debugging, Kubernetes
 
 Description: A systematic guide to diagnosing and fixing mutual TLS connection failures in Istio including certificate errors, policy mismatches, and proxy issues.
 

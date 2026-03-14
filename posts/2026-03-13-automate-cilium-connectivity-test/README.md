@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
+Tags: Cilium, Kubernetes, Connectivity, Testing, eBPF
 
 Description: Learn how to automate Cilium's built-in connectivity test suite in your CI/CD pipeline to continuously validate network policy enforcement and pod-to-pod connectivity after cluster changes.
 

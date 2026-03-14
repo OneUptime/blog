@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cilium, Service Mesh, GitOps, Kubernetes, EBPF, Networking
+Tags: Flux CD, Cilium, Service Mesh, GitOps, Kubernetes, eBPF, Networking
 
 Description: Learn how to deploy and configure Cilium service mesh on Kubernetes using Flux CD for eBPF-powered networking and security.
 

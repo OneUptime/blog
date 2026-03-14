@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Security, Service Mesh, Zero Trust
+Tags: Istio, mTLS, Security, Service Mesh, Zero Trust
 
 Description: A practical walkthrough for setting up mutual TLS between services in Istio, from permissive mode to strict enforcement with troubleshooting tips.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A deep dive into Cilium's default cluster-pool IPAM mode, including how the Operator allocates per-node CIDRs from a cluster-wide pool, configuration options, troubleshooting allocation issues,...
 

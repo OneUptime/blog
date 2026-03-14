@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to configure Cilium to handle unmanaged pods-those not yet part of Cilium's endpoint management-during migrations and in mixed CNI environments.
 

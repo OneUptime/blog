@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Health Checks, Service Readiness
+Tags: Docker, Docker Compose, Health Check, Service Readiness
 
 Description: Learn to implement health checks in Docker Compose with test commands, intervals, and dependency conditions for reliable service startup.
 

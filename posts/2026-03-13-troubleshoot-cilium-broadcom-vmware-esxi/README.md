@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: A troubleshooting guide for diagnosing and resolving issues when running Cilium on Kubernetes clusters deployed on Broadcom VMware ESXi hypervisor infrastructure.
 

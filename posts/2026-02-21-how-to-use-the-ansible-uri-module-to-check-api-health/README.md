@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Health Checks, API Monitoring, Uri Module
+Tags: Ansible, Health Check, API Monitoring, Uri Module
 
 Description: Build reliable API health checks in Ansible using the uri module with retries, response validation, and alerting patterns.
 

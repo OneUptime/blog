@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A guide to configuring Azure CNI Delegated IPAM with Cilium on AKS, giving Cilium control over pod IP address management while retaining Azure VNet integration.
 

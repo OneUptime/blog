@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Bootstrap, Etcd, Cluster Initialization
+Tags: Talos Linux, Kubernetes, Bootstrap, etcd, Cluster Initialization
 
 Description: Understand the Kubernetes bootstrap process on Talos Linux, including when to run it and how to troubleshoot common issues.
 

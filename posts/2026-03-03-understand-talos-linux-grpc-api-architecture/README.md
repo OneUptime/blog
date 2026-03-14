@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, GRPC, API Architecture, Security, Infrastructure
+Tags: Talos Linux, gRPC, API Architecture, Security, Infrastructure
 
 Description: A technical deep dive into the gRPC API that powers all management operations in Talos Linux.
 

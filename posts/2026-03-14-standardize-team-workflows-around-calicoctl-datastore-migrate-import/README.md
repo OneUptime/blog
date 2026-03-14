@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore Migration, Team Workflows, Best Practices
+Tags: Calico, Calicoctl, Datastore Migration, Team Workflows, Best Practices
 
 Description: Establish team-wide procedures for Calico datastore migration operations using calicoctl datastore migrate import with proper planning, execution, and verification.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Configuration, Datastore
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Configuration, Datastore
 
 Description: Understand and configure the etcdv3 key paths used by Calico to store network policy, IPAM, and host configuration data in your Kubernetes cluster.
 

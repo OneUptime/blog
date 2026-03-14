@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, TLS Modes, DestinationRule, Security
+Tags: Istio, mTLS, TLS Modes, DestinationRule, Security
 
 Description: A clear explanation of the difference between MUTUAL and ISTIO_MUTUAL TLS modes in Istio DestinationRules and when to use each one.
 

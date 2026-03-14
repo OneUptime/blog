@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Documentation, Operations
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Documentation, Operations
 
 Description: A guide to creating comprehensive operational documentation for Calico etcd TLS certificate generation and lifecycle management to support operator workflows.
 

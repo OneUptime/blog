@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Community, Meetings, Open Source, Collaboration
+Tags: Cilium, Community, Meeting, Open Source, Collaboration
 
 Description: Participate effectively in Cilium community meetings to stay informed, contribute ideas, and connect with other Cilium users and developers.
 
@@ -34,7 +34,7 @@ Community meeting details are published on:
 
 ### Meeting Schedule
 
-```
+```text
 Weekly Community Meeting: Every Wednesday
 Monthly APAC Meeting: First Thursday of each month
 SIG Meetings: Varies by SIG

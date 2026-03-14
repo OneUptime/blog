@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Monitoring, Troubleshooting
+Tags: Calico, Kubernetes, Networking, eBPF, Monitoring, Troubleshooting
 
 Description: Set up proactive monitoring to automatically detect Calico eBPF issues before they require manual troubleshooting, reducing incident response time.
 

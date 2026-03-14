@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, K0s, EBPF
+Tags: Cilium, Kubernetes, K0s, eBPF
 
 Description: A guide to validating Cilium on k0s clusters deployed with k0sctl, including checking k0sctl cluster configuration, Cilium installation via addons, and end-to-end connectivity testing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to configure Cilium metrics collection, scrape them with Prometheus, troubleshoot missing metrics, and build comprehensive dashboards for Cilium networking observability.
 

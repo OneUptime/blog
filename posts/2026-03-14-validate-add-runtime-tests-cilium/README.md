@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Validation, Runtime Tests, Integration Testing
 
-Description: Validate that runtime integration tests for Cilium L7 parsers provide meaningful security coverage by verifying test isolation, policy enforcement accuracy, and end-to-end observability in live cluster environments.
+Description: Validate that runtime integration tests for Cilium L7 parsers provide meaningful security coverage by verifying test isolation, policy enforcement accuracy, and end-to-end observability in live...
 
 ---
 

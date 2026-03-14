@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, Networking, Performance
+Tags: Calico, Kubernetes, eBPF, Networking, Performance
 
 Description: Optimize Calico eBPF native routing for production performance by tuning BPF map sizes, enabling host-bypass, and configuring DSR.
 

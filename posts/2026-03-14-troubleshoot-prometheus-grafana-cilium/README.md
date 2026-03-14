@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Observability, Prometheus, Grafana, Troubleshooting, Monitoring
 
-Description: Diagnose and resolve common issues with Prometheus metric collection and Grafana dashboard visualization for Cilium and Hubble observability, including scrape failures, missing metrics, and broken dashboards.
+Description: Diagnose and resolve common issues with Prometheus metric collection and Grafana dashboard visualization for Cilium and Hubble observability, including scrape failures, missing metrics, and broken...
 
 ---
 

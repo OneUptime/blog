@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, CEL, Prometheus, Monitoring, Health Checks
+Tags: Flux, GitOps, Kubernetes, CEL, Prometheus, Monitoring, Health Check
 
 Description: Learn how to use CEL expressions in Flux to evaluate Prometheus Operator custom resource health for reliable monitoring infrastructure deployments.
 

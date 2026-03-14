@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, ServiceMesh, LoadBalancing, TrafficManagement, MTLS
+Tags: Istio, Kubernetes, ServiceMesh, LoadBalancing, TrafficManagement, mTLS
 
 Description: Master advanced traffic policies, load balancing algorithms, and mutual TLS configuration using Istio DestinationRule for production service mesh deployments.
 

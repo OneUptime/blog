@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Load Balancing, Health Checks, Kubernetes, Outlier Detection
+Tags: Istio, Load Balancing, Health Check, Kubernetes, Outlier Detection
 
 Description: Configure health-based load balancing in Istio to automatically route traffic away from unhealthy pods using outlier detection.
 

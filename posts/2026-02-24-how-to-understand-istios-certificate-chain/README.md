@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, TLS, MTLS, Security
+Tags: Istio, Certificates, TLS, mTLS, Security
 
 Description: A practical guide to understanding the certificate chain in Istio including root CAs, intermediate CAs, and workload certificates.
 

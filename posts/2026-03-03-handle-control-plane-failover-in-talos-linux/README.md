@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Control Plane, Failover, High Availability, Kubernetes, Etcd
+Tags: Talos Linux, Control Plane, Failover, High Availability, Kubernetes, etcd
 
 Description: Understand and manage control plane failover in Talos Linux clusters, including etcd leader election, API server failover, and recovery procedures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Bridge Network, Host network, Container Networking, Docker Compose
+Tags: Docker, Networking, Bridge Network, Host Network, Container Networking, Docker Compose
 
 Description: Understand Docker bridge and host networking modes with practical examples and performance benchmarks
 

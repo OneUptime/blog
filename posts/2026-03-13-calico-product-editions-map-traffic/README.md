@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, CNI, Networking, Traffic Flows, Network Policy, EBPF
+Tags: Calico, Kubernetes, CNI, Networking, Traffic Flows, Network Policy, eBPF
 
 Description: Apply your knowledge of Calico editions to real Kubernetes traffic scenarios, understanding what each edition can observe, control, and report on for actual cluster traffic flows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Retry Policies, Per-Attempt Metrics
+Tags: OpenTelemetry, gRPC, Retry Policies, Per-Attempt Metrics
 
 Description: Track gRPC retry policies and per-attempt metrics with OpenTelemetry to understand retry behavior and spot failing backends.
 

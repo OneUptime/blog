@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Audit, Error Injection, Security Review
 
-Description: A structured security audit of error response injection in Cilium L7 parsers, examining information leakage, amplification risks, format correctness, and injection timing for compliance with security best practices.
+Description: A structured security audit of error response injection in Cilium L7 parsers, examining information leakage, amplification risks, format correctness, and injection timing for compliance with...
 
 ---
 

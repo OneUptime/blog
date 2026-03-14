@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Service Discovery, Microservices, Health Checks, Load Balancing, Distributed Systems
+Tags: Redis, Service Discovery, Microservices, Health Check, Load Balancing, Distributed Systems
 
 Description: A comprehensive guide to implementing lightweight service discovery patterns with Redis for microservices architectures, including service registration, health checks, and load balancing.
 

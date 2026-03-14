@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, NAT, Networking, Iptables, Kubernetes, Network Configuration, Firewall
+Tags: Talos Linux, NAT, Networking, iptables, Kubernetes, Network Configuration, Firewall
 
 Description: Learn how to configure Network Address Translation (NAT) on Talos Linux nodes for outbound connectivity and network routing.
 

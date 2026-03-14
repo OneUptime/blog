@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
+Tags: Cilium, Kubernetes, Connectivity, Testing, eBPF
 
 Description: Learn how to run Cilium's built-in connectivity test suite to validate network policy enforcement, pod-to-pod communication, external access, and DNS resolution after installation or upgrades.
 

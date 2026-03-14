@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, VPC, Endpoints, Cost Optimization, Networking, Data Transfer
+Tags: AWS, VPC, Endpoint, Cost Optimization, Networking, Data Transfer
 
 Description: Learn how to reduce AWS data transfer costs by using VPC endpoints to keep traffic within the AWS network instead of routing through the internet.
 

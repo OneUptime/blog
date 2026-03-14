@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, VMware, NSX, EBPF
+Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
 Description: A practical guide to validating Cilium CNI on Kubernetes clusters running on Broadcom VMware ESXi, covering eBPF compatibility, networking requirements, and connectivity validation.
 

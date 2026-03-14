@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Microservices, Service Communication, Security
+Tags: Istio, mTLS, Microservices, Service Communication, Security
 
 Description: A practical guide to enabling encrypted and authenticated service-to-service communication using mutual TLS in an Istio service mesh.
 

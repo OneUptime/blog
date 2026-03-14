@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, REST, GraphQL, Performance Benchmarking
+Tags: OpenTelemetry, gRPC, REST, GraphQL, Performance Benchmarking
 
 Description: Benchmark and compare gRPC, REST, and GraphQL API performance using OpenTelemetry traces and metrics for data-driven protocol selection.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, RKE, Rancher, EBPF
+Tags: Cilium, Kubernetes, RKE, Rancher, eBPF
 
 Description: Learn how to validate and troubleshoot Cilium installation requirements on Rancher Kubernetes Engine (RKE), covering Canal CNI replacement, node OS requirements, and RKE2 differences.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Security, Kubernetes, Service Mesh
+Tags: Istio, mTLS, Security, Kubernetes, Service Mesh
 
 Description: How to configure mTLS in Istio after installation including enabling strict mode, disabling for specific services, and troubleshooting mTLS issues.
 

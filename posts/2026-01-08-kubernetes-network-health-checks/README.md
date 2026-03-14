@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, GRPC, Networking, DevOps, Reliability, Monitoring, Troubleshooting
+Tags: Kubernetes, Health Check, gRPC, Networking, DevOps, Reliability, Monitoring, Troubleshooting
 
 Description: A comprehensive guide to implementing liveness, readiness, and startup probes for network services in Kubernetes, covering TCP, HTTP, gRPC, and exec health checks.
 

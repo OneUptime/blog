@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Envoy, GRPC, Load Balancing, Microservices
+Tags: RHEL, Envoy, gRPC, Load Balancing, Microservices
 
 Description: Learn how to configure Envoy on RHEL to load balance gRPC traffic across multiple backend services with HTTP/2 support.
 

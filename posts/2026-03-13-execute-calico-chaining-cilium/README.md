@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: Learn how to chain Cilium onto an existing Calico CNI deployment to augment it with eBPF-based observability and L7 policy enforcement as an intermediate migration step before fully replacing Calico.
 

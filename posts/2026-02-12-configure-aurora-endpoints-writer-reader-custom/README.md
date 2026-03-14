@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Aurora, Database, Endpoints, RDS
+Tags: AWS, Aurora, Database, Endpoint, RDS
 
 Description: Understand and configure Aurora cluster endpoints including writer, reader, and custom endpoints to optimize read/write routing and application performance.
 

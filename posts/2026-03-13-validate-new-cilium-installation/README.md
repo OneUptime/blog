@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to validate a fresh Cilium installation in Kubernetes by running connectivity tests and checking component health to ensure your CNI is functioning correctly.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cilium, Network Policies, Security, EBPF, L7 Policies, Zero Trust, Networking
+Tags: Kubernetes, Cilium, Network Policies, Security, eBPF, L7 Policies, Zero Trust, Networking
 
 Description: A comprehensive guide to implementing advanced network security in Kubernetes using Cilium Network Policies, covering L3/L4 policies, L7 HTTP filtering, endpoint selectors.
 

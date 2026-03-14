@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Monitoring, Prometheus, Performance, Observability, Control Plane
+Tags: Kubernetes, etcd, Monitoring, Prometheus, Performance, Observability, Control Plane
 
 Description: Learn how to monitor etcd cluster health, performance metrics, and set up alerts for the critical Kubernetes data store to ensure cluster reliability.
 

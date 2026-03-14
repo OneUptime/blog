@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Endpoints, CRD
+Tags: Cilium, Kubernetes, Networking, Endpoint, CRD
 
 Description: Learn how to configure and manage CiliumEndpoint custom resources to control endpoint identity, networking, and policy enforcement in Cilium-managed Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Performance, GRPC, HTTP, OTLP, Network Optimization
+Tags: OpenTelemetry, Performance, gRPC, HTTP, OTLP, Network Optimization
 
 Description: Compare gRPC and HTTP protocols for OTLP export and learn how to choose and optimize the right protocol for your OpenTelemetry deployment based on performance requirements.
 

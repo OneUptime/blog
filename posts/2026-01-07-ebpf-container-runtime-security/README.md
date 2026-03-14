@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Containers, Security, Runtime Security, Linux, Kubernetes
+Tags: eBPF, Containers, Security, Runtime Security, Linux, Kubernetes
 
 Description: Learn how to use eBPF for container runtime security monitoring and enforcement.
 

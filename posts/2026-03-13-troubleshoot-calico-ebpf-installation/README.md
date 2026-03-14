@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Installation
+Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Installation
 
 Description: Diagnose and resolve installation failures specific to Calico eBPF, including pre-installation prerequisite issues, configuration errors, and first-boot failures.
 

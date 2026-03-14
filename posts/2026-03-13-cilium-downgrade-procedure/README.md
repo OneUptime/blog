@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn the safe procedure for downgrading Cilium to a previous version when an upgrade introduces regressions, including rollback steps, troubleshooting guidance, and post-downgrade validation.
 

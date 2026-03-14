@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, EBPF, Networking, Monitoring, Observability
+Tags: Ubuntu, eBPF, Networking, Monitoring, Observability
 
 Description: Learn how to use eBPF for network monitoring on Ubuntu, covering packet inspection, connection tracking, bandwidth accounting, and practical tools like BCC and bpftrace.
 

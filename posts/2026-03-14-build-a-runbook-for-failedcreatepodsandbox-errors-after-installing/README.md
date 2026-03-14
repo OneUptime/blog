@@ -46,7 +46,7 @@ kubectl get pods -n calico-system --sort-by='.status.startTime' \
 
 Document the scope in your incident:
 
-```
+```text
 # Decision Point 1: Scope
 # - All nodes affected → Likely a cluster-wide CNI configuration issue
 # - Single node affected → Likely a node-specific CNI binary or config issue
@@ -83,7 +83,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node \
 
 Decision tree:
 
-```
+```text
 # Decision Point 2: CNI Status
 # - CNI binaries missing → calico-node init container failed, check init logs
 # - CNI config missing → calico-node has not started successfully

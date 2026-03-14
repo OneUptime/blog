@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Validation, Manual Testing, Test Coverage
 
-Description: Validate that manual testing of Cilium L7 parsers is comprehensive, reproducible, and provides meaningful security assurance through structured test plans, coverage checklists, and result documentation.
+Description: Validate that manual testing of Cilium L7 parsers is comprehensive, reproducible, and provides meaningful security assurance through structured test plans, coverage checklists, and result...
 
 ---
 

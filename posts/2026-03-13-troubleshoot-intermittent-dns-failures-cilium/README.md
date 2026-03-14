@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, DNS, Troubleshooting, Network Policy, EBPF
+Tags: Cilium, Kubernetes, DNS, Troubleshooting, Network Policy, eBPF
 
 Description: Diagnose and fix intermittent DNS resolution failures in Kubernetes clusters running Cilium, including proxy race conditions, FQDN cache staleness, and UDP policy issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Team Communication, Iptables, EBPF, Packet Processing
+Tags: Calico, Kubernetes, Data Path, CNI, Team Communication, iptables, eBPF, Packet Processing
 
 Description: A practical guide for explaining how packets flow through Calico's dataplane to engineering teams, using analogies and live demonstrations to make packet processing intuitive.
 

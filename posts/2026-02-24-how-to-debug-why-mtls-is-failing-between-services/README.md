@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Security, Debugging, Kubernetes
+Tags: Istio, mTLS, Security, Debugging, Kubernetes
 
 Description: Step-by-step troubleshooting for mTLS failures between services in an Istio service mesh including certificate and configuration issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Automation, Health Checks, Rollback
+Tags: Kubernetes, Automation, Health Check, Rollback
 
 Description: Implement automated rollback mechanisms that detect health check failures during deployments and automatically revert to the last known good version, minimizing service disruptions.
 

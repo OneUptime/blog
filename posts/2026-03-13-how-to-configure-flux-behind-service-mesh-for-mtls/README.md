@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Service Mesh, MTLS, Istio, Linkerd
+Tags: Flux, Kubernetes, GitOps, Security, Network Policies, Service Mesh, mTLS, Istio, Linkerd
 
 Description: Deploy Flux controllers behind a service mesh to encrypt all inter-controller communication with mutual TLS and enforce identity-based authorization.
 

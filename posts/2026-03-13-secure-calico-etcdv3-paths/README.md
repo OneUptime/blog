@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Security, Hardening
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Security, Hardening
 
 Description: Security best practices for protecting Calico etcdv3 path data, including access controls, encryption, and preventing unauthorized modification of network policy data.
 

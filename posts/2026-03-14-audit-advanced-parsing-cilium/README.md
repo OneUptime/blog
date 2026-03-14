@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Audit, Advanced Parsing, Security Review
 
-Description: A security audit framework for advanced parsing logic in Cilium L7 parsers, covering recursion safety, encoding correctness, resource accounting, and attack surface analysis for complex protocol handlers.
+Description: A security audit framework for advanced parsing logic in Cilium L7 parsers, covering recursion safety, encoding correctness, resource accounting, and attack surface analysis for complex protocol...
 
 ---
 

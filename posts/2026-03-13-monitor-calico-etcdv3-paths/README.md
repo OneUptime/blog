@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, etcdv3, Monitoring, Observability
+Tags: Calico, Kubernetes, Networking, etcd, etcdv3, Monitoring, Observability
 
 Description: Set up monitoring for Calico etcdv3 path health to detect data inconsistencies, IPAM exhaustion, and etcd storage growth before they impact cluster networking.
 

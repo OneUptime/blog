@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, Jobs, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, Jobs, Kustomization
 
 Description: Learn how to configure custom health checks for Job resources in Flux Kustomization to ensure batch workloads complete successfully before dependent resources deploy.
 

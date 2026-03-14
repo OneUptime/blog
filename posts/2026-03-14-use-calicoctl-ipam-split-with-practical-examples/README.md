@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, IP Address Management
+Tags: Calico, Calicoctl, IPAM, Kubernetes, IP Address Management
 
 Description: Use calicoctl ipam split to divide IP blocks into smaller allocations for improved IP utilization and more granular per-node address management.
 
@@ -36,7 +36,7 @@ This divides one pool into four equally sized smaller pools. The number of split
 
 Calico allocates IP addresses from IP pools. Sometimes you need to split a larger pool into smaller pools for better management and distribution:
 
-```
+```text
 Before split: 10.244.0.0/24 (256 IPs, one pool)
 After split:  10.244.0.0/26   (64 IPs)
               10.244.0.64/26  (64 IPs)

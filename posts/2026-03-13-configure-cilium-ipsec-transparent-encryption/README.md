@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, IPsec, Encryption, Security, EBPF
+Tags: Cilium, Kubernetes, IPsec, Encryption, Security, eBPF
 
 Description: Configure Cilium's IPsec transparent encryption mode to encrypt pod-to-pod traffic using the Linux kernel's native IPsec (xfrm) framework.
 

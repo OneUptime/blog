@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Security, L7 Policy, Identity, HTTP, EBPF
+Tags: Cilium, Kubernetes, Security, L7 Policy, Identity, HTTP, eBPF
 
 Description: Implement identity-aware and HTTP-aware network policies in Cilium to enforce access control based on workload identity and HTTP request attributes.
 

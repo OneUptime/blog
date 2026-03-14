@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Troubleshooting, Kubernetes
+Tags: Calico, Calicoctl, IPAM, Troubleshooting, Kubernetes
 
 Description: Diagnose and resolve errors when configuring Calico IPAM with calicoctl ipam configure, including permission issues and configuration conflicts.
 
@@ -20,7 +20,7 @@ Errors from `calicoctl ipam configure` typically indicate permission issues, dat
 
 ## Error: Permission Denied
 
-```
+```yaml
 Error: unauthorized to modify IPAM configuration
 ```
 
@@ -43,7 +43,7 @@ EOF
 
 ## Error: Cannot Connect to Datastore
 
-```
+```text
 Failed to configure IPAM: connection refused
 ```
 
@@ -72,7 +72,7 @@ calicoctl ipam check
 
 ## Error: Invalid Flag or Option
 
-```
+```yaml
 Error: unknown flag: --blocksize
 ```
 

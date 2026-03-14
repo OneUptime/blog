@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Resource Exhausted, Rate Limiting, Performance, Microservices, Memory Management, Connection Pooling
+Tags: gRPC, Resource Exhausted, Rate Limiting, Performance, Microservices, Memory Management, Connection Pooling
 
 Description: A practical guide to diagnosing and fixing gRPC RESOURCE_EXHAUSTED errors, covering rate limiting, memory constraints, connection limits, and message size issues with code examples.
 

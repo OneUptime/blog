@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that running Cilium networking on Google Cloud (GKE) including GKE dataplane v2 integration and VPC-native routing is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that running Cilium networking on Google Cloud (GKE) including GKE dataplane v2 integration and VPC-native routing is correctly configured and functioning as expected in...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: A complete guide to deploying Cilium in Kubernetes clusters covering installation methods, deployment topologies, common deployment issues, validation procedures, and production monitoring.
 

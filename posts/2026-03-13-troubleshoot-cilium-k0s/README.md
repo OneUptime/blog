@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, K0s, EBPF
+Tags: Cilium, Kubernetes, K0s, eBPF
 
 Description: A guide to diagnosing and resolving Cilium networking issues on k0s Kubernetes clusters, covering k0s-specific CNI configuration and common failure modes.
 

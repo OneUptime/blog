@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Controllers, Troubleshooting, Kubernetes, Debugging
+Tags: Cilium, Controller, Troubleshooting, Kubernetes, Debugging
 
 Description: A hands-on guide to diagnosing and resolving Cilium controller failures, including common error patterns, log analysis techniques, and recovery procedures.
 

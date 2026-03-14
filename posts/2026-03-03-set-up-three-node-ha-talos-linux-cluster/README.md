@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, High Availability, Cluster Setup, Etcd
+Tags: Talos Linux, Kubernetes, High Availability, Cluster Setup, etcd
 
 Description: Build a highly available Kubernetes cluster with three Talos Linux control plane nodes and automatic failover.
 

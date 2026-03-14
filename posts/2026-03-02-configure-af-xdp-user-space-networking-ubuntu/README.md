@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, AF_XDP, Networking, EBPF, High Performance
+Tags: Ubuntu, AF_XDP, Networking, eBPF, High Performance
 
 Description: Configure AF_XDP sockets on Ubuntu to move packet processing into user space with near-kernel-bypass performance, enabling custom high-speed networking applications.
 

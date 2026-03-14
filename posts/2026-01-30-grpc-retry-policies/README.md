@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Retry, Resilience, Microservices, Networking
+Tags: gRPC, Retry, Resilience, Microservices, Networking
 
 Description: Configure gRPC retry policies with exponential backoff, hedging, and circuit breaking for resilient service-to-service communication.
 

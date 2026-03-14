@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Team Workflows, Monitoring, Best Practices
+Tags: Calico, Calicoctl, BGP, Team Workflows, Monitoring, Best Practices
 
 Description: Establish team-wide practices for using calicoctl node status as part of operational runbooks, incident response, and regular health monitoring.
 
@@ -86,7 +86,7 @@ fi
 Run on affected node:
 ```
 sudo calicoctl node status
-```
+```text
 
 ### Step 2: Classify
 - All peers down: CRITICAL - likely node or Calico process issue
@@ -98,7 +98,7 @@ For each down peer:
 ```
 ping <peer-ip>
 nc -zv <peer-ip> 179
-```
+```text
 
 ### Step 4: Remediate
 - Process not running: restart calico-node pod
@@ -110,7 +110,7 @@ nc -zv <peer-ip> 179
 ```
 sudo calicoctl node status
 kubectl run test --image=busybox --rm -it -- ping -c 3 <cross-node-pod-ip>
-```
+```text
 
 ### Step 6: Document
 Record incident details, root cause, and resolution.

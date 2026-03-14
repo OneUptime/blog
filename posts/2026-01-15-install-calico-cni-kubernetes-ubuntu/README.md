@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Calico, CNI, Networking, Ubuntu, Network Policies, BGP, EBPF, Security, DevOps
+Tags: Kubernetes, Calico, CNI, Networking, Ubuntu, Network Policies, BGP, eBPF, Security, DevOps
 
 Description: A comprehensive guide to installing, configuring, and managing Calico CNI on Ubuntu Kubernetes clusters, covering network policies, BGP peering, eBPF dataplane, and troubleshooting.
 

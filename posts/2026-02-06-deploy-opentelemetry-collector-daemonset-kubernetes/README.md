@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Kubernetes, DaemonSets, Deployments
+Tags: OpenTelemetry, Collector, Kubernetes, DaemonSet, Deployments
 
 Description: Complete guide to deploying the OpenTelemetry Collector as a DaemonSet in Kubernetes for node-level telemetry collection and processing.
 

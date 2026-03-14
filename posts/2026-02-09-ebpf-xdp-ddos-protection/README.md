@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: EBPF, XDP, Security, DDoS, Networking
+Tags: eBPF, XDP, Security, DDoS, Networking
 
 Description: Implement eBPF XDP programs for high-performance DDoS protection at the network edge including rate limiting, packet filtering, SYN flood protection.
 

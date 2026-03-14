@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BCC, EBPF, Tracing, Performance
+Tags: RHEL, BCC, eBPF, Tracing, Performance
 
 Description: Use BCC (BPF Compiler Collection) tools on RHEL for advanced system tracing, performance analysis, and debugging with pre-built eBPF-based utilities.
 

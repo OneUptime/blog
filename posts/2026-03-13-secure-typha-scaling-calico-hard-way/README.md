@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Typha, Security, MTLS, TLS, CNI, Networking, RBAC
+Tags: Calico, Kubernetes, Typha, Security, mTLS, TLS, CNI, Networking, RBAC
 
 Description: Harden Calico Typha by enabling mutual TLS between Felix and Typha, restricting who can scale the Typha Deployment via RBAC, and auditing all scaling events - all in a manifest-based Calico...
 

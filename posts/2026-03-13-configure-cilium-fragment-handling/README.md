@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
+Tags: Cilium, Kubernetes, Networking, Fragmentation, eBPF
 
 Description: Learn how to configure Cilium's IP fragment handling and MTU settings to prevent packet loss and connectivity issues in environments where fragmentation occurs.
 

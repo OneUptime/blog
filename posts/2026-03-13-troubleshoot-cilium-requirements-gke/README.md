@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, GKE, Google Cloud, EBPF
+Tags: Cilium, Kubernetes, GKE, Google Cloud, eBPF
 
 Description: Learn how to validate and troubleshoot Cilium installation requirements on GKE, including node image compatibility, network policy migration, and Dataplane V2 conflicts.
 

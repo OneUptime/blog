@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: A guide to reviewing and updating Cilium's system and cluster requirements on Amazon EKS, covering node group OS versions, kernel compatibility, and AWS-specific networking prerequisites.
 

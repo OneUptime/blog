@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, EBPF, Networking, Performance, Latency, Linux
+Tags: RHEL, eBPF, Networking, Performance, Latency, Linux
 
 Description: Learn how to use eBPF tools and custom programs to profile and analyze network latency on RHEL, identifying bottlenecks at the kernel level.
 

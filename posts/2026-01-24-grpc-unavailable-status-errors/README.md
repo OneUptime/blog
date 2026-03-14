@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GRPC, Troubleshooting, Distributed Systems, Microservices, DevOps
+Tags: gRPC, Troubleshooting, Distributed Systems, Microservices, DevOps
 
 Description: Learn how to diagnose and fix gRPC UNAVAILABLE status errors caused by connection issues, server overload, and network problems.
 

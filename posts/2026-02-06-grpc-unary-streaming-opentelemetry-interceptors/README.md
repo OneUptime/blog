@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Interceptors, Distributed Tracing
+Tags: OpenTelemetry, gRPC, Interceptors, Distributed Tracing
 
 Description: Instrument gRPC unary and streaming calls across Go, Java, and Python using OpenTelemetry interceptors for full trace visibility.
 

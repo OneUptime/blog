@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Consul, Service Mesh, Consul Connect, MTLS, Microservices, Security
+Tags: Consul, Service Mesh, Consul Connect, mTLS, Microservices, Security
 
 Description: Learn how to implement Consul Connect for secure service-to-service communication with automatic mTLS, traffic management, and zero-trust networking in your microservices architecture.
 

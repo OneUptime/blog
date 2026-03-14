@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, EBPF, Profiling, Production
+Tags: OpenTelemetry, eBPF, Profiling, Production
 
 Description: Configure eBPF-based profiling for production environments with under 1% CPU overhead using tuned settings.
 

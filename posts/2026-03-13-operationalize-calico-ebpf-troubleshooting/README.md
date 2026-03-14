@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Troubleshooting, Operations
+Tags: Calico, Kubernetes, Networking, eBPF, Troubleshooting, Operations
 
 Description: Build sustainable operational processes for Calico eBPF troubleshooting including runbooks, on-call training, and post-incident learning workflows.
 

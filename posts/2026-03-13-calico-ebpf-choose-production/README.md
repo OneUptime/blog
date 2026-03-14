@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, CNI, Production, Decision Framework, Iptables, Performance
+Tags: Calico, Kubernetes, eBPF, CNI, Production, Decision Framework, iptables, Performance
 
 Description: A structured decision framework for choosing between Calico's eBPF and iptables dataplanes for production Kubernetes deployments.
 

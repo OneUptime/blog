@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Consul, Service Mesh, HashiCorp, Kubernetes, MTLS
+Tags: Talos Linux, Consul, Service Mesh, HashiCorp, Kubernetes, mTLS
 
 Description: Step-by-step instructions for deploying HashiCorp Consul Connect as a service mesh on Talos Linux for secure service-to-service communication.
 

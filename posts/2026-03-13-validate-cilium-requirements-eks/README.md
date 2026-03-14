@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, EKS, AWS, EBPF
+Tags: Cilium, Kubernetes, EKS, AWS, eBPF
 
 Description: A comprehensive guide to validating that your Amazon EKS cluster meets all requirements for running Cilium, including Kubernetes version, node OS, IAM permissions, and VPC configuration.
 

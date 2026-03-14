@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Node, Validation, BGP, Kubernetes
+Tags: Calico, Calicoctl, Node, Validation, BGP, Kubernetes
 
 Description: Comprehensive validation procedures to confirm that calicoctl node run started the Calico node correctly, with BGP peering, Felix operation, and datastore connectivity verified.
 
@@ -60,7 +60,7 @@ sudo calicoctl node status
 
 Expected output for a healthy node:
 
-```
+```text
 Calico process is running.
 
 IPv4 BGP status
@@ -198,7 +198,7 @@ sudo ./validate-calico-node.sh
 
 Expected output:
 
-```
+```yaml
 === Calico Node Validation ===
 Host: worker-01
 Date: 2026-03-14 10:30:00

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Security
+Tags: Calico, Kubernetes, Networking, eBPF, Security
 
 Description: Apply security hardening for Calico eBPF mode, covering BPF program access controls, kernel security settings, and eBPF-specific threat mitigations.
 

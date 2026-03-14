@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, CEL, Crossplane, Health Checks, Infrastructure
+Tags: Flux, GitOps, Kubernetes, CEL, Crossplane, Health Check, Infrastructure
 
 Description: Learn how to use CEL expressions in Flux to evaluate Crossplane managed resource health, ensuring cloud infrastructure is provisioned before dependent workloads deploy.
 

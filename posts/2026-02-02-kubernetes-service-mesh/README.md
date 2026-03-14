@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service Mesh, Istio, Linkerd, MTLS, Traffic Management, Observability, Microservices
+Tags: Kubernetes, Service Mesh, Istio, Linkerd, mTLS, Traffic Management, Observability, Microservices
 
 Description: A hands-on guide to implementing a Kubernetes service mesh from scratch, covering architecture decisions, installation, traffic policies, security configuration, and production monitoring.
 

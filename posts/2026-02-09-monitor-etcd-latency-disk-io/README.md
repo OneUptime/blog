@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, Monitoring, Performance
+Tags: Kubernetes, etcd, Monitoring, Performance
 
 Description: Learn how to monitor etcd latency and disk IO metrics to ensure Kubernetes cluster health, identify performance bottlenecks, and prevent control plane degradation.
 

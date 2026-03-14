@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, EBPF, Installation, Monitoring
+Tags: Calico, Kubernetes, Networking, eBPF, Installation, Monitoring
 
 Description: Set up monitoring during and immediately after Calico eBPF installation to detect installation failures, track node readiness progress, and establish performance baselines.
 

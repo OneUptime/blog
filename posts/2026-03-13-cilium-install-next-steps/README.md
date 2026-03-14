@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A guide to the essential next steps after a successful Cilium installation, covering connectivity validation, Hubble setup, network policy deployment, and monitoring integration.
 

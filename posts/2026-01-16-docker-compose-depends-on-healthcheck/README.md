@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Health Checks, DevOps, Reliability
+Tags: Docker, Docker Compose, Health Check, DevOps, Reliability
 
 Description: Learn how to properly configure service dependencies in Docker Compose using depends_on with health checks to ensure services start in the correct order and only when dependencies are truly ready.
 

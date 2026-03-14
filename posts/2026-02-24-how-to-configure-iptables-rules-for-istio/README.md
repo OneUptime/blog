@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Iptables, Networking, Kubernetes, Traffic Management
+Tags: Istio, iptables, Networking, Kubernetes, Traffic Management
 
 Description: Learn how to configure and customize iptables rules that Istio uses for transparent traffic redirection in Kubernetes pods.
 

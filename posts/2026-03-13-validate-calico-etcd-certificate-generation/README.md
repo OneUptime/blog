@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, TLS, Certificates, Validation
+Tags: Calico, Kubernetes, Networking, etcd, TLS, Certificates, Validation
 
 Description: How to validate that Calico etcd TLS certificates are correctly generated, have the right extensions, and are properly trusted for mutual TLS authentication.
 

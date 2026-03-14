@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Service Mesh, Envoy, EBPF
+Tags: Cilium, Kubernetes, Service Mesh, Envoy, eBPF
 
 Description: Understand how Cilium injects and manages a per-node Envoy proxy for L7 policy enforcement, contrasting with per-pod sidecar injection used by traditional service meshes.
 

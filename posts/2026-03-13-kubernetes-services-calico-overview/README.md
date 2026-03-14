@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Networking, Kube-proxy, EBPF, ClusterIP
+Tags: Calico, Kubernetes, Services, CNI, Networking, Kube-proxy, eBPF, ClusterIP
 
 Description: A comprehensive guide to how Calico integrates with Kubernetes Services, covering ClusterIP routing, kube-proxy replacement, and service policy enforcement.
 

@@ -1,4 +1,4 @@
-# How to Troubleshoot Argo CD show resources permanently out-of-sync in Cilium configuration
+# How to Troubleshoot Argo CD show resources permanently out-of-sync
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

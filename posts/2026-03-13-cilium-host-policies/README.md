@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Network Policy, Host Networking, EBPF
+Tags: Cilium, Kubernetes, Network Policy, Host Networking, eBPF
 
 Description: Secure Kubernetes node networking with Cilium Host Policies that control traffic to and from node processes, including kubelet, SSH, and system services outside of pod namespaces.
 

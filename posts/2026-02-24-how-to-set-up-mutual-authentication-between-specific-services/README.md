@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, Mutual Authentication, PeerAuthentication, Security
+Tags: Istio, mTLS, Mutual Authentication, PeerAuthentication, Security
 
 Description: Configure mutual TLS authentication between specific services in Istio using PeerAuthentication and DestinationRule for targeted mTLS enforcement.
 

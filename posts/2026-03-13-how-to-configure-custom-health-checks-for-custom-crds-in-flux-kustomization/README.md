@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, CRD, Custom Resources, Kustomization
+Tags: Flux, GitOps, Kubernetes, Health Check, CRD, Custom Resources, Kustomization
 
 Description: Learn how to configure custom health checks for Custom Resource Definitions and custom resources in Flux Kustomization using CEL expressions and status conditions.
 

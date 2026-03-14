@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Troubleshooting, calicoctl, Network Policy
+Tags: Calico, Kubernetes, Troubleshooting, Calicoctl, Network Policy
 
 Description: A systematic guide to diagnosing and fixing common calicoctl patch errors including merge conflicts, invalid field paths, resource not found, and permission issues.
 

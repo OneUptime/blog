@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Python, GRPC, Services, Tracing, Monitoring
+Tags: OpenTelemetry, Python, gRPC, Services, Tracing, Monitoring
 
 Description: Comprehensive guide to instrumenting Python gRPC services with OpenTelemetry for distributed tracing, monitoring, and observability in microservices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Node Cleanup, Cluster Management, Kubernetes, Etcd
+Tags: Talos Linux, Node Cleanup, Cluster Management, Kubernetes, etcd
 
 Description: A thorough guide to cleaning up all resources and state after removing a Talos Linux node from a Kubernetes cluster to prevent orphaned objects.
 

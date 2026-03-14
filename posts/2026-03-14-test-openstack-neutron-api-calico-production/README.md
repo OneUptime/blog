@@ -1,4 +1,4 @@
-# How to Test OpenStack Neutron API Integration with Calico in Production-Like Environments
+# How to Test OpenStack Neutron API Integration with Calico
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

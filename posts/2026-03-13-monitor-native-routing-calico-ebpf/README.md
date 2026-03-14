@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, EBPF, Native Routing, Kubernetes, Networking, Monitoring, Performance
+Tags: Calico, eBPF, Native Routing, Kubernetes, Networking, Monitoring, Performance
 
 Description: Learn how to monitor Calico in native routing mode with the eBPF data plane, including route health verification, eBPF program monitoring, and performance metrics for overlay-free pod networking.
 

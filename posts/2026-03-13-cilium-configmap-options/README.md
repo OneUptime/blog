@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: An in-depth reference guide for Cilium's ConfigMap options, explaining each key configuration parameter, how to set them correctly, troubleshoot misconfigurations, and monitor their effects.
 

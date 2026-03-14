@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Prometheus, Monitoring, Kubernetes, Grafana
+Tags: Talos Linux, etcd, Prometheus, Monitoring, Kubernetes, Grafana
 
 Description: A complete guide to monitoring etcd health and performance using Prometheus on Talos Linux Kubernetes clusters.
 

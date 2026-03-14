@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Kubernetes, GRPC, Istio, Progressive Delivery
+Tags: Flagger, Canary, Kubernetes, gRPC, Istio, Progressive Delivery
 
 Description: Learn how to configure Flagger for progressive canary deployments of gRPC services using Istio for traffic management and analysis.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GRPC, Custom Interceptors, Span Attributes
+Tags: OpenTelemetry, gRPC, Custom Interceptors, Span Attributes
 
 Description: Build custom gRPC interceptors that add business-specific span attributes and filter out noisy RPCs from your OpenTelemetry traces.
 

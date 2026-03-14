@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Load Testing, Ghz, GRPC, Kubernetes, Progressive Delivery, Traffic Generation
+Tags: Flagger, Canary, Load Testing, Ghz, gRPC, Kubernetes, Progressive Delivery, Traffic Generation
 
 Description: Learn how to configure Flagger's load tester with the ghz gRPC load generator to produce traffic for gRPC canary analysis.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, GRPC, Load Balancing, Service Mesh, Ingresses, Performance, Microservices
+Tags: Kubernetes, gRPC, Load Balancing, Service Mesh, Ingresses, Performance, Microservices
 
 Description: Learn how to properly configure gRPC load balancing in Kubernetes using headless services, client-side balancing, service mesh, and ingress controllers.
 

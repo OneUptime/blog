@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, EBPF
+Tags: Cilium, Kubernetes, Alibaba Cloud, ENI, eBPF
 
 Description: Guide to installing Cilium on Alibaba Cloud Kubernetes clusters using ENI (Elastic Network Interface) for native cloud networking with eBPF security.
 

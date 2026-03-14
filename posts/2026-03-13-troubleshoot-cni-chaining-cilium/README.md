@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, CNI Chaining, Migration, EBPF
+Tags: Cilium, Kubernetes, CNI Chaining, Migration, eBPF
 
 Description: A practical guide to troubleshooting CNI chaining configurations with Cilium, covering common failure modes when chaining with AWS VPC CNI, Flannel, or other plugins.
 

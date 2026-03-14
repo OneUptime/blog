@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: A guide to diagnosing and resolving common Cilium requirement issues on Azure Kubernetes Service, from kernel version problems to network plugin conflicts.
 

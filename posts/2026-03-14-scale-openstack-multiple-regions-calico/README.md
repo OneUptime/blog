@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Multi-Region, Scaling, Networking
 
-Description: Strategies for scaling Calico networking across multiple OpenStack regions, covering route reflector hierarchies, cross-region policy synchronization, and performance optimization for large multi-region deployments.
+Description: Strategies for scaling Calico networking across multiple OpenStack regions, covering route reflector hierarchies, cross-region policy synchronization, and performance optimization for large...
 
 ---
 

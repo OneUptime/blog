@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Proxyless, XDS, Kubernetes, Service Mesh
+Tags: Istio, gRPC, Proxyless, XDS, Kubernetes, Service Mesh
 
 Description: How to use gRPC proxyless service mesh with Istio to get service mesh features without the sidecar proxy overhead for gRPC services.
 

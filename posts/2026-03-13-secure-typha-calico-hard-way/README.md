@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Typha, Kubernetes, Networking, Security, TLS, MTLS, Hard Way
+Tags: Calico, Typha, Kubernetes, Networking, Security, TLS, mTLS, Hard Way
 
 Description: A guide to securing Typha with mTLS, RBAC, network policies, and certificate rotation in a manually installed Calico cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, TLS, Security, Service Mesh
+Tags: Istio, gRPC, TLS, Security, Service Mesh
 
 Description: How to properly configure TLS for gRPC services running in Istio including mTLS, gateway configuration, and troubleshooting gRPC-specific TLS issues.
 

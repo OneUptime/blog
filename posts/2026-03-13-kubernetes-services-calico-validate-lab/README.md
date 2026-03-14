@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Lab, Testing, Validation, Kube-proxy, EBPF
+Tags: Calico, Kubernetes, Services, CNI, Lab, Testing, Validation, Kube-proxy, eBPF
 
 Description: Step-by-step validation tests for Kubernetes service connectivity and network policy enforcement for service traffic in a Calico lab cluster.
 

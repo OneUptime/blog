@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Etcd, Cluster Health, Kubernetes, Monitoring
+Tags: OpenTelemetry, etcd, Cluster Health, Kubernetes, Monitoring
 
 Description: Monitor etcd cluster health including leader elections, Raft proposals, and database size using the OpenTelemetry Collector.
 

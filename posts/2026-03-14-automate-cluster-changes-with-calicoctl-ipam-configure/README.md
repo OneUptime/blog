@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Automation, Kubernetes, CI/CD
+Tags: Calico, Calicoctl, IPAM, Automation, Kubernetes, CI/CD
 
 Description: Automate Calico IPAM configuration across multiple clusters using scripts and CI/CD pipelines to ensure consistent IP address management settings.
 

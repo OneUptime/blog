@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GRPC, Load Balancing, Service Mesh, Microservices
+Tags: Istio, gRPC, Load Balancing, Service Mesh, Microservices
 
 Description: A guide to optimizing gRPC load balancing with Istio for microservices.
 

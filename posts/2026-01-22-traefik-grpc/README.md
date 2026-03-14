@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, GRPC, Microservices, Load Balancing, HTTP/2
+Tags: Traefik, gRPC, Microservices, Load Balancing, HTTP/2
 
 Description: Set up Traefik to route gRPC traffic with TLS termination, load balancing, health checks, and proper HTTP/2 configuration.
 

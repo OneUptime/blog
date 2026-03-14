@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Automation, Migration, calicoctl
+Tags: Calico, Kubernetes, Automation, Migration, Calicoctl
 
 Description: Learn how to automate the conversion of Kubernetes NetworkPolicies to Calico format using CI/CD pipelines, batch scripts, and migration workflows.
 

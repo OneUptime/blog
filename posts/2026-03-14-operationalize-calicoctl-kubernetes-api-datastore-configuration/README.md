@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, DevOps, GitOps, calicoctl
+Tags: Calico, Kubernetes, DevOps, GitOps, Calicoctl
 
-Description: Learn how to operationalize your calicoctl Kubernetes API datastore configuration with GitOps workflows, CI/CD integration, backup strategies, and standardized team processes for production environments.
+Description: Learn how to operationalize your calicoctl Kubernetes API datastore configuration with GitOps workflows, CI/CD integration, backup strategies, and standardized team processes for production...
 
 ---
 

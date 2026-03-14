@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Understand how Cilium's CNI configuration interacts with its IPAM subsystem, including how to configure IPAM parameters in the CNI config, troubleshoot IPAM-CNI integration issues, and validate...
 

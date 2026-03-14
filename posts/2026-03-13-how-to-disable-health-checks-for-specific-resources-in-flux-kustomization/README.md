@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Health Checks, Kustomization, Configuration
+Tags: Flux, GitOps, Kubernetes, Health Check, Kustomization, Configuration
 
 Description: Learn how to selectively disable health checks for specific resources in Flux Kustomization when certain workloads should not block reconciliation.
 

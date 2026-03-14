@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Monitoring, Endpoints, Observability
+Tags: Cilium, Kubernetes, Monitoring, Endpoint, Observability
 
 Description: A guide to monitoring CiliumEndpoint custom resources using Prometheus metrics, Hubble flows, and custom health checks for production Kubernetes clusters.
 

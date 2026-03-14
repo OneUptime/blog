@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Audit, Manual Testing, Quality Assurance
 
-Description: Audit the manual testing practices for Cilium L7 parsers to ensure test plans are comprehensive, execution is documented, test environments are properly isolated, and results support security sign-off decisions.
+Description: Audit the manual testing practices for Cilium L7 parsers to ensure test plans are comprehensive, execution is documented, test environments are properly isolated, and results support security...
 
 ---
 

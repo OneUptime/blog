@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A comprehensive guide to checking all Cilium requirements on a generic Kubernetes cluster (kubeadm, k3s, or bare metal), covering kernel, BPF, and networking prerequisites.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, AKS, Azure, EBPF
+Tags: Cilium, Kubernetes, AKS, Azure, eBPF
 
 Description: Learn how to validate Azure Delegated IPAM with Cilium on AKS, ensuring that pod IP addresses are correctly allocated from Azure subnets and that Cilium's dataplane is functioning with delegated...
 

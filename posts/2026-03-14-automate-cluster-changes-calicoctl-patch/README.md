@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Automation, calicoctl, CI/CD
+Tags: Calico, Kubernetes, Automation, Calicoctl, CI/CD
 
 Description: Learn how to automate Calico cluster changes using calicoctl patch in CI/CD pipelines, scripts, and GitOps workflows for consistent and repeatable network policy updates.
 

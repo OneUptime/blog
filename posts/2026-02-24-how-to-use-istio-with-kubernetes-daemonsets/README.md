@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, DaemonSets, Sidecar, Service Mesh
+Tags: Istio, Kubernetes, DaemonSet, Sidecar, Service Mesh
 
 Description: How to run Istio with Kubernetes DaemonSets, including when to inject sidecars, resource considerations, and handling node-level services in the mesh.
 

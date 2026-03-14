@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XDP, EBPF, Networking, Packet Filtering, Linux
+Tags: RHEL, XDP, eBPF, Networking, Packet Filtering, Linux
 
 Description: Learn how to write, compile, and load XDP (eXpress Data Path) programs on RHEL for ultra-fast packet filtering at the network driver level.
 

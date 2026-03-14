@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BCC, EBPF, Performance, Tracing, Linux, Monitoring
+Tags: RHEL, BCC, eBPF, Performance, Tracing, Linux, Monitoring
 
 Description: Learn how to install and use BCC tools on RHEL to perform eBPF-based performance analysis and troubleshooting.
 

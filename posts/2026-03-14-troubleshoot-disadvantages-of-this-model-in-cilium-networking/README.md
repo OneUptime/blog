@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Diagnose and resolve common issues with the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity using systematic debugging techniques and Cilium diagnostic tools.
+Description: Diagnose and resolve common issues with the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity...
 
 ---
 

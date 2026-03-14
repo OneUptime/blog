@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to validate that Cilium agent pods are correctly scheduled on tainted node pools and that networking is fully functional for workloads on specialized node groups.
 

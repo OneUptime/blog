@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A troubleshooting guide for common issues that arise during Cilium post-installation steps, including Hubble failures, policy issues, and connectivity test failures.
 

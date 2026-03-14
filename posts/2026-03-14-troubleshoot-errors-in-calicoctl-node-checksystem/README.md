@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, System Requirements, Troubleshooting, Kubernetes, Kernel
+Tags: Calico, Calicoctl, System Requirements, Troubleshooting, Kubernetes, Kernel
 
 Description: Resolve errors reported by calicoctl node checksystem, including missing kernel modules, incorrect sysctl settings, and kernel version incompatibilities.
 
@@ -23,7 +23,7 @@ This guide addresses each category of error that checksystem can report and prov
 
 ## Kernel Version Errors
 
-```
+```yaml
 ERROR: kernel version 3.10.0 is below minimum 5.10.0
 ```
 
@@ -46,7 +46,7 @@ sudo reboot
 
 ### iptables Modules
 
-```
+```yaml
 ERROR: ip_tables - module not available
 ERROR: iptable_filter - module not available
 ```
@@ -67,7 +67,7 @@ sudo yum install kernel-modules-extra
 
 ### Conntrack Modules
 
-```
+```yaml
 ERROR: nf_conntrack - module not loaded
 ```
 
@@ -81,7 +81,7 @@ sudo modprobe nf_conntrack_ipv4 2>/dev/null || sudo modprobe nf_conntrack
 
 ### IPVS Modules
 
-```
+```yaml
 WARNING: ip_vs - module not loaded
 ```
 
@@ -101,7 +101,7 @@ sudo yum install ipvsadm  # RHEL/CentOS
 
 ### IP Forwarding Disabled
 
-```
+```yaml
 ERROR: net.ipv4.ip_forward = 0 (must be 1)
 ```
 
@@ -116,7 +116,7 @@ sudo sysctl --system
 
 ### Reverse Path Filtering
 
-```
+```yaml
 WARNING: net.ipv4.conf.all.rp_filter = 2 (recommended: 1)
 ```
 

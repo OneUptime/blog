@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PCP, EBPF, BPF, Performance, Monitoring, Linux
+Tags: RHEL, PCP, eBPF, BPF, Performance, Monitoring, Linux
 
 Description: Learn how to install and configure the pcp-pmda-bpf agent on RHEL to collect eBPF-based performance metrics through PCP.
 

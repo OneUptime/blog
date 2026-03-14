@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CoreDNS, Etcd, DNS
+Tags: Kubernetes, CoreDNS, etcd, DNS
 
 Description: Learn how to configure the CoreDNS etcd plugin to manage dynamic DNS records programmatically, enabling runtime DNS modifications without CoreDNS restarts for flexible service discovery patterns.
 

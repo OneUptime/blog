@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Kubernetes, EBPF, Monitoring, Networking, Observability
+Tags: IPv6, Kubernetes, eBPF, Monitoring, Networking, Observability
 
 Description: A comprehensive guide to implementing IPv6 network traffic monitoring in Kubernetes clusters using eBPF for deep observability without performance overhead.
 

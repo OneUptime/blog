@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, DevOps, Team Workflows, Kubernetes, Best Practices
+Tags: Calico, Calicoctl, DevOps, Team Workflows, Kubernetes, Best Practices
 
 Description: Establish consistent team practices for using calicoctl version across your organization, including version pinning, onboarding procedures, and shared tooling standards.
 
@@ -125,30 +125,30 @@ Create a standard onboarding checklist for new team members:
 1. Install calicoctl using the team script:
    ```
    ./install-calicoctl.sh v3.27.0
-   ```
+   ```text
 
 2. Verify installation:
    ```
    calicoctl version
-   ```
+   ```text
 
 3. Configure datastore access:
    ```
    export DATASTORE_TYPE=kubernetes
    export KUBECONFIG=~/.kube/config
-   ```
+   ```text
 
 4. Run the team validation script:
    ```
    ./validate-calico-setup.sh
-   ```
+   ```text
 
 5. Confirm you can access each environment:
    ```
    for ctx in dev staging prod; do
      kubectl --context=$ctx get clusterinformation default
    done
-   ```
+   ```text
 ```
 
 ## Pre-Commit and Pre-Apply Hooks

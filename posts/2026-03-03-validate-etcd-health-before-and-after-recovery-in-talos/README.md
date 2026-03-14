@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Etcd, Health Validation, Kubernetes, Cluster Recovery, Monitoring
+Tags: Talos Linux, etcd, Health Validation, Kubernetes, Cluster Recovery, Monitoring
 
 Description: Learn how to thoroughly validate etcd cluster health before and after recovery operations in Talos Linux to ensure data integrity.
 

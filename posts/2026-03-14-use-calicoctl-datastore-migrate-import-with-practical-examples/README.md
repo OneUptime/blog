@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore Migration, Kubernetes, etcd
+Tags: Calico, Calicoctl, Datastore Migration, Kubernetes, etcd
 
 Description: Import Calico configuration data into a new datastore backend using calicoctl datastore migrate import for completing datastore migrations.
 

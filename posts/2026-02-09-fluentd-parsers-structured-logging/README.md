@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fluentd, Parsers, Structured Logging, JSON, EFK Stack
+Tags: Fluentd, Parser, Structured Logging, JSON, EFK Stack
 
 Description: Master Fluentd parsers to extract structured data from JSON, nginx, Apache, syslog, and custom log formats for efficient searching and analysis in Elasticsearch.
 

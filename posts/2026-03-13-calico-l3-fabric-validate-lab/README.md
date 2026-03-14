@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, L3, BGP, Networking, Lab, Validation, Testing, calicoctl
+Tags: Calico, Kubernetes, L3, BGP, Networking, Lab, Validation, Testing, Calicoctl
 
 Description: Step-by-step validation tests for Calico's L3 BGP routing fabric in a lab cluster, confirming BGP session establishment, route advertisement, and native routing behavior.
 

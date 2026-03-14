@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GRPC, Metrics, Prometheus, Observability, Custom Metrics, Monitoring, Go, Performance
+Tags: gRPC, Metrics, Prometheus, Observability, Custom Metrics, Monitoring, Go, Performance
 
 Description: Learn how to implement custom business and technical metrics for gRPC services including method-specific metrics, histograms, gauges, and counters with proper label management.
 

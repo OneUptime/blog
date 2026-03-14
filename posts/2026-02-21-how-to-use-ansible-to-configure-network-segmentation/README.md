@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Network Segmentation, Security, Firewall, Iptables
+Tags: Ansible, Network Segmentation, Security, Firewall, iptables
 
 Description: Implement network segmentation across your infrastructure using Ansible to isolate workloads and limit lateral movement with firewall rules and VLANs.
 

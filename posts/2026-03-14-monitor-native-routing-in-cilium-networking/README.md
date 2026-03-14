@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Monitoring
 
-Description: Set up monitoring and alerting for Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation to detect issues before they impact application availability.
+Description: Set up monitoring and alerting for Cilium native routing mode that uses the underlying network infrastructure to route pod traffic directly without encapsulation to detect issues before they...
 
 ---
 

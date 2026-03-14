@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Iptables, Networking, Envoy, Kubernetes, Service Mesh
+Tags: Istio, iptables, Networking, Envoy, Kubernetes, Service Mesh
 
 Description: A practical guide to understanding the iptables rules that Istio creates to intercept and redirect traffic through the Envoy sidecar proxy.
 

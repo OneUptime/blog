@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: EBPF, Security, Falco, Tetragon, Kubernetes, Linux
+Tags: eBPF, Security, Falco, Tetragon, Kubernetes, Linux
 
 Description: A guide to using eBPF-based security tools like Falco and Tetragon for runtime security monitoring.
 

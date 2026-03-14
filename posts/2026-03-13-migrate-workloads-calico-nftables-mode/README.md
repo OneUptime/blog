@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, CNI, Nftables, Migration, Iptables
+Tags: Calico, Kubernetes, Networking, CNI, Nftables, Migration, iptables
 
 Description: A guide to migrating existing Calico workloads from iptables backend to nftables mode with zero downtime.
 

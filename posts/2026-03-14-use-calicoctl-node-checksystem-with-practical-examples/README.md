@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, System Requirements, Kubernetes, Pre-flight Checks
+Tags: Calico, Calicoctl, System Requirements, Kubernetes, Pre-flight Checks
 
 Description: Use calicoctl node checksystem to verify that a host meets all kernel and system requirements for running Calico, with practical pre-deployment validation examples.
 
@@ -29,7 +29,7 @@ sudo calicoctl node checksystem
 
 Example output:
 
-```
+```text
 Checking kernel version...
   OK: kernel version is 5.15.0
 Checking kernel modules...

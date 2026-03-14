@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, EBPF, CNI, Lab, Testing, Validation, Performance
+Tags: Calico, Kubernetes, eBPF, CNI, Lab, Testing, Validation, Performance
 
 Description: Step-by-step instructions for enabling and verifying Calico eBPF mode in a lab Kubernetes cluster, including kernel compatibility checks and functional validation.
 

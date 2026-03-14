@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Connectivity, Testing, EBPF
+Tags: Cilium, Kubernetes, Connectivity, Testing, eBPF
 
 Description: A comprehensive guide to running and interpreting the Cilium connectivity test suite, covering test scenarios, failure diagnosis, and integrating tests into your CI/CD pipeline.
 

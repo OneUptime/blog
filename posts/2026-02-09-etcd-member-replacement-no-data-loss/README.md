@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Etcd, High Availability, Disaster Recovery
+Tags: Kubernetes, etcd, High Availability, Disaster Recovery
 
 Description: Learn how to safely replace failed etcd cluster members without data loss, including member removal, addition, and disaster recovery procedures for Kubernetes control planes.
 

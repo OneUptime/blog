@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A validation guide for verifying each post-installation step for Cilium is working correctly, from connectivity tests to Hubble observability to policy enforcement.
 

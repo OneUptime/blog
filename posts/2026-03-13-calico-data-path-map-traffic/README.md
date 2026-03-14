@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Traffic Flows, Networking, Iptables, EBPF
+Tags: Calico, Kubernetes, Data Path, CNI, Traffic Flows, Networking, iptables, eBPF
 
 Description: A packet-level walkthrough of how real Kubernetes traffic flows through Calico's data path, showing the processing stages for same-node, cross-node, and external traffic.
 

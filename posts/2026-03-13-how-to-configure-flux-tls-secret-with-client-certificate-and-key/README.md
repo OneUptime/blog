@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secrets, TLS, Client Certificate, Mutual TLS, MTLS, Security
+Tags: Flux, Kubernetes, GitOps, Source Controller, Authentication, Secrets, TLS, Client Certificate, Mutual TLS, mTLS, Security
 
 Description: How to configure Flux CD with client TLS certificates for mutual TLS authentication against Git servers, Helm repositories, and OCI registries.
 

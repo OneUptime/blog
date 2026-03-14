@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificates, MTLS, Alerting, Security, Prometheus
+Tags: Istio, Certificates, mTLS, Alerting, Security, Prometheus
 
 Description: Learn how to set up automated alerts for Istio certificate expiration to prevent mTLS failures and service outages in your mesh.
 

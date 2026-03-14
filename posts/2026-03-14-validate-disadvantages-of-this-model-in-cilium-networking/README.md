@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Systematically validate that the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity is correctly configured and functioning as expected in your Kubernetes cluster.
+Description: Systematically validate that the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity is correctly...
 
 ---
 

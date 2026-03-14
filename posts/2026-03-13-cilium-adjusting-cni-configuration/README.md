@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF, IPAM
+Tags: Cilium, Kubernetes, Networking, eBPF, IPAM
 
 Description: Learn how to safely adjust Cilium's CNI configuration for different deployment scenarios including chaining mode, custom paths, MTU settings, and runtime tuning without disrupting existing workloads.
 

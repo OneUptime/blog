@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Fragmentation, EBPF
+Tags: Cilium, Kubernetes, Networking, Fragmentation, eBPF
 
 Description: A guide to diagnosing and resolving IP packet fragmentation issues in Cilium, including MTU mismatches and fragment reassembly problems affecting pod connectivity.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Rollback, Node Management, Kubernetes
+Tags: Calico, Calicoctl, Rollback, Node Management, Kubernetes
 
 Description: Safe procedures for stopping, reverting, and recovering from failed calicoctl node run deployments, including handling node registration cleanup and traffic preservation.
 

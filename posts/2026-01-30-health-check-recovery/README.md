@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Health Checks, Recovery, Load Balancing, Reliability
+Tags: Health Check, Recovery, Load Balancing, Reliability
 
 Description: Learn to implement health check recovery patterns including recovery thresholds, gradual traffic return, and warm-up periods for reliable services.
 

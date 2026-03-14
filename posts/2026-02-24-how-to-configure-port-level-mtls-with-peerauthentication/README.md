@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, MTLS, PeerAuthentication, Port Configuration, Security
+Tags: Istio, mTLS, PeerAuthentication, Port Configuration, Security
 
 Description: Learn how to set different mTLS modes for different ports on the same workload using Istio PeerAuthentication portLevelMtls.
 

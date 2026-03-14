@@ -32,7 +32,7 @@ This guide provides systematic approaches to diagnosing and resolving cilium-bug
 ### Step 1: Check File Existence
 
 \`\`\`bash
-# Search fpath for the completion file
+## Search fpath for the completion file
 for dir in \$fpath; do
   [ -f "\$dir/_cilium-bugtool" ] && echo "Found: \$dir/_cilium-bugtool"
 done
@@ -41,36 +41,36 @@ done
 ### Step 2: Check Cache State
 
 \`\`\`bash
-# Remove stale cache
+## Remove stale cache
 rm -f ~/.zcompdump*
 
-# Rebuild
+## Rebuild
 autoload -Uz compinit && compinit
 
-# Verify registration
+## Verify registration
 echo \$_comps[cilium-bugtool]
-# Expected: _cilium-bugtool
+## Expected: _cilium-bugtool
 \`\`\`
 
 ### Step 3: Validate the Completion Script
 
 \`\`\`bash
-# Check for syntax errors
+## Check for syntax errors
 zsh -c "source /usr/local/share/zsh/site-functions/_cilium-bugtool" 2>&1
 
-# Check it has the compdef directive
+## Check it has the compdef directive
 head -5 /usr/local/share/zsh/site-functions/_cilium-bugtool
-# Should contain #compdef cilium-bugtool
+## Should contain #compdef cilium-bugtool
 \`\`\`
 
 ### Step 4: Fix fpath Issues
 
 \`\`\`bash
-# Check current fpath
+## Check current fpath
 echo \$fpath | tr ' ' '\n'
 
-# Ensure your completion directory is listed
-# Add to .zshrc BEFORE compinit:
+## Ensure your completion directory is listed
+## Add to .zshrc BEFORE compinit:
 fpath=(~/.zsh/completions \$fpath)
 autoload -Uz compinit && compinit
 \`\`\`

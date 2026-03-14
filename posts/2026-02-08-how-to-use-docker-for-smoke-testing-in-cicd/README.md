@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Smoke Testing, CI/CD, Testing, Health Checks, Deployments, DevOps, Automation
+Tags: Docker, Smoke Testing, CI/CD, Testing, Health Check, Deployments, DevOps, Automation
 
 Description: Implement smoke tests with Docker in your CI/CD pipeline to catch critical failures before full deployment.
 

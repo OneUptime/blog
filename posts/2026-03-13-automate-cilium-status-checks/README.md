@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: Learn how to automate Cilium status checks in scripts and CI/CD pipelines to continuously monitor the health of your CNI layer and detect degraded agents before they impact workloads.
 

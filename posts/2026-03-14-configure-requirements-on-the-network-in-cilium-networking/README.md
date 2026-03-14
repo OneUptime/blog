@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking
 
-Description: Learn how to configure network infrastructure requirements for deploying Cilium including port access, kernel versions, and firewall rules in your Kubernetes cluster for optimal performance and security.
+Description: Learn how to configure network infrastructure requirements for deploying Cilium including port access, kernel versions, and firewall rules in your Kubernetes cluster for optimal performance and...
 
 ---
 

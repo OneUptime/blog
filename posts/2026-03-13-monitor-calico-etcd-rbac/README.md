@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Etcd, RBAC, Monitoring, Observability
+Tags: Calico, Kubernetes, Networking, etcd, RBAC, Monitoring, Observability
 
 Description: Set up monitoring and alerting for Calico etcd RBAC to detect permission errors, unauthorized access attempts, and authentication failures across Calico components.
 

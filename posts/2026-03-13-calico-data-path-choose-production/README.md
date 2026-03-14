@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Data Path, CNI, Production, Iptables, EBPF, VPP, Decision Framework
+Tags: Calico, Kubernetes, Data Path, CNI, Production, iptables, eBPF, VPP, Decision Framework
 
 Description: A decision framework for selecting between Calico's iptables, eBPF, and VPP dataplane options for production Kubernetes deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Cilium, Hubble, Network Observability, EBPF
+Tags: Kubernetes, Cilium, Hubble, Network Observability, eBPF
 
 Description: Learn how to leverage Cilium Hubble for deep network flow visibility and troubleshooting in Kubernetes clusters using eBPF-based observability.
 

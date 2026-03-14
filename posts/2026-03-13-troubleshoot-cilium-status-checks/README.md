@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, EBPF
+Tags: Cilium, Kubernetes, Networking, eBPF
 
 Description: A practical guide to interpreting and resolving Cilium status check failures, covering agent health, endpoint sync issues, and common error conditions.
 

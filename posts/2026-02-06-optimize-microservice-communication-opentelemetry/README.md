@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Microservices, Communication Patterns, GRPC, HTTP, Performance, Distributed Systems, Tracing
+Tags: OpenTelemetry, Microservices, Communication Patterns, gRPC, HTTP, Performance, Distributed Systems, Tracing
 
 Description: Learn how to use OpenTelemetry tracing and metrics to analyze, optimize, and improve communication patterns between microservices in distributed systems.
 
