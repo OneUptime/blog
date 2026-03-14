@@ -14,6 +14,12 @@ Azure Application Gateway Ingress Controller (AGIC) enables AKS clusters to use 
 
 Managing AGIC through Flux brings the benefits of GitOps: version-controlled configuration, automated reconciliation, and drift detection. This guide walks through deploying AGIC on AKS using Flux and Helm.
 
+## Important: Consider Application Gateway for Containers
+
+Before setting up AGIC, be aware that Microsoft now recommends [Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/overview) with the Kubernetes Gateway API as the successor to AGIC. Application Gateway for Containers offers significant improvements in resiliency, performance, and features over the traditional AGIC approach, and aligns with the broader Kubernetes ecosystem's move toward the Gateway API standard.
+
+If you are starting a new project, evaluate Application Gateway for Containers first. The guide below remains useful for teams maintaining existing AGIC deployments or operating in environments where Application Gateway for Containers is not yet available.
+
 ## Prerequisites
 
 - An Azure subscription
@@ -259,3 +265,5 @@ az network application-gateway show \
 ## Conclusion
 
 Deploying AGIC through Flux gives you a GitOps-managed ingress layer on AKS backed by Azure Application Gateway. Changes to ingress rules, backend configurations, and AGIC settings are all tracked in Git and automatically reconciled by Flux. This approach combines the cloud-native load balancing capabilities of Application Gateway with the operational rigor of GitOps.
+
+For new deployments, consider migrating to [Application Gateway for Containers](https://learn.microsoft.com/en-us/azure/application-gateway/for-containers/overview) with the Kubernetes Gateway API, which is Microsoft's recommended path forward and offers improved resiliency, performance, and alignment with the Kubernetes ecosystem.
