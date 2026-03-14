@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Azure, AKS, Application Gateway, AGIC, Ingress, Networking
+Tags: Flux, Kubernetes, GitOps, Azure, AKS, Application Gateway, AGIC, Ingress, Networking, Gateway API, Application Gateway for Containers
 
-Description: Learn how to deploy and manage the Azure Application Gateway Ingress Controller on AKS using Flux CD for a fully GitOps-driven ingress setup.
+Description: Learn how to deploy and manage the Azure Application Gateway Ingress Controller on AKS using Flux CD for a fully GitOps-driven ingress setup. Also covers Microsoft's recommended successor, Application Gateway for Containers with Gateway API.
 
 ---
 
@@ -140,6 +140,7 @@ AGIC_OBJECT_ID=$(az identity show \
 
 az role assignment create \
   --assignee-object-id "$AGIC_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
   --scope "$APPGW_ID"
 
@@ -200,9 +201,8 @@ kind: Ingress
 metadata:
   name: sample-app
   namespace: default
-  annotations:
-    kubernetes.io/ingress.class: azure/application-gateway
 spec:
+  ingressClassName: azure-application-gateway
   rules:
     - host: sample.example.com
       http:
@@ -258,7 +258,7 @@ az network application-gateway show \
 
 **AGIC pod CrashLoopBackOff**: Check logs with `kubectl logs -n kube-system -l app=ingress-azure`. Common causes include incorrect subscription ID, resource group, or gateway name in the Helm values.
 
-**Ingress not syncing**: Verify the ingress class annotation matches `azure/application-gateway`. AGIC only watches ingresses with this annotation.
+**Ingress not syncing**: Verify the Ingress resource has `ingressClassName: azure-application-gateway`. AGIC only watches ingresses with this class.
 
 **Identity permissions**: Ensure the managed identity has Contributor access on the Application Gateway resource, not just the resource group.
 
