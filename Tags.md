@@ -1690,7 +1690,7 @@
 - Calico
 - Calico Cloud
 - Calico Enterprise
-- calicoctl
+- Calicoctl
 - Call Quality
 - Call Routing
 - Callback
@@ -2738,7 +2738,6 @@
 - Controller-gen
 - Controller-runtime
 - ControllerAdvice
-- Controllers
 - ControlMaster
 - ControlPersist
 - Controlplane
@@ -3133,7 +3132,6 @@
 - Daemon.json
 - Daemons
 - DaemonSet
-- DaemonSets
 - DAG
 - Dagger
 - Dagster
@@ -3151,7 +3149,6 @@
 - Dashboard Management
 - Dashboard Templates
 - Dashboard Variables
-- Dashboards
 - Dashboards as Code
 - Dask
 - DAST
@@ -4147,7 +4144,7 @@
 - East-West Gateway
 - Easy-RSA
 - EBook
-- EBPF
+- eBPF
 - EBS
 - EC2
 - EC2 Fleet
@@ -4307,7 +4304,6 @@
 - Endpoint Monitoring
 - Endpoint Validation
 - Endpoint Verification
-- Endpoints
 - EndpointSlice
 - Energy Efficiency
 - Energy Management
@@ -4365,6 +4361,7 @@
 - Environment Protection
 - Environment Provisioning
 - Environment Routing
+- Environment Setup
 - Environment Tracking
 - Environment Variables
 - Envoy
@@ -4444,7 +4441,7 @@
 - ESXi
 - ETA Prediction
 - ETag
-- Etcd
+- etcd
 - Etcd Security
 - etcdv3
 - Etckeeper
@@ -4827,7 +4824,6 @@
 - Filter Plugins
 - Filter Processor
 - Filtering
-- Filters
 - FIM
 - FINAL
 - Finalizer
@@ -5460,7 +5456,7 @@
 - Grouping
 - Groups
 - Growth
-- GRPC
+- gRPC
 - GRPC Exporter
 - GRPC Extension
 - GRPC OTLP
@@ -5585,7 +5581,6 @@
 - Health Check
 - Health Check Rewriting
 - Health Checking
-- Health Checks
 - Health Dashboard
 - Health Data
 - Health Diagnostics
@@ -5719,7 +5714,7 @@
 - Host Key Checking
 - Host Management
 - Host Metrics
-- Host network
+- Host Network
 - Host Networking
 - Host Node
 - Host Order
@@ -6409,7 +6404,7 @@
 - Iproute2
 - IPS
 - IPsec
-- Iptables
+- iptables
 - IPv4
 - IPv6
 - IPvlan
@@ -7471,7 +7466,6 @@
 - Meeting
 - Meeting Management
 - Meeting Transcription
-- Meetings
 - Meilisearch
 - Memberlist
 - Memcached
@@ -7835,7 +7829,7 @@
 - MSK
 - MSW
 - MTBF
-- MTLS
+- mTLS
 - MTP
 - Mtr
 - MTTD
@@ -8847,7 +8841,6 @@
 - Parquet
 - Parseint Function
 - Parser
-- Parsers
 - Parsing
 - Parted
 - Partial
@@ -9387,7 +9380,7 @@
 - Pre-DNAT
 - Pre-Filtering
 - Pre-flight
-- Pre-Flight Checks
+- Pre-flight Checks
 - Pre-Hardened Images
 - Pre-Kubernetes
 - Pre-Processing
@@ -11029,7 +11022,6 @@
 - Serverless SQL
 - Serverless SQL Pool
 - Serverless VPC Access
-- Servers
 - ServerSpec
 - Service Account Auth
 - Service Account Impersonation
