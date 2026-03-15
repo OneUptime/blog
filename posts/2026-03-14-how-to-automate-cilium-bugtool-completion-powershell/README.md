@@ -28,16 +28,16 @@ This guide covers automated deployment of cilium-bugtool PowerShell completions.
 ## Automated Installation
 
 
-\`\`\`powershell
-## install-bugtool-completion.ps1
-## Automated installer for cilium-bugtool PowerShell completions
+```powershell
+# install-bugtool-completion.ps1
+# Automated installer for cilium-bugtool PowerShell completions
 
 \$ErrorActionPreference = "Stop"
 
-## Generate completion script
+# Generate completion script
 \$completionScript = cilium-bugtool completion powershell
 
-## Save to a dedicated directory
+# Save to a dedicated directory
 \$completionDir = Join-Path \$HOME ".cilium-completions"
 if (!(Test-Path \$completionDir)) {
     New-Item -ItemType Directory -Path \$completionDir -Force | Out-Null
@@ -46,7 +46,7 @@ if (!(Test-Path \$completionDir)) {
 \$completionFile = Join-Path \$completionDir "cilium-bugtool.ps1"
 \$completionScript | Out-File -FilePath \$completionFile -Encoding utf8
 
-## Add to profile if not already present
+# Add to profile if not already present
 \$profileContent = ""
 if (Test-Path \$PROFILE) {
     \$profileContent = Get-Content \$PROFILE -Raw
@@ -61,12 +61,12 @@ if (\$profileContent -notlike "*cilium-bugtool*") {
 }
 
 Write-Host "Installation complete. Restart PowerShell or run: \$sourceCommand"
-\`\`\`
+```
 
 ### Group Policy Distribution
 
-\`\`\`powershell
-## For enterprise deployment via GPO startup script
+```powershell
+# For enterprise deployment via GPO startup script
 \$networkShare = "\\\\server\\share\\cilium-completions"
 \$localPath = "\$env:ProgramData\\cilium-completions"
 
@@ -75,7 +75,7 @@ if (!(Test-Path \$localPath)) {
 }
 
 Copy-Item "\$networkShare\\cilium-bugtool.ps1" -Destination \$localPath -Force
-\`\`\`
+```
 
 
 

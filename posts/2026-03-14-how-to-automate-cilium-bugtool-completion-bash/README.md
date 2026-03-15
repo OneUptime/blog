@@ -29,14 +29,14 @@ This guide covers automated installation strategies for cilium-bugtool bash comp
 ## Automated Installation
 
 
-\`\`\`bash
+```bash
 #!/bin/bash
-## auto-install-bugtool-bash-completion.sh
-## Automated installer for cilium-bugtool bash completions
+# auto-install-bugtool-bash-completion.sh
+# Automated installer for cilium-bugtool bash completions
 
 set -euo pipefail
 
-## Detect the best installation path
+# Detect the best installation path
 if [ -d /etc/bash_completion.d ] && [ -w /etc/bash_completion.d ]; then
   INSTALL_DIR="/etc/bash_completion.d"
 elif [ -d "\$HOME/.local/share/bash-completion/completions" ]; then
@@ -48,7 +48,7 @@ fi
 
 COMPLETION_FILE="\$INSTALL_DIR/cilium-bugtool"
 
-## Generate the completion
+# Generate the completion
 if command -v cilium-bugtool &> /dev/null; then
   cilium-bugtool completion bash > "\$COMPLETION_FILE"
   echo "Installed bash completion to \$COMPLETION_FILE"
@@ -67,31 +67,31 @@ else
   fi
 fi
 
-## Validate the installed file
+# Validate the installed file
 if [ -s "\$COMPLETION_FILE" ]; then
   echo "Validation: completion file is non-empty ($(wc -c < "\$COMPLETION_FILE") bytes)"
 else
   echo "ERROR: completion file is empty"
   exit 1
 fi
-\`\`\`
+```
 
 ### Cron-Based Updates
 
-\`\`\`bash
-## Regenerate completions weekly
+```bash
+# Regenerate completions weekly
 (crontab -l 2>/dev/null; echo "0 3 * * 0 /usr/local/bin/auto-install-bugtool-bash-completion.sh >> /var/log/bugtool-completion.log 2>&1") | crontab -
-\`\`\`
+```
 
 ### CI/CD Integration
 
-\`\`\`yaml
-## GitHub Actions step
+```yaml
+# GitHub Actions step
 - name: Install cilium-bugtool completions
   run: |
     cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
     source /etc/bash_completion.d/cilium-bugtool
-\`\`\`
+```
 
 
 

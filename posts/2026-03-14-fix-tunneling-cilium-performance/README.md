@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Tunneling, VXLAN, Geneve, Native Routing
+Tags: Cilium, Kubernetes, Performance, Tunneling, VXLAN, GENEVE, Native Routing
 
 Description: How to fix tunneling-related performance issues in Cilium, covering VXLAN/Geneve overhead, MTU configuration, and native routing alternatives.
 

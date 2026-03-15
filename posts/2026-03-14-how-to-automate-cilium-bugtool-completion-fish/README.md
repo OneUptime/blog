@@ -28,10 +28,10 @@ This guide covers automated installation and version management of cilium-bugtoo
 ## Automated Installation Script
 
 
-\`\`\`bash
+```bash
 #!/bin/bash
-## install-bugtool-fish-completion.sh
-## Automated installer for cilium-bugtool fish completions
+# install-bugtool-fish-completion.sh
+# Automated installer for cilium-bugtool fish completions
 
 set -euo pipefail
 
@@ -54,19 +54,19 @@ else
   exit 1
 fi
 
-## Validate
+# Validate
 if [ -s "\$COMPLETION_FILE" ] && grep -q "complete" "\$COMPLETION_FILE"; then
   echo "Validation passed"
 else
   echo "ERROR: Invalid completion file"
   exit 1
 fi
-\`\`\`
+```
 
 ### Auto-Update on Version Change
 
-\`\`\`fish
-## Add to ~/.config/fish/config.fish
+```fish
+# Add to ~/.config/fish/config.fish
 if command -q cilium-bugtool
   set -l version_file ~/.cache/cilium-bugtool-fish-version
   set -l current_version (cilium-bugtool --version 2>/dev/null | head -1)
@@ -79,7 +79,7 @@ if command -q cilium-bugtool
     echo $current_version > $version_file
   end
 end
-\`\`\`
+```
 
 
 

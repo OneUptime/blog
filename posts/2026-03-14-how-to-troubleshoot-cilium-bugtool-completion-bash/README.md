@@ -30,55 +30,55 @@ This guide provides systematic troubleshooting steps for resolving cilium-bugtoo
 
 
 
-\`\`\`bash
-## Check if bash-completion is installed
+```bash
+# Check if bash-completion is installed
 dpkg -l bash-completion 2>/dev/null || rpm -q bash-completion 2>/dev/null
 
-## Install if missing
-## Debian/Ubuntu:
+# Install if missing
+# Debian/Ubuntu:
 sudo apt-get install -y bash-completion
-## RHEL/CentOS:
-## sudo yum install -y bash-completion
+# RHEL/CentOS:
+# sudo yum install -y bash-completion
 
-## Verify bash-completion is sourced in your profile
+# Verify bash-completion is sourced in your profile
 grep -l "bash_completion" ~/.bashrc ~/.bash_profile /etc/bash.bashrc 2>/dev/null
-\`\`\`
+```
 
 ### Checking Completion Registration
 
-\`\`\`bash
-## Check if cilium-bugtool completion is registered
+```bash
+# Check if cilium-bugtool completion is registered
 complete -p cilium-bugtool 2>/dev/null
-## Expected: complete -o default -F __start_cilium-bugtool cilium-bugtool
+# Expected: complete -o default -F __start_cilium-bugtool cilium-bugtool
 
-## If not registered, check if the file exists
+# If not registered, check if the file exists
 ls -la /etc/bash_completion.d/cilium-bugtool 2>/dev/null
 ls -la ~/.local/share/bash-completion/completions/cilium-bugtool 2>/dev/null
 
-## Source manually to test
+# Source manually to test
 source /etc/bash_completion.d/cilium-bugtool 2>/dev/null &&   echo "Sourced successfully" || echo "Failed to source"
-\`\`\`
+```
 
 ### Fixing Common Issues
 
-\`\`\`bash
-## Issue: completion file exists but not loaded
-## Fix: ensure bash-completion is sourced before the completion file
-## Add to .bashrc:
+```bash
+# Issue: completion file exists but not loaded
+# Fix: ensure bash-completion is sourced before the completion file
+# Add to .bashrc:
 if [ -f /usr/share/bash-completion/bash_completion ]; then
   . /usr/share/bash-completion/bash_completion
 fi
 
-## Issue: stale completions from old version
-## Fix: regenerate
+# Issue: stale completions from old version
+# Fix: regenerate
 cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
 source /etc/bash_completion.d/cilium-bugtool
 
-## Issue: completions show errors when pressing Tab
-## Fix: check bash version
+# Issue: completions show errors when pressing Tab
+# Fix: check bash version
 bash --version
-## Minimum bash 4.0 recommended; upgrade if on bash 3.x
-\`\`\`
+# Minimum bash 4.0 recommended; upgrade if on bash 3.x
+```
 
 ```mermaid
 flowchart TD
@@ -91,7 +91,7 @@ flowchart TD
     F -->|Yes| H{Errors on Tab?}
     H -->|Yes| I[Regenerate completion file]
     H -->|No| J[Check bash version >= 4.0]
-\`\`\`
+```
 
 
 ## Verification

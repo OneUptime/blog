@@ -29,35 +29,35 @@ This guide covers enabling completions for all supported shells and integrating 
 
 Generate completions for your shell:
 
-\`\`\`bash
-## For Bash
+```bash
+# For Bash
 cilium-bugtool completion bash > /tmp/cilium-bugtool-completion.bash
 source /tmp/cilium-bugtool-completion.bash
 
-## For Zsh
+# For Zsh
 cilium-bugtool completion zsh > /tmp/_cilium-bugtool
-## Copy to a directory in your fpath
+# Copy to a directory in your fpath
 
-## For Fish
+# For Fish
 cilium-bugtool completion fish > ~/.config/fish/completions/cilium-bugtool.fish
 
-## For PowerShell
+# For PowerShell
 cilium-bugtool completion powershell > /tmp/cilium-bugtool.ps1
-\`\`\`
+```
 
 To make completions persistent across shell sessions:
 
-\`\`\`bash
-## Bash - add to .bashrc
+```bash
+# Bash - add to .bashrc
 echo 'source <(cilium-bugtool completion bash)' >> ~/.bashrc
 
-## Zsh - install to fpath
+# Zsh - install to fpath
 cilium-bugtool completion zsh > "\${fpath[1]}/_cilium-bugtool"
 rm -f ~/.zcompdump*
 autoload -Uz compinit && compinit
 
-## Fish - already persistent from the file location above
-\`\`\`
+# Fish - already persistent from the file location above
+```
 
 
 

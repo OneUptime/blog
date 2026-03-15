@@ -29,58 +29,58 @@ This guide covers the complete process of generating, installing, and using cili
 
 ### Generate the Completion Script
 
-\`\`\`bash
-## Generate zsh completion
+```bash
+# Generate zsh completion
 cilium-bugtool completion zsh > /tmp/_cilium-bugtool
-\`\`\`
+```
 
 ### Install to fpath
 
-\`\`\`bash
-## System-wide installation
+```bash
+# System-wide installation
 sudo cp /tmp/_cilium-bugtool /usr/local/share/zsh/site-functions/_cilium-bugtool
 
-## User-local installation
+# User-local installation
 mkdir -p ~/.zsh/completions
 cp /tmp/_cilium-bugtool ~/.zsh/completions/_cilium-bugtool
 
-## Add to fpath in .zshrc (before compinit)
-## fpath=(~/.zsh/completions \$fpath)
-\`\`\`
+# Add to fpath in .zshrc (before compinit)
+# fpath=(~/.zsh/completions \$fpath)
+```
 
 ### Activate Completions
 
-\`\`\`bash
-## Clear the completion cache and rebuild
+```bash
+# Clear the completion cache and rebuild
 rm -f ~/.zcompdump*
 autoload -Uz compinit && compinit
-\`\`\`
+```
 
 ### Using the Completions
 
-\`\`\`bash
-## Complete subcommands with descriptions
+```bash
+# Complete subcommands with descriptions
 cilium-bugtool <TAB>
-## Shows grouped list of commands
+# Shows grouped list of commands
 
-## Complete flags
+# Complete flags
 cilium-bugtool --<TAB>
-## Shows all available flags with descriptions
+# Shows all available flags with descriptions
 
-## Context-aware completion
+# Context-aware completion
 cilium-bugtool completion <TAB>
-## Shows: bash fish powershell zsh
-\`\`\`
+# Shows: bash fish powershell zsh
+```
 
 ### Generating from a Pod
 
-\`\`\`bash
+```bash
 CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion zsh > ~/.zsh/completions/_cilium-bugtool
 
 rm -f ~/.zcompdump* && compinit
-\`\`\`
+```
 
 
 

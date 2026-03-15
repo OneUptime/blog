@@ -80,7 +80,8 @@ def parse_bash_completion(filepath):
     commands = sorted(set(re.findall(r'"([a-z][-a-z]*)"', content)))
 
     # Extract function names that handle specific commands
-    handlers = sorted(set(re.findall(r'__cilium[-_]bugtool[-_](\w+)', content)))
+    pattern = r'__cilium[-_]bugtool[-_]' + r'(\w+)'
+    handlers = sorted(set(re.findall(pattern, content)))
 
     return {
         'flags': flags,
