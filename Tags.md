@@ -1317,6 +1317,8 @@
 - BFF Pattern
 - BGP
 - BGPAdvertisement
+- BGPConfiguration
+- BGPFilter
 - BGPPeer
 - BI
 - BI Engine
@@ -1691,6 +1693,7 @@
 - Calico Cloud
 - Calico Enterprise
 - Calicoctl
+- CalicoNodeStatus
 - Call Quality
 - Call Routing
 - Callback
@@ -2601,6 +2604,7 @@
 - Contact Center
 - Contact Form
 - Contact Points
+- Container
 - Container activity
 - Container Agent
 - Container Analysis
@@ -2738,6 +2742,7 @@
 - Controller-gen
 - Controller-runtime
 - ControllerAdvice
+- Controllers
 - ControlMaster
 - ControlPersist
 - Controlplane
@@ -4075,6 +4080,7 @@
 - Duplex
 - Duplicate Detection
 - Duplicate Entry
+- Duplicate IP
 - Duplicate Spans
 - Duplicate Traces
 - Duplicati
@@ -4304,6 +4310,7 @@
 - Endpoint Monitoring
 - Endpoint Validation
 - Endpoint Verification
+- Endpoints
 - EndpointSlice
 - Energy Efficiency
 - Energy Management
@@ -4731,6 +4738,7 @@
 - Feeds
 - Feign
 - Felix
+- FelixConfiguration
 - Fencing
 - Fermyon
 - Fetch
@@ -4869,6 +4877,7 @@
 - FIS
 - Fish
 - Fission
+- Fix
 - Fixtures
 - Flagd
 - Flagger
@@ -5262,6 +5271,7 @@
 - Global Tables
 - Global View
 - GlobalNetworkPolicy
+- GlobalNetworkSet
 - GlobalSign
 - Gloo
 - Gloo Edge
@@ -5733,6 +5743,7 @@
 - Hostapd
 - Hosted Control Planes
 - Hosted Services
+- HostEndpoint
 - Hosting
 - Hostname
 - Hostname Configuration
@@ -6389,6 +6400,7 @@
 - Ip-reservation
 - IPAddressPool
 - IPAM
+- IPAMConfiguration
 - Ipc
 - Iperf
 - Iperf3
@@ -6401,6 +6413,7 @@
 - IPP
 - IPP Everywhere
 - IPPool
+- IPReservation
 - Iproute2
 - IPS
 - IPsec
@@ -6736,6 +6749,7 @@
 - Kubebuilder
 - Kubeconfig
 - Kubeconform
+- KubeControllersConfiguration
 - Kubecost
 - Kubectl
 - Kubectl Provider
@@ -7135,6 +7149,7 @@
 - Location Services
 - Location-Based Services
 - Locator
+- Lock
 - Lock File
 - Lock Management
 - Lock-Free
@@ -8949,6 +8964,7 @@
 - Peek Messages
 - Peer-to-peer
 - PeerAuthentication
+- Peering
 - Peers
 - Pending
 - Penetration Testing
@@ -10526,6 +10542,7 @@
 - Route Advertisements
 - Route Aggregation
 - Route API
+- Route Filtering
 - Route Filters
 - Route Handlers
 - Route Matching
@@ -10634,6 +10651,7 @@
 - SADD
 - Safe Rollout
 - Safe Search
+- Safe Updates
 - SafeSearch
 - Safety
 - Safety Filters
@@ -11660,6 +11678,9 @@
 - Staged Policy
 - Staged Rollout
 - Staged Upgrade
+- StagedGlobalNetworkPolicy
+- StagedKubernetesNetworkPolicy
+- StagedNetworkPolicy
 - Stages
 - Staging
 - Staging Environment
@@ -12034,6 +12055,7 @@
 - System Architecture
 - System Calls
 - System Center
+- System Check
 - System Clock
 - System Commands
 - System Configuration
@@ -13576,6 +13598,7 @@
 - Workload Scheduling
 - Workload Security
 - Workload specification
+- WorkloadEndpoint
 - WorkloadEntry
 - Workloads
 - Workspace Connections
