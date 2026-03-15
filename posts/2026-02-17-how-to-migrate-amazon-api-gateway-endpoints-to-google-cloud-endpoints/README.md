@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Endpoint, API Gateway, AWS API Gateway, API Management, Cloud Migration
+Tags: GCP, Google Cloud Endpoints, API Gateway, AWS API Gateway, API Management, Cloud Migration
 
 Description: A step-by-step guide for migrating REST and HTTP APIs from Amazon API Gateway to Google Cloud Endpoints, including OpenAPI spec conversion and authentication setup.
 

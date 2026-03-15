@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Troubleshooting, Debugging, Networking
+Tags: Calico, Calicoctl, etcd, Troubleshooting, Debugging, Networking
 
 Description: Diagnose and fix common calicoctl etcd datastore configuration issues including TLS errors, connectivity failures, and authentication problems.
 

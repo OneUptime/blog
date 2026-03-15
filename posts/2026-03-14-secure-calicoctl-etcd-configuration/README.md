@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Security, TLS, calicoctl
+Tags: Calico, etcd, Security, TLS, Calicoctl
 
 Description: Learn how to secure your calicoctl etcd datastore configuration with mutual TLS, certificate rotation, etcd RBAC, encrypted secrets management, and audit logging best practices.
 

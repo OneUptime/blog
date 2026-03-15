@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, calicoctl
+Tags: Calico, Kubernetes, Networking, Calicoctl
 
 Description: Practical guide for using calicoctl commands safely and effectively in production Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Automation, Monitoring, Kubernetes
+Tags: Calico, Calicoctl, IPAM, Automation, Monitoring, Kubernetes
 
 Description: Automate regular IPAM health checks using calicoctl ipam check to detect IP leaks and allocation issues before they cause pod scheduling failures.
 

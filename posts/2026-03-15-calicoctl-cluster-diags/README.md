@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Diagnostics, Troubleshooting, Networking, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Diagnostics, Troubleshooting, Networking, DevOps
 
 Description: Learn how to use calicoctl cluster diags to collect diagnostic information from a Calico cluster for troubleshooting.
 
@@ -33,7 +33,7 @@ calicoctl cluster diags
 
 This creates a compressed archive containing diagnostic data from the cluster. The output indicates where the archive is saved:
 
-```
+```text
 Collecting diagnostics...
   Collecting Calico node status...
   Collecting BGP peer information...
@@ -55,7 +55,7 @@ ls calico-diagnostics-20260315-143022/
 
 The bundle typically contains:
 
-```
+```text
 calico-diagnostics-20260315-143022/
   nodes/
   bgp/

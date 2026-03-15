@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Go, Admission Webhooks, Custom Controller, API
+Tags: Kubernetes, Go, Admission Webhooks, Custom Controllers, API
 
 Description: Learn how to build custom validating and mutating admission webhooks in Go using client-go, implement webhook servers with TLS, and deploy them to Kubernetes for custom admission control logic.
 

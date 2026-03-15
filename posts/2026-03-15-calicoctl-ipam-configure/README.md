@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, Networking, IP Address Management, DevOps
+Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, IP Address Management, DevOps
 
 Description: Learn how to use calicoctl ipam configure to manage IP address allocation settings in a Calico cluster.
 
@@ -33,7 +33,7 @@ calicoctl ipam configure show
 
 Example output:
 
-```
+```text
 StrictAffinity: false
 MaxBlocksPerHost: 0 (unlimited)
 ```
@@ -54,7 +54,7 @@ calicoctl ipam configure show
 
 Output:
 
-```
+```text
 StrictAffinity: true
 MaxBlocksPerHost: 0 (unlimited)
 ```
@@ -112,7 +112,7 @@ calicoctl ipam configure show
 
 Output:
 
-```
+```text
 StrictAffinity: true
 MaxBlocksPerHost: 8
 ```

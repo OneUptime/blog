@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Labels, Network Policy, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Labels, Network Policy, DevOps
 
 Description: Learn how to use calicoctl label to add, update, and remove labels on Calico resources for policy targeting and organization.
 

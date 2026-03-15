@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Troubleshooting, Kubernetes, Networking
+Tags: Calico, Calicoctl, BGP, Troubleshooting, Kubernetes, Networking
 
 Description: Resolve common errors and unexpected output from calicoctl node status, including process not running, peer failures, and permission issues.
 

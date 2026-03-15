@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, DevOps, Team Workflows, Kubernetes, Best Practices
+Tags: Calico, Calicoctl, DevOps, Team Workflows, Kubernetes, Best Practices
 
 Description: Establish consistent team practices for using calicoctl version across your organization, including version pinning, onboarding procedures, and shared tooling standards.
 

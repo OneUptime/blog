@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, KubeControllerConfiguration, Kubernetes, Networking, Controller, DevOps
+Tags: Calico, KubeControllersConfiguration, Kubernetes, Networking, Controller, DevOps
 
 Description: Learn how to create and configure the Calico KubeControllersConfiguration resource to control the behavior of calico-kube-controllers.
 

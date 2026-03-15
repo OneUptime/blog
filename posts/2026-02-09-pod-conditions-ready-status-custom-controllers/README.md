@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Custom Controller, Pod Lifecycle
+Tags: Kubernetes, Custom Controllers, Pod Lifecycle
 
 Description: Learn how to build custom Kubernetes controllers that manage pod conditions and readiness status for advanced application health checking and orchestration workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Cloud Endpoint, API Gateway, REST API, gRPC, Troubleshooting, DevOps
+Tags: GCP, Google Cloud, Cloud Endpoints, API Gateway, REST API, gRPC, Troubleshooting, DevOps
 
 Description: A practical troubleshooting guide for fixing Cloud Endpoints API errors, covering authentication issues, configuration problems, and deployment failures.
 

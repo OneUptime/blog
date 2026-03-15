@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Diagnostics, Troubleshooting, Kubernetes
+Tags: Calico, Calicoctl, Diagnostics, Troubleshooting, Kubernetes
 
 Description: Resolve errors encountered when running calicoctl node diags, including permission issues, missing binaries, and incomplete diagnostic bundles.
 

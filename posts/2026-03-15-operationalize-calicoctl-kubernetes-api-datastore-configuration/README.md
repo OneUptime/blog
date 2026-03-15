@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Operations, GitOps, CI/CD
+Tags: Calico, Calicoctl, Kubernetes, Operations, GitOps, CI/CD
 
 Description: Operationalize calicoctl Kubernetes API datastore configuration with GitOps workflows, backup strategies, and CI/CD integration.
 

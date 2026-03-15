@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, Cloud Endpoint, OpenAPI, API Management, Google Cloud Platform
+Tags: GCP, Terraform, Cloud Endpoints, OpenAPI, API Management, Google Cloud Platform
 
 Description: Deploy Google Cloud Endpoints with Terraform using an OpenAPI specification for API definition, configure API key authentication, and set up rate limiting and monitoring for your API.
 

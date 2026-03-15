@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore, Migration, Kubernetes, etcd, Locks, DevOps
+Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Locks, DevOps
 
 Description: Learn how to use calicoctl datastore migrate lock to prevent changes during a Calico datastore migration.
 
@@ -33,7 +33,7 @@ calicoctl datastore migrate lock
 
 Successful output:
 
-```
+```text
 Datastore locked for migration.
 All write operations are now blocked.
 ```
@@ -44,7 +44,7 @@ Once locked, any attempt to modify Calico resources will fail:
 calicoctl apply -f new-policy.yaml
 ```
 
-```
+```text
 Error: datastore is locked for migration. Unlock with 'calicoctl datastore migrate unlock'.
 ```
 
@@ -58,7 +58,7 @@ calicoctl datastore migrate unlock
 
 Output:
 
-```
+```text
 Datastore unlocked. Write operations are now permitted.
 ```
 

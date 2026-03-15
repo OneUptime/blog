@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoint, OpenAPI, API Management, ESP
+Tags: GCP, Cloud Endpoints, OpenAPI, API Management, ESP
 
 Description: Step-by-step guide to deploying a REST API with Google Cloud Endpoints using an OpenAPI specification, including configuration, deployment, and testing.
 

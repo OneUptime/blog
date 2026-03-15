@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Monitoring
+Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Monitoring
 
 Description: Learn how to use calicoctl ipam show to view IP address allocation details and usage across a Calico cluster.
 
@@ -32,7 +32,7 @@ calicoctl ipam show
 
 Example output:
 
-```
+```text
 +----------+--------------+-----------+------------+-----------+
 | GROUPING |     CIDR     | IPS TOTAL | IPS IN USE | IPS FREE  |
 +----------+--------------+-----------+------------+-----------+
@@ -50,7 +50,7 @@ calicoctl ipam show --show-blocks
 
 This displays each /26 block and its utilization:
 
-```
+```text
 +----------+----------------+-----------+------------+-----------+
 | GROUPING |      CIDR      | IPS TOTAL | IPS IN USE | IPS FREE  |
 +----------+----------------+-----------+------------+-----------+

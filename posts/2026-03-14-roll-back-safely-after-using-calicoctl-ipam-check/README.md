@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Rollback, Kubernetes
+Tags: Calico, Calicoctl, IPAM, Rollback, Kubernetes
 
 Description: Understand that calicoctl ipam check is read-only and learn how to safely revert any remediation actions taken based on its findings.
 

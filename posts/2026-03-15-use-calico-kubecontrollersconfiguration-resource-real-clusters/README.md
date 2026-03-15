@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, KubeControllerConfiguration, Kubernetes, Networking, Production, Controller, DevOps
+Tags: Calico, KubeControllersConfiguration, Kubernetes, Networking, Production, Controller, DevOps
 
 Description: Production patterns for configuring the Calico KubeControllersConfiguration resource in real Kubernetes clusters of varying sizes and complexity.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Custom Controller, Operator, GitOps, CRD, Controller-runtime
+Tags: Flux CD, Kubernetes, Custom Controllers, Operator, GitOps, CRD, Controller-runtime
 
 Description: A practical guide to deploying and managing custom Kubernetes controllers and operators using Flux CD for automated cluster operations.
 

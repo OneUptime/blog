@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Validation, System Requirements, Kubernetes
+Tags: Calico, Calicoctl, Validation, System Requirements, Kubernetes
 
 Description: Interpret and validate calicoctl node checksystem output to confirm your hosts are fully prepared for Calico deployment, with guidance on which warnings matter.
 

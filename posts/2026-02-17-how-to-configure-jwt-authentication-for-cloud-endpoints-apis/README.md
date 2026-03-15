@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoint, JWT, Authentication, API Security
+Tags: GCP, Cloud Endpoints, JWT, Authentication, API Security
 
 Description: Learn how to configure JWT-based authentication for Google Cloud Endpoints APIs, including provider setup, OpenAPI configuration, and token validation.
 

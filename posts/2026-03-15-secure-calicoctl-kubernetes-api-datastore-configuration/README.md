@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Security, RBAC, Networking
+Tags: Calico, Calicoctl, Kubernetes, Security, RBAC, Networking
 
 Description: Secure your calicoctl Kubernetes API datastore configuration with RBAC, kubeconfig restrictions, and network policy best practices.
 

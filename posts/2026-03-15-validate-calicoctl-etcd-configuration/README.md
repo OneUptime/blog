@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Validation, Testing, Configuration
+Tags: Calico, Calicoctl, etcd, Validation, Testing, Configuration
 
 Description: Validate your calicoctl etcd datastore configuration to ensure correct connectivity, TLS settings, and data integrity before production use.
 

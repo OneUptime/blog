@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Automation, Node Management, Bare Metal, Infrastructure
+Tags: Calico, Calicoctl, Automation, Node Management, Bare Metal, Infrastructure
 
 Description: Automate Calico node deployments using calicoctl node run with configuration management tools, fleet orchestration scripts, and infrastructure-as-code patterns.
 

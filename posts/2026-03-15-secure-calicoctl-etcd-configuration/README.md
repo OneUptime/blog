@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Security, TLS, Encryption
+Tags: Calico, Calicoctl, etcd, Security, TLS, Encryption
 
 Description: Secure your calicoctl etcd datastore configuration with TLS encryption, certificate management, file permissions, and access controls.
 

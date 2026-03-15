@@ -2604,7 +2604,6 @@
 - Contact Center
 - Contact Form
 - Contact Points
-- Container
 - Container activity
 - Container Agent
 - Container Analysis
@@ -2742,7 +2741,6 @@
 - Controller-gen
 - Controller-runtime
 - ControllerAdvice
-- Controllers
 - ControlMaster
 - ControlPersist
 - Controlplane
@@ -4310,7 +4308,6 @@
 - Endpoint Monitoring
 - Endpoint Validation
 - Endpoint Verification
-- Endpoints
 - EndpointSlice
 - Energy Efficiency
 - Energy Management
@@ -7149,7 +7146,6 @@
 - Location Services
 - Location-Based Services
 - Locator
-- Lock
 - Lock File
 - Lock Management
 - Lock-Free

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Monitoring, Prometheus, Observability
+Tags: Calico, Calicoctl, Kubernetes, Monitoring, Prometheus, Observability
 
 Description: Monitor your calicoctl Kubernetes API datastore configuration to detect connectivity issues, configuration drift, and resource health.
 
@@ -113,7 +113,7 @@ spec:
 
 Monitor these Felix and Typha metrics in Prometheus:
 
-```
+```text
 felix_cluster_num_policies
 felix_cluster_num_profiles
 felix_cluster_num_host_endpoints

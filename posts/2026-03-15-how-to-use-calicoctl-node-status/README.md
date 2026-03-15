@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, BGP, Networking, Troubleshooting
+Tags: Calico, Calicoctl, Kubernetes, BGP, Networking, Troubleshooting
 
 Description: Learn how to use calicoctl node status to inspect BGP peering state, route sharing, and node health in Calico clusters.
 
@@ -33,7 +33,7 @@ sudo calicoctl node status
 
 Example output:
 
-```
+```text
 Calico process is running.
 
 IPv4 BGP status

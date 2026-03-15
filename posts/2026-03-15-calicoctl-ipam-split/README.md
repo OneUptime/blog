@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Scaling
+Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Scaling
 
 Description: Learn how to use calicoctl ipam split to divide IP pools into smaller blocks for better distribution across cluster nodes.
 
@@ -33,7 +33,7 @@ calicoctl ipam show --show-blocks
 
 Example output:
 
-```
+```text
 +----------+----------------+-----------+------------+-----------+
 | GROUPING |      CIDR      | IPS TOTAL | IPS IN USE | IPS FREE  |
 +----------+----------------+-----------+------------+-----------+
@@ -54,7 +54,7 @@ calicoctl ipam split 4 --cidr=10.244.0.0/16
 
 This outputs the resulting CIDR blocks:
 
-```
+```text
 10.244.0.0/18
 10.244.64.0/18
 10.244.128.0/18
@@ -74,7 +74,7 @@ calicoctl ipam split 4 --cidr=10.244.0.0/16
 
 Output:
 
-```
+```text
 10.244.0.0/18
 10.244.64.0/18
 10.244.128.0/18
@@ -128,7 +128,7 @@ calicoctl ipam split 8 --cidr=10.244.0.0/16
 
 Output:
 
-```
+```text
 10.244.0.0/19
 10.244.32.0/19
 10.244.64.0/19

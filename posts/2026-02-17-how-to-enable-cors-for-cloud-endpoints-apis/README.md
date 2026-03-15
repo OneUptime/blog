@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoint, CORS, API Gateway, Google Cloud
+Tags: GCP, Cloud Endpoints, CORS, API Gateway, Google Cloud
 
 Description: Learn how to enable and configure Cross-Origin Resource Sharing (CORS) for your Cloud Endpoints APIs on Google Cloud Platform to allow browser-based API calls.
 

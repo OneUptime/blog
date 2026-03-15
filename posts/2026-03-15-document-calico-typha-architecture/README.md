@@ -27,7 +27,7 @@ Documenting Typha's architecture helps operators understand why it exists, how d
 
 Document the data flow path in your cluster:
 
-```
+```text
 Kubernetes API Server
         |
         v

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Network Policy, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Network Policy, DevOps
 
 Description: Learn how to safely use calicoctl delete to remove Calico resources including policies, IP pools, BGP peers, and network sets.
 

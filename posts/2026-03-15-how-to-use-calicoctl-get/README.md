@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Troubleshooting, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Troubleshooting, DevOps
 
 Description: Learn how to use calicoctl get to inspect and query Calico resources including policies, IP pools, nodes, and workload endpoints.
 

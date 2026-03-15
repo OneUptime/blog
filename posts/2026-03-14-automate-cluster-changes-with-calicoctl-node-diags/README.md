@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Automation, Diagnostics, Kubernetes, Monitoring
+Tags: Calico, Calicoctl, Automation, Diagnostics, Kubernetes, Monitoring
 
 Description: Automate Calico diagnostic collection across clusters using calicoctl node diags for proactive monitoring, incident response, and audit compliance.
 

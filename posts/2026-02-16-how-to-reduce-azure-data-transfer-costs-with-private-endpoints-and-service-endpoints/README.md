@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private Endpoint, Service Endpoint, Data Transfer, Cost Optimization, Networking, Security
+Tags: Azure, Private Endpoint, Service Endpoints, Data Transfer, Cost Optimization, Networking, Security
 
 Description: Learn how to reduce Azure data transfer costs and improve security by using Private Endpoints and Service Endpoints for Azure PaaS services.
 

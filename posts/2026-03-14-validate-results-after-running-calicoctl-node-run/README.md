@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Node, Validation, BGP, Kubernetes
+Tags: Calico, Calicoctl, Node, Validation, BGP, Kubernetes
 
 Description: Comprehensive validation procedures to confirm that calicoctl node run started the Calico node correctly, with BGP peering, Felix operation, and datastore connectivity verified.
 

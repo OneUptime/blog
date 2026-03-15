@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Apigee, Cloud Endpoint, API Gateway, Microservices, API Management
+Tags: GCP, Apigee, Cloud Endpoints, API Gateway, Microservices, API Management
 
 Description: Learn how to build an API gateway for your GCP microservices using Apigee for full API management and Cloud Endpoints for lightweight API proxying.
 

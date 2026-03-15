@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Datastore, Troubleshooting
+Tags: Calico, Calicoctl, Kubernetes, Datastore, Troubleshooting
 
 Description: A troubleshooting guide for calicoctl Kubernetes API datastore configuration issues, covering authentication failures, RBAC problems, connectivity errors, and configuration file issues.
 

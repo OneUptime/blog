@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Node, Troubleshooting, Kubernetes, Docker
+Tags: Calico, Calicoctl, Node, Troubleshooting, Kubernetes, Docker
 
 Description: Diagnose and resolve common errors encountered when starting the Calico node with calicoctl node run, from container runtime issues to networking configuration problems.
 

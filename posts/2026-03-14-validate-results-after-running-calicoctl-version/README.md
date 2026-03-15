@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Validation, Kubernetes, Networking
+Tags: Calico, Calicoctl, Validation, Kubernetes, Networking
 
 Description: Learn how to validate and interpret the output of calicoctl version to confirm your Calico installation is healthy and components are correctly aligned.
 

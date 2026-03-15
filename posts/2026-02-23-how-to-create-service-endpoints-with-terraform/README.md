@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, VPC Endpoint, AWS, Networking, PrivateLink, Security
+Tags: Terraform, VPC Endpoints, AWS, Networking, PrivateLink, Security
 
 Description: Learn how to create VPC service endpoints with Terraform to securely access AWS services without traversing the public internet.
 

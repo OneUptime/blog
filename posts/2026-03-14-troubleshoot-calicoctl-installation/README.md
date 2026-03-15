@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Troubleshooting, Installation, Debugging
+Tags: Calico, Calicoctl, Troubleshooting, Installation, Debugging
 
 Description: A comprehensive troubleshooting guide for calicoctl installation issues, covering download failures, permission errors, version mismatches, and datastore connectivity problems.
 

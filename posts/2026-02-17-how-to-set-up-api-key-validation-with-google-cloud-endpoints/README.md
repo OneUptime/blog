@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoint, API Key, API Security, Authentication
+Tags: GCP, Cloud Endpoints, API Key, API Security, Authentication
 
 Description: A practical guide to setting up API key validation with Google Cloud Endpoints to control access, track usage, and enforce quotas on your APIs.
 

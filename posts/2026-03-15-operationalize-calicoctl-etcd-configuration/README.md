@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Operations, Backup, Disaster Recovery
+Tags: Calico, Calicoctl, etcd, Operations, Backup, Disaster Recovery
 
 Description: Operationalize calicoctl etcd configuration with backup strategies, disaster recovery plans, and production runbooks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Automation, Kubernetes, CI/CD
+Tags: Calico, Calicoctl, Automation, Kubernetes, CI/CD
 
 Description: Learn how to integrate calicoctl version checks into CI/CD pipelines and automation scripts to ensure consistent Calico deployments across your clusters.
 

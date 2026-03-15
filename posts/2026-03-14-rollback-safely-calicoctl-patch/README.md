@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Rollback, calicoctl, Network Policy
+Tags: Calico, Kubernetes, Rollback, Calicoctl, Network Policy
 
 Description: Learn how to safely roll back Calico resource changes made with calicoctl patch by capturing pre-patch state, creating reverse patches, and implementing automated rollback procedures.
 

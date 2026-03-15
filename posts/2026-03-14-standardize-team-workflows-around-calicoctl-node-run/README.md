@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Team Workflows, Node Management, Best Practices, DevOps
+Tags: Calico, Calicoctl, Team Workflows, Node Management, Best Practices, DevOps
 
 Description: Create standardized procedures for deploying and managing Calico nodes with calicoctl node run across your team, ensuring consistent bare-metal networking deployments.
 

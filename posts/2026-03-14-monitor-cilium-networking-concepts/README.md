@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Monitoring
+Tags: Cilium, Kubernetes, Monitoring, Networking
 
 Description: Set up monitoring and alerting for Cilium networking concepts including eBPF datapath, identity-based security, and service mesh integration to detect issues before they impact application...
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Datastore, Automation
+Tags: Calico, Calicoctl, Kubernetes, Datastore, Automation
 
 Description: A guide to automating the configuration of calicoctl to use the Kubernetes API as its datastore, covering kubeconfig management, service account setup, and CI/CD integration.
 

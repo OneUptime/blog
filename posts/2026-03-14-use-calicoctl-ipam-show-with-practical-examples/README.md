@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, IP Address Management
+Tags: Calico, Calicoctl, IPAM, Kubernetes, IP Address Management
 
 Description: Master calicoctl ipam show to visualize IP address allocation, utilization, and block distribution across your Calico cluster.
 

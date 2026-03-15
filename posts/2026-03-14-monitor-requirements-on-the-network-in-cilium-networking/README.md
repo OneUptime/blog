@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Monitoring
+Tags: Cilium, Kubernetes, Monitoring, Networking
 
 Description: Set up monitoring and alerting for network infrastructure requirements for deploying Cilium including port access, kernel versions, and firewall rules to detect issues before they impact...
 

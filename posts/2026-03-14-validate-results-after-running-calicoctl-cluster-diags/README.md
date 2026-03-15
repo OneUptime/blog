@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Cluster Diagnostics, Validation, Kubernetes
+Tags: Calico, Calicoctl, Cluster Diagnostics, Validation, Kubernetes
 
 Description: Verify that calicoctl cluster diags collected complete data and learn how to analyze the cluster diagnostic bundle for configuration issues and security concerns.
 

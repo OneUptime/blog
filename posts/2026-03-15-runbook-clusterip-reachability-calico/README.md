@@ -28,7 +28,7 @@ This guide walks through building a comprehensive runbook covering triage, diagn
 
 A ClusterIP reachability runbook should contain these sections in order:
 
-```
+```text
 1. Alert Context        - What triggered, severity, affected services
 2. Impact Assessment    - Blast radius and user impact
 3. Quick Triage         - Fast checks to categorize the issue

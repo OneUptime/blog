@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Validation, calicoctl, Testing
+Tags: Calico, Kubernetes, Validation, Calicoctl, Testing
 
 Description: Learn how to validate that calicoctl replace operations produced the expected results by comparing resource definitions, testing policy enforcement, and monitoring Felix sync status.
 

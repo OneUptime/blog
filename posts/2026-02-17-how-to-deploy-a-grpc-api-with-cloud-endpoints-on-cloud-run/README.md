@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoint, gRPC, Cloud Run, API Management
+Tags: GCP, Cloud Endpoints, gRPC, Cloud Run, API Management
 
 Description: Learn how to deploy a gRPC API with Google Cloud Endpoints on Cloud Run, including protobuf configuration, ESPv2 setup, and service deployment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Node, System Check, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Node, System Check, DevOps
 
 Description: Learn how to use calicoctl node checksystem to verify that a node meets the requirements for running Calico.
 
@@ -32,7 +32,7 @@ calicoctl node checksystem
 
 This produces output indicating whether the node passes all checks. A successful run looks like:
 
-```
+```text
 WARNING: Your kernel does not support swap limit capabilities or the cgroup is not mounted. Memory limited without swap.
 Checking kernel version...
   Kernel version: 5.15.0-78-generic
@@ -65,7 +65,7 @@ The command first validates that the running kernel version is supported by Cali
 
 Each required kernel module is listed with its status. If a module is missing, the output will show:
 
-```
+```text
   xt_set: FAIL (module not loaded and not available)
 ```
 

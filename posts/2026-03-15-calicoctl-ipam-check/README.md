@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, Networking, Troubleshooting, IP Address Management
+Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, Troubleshooting, IP Address Management
 
 Description: Learn how to use calicoctl ipam check to validate IPAM data consistency and identify leaked or orphaned IP addresses.
 
@@ -33,7 +33,7 @@ calicoctl ipam check
 
 A clean cluster produces output like:
 
-```
+```text
 Checking IPAM data consistency...
   Checking allocations against workload endpoints...
   Checking for orphaned allocations...
@@ -48,7 +48,7 @@ IPAM data is consistent.
 
 When issues are found, the output details each inconsistency:
 
-```
+```text
 Checking IPAM data consistency...
   Checking allocations against workload endpoints...
   Checking for orphaned allocations...

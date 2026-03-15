@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Automation, Installation, DevOps
+Tags: Calico, Calicoctl, Automation, Installation, DevOps
 
 Description: A practical guide to automating calicoctl installation across environments using scripts, configuration management, and CI/CD pipelines, ensuring consistent and repeatable deployments.
 

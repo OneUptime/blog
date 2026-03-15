@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Service Endpoint, Azure Storage, Virtual Network, Network Security, Cloud Networking
+Tags: Azure, Service Endpoints, Azure Storage, Virtual Network, Network Security, Cloud Networking
 
 Description: Learn how to enable Azure service endpoints for Storage on a VNet subnet to secure traffic and restrict access to your storage accounts.
 

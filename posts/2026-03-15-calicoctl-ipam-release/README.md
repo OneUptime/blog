@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Troubleshooting
+Tags: Calico, Calicoctl, IPAM, Kubernetes, Networking, IP Address Management, Troubleshooting
 
 Description: Learn how to use calicoctl ipam release to manually free leaked or orphaned IP address allocations in Calico.
 
@@ -33,13 +33,13 @@ calicoctl ipam release --ip=10.244.1.15
 
 Successful output:
 
-```
+```text
 Successfully released IP 10.244.1.15
 ```
 
 If the IP is not allocated:
 
-```
+```text
 IP 10.244.1.15 is not currently allocated.
 ```
 
@@ -180,7 +180,7 @@ calicoctl ipam check
 
 Expected output after cleanup:
 
-```
+```text
 Found 0 inconsistencies.
 IPAM data is consistent.
 ```

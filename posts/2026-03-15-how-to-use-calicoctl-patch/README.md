@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Configuration, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Configuration, DevOps
 
 Description: Learn how to use calicoctl patch to make targeted modifications to Calico resources such as IP pools, BGP configurations, and network policies.
 

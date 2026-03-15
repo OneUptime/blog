@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore, Migration, Kubernetes, etcd, Backup, DevOps
+Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Backup, DevOps
 
 Description: Learn how to use calicoctl datastore migrate export to export Calico configuration data for datastore migration or backup.
 
@@ -84,7 +84,7 @@ head -50 calico-export.yaml
 
 Expected output from the grep command:
 
-```
+```text
      3 kind: BGPConfiguration
      2 kind: BGPPeer
      5 kind: FelixConfiguration

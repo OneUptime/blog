@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Network Policy, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Network Policy, DevOps
 
 Description: Learn how to use calicoctl create to define network policies, IP pools, BGP configurations, and other Calico resources with practical examples.
 

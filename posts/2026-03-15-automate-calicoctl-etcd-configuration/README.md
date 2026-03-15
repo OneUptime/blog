@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Automation, Configuration, DevOps
+Tags: Calico, Calicoctl, etcd, Automation, Configuration, DevOps
 
 Description: Automate calicoctl etcd datastore configuration with scripts, environment management, and infrastructure-as-code patterns.
 

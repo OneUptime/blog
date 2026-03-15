@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Best Practices, Troubleshooting, calicoctl
+Tags: Calico, etcd, Best Practices, Troubleshooting, Calicoctl
 
 Description: Identify and avoid the most common mistakes when configuring calicoctl with the etcd datastore, including TLS misconfigurations, endpoint errors, version mismatches, and data corruption pitfalls.
 

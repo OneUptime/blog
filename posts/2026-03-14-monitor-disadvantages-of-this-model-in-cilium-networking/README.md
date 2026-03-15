@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Networking, Monitoring
+Tags: Cilium, Kubernetes, Monitoring, Networking
 
 Description: Set up monitoring and alerting for the trade-offs and challenges of using native routing mode in Cilium including network infrastructure requirements and IP address management complexity to detect...
 

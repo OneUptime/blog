@@ -41,7 +41,7 @@ kubectl describe pod <pod-name> -n <namespace> | grep -A 5 "Events"
 
 Common error messages include:
 
-```
+```text
 Warning  FailedCreatePodSandBox  no available CIDR
 Warning  FailedCreatePodSandBox  CIDRNotAvailable
 ```
@@ -75,7 +75,7 @@ calicoctl get ippools -o yaml
 
 The IPPool CIDR must fall within (or match) the kubeadm pod network CIDR. A common misconfiguration:
 
-```
+```text
 kubeadm podSubnet: 10.244.0.0/16
 Calico IPPool:     192.168.0.0/16  <-- MISMATCH
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Automation, System Requirements, Kubernetes, Pre-flight
+Tags: Calico, Calicoctl, Automation, System Requirements, Kubernetes, Pre-flight
 
 Description: Integrate calicoctl node checksystem into automated deployment pipelines and infrastructure provisioning to ensure every node meets Calico requirements before joining the cluster.
 

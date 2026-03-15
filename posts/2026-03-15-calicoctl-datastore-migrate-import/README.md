@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Datastore, Migration, Kubernetes, etcd, Import, DevOps
+Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Import, DevOps
 
 Description: Learn how to use calicoctl datastore migrate import to import Calico configuration data into a new datastore during migration.
 
@@ -33,7 +33,7 @@ calicoctl datastore migrate import -f calico-export.yaml
 
 Successful output:
 
-```
+```text
 Importing Calico data...
   Importing IPPool "default-ipv4-ippool"...
   Importing BGPConfiguration "default"...

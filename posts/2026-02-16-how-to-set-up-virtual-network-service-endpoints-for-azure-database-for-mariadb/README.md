@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MariaDB, VNet, Service Endpoint, Networking, Security, Database Security
+Tags: Azure, MariaDB, VNet, Service Endpoints, Networking, Security, Database Security
 
 Description: Learn how to configure Virtual Network service endpoints for Azure Database for MariaDB to restrict database access to specific Azure virtual networks.
 

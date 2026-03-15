@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Diagnostics, Troubleshooting, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Diagnostics, Troubleshooting, DevOps
 
 Description: Learn how to use calicoctl node diags to collect diagnostic data from Calico nodes for troubleshooting networking and connectivity issues.
 
@@ -33,7 +33,7 @@ sudo calicoctl node diags
 
 This creates a diagnostics tarball in the current directory:
 
-```
+```text
 Collecting diagnostics
 Using log dir: /var/log/calico
 Dumping netstat

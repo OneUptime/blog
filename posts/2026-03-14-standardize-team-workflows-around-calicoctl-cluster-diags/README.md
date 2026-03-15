@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Cluster Diagnostics, Team Workflows, Best Practices
+Tags: Calico, Calicoctl, Cluster Diagnostics, Team Workflows, Best Practices
 
 Description: Establish team-wide procedures for collecting, archiving, and analyzing cluster diagnostics to improve operational consistency and incident response.
 

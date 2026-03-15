@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, BGP, Node Status, Kubernetes, Networking
+Tags: Calico, Calicoctl, BGP, Node Status, Kubernetes, Networking
 
 Description: Master calicoctl node status to monitor BGP peering health, diagnose connectivity issues, and understand your Calico network topology through practical examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Networking, Node Management, DevOps
+Tags: Calico, Calicoctl, Kubernetes, Networking, Node Management, DevOps
 
 Description: Learn how to use calicoctl node run to start the Calico node process for non-Kubernetes deployments and custom configurations.
 

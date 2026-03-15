@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, etcd, Monitoring, Prometheus, Alerts
+Tags: Calico, Calicoctl, etcd, Monitoring, Prometheus, Alerts
 
 Description: Monitor your calicoctl etcd datastore configuration to detect connectivity issues, certificate expiration, and etcd cluster health problems.
 
@@ -130,7 +130,7 @@ scrape_configs:
 
 Watch these metrics for etcd health:
 
-```
+```text
 etcd_server_has_leader
 etcd_server_leader_changes_seen_total
 etcd_disk_wal_fsync_duration_seconds_bucket

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Firewall, Virtual Network, Service Endpoint, Network Security, Secrets Management
+Tags: Azure, Key Vault, Firewall, Virtual Network, Service Endpoints, Network Security, Secrets Management
 
 Description: A practical guide to locking down Azure Key Vault access using firewall rules, VNet service endpoints, and private endpoints for defense-in-depth network security.
 

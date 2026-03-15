@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, calicoctl, Kubernetes, Troubleshooting, Networking
+Tags: Calico, Calicoctl, Kubernetes, Troubleshooting, Networking
 
 Description: A practical guide to diagnosing and resolving common errors encountered when running calicoctl version, including connection failures, version mismatches, and configuration issues.
 

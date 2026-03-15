@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Automation, calicoctl, GitOps
+Tags: Calico, Kubernetes, Automation, Calicoctl, GitOps
 
 Description: Learn how to automate Calico cluster changes using calicoctl replace in CI/CD pipelines and GitOps workflows for deterministic, full-resource updates.
 
