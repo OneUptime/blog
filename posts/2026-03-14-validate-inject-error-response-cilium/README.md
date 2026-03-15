@@ -229,18 +229,18 @@ spec:
             l7:
               - command: "GET"
               - command: "SET"
-              # DELETE intentionally omitted — will be denied
+              # DELETE intentionally omitted - will be denied
 ```
 
 ```bash
 # Apply the policy
 kubectl apply -f deny-delete-policy.yaml
 
-# Send an allowed request — should succeed
+# Send an allowed request - should succeed
 kubectl exec test-client -- protocol-client send --command GET --target myservice:9000
 # Expected: success response
 
-# Send a denied request — should receive error response
+# Send a denied request - should receive error response
 kubectl exec test-client -- protocol-client send --command DELETE --target myservice:9000
 # Expected: error response with "access denied"
 

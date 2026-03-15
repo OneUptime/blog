@@ -12,7 +12,7 @@ Description: Validate complex protocol parsing logic in Cilium L7 parsers using 
 
 Validating advanced parsing logic requires techniques beyond basic unit testing. When a parser handles nested structures, variable-length fields, and multi-step exchanges, the input space becomes too large for exhaustive testing. Instead, validation relies on property-based testing, differential testing against reference implementations, and protocol conformance verification.
 
-The goal is to prove that the parser correctly handles the full range of valid inputs while safely rejecting all invalid inputs — without explicitly testing every possible byte sequence. Techniques like fuzz testing explore the input space automatically, while property-based tests verify invariants that must hold for any input.
+The goal is to prove that the parser correctly handles the full range of valid inputs while safely rejecting all invalid inputs - without explicitly testing every possible byte sequence. Techniques like fuzz testing explore the input space automatically, while property-based tests verify invariants that must hold for any input.
 
 This guide demonstrates advanced validation techniques for Cilium L7 parsers with practical code examples.
 
@@ -123,7 +123,7 @@ func FuzzParseValueProperties(f *testing.F) {
             }
         }
 
-        // Property 3: Parsing never panics (implicit — fuzz framework catches panics)
+        // Property 3: Parsing never panics (implicit - fuzz framework catches panics)
     })
 }
 ```

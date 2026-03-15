@@ -251,7 +251,7 @@ go test -c ./proxylib/myprotocol/ -o /dev/null
 Check Go version differences between local and CI. Also verify that CI runs tests with the same build tags. Add `t.Logf` statements to capture environment info in CI output.
 
 **Problem: Test binary panics before any test runs**
-This usually indicates an `init()` function problem — the parser factory registration may conflict with another parser. Check for duplicate parser names.
+This usually indicates an `init()` function problem - the parser factory registration may conflict with another parser. Check for duplicate parser names.
 
 **Problem: Coverage report shows 0%**
 Ensure the test file is in the same package as the code under test (not a separate `_test` package for internal function access).

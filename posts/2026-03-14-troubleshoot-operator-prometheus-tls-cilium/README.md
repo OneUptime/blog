@@ -32,10 +32,10 @@ curl -s http://localhost:9090/api/v1/targets | \
     jq '.data.activeTargets[] | select(.labels.job | contains("operator")) | {health: .health, lastError: .lastError}'
 
 # Common error messages:
-# "x509: certificate signed by unknown authority" — CA mismatch
-# "x509: certificate has expired or is not yet valid" — Expired cert
-# "tls: handshake failure" — Protocol mismatch
-# "connection refused" — TLS not enabled on operator
+# "x509: certificate signed by unknown authority" - CA mismatch
+# "x509: certificate has expired or is not yet valid" - Expired cert
+# "tls: handshake failure" - Protocol mismatch
+# "connection refused" - TLS not enabled on operator
 
 # Test TLS directly
 kubectl run tls-debug --image=curlimages/curl --rm -it --restart=Never -- \

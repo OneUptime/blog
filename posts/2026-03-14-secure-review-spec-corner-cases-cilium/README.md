@@ -10,9 +10,9 @@ Description: A systematic approach to reviewing protocol specifications for corn
 
 ## Introduction
 
-Every protocol specification contains corner cases — scenarios that are technically valid but unusual, ambiguously specified, or interaction points between features that create unexpected behavior. These corner cases are where security vulnerabilities hide in L7 parsers, because developers implement the common cases and may miss or misinterpret the edge cases.
+Every protocol specification contains corner cases - scenarios that are technically valid but unusual, ambiguously specified, or interaction points between features that create unexpected behavior. These corner cases are where security vulnerabilities hide in L7 parsers, because developers implement the common cases and may miss or misinterpret the edge cases.
 
-Reviewing the spec for corner cases before finalizing a Cilium parser prevents entire classes of vulnerabilities. A spec ambiguity that leads to a parsing disagreement between client and server can be exploited to bypass policy enforcement — the client sends data that the parser interprets as one command while the server interprets it as another.
+Reviewing the spec for corner cases before finalizing a Cilium parser prevents entire classes of vulnerabilities. A spec ambiguity that leads to a parsing disagreement between client and server can be exploited to bypass policy enforcement - the client sends data that the parser interprets as one command while the server interprets it as another.
 
 This guide provides a structured methodology for identifying and addressing protocol spec corner cases in Cilium L7 parsers.
 
@@ -187,7 +187,7 @@ For each corner case, document the decision and its security rationale:
 // CORNER CASE 3: Request ID reuse
 // Spec reference: Section 3.3 "Request Tracking"
 // Spec says: "Request IDs SHOULD be unique per connection"
-// Ambiguity: SHOULD, not MUST — clients may reuse IDs
+// Ambiguity: SHOULD, not MUST - clients may reuse IDs
 // Decision: ALLOW ID reuse, match to most recent unmatched request
 // Rationale: Some clients are known to reuse IDs. Rejecting would break compatibility.
 ```

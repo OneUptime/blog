@@ -81,7 +81,7 @@ echo "Allowed requests: $ALLOWED"
 echo "Denied requests: $DENIED"
 
 if [ "$DENIED" -eq 0 ]; then
-    echo "WARNING: No denied requests recorded — security testing incomplete"
+    echo "WARNING: No denied requests recorded - security testing incomplete"
 fi
 ```
 

@@ -50,7 +50,7 @@ Audit checklist for recursion:
 | Non-recursive alternative exists | For protocols allowing very deep nesting | |
 
 ```go
-// AUDIT FINDING: FAIL — depth not checked at entry
+// AUDIT FINDING: FAIL - depth not checked at entry
 func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
     typeByte := data[offset] // Could recurse infinitely before checking depth
     if typeByte == 0x03 {
@@ -60,7 +60,7 @@ func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
     // ...
 }
 
-// AUDIT FINDING: PASS — depth checked at entry
+// AUDIT FINDING: PASS - depth checked at entry
 func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
     if depth > maxNestingDepth {
         return nil, 0, fmt.Errorf("nesting depth exceeded")
@@ -91,10 +91,10 @@ Verify encoding consistency:
 // Line 45: Big-endian (correct)
 msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
 
-// Line 78: Also big-endian (consistent) — PASS
+// Line 78: Also big-endian (consistent) - PASS
 strLen := int(data[offset])<<8 | int(data[offset+1])
 
-// Line 102: Little-endian (INCONSISTENT) — FAIL
+// Line 102: Little-endian (INCONSISTENT) - FAIL
 fieldLen := int(data[offset+1])<<8 | int(data[offset])  // Byte order reversed!
 ```
 
@@ -137,7 +137,7 @@ var commandRegistry = map[byte]commandHandler{
 func dispatchCommand(command byte, ...) {
     handler, exists := commandRegistry[command]
     if !exists {
-        // AUDIT FINDING: PASS — unknown commands are dropped
+        // AUDIT FINDING: PASS - unknown commands are dropped
         return proxylib.DROP, 0
     }
     // ...
@@ -195,7 +195,7 @@ func (rt *requestTracker) trackRequest(id uint32, cmd byte) error {
 
 // 2. Can stale entries accumulate?
 // AUDIT: Is there a cleanup mechanism for requests that never get responses?
-// If not: FAIL — memory leak under connection loss scenarios.
+// If not: FAIL - memory leak under connection loss scenarios.
 
 // 3. Can response matching be confused?
 // AUDIT: Is the response matched to the correct request using a unique ID?

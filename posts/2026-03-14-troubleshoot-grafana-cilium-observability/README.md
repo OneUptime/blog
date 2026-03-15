@@ -211,4 +211,4 @@ Reduce the number of panels per dashboard, increase the query step interval, or 
 
 ## Conclusion
 
-Troubleshooting Grafana for Cilium observability requires checking three layers: access (can users reach and authenticate to Grafana), data (are Prometheus metrics available through the datasource), and display (do panels render correctly with the right data). Most issues are configuration problems — wrong datasource URL, missing network policy allowing connectivity, or incorrect metric names in dashboard queries. Systematic checking of each layer identifies the failure point efficiently.
+Troubleshooting Grafana for Cilium observability requires checking three layers: access (can users reach and authenticate to Grafana), data (are Prometheus metrics available through the datasource), and display (do panels render correctly with the right data). Most issues are configuration problems - wrong datasource URL, missing network policy allowing connectivity, or incorrect metric names in dashboard queries. Systematic checking of each layer identifies the failure point efficiently.

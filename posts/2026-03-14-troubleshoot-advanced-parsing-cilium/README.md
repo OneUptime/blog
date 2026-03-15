@@ -12,7 +12,7 @@ Description: Diagnose and resolve complex parsing issues in Cilium L7 parsers, i
 
 Advanced parsing in Cilium L7 parsers introduces failure modes that are not present in basic message framing. Nested structures can fail at any depth, variable-length field encodings can mismatch between client and server implementations, and multi-message state tracking can become corrupted under specific traffic patterns.
 
-These issues are harder to diagnose than basic parsing failures because the symptoms are often indirect — a message parses partially, produces wrong policy decisions, or silently corrupts subsequent messages in the stream. Effective troubleshooting requires understanding the protocol specification deeply and using structured debugging approaches.
+These issues are harder to diagnose than basic parsing failures because the symptoms are often indirect - a message parses partially, produces wrong policy decisions, or silently corrupts subsequent messages in the stream. Effective troubleshooting requires understanding the protocol specification deeply and using structured debugging approaches.
 
 This guide covers diagnostic techniques for the most common advanced parsing problems in Cilium parsers.
 

@@ -124,14 +124,14 @@ Evaluate whether testing covers the attack surface:
 // Map test coverage to parser code paths
 
 // OnData return paths that must be manually tested:
-// 1. MORE (partial data) — covered by: ___
-// 2. PASS (allowed) — covered by: ___
-// 3. DROP (denied by policy) — covered by: ___
-// 4. DROP (malformed input) — covered by: ___
-// 5. DROP (oversized) — covered by: ___
-// 6. DROP (error state) — covered by: ___
-// 7. Error injection path — covered by: ___
-// 8. Access logging path — covered by: ___
+// 1. MORE (partial data) - covered by: ___
+// 2. PASS (allowed) - covered by: ___
+// 3. DROP (denied by policy) - covered by: ___
+// 4. DROP (malformed input) - covered by: ___
+// 5. DROP (oversized) - covered by: ___
+// 6. DROP (error state) - covered by: ___
+// 7. Error injection path - covered by: ___
+// 8. Access logging path - covered by: ___
 ```
 
 ## Audit Area 5: Result Analysis

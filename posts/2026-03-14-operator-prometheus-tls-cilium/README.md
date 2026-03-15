@@ -10,7 +10,7 @@ Description: Configure TLS encryption for Prometheus metric scraping from the Ci
 
 ## Introduction
 
-The Cilium Operator exposes Prometheus metrics that include sensitive operational data — policy enforcement statistics, endpoint counts, identity information, and cluster topology details. In environments with strict security requirements, these metrics must be encrypted in transit using TLS to prevent eavesdropping and tampering.
+The Cilium Operator exposes Prometheus metrics that include sensitive operational data - policy enforcement statistics, endpoint counts, identity information, and cluster topology details. In environments with strict security requirements, these metrics must be encrypted in transit using TLS to prevent eavesdropping and tampering.
 
 Configuring TLS for the Operator's Prometheus endpoint involves certificate management, Helm value configuration, and Prometheus scraper updates. This guide covers the complete setup process.
 

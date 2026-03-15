@@ -184,7 +184,7 @@ func (al *asyncLogger) log(entry *accesslog.LogRecord) {
     case al.entries <- entry:
         // Sent successfully
     default:
-        // Buffer full — log a warning but do not block the parser
+        // Buffer full - log a warning but do not block the parser
         log.Warn("Access log buffer full, dropping entry")
     }
 }
@@ -228,7 +228,7 @@ Ensure your parser calls `accesslog.Log()` explicitly. HTTP logging is built int
 Use NTP-synchronized clocks and always log in UTC. If precision is critical, include monotonic timestamps alongside wall clock time.
 
 **Problem: Hubble observe shows no protocol field**
-Check that the `Protocol` field is set in your log entry. Some Hubble versions may filter by known protocols — verify with raw Hubble API output.
+Check that the `Protocol` field is set in your log entry. Some Hubble versions may filter by known protocols - verify with raw Hubble API output.
 
 **Problem: Log volume overwhelms storage**
 Implement per-connection or per-endpoint sampling. Log 100% of denied requests but sample allowed requests at a configurable rate (e.g., 10%).

@@ -10,7 +10,7 @@ Description: Build secure runtime integration tests for Cilium L7 parsers that v
 
 ## Introduction
 
-Runtime tests validate Cilium L7 parsers in their actual execution environment — inside the Cilium agent, processing real network traffic through the Envoy proxy. Unlike unit tests that exercise parser code in isolation, runtime tests confirm that the parser integrates correctly with Cilium's policy engine, BPF datapath, proxy redirects, and observability infrastructure.
+Runtime tests validate Cilium L7 parsers in their actual execution environment - inside the Cilium agent, processing real network traffic through the Envoy proxy. Unlike unit tests that exercise parser code in isolation, runtime tests confirm that the parser integrates correctly with Cilium's policy engine, BPF datapath, proxy redirects, and observability infrastructure.
 
 Security in runtime testing means ensuring that tests do not weaken the cluster's security posture, that test traffic is isolated from production workloads, and that the tests themselves validate security properties (policy enforcement, access logging) rather than just functional correctness.
 

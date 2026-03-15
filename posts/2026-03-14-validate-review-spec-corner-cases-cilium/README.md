@@ -12,7 +12,7 @@ Description: Validate that a Cilium L7 parser correctly handles all identified p
 
 Validating corner case handling ensures that every documented ambiguity, optional feature, and boundary condition in the protocol specification is handled correctly by the parser. This validation is the bridge between specification review (identifying corner cases) and production readiness (confirming they are handled).
 
-Without this validation step, corner case documentation becomes theoretical — you know the issues exist but have no evidence that the parser handles them. Targeted tests for each corner case provide that evidence.
+Without this validation step, corner case documentation becomes theoretical - you know the issues exist but have no evidence that the parser handles them. Targeted tests for each corner case provide that evidence.
 
 ## Prerequisites
 
@@ -136,7 +136,7 @@ func TestCornerCaseCrossImplementation(t *testing.T) {
 
             // Our parser should be at least as strict as the reference
             if ourOp == proxylib.PASS && !refValid {
-                t.Error("Our parser accepts input that reference rejects — potential security issue")
+                t.Error("Our parser accepts input that reference rejects - potential security issue")
             }
         })
     }

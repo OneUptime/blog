@@ -10,7 +10,7 @@ Description: Validate that runtime integration tests for Cilium L7 parsers provi
 
 ## Introduction
 
-Runtime test validation ensures that integration tests exercise the full security stack — from BPF datapath through proxy redirects, parser logic, policy decisions, error injection, and access logging. A runtime test that only checks connectivity without verifying policy enforcement provides no security value.
+Runtime test validation ensures that integration tests exercise the full security stack - from BPF datapath through proxy redirects, parser logic, policy decisions, error injection, and access logging. A runtime test that only checks connectivity without verifying policy enforcement provides no security value.
 
 Validation examines whether tests check the right properties, handle timing correctly, clean up properly, and provide reliable results across different cluster configurations.
 
@@ -113,7 +113,7 @@ func testGoodDeniedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
         // Check 2: Server never received the request
         serverLogs, _ := kubectl.Logs("cilium-test", "myprotocol-server")
         if containsDeleteRequest(serverLogs) {
-            t.Error("CRITICAL: Server received denied request — policy bypass!")
+            t.Error("CRITICAL: Server received denied request - policy bypass!")
         }
 
         // Check 3: Denial was logged
@@ -178,7 +178,7 @@ go test -tags=integration ./proxylib/myprotocol/... -v -timeout 10m
 # Check after tests
 kubectl get all,cnp,ccnp -n cilium-test 2>/dev/null > /tmp/after-tests.txt
 
-# Compare — should be identical
+# Compare - should be identical
 diff /tmp/before-tests.txt /tmp/after-tests.txt
 ```
 

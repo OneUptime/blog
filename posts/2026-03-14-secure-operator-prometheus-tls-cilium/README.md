@@ -176,7 +176,7 @@ spec:
 kubectl apply -f operator-metrics-network-policy.yaml
 
 # Verify only Prometheus can reach the metrics port
-# From a non-Prometheus pod — should be blocked
+# From a non-Prometheus pod - should be blocked
 kubectl run test-access --image=curlimages/curl --rm -it --restart=Never -- \
     curl -s -m 5 https://cilium-operator.kube-system.svc:9963/metrics 2>&1
 # Expected: Connection timeout or refused
@@ -222,12 +222,12 @@ Verify the complete security configuration:
 
 ```bash
 # Verify mTLS is enforced
-# Without client cert — should fail
+# Without client cert - should fail
 kubectl run mtls-test --image=curlimages/curl --rm -it --restart=Never -- \
     curl -s --cacert /tmp/ca.crt https://cilium-operator.kube-system.svc:9963/metrics 2>&1
 # Expected: TLS handshake failure (no client cert)
 
-# With client cert — should succeed
+# With client cert - should succeed
 # (test from within Prometheus pod)
 
 # Verify certificate rotation

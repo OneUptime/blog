@@ -10,7 +10,7 @@ Description: A step-by-step guide to creating a secure new proxy skeleton in Cil
 
 ## Introduction
 
-When adding support for a new Layer 7 protocol in Cilium, the first coding step is creating a proxy skeleton — the minimal structure that registers with the proxylib framework and handles connection lifecycle events. Getting security right at this stage is critical because the skeleton establishes the foundation for all future parsing and policy enforcement.
+When adding support for a new Layer 7 protocol in Cilium, the first coding step is creating a proxy skeleton - the minimal structure that registers with the proxylib framework and handles connection lifecycle events. Getting security right at this stage is critical because the skeleton establishes the foundation for all future parsing and policy enforcement.
 
 A poorly structured skeleton can introduce vulnerabilities such as unbounded memory allocation, missing authentication hooks, or improper connection state management. These issues become increasingly difficult to fix once more complex parsing logic is layered on top.
 
@@ -39,7 +39,7 @@ touch proxylib/myprotocol/myprotocolparser.go
 touch proxylib/myprotocol/myprotocolparser_test.go
 ```
 
-The naming convention follows existing parsers — the directory name matches the protocol, and the main file is named `<protocol>parser.go`.
+The naming convention follows existing parsers - the directory name matches the protocol, and the main file is named `<protocol>parser.go`.
 
 ## Implementing the Secure Parser Factory
 
@@ -176,7 +176,7 @@ type MyProtocolRule struct {
 // Matches checks if the parsed request matches this policy rule
 func (r *MyProtocolRule) Matches(command string) bool {
     if len(r.AllowedCommands) == 0 {
-        // Empty rule matches everything — explicit allow-all
+        // Empty rule matches everything - explicit allow-all
         return true
     }
     for _, allowed := range r.AllowedCommands {
@@ -257,7 +257,7 @@ Ensure the parser package is imported with a blank import (`_`) in the proxylib 
 Check the parser state machine. If the initial state is set incorrectly or the state transitions have a logic error, the parser may immediately enter the error state. Add debug logging to `OnData` to trace state transitions.
 
 **Problem: Memory usage grows unbounded**
-Verify that `maxMessageSize` is set appropriately for your protocol. Also ensure that the parser does not accumulate data across calls without bounds — each `OnData` invocation should either consume or drop data.
+Verify that `maxMessageSize` is set appropriately for your protocol. Also ensure that the parser does not accumulate data across calls without bounds - each `OnData` invocation should either consume or drop data.
 
 **Problem: Policy rules not matching**
 Verify the `l7proto` field in your CiliumNetworkPolicy matches the `ParserName` constant exactly. The match is case-sensitive.

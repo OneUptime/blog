@@ -137,7 +137,7 @@ return proxylib.DROP, 0               // Then DROP
 
 // Check 3: Is Inject called on the correct direction?
 p.connection.Inject(true, errorResp)  // true = reply direction
-// AUDIT: PASS — error goes to client, not to server
+// AUDIT: PASS - error goes to client, not to server
 ```
 
 ## Generating the Audit Report
@@ -189,4 +189,4 @@ Add a boolean guard (`errorInjected`) to the parser state that prevents duplicat
 
 ## Conclusion
 
-Auditing error response injection ensures that the proxy does not become a source of information leakage or amplification attacks. By systematically checking each risk area — information content, amplification factor, format compliance, and injection timing — you verify that the injection mechanism is safe for production use. Track all findings with clear severity ratings and resolve critical issues before deploying the parser.
+Auditing error response injection ensures that the proxy does not become a source of information leakage or amplification attacks. By systematically checking each risk area - information content, amplification factor, format compliance, and injection timing - you verify that the injection mechanism is safe for production use. Track all findings with clear severity ratings and resolve critical issues before deploying the parser.

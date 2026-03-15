@@ -10,7 +10,7 @@ Description: Implement secure access logging in Cilium L7 parsers that captures 
 
 ## Introduction
 
-Access logging in Cilium L7 parsers records every policy decision made by the proxy — which requests were allowed, which were denied, and relevant metadata about each transaction. This data is essential for security auditing, compliance, incident investigation, and troubleshooting.
+Access logging in Cilium L7 parsers records every policy decision made by the proxy - which requests were allowed, which were denied, and relevant metadata about each transaction. This data is essential for security auditing, compliance, incident investigation, and troubleshooting.
 
 However, access logs themselves become a security concern if they contain sensitive data (passwords, tokens, personal information) or if they can be tampered with. Secure access logging requires careful selection of what to log, structured formatting for machine parsing, and protection of the log stream.
 
@@ -76,7 +76,7 @@ func (p *Parser) logAccess(reply bool, command byte, requestID uint32, verdict a
         Verdict:  verdict,
         Protocol: "myprotocol",
 
-        // Custom L7 fields — only non-sensitive metadata
+        // Custom L7 fields - only non-sensitive metadata
         L7: map[string]string{
             "command":    commandName(command),
             "request_id": fmt.Sprintf("%d", requestID),

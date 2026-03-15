@@ -37,10 +37,10 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     }
 
     // Use Peek to examine data without consuming it
-    // This is safe — Peek returns only available bytes
+    // This is safe - Peek returns only available bytes
     header, err := reader.PeekSlice(4)
     if err != nil {
-        // Not enough data yet — request minimum header size
+        // Not enough data yet - request minimum header size
         return proxylib.MORE, 4
     }
 
@@ -199,7 +199,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
 
     // Phase 1: Need at least the header
     if dataLen < headerSize {
-        // Request exactly what we need — do not over-request
+        // Request exactly what we need - do not over-request
         return proxylib.MORE, headerSize
     }
 
@@ -216,7 +216,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
         return proxylib.MORE, totalLen
     }
 
-    // Phase 3: Full message available — parse and decide
+    // Phase 3: Full message available - parse and decide
     result, consumed := p.parseMessage(reply, reader, totalLen)
 
     // Log the access for audit trail

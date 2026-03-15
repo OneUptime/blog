@@ -61,10 +61,10 @@ Evaluate whether assertions catch real security issues:
 // Weak: Only checks return code (err != nil)
 
 // Example audit annotations:
-// Line 45: "if err != nil" — WEAK assertion (any error matches)
-// Line 52: "if containsSuccess(output)" — MEDIUM assertion
-// Line 60: "if containsDeleteRequest(serverLogs)" — STRONG assertion
-// Line 68: "if containsMyProtocolDenial(flows)" — STRONG assertion
+// Line 45: "if err != nil" - WEAK assertion (any error matches)
+// Line 52: "if containsSuccess(output)" - MEDIUM assertion
+// Line 60: "if containsDeleteRequest(serverLogs)" - STRONG assertion
+// Line 68: "if containsMyProtocolDenial(flows)" - STRONG assertion
 ```
 
 ```mermaid

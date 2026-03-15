@@ -10,7 +10,7 @@ Description: A comprehensive guide to validating Cilium L7 parser OnData impleme
 
 ## Introduction
 
-Validation of the OnData method goes beyond simple unit testing. It requires proving that the parser correctly handles every class of input — valid messages, malformed packets, truncated data, oversized payloads, and adversarial inputs designed to exploit parsing weaknesses.
+Validation of the OnData method goes beyond simple unit testing. It requires proving that the parser correctly handles every class of input - valid messages, malformed packets, truncated data, oversized payloads, and adversarial inputs designed to exploit parsing weaknesses.
 
 A well-validated OnData method gives confidence that the parser will behave correctly in production, where it processes untrusted traffic at scale. Without thorough validation, subtle bugs can cause data corruption, connection stalls, or security bypasses that only manifest under specific traffic patterns.
 
@@ -341,7 +341,7 @@ go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -benchmem
 ## Troubleshooting
 
 **Problem: Fuzzer finds panics immediately**
-Start by fixing the most basic bounds checks — usually missing length validation before slice access. Re-run the fuzzer after each fix.
+Start by fixing the most basic bounds checks - usually missing length validation before slice access. Re-run the fuzzer after each fix.
 
 **Problem: Test reader does not match production behavior**
 The test reader may not perfectly simulate proxylib's Reader. Validate critical behavior differences by testing in a real cluster alongside unit tests.
@@ -354,4 +354,4 @@ Periodically clean the corpus by removing inputs that do not improve coverage. U
 
 ## Conclusion
 
-Validating the OnData method requires multiple complementary approaches: table-driven tests for known scenarios, fuzz testing for unknown edge cases, property-based testing for invariant verification, and integration tests for real-world behavior. Together, these techniques provide strong confidence that the parser handles all inputs safely and correctly. Make validation an ongoing practice — run fuzz tests regularly and expand the test suite whenever a new bug is discovered.
+Validating the OnData method requires multiple complementary approaches: table-driven tests for known scenarios, fuzz testing for unknown edge cases, property-based testing for invariant verification, and integration tests for real-world behavior. Together, these techniques provide strong confidence that the parser handles all inputs safely and correctly. Make validation an ongoing practice - run fuzz tests regularly and expand the test suite whenever a new bug is discovered.

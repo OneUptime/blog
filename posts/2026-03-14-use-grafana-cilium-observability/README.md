@@ -10,7 +10,7 @@ Description: Set up and use Grafana dashboards for Cilium observability, includi
 
 ## Introduction
 
-Grafana transforms raw Cilium and Hubble Prometheus metrics into actionable visual dashboards. With properly configured dashboards, operators can monitor network policy enforcement, track traffic patterns, detect anomalies, and investigate connectivity issues — all from a single interface.
+Grafana transforms raw Cilium and Hubble Prometheus metrics into actionable visual dashboards. With properly configured dashboards, operators can monitor network policy enforcement, track traffic patterns, detect anomalies, and investigate connectivity issues - all from a single interface.
 
 Cilium provides official Grafana dashboards that cover the most common observability needs. Beyond these, custom dashboards can be created to address organization-specific monitoring requirements. This guide covers both approaches.
 

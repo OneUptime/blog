@@ -10,7 +10,7 @@ Description: Diagnose and resolve issues caused by protocol specification corner
 
 ## Introduction
 
-Corner cases in protocol specifications become real bugs when the parser encounters traffic that falls into ambiguous territory. These bugs are among the hardest to diagnose because the traffic may appear valid to the client, valid to the server, but be misinterpreted by the parser — leading to policy bypasses, connection failures, or data corruption.
+Corner cases in protocol specifications become real bugs when the parser encounters traffic that falls into ambiguous territory. These bugs are among the hardest to diagnose because the traffic may appear valid to the client, valid to the server, but be misinterpreted by the parser - leading to policy bypasses, connection failures, or data corruption.
 
 Troubleshooting corner case issues requires comparing actual wire traffic against the specification, understanding where implementations diverge from the spec, and determining whether the parser's interpretation is correct for security purposes.
 

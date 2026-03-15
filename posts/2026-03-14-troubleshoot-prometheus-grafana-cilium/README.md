@@ -146,7 +146,7 @@ curl -s "http://localhost:9090/api/v1/status/runtimeinfo" | jq '.data.storageRet
 # Issue: Rate calculations show 0
 # Verify counters are incrementing
 curl -s "http://localhost:9090/api/v1/query?query=cilium_policy_l7_total" | jq '.data.result[0].value'
-# Wait 30s and check again — value should increase if traffic is flowing
+# Wait 30s and check again - value should increase if traffic is flowing
 ```
 
 ## Validating the Complete Pipeline

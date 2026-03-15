@@ -45,7 +45,7 @@ Create a completeness matrix:
 | MORE (need data) | 55 | N/A | N/A | N/A |
 
 ```go
-// AUDIT FINDING: FAIL — denied requests not logged
+// AUDIT FINDING: FAIL - denied requests not logged
 if !p.matchesPolicy(command) {
     return proxylib.DROP, 0  // No log entry for denied request
 }
@@ -182,4 +182,4 @@ Log all events but implement sampling for metrics. Ensure 100% logging of denied
 
 ## Conclusion
 
-Auditing access logging in Cilium L7 parsers evaluates whether the logging implementation fulfills its dual purpose as a security control and compliance mechanism without becoming a liability through sensitive data exposure or performance degradation. The five-phase audit — completeness, sensitivity, performance, integrity, and compliance — provides comprehensive coverage of logging risks. Address all findings by severity before considering the parser production-ready.
+Auditing access logging in Cilium L7 parsers evaluates whether the logging implementation fulfills its dual purpose as a security control and compliance mechanism without becoming a liability through sensitive data exposure or performance degradation. The five-phase audit - completeness, sensitivity, performance, integrity, and compliance - provides comprehensive coverage of logging risks. Address all findings by severity before considering the parser production-ready.

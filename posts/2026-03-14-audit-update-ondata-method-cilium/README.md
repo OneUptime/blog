@@ -39,16 +39,16 @@ grep -n "\[.*:.*\]" proxylib/myprotocol/myprotocolparser.go
 For each access found, verify a bounds check exists above it:
 
 ```go
-// AUDIT FINDING: FAIL — no bounds check before index access
+// AUDIT FINDING: FAIL - no bounds check before index access
 data, _ := reader.PeekSlice(reader.Length())
 command := data[4]  // Could panic if len(data) < 5
 
-// AUDIT FINDING: PASS — bounds check precedes access
+// AUDIT FINDING: PASS - bounds check precedes access
 data, _ := reader.PeekSlice(reader.Length())
 if len(data) < 5 {
     return proxylib.MORE, 5
 }
-command := data[4]  // Safe — len(data) >= 5 guaranteed
+command := data[4]  // Safe - len(data) >= 5 guaranteed
 ```
 
 Create an audit matrix:
@@ -71,16 +71,16 @@ grep -n "<<\|>>\|+\|-\|\*" proxylib/myprotocol/myprotocolparser.go | grep -v "//
 Check for overflow in length calculations:
 
 ```go
-// AUDIT FINDING: FAIL — potential integer overflow
+// AUDIT FINDING: FAIL - potential integer overflow
 msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
 totalLen := 4 + msgLen  // If msgLen is near MaxInt, totalLen overflows
 
-// AUDIT FINDING: PASS — overflow prevented by range check
+// AUDIT FINDING: PASS - overflow prevented by range check
 msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
 if msgLen < 0 || msgLen > maxMessageSize {
     return proxylib.DROP, 0
 }
-totalLen := 4 + msgLen  // Safe — msgLen bounded by maxMessageSize
+totalLen := 4 + msgLen  // Safe - msgLen bounded by maxMessageSize
 ```
 
 ```mermaid
@@ -102,31 +102,31 @@ Every return path must satisfy the proxylib contract:
 // Document every return path in OnData
 // Path 1: No data available
 if dataLen == 0 {
-    return proxylib.MORE, 1  // AUDIT: PASS — requests minimum 1 byte
+    return proxylib.MORE, 1  // AUDIT: PASS - requests minimum 1 byte
 }
 
 // Path 2: Partial header
 if dataLen < headerSize {
-    return proxylib.MORE, headerSize  // AUDIT: PASS — requests header bytes
+    return proxylib.MORE, headerSize  // AUDIT: PASS - requests header bytes
 }
 
 // Path 3: Invalid length
 if msgLen <= 0 || msgLen > maxMessageSize {
-    return proxylib.DROP, 0  // AUDIT: PASS — drops with 0 bytes
+    return proxylib.DROP, 0  // AUDIT: PASS - drops with 0 bytes
 }
 
 // Path 4: Partial body
 if dataLen < totalLen {
-    return proxylib.MORE, totalLen  // AUDIT: Check — is totalLen > dataLen?
+    return proxylib.MORE, totalLen  // AUDIT: Check - is totalLen > dataLen?
 }
 
 // Path 5: Policy denied
 if !allowed {
-    return proxylib.DROP, 0  // AUDIT: PASS — drops with 0 bytes
+    return proxylib.DROP, 0  // AUDIT: PASS - drops with 0 bytes
 }
 
 // Path 6: Success
-return proxylib.PASS, totalLen  // AUDIT: Check — is totalLen <= dataLen?
+return proxylib.PASS, totalLen  // AUDIT: Check - is totalLen <= dataLen?
 ```
 
 Contract rules to verify:
@@ -189,10 +189,10 @@ grep -n "_, *_\|_ =" proxylib/myprotocol/myprotocolparser.go
 ```
 
 ```go
-// AUDIT FINDING: FAIL — error ignored
+// AUDIT FINDING: FAIL - error ignored
 data, _ := reader.PeekSlice(totalLen)
 
-// AUDIT FINDING: PASS — error handled
+// AUDIT FINDING: PASS - error handled
 data, err := reader.PeekSlice(totalLen)
 if err != nil {
     log.WithError(err).Warn("Failed to read message data")
@@ -235,4 +235,4 @@ Track audit findings in a structured format (issue tracker or spreadsheet) with 
 
 ## Conclusion
 
-Auditing the OnData method requires systematic examination across five categories: memory safety, integer safety, return value correctness, state machine integrity, and error handling completeness. Each category has specific checks that can be partially automated and must be partially reviewed by a human with protocol parsing expertise. Conducting this audit before the parser goes into production — and repeating it after significant changes — is essential for maintaining the security guarantees that Cilium's L7 policy enforcement depends on.
+Auditing the OnData method requires systematic examination across five categories: memory safety, integer safety, return value correctness, state machine integrity, and error handling completeness. Each category has specific checks that can be partially automated and must be partially reviewed by a human with protocol parsing expertise. Conducting this audit before the parser goes into production - and repeating it after significant changes - is essential for maintaining the security guarantees that Cilium's L7 policy enforcement depends on.

@@ -139,7 +139,7 @@ kubectl describe pod -n cilium-test <pod-name> | grep -A 5 "Last State"
 Common flake patterns and fixes:
 
 ```go
-// Pattern 1: Connection refused — server not ready
+// Pattern 1: Connection refused - server not ready
 // Fix: Wait for server readiness
 func waitForServer(kubectl *helpers.Kubectl, namespace, service string, port int, timeout time.Duration) error {
     deadline := time.Now().Add(timeout)
@@ -191,7 +191,7 @@ func TestMyProtocolRuntime(t *testing.T) {
     timeout := 60 * time.Second
     if os.Getenv("CI") != "" {
         timeout = 180 * time.Second
-        t.Log("Running in CI — increased timeouts")
+        t.Log("Running in CI - increased timeouts")
     }
 
     // ... tests using timeout variable ...

@@ -12,7 +12,7 @@ Description: A structured audit guide for evaluating unit test completeness, cor
 
 An audit of unit test practices goes beyond checking whether tests exist. It evaluates whether the test suite provides genuine security assurance for a Cilium L7 parser. A parser with 90% code coverage but no tests for malformed input offers a false sense of security that is worse than having no coverage metrics at all.
 
-Test auditing examines the breadth of test scenarios, the quality of assertions, the handling of edge cases, and the alignment between tested scenarios and real-world threat models. It also evaluates test infrastructure — helpers, fixtures, and utilities — for correctness and maintainability.
+Test auditing examines the breadth of test scenarios, the quality of assertions, the handling of edge cases, and the alignment between tested scenarios and real-world threat models. It also evaluates test infrastructure - helpers, fixtures, and utilities - for correctness and maintainability.
 
 This guide provides a systematic framework for auditing unit tests associated with Cilium parser development, suitable for security reviews and code quality assessments.
 
@@ -123,15 +123,15 @@ awk '/^func Test/{name=$2; count=0} /t\.Error|t\.Fatal|t\.Fail|assert\./{count++
 Flag tests with weak assertions:
 
 ```go
-// AUDIT FINDING: FAIL — test with no assertions
+// AUDIT FINDING: FAIL - test with no assertions
 func TestOnData_NoAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
     reader := proxylib.NewTestReader(data)
     parser.OnData(false, reader)
-    // No assertion — test always passes
+    // No assertion - test always passes
 }
 
-// AUDIT FINDING: FAIL — test only checks one of two return values
+// AUDIT FINDING: FAIL - test only checks one of two return values
 func TestOnData_PartialAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
     reader := proxylib.NewTestReader(data)
@@ -142,7 +142,7 @@ func TestOnData_PartialAssert(t *testing.T) {
     // Should also check the consumed byte count
 }
 
-// AUDIT FINDING: PASS — comprehensive assertions
+// AUDIT FINDING: PASS - comprehensive assertions
 func TestOnData_FullAssert(t *testing.T) {
     parser := &Parser{state: stateRunning}
     msg := makeValidMessage(0x01, payload)

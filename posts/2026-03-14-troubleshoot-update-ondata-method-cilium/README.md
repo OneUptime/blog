@@ -10,7 +10,7 @@ Description: A practical troubleshooting guide for common issues in Cilium L7 pa
 
 ## Introduction
 
-The `OnData` method in Cilium's proxylib framework is where raw network bytes meet parsing logic. When things go wrong here, the symptoms can range from subtle — slightly elevated latency or intermittent connection resets — to dramatic, such as Envoy proxy crashes that disrupt all L7-filtered traffic on a node.
+The `OnData` method in Cilium's proxylib framework is where raw network bytes meet parsing logic. When things go wrong here, the symptoms can range from subtle - slightly elevated latency or intermittent connection resets - to dramatic, such as Envoy proxy crashes that disrupt all L7-filtered traffic on a node.
 
 Troubleshooting OnData issues requires understanding the proxylib execution model, the relationship between return values and proxy behavior, and the tools available for inspecting traffic flow through Cilium's data path. Many problems stem from incorrect return values, off-by-one errors in length calculations, or misunderstanding how the framework buffers data between calls.
 
@@ -50,7 +50,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
 
     // BUG: Should be 4 + msgLen, not msgLen + msgLen
-    return proxylib.MORE, msgLen + msgLen  // WRONG — doubles the required bytes
+    return proxylib.MORE, msgLen + msgLen  // WRONG - doubles the required bytes
 }
 
 // FIX: Calculate total length correctly
@@ -80,7 +80,7 @@ sequenceDiagram
     P->>P: Reads header, msgLen=96
     P-->>P: Returns MORE, 192 (BUG: doubled)
     Note over P: Waiting for 192 bytes...
-    Note over C,S: Connection stalled — server waiting for request, parser waiting for data
+    Note over C,S: Connection stalled - server waiting for request, parser waiting for data
 ```
 
 ## Debugging Parser Panics
@@ -171,7 +171,7 @@ kubectl exec -n kube-system ds/cilium -- \
 # Use a test client that logs exact bytes sent
 ```
 
-Common corruption cause — consuming the wrong number of bytes:
+Common corruption cause - consuming the wrong number of bytes:
 
 ```go
 // BUG: PASS consumes fewer bytes than the message, corrupting the stream
@@ -184,7 +184,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     msgLen := int(data[0])<<24 | int(data[1])<<16 | int(data[2])<<8 | int(data[3])
 
     // BUG: Only passing msgLen bytes, not accounting for the 4-byte header
-    return proxylib.PASS, msgLen  // WRONG — leaves header bytes in the buffer
+    return proxylib.PASS, msgLen  // WRONG - leaves header bytes in the buffer
 }
 
 // FIX: Include header in consumed bytes
@@ -200,7 +200,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     if dataLen < totalLen {
         return proxylib.MORE, totalLen
     }
-    return proxylib.PASS, totalLen  // Correct — consumes entire message
+    return proxylib.PASS, totalLen  // Correct - consumes entire message
 }
 ```
 
@@ -274,4 +274,4 @@ Remember that the `reply` parameter distinguishes direction. A bug might only af
 
 ## Conclusion
 
-Troubleshooting the OnData method requires understanding the contract between the parser and the proxylib framework — specifically the meaning of return values, how data is buffered, and how policy decisions are enforced. The most common issues stem from incorrect length calculations, missing bounds checks, and off-by-one errors in byte consumption. Systematic use of debug logging, unit tests with edge cases, and cluster-level monitoring will help you identify and resolve OnData problems efficiently.
+Troubleshooting the OnData method requires understanding the contract between the parser and the proxylib framework - specifically the meaning of return values, how data is buffered, and how policy decisions are enforced. The most common issues stem from incorrect length calculations, missing bounds checks, and off-by-one errors in byte consumption. Systematic use of debug logging, unit tests with edge cases, and cluster-level monitoring will help you identify and resolve OnData problems efficiently.

@@ -12,7 +12,7 @@ Description: A structured audit of how protocol specification corner cases are i
 
 An audit of corner case handling evaluates the thoroughness of the specification review process and the correctness of the decisions made for each ambiguity. Unlike other audits that examine code, this audit examines the decision-making process: were all relevant corner cases identified, were decisions well-reasoned, and are the decisions implemented correctly in code?
 
-A gap in corner case coverage represents a latent vulnerability — the parser processes inputs for which no explicit decision was made, relying on whatever behavior the implementation happens to produce. This undirected behavior is the most dangerous kind in a security-critical parser.
+A gap in corner case coverage represents a latent vulnerability - the parser processes inputs for which no explicit decision was made, relying on whatever behavior the implementation happens to produce. This undirected behavior is the most dangerous kind in a security-critical parser.
 
 ## Prerequisites
 
@@ -76,18 +76,18 @@ Evaluate each corner case decision for security soundness:
 // Decision PASS: Restrictive choice with clear rationale
 // CORNER_CASE_001: Zero-length body → REJECT
 // Rationale: "No legitimate use case identified. Rejecting is safer."
-// Audit: PASS — follows principle of least privilege
+// Audit: PASS - follows principle of least privilege
 
 // Decision REVIEW: Permissive choice needs justification
 // CORNER_CASE_003: Request ID 0 → ACCEPT
 // Rationale: "Valid per spec"
-// Audit: REVIEW — is there a security implication of ID 0?
+// Audit: REVIEW - is there a security implication of ID 0?
 //   Could ID 0 be confused with "no ID" in logging/tracking?
 
 // Decision FAIL: No rationale documented
 // CORNER_CASE_007: Multiple commands in one message → ???
 // Rationale: (none documented)
-// Audit: FAIL — undocumented decisions are security risks
+// Audit: FAIL - undocumented decisions are security risks
 ```
 
 Decision quality checklist:

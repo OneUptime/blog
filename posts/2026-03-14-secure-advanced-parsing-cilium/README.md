@@ -12,7 +12,7 @@ Description: Learn how to implement secure advanced parsing techniques in Cilium
 
 Once a basic parser skeleton is in place, advanced parsing adds support for the full complexity of real-world protocols: nested data structures, variable-length fields, optional parameters, and multi-step request-response exchanges. Each layer of complexity introduces new attack surface.
 
-Advanced parsing in Cilium requires maintaining the same strict security discipline established in the basic skeleton — bounded allocations, validated lengths, and explicit error handling — while dealing with significantly more complex data structures. Protocols like Cassandra, Kafka, and MySQL have nested message formats that can be exploited through deeply nested or self-referencing structures.
+Advanced parsing in Cilium requires maintaining the same strict security discipline established in the basic skeleton - bounded allocations, validated lengths, and explicit error handling - while dealing with significantly more complex data structures. Protocols like Cassandra, Kafka, and MySQL have nested message formats that can be exploited through deeply nested or self-referencing structures.
 
 This guide covers secure implementation patterns for advanced protocol parsing within Cilium's proxylib framework.
 
@@ -105,7 +105,7 @@ func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
         }
         return str, consumed + n, nil
 
-    case 0x03: // Array — recurse with incremented depth
+    case 0x03: // Array - recurse with incremented depth
         if len(data) < offset+consumed+4 {
             return nil, 0, fmt.Errorf("insufficient data for array length")
         }

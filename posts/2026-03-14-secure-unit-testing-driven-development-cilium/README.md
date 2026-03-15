@@ -10,7 +10,7 @@ Description: Learn how to use security-focused unit testing to drive the develop
 
 ## Introduction
 
-Test-driven development (TDD) is particularly valuable when building L7 protocol parsers for Cilium, where security correctness is as important as functional correctness. By writing tests before implementation, you define the expected behavior for every class of input — valid, malformed, truncated, and adversarial — before writing any parsing code.
+Test-driven development (TDD) is particularly valuable when building L7 protocol parsers for Cilium, where security correctness is as important as functional correctness. By writing tests before implementation, you define the expected behavior for every class of input - valid, malformed, truncated, and adversarial - before writing any parsing code.
 
 Security-focused TDD differs from standard TDD by emphasizing negative test cases, boundary conditions, and invariant verification alongside the happy-path tests. Each test serves as both a specification and a regression guard, making it harder for future changes to introduce vulnerabilities.
 
@@ -248,7 +248,7 @@ func TestOnData_MultipleMessages(t *testing.T) {
 Execute the TDD cycle:
 
 ```bash
-# Run tests — expect failures initially for unimplemented features
+# Run tests - expect failures initially for unimplemented features
 go test ./proxylib/myprotocol/... -v 2>&1 | head -50
 
 # Run only security boundary tests
@@ -284,7 +284,7 @@ go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -benchmem -count=3
 ## Troubleshooting
 
 **Problem: Tests are too tightly coupled to implementation**
-Test behavior (return values, state transitions), not internal details. Avoid testing private helper function internals — test through the public OnData interface.
+Test behavior (return values, state transitions), not internal details. Avoid testing private helper function internals - test through the public OnData interface.
 
 **Problem: Hard to create test Reader with specific data**
 Use `proxylib.NewTestReader()` or create a simple wrapper that implements the Reader interface for testing purposes. Keep test helpers in the test file.
@@ -293,7 +293,7 @@ Use `proxylib.NewTestReader()` or create a simple wrapper that implements the Re
 Use the pattern `TestOnData_<Category>/<specific_case>`. The category groups related tests, and the specific case describes the scenario being tested.
 
 **Problem: TDD cycle feels slow**
-Focus on the security-critical tests first. You do not need 100% coverage from TDD — add normal functional tests after the security boundaries are established.
+Focus on the security-critical tests first. You do not need 100% coverage from TDD - add normal functional tests after the security boundaries are established.
 
 ## Conclusion
 

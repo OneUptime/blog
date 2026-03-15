@@ -67,7 +67,7 @@ Error responses must follow the protocol format exactly:
 
 ```go
 const (
-    // Error codes — use protocol-standard values
+    // Error codes - use protocol-standard values
     errAccessDenied   = 0x01
     errInvalidCommand = 0x02
 
@@ -167,7 +167,7 @@ func (p *Parser) injectError(command byte, requestID uint32, requestLen int) {
     errorResp := p.buildErrorResponse(command, requestID, "request denied by policy")
 
     if !p.amplificationCheck(requestLen, len(errorResp)) {
-        // Response too large relative to request — just drop without injection
+        // Response too large relative to request - just drop without injection
         log.Warn("Error response exceeds amplification limit, dropping silently")
         return
     }
