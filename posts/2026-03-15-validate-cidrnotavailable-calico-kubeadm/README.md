@@ -1,4 +1,4 @@
-# How to Validate the Resolution of CIDRNotAvailable Errors with Calico and kubeadm
+# How to Validate Resolution of CIDRNotAvailable Errors with Calico and kubeadm
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
