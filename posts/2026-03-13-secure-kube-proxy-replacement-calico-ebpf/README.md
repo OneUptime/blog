@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, kube-proxy, Networking
+Tags: Calico, Kubernetes, eBPF, Kube-proxy, Networking
 
 Description: Secure Calico eBPF service routing with network policies and BPF program integrity verification.
 

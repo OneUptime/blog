@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, kubeadm, CIDR, IPAM, Kubernetes, Prevention, Capacity Planning
+Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Prevention, Capacity Planning
 
 Description: Proactive strategies to prevent CIDRNotAvailable errors from occurring in Calico-based Kubernetes clusters provisioned with kubeadm.
 

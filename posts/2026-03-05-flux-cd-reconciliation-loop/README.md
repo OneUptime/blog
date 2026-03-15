@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Reconciliation, Controllers
+Tags: Flux CD, GitOps, Kubernetes, Reconciliation, Controller
 
 Description: A step-by-step breakdown of how Flux CD's reconciliation loop continuously synchronizes your Git-defined desired state with the actual state of your Kubernetes cluster.
 

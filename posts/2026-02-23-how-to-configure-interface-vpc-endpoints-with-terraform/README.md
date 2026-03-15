@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, VPC Endpoints, PrivateLink, Networking, Infrastructure as Code
+Tags: Terraform, AWS, VPC Endpoint, PrivateLink, Networking, Infrastructure as Code
 
 Description: Learn how to configure Interface VPC Endpoints (AWS PrivateLink) with Terraform to securely access AWS services from private subnets without internet connectivity.
 

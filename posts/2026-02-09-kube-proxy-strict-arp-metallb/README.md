@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kube-proxy, MetalLB, ARP, Load Balancer, Networking
+Tags: Kubernetes, Kube-proxy, MetalLB, ARP, Load Balancer, Networking
 
 Description: Configure kube-proxy strict ARP mode to enable proper MetalLB operation for bare-metal Kubernetes load balancing with Layer 2 mode and avoid IP address conflicts.
 

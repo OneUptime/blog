@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, kubeadm, Cluster, Container Orchestration
+Tags: RHEL, Kubernetes, Kubeadm, Cluster, Container Orchestration
 
 Description: Learn how to set up a Kubernetes cluster on RHEL using kubeadm with containerd as the container runtime.
 

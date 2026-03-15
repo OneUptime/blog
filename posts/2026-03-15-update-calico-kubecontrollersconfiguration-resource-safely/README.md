@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, KubeControllersConfiguration, Kubernetes, Networking, Controllers, Migration, DevOps
+Tags: Calico, KubeControllerConfiguration, Kubernetes, Networking, Controller, Migration, DevOps
 
 Description: Safely update the Calico KubeControllersConfiguration resource to change controller behavior without disrupting cluster operations.
 

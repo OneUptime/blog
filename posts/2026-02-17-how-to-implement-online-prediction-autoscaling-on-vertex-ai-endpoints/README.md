@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Vertex AI, Autoscaling, Prediction Endpoints, Cost Optimization
+Tags: GCP, Vertex AI, Autoscaling, Prediction Endpoint, Cost Optimization
 
 Description: Learn how to configure autoscaling for Vertex AI prediction endpoints to handle variable traffic while minimizing costs during low-demand periods.
 

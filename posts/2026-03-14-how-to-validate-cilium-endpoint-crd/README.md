@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Validation, Endpoints, Networking
+Tags: Cilium, Kubernetes, Validation, Endpoint, Networking
 
 Description: How to validate CiliumEndpoint custom resources to ensure correct identity assignment, IP allocation, policy enforcement, and overall endpoint health in production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Container Orchestration, kubeadm
+Tags: Ansible, Kubernetes, Container Orchestration, Kubeadm
 
 Description: Build a production-ready Kubernetes cluster from scratch using Ansible and kubeadm with control plane setup, worker node joining, and CNI configuration.
 

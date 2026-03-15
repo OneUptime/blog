@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Controllers
+Tags: ArgoCD, GitOps, Kubernetes, Controller
 
 Description: A clear explanation of how the ArgoCD Application Controller works, including its reconciliation loop, sync operations, health checks, and performance tuning.
 

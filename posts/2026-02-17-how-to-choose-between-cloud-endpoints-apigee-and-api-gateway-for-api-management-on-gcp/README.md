@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoints, Apigee, API Gateway, API Management, API
+Tags: GCP, Cloud Endpoint, Apigee, API Gateway, API Management, API
 
 Description: A clear comparison of Google Cloud's three API management options to help you pick the right one for your API strategy and budget.
 

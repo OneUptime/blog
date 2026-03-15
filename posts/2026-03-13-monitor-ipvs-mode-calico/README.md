@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IPVS, kube-proxy, Kubernetes, Networking, Monitoring, Load Balancing
+Tags: Calico, IPVS, Kube-proxy, Kubernetes, Networking, Monitoring, Load Balancing
 
 Description: Learn how to monitor Calico in environments using IPVS-mode kube-proxy, including service routing health, IPVS table consistency, and performance metrics for high-scale Kubernetes clusters.
 

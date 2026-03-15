@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Controllers
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Controller
 
 Description: Resolve the ArgoCD failed to load initial state error by fixing Kubernetes API connectivity, RBAC permissions, etcd health issues, and controller startup problems.
 

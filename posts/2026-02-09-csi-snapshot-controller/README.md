@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Storage, Controllers
+Tags: Kubernetes, CSI, Storage, Controller
 
 Description: Learn how to deploy and configure the CSI snapshot controller in Kubernetes for managing volume snapshots, including installation, configuration, and troubleshooting of snapshot operations.
 

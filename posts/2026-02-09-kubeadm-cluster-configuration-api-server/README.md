@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kubeadm, Cluster Administration
+Tags: Kubernetes, Kubeadm, Cluster Administration
 
 Description: Learn how to use kubeadm ClusterConfiguration to customize Kubernetes API server flags, enabling advanced features like audit logging, encryption at rest, and fine-tuned authentication settings.
 

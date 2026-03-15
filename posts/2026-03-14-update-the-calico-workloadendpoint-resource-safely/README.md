@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Endpoints
+Tags: Calico, Kubernetes, Endpoint
 
 Description: A step-by-step guide to modifying Calico WorkloadEndpoint resources in production without causing downtime or connectivity issues.
 

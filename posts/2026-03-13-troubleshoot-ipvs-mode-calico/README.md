@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPVS, kube-proxy, Networking
+Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
 
 Description: Diagnose IPVS mode issues with Calico including conntrack conflicts, service resolution failures, and IPVS rule inconsistencies.
 

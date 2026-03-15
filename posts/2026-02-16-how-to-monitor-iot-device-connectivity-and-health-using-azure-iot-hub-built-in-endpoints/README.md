@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure IoT Hub, Device Monitoring, Built-In Endpoints, IoT Health, Device Connectivity, Azure Monitor, Diagnostics
+Tags: Azure IoT Hub, Device Monitoring, Built-In Endpoint, IoT Health, Device Connectivity, Azure Monitor, Diagnostics
 
 Description: Learn how to monitor IoT device connectivity and health using Azure IoT Hub built-in endpoints, metrics, and event routing for operational visibility.
 

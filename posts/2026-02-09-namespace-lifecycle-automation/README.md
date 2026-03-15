@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Automation, Controllers
+Tags: Kubernetes, Automation, Controller
 
 Description: Learn how to build custom controllers for automating namespace lifecycle management including provisioning, configuration, monitoring, expiration, and decommissioning workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Machine Learning, Blue-Green Deployment, MLOps, Managed Endpoints, Model Deployment, Inference, Production ML
+Tags: Azure Machine Learning, Blue-Green Deployment, MLOps, Managed Endpoint, Model Deployment, Inference, Production ML
 
 Description: Set up managed online endpoints in Azure Machine Learning with blue-green deployment for safe, zero-downtime model updates in production.
 

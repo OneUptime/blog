@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, WorkloadEndpoint, Kubernetes, Networking, Endpoints, DevOps
+Tags: Calico, WorkloadEndpoint, Kubernetes, Networking, Endpoint, DevOps
 
 Description: Learn how to create and manage Calico WorkloadEndpoint resources for non-Kubernetes workloads and custom endpoint configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Storage Security, Service Endpoints, Virtual Network, Network Security, Firewall Rules, Access Control
+Tags: Azure, Storage Security, Service Endpoint, Virtual Network, Network Security, Firewall Rules, Access Control
 
 Description: How to restrict Azure Storage account access to specific virtual networks and IP addresses using service endpoints and firewall rules.
 

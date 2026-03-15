@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, kube-proxy, IPVS, Load Balancing, Network Troubleshooting
+Tags: Kubernetes, Kube-proxy, IPVS, Load Balancing, Network Troubleshooting
 
 Description: Learn how to troubleshoot and diagnose issues with IPVS mode kube-proxy in Kubernetes, including connectivity problems and load balancing failures.
 

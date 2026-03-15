@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Endpoints
+Tags: Calico, Kubernetes, Endpoint
 
 Description: Practical patterns and real-world examples for using Calico WorkloadEndpoint resources effectively in production Kubernetes environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, kube-proxy, Networking
+Tags: Calico, Kubernetes, eBPF, Kube-proxy, Networking
 
 Description: Validate that Calico eBPF is correctly replacing kube-proxy by verifying service routing without iptables KUBE rules.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Troubleshooting, Docker Compose, Active Endpoints, DevOps
+Tags: Docker, Networking, Troubleshooting, Docker Compose, Active Endpoint, DevOps
 
 Description: Resolve the 'network has active endpoints' error in Docker by identifying and disconnecting containers attached to the network.
 

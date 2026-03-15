@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, GitOps Toolkit, Architecture, Controllers
+Tags: Flux CD, GitOps, Kubernetes, GitOps Toolkit, Architecture, Controller
 
 Description: An architectural overview of the Flux CD GitOps Toolkit, explaining how its modular controller-based design enables flexible and extensible continuous delivery for Kubernetes.
 

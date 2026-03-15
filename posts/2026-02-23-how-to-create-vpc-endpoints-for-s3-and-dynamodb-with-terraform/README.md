@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, VPC Endpoints, S3, DynamoDB, Networking, Infrastructure as Code
+Tags: Terraform, AWS, VPC Endpoint, S3, DynamoDB, Networking, Infrastructure as Code
 
 Description: Learn how to create Gateway VPC Endpoints for S3 and DynamoDB with Terraform to enable private, cost-effective access to AWS services without traversing the internet.
 

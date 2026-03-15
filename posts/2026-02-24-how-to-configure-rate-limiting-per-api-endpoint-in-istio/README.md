@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Rate Limiting, API, Envoy, Endpoints, Kubernetes
+Tags: Istio, Rate Limiting, API, Envoy, Endpoint, Kubernetes
 
 Description: How to apply different rate limits to different API endpoints in Istio so expensive operations get tighter limits than cheap ones.
 

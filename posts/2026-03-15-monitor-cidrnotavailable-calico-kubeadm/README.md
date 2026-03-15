@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, kubeadm, CIDR, IPAM, Kubernetes, Monitoring, Prometheus, Alerting
+Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Monitoring, Prometheus, Alerting
 
 Description: How to set up monitoring and alerting for CIDRNotAvailable errors in Calico-based Kubernetes clusters to catch IP exhaustion before it impacts workloads.
 

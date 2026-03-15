@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, kubeadm, CIDR, IPAM, Kubernetes, Troubleshooting, Fix
+Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Troubleshooting, Fix
 
 Description: Practical remediation steps for resolving CIDRNotAvailable errors in Calico-based Kubernetes clusters provisioned with kubeadm.
 

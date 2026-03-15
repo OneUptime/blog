@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, kubeadm, CIDR, IPAM, Kubernetes, Validation, Verification
+Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Validation, Verification
 
 Description: A structured approach to validating that CIDRNotAvailable errors have been fully resolved and will not recur in Calico-based Kubernetes clusters.
 

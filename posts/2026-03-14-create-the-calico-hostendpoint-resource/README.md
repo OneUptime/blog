@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Endpoints
+Tags: Calico, Kubernetes, Endpoint
 
 Description: Learn how to define and apply a Calico HostEndpoint resource to your Kubernetes cluster using kubectl and calicoctl.
 

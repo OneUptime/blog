@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Custom Operator, Operator SDK, Go, Controllers
+Tags: Talos Linux, Kubernetes, Custom Operator, Operator SDK, Go, Controller
 
 Description: A developer-focused guide to building custom Kubernetes Operators for Talos Linux using the Operator SDK and Go programming language.
 

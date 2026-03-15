@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, ClusterIP, Networking, Troubleshooting, kube-proxy, iptables
+Tags: Calico, Kubernetes, ClusterIP, Networking, Troubleshooting, Kube-proxy, iptables
 
 Description: A step-by-step guide to diagnosing ClusterIP reachability issues in Kubernetes clusters running Calico as the CNI plugin.
 

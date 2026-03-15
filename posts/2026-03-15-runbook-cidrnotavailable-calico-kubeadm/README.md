@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, kubeadm, CIDR, IPAM, Kubernetes, Runbook, Incident Response, SRE
+Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Runbook, Incident Response, SRE
 
 Description: A complete guide to building an operational runbook for diagnosing and resolving CIDRNotAvailable errors in Calico-based Kubernetes clusters.
 

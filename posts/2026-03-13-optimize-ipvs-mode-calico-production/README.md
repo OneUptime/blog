@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPVS, kube-proxy, Networking
+Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
 
 Description: Optimize IPVS mode configuration with Calico for production clusters handling high service request rates with minimal latency.
 
