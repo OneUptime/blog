@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Validation, Calicoctl, Testing
+Tags: Calico, Kubernetes, Validation, calicoctl, Testing
 
 Description: Learn how to validate that calicoctl patch operations produced the expected results by checking resource state, testing network connectivity, and monitoring Felix enforcement.
 

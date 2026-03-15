@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Node, Kubernetes, Container Networking
+Tags: Calico, calicoctl, Node, Kubernetes, Container Networking
 
 Description: A comprehensive guide to using calicoctl node run to start the Calico node process, covering configuration options, runtime flags, and real-world deployment scenarios.
 

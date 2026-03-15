@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Labels, Troubleshooting, Kubernetes
+Tags: Calico, calicoctl, Labels, Troubleshooting, Kubernetes
 
 Description: Diagnose and fix common errors when using calicoctl label, including resource not found, validation failures, and permission issues.
 

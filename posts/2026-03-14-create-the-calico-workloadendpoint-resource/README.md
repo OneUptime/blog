@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Endpoint
+Tags: Calico, Kubernetes, Endpoints
 
 Description: Learn how to define and apply a Calico WorkloadEndpoint resource to your Kubernetes cluster using kubectl and calicoctl.
 

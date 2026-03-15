@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Troubleshooting, Best Practices, Calicoctl
+Tags: Calico, Kubernetes, Troubleshooting, Best Practices, calicoctl
 
 Description: Identify and avoid the most common pitfalls when configuring calicoctl with the Kubernetes API datastore, including authentication errors, version mismatches, and RBAC misconfigurations.
 

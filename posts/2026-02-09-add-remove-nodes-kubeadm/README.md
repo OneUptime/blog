@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubeadm, Cluster Administration
+Tags: Kubernetes, kubeadm, Cluster Administration
 
 Description: Learn how to dynamically add worker nodes and control plane nodes to an existing Kubernetes cluster, and safely remove nodes using kubeadm for cluster scaling and maintenance operations.
 

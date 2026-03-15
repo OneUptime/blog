@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Validation, Installation, Testing
+Tags: Calico, calicoctl, Validation, Installation, Testing
 
 Description: A guide to validating that calicoctl is correctly installed and fully functional, covering binary verification, datastore connectivity testing, and operational readiness checks.
 

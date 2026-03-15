@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Image Automation, Installation, Controller
+Tags: Flux CD, GitOps, Kubernetes, Image Automation, Installation, Controllers
 
 Description: A step-by-step guide to installing the Flux Image Automation Controllers for automated container image updates in your Kubernetes cluster.
 

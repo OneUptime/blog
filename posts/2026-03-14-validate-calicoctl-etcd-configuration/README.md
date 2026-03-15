@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Validation, Kubernetes, Calicoctl
+Tags: Calico, etcd, Validation, Kubernetes, calicoctl
 
 Description: Learn how to validate your calicoctl etcd datastore configuration with systematic checks covering connectivity, TLS certificates, data integrity, and performance to ensure reliable operation.
 

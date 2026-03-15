@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Troubleshooting, Kubernetes
+Tags: Calico, calicoctl, IPAM, Troubleshooting, Kubernetes
 
 Description: Resolve errors encountered when running calicoctl ipam check and understand how to interpret and act on the issues it reports.
 

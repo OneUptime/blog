@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Migration, Team Workflows, Calicoctl
+Tags: Calico, Kubernetes, Migration, Team Workflows, calicoctl
 
 Description: Learn how to standardize your team's use of calicoctl convert with migration runbooks, naming conventions, review processes, and automated conversion pipelines.
 

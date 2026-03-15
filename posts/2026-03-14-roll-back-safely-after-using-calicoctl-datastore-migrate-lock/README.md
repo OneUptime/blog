@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Datastore Migration, Rollback, Kubernetes
+Tags: Calico, calicoctl, Datastore Migration, Rollback, Kubernetes
 
 Description: Safe rollback procedures when calicoctl datastore migrate lock encounters issues during Calico datastore migration.
 

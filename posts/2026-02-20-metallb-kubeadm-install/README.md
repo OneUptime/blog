@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Kubeadm, Bare Metal, Load Balancing
+Tags: Kubernetes, MetalLB, kubeadm, Bare Metal, Load Balancing
 
 Description: Step-by-step guide to installing and configuring MetalLB on kubeadm-provisioned Kubernetes clusters. Covers prerequisites, strict ARP mode, installation methods, and IP pool setup.
 

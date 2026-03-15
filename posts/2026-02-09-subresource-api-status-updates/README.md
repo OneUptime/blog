@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, API, Controller
+Tags: Kubernetes, API, Controllers
 
 Description: Master the Kubernetes subresource API to separate status updates from spec changes, build better controllers, and avoid conflicts between user intent and controller observations.
 

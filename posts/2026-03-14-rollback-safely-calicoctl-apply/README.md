@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Rollback, Calicoctl, Network Policy
+Tags: Calico, Kubernetes, Rollback, calicoctl, Network Policy
 
 Description: Learn how to safely roll back Calico resource changes made with calicoctl apply, including pre-apply backups, resource versioning, and step-by-step rollback procedures.
 

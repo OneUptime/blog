@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, IPVS, Kube-proxy, Load Balancing, Performance
+Tags: Kubernetes, IPVS, kube-proxy, Load Balancing, Performance
 
 Description: Learn how to configure kube-proxy in IPVS mode for scalable Kubernetes service routing with better performance, more load balancing algorithms, and consistent connection handling.
 

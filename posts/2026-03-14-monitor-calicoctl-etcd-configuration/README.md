@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Monitoring, Prometheus, Calicoctl
+Tags: Calico, etcd, Monitoring, Prometheus, calicoctl
 
 Description: Learn how to monitor your calicoctl etcd datastore configuration with Prometheus metrics, certificate expiry alerts, connection health checks, and etcd performance tracking.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Automation, Labels, Kubernetes, CI/CD
+Tags: Calico, calicoctl, Automation, Labels, Kubernetes, CI/CD
 
 Description: Automate Calico resource labeling across clusters using scripts, CI/CD pipelines, and GitOps workflows to maintain consistent network policy targeting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Kubernetes, Kubeadm, Bare Metal, DevOps
+Tags: Ubuntu, Linux, Kubernetes, kubeadm, Bare Metal, DevOps
 
 Description: Set up a production-ready bare-metal Kubernetes cluster on Ubuntu using kubeadm with CNI networking, storage, and high availability.
 

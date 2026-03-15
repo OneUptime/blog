@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Diagnostics, Validation, Kubernetes
+Tags: Calico, calicoctl, Diagnostics, Validation, Kubernetes
 
 Description: Learn how to validate diagnostic bundles from calicoctl node diags are complete and how to analyze the collected data to identify networking issues.
 

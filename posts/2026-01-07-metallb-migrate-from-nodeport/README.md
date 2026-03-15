@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, Kubernetes, Migration, NodePort, Load Balancing, Networking, Kube-proxy
+Tags: MetalLB, Kubernetes, Migration, NodePort, Load Balancing, Networking, kube-proxy
 
 Description: Learn how to migrate from kube-proxy NodePort to MetalLB LoadBalancer for proper load balancing on bare-metal Kubernetes.
 

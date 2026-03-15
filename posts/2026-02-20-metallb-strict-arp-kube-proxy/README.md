@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Kube-proxy, ARP, Networking
+Tags: Kubernetes, MetalLB, kube-proxy, ARP, Networking
 
 Description: Learn how to enable strict ARP mode for kube-proxy before installing MetalLB on your Kubernetes cluster. This guide covers why strict ARP is needed, how to configure it, and how to verify the setting.
 

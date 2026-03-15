@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kube-proxy, Networking, Kubernetes, IPVS
+Tags: Talos Linux, kube-proxy, Networking, Kubernetes, IPVS
 
 Description: Learn how to configure kube-proxy settings on Talos Linux including IPVS mode, iptables tuning, and performance optimization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Monitoring, Installation, Operations
+Tags: Calico, calicoctl, Monitoring, Installation, Operations
 
 Description: A guide to monitoring calicoctl installations across your fleet, covering version tracking, availability checks, and configuration drift detection to ensure consistent tooling.
 

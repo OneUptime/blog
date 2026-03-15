@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Validation, Calicoctl, Network Policy
+Tags: Calico, Kubernetes, Validation, calicoctl, Network Policy
 
 Description: Master calicoctl validate with practical examples covering policy validation, multi-resource validation, CI/CD integration, and common validation error patterns.
 

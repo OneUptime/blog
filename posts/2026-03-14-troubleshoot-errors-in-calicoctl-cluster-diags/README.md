@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Cluster Diagnostics, Troubleshooting, Kubernetes
+Tags: Calico, calicoctl, Cluster Diagnostics, Troubleshooting, Kubernetes
 
 Description: Resolve errors encountered when running calicoctl cluster diags, including RBAC issues, datastore connectivity problems, and incomplete collection.
 

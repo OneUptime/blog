@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Labels, Rollback, Kubernetes
+Tags: Calico, calicoctl, Labels, Rollback, Kubernetes
 
 Description: Learn safe procedures for reverting label changes made with calicoctl label, including strategies for undoing bulk label operations and restoring previous label states.
 

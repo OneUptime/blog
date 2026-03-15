@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Cilium, Kube-proxy, eBPF, Kubernetes, Networking
+Tags: Talos Linux, Cilium, kube-proxy, eBPF, Kubernetes, Networking
 
 Description: Step-by-step guide to replacing kube-proxy with Cilium on Talos Linux for better performance and observability.
 

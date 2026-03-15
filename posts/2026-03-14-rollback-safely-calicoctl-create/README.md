@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Rollback, Calicoctl, Network Policy
+Tags: Calico, Kubernetes, Rollback, calicoctl, Network Policy
 
 Description: Learn how to safely roll back resources created with calicoctl create, including identifying created resources, safe deletion procedures, and automated rollback workflows.
 

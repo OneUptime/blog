@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Endpoint, Istioctl, Kubernetes, Load Balancing
+Tags: Istio, Envoy, Endpoints, Istioctl, Kubernetes, Load Balancing
 
 Description: Learn how to inspect Envoy endpoint configuration in Istio to debug service discovery, health checking, and load balancing across pod instances.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Datastore Migration, Kubernetes, etcd
+Tags: Calico, calicoctl, Datastore Migration, Kubernetes, etcd
 
 Description: Learn how to export Calico configuration data from your current datastore using calicoctl datastore migrate export for safe migration to a new datastore backend.
 

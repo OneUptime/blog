@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Rollback, Kubernetes
+Tags: Calico, calicoctl, IPAM, Rollback, Kubernetes
 
 Description: Safely revert IPAM configuration changes made with calicoctl ipam configure when they cause IP allocation issues or unexpected behavior.
 

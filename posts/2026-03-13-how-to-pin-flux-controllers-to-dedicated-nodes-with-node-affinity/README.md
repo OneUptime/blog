@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Performance, Node Affinity, Scheduling, Controller
+Tags: Flux, Kubernetes, GitOps, Performance, Node Affinity, Scheduling, Controllers
 
 Description: Use Kubernetes node affinity rules to schedule Flux controllers on dedicated nodes for predictable performance and resource isolation.
 

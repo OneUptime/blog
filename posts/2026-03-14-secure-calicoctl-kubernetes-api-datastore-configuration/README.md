@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Security, Networking, Calicoctl
+Tags: Calico, Kubernetes, Security, Networking, calicoctl
 
 Description: Learn how to secure your calicoctl Kubernetes API datastore configuration by implementing RBAC, TLS certificates, and least-privilege access patterns to protect your Calico network policy...
 

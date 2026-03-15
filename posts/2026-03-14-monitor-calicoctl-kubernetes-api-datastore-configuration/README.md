@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Monitoring, Observability, Calicoctl
+Tags: Calico, Kubernetes, Monitoring, Observability, calicoctl
 
 Description: Learn how to monitor your calicoctl Kubernetes API datastore configuration with Prometheus metrics, health checks, and alerting to ensure reliable Calico network policy management.
 

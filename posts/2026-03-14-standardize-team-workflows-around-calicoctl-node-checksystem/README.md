@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, System Requirements, Team Workflows, Best Practices
+Tags: Calico, calicoctl, System Requirements, Team Workflows, Best Practices
 
 Description: Create standardized pre-deployment validation procedures using calicoctl node checksystem to ensure every node joining your cluster meets Calico requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Internal Load Balancing, Kubernetes, Kube-proxy, IPVS, Services
+Tags: Talos Linux, Internal Load Balancing, Kubernetes, kube-proxy, IPVS, Services
 
 Description: Configure and optimize internal load balancing on Talos Linux for efficient service-to-service communication within your Kubernetes cluster.
 

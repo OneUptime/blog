@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, CNI, Lab, Testing, Calico Cloud, Open Source, Calicoctl
+Tags: Calico, Kubernetes, CNI, Lab, Testing, Calico Cloud, Open Source, calicoctl
 
 Description: Step-by-step guidance for testing and validating different Calico editions in a lab Kubernetes environment before committing to a production deployment.
 

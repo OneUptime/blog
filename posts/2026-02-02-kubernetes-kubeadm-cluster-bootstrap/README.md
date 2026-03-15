@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubeadm, Cluster Setup, DevOps, Container Orchestration, Self-Managed Kubernetes
+Tags: Kubernetes, kubeadm, Cluster Setup, DevOps, Container Orchestration, Self-Managed Kubernetes
 
 Description: A practical guide to bootstrapping production-ready Kubernetes clusters with kubeadm, covering prerequisites, installation, networking, joining worker nodes, and high availability configurations.
 

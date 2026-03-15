@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, OwnerReferences, Garbage Collection, Controller
+Tags: Kubernetes, OwnerReferences, Garbage Collection, Controllers
 
 Description: Learn how to use OwnerReferences in Kubernetes to establish parent-child relationships between resources and enable automatic garbage collection when owners are deleted.
 

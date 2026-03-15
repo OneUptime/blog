@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
+Tags: Calico, Kubernetes, IPVS, kube-proxy, Networking
 
 Description: Test IPVS service routing performance with Calico using load testing tools to validate distribution and failover behavior.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Validation, Kubernetes
+Tags: Calico, calicoctl, IPAM, Validation, Kubernetes
 
 Description: Learn how to interpret and validate the output of calicoctl ipam split to ensure IPAM operations completed successfully and the cluster state is healthy.
 

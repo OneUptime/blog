@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Troubleshooting, Calicoctl, Migration
+Tags: Calico, Kubernetes, Troubleshooting, calicoctl, Migration
 
 Description: Diagnose and fix common calicoctl convert errors including unsupported resource types, invalid input formats, and conversion edge cases.
 

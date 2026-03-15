@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, etcd, Automation, Kubernetes, Calicoctl
+Tags: Calico, etcd, Automation, Kubernetes, calicoctl
 
 Description: Learn how to automate calicoctl etcd datastore configuration using scripts, configuration management tools, and CI/CD pipelines for consistent and repeatable deployments.
 

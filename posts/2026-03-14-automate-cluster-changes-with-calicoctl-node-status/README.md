@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Monitoring, Automation, BGP, Kubernetes
+Tags: Calico, calicoctl, Monitoring, Automation, BGP, Kubernetes
 
 Description: Automate BGP health monitoring using calicoctl node status in scripts, cron jobs, and CI/CD pipelines to detect networking issues before they affect applications.
 

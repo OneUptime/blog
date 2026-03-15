@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Registry, Container, Troubleshooting, Kubernetes, Air-gapped
+Tags: Calico, Registry, Containers, Troubleshooting, Kubernetes, Air-Gapped
 
 Description: Troubleshoot common issues when configuring Calico to pull container images from an alternate or private registry.
 

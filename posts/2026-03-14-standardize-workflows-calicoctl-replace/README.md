@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Team Workflows, Calicoctl, GitOps
+Tags: Calico, Kubernetes, Team Workflows, calicoctl, GitOps
 
 Description: Learn how to standardize your team's calicoctl replace workflows with code review processes, naming conventions, CI/CD enforcement, and shared tooling for consistent resource management.
 

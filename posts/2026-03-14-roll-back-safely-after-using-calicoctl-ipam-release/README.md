@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Rollback, Kubernetes
+Tags: Calico, calicoctl, IPAM, Rollback, Kubernetes
 
 Description: Safe procedures for reverting changes or recovering from issues after using calicoctl ipam release.
 

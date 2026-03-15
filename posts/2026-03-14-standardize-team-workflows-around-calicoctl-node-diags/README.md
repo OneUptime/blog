@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Diagnostics, Team Workflows, Best Practices
+Tags: Calico, calicoctl, Diagnostics, Team Workflows, Best Practices
 
 Description: Establish team-wide standards for collecting, storing, and analyzing Calico node diagnostics to improve incident response and troubleshooting efficiency.
 

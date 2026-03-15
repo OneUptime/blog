@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Kubernetes, IP Address Management
+Tags: Calico, calicoctl, IPAM, Kubernetes, IP Address Management
 
 Description: Learn how to safely release leaked and orphaned IP addresses using calicoctl ipam release to reclaim IP capacity in your Calico cluster.
 

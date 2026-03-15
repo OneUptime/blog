@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Cluster Diagnostics, Kubernetes, Troubleshooting
+Tags: Calico, calicoctl, Cluster Diagnostics, Kubernetes, Troubleshooting
 
 Description: Collect comprehensive cluster-wide Calico diagnostics using calicoctl cluster diags for holistic troubleshooting and support case preparation.
 

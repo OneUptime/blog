@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Networking, Calicoctl
+Tags: Calico, Kubernetes, Networking, calicoctl
 
 Description: Use calicoctl apply to create or update Calico resources declaratively, with practical examples for network policies, BGP configuration, and IP pools.
 

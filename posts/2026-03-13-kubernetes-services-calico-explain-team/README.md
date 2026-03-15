@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Services, CNI, Team Communication, Kube-proxy, Networking
+Tags: Calico, Kubernetes, Services, CNI, Team Communication, kube-proxy, Networking
 
 Description: A practical guide for explaining Kubernetes service networking with Calico to engineering teams, focusing on how ClusterIPs work and how policy applies to service traffic.
 

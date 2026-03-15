@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, eBPF, Kube-proxy, Networking
+Tags: Calico, Kubernetes, eBPF, kube-proxy, Networking
 
 Description: Test Calico eBPF kube-proxy replacement with live service traffic to validate routing and failover behavior.
 

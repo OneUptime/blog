@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Calicoctl, Best Practices, Network Policy
+Tags: Calico, Kubernetes, calicoctl, Best Practices, Network Policy
 
 Description: Understand when and why calicoctl get might require a rollback scenario, and learn how to use get output safely as the foundation for backup, restore, and change management workflows.
 

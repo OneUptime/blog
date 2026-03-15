@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, Istioctl, Envoy, Endpoint, Kubernetes
+Tags: Istio, Debugging, Istioctl, Envoy, Endpoints, Kubernetes
 
 Description: How to use istioctl proxy-config endpoint to inspect upstream endpoint discovery and debug load balancing issues in Istio.
 

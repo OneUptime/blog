@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Server-Side Apply, Controller
+Tags: Kubernetes, Server-Side Apply, Controllers
 
 Description: Learn how to use server-side apply in custom controllers to manage field ownership and avoid conflicts when multiple controllers update the same resources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Endpoint, EndpointSlice, External Services
+Tags: Istio, Kubernetes, Endpoints, EndpointSlice, External Services
 
 Description: Manage Kubernetes Endpoints and EndpointSlices that point to non-pod backends and configure Istio to route traffic to external IPs and VMs properly.
 

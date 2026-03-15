@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Log Rotation, Logging, Kubernetes, GitOps, Observability, Controller
+Tags: Flux CD, Log Rotation, Logging, Kubernetes, GitOps, Observability, Controllers
 
 Description: A practical guide to implementing log rotation and management strategies for Flux CD controllers to prevent disk exhaustion and maintain observability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Network Policy, CNI, Lab, Testing, Validation, Calicoctl
+Tags: Calico, Kubernetes, Network Policy, CNI, Lab, Testing, Validation, calicoctl
 
 Description: A systematic test suite for validating Calico network policy behavior including rule ordering, selector matching, and GlobalNetworkPolicy enforcement in a lab cluster.
 

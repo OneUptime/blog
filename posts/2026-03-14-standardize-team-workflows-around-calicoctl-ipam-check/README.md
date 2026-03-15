@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Team Workflows, Best Practices
+Tags: Calico, calicoctl, IPAM, Team Workflows, Best Practices
 
 Description: Establish team-wide IPAM auditing procedures using calicoctl ipam check to maintain healthy IP address allocation across all clusters.
 

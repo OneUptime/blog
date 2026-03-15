@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Rollback, Calicoctl, Disaster Recovery
+Tags: Calico, Kubernetes, Rollback, calicoctl, Disaster Recovery
 
 Description: Learn how to safely roll back after a calicoctl delete operation by implementing pre-delete backups, recovery procedures, and automated safety wrappers.
 

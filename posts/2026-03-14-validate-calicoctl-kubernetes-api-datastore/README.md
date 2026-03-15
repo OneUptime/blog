@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Kubernetes, Datastore, Validation
+Tags: Calico, calicoctl, Kubernetes, Datastore, Validation
 
 Description: A comprehensive validation guide for calicoctl Kubernetes API datastore configuration, covering connectivity testing, RBAC verification, resource access validation, and operational readiness checks.
 

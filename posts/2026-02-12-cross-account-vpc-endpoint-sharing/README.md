@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, VPC, Endpoint, Cross-Account, PrivateLink
+Tags: AWS, VPC, Endpoints, Cross-Account, PrivateLink
 
 Description: Learn how to share VPC endpoints across AWS accounts to centralize access to AWS services and reduce costs in multi-account environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, IPPool, Kubernetes, Networking, IPAM, Production, Multi-tenancy
+Tags: Calico, IPPool, Kubernetes, Networking, IPAM, Production, Multi-Tenancy
 
 Description: Practical patterns for using Calico IPPool resources in production Kubernetes clusters with multi-zone and multi-tenant configurations.
 

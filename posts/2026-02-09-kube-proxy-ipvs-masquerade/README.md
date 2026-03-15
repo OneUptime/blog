@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, IPVS, Networking, Kube-proxy, NAT
+Tags: Kubernetes, IPVS, Networking, kube-proxy, NAT
 
 Description: Master kube-proxy IPVS mode with masquerading for source NAT in Kubernetes clusters including configuration, troubleshooting, and best practices for external traffic handling.
 

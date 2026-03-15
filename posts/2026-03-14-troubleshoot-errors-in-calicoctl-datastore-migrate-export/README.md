@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Datastore Migration, Troubleshooting, Kubernetes
+Tags: Calico, calicoctl, Datastore Migration, Troubleshooting, Kubernetes
 
 Description: Diagnose and resolve errors encountered during Calico datastore migration with calicoctl datastore migrate export.
 

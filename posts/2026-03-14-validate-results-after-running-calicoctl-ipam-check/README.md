@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Validation, Kubernetes
+Tags: Calico, calicoctl, IPAM, Validation, Kubernetes
 
 Description: Interpret calicoctl ipam check results accurately, distinguish between real issues and false positives, and validate that remediation actions resolved the problems.
 

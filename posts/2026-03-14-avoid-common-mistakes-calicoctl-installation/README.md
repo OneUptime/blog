@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Best Practices, Installation, Common Mistakes
+Tags: Calico, calicoctl, Best Practices, Installation, Common Mistakes
 
 Description: A guide to avoiding the most common calicoctl installation mistakes, covering version management, configuration pitfalls, security considerations, and operational antipatterns.
 

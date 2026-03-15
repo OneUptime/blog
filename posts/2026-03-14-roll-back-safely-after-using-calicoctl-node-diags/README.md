@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Diagnostics, Rollback, Kubernetes
+Tags: Calico, calicoctl, Diagnostics, Rollback, Kubernetes
 
 Description: Understand that calicoctl node diags is read-only and learn how to use diagnostic data to inform safe rollback decisions for Calico configuration changes.
 

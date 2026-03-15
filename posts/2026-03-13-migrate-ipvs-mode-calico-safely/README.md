@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
+Tags: Calico, Kubernetes, IPVS, kube-proxy, Networking
 
 Description: Safely migrate from iptables kube-proxy mode to IPVS mode in a Calico cluster with minimal service disruption.
 

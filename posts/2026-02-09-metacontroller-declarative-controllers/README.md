@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Metacontroller, Controller
+Tags: Kubernetes, Metacontroller, Controllers
 
 Description: Learn how to build Kubernetes controllers without writing Go code using Metacontroller, which lets you implement controller logic in any language using simple webhooks.
 

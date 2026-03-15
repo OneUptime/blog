@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Calicoctl, Version Management, Operations
+Tags: Calico, Kubernetes, calicoctl, Version Management, Operations
 
 Description: Master calicoctl version with practical examples for checking client and cluster versions, detecting version mismatches, automating version checks, and integrating into health monitoring.
 

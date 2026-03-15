@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kube-proxy, Kubernetes Networking, IPVS, Cluster Configuration
+Tags: Talos Linux, kube-proxy, Kubernetes Networking, IPVS, Cluster Configuration
 
 Description: Learn how to configure kube-proxy settings in Talos Linux including IPVS mode, extra args, and how to disable kube-proxy for eBPF-based CNIs.
 

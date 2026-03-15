@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, Labels, Kubernetes, Network Policy
+Tags: Calico, calicoctl, Labels, Kubernetes, Network Policy
 
 Description: A hands-on guide to using calicoctl label to manage labels on Calico resources such as nodes, workload endpoints, and host endpoints for effective network policy targeting.
 

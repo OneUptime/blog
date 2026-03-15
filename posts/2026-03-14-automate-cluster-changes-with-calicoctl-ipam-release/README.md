@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Calicoctl, IPAM, Automation, Kubernetes, CI/CD
+Tags: Calico, calicoctl, IPAM, Automation, Kubernetes, CI/CD
 
 Description: Integrate calicoctl ipam release into automated workflows for proactive IPAM management and monitoring across your Kubernetes clusters.
 

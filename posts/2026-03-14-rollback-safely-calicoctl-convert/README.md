@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Rollback, Migration, Calicoctl
+Tags: Calico, Kubernetes, Rollback, Migration, calicoctl
 
 Description: Understand why calicoctl convert is inherently safe and learn rollback strategies for the broader migration workflow from Kubernetes to Calico NetworkPolicy.
 
