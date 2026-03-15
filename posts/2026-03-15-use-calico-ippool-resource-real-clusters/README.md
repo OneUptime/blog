@@ -34,7 +34,7 @@ metadata:
   name: zone-a-pool
 spec:
   cidr: 10.244.0.0/18
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: topology.kubernetes.io/zone == "us-east-1a"
   blockSize: 26
@@ -45,7 +45,7 @@ metadata:
   name: zone-b-pool
 spec:
   cidr: 10.244.64.0/18
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: topology.kubernetes.io/zone == "us-east-1b"
   blockSize: 26
@@ -56,7 +56,7 @@ metadata:
   name: zone-c-pool
 spec:
   cidr: 10.244.128.0/18
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: topology.kubernetes.io/zone == "us-east-1c"
   blockSize: 26
@@ -90,7 +90,7 @@ metadata:
   name: production-pool
 spec:
   cidr: 10.245.0.0/16
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: node-role.kubernetes.io/worker == "true"
   blockSize: 26
@@ -107,7 +107,7 @@ metadata:
   name: system-pool
 spec:
   cidr: 10.246.0.0/20
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: node-role.kubernetes.io/control-plane == ""
   blockSize: 28
@@ -126,7 +126,7 @@ metadata:
   name: external-routable-pool
 spec:
   cidr: 172.16.0.0/24
-  encapsulation: None
+  vxlanMode: Never
   natOutgoing: false
   nodeSelector: node-role.kubernetes.io/edge == "true"
   blockSize: 29

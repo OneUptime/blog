@@ -136,9 +136,9 @@ ip link show vxlan.calico | grep mtu  # VXLAN tunnel
 # IP-in-IP: node_mtu - 20 (e.g., 1500 - 20 = 1480)
 # VXLAN: node_mtu - 50 (e.g., 1500 - 50 = 1450)
 
-# Set MTU via Calico FelixConfiguration
-calicoctl patch felixconfiguration default --patch \
-  '{"spec":{"mtu": 1450}}'
+# Set MTU via Calico Installation resource (operator-managed)
+kubectl patch installation default --type merge -p \
+  '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 
 # Restart calico-node to apply
 kubectl rollout restart daemonset/calico-node -n calico-system
@@ -252,7 +252,7 @@ kubectl run nettest --image=nicolaka/netshoot --rm -it -- \
 - **BGP peering flaps**: Check for network instability between nodes or resource exhaustion on the calico-node pods.
 - **VXLAN switch causes pod restarts**: Existing pods keep their old tunnel config. Rolling restart of workloads is required.
 - **New IP pool not used**: Existing pods retain their old IPs. Only new pods get IPs from the new pool.
-- **MTU change not applied**: Verify FelixConfiguration is updated and calico-node pods have restarted on all nodes.
+- **MTU change not applied**: Verify the Installation resource MTU setting is updated and calico-node pods have restarted on all nodes.
 
 ## Conclusion
 

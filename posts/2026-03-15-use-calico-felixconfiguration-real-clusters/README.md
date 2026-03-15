@@ -97,9 +97,9 @@ spec:
 calicoctl apply -f felix-security.yaml
 ```
 
-## Enabling Flow Logs for Compliance
+## Enabling Flow Logs for Compliance (Calico Enterprise)
 
-Configure Felix to export flow logs for audit and compliance:
+Configure Felix to export flow logs for audit and compliance. Note that file-based flow log fields like `flowLogsFileEnabled`, `flowLogsFileDirectory`, `flowLogsFileMaxFiles`, and `flowLogsFileMaxFileSizeMB` are available in Calico Enterprise. For open-source Calico v3.30+, flow logs are enabled by default and use the Whisker dashboard:
 
 ```yaml
 apiVersion: projectcalico.org/v3

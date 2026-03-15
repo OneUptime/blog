@@ -142,7 +142,7 @@ metadata:
   name: zone-a-pool
 spec:
   cidr: 10.244.0.0/18
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: topology.kubernetes.io/zone == "us-east-1a"
   blockSize: 26

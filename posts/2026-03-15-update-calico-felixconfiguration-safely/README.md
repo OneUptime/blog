@@ -186,10 +186,10 @@ If nodes lose connectivity after a FelixConfiguration change, check Felix logs f
 kubectl logs -n kube-system -l k8s-app=calico-node -c calico-node --tail=50
 ```
 
-If iptables rules are inconsistent, trigger a resync:
+If iptables rules are inconsistent, restart the calico-node pod on the affected node to trigger a full resync:
 
 ```bash
-kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -c calico-node -- calico-node -felix-live
+kubectl delete pod -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName=<affected-node>
 ```
 
 If you are locked out of nodes due to failsafe port changes, access the node through the cloud provider console and fix the FelixConfiguration from there.

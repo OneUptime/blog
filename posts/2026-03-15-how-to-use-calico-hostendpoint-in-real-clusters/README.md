@@ -37,7 +37,7 @@ spec:
   controllers:
     node:
       hostEndpoint:
-        autoCreate: true
+        autoCreate: "Enabled"
 ```
 
 ```bash

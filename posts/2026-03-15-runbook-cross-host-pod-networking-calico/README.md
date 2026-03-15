@@ -127,7 +127,8 @@ kubectl exec <pod-on-node-A> -- ping -c 3 <pod-ip-on-node-B>
 
 ### Action: Fix MTU Mismatch
 1. Check: `ip link show eth0 | grep mtu`
-2. Set: `calicoctl patch felixconfiguration default --patch '{"spec":{"mtu": <correct-mtu>}}'`
+2. Set (for IPIP): `calicoctl patch felixconfiguration default --patch '{"spec":{"ipipMTU": <correct-mtu>}}'`
+   Or (for VXLAN): `calicoctl patch felixconfiguration default --patch '{"spec":{"vxlanMTU": <correct-mtu>}}'`
 3. Restart: `kubectl rollout restart ds/calico-node -n calico-system`
 
 ### Action: Switch Encapsulation Mode

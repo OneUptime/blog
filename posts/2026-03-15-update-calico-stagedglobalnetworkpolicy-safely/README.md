@@ -132,7 +132,7 @@ calicoctl get stagedglobalnetworkpolicies -o yaml | grep stagedAction
 If the update fails to apply, check for YAML syntax errors:
 
 ```bash
-calicoctl apply -f allow-dns-egress-updated.yaml --validate-only
+calicoctl validate -f allow-dns-egress-updated.yaml
 ```
 
 If the policy shows an unexpected stagedAction, verify you have not accidentally set it to `Delete` instead of `Set`. To restore the original policy from your backup:

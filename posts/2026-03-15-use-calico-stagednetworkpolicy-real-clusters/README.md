@@ -35,7 +35,6 @@ metadata:
   name: audit-all-traffic
   namespace: checkout
 spec:
-  stagedAction: Set
   order: 9999
   selector: all()
   types:
@@ -60,7 +59,6 @@ metadata:
   name: checkout-allow-known
   namespace: checkout
 spec:
-  stagedAction: Set
   order: 100
   selector: app == 'checkout-service'
   types:
@@ -102,7 +100,6 @@ metadata:
     compliance: pci-dss
     requirement: "1.3"
 spec:
-  stagedAction: Set
   order: 10
   selector: pci-zone == 'cardholder-data'
   types:
@@ -151,7 +148,6 @@ metadata:
     approved-by: ""
     jira-ticket: NET-4521
 spec:
-  stagedAction: Set
   order: 100
   selector: tier == 'backend'
   types:
@@ -201,18 +197,10 @@ If multiple staged policies conflict within a namespace, check the order values.
 calicoctl get stagednetworkpolicies -n checkout -o yaml | grep -B 2 "order:"
 ```
 
-If a committed policy causes traffic disruption, immediately stage a delete operation:
+If a committed policy causes traffic disruption, immediately delete the enforced policy:
 
 ```bash
-cat <<EOF | calicoctl apply -f -
-apiVersion: projectcalico.org/v3
-kind: StagedNetworkPolicy
-metadata:
-  name: checkout-allow-known
-  namespace: checkout
-spec:
-  stagedAction: Delete
-EOF
+calicoctl delete networkpolicy checkout-allow-known -n checkout
 ```
 
 ## Conclusion

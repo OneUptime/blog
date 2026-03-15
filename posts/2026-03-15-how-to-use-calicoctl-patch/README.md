@@ -12,7 +12,7 @@ Description: Learn how to use calicoctl patch to make targeted modifications to 
 
 The `calicoctl patch` command applies partial updates to existing Calico resources. Instead of replacing the entire resource definition, you can modify specific fields using a JSON merge patch. This is particularly useful for making targeted changes to large or complex resources without needing to retrieve, edit, and reapply the full resource.
 
-The patch command follows JSON merge patch semantics (RFC 7386), where you provide a JSON document containing only the fields you want to change. Fields not included in the patch remain unchanged, and setting a field to `null` removes it.
+The patch command uses strategic merge patch by default, where you provide a JSON document containing only the fields you want to change. Fields not included in the patch remain unchanged. You can also use JSON Merge Patch (RFC 7386) or JSON Patch (RFC 6902) by specifying the `--type` flag.
 
 This guide demonstrates practical uses of `calicoctl patch` for common Calico configuration changes.
 
@@ -101,7 +101,7 @@ calicoctl patch globalnetworkpolicy my-policy -p '{"spec": {"order": 100}}'
 calicoctl patch felixconfiguration default -p '{"spec": {"logSeverityScreen": "Warning"}}'
 ```
 
-### Enable Flow Logs
+### Enable Flow Logs (Calico Enterprise Only)
 
 ```bash
 calicoctl patch felixconfiguration default -p '{"spec": {"flowLogsFlushInterval": "15s"}}'

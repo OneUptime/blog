@@ -49,7 +49,7 @@ Example output:
 Split an IP pool CIDR into a specified number of parts:
 
 ```bash
-calicoctl ipam split --cidr=10.244.0.0/16 --number=4
+calicoctl ipam split 4 --cidr=10.244.0.0/16
 ```
 
 This outputs the resulting CIDR blocks:
@@ -61,15 +61,15 @@ This outputs the resulting CIDR blocks:
 10.244.192.0/18
 ```
 
-Each resulting block covers 16384 IP addresses.
+Each resulting block covers 16384 IP addresses. Note that the number of parts must be a power of 2.
 
 ## Planning Splits for Multi-Zone Clusters
 
 When running across multiple availability zones, split IP pools to assign ranges per zone:
 
 ```bash
-# Split the main pool into 3 parts for 3 availability zones
-calicoctl ipam split --cidr=10.244.0.0/16 --number=3
+# Split the main pool into 4 parts (must be a power of 2), then use 3 for 3 availability zones
+calicoctl ipam split 4 --cidr=10.244.0.0/16
 ```
 
 Output:
@@ -78,10 +78,10 @@ Output:
 10.244.0.0/18
 10.244.64.0/18
 10.244.128.0/18
-Note: 3 is not a power of 2. Returned 3 blocks with some address space unused.
+10.244.192.0/18
 ```
 
-Then create per-zone IP pools using the resulting CIDRs:
+Use the first three resulting CIDRs for your three zones (the fourth can be reserved for future use):
 
 ```bash
 cat <<EOF | calicoctl apply -f -
@@ -123,7 +123,7 @@ In multi-tenant clusters, split IP pools to assign dedicated ranges per tenant:
 
 ```bash
 # Split into 8 equal ranges for 8 tenants
-calicoctl ipam split --cidr=10.244.0.0/16 --number=8
+calicoctl ipam split 8 --cidr=10.244.0.0/16
 ```
 
 Output:
@@ -168,7 +168,7 @@ fi
 
 echo "Splitting $CIDR into $PARTS parts:"
 echo ""
-calicoctl ipam split --cidr="$CIDR" --number="$PARTS"
+calicoctl ipam split "$PARTS" --cidr="$CIDR"
 
 # Calculate IPs per part
 TOTAL_PREFIX=$(echo "$CIDR" | cut -d'/' -f2)
@@ -204,7 +204,7 @@ kubectl get pod test-pod -o wide
 ## Troubleshooting
 
 - **Overlapping CIDRs**: Ensure the split results do not overlap with existing IP pools. Use `calicoctl get ippools` to check before creating new pools.
-- **Unequal splits**: If the number of parts is not a power of 2, some address space may be unused. Plan accordingly.
+- **Power of 2 requirement**: The number of parts must be a power of 2 (2, 4, 8, 16, etc.). If you need a non-power-of-2 number of pools, split into the next higher power of 2 and leave unused pools as reserved capacity.
 - **Pods not getting IPs from expected pool**: Check node selectors on the IP pools and verify that nodes have the correct labels.
 - **Existing allocations in the range**: Splitting is a planning tool. It does not migrate existing allocations. Drain workloads before restructuring pools.
 

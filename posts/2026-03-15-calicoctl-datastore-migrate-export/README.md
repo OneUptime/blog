@@ -49,7 +49,7 @@ When exporting from an etcd datastore, configure the connection parameters:
 ```bash
 export DATASTORE_TYPE=etcdv3
 export ETCD_ENDPOINTS=https://10.0.1.10:2379
-export ETCD_CA_FILE=/etc/calico/certs/ca.pem
+export ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
 export ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 export ETCD_KEY_FILE=/etc/calico/certs/key.pem
 

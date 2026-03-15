@@ -152,7 +152,7 @@ Verify your architecture documentation is accurate:
 kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 
 # Check Typha metrics endpoint
-kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9093/metrics | head -20
+kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9091/metrics | head -20
 
 # Verify Felix-to-Typha connections are active
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=5 | grep -i "typha"

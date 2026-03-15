@@ -109,15 +109,15 @@ Prevent fragmentation issues by setting MTU correctly at deployment time.
 # Set correct MTU in FelixConfiguration
 # For VXLAN on a 1500 MTU network: 1500 - 50 = 1450
 calicoctl patch felixconfiguration default --patch \
-  '{"spec":{"mtu": 1450}}'
+  '{"spec":{"vxlanMTU": 1450}}'
 
 # For IP-in-IP on a 1500 MTU network: 1500 - 20 = 1480
 # calicoctl patch felixconfiguration default --patch \
-#   '{"spec":{"mtu": 1480}}'
+#   '{"spec":{"ipipMTU": 1480}}'
 
 # For jumbo frames (9000 MTU) with VXLAN: 9000 - 50 = 8950
 # calicoctl patch felixconfiguration default --patch \
-#   '{"spec":{"mtu": 8950}}'
+#   '{"spec":{"vxlanMTU": 8950}}'
 ```
 
 ## IP Pool Planning

@@ -32,10 +32,10 @@ Always export the current endpoint state before modifications:
 calicoctl get workloadendpoint node2-custom-legacy-db-eth0 -n default -o yaml > endpoint-backup.yaml
 ```
 
-Back up all endpoints on a node:
+Back up all endpoints in the default namespace:
 
 ```bash
-calicoctl get workloadendpoints --node=node2 -o yaml > node2-endpoints-backup.yaml
+calicoctl get workloadendpoints -n default -o yaml > endpoints-backup.yaml
 ```
 
 ## Updating Labels Safely

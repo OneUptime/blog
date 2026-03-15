@@ -160,7 +160,7 @@ If the BGPConfiguration does not take effect, check the following:
 - Ensure the AS number is within the private range (64512-65534) for internal use
 - Check calico-node pod logs for BGP errors: `kubectl logs -n calico-system -l k8s-app=calico-node | grep BGP`
 - Confirm the Calico API server is running if using kubectl: `kubectl get pods -n calico-apiserver`
-- Validate the YAML with calicoctl: `calicoctl apply -f bgp-config.yaml --dry-run`
+- Validate the YAML with calicoctl: `calicoctl create -f bgp-config.yaml --skip-exists` or review with `calicoctl get bgpconfiguration default -o yaml`
 
 ## Conclusion
 

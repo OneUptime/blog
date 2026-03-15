@@ -69,17 +69,20 @@ Found 3 inconsistencies.
 
 ## Saving Check Results to a File
 
-For audit purposes or to process results programmatically:
+For audit purposes or to process results programmatically, use the `-o` flag to specify an output report file:
 
 ```bash
-calicoctl ipam check -o json > ipam-check-results.json
+calicoctl ipam check -o ipam-check-results.json
 ```
 
-Then analyze the results:
+You can also show specific IP details:
 
 ```bash
-cat ipam-check-results.json | jq '.orphanedAllocations | length'
-cat ipam-check-results.json | jq '.blockAffinityIssues[]'
+# Show all IPs that are checked
+calicoctl ipam check --show-all-ips
+
+# Show only problem IPs (leaked or improperly allocated)
+calicoctl ipam check --show-problem-ips
 ```
 
 ## Running Periodic IPAM Checks

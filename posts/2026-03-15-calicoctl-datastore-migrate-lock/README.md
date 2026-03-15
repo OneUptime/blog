@@ -177,7 +177,7 @@ echo "Run: calicoctl datastore migrate unlock"
 Check whether the datastore is currently locked:
 
 ```bash
-calicoctl datastore migrate lock --check 2>&1 || echo "Checking lock status..."
+calicoctl datastore migrate lock 2>&1 || echo "Datastore may already be locked."
 ```
 
 You can also verify by attempting a dry-run operation:

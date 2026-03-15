@@ -147,7 +147,7 @@ Requires=docker.service
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/calicoctl node run --node-image=calico/node:v3.27.0 --ip=autodetect
-ExecStop=/usr/local/bin/calicoctl node stop
+ExecStop=/usr/bin/docker stop calico-node
 Restart=on-failure
 RestartSec=10
 Environment=DATASTORE_TYPE=etcdv3

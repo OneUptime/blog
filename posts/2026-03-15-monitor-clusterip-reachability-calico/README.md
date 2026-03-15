@@ -138,7 +138,7 @@ spec:
 ```yaml
 # Alert on Calico policy denied packets
 - alert: CalicoHighDenyRate
-  expr: rate(felix_denied_packets[5m]) > 10
+  expr: rate(calico_denied_packets[5m]) > 10
   for: 5m
   labels:
     severity: warning
@@ -196,7 +196,7 @@ histogram_quantile(0.99, rate(kubeproxy_sync_proxy_rules_duration_seconds_bucket
 node_nf_conntrack_entries / node_nf_conntrack_entries_limit * 100
 
 # Calico denied packets rate
-rate(felix_denied_packets[5m])
+rate(calico_denied_packets[5m])
 
 # Service endpoint churn
 changes(kube_endpoint_address_available[1h])

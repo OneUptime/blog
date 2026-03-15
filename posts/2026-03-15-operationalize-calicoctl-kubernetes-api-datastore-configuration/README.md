@@ -75,7 +75,7 @@ jobs:
         run: |
           for f in calico-config/**/*.yaml; do
             echo "Validating $f"
-            calicoctl apply -f "$f" --dry-run
+            kubectl apply -f "$f" --dry-run=server
           done
 
       - name: Apply configuration
@@ -152,7 +152,7 @@ Confirm the operational workflow functions correctly:
 
 ```bash
 # Test dry-run validation
-calicoctl apply -f calico-config/policies/global-policies.yaml --dry-run
+kubectl apply -f calico-config/policies/global-policies.yaml --dry-run=server
 
 # Verify backup job runs
 kubectl get cronjobs -n calico-system

@@ -72,10 +72,9 @@ spec:
     - cidr: 10.96.0.0/12
 ```
 
-Apply with validation first:
+Apply the updated configuration:
 
 ```bash
-calicoctl apply -f bgp-config-updated.yaml --dry-run
 calicoctl apply -f bgp-config-updated.yaml
 ```
 

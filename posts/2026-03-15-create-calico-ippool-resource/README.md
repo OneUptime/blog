@@ -28,7 +28,8 @@ This guide walks through creating IPPool resources from scratch, covering all es
 Before creating an IPPool, it helps to understand the key fields available in the resource spec:
 
 - **cidr**: The IP range for the pool in CIDR notation
-- **encapsulation**: The tunnel mode (VXLAN, IPIP, VXLANCrossSubnet, IPIPCrossSubnet, or None)
+- **vxlanMode**: VXLAN encapsulation mode (Always, CrossSubnet, or Never)
+- **ipipMode**: IP-in-IP encapsulation mode (Always, CrossSubnet, or Never)
 - **natOutgoing**: Whether pods using this pool should have their traffic masqueraded
 - **nodeSelector**: Restricts which nodes can use this pool
 - **blockSize**: The size of allocation blocks assigned to each node
@@ -44,7 +45,7 @@ metadata:
   name: default-ipv4-pool
 spec:
   cidr: 10.244.0.0/16
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
@@ -73,7 +74,7 @@ metadata:
   name: zone-a-pool
 spec:
   cidr: 10.245.0.0/20
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: topology.kubernetes.io/zone == "us-east-1a"
   blockSize: 26
@@ -92,7 +93,7 @@ metadata:
   name: ipip-pool
 spec:
   cidr: 10.246.0.0/16
-  encapsulation: IPIPCrossSubnet
+  ipipMode: CrossSubnet
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
@@ -111,7 +112,8 @@ metadata:
   name: default-ipv6-pool
 spec:
   cidr: fd00:10:244::/48
-  encapsulation: None
+  vxlanMode: Never
+  ipipMode: Never
   natOutgoing: false
   nodeSelector: all()
   blockSize: 122

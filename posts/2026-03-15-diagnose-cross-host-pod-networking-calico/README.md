@@ -77,8 +77,8 @@ ip route | grep <destination-pod-cidr>
 # Check if routes exist for the remote node's pod CIDR
 ip route get <remote-pod-ip>
 
-# Verify BIRD routing daemon logs
-kubectl logs -n calico-system -l k8s-app=calico-node -c bird --tail=50
+# Verify BIRD routing daemon logs (BIRD runs inside the calico-node container)
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "bird"
 ```
 
 ## Checking IP-in-IP or VXLAN Tunnels

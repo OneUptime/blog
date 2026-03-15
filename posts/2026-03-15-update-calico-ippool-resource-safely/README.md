@@ -28,7 +28,7 @@ This guide covers safe update strategies for every modifiable IPPool field, incl
 Fields that can be updated in place without disruption:
 
 - **natOutgoing**: Toggle NAT behavior immediately
-- **encapsulation**: Change tunnel mode (may cause brief packet loss)
+- **ipipMode** / **vxlanMode**: Change tunnel mode (may cause brief packet loss)
 - **nodeSelector**: Modify which nodes use the pool
 - **disabled**: Prevent new allocations without affecting existing pods
 
@@ -54,7 +54,7 @@ metadata:
   name: default-ipv4-pool
 spec:
   cidr: 10.244.0.0/16
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: false
   nodeSelector: all()
   blockSize: 26
@@ -79,7 +79,7 @@ metadata:
   name: default-ipv4-pool
 spec:
   cidr: 10.244.0.0/16
-  encapsulation: VXLAN
+  vxlanMode: Always
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
@@ -89,8 +89,8 @@ Apply and then perform a rolling restart of calico-node to ensure all nodes pick
 
 ```bash
 calicoctl apply -f ippool-vxlan.yaml
-kubectl rollout restart daemonset/calico-node -n calico-system
-kubectl rollout status daemonset/calico-node -n calico-system
+kubectl rollout restart daemonset calico-node -n calico-system
+kubectl rollout status daemonset calico-node -n calico-system
 ```
 
 ## Migrating to a New CIDR
@@ -106,7 +106,7 @@ metadata:
   name: new-ipv4-pool
 spec:
   cidr: 10.248.0.0/16
-  encapsulation: VXLANCrossSubnet
+  vxlanMode: CrossSubnet
   natOutgoing: true
   nodeSelector: all()
   blockSize: 26
@@ -152,7 +152,7 @@ kubectl get pods -n calico-system -l k8s-app=calico-node
 
 ## Troubleshooting
 
-- If pods lose connectivity after encapsulation changes, verify all calico-node pods have restarted with `kubectl get pods -n calico-system -l k8s-app=calico-node -o wide`
+- If pods lose connectivity after tunnel mode changes, verify all calico-node pods have restarted with `kubectl get pods -n calico-system -l k8s-app=calico-node -o wide`
 - If new pods are not getting IPs after disabling a pool, ensure the replacement pool exists and is not disabled
 - For CIDR migration, check that old pool blocks are released: `calicoctl ipam show --show-blocks`
 - If a rollback is needed, re-enable the old pool immediately: `calicoctl patch ippool default-ipv4-pool -p '{"spec": {"disabled": false}}'`

@@ -87,16 +87,16 @@ CALICO_LOG_LEVEL=debug calicoctl cluster diags
 
 This collects debug-level logs from Felix, BIRD, and confd, providing deeper visibility into component behavior.
 
-## Filtering Diagnostics by Component
+## Filtering Diagnostics by Scope
 
-You can focus on specific areas when you already suspect a particular component:
+You can focus diagnostic collection using available options:
 
 ```bash
-# Collect only networking diagnostics
-calicoctl cluster diags --type=network
+# Collect diagnostics from the last hour only
+calicoctl cluster diags --since=1h
 
-# Collect only policy-related diagnostics
-calicoctl cluster diags --type=policy
+# Focus on specific nodes and limit log collection
+calicoctl cluster diags --focus-nodes=node1,node2 --max-logs=3
 ```
 
 ## Automating Periodic Diagnostic Collection

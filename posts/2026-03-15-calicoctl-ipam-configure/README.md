@@ -70,20 +70,38 @@ Strict affinity is recommended when:
 
 ## Configuring Maximum Blocks Per Host
 
-Limit the number of CIDR blocks a node can claim to prevent a single node from consuming too many IP addresses:
+Limit the number of CIDR blocks a node can claim to prevent a single node from consuming too many IP addresses. The `maxBlocksPerHost` setting is configured through the IPAMConfiguration resource:
 
 ```bash
-calicoctl ipam configure --maxblocksperhost=4
+calicoctl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: IPAMConfiguration
+metadata:
+  name: default
+spec:
+  strictAffinity: false
+  maxBlocksPerHost: 4
+EOF
 ```
 
 This limits each node to a maximum of 4 IP blocks. With the default block size of /26 (64 addresses), this gives each node up to 256 IP addresses.
 
 ## Combining Configuration Options
 
-You can set multiple options at once:
+You can set strict affinity via the CLI and max blocks per host via the IPAMConfiguration resource:
 
 ```bash
-calicoctl ipam configure --strictaffinity=true --maxblocksperhost=8
+calicoctl ipam configure --strictaffinity=true
+
+calicoctl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: IPAMConfiguration
+metadata:
+  name: default
+spec:
+  strictAffinity: true
+  maxBlocksPerHost: 8
+EOF
 ```
 
 Verify both settings applied:
@@ -148,10 +166,20 @@ calicoctl get ippools -o yaml | grep -E 'cidr|blockSize'
 To reset IPAM configuration to default values:
 
 ```bash
-calicoctl ipam configure --strictaffinity=false --maxblocksperhost=0
+calicoctl ipam configure --strictaffinity=false
+
+calicoctl apply -f - <<EOF
+apiVersion: projectcalico.org/v3
+kind: IPAMConfiguration
+metadata:
+  name: default
+spec:
+  strictAffinity: false
+  maxBlocksPerHost: 0
+EOF
 ```
 
-A value of 0 for `maxblocksperhost` means unlimited.
+A value of 0 for `maxBlocksPerHost` means unlimited.
 
 ## Verification
 

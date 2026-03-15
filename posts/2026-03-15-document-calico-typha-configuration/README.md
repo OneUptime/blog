@@ -98,7 +98,7 @@ Headroom: 150 connections remaining before lower limit
 kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9098/liveness
 
 # Check Prometheus metrics
-kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9093/metrics | head -20
+kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9091/metrics | head -20
 ```
 
 ### Logging Configuration

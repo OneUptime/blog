@@ -101,7 +101,7 @@ calicoctl ipam show
 # Check 2: CIDR alignment
 echo "Step 2: Checking CIDR alignment..."
 KUBEADM_CIDR=$(kubectl get configmap -n kube-system kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' 2>/dev/null | grep podSubnet | awk '{print $2}')
-CALICO_CIDR=$(calicoctl get ippools -o jsonpath='{.items[0].spec.cidr}' 2>/dev/null)
+CALICO_CIDR=$(calicoctl get ippools -o json 2>/dev/null | jq -r '.items[0].spec.cidr')
 echo "kubeadm: $KUBEADM_CIDR"
 echo "Calico:  $CALICO_CIDR"
 if [ "$KUBEADM_CIDR" != "$CALICO_CIDR" ]; then

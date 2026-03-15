@@ -96,10 +96,11 @@ Verify block affinities are released:
 calicoctl get blockaffinities -o yaml | grep "node-to-remove"
 ```
 
-If orphaned affinities remain, release them manually:
+If orphaned affinities remain, run an IPAM check to identify leaked addresses and release them:
 
 ```bash
-calicoctl ipam release --from-node=node-to-remove
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
 ```
 
 ## Restricting Blocks to Specific Nodes
@@ -167,7 +168,7 @@ kubectl delete pod -n kube-system -l k8s-app=calico-node --field-selector spec.n
 For IP leak detection, compare allocated IPs against running pods:
 
 ```bash
-calicoctl ipam show --show-blocks -o json | jq '.[] | select(.numFreeAddresses == 0)'
+calicoctl ipam check
 ```
 
 ## Conclusion

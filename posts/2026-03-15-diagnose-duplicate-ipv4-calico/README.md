@@ -121,11 +121,11 @@ for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name); 
     grep -i "duplicate\|conflict\|already\|error.*ipam\|reassign"
 done
 
-# Check BIRD logs for route conflicts
+# Check calico-node logs for BIRD route conflicts (BIRD runs inside the calico-node container)
 for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node -o name); do
   echo "=== $pod BIRD ==="
-  kubectl logs -n calico-system $pod -c bird --tail=50 | \
-    grep -i "conflict\|error\|unreachable"
+  kubectl logs -n calico-system $pod -c calico-node --tail=50 | \
+    grep -i "bird.*conflict\|bird.*error\|unreachable"
 done
 ```
 

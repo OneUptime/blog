@@ -113,8 +113,9 @@ When a node is removed from the cluster, its BlockAffinity resources may become 
 calicoctl get blockaffinity -o yaml | grep "node:"
 kubectl get nodes -o name
 
-# Release orphaned blocks
-calicoctl ipam release --from-node=<removed-node-name>
+# Check for leaked IPs using ipam check and release from the report
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
 ```
 
 ## Managing IP Exhaustion
@@ -159,8 +160,9 @@ calicoctl ipam show
 # Check for blocks with low utilization
 calicoctl ipam show --show-blocks
 
-# Release specific blocks if they have no active allocations
-calicoctl ipam release --from-node=worker-1
+# Check for leaked IPs and release them
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
 ```
 
 ## Verification
@@ -186,7 +188,7 @@ calicoctl ipam check
 Common BlockAffinity issues:
 
 - Pod stuck in ContainerCreating with IPAM error: The node may have no blocks with available IPs. Check `calicoctl ipam show --show-blocks` and verify the IPPool has available space
-- Orphaned blocks after node deletion: Run `calicoctl ipam release --from-node=<old-node>` to free blocks assigned to removed nodes
+- Orphaned blocks after node deletion: Run `calicoctl ipam check -o report.json && calicoctl ipam release --from-report=report.json` to free leaked IPs from removed nodes
 - Uneven IP distribution: Nodes that have been running longer tend to accumulate more blocks. This is normal behavior. Consider using smaller block sizes for more even distribution
 - BlockAffinity in pendingDeletion state: The IPAM controller is waiting for all IPs in the block to be released before removing the affinity. Check for lingering pods or leaked IPs
 - IP pool exhaustion: Check `calicoctl ipam show` for utilization. Add new IPPools if the existing ones are full

@@ -61,7 +61,7 @@ When migrating to an etcd datastore:
 ```bash
 export DATASTORE_TYPE=etcdv3
 export ETCD_ENDPOINTS=https://10.0.2.10:2379
-export ETCD_CA_FILE=/etc/calico/certs/ca.pem
+export ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
 export ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 export ETCD_KEY_FILE=/etc/calico/certs/key.pem
 

@@ -35,7 +35,6 @@ metadata:
   name: api-ingress-v2
   namespace: production
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       app: api-server
@@ -82,7 +81,6 @@ metadata:
   name: deny-cross-namespace
   namespace: payments
 spec:
-  stagedAction: Set
   podSelector: {}
   policyTypes:
     - Ingress
@@ -110,7 +108,6 @@ metadata:
     review-status: pending
     change-request: CR-2026-0315
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       tier: backend

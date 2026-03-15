@@ -34,7 +34,6 @@ kind: StagedGlobalNetworkPolicy
 metadata:
   name: default-deny-all
 spec:
-  stagedAction: Set
   order: 1000
   selector: all()
   types:
@@ -62,7 +61,6 @@ kind: StagedGlobalNetworkPolicy
 metadata:
   name: restrict-external-egress
 spec:
-  stagedAction: Set
   order: 200
   selector: all()
   types:
@@ -94,10 +92,7 @@ POLICY_FILE=$1
 calicoctl apply -f "$POLICY_FILE"
 
 POLICY_NAME=$(grep "name:" "$POLICY_FILE" | head -1 | awk '{print $2}')
-STATUS=$(calicoctl get stagedglobalnetworkpolicy "$POLICY_NAME" -o yaml | grep stagedAction)
-
 echo "Staged policy applied: $POLICY_NAME"
-echo "Status: $STATUS"
 echo "Review in Calico Enterprise Manager before committing."
 ```
 
@@ -131,7 +126,7 @@ If flow log analysis shows no matched flows, verify that flow logging is enabled
 calicoctl get felixconfiguration default -o yaml | grep flowLogs
 ```
 
-If a staged policy was accidentally committed, create a new StagedGlobalNetworkPolicy with `stagedAction: Delete` referencing the committed policy name to stage its removal.
+If a staged policy was accidentally committed, delete the StagedGlobalNetworkPolicy resource and create a corrective GlobalNetworkPolicy to override it.
 
 ## Conclusion
 

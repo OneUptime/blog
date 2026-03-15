@@ -36,9 +36,9 @@ metadata:
 spec:
   datastoreType: "etcdv3"
   etcdEndpoints: "https://etcd1:2379,https://etcd2:2379,https://etcd3:2379"
-  etcdCACert: "/etc/calico/certs/ca.pem"
-  etcdCert: "/etc/calico/certs/client.pem"
-  etcdKey: "/etc/calico/certs/client-key.pem"
+  etcdCACertFile: "/etc/calico/certs/ca.pem"
+  etcdCertFile: "/etc/calico/certs/client.pem"
+  etcdKeyFile: "/etc/calico/certs/client-key.pem"
 EOF
 ```
 
