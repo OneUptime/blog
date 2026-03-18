@@ -142280,5 +142280,9 @@
     "2026-03-17-write-effective-health-check-commands-podman": {
         "status": "validated",
         "validatedAt": "2026-03-17T11:51:47Z"
+    },
+    "2026-03-18-the-real-cost-of-datadog": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-03-18T00:00:00Z"
     }
 }

@@ -472926,5 +472926,17 @@
       "Permissions"
     ],
     "post": "2026-03-17-troubleshoot-rootless-podman-permission-errors"
+  },
+  {
+    "title": "The Real Cost of Datadog: What Your Team Is Actually Paying in 2026",
+    "description": "A transparent breakdown of what Datadog actually costs when you factor in per-host fees, custom metrics, log ingestion, and the hidden charges that show up after the POC.",
+    "authorGitHubUsername": "mallersjamie",
+    "tags": [
+      "Observability",
+      "Monitoring",
+      "Comparison",
+      "DevOps"
+    ],
+    "post": "2026-03-18-the-real-cost-of-datadog"
   }
 ]
