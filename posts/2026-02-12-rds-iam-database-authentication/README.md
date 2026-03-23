@@ -16,7 +16,7 @@ IAM database authentication lets you skip all of that. Instead of a password, yo
 
 When a client connects to RDS with IAM authentication:
 
-1. The client calls the RDS API to generate an authentication token
+1. The client calls the RDS SDK class to generate an authentication token
 2. The token is valid for 15 minutes and acts as a temporary password
 3. The client connects to the database using the token as the password
 4. RDS validates the token against IAM before allowing the connection
@@ -27,13 +27,15 @@ sequenceDiagram
     participant App as Application
     participant IAM as AWS IAM
     participant RDS as RDS Instance
-    App->>IAM: Generate auth token (using IAM credentials)
-    IAM-->>App: Return authentication token (15 min TTL)
+    App->>IAM: Get IAM credentials (managed and cached by SDK)
+    App->>App: Generate auth token (15 min TTL, in memory operation)
     App->>RDS: Connect with username + token as password
     RDS->>IAM: Validate token
     IAM-->>RDS: Token valid
     RDS-->>App: Connection established
 ```
+
+One thing to note here: Even though the IAM API is used during connection authentication, the RDS token generation is completely in-memory operation (no network calls). This means there is no point in caching/reusing the request token.
 
 ## Prerequisites
 
