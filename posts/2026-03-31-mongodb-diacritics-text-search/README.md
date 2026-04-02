@@ -8,7 +8,7 @@ Description: Learn how MongoDB text search handles accented characters by defaul
 
 ---
 
-By default MongoDB text search is diacritic-insensitive, meaning "cafe" matches "cafe", "cafe" (with accent marks), and similar variants. This is convenient for general search but incorrect when your data requires accent-accurate matching.
+By default MongoDB text search is diacritic-insensitive, meaning "cafe" matches "café", "cafè" (with accent marks), and similar variants. This is convenient for general search but incorrect when your data requires accent-accurate matching.
 
 ## Default Behavior - Diacritic Insensitive
 
@@ -16,8 +16,8 @@ By default MongoDB text search is diacritic-insensitive, meaning "cafe" matches 
 db.restaurants.createIndex({ name: "text" })
 
 db.restaurants.insertMany([
-  { name: "Cafe du Monde" },
-  { name: "Cafe Etienne" },
+  { name: "Café du Monde" },
+  { name: "Café Etienne" },
   { name: "Caffe Reggio" }
 ])
 
@@ -40,7 +40,7 @@ db.restaurants.find({
 })
 ```
 
-Now only documents where the name contains the unaccented word "cafe" will match. Documents with accented versions are excluded.
+Now only documents where the name contains the unaccented word "cafe" will match. Documents with "café" are excluded.
 
 ## Combining with Case Sensitivity
 
@@ -49,14 +49,14 @@ Both options can be used together:
 ```javascript
 db.words.find({
   $text: {
-    $search: "resume",
+    $search: "résumé",
     $caseSensitive: true,
     $diacriticSensitive: true
   }
 })
 ```
 
-This finds only the exact token "resume" - case-exact and without accents.
+This finds only the exact token "résumé" - case-exact and with accents.
 
 ## Practical Example - Multi-Language Names
 
@@ -65,13 +65,13 @@ db.people.createIndex({ fullName: "text" })
 
 db.people.insertMany([
   { fullName: "Jose Garcia" },
-  { fullName: "Jose Garcia" }   // with accent on "e"
+  { fullName: "José García" }   // with accent on "e"
 ])
 
 // Diacritic-sensitive: only matches the accented version
 db.people.find({
   $text: {
-    $search: "Jose",
+    $search: "José",
     $diacriticSensitive: true
   }
 })
@@ -83,7 +83,7 @@ Diacritic-sensitive and case-sensitive queries bypass some text-index optimizati
 
 ```javascript
 db.restaurants.find(
-  { $text: { $search: "cafe", $diacriticSensitive: true } }
+  { $text: { $search: "café", $diacriticSensitive: true } }
 ).explain("executionStats")
 ```
 

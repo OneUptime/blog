@@ -485,7 +485,7 @@ db.articles.find({
         $diacriticSensitive: true
     }
 });
-// "cafe" will not match "cafe" with accent marks
+// "cafe" will not match "café" with accent marks
 ```
 
 ### Array Field Behavior

@@ -10,7 +10,7 @@ Description: Learn how to run accent-insensitive MongoDB queries using collation
 
 ## The Accent Matching Problem
 
-Many applications need to find documents regardless of whether the user typed accented characters. A search for `"resume"` should also find `"resume"`. A search for `"Zurich"` should match `"Zurich"`. Without special handling, MongoDB's default comparison treats accented and unaccented characters as completely different.
+Many applications need to find documents regardless of whether the user typed accented characters. A search for `"resume"` should also find `"résumé"`. A search for `"Zurich"` should match `"Zürich"`. Without special handling, MongoDB's default comparison treats accented and unaccented characters as completely different.
 
 ## How Accents Map to Collation Levels
 
@@ -18,7 +18,7 @@ The Unicode Collation Algorithm (UCA) separates string differences into levels:
 
 ```text
 Level 1 (Primary)    Different base letters: a vs b
-Level 2 (Secondary)  Accent differences: a vs a, e vs e
+Level 2 (Secondary)  Accent differences: a vs à, e vs é
 Level 3 (Tertiary)   Case differences: a vs A
 ```
 
@@ -32,7 +32,7 @@ db.resumes.find(
 ).collation({ locale: "en", strength: 1 })
 ```
 
-This matches documents where `title` is `"resume"`, `"Resume"`, `"RESUME"`, `"resume"`, or `"Resume"`.
+This matches documents where `title` is `"resume"`, `"Resume"`, `"RESUME"`, `"résumé"`, or `"Résumé"`.
 
 ## Strength 1 vs. Strength 2
 
@@ -63,24 +63,24 @@ Now queries with `{ locale: "en", strength: 1 }` use this index as an IXSCAN ins
 A search page where users look up names in a directory:
 
 ```javascript
-const searchName = "Muller";  // user typed without umlaut
+const searchName = "Muller";  // user typed without umlaut (ü)
 
 db.directory.find(
   { lastName: searchName }
 ).collation({ locale: "de", strength: 1 })
-// Matches: "Muller", "Muller", "MULLER", "Muller"
+// Matches: "Muller", "Müller", "MULLER", "MÜLLER"
 ```
 
-With German locale and strength 1, `"u"` and `"u"` are equivalent at the primary comparison level.
+With German locale and strength 1, `"u"` and `"ü"` are equivalent at the primary comparison level.
 
 ## French Accented Words
 
 ```javascript
 db.articles.insertMany([
   { word: "eclair" },
-  { word: "eclair" },
-  { word: "Eclair" },
-  { word: "ECLAIR" }
+  { word: "éclair" },
+  { word: "Éclair" },
+  { word: "ÉCLAIR" }
 ]);
 
 db.articles.find({ word: "eclair" }).collation({ locale: "fr", strength: 1 });
@@ -101,7 +101,7 @@ db.cities.createIndex(
 )
 ```
 
-Attempting to insert `"Zurich"` when `"Zurich"` already exists raises a duplicate key error.
+Attempting to insert `"Zürich"` when `"Zurich"` already exists raises a duplicate key error.
 
 ## Using caseLevel to Restore Case Sensitivity
 
@@ -113,8 +113,8 @@ db.articles.find({ word: "eclair" }).collation({
   strength: 1,
   caseLevel: true
 })
-// Matches: "eclair", "eclair" (accent-insensitive)
-// Does NOT match: "Eclair", "ECLAIR" (case sensitive)
+// Matches: "eclair", "éclair" (accent-insensitive)
+// Does NOT match: "Éclair", "ÉCLAIR" (case sensitive)
 ```
 
 ## Comparison With Application-Side Normalization

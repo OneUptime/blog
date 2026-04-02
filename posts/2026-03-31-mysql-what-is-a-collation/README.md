@@ -101,7 +101,7 @@ Sorting order is also affected:
 ```sql
 -- With utf8mb4_0900_ai_ci
 SELECT name FROM products ORDER BY name;
--- 'cafe', 'Cafe', 'CAFE' grouped together
+-- 'café', 'Cafe', 'CAFE' grouped together
 
 -- With utf8mb4_bin
 SELECT name FROM products ORDER BY name;

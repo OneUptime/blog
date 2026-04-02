@@ -23,22 +23,22 @@ The strength setting directly controls what differences are ignored:
 
 ### Strength 1 - Base Characters Only
 
-Differences in case and accents are ignored. `"a"`, `"A"`, and `"a"` are all equal.
+Differences in case and accents are ignored. `"a"`, `"A"`, and `"à"` are all equal.
 
 ```javascript
 db.words.find({ word: "cafe" }).collation({ locale: "en", strength: 1 })
-// Matches: "cafe", "Cafe", "CAFE", "cafe", "Cafe"
+// Matches: "cafe", "Cafe", "CAFE", "café", "Café"
 ```
 
 Use strength 1 when you want the most permissive matching - useful for search boxes where users may type without accent characters.
 
 ### Strength 2 - Base + Case
 
-Accents are ignored, but case matters. `"a"` and `"A"` differ; `"a"` and `"a"` are equal.
+Accents are ignored, but case matters. `"a"` and `"A"` differ; `"a"` and `"à"` are equal.
 
 ```javascript
 db.words.find({ word: "cafe" }).collation({ locale: "en", strength: 2 })
-// Matches: "cafe", "cafe"
+// Matches: "cafe", "café"
 // Does NOT match: "Cafe", "CAFE"
 ```
 
@@ -46,7 +46,7 @@ Wait - strength 2 ignores accents but NOT case. Let me clarify the UCA levels:
 
 ```text
 Level 1 (Primary)    Base letter differences     a vs b
-Level 2 (Secondary)  Accent differences          a vs a
+Level 2 (Secondary)  Accent differences          a vs à
 Level 3 (Tertiary)   Case differences            a vs A
 Level 4 (Quaternary) Punctuation and spacing
 Level 5 (Identical)  Code point differences
@@ -57,7 +57,7 @@ When `strength: 2`, comparisons consider levels 1 and 2 (base characters and acc
 ```javascript
 db.words.find({ word: "cafe" }).collation({ locale: "en", strength: 2 })
 // Matches: "cafe", "Cafe", "CAFE" (case ignored)
-// Does NOT match: "cafe" (accent is a level-2 difference)
+// Does NOT match: "café" (accent is a level-2 difference)
 ```
 
 ### Strength 3 - Base + Accents + Case (Default)
@@ -67,7 +67,7 @@ This is the MongoDB default when no strength is specified. All three levels are 
 ```javascript
 db.words.find({ word: "Cafe" }).collation({ locale: "en", strength: 3 })
 // Matches only: "Cafe"
-// Does NOT match: "cafe", "CAFE", "cafe"
+// Does NOT match: "cafe", "CAFE", "café"
 ```
 
 ### Strength 4 - Adds Punctuation
@@ -94,8 +94,8 @@ Input    Strength 1  Strength 2  Strength 3
 cafe     MATCH       MATCH       NO MATCH
 Cafe     MATCH       MATCH       NO MATCH
 CAFE     MATCH       MATCH       NO MATCH
-cafe     MATCH       NO MATCH    NO MATCH
-Cafe     MATCH       NO MATCH    NO MATCH
+café     MATCH       NO MATCH    NO MATCH
+Café     MATCH       NO MATCH    NO MATCH
 ```
 
 (Searching for `"cafe"`)
@@ -104,7 +104,7 @@ Cafe     MATCH       NO MATCH    NO MATCH
 
 ### Global Product Search (Strength 1)
 
-Allow users to find "Hamburger" by typing "hamburger", "HAMBURGER", or "hamburger":
+Allow users to find "Hambürger" by typing "hamburger", "HAMBURGER", or "hambürger":
 
 ```javascript
 db.products.find({ name: "hamburger" }).collation({ locale: "en", strength: 1 })

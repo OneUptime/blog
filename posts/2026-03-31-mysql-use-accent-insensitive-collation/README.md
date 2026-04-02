@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Collation, Accent, Unicode, String Comparison
 
-Description: Learn how to use accent-insensitive collations in MySQL so that accented characters like e, e, and e are treated as equal during comparisons.
+Description: Learn how to use accent-insensitive collations in MySQL so that accented characters like é, è, and ê are treated as equal during comparisons.
 
 ---
 
 ## What Is Accent Insensitivity?
 
-Accent-insensitive (AI) collations treat accented and unaccented versions of a character as equal. For example, under an accent-insensitive collation, `e`, `e`, `e`, and `e` all compare as equal. This is valuable for search features where users expect to find "cafe" when searching for "cafe", and vice versa.
+Accent-insensitive (AI) collations treat accented and unaccented versions of a character as equal. For example, under an accent-insensitive collation, `e`, `é`, `è`, and `ê` all compare as equal. This is valuable for search features where users expect to find "café" when searching for "cafe", and vice versa.
 
 ## Identifying Accent-Insensitive Collations
 
@@ -40,14 +40,14 @@ CREATE TABLE places (
 Now insert two rows that differ only by accent:
 
 ```sql
-INSERT INTO places (name) VALUES ('Cafe'), ('Cafe');
+INSERT INTO places (name) VALUES ('Cafe'), ('Café');
 ```
 
 Query without accents and find the accented version:
 
 ```sql
 SELECT * FROM places WHERE name = 'Cafe';
--- Returns both 'Cafe' and 'Cafe'
+-- Returns both 'Cafe' and 'Café'
 ```
 
 ## Unique Constraints and Accent Insensitivity
@@ -61,11 +61,11 @@ CREATE TABLE brands (
     UNIQUE KEY uq_name (name)
 );
 
-INSERT INTO brands (name) VALUES ('Naive');
+INSERT INTO brands (name) VALUES ('Naïve');
 INSERT INTO brands (name) VALUES ('Naive');  -- ERROR: Duplicate entry
 ```
 
-If your application needs to store both `Naive` and `Naive` as distinct records, use an accent-sensitive collation such as `utf8mb4_0900_as_cs`.
+If your application needs to store both `Naïve` and `Naive` as distinct records, use an accent-sensitive collation such as `utf8mb4_0900_as_cs`.
 
 ## Using COLLATE Inline for Accent-Insensitive Search
 
@@ -75,7 +75,7 @@ Apply AI collation at query time without changing the schema:
 SELECT id, name
 FROM places
 WHERE name COLLATE utf8mb4_0900_ai_ci = 'resume';
--- Matches 'resume', 'resume', 'Resume', 'Resume', etc.
+-- Matches 'resume', 'résumé', 'Resume', 'Résumé', etc.
 ```
 
 ## Performance Consideration

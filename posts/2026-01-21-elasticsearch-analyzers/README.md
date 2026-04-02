@@ -637,7 +637,7 @@ curl -X PUT "https://localhost:9200/products" \
   }'
 ```
 
-Test: `cafe` matches `cafe`
+Test: `café` matches `cafe`
 
 ### Length Filter
 

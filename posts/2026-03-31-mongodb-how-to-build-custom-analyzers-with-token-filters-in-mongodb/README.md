@@ -94,7 +94,7 @@ Normalize accented characters to their ASCII equivalents:
 }
 ```
 
-This maps `cafe` to `cafe` and `naif` to `naif`, enabling accent-insensitive search.
+This maps `café` to `cafe` and `naïf` to `naif`, enabling accent-insensitive search.
 
 ## Combining Multiple Token Filters
 

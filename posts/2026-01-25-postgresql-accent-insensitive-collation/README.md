@@ -8,7 +8,7 @@ Description: Learn how to perform accent-insensitive searches and sorting in Pos
 
 ---
 
-When building applications for international users, accent sensitivity becomes important. Users searching for "cafe" expect to find "cafe" as well. PostgreSQL provides several approaches for accent-insensitive operations, from built-in ICU collations to the unaccent extension.
+When building applications for international users, accent sensitivity becomes important. Users searching for "cafe" expect to find "café" as well. PostgreSQL provides several approaches for accent-insensitive operations, from built-in ICU collations to the unaccent extension.
 
 ## Understanding the Problem
 
@@ -23,20 +23,20 @@ CREATE TABLE products (
 
 INSERT INTO products (name) VALUES
     ('Cafe'),
-    ('Cafe'),
+    ('Café'),
     ('Naïve'),
     ('Naive'),
+    ('Résumé'),
     ('Resume'),
-    ('Resume'),
-    ('Creme Brulee'),
+    ('Crème Brûlée'),
     ('Creme Brulee');
 
 -- Standard search misses accented variants
 SELECT name FROM products WHERE name = 'Cafe';
--- Returns: Cafe (not Cafe)
+-- Returns: Cafe (not Café)
 
 SELECT name FROM products WHERE name LIKE 'Cafe%';
--- Returns: Cafe (not Cafe)
+-- Returns: Cafe (not Café)
 ```
 
 ## Using ICU Collations (PostgreSQL 10+)
@@ -58,7 +58,7 @@ CREATE COLLATION IF NOT EXISTS ignore_accents (
 -- Use the collation in queries
 SELECT name FROM products
 WHERE name COLLATE ignore_accents = 'cafe' COLLATE ignore_accents;
--- Returns both: Cafe, Cafe
+-- Returns both: Cafe, Café
 
 -- Use in ORDER BY for accent-insensitive sorting
 SELECT name FROM products
@@ -98,7 +98,7 @@ CREATE COLLATION french_accent_insensitive (
 );
 
 -- Test different behaviors
-SELECT 'Cafe' COLLATE ignore_accents = 'cafe' COLLATE ignore_accents AS matches;
+SELECT 'Café' COLLATE ignore_accents = 'cafe' COLLATE ignore_accents AS matches;
 -- Returns: true
 ```
 
@@ -111,21 +111,21 @@ The `unaccent` extension removes accents from text, useful for searching and ind
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
 -- Remove accents from text
-SELECT unaccent('Cafe Creme Brulee');
+SELECT unaccent('Café Crème Brûlée');
 -- Returns: Cafe Creme Brulee
 
-SELECT unaccent('Naïve Resume');
+SELECT unaccent('Naïve Résumé');
 -- Returns: Naive Resume
 
 -- Use in queries
 SELECT name FROM products
 WHERE unaccent(name) = unaccent('Cafe');
--- Returns both: Cafe, Cafe
+-- Returns both: Cafe, Café
 
 -- Use with ILIKE for case and accent insensitive search
 SELECT name FROM products
 WHERE unaccent(lower(name)) LIKE unaccent(lower('%creme%'));
--- Returns: Creme Brulee, Creme Brulee
+-- Returns: Crème Brûlée, Creme Brulee
 ```
 
 ## Creating Accent-Insensitive Indexes
@@ -213,13 +213,13 @@ CREATE INDEX idx_articles_search ON articles USING gin(search_vector);
 
 -- Insert test data
 INSERT INTO articles (title, content) VALUES
-    ('Cafe Culture in Paris', 'The cafe scene is vibrant...'),
-    ('Resume Writing Tips', 'A great resume starts with...');
+    ('Café Culture in Paris', 'The café scene is vibrant...'),
+    ('Résumé Writing Tips', 'A great résumé starts with...');
 
 -- Search finds accented and non-accented versions
 SELECT title FROM articles
 WHERE search_vector @@ to_tsquery('english_unaccent', 'cafe');
--- Returns articles about both "Cafe" and "Cafe"
+-- Returns articles about both "Café" and "Cafe"
 ```
 
 ## Custom unaccent Dictionary
@@ -234,9 +234,9 @@ SHOW lc_messages;  -- Indicates locale directory
 -- $SHAREDIR/tsearch_data/my_unaccent.rules
 
 -- Content format (one rule per line):
--- a a
--- e e
--- oe o
+-- à a
+-- é e
+-- œ o
 
 -- Create configuration using custom rules
 -- (After creating the rules file)
@@ -252,19 +252,19 @@ Different languages have different accent rules.
 
 ```sql
 -- German: treat umlaut vowels specially
--- a often sorted as ae
+-- ä often sorted as ae
 CREATE COLLATION german_phonebook (
     provider = icu,
     locale = 'de-u-co-phonebk'  -- German phonebook ordering
 );
 
--- Spanish: n is a separate letter
+-- Spanish: ñ is a separate letter
 CREATE COLLATION spanish_traditional (
     provider = icu,
     locale = 'es-u-co-trad'  -- Traditional Spanish ordering
 );
 
--- Swedish: a, a, o come after z
+-- Swedish: å, ä, ö come after z
 CREATE COLLATION swedish_standard (
     provider = icu,
     locale = 'sv'
@@ -274,7 +274,7 @@ CREATE COLLATION swedish_standard (
 SELECT name,
        name COLLATE "C" AS c_order,
        name COLLATE german_phonebook AS de_order
-FROM (VALUES ('Bar'), ('Bar'), ('Baz')) AS t(name)
+FROM (VALUES ('Bär'), ('Bar'), ('Baz')) AS t(name)
 ORDER BY name COLLATE german_phonebook;
 ```
 
@@ -303,7 +303,7 @@ $$ LANGUAGE plpgsql;
 
 -- Usage
 SELECT * FROM search_products('creme');
--- Returns both Creme Brulee and Creme Brulee
+-- Returns both Crème Brûlée and Creme Brulee
 ```
 
 ## Migration Strategy

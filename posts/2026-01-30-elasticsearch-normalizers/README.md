@@ -123,7 +123,7 @@ Normalizers become powerful when you chain multiple filters together. Here is ho
 
 ```mermaid
 flowchart LR
-    Input["Cafe Resume"] --> F1["asciifolding"]
+    Input["Café Résumé"] --> F1["asciifolding"]
     F1 --> R1["Cafe Resume"]
     R1 --> F2["lowercase"]
     F2 --> R2["cafe resume"]
@@ -187,7 +187,7 @@ Not all token filters work with normalizers. Here are the compatible ones:
 |--------|-------------|---------|
 | `lowercase` | Convert to lowercase | `ABC` to `abc` |
 | `uppercase` | Convert to uppercase | `abc` to `ABC` |
-| `asciifolding` | Convert Unicode to ASCII | `cafe` to `cafe` |
+| `asciifolding` | Convert Unicode to ASCII | `café` to `cafe` |
 | `trim` | Remove leading/trailing whitespace | ` text ` to `text` |
 | `pattern_replace` | Replace using regex | Remove hyphens |
 
