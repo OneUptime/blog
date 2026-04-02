@@ -98,6 +98,31 @@ sudo semodule -i wordpress_custom.pp
 sudo ausearch -m AVC -ts recent --comm httpd
 ```
 
+## Understanding the Core Update Trade-Off
+
+Setting WordPress core files to `httpd_sys_content_t` (read-only) means WordPress cannot update itself through the dashboard. You will see a Site Health notice:
+
+> Your installation of WordPress prompts for FTP credentials to perform updates.
+
+This is expected and intentional. Allowing Apache to write to core files (`wp-admin/`, `wp-includes/`, root PHP files) weakens your security posture because an attacker who compromises WordPress could modify those files.
+
+Instead of loosening SELinux contexts, use WP-CLI to perform core updates from the command line:
+
+```bash
+# Update WordPress core via WP-CLI (recommended)
+sudo -u apache wp core update --path=/var/www/html
+sudo -u apache wp plugin update --all --path=/var/www/html
+sudo -u apache wp theme update --all --path=/var/www/html
+```
+
+If you prefer dashboard-based updates and accept the reduced security, you can set the entire WordPress directory to read-write:
+
+```bash
+# Less secure: allow httpd to write to all WordPress files
+sudo semanage fcontext -m -t httpd_sys_rw_content_t "/var/www/html(/.*)?"
+sudo restorecon -Rv /var/www/html/
+```
+
 ## Recommended Practice
 
 Keep these directories read-only via SELinux:
@@ -109,4 +134,4 @@ Allow writes only to:
 - `wp-content/uploads/`
 - `wp-content/cache/` (if using caching plugins)
 
-This approach limits the damage an attacker can do even if they exploit a vulnerability in WordPress or a plugin.
+This approach limits the damage an attacker can do even if they exploit a vulnerability in WordPress or a plugin. The trade-off is that core updates must be performed via WP-CLI or your system package manager rather than the WordPress dashboard.
