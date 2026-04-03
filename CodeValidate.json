@@ -236722,5 +236722,25 @@
     "2026-04-01-ai-workload-observability-cost-crisis": {
         "status": "not-code-blog",
         "validatedAt": "2026-04-02T00:00:00Z"
+    },
+    "2026-04-01-atlassian-statuspage-alternatives-compared": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-04-04T00:00:00Z"
+    },
+    "2026-04-02-10-best-pingdom-alternatives-in-2026": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-04-04T00:00:00Z"
+    },
+    "2026-04-02-observability-for-ai-agents-in-production": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-04-04T00:00:00Z"
+    },
+    "2026-04-03-aws-devops-agent-open-source-observability-crossroads": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-04-04T00:00:00Z"
+    },
+    "2026-04-04-monitoring-ai-agents-in-production": {
+        "status": "validated",
+        "validatedAt": "2026-04-04T00:00:00Z"
     }
 }
