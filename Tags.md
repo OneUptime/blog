@@ -10326,6 +10326,7 @@
 - LogQL
 - Logrotate
 - Logrus
+- Logs
 - Logs Insights
 - Logstash
 - Logwatch
