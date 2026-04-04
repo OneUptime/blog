@@ -236722,5 +236722,9 @@
     "2026-04-01-ai-workload-observability-cost-crisis": {
         "status": "not-code-blog",
         "validatedAt": "2026-04-02T00:00:00Z"
+    },
+    "2026-04-05-your-ai-agents-are-flying-blind": {
+        "status": "not-code-blog",
+        "validatedAt": "2026-04-05T00:00:00Z"
     }
 }
