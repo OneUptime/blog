@@ -12168,6 +12168,7 @@
 - NVIDIA
 - NVIDIA H100
 - NVIDIA Jetson
+- NVIDIA Jetson Nano
 - NVIDIA Triton
 - Nvidia-smi
 - NVLink

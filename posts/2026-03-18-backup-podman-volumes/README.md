@@ -57,7 +57,7 @@ podman volume export my-database-volume --output /backups/my-database-volume-$(d
 podman volume export my-database-volume | gzip > /backups/my-database-volume-$(date +%Y%m%d-%H%M%S).tar.gz
 ```
 
-`podman volume export` writes the volume contents to STDOUT by default. Use `--output` (or `-o`) to write directly to a file. This is the simplest and most efficient way to back up a named volume — no temporary container required.
+`podman volume export` writes the volume contents to STDOUT by default. Use `--output` (or `-o`) to write directly to a file. This is the simplest and most efficient way to back up a named volume - no temporary container required.
 
 ### Using a Temporary Container
 

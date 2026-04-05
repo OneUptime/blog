@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Talos Linux, NVIDIA Jetson Nano, ARM64, Edge Computing, Kubernetes
 
-Description: A detailed walkthrough for installing and configuring Talos Linux on the NVIDIA Jetson Nano for Kubernetes workloads at the edge. Note that Talos currently only supports the Jetson Nano via the jetson_nano overlay.
+Description: A walkthrough for installing Talos Linux on the NVIDIA Jetson Nano for edge Kubernetes. Only the Jetson Nano is supported via the jetson_nano overlay.
 
 ---
 
@@ -232,4 +232,4 @@ If container images fail to pull, remember that Jetson requires ARM64 container 
 
 ## Wrapping Up
 
-The NVIDIA Jetson Nano running Talos Linux creates a compact platform for edge Kubernetes workloads. You get an immutable, secure operating system managed through the same Kubernetes tools you use everywhere else. The immutable nature of Talos adds security and reliability to edge deployments where physical access makes traditional Linux distributions vulnerable to tampering. Keep in mind that Talos currently only supports the Jetson Nano via the `jetson_nano` overlay — if you need support for Xavier or Orin devices, check the [sbc-jetson repository](https://github.com/siderolabs/sbc-jetson) for updates as support may expand in the future.
+The NVIDIA Jetson Nano running Talos Linux creates a compact platform for edge Kubernetes workloads. You get an immutable, secure operating system managed through the same Kubernetes tools you use everywhere else. The immutable nature of Talos adds security and reliability to edge deployments where physical access makes traditional Linux distributions vulnerable to tampering. Keep in mind that Talos currently only supports the Jetson Nano via the `jetson_nano` overlay - if you need support for Xavier or Orin devices, check the [sbc-jetson repository](https://github.com/siderolabs/sbc-jetson) for updates as support may expand in the future.
