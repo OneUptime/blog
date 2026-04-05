@@ -143,19 +143,15 @@ Pine64 boards like the ROCKPro64 follow a similar pattern:
 sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-## USB Boot on NVIDIA Jetson
+## USB Boot on NVIDIA Jetson Nano
 
-NVIDIA Jetson devices (Nano, Xavier, Orin) support USB boot through their UEFI firmware:
+Talos Linux currently only supports the Jetson Nano via the `jetson_nano` overlay. Other Jetson devices (Xavier, Orin) are not supported. The Jetson Nano can boot from USB storage after flashing the patched u-boot firmware from the [sbc-jetson](https://github.com/siderolabs/sbc-jetson) releases:
 
 ```bash
-# Update Jetson firmware to support USB boot
-# This is done through NVIDIA's SDK Manager or L4T tools
-
-# Flash Talos to USB
+# Ensure the Jetson Nano firmware has been updated with the patched u-boot
+# Then flash Talos to USB
 sudo dd if=metal-arm64.raw of=/dev/sdX bs=4M status=progress conv=fsync
 ```
-
-On Jetson Orin devices with UEFI firmware, USB boot works similarly to standard UEFI x86 systems.
 
 ## Handling Device Naming
 
