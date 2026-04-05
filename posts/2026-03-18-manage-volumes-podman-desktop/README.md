@@ -113,21 +113,21 @@ The `:ro` flag makes the mount read-only for the second container, preventing ac
 
 ## Backing Up and Restoring Volumes
 
-Volumes can be backed up by copying their contents to an archive:
+Podman provides built-in commands for exporting and importing volume contents:
 
 ```bash
 # Back up a volume to a tar file
-podman run --rm \
-  -v db-data:/source:ro \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/db-data-backup.tar.gz -C /source .
+podman volume export db-data --output db-data-backup.tar
+
+# Back up with compression
+podman volume export db-data | gzip > db-data-backup.tar.gz
 
 # Restore a volume from a backup
 podman volume create db-data-restored
-podman run --rm \
-  -v db-data-restored:/target \
-  -v $(pwd):/backup:ro \
-  alpine tar xzf /backup/db-data-backup.tar.gz -C /target
+podman volume import db-data-restored db-data-backup.tar
+
+# Restore from a gzipped backup
+gunzip -c db-data-backup.tar.gz | podman volume import db-data-restored -
 ```
 
 ## Cleaning Up Volumes

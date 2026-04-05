@@ -45,7 +45,23 @@ This shows every mount for every container, making it clear which volumes contai
 
 ## Backing Up Named Volumes
 
-Named volumes cannot be directly copied because Podman manages their storage location. The standard approach is to mount the volume into a temporary container and use `tar` to create an archive:
+### Using podman volume export (Recommended)
+
+Podman has a built-in command for exporting volume contents to a tarball:
+
+```bash
+# Export a volume to a tar file
+podman volume export my-database-volume --output /backups/my-database-volume-$(date +%Y%m%d-%H%M%S).tar
+
+# Or pipe through gzip for compression
+podman volume export my-database-volume | gzip > /backups/my-database-volume-$(date +%Y%m%d-%H%M%S).tar.gz
+```
+
+`podman volume export` writes the volume contents to STDOUT by default. Use `--output` (or `-o`) to write directly to a file. This is the simplest and most efficient way to back up a named volume — no temporary container required.
+
+### Using a Temporary Container
+
+An alternative approach is to mount the volume into a temporary container and use `tar` to create an archive. This can be useful if you need more control over which files to include or exclude:
 
 ```bash
 podman run --rm \
@@ -54,15 +70,7 @@ podman run --rm \
     alpine tar czf /backup/my-database-volume-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
 ```
 
-This command does the following:
-
-1. Creates a temporary Alpine container (small and fast).
-2. Mounts the target volume at `/source` in read-only mode.
-3. Mounts the backup directory at `/backup`.
-4. Creates a compressed tar archive of the volume contents.
-5. Removes the container when done (`--rm`).
-
-The read-only mount (`:ro`) prevents accidental modifications to the volume during backup.
+This command creates a temporary Alpine container, mounts the target volume read-only at `/source`, and creates a compressed tar archive of the volume contents. The read-only mount (`:ro`) prevents accidental modifications to the volume during backup.
 
 ## Backing Up Bind Mounts
 
@@ -88,10 +96,7 @@ The safest option is to stop the container before backing up:
 
 ```bash
 podman stop postgres-db
-podman run --rm \
-    -v postgres-data:/source:ro \
-    -v /backups:/backup \
-    alpine tar czf /backup/postgres-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+podman volume export postgres-data | gzip > /backups/postgres-data-$(date +%Y%m%d-%H%M%S).tar.gz
 podman start postgres-db
 ```
 
@@ -127,10 +132,7 @@ If stopping is not an option and the application does not have its own backup to
 
 ```bash
 podman pause my-container
-podman run --rm \
-    -v my-volume:/source:ro \
-    -v /backups:/backup \
-    alpine tar czf /backup/my-volume-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+podman volume export my-volume | gzip > /backups/my-volume-$(date +%Y%m%d-%H%M%S).tar.gz
 podman unpause my-container
 ```
 
@@ -153,13 +155,7 @@ echo "Starting volume backup at $(date)" | tee "$LOG_FILE"
 for volume in $(podman volume ls -q); do
     echo "Backing up volume: $volume" | tee -a "$LOG_FILE"
 
-    # Get volume size estimate
-    SIZE=$(podman volume inspect "$volume" --format '{{.Mountpoint}}')
-
-    podman run --rm \
-        -v "${volume}:/source:ro" \
-        -v "$BACKUP_DIR:/backup" \
-        alpine tar czf "/backup/${volume}.tar.gz" -C /source . 2>> "$LOG_FILE"
+    podman volume export "$volume" | gzip > "$BACKUP_DIR/${volume}.tar.gz" 2>> "$LOG_FILE"
 
     if [ $? -eq 0 ]; then
         BACKUP_SIZE=$(du -h "$BACKUP_DIR/${volume}.tar.gz" | cut -f1)
@@ -175,20 +171,26 @@ echo "Location: $BACKUP_DIR"
 
 ## Restoring Volumes from Backup
 
-To restore a named volume from a tar archive:
+### Using podman volume import (Recommended)
+
+The built-in `podman volume import` command restores a volume from a tarball:
 
 ```bash
 # Create a fresh volume
 podman volume create my-database-volume
 
-# Restore data into it
-podman run --rm \
-    -v my-database-volume:/target \
-    -v /backups:/backup:ro \
-    alpine tar xzf /backup/my-database-volume.tar.gz -C /target
+# Import from a tar archive
+podman volume import my-database-volume /backups/my-database-volume.tar
+
+# Import from a gzipped archive
+gunzip -c /backups/my-database-volume.tar.gz | podman volume import my-database-volume -
 ```
 
-To restore and verify in one step:
+The `-` argument tells `podman volume import` to read from STDIN, which allows piping from decompression tools.
+
+### Using a Temporary Container
+
+If you need more control over the restore process (for example, to restore only specific files or verify contents during extraction):
 
 ```bash
 podman run --rm \
@@ -273,4 +275,4 @@ fi
 
 ## Conclusion
 
-Volume backups are the most critical part of any container backup strategy because volumes hold the data that cannot be recreated. Use application-level dump tools for databases, tar archives for general volumes, and always verify that your backups can be restored. The few minutes spent setting up automated volume backups will save you from the hours or days of pain that follow data loss.
+Volume backups are the most critical part of any container backup strategy because volumes hold the data that cannot be recreated. Use `podman volume export` and `podman volume import` as the primary method for backing up and restoring named volumes. Use application-level dump tools for databases, and always verify that your backups can be restored. The few minutes spent setting up automated volume backups will save you from the hours or days of pain that follow data loss.

@@ -49,12 +49,9 @@ for c in $CONTAINERS; do
   podman stop "$c"
 done
 
-# Get volume mount point
-MOUNT=$(podman volume inspect "$VOLUME" --format '{{.Mountpoint}}')
-
-# Create backup
+# Export the volume using podman volume export
 mkdir -p "$BACKUP_DIR"
-tar -czf "${BACKUP_DIR}/${VOLUME}-${DATE}.tar.gz" -C "$MOUNT" .
+podman volume export "$VOLUME" | gzip > "${BACKUP_DIR}/${VOLUME}-${DATE}.tar.gz"
 
 echo "Backup created: ${BACKUP_DIR}/${VOLUME}-${DATE}.tar.gz"
 
@@ -67,15 +64,11 @@ done
 
 ### Online Volume Backup
 
-Back up volumes without stopping containers using a helper container:
+Back up volumes without stopping containers using `podman volume export`:
 
 ```bash
-# Backup using a helper container with read-only access
-podman run --rm \
-  -v myapp-data:/source:ro \
-  -v /srv/backups:/backup:Z \
-  docker.io/library/alpine:latest \
-  tar -czf "/backup/myapp-data-$(date +%Y%m%d).tar.gz" -C /source .
+# Export the volume directly (container keeps running)
+podman volume export myapp-data | gzip > /srv/backups/myapp-data-$(date +%Y%m%d).tar.gz
 ```
 
 ### Database-Specific Backups
@@ -212,11 +205,8 @@ fi
 # 2. Volume backups
 log "Backing up volumes..."
 for vol in $(podman volume ls -q); do
-  MOUNT=$(podman volume inspect "$vol" --format '{{.Mountpoint}}')
-  if [ -d "$MOUNT" ]; then
-    tar -czf "${BACKUP_DIR}/volumes/${vol}.tar.gz" -C "$MOUNT" . 2>/dev/null
-    log "Volume $vol backed up"
-  fi
+  podman volume export "$vol" | gzip > "${BACKUP_DIR}/volumes/${vol}.tar.gz" 2>/dev/null
+  log "Volume $vol backed up"
 done
 
 # 3. Image backups
@@ -324,8 +314,7 @@ for vol_backup in "${RESTORE_DIR}/${BACKUP_DATE}/volumes/"*.tar.gz; do
   VOL_NAME=$(basename "$vol_backup" .tar.gz)
   echo "Restoring volume: $VOL_NAME"
   podman volume create "$VOL_NAME" 2>/dev/null
-  MOUNT=$(podman volume inspect "$VOL_NAME" --format '{{.Mountpoint}}')
-  tar -xzf "$vol_backup" -C "$MOUNT"
+  gunzip -c "$vol_backup" | podman volume import "$VOL_NAME" -
 done
 
 echo "Restoring images..."

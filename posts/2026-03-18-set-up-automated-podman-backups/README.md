@@ -75,11 +75,7 @@ log "Backing up volumes..."
 for volume in $(podman volume ls -q); do
     log "  Volume: $volume"
 
-    podman run --rm \
-        -v "${volume}:/source:ro" \
-        -v "$BACKUP_DIR/volumes:/backup" \
-        docker.io/library/alpine:latest \
-        tar czf "/backup/${volume}.tar.gz" -C /source . 2>> "$LOG_FILE"
+    podman volume export "$volume" | gzip > "$BACKUP_DIR/volumes/${volume}.tar.gz" 2>> "$LOG_FILE"
 
     # Save volume metadata
     podman volume inspect "$volume" > "$BACKUP_DIR/volumes/${volume}-inspect.json" 2>> "$LOG_FILE"
@@ -168,11 +164,7 @@ BACKUP_DIR="/backups/podman-volumes/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 for volume in $(podman volume ls -q); do
-    podman run --rm \
-        -v "${volume}:/source:ro" \
-        -v "$BACKUP_DIR:/backup" \
-        docker.io/library/alpine:latest \
-        tar czf "/backup/${volume}.tar.gz" -C /source .
+    podman volume export "$volume" | gzip > "$BACKUP_DIR/${volume}.tar.gz"
 done
 
 # Keep only last 48 hourly backups

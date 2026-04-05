@@ -166,12 +166,8 @@ for archive in "$VOLUME_BACKUP_DIR"/*.tar.gz; do
     # Create the volume
     podman volume create "$VOLUME_NAME"
 
-    # Restore data
-    podman run --rm \
-        -v "${VOLUME_NAME}:/target" \
-        -v "$VOLUME_BACKUP_DIR:/backup:ro" \
-        docker.io/library/alpine:latest \
-        tar xzf "/backup/${VOLUME_NAME}.tar.gz" -C /target
+    # Restore data using podman volume import
+    gunzip -c "$archive" | podman volume import "$VOLUME_NAME" -
 
     echo "    Done"
 done
@@ -410,8 +406,7 @@ echo "[3/5] Restoring volumes..."
 for vol in "$BACKUP_DIR"/volumes/*.tar.gz; do
     VOL_NAME=$(basename "$vol" .tar.gz)
     podman volume create "$VOL_NAME" 2>/dev/null || true
-    podman run --rm -v "${VOL_NAME}:/target" -v "$BACKUP_DIR/volumes:/backup:ro" \
-        alpine tar xzf "/backup/${VOL_NAME}.tar.gz" -C /target
+    gunzip -c "$vol" | podman volume import "$VOL_NAME" -
 done
 
 echo "[4/5] Recreating containers..."
