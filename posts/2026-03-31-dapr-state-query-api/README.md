@@ -12,7 +12,7 @@ Description: Learn how to query Dapr state store using the alpha Query API with 
 
 The Dapr Query State API (alpha) lets you filter, sort, and paginate state records without knowing specific keys. It is useful when you store structured objects and need to find records matching field conditions.
 
-Not all state stores support the query API. MongoDB and Azure Cosmos DB are the primary supported backends.
+Not all state stores support the query API. Support depends on the component implementation, so check the state-store documentation for your backend before relying on query support.
 
 ## Basic Query
 
@@ -111,4 +111,4 @@ for _, item := range result.Results {
 
 ## Summary
 
-The Dapr Query State API (alpha) enables filtering, sorting, and paginating state records using a JSON query language. POST queries to `/v1.0-alpha1/state/{store}/query`, use bare document field names such as `status`, `amount`, `org`, and `person.id`, and consume the returned pagination token for multi-page results. MongoDB and Cosmos DB are the primary supported state stores.
+The Dapr Query State API (alpha) enables filtering, sorting, and paginating state records using a JSON query language. Send requests to `/v1.0-alpha1/state/{store}/query`, use document field names such as `status`, `amount`, `org`, and `person.id`, and consume the returned pagination token for multi-page results. Because support varies by state-store component, verify query support in the backend-specific component documentation before using it in production.

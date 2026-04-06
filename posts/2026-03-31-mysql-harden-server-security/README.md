@@ -8,6 +8,8 @@ Description: Learn how to harden a MySQL server by removing default accounts, en
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## Introduction
 
 A default MySQL installation is configured for convenience, not security. Hardening MySQL means eliminating unnecessary accounts, restricting network exposure, enforcing strong authentication, enabling encrypted connections, and auditing access. This guide provides actionable steps for each area.

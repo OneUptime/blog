@@ -165,10 +165,10 @@ Now `regular_employee` sees only rows in their own department AND only their per
 
 ```sql
 -- View all column-level grants
-SELECT grantee, access_type, database, table, column
+SELECT user_name, role_name, access_type, database, table, column
 FROM system.grants
-WHERE column != ''
-ORDER BY grantee, table, column;
+WHERE column IS NOT NULL
+ORDER BY user_name, role_name, table, column;
 
 -- View grants for a specific user
 SHOW GRANTS FOR regular_employee;

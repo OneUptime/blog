@@ -23,20 +23,16 @@ kubectl get statefulset -n dapr-system dapr-placement-server
 
 ## Scaling to High Availability
 
-Scale the placement service to 3 replicas for single-zone HA, or 5 replicas for multi-zone deployments:
+Scale the placement service to 3 replicas for single-zone HA, or 5 replicas for multi-zone deployments, through the Helm release that manages the Dapr control plane:
 
 ```bash
-# Scale to 3 replicas
-kubectl scale statefulset dapr-placement-server -n dapr-system --replicas=3
-```
-
-Or configure during Helm installation:
-
-```bash
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
+  --create-namespace \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
   --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.ha.enabled=true
+  --set dapr_placement.keepAliveTime=2s
 ```
 
 ## Resource Configuration
@@ -103,16 +99,16 @@ curl http://dapr-placement-server-0.dapr-system:9090/metrics | grep -E "placemen
 kubectl logs -l app=my-actor-app -c daprd | grep -i "placement.*error\|failed.*placement"
 ```
 
-## Replication Factor Tuning
+## Connection Keep-Alive Tuning
 
-The `replicationFactor` controls how many virtual nodes each host claims on the hash ring. Higher values improve distribution uniformity but increase placement table size:
+The documented placement knobs are the HA and keep-alive settings surfaced by the Helm chart. Use them to tighten failure detection without relying on undocumented internal parameters:
 
-```bash
-# Set replication factor during Helm install
-helm install dapr dapr/dapr \
-  --set dapr_placement.replicationFactor=100
+```yaml
+dapr_placement:
+  keepAliveTime: 2s
+  keepAliveTimeout: 3s
 ```
 
 ## Summary
 
-Scale the Dapr placement service to at least 3 replicas in production to provide Raft consensus fault tolerance. Use Pod Disruption Budgets and topology spread constraints to maintain availability during maintenance windows and zone failures. Monitor the placement metrics to detect registration bottlenecks and adjust resource limits as your actor workload grows.
+Scale the Dapr placement service to at least 3 replicas in production to provide Raft consensus fault tolerance. Use the documented Helm values such as `global.ha.enabled`, `dapr_placement.ha`, `dapr_placement.replicaCount`, and the keep-alive settings rather than relying on undocumented placement internals. Combine that with Pod Disruption Budgets, topology spread constraints, and metrics-based monitoring to keep actor routing healthy at scale.

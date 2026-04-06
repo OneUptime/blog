@@ -32,7 +32,7 @@ OBJECT REFCOUNT key
 OBJECT IDLETIME key
 ```
 
-Both return -2 if the key does not exist.
+Both return a null reply if the key does not exist.
 
 ## Examples
 
@@ -106,9 +106,9 @@ OBJECT IDLETIME old:key
 
 This key has not been accessed for 3 minutes.
 
-### OBJECT IDLETIME returns 0 for keys accessed via LFU policy
+### OBJECT IDLETIME errors under LFU policies
 
-When `maxmemory-policy` is set to an LFU variant, OBJECT IDLETIME will always return 0 because Redis tracks access frequency instead of last-access time. Use OBJECT FREQ instead.
+When `maxmemory-policy` is set to an LFU variant, `OBJECT IDLETIME` returns an error because Redis tracks access frequency instead of last-access time. Use `OBJECT FREQ` instead.
 
 ### Non-existent key
 
@@ -117,7 +117,7 @@ OBJECT REFCOUNT missing:key
 ```
 
 ```text
-(error) ERR no such key
+(nil)
 ```
 
 ## OBJECT IDLETIME and LRU Eviction

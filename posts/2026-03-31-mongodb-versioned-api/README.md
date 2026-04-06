@@ -58,13 +58,15 @@ function toApiV2(doc) {
 Express.js route example that serves v1 and v2 responses from the same collection.
 
 ```javascript
+const { ObjectId } = require("mongodb");
+
 app.get("/v1/products/:id", async (req, res) => {
-  const doc = await db.collection("products").findOne({ _id: req.params.id });
+  const doc = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
   res.json(toApiV1(doc));
 });
 
 app.get("/v2/products/:id", async (req, res) => {
-  const doc = await db.collection("products").findOne({ _id: req.params.id });
+  const doc = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
   res.json(toApiV2(doc));
 });
 ```
@@ -74,8 +76,10 @@ app.get("/v2/products/:id", async (req, res) => {
 Update the document to the latest schema version when it is read, spreading migration load across normal traffic.
 
 ```javascript
+const { ObjectId } = require("mongodb");
+
 async function getProduct(id) {
-  const doc = await db.collection("products").findOne({ _id: id });
+  const doc = await db.collection("products").findOne({ _id: new ObjectId(id) });
   if (doc.schemaVersion < 2) {
     const updated = {
       ...doc,
@@ -83,7 +87,7 @@ async function getProduct(id) {
       schemaVersion: 2
     };
     delete updated.price;
-    await db.collection("products").replaceOne({ _id: id }, updated);
+    await db.collection("products").replaceOne({ _id: new ObjectId(id) }, updated);
     return updated;
   }
   return doc;

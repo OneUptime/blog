@@ -23,52 +23,28 @@ By default, Dapr installs the placement service with a single replica. For produ
 ## Configuring HA via Helm
 
 ```bash
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
+  --create-namespace \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
   --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.ha.enabled=true \
   --wait
 ```
 
-## Manual HA Deployment
+## Enabling HA on an Existing Control Plane
 
-```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: dapr-placement-server
-  namespace: dapr-system
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: dapr-placement-server
-  template:
-    metadata:
-      labels:
-        app: dapr-placement-server
-    spec:
-      containers:
-        - name: dapr-placement-server
-          image: daprio/dapr:1.14.0
-          command: ["./placement"]
-          args:
-            - "--log-level"
-            - "info"
-            - "--enable-metrics"
-            - "--replicaCount"
-            - "3"
-          ports:
-            - containerPort: 50006
-              name: raft
-            - containerPort: 8080
-              name: http
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 5
+For an existing single-replica installation, let Helm recreate the placement StatefulSet with the HA settings instead of hand-authoring a separate manifest:
+
+```bash
+kubectl delete statefulset.apps/dapr-placement-server -n dapr-system
+
+helm upgrade dapr dapr/dapr \
+  --namespace dapr-system \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
+  --set dapr_placement.replicaCount=3 \
+  --wait
 ```
 
 ## Pod Anti-Affinity for Resilience

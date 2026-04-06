@@ -18,23 +18,26 @@ By default, Dapr's Helm chart deploys one placement service replica. In HA mode,
 
 ```bash
 # Check current placement service replicas
-kubectl get deployment dapr-placement-server -n dapr-system
+kubectl get statefulset dapr-placement-server -n dapr-system
 
 # Single replica (not HA)
-# NAME                     READY   UP-TO-DATE   AVAILABLE
-# dapr-placement-server    1/1     1            1
+# NAME                     READY   AGE
+# dapr-placement-server    1/1     10m
 ```
 
 ## Enable High Availability in Helm
 
 ```bash
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
+  --create-namespace \
   --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
+  --set dapr_placement.replicaCount=3 \
   --reuse-values
 ```
 
-This sets `dapr-placement-server` to 3 replicas with anti-affinity rules to spread pods across nodes.
+This enables the HA control-plane topology and sets `dapr-placement-server` to three replicas.
 
 ## Verify the HA Deployment
 
@@ -112,7 +115,7 @@ kubectl delete pod dapr-placement-server-0 -n dapr-system
 kubectl logs -n dapr-system dapr-placement-server-1 | grep "leader"
 
 # Verify actor invocations still succeed
-curl http://localhost:3500/v1.0/actors/OrderActor/order-123/method/GetStatus
+curl -X POST http://localhost:3500/v1.0/actors/OrderActor/order-123/method/GetStatus
 ```
 
 ## Resource Recommendations

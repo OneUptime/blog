@@ -16,7 +16,7 @@ MongoDB 6.0 introduces encrypted fields with Queryable Encryption, new aggregati
 
 Before starting, verify:
 
-- All members run MongoDB 5.3 (the latest 5.x patch)
+- All members run the latest MongoDB 5.0 patch release
 - FCV is set to 5.0 or higher
 - A full backup exists
 - Application drivers are compatible with MongoDB 6.0
@@ -33,7 +33,7 @@ db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 MongoDB 6.0 has several behavioral changes worth reviewing:
 
 - `$lookup` now supports pipeline stages with `let` and `pipeline` on sharded collections
-- `$densify` and `$fill` aggregation stages are new
+- `$densify` and `$fill` aggregation stages are available in MongoDB 6.0
 - `serverStatus` output changed - update monitoring queries
 - Legacy `mongo` shell is fully removed; use `mongosh`
 
@@ -69,7 +69,7 @@ echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb
   sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
 
 sudo apt-get update
-sudo apt-get install -y mongodb-org=6.0.14
+sudo apt-get install -y mongodb-org
 sudo systemctl start mongod
 
 # Wait for the member to catch up before upgrading the next
@@ -92,7 +92,7 @@ rs.stepDown(60)
 
 ```bash
 sudo systemctl stop mongod
-sudo apt-get install -y mongodb-org=6.0.14
+sudo apt-get install -y mongodb-org
 sudo systemctl start mongod
 ```
 
@@ -107,9 +107,9 @@ db.adminCommand({ setFeatureCompatibilityVersion: "6.0" })
 
 For sharded clusters, the order is critical:
 
-1. Upgrade `mongos` routers
-2. Upgrade config servers (replica set)
-3. Upgrade each shard (replica set rolling upgrade)
+1. Upgrade the config server replica set
+2. Upgrade each shard replica set
+3. Upgrade the `mongos` routers
 4. Update FCV last
 
 ```bash
@@ -152,10 +152,8 @@ db.sensor_readings.aggregate([
 ## Verify Upgrade Success
 
 ```javascript
-// Check all members are on 6.0
-rs.status().members.forEach(m => {
-  print(m.name + ": " + m.version)
-})
+// Check server version on each node
+db.version()
 
 // Verify FCV
 db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })

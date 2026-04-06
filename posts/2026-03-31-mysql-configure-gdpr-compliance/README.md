@@ -8,6 +8,8 @@ Description: Learn how to configure MySQL databases to meet GDPR requirements in
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 GDPR (General Data Protection Regulation) imposes strict requirements on how organizations collect, store, process, and protect personal data of EU residents. MySQL databases storing personal data must be configured with appropriate technical measures. This guide covers the key MySQL configurations and query patterns for GDPR compliance.
 
 ## Key GDPR Technical Requirements

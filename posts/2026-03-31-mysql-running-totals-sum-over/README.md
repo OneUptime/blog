@@ -10,7 +10,7 @@ Description: Learn how to compute running totals in MySQL 8.0 using the SUM() wi
 
 ## How Running Totals Work
 
-A running total (cumulative sum) accumulates a value from the first row up to and including the current row. In MySQL 8.0, this is done with `SUM(column) OVER (ORDER BY ...)`. The window frame defaults to `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, which is exactly what running totals need.
+A running total (cumulative sum) accumulates a value from the first row up to and including the current row. In MySQL 8.0, this is done with `SUM(column) OVER (ORDER BY ...)`. For predictable row-by-row behavior, specify `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` explicitly.
 
 ```mermaid
 graph TD
@@ -29,7 +29,7 @@ SUM(column) OVER (
 )
 ```
 
-The frame clause `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` is the default when ORDER BY is specified and is safe to omit, but stating it explicitly clarifies intent.
+When `ORDER BY` is present, MySQL's default frame ends at the current row. For running totals, it is clearer and safer to state `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` explicitly.
 
 ## Examples
 

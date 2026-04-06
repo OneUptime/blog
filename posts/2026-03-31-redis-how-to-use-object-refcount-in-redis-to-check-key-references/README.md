@@ -16,7 +16,7 @@ Description: Learn how to use OBJECT REFCOUNT in Redis to check how many interna
 OBJECT REFCOUNT key
 ```
 
-Returns the reference count as an integer, or an error if the key does not exist.
+Returns the reference count as an integer, or a null reply if the key does not exist.
 
 ## Basic Usage
 

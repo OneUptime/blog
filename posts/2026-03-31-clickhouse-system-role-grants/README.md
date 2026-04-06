@@ -19,52 +19,55 @@ flowchart TD
     E[User: alice] --> F[GRANT analyst TO alice]
     F --> G[alice inherits: analyst + data_reader permissions]
     D --> G
-    G --> H[system.role_grants: shows analyst->alice and data_reader->analyst]
+    G --> H[system.role_grants: user_name=alice granted_role_name=analyst and role_name=analyst granted_role_name=data_reader]
 ```
 
 ## Key Columns
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `grantee` | String | User or role that received the role |
-| `grantee_type` | Enum | `user` or `role` |
-| `role_name` | String | The role being granted |
-| `with_admin_option` | UInt8 | 1 if grantee can grant this role to others |
+| `user_name` | Nullable(String) | User that received the role, if the grantee is a user |
+| `role_name` | Nullable(String) | Role that received another role, if the grantee is a role |
+| `granted_role_name` | String | Role that was granted |
+| `granted_role_is_default` | UInt8 | 1 if the role is enabled by default at login |
+| `with_admin_option` | UInt8 | 1 if the granted role includes `ADMIN OPTION` |
 
 ## Viewing All Role Grants
 
 ```sql
 SELECT
-    grantee,
-    grantee_type,
     role_name,
+    user_name,
+    granted_role_name,
+    granted_role_is_default,
     with_admin_option
 FROM system.role_grants
-ORDER BY grantee_type, grantee, role_name;
+ORDER BY user_name, role_name, granted_role_name;
 ```
 
 ## Roles Assigned to Users
 
 ```sql
 SELECT
-    grantee  AS username,
-    role_name,
+    user_name AS username,
+    granted_role_name,
+    granted_role_is_default,
     with_admin_option
 FROM system.role_grants
-WHERE grantee_type = 'user'
-ORDER BY username, role_name;
+WHERE user_name IS NOT NULL
+ORDER BY username, granted_role_name;
 ```
 
 ## Roles Assigned to Other Roles (Role Hierarchy)
 
 ```sql
 SELECT
-    role_name              AS parent_role,
-    grantee                AS child_role,
+    role_name AS recipient_role,
+    granted_role_name,
     with_admin_option
 FROM system.role_grants
-WHERE grantee_type = 'role'
-ORDER BY parent_role;
+WHERE role_name IS NOT NULL
+ORDER BY recipient_role, granted_role_name;
 ```
 
 ## Finding All Roles a User Has (Direct and Inherited)
@@ -73,18 +76,17 @@ ClickHouse does not provide a built-in recursive role resolution query, but you 
 
 ```sql
 -- Direct role grants to a user
-SELECT role_name AS direct_role
+SELECT granted_role_name AS direct_role
 FROM system.role_grants
-WHERE grantee = 'alice' AND grantee_type = 'user';
+WHERE user_name = 'alice';
 
 -- Roles inherited through directly granted roles
-SELECT rg2.role_name AS inherited_role
+SELECT rg2.granted_role_name AS inherited_role
 FROM system.role_grants rg1
 JOIN system.role_grants rg2
-    ON rg1.role_name = rg2.grantee
-    AND rg2.grantee_type = 'role'
-WHERE rg1.grantee = 'alice'
-  AND rg1.grantee_type = 'user';
+    ON rg1.granted_role_name = rg2.role_name
+WHERE rg1.user_name = 'alice'
+  AND rg2.role_name IS NOT NULL;
 ```
 
 ## Creating and Granting Roles
@@ -108,9 +110,9 @@ GRANT data_engineer TO bob;
 GRANT analyst, data_engineer TO charlie;
 
 -- Verify in system.role_grants
-SELECT grantee, grantee_type, role_name
+SELECT user_name, role_name, granted_role_name
 FROM system.role_grants
-ORDER BY grantee_type, grantee, role_name;
+ORDER BY user_name, role_name, granted_role_name;
 ```
 
 ## Finding Users with Admin Option
@@ -118,10 +120,10 @@ ORDER BY grantee_type, grantee, role_name;
 The `WITH ADMIN OPTION` allows a user to grant the role to others:
 
 ```sql
-SELECT grantee, grantee_type, role_name
+SELECT user_name, role_name, granted_role_name
 FROM system.role_grants
 WHERE with_admin_option = 1
-ORDER BY grantee;
+ORDER BY user_name, role_name, granted_role_name;
 ```
 
 ## Auditing Role Changes
@@ -151,9 +153,9 @@ LIMIT 50;
 REVOKE analyst FROM alice;
 
 -- Verify
-SELECT grantee, role_name
+SELECT user_name, granted_role_name
 FROM system.role_grants
-WHERE grantee = 'alice';
+WHERE user_name = 'alice';
 ```
 
 ## Related Tables

@@ -51,11 +51,12 @@ echo ""
 echo "--- Roles and Their Members ---"
 run_query "
 SELECT
-    role_name,
     user_name,
-    granted_roles
+    role_name,
+    granted_role_name,
+    with_admin_option
 FROM system.role_grants
-ORDER BY role_name, user_name
+ORDER BY user_name, role_name, granted_role_name
 FORMAT PrettyCompactMonoBlock
 "
 

@@ -91,7 +91,7 @@ SELECT
     new_default_value,
     reason
 FROM system.settings_changes
-WHERE name = 'allow_experimental_analyzer'
+WHERE name IN ('enable_analyzer', 'allow_experimental_analyzer')
 ORDER BY version;
 ```
 

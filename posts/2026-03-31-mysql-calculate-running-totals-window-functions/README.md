@@ -29,7 +29,7 @@ FROM (
 ) daily_sales;
 ```
 
-The `ORDER BY` inside `OVER()` defines the sort order for accumulation. Without a frame clause, the default is `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`.
+The `ORDER BY` inside `OVER()` defines the sort order for accumulation. For deterministic row-by-row running totals, specify `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` explicitly.
 
 ## Running Total with PARTITION BY
 

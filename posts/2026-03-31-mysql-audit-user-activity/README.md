@@ -8,6 +8,8 @@ Description: Learn how to audit MySQL user activity using the general query log,
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 Auditing user activity in MySQL is essential for security compliance, incident investigation, and detecting unauthorized access. MySQL provides multiple mechanisms for tracking database activity - from the simple general query log to the powerful Audit Plugin and Performance Schema views.
 
 ## Method 1: General Query Log

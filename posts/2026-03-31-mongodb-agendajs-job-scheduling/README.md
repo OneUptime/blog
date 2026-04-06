@@ -33,7 +33,6 @@ const agenda = new Agenda({
   db: {
     address: mongoUri,
     collection: 'agendaJobs',
-    options: { useUnifiedTopology: true }
   },
   processEvery: '30 seconds',   // how often to check for due jobs
   maxConcurrency: 5,            // max simultaneous jobs

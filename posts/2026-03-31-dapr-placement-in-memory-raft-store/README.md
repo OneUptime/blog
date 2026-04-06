@@ -21,29 +21,20 @@ The in-memory Raft store keeps the placement log and snapshots only in RAM. When
 
 This is acceptable in many Kubernetes environments because sidecar re-registration is fast, but it means actor calls may fail briefly after a placement service restart.
 
-## Default Deployment Configuration
+## Supported Configuration Surface
+
+Configure the placement service through the Dapr Helm chart rather than hand-authoring placement container arguments:
 
 ```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: dapr-placement-server
-  namespace: dapr-system
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: dapr-placement-server
-  template:
-    spec:
-      containers:
-      - name: dapr-placement-server
-        image: daprio/dapr:latest
-        command: ["/placement"]
-        args:
-        - "--log-level=info"
-        - "--initial-cluster=dapr-placement-server-0=http://dapr-placement-server-0.dapr-placement-server.dapr-system.svc.cluster.local:8201"
-        - "--replicationFactor=100"
+global:
+  ha:
+    enabled: true
+
+dapr_placement:
+  ha: true
+  replicaCount: 3
+  cluster:
+    forceInMemoryLog: true
 ```
 
 ## Checking Placement Service Health
@@ -101,4 +92,4 @@ Key metrics to watch:
 
 ## Summary
 
-The Dapr placement service uses an in-memory Raft store to maintain consensus on the actor placement table across its cluster. While the in-memory store is fast and requires no external storage, you should deploy the placement service as a 3-node HA StatefulSet and configure actor retry policies to handle brief disruptions during restarts. Monitor the placement service metrics to detect registration issues early.
+The Dapr placement service uses an in-memory Raft store to maintain consensus on the actor placement table across its cluster. While the in-memory store is fast and requires no external storage, you should configure the placement service through the supported Helm values, run it in a 3-node HA configuration, and configure actor retry policies to handle brief disruptions during restarts. Monitor the placement service metrics to detect registration issues early.

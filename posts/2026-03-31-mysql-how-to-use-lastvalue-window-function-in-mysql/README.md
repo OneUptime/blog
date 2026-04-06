@@ -27,7 +27,7 @@ Always specify the frame explicitly. Without it, the result is often not what yo
 ## The Frame Clause Problem
 
 ```sql
--- Without explicit frame: default frame = ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+-- Without explicit frame: the default frame ends at the current row
 -- LAST_VALUE returns the CURRENT ROW's value (the last in the frame so far)
 SELECT day, sales,
   LAST_VALUE(sales) OVER (ORDER BY day) AS last_val_wrong

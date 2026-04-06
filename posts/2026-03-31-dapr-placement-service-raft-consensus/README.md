@@ -51,11 +51,13 @@ A Raft cluster of N nodes can tolerate up to (N-1)/2 failures while maintaining 
 ## Deploying a 3-Node Placement Cluster
 
 ```bash
-# Check placement StatefulSet
-kubectl get statefulset -n dapr-system dapr-placement-server
-
-# Scale to 3 replicas if running 1
-kubectl scale statefulset dapr-placement-server -n dapr-system --replicas=3
+helm upgrade --install dapr dapr/dapr \
+  --namespace dapr-system \
+  --create-namespace \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
+  --set dapr_placement.replicaCount=3 \
+  --reuse-values
 ```
 
 ## Log Compaction and Snapshots
@@ -80,13 +82,13 @@ kubectl logs -n dapr-system dapr-placement-server-0 | grep "host added\|host rem
 ## What Happens During a Leader Failure
 
 When the current leader fails:
-1. Followers detect the missing heartbeat after the election timeout
+1. Followers detect the missing leader after the keep-alive timeout
 2. A follower initiates an election and requests votes
 3. The follower with the most up-to-date log wins the election
 4. The new leader resumes accepting actor registrations
 5. Sidecars reconnect and re-register their actor types
 
-The typical election timeout is 150-300ms, meaning actor calls may fail for under a second during leader failover.
+Leader failover is typically brief, but actor calls can fail during the transition. Configure retries in your actor clients or resiliency policy to cover that window.
 
 ## Summary
 

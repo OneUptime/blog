@@ -8,6 +8,8 @@ Description: Learn how to install and configure the MySQL Enterprise Audit plugi
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## What Is the MySQL Enterprise Audit Plugin?
 
 The MySQL Enterprise Audit plugin (`audit_log`) records database activity to an audit log file. It captures login attempts, SQL statements, user privilege changes, and other database events. This is used for regulatory compliance (PCI DSS, HIPAA, SOX), security monitoring, and incident investigation.

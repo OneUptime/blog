@@ -1,10 +1,10 @@
-# How to Create a Clustered Index in MongoDB 5.3+
+# How to Create a Clustered Collection in MongoDB
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Index, Clustered Index, Performance, Storage
 
-Description: Learn how to create a clustered index in MongoDB 5.3+ to store collection documents ordered by a key, improving range scans and reducing storage overhead.
+Description: Learn how to create a clustered collection in MongoDB, a feature introduced in 5.3 and available in later releases, to store documents ordered by _id for efficient range scans.
 
 ---
 
@@ -65,30 +65,13 @@ This query reads a contiguous block of storage rather than jumping around via a 
 
 ## Verifying Clustered Index
 
-Check the collection's clustered index metadata:
-
-```javascript
-db.sensorReadings.getClusteredInfo()
-```
-
-Output:
-
-```text
-{
-  "clusteredIndex": {
-    "v": 2,
-    "key": { "_id": 1 },
-    "name": "clusterIdx",
-    "unique": true
-  }
-}
-```
-
-Or check via `listCollections`:
+Use `listCollections` to inspect the collection metadata and confirm the `clusteredIndex` settings:
 
 ```javascript
 db.runCommand({ listCollections: 1, filter: { name: "sensorReadings" } })
 ```
+
+Check the collection's `options.clusteredIndex` block in the output for the key, name, and uniqueness settings.
 
 ## Adding Secondary Indexes
 
@@ -124,4 +107,4 @@ When `_id` is a date, MongoDB automatically expires documents older than the spe
 
 ## Summary
 
-Clustered indexes in MongoDB 5.3+ co-locate documents on disk by the `_id` key, significantly improving range scan performance and reducing storage compared to separate index structures. They are best suited for time-ordered or sequential data accessed primarily by `_id` ranges. Combined with native TTL expiration, they provide an efficient alternative to time series collections for simpler use cases.
+Clustered collections in MongoDB, introduced in 5.3 and available in later releases, co-locate documents on disk by the `_id` key. They are best suited for time-ordered or sequential data accessed primarily by `_id` ranges. Combined with `expireAfterSeconds` on date-based `_id` values, they provide an efficient alternative to maintaining a separate TTL index for simpler use cases.

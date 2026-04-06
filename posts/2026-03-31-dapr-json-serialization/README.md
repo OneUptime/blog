@@ -147,22 +147,16 @@ app.post('/events/order-created', (req, res) => {
 
 ## Handling JSON Schema Mismatches
 
-```yaml
-# Use Dapr middleware for JSON transformation
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: transform-middleware
-spec:
-  type: middleware.http.transformer
-  version: v1
-  metadata:
-  - name: rule
-    value: |
-      .data | {
-        order_id: .orderId,
-        customer_id: .customerId
-      }
+Dapr does not ship a generic `middleware.http.transformer` component for rewriting JSON payloads. When two services disagree on field names or structure, normalize the payload in your application code or at an API gateway before you publish it or save it to state:
+
+```javascript
+function normalizeOrder(event) {
+  return {
+    order_id: event.orderId,
+    customer_id: event.customerId,
+    created_at: event.createdAt,
+  };
+}
 ```
 
 ## Summary

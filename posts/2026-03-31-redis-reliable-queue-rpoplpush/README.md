@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Queue, Reliability
 
-Description: Implement the Redis reliable queue pattern using LMOVE (RPOPLPUSH) to prevent job loss when workers crash during processing.
+Description: Implement the Redis reliable queue pattern using BLMOVE or LMOVE, the modern replacement for RPOPLPUSH, to prevent job loss when workers crash during processing.
 
 ---
 
@@ -22,7 +22,7 @@ A standard `RPOP`-based queue has a fatal flaw: if a worker crashes after poppin
 ## The Reliable Queue Pattern
 
 ```text
-1. LMOVE job from queue -> processing list (atomic)
+1. BLMOVE or LMOVE job from queue -> processing list (atomic)
 2. Worker processes job
 3. On success: delete job from processing list
 4. On crash: job stays in processing list -> recovery process re-queues it
@@ -40,6 +40,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 QUEUE_KEY = "queue:main"
 PROCESSING_KEY = "queue:processing"
+PROCESSING_STARTED_KEY = "queue:processing:started"
 JOB_TIMEOUT = 300  # 5 minutes before a job is considered stuck
 
 def enqueue(job_type: str, payload: dict) -> str:
@@ -54,15 +55,11 @@ def enqueue(job_type: str, payload: dict) -> str:
 
 def claim_job(timeout: int = 10) -> dict | None:
     # Atomically move from queue to processing list
-    # LMOVE source destination LEFT RIGHT (Redis 6.2+)
-    data = r.lmove(QUEUE_KEY, PROCESSING_KEY, 'RIGHT', 'LEFT', timeout)
+    # BLMOVE source destination timeout RIGHT LEFT (Redis 6.2+)
+    data = r.blmove(QUEUE_KEY, PROCESSING_KEY, timeout, 'RIGHT', 'LEFT')
     if data:
         job = json.loads(data)
-        job['claimed_at'] = time.time()
-        # Update the job entry in processing list with claimed_at timestamp
-        # (Remove old entry and re-add with timestamp)
-        r.lrem(PROCESSING_KEY, 1, data)
-        r.lpush(PROCESSING_KEY, json.dumps(job))
+        r.hset(PROCESSING_STARTED_KEY, job["id"], time.time())
         return job
     return None
 ```
@@ -81,12 +78,10 @@ def claim_job_legacy(timeout: int = 10) -> dict | None:
 
 ```python
 def complete_job(job: dict):
-    job_data = json.dumps({k: v for k, v in job.items() if k != 'claimed_at'})
     # Remove from processing list
     removed = r.lrem(PROCESSING_KEY, 1, json.dumps(job))
-    if removed == 0:
-        # Try removing the version with claimed_at
-        r.lrem(PROCESSING_KEY, -1, json.dumps(job))
+    if removed:
+        r.hdel(PROCESSING_STARTED_KEY, job["id"])
 ```
 
 ## Recovery Worker: Re-queue Stuck Jobs
@@ -100,12 +95,13 @@ def recover_stuck_jobs():
 
     for item in items:
         job = json.loads(item)
-        claimed_at = job.get('claimed_at', 0)
+        claimed_at = float(r.hget(PROCESSING_STARTED_KEY, job['id']) or 0)
 
         if now - claimed_at > JOB_TIMEOUT:
             print(f"Recovering stuck job: {job['id']}")
             pipe = r.pipeline()
             pipe.lrem(PROCESSING_KEY, 1, item)
+            pipe.hdel(PROCESSING_STARTED_KEY, job['id'])
             job['retries'] = job.get('retries', 0) + 1
             pipe.lpush(QUEUE_KEY, json.dumps(job))
             pipe.execute()
@@ -136,10 +132,13 @@ redis-cli LLEN "queue:main"
 # Jobs being processed
 redis-cli LLEN "queue:processing"
 
+# When each in-flight job was claimed
+redis-cli HGETALL "queue:processing:started"
+
 # Inspect stuck jobs
 redis-cli LRANGE "queue:processing" 0 -1
 ```
 
 ## Summary
 
-The reliable queue pattern using `LMOVE` (or `BRPOPLPUSH`) guarantees that jobs are never silently lost when workers crash. By keeping in-flight jobs in a processing list, a recovery worker can detect and re-queue any job that has been processing longer than the expected maximum. This is the foundation of production-ready job queues built on Redis.
+The reliable queue pattern using `BLMOVE` or `LMOVE` (or `BRPOPLPUSH` on older Redis versions) guarantees that jobs are never silently lost when workers crash. By keeping in-flight jobs in a processing list and storing claim timestamps in a side hash, a recovery worker can detect and re-queue any job that has been processing longer than the expected maximum. This is the foundation of production-ready job queues built on Redis.

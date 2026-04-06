@@ -12,7 +12,7 @@ Description: Learn how to use FIRST_VALUE and LAST_VALUE window functions in MyS
 
 `FIRST_VALUE` returns the value from the first row in the current window frame. `LAST_VALUE` returns the value from the last row in the current window frame.
 
-The key nuance with `LAST_VALUE` is the default window frame: by default MySQL uses `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, which means `LAST_VALUE` returns the current row's value, not the last row in the partition. To get the true last value of the partition, you must change the frame to `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
+The key nuance with `LAST_VALUE` is the default window frame: when `ORDER BY` is present, MySQL's default frame ends at the current row, so `LAST_VALUE` returns the current row's value instead of the last row in the partition. To get the true last value of the partition, use `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
 
 ```mermaid
 graph LR
@@ -27,7 +27,7 @@ graph LR
 FIRST_VALUE(expression) OVER (
     [PARTITION BY column]
     ORDER BY column
-    [ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING]
+    [frame_clause]
 )
 
 LAST_VALUE(expression) OVER (

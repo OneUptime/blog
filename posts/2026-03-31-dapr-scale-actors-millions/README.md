@@ -89,66 +89,35 @@ public void ConfigureServices(IServiceCollection services)
 
 ## Scaling the Placement Service
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dapr-placement-server
-  namespace: dapr-system
-spec:
-  replicas: 3  # Run 3 placement servers for HA
-```
-
 ```bash
 # Helm install with HA placement
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
+  -n dapr-system \
+  --create-namespace \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
   --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.ha.enabled=true \
-  -n dapr-system
+  --set dapr_placement.keepAliveTime=2s
 ```
 
-## Batch Actor Activation
+The placement service is rendered as a StatefulSet by the Dapr Helm chart. Prefer changing the chart values over hand-authoring a separate Deployment for placement.
 
-For preloading millions of actors at startup:
+## Actor Activation Is Demand-Driven
 
-```python
-import asyncio
-import aiohttp
+There is no generic actor pre-activation endpoint in Dapr. Actors activate on demand when you invoke an actor method, timer, or reminder. If you need to warm a subset of actors, call a lightweight actor method instead of trying to read actor state directly.
 
-DAPR_PORT = 3500
-ACTOR_TYPE = "DeviceActor"
-
-async def activate_actor(session: aiohttp.ClientSession, actor_id: str):
-    url = f"http://localhost:{DAPR_PORT}/v1.0/actors/{ACTOR_TYPE}/{actor_id}/state"
-    try:
-        async with session.get(url) as resp:
-            return actor_id, resp.status
-    except Exception as e:
-        return actor_id, str(e)
-
-async def activate_batch(actor_ids: list[str], concurrency: int = 500):
-    connector = aiohttp.TCPConnector(limit=concurrency)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [activate_actor(session, aid) for aid in actor_ids]
-        results = await asyncio.gather(*tasks)
-    return results
-
-# Activate 1 million actors in batches
-async def main():
-    batch_size = 10000
-    for i in range(0, 1_000_000, batch_size):
-        ids = [f"device-{i+j}" for j in range(batch_size)]
-        results = await activate_batch(ids)
-        print(f"Activated batch {i//batch_size}: {len(results)} actors")
-
-asyncio.run(main())
+```bash
+curl -X POST \
+  http://localhost:3500/v1.0/actors/DeviceActor/device-42/method/ping \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 ## Monitoring Actor Scale
 
 ```bash
 # Check placement service connected hosts
-kubectl logs -n dapr-system deploy/dapr-placement-server | grep -i "host added"
+kubectl logs -n dapr-system dapr-placement-server-0 | grep -i "host added"
 
 # Check actor count via Dapr metrics
 kubectl port-forward -n dapr-system svc/dapr-placement-server 9090:9090
@@ -157,4 +126,4 @@ curl http://localhost:9090/metrics | grep dapr_placement_actor_count
 
 ## Summary
 
-Scaling Dapr Actors to millions of instances requires three things: a state store that handles millions of keys (Redis Cluster or Cosmos DB), aggressive idle timeout tuning to deactivate unused actors, and a highly available placement service. The virtual actor model means you never manage actor lifecycle manually - Dapr activates and deactivates them automatically based on demand.
+Scaling Dapr Actors to millions of instances requires three things: a state store that handles millions of keys (Redis Cluster or Cosmos DB), aggressive idle-timeout tuning to deactivate unused actors, and a highly available placement service configured through the supported Helm values. Actor lifecycle remains demand-driven, so warm actors by invoking actor methods when needed rather than trying to pre-activate them through a state endpoint.

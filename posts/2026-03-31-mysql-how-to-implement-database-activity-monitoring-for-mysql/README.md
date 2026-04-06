@@ -8,6 +8,8 @@ Description: Learn how to implement Database Activity Monitoring (DAM) for MySQL
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## What Is Database Activity Monitoring
 
 Database Activity Monitoring (DAM) is a security approach that records, analyzes, and alerts on all database activity - including queries, logins, schema changes, and data exports - in real time. Unlike basic audit logs, DAM systems can detect anomalous behavior and trigger alerts without requiring changes to the database itself.

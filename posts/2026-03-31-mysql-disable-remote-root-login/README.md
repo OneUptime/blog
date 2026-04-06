@@ -8,6 +8,8 @@ Description: Learn how to disable remote root login in MySQL, restrict root acce
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## Introduction
 
 Allowing the MySQL root account to connect from remote hosts is a significant security risk. A compromised root account gives full control over all databases on the server. Disabling remote root login and limiting it to `localhost` connections is one of the most fundamental MySQL hardening steps.

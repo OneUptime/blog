@@ -8,6 +8,8 @@ Description: Understand the practical differences between MySQL Community and En
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 MySQL is available in two primary editions: Community and Enterprise. For most teams, Community is sufficient. But Enterprise includes tools and support that matter for large production deployments. This post explains the practical differences.
 
 ## MySQL Community Edition

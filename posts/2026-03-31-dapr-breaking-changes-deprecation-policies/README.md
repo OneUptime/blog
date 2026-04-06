@@ -12,12 +12,7 @@ Dapr follows a structured policy for deprecating and removing features. Understa
 
 ## Dapr's Deprecation Policy
 
-Dapr's general policy for stable APIs:
-- Deprecation is announced in the release notes for version N
-- The deprecated feature still works for at least 2 minor releases (N+1, N+2)
-- Removal happens no earlier than version N+3
-
-For preview features, the timeline is shorter - they may change in any release.
+For stable APIs and components, Dapr documents deprecations in release notes and gives you a migration window before removal. Preview and alpha features are less strict and may change between releases, so treat them as version-sensitive.
 
 ## Finding Breaking Changes
 
@@ -34,21 +29,7 @@ The release notes for each version include a dedicated breaking changes section:
 
 ## Component API Deprecations
 
-Dapr components (state stores, pub/sub, bindings) sometimes deprecate metadata fields:
-
-```yaml
-# Old (deprecated) configuration
-apiVersion: dapr.io/v1alpha1
-kind: Component
-metadata:
-  name: statestore
-spec:
-  type: state.redis
-  version: v1
-  metadata:
-  - name: redisHost  # Deprecated in favor of "host" in newer versions
-    value: redis:6379
-```
+Component metadata fields and defaults can change between releases. When upgrading, compare your manifests against the current component reference and release notes instead of assuming older field names still apply.
 
 Check component-specific migration guides when upgrading:
 - https://docs.dapr.io/reference/components-reference/
@@ -87,34 +68,7 @@ kubectl logs -n dapr-system -l app=dapr-operator | grep -i "deprecat"
 
 ## Practical Migration Example
 
-If Dapr deprecates an actor reminder API, here is a typical migration:
-
-```python
-# Before (deprecated)
-from dapr.actor import Actor
-class MyActor(Actor):
-    async def register_reminder(self):
-        await self.register_actor_reminder(
-            reminder_name="check",
-            due_time=timedelta(seconds=10),
-            period=timedelta(minutes=1),
-            state=b"reminder-data"
-        )
-```
-
-```python
-# After (new API using Scheduler)
-from dapr.actor import Actor
-class MyActor(Actor):
-    async def register_reminder(self):
-        await self.create_reminder(
-            name="check",
-            due_time=timedelta(seconds=10),
-            period=timedelta(minutes=1),
-            data=b"reminder-data",
-            ttl=timedelta(hours=24)
-        )
-```
+When a Dapr API, component field, or SDK method is marked deprecated, update your manifests and SDK calls in a staging environment first, then validate behavior against the target release notes before rolling the change into production.
 
 ## Building a Deprecation Tracking Process
 

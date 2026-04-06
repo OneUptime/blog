@@ -22,7 +22,7 @@ FIRST_VALUE(expr) OVER (
 )
 ```
 
-The default frame is `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. To see the first value of the entire partition, use `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
+With `ORDER BY`, MySQL's default frame ends at the current row. `FIRST_VALUE()` still returns the first row of that frame, so you usually do not need `UNBOUNDED FOLLOWING` just to see the partition's first value.
 
 ## Basic Examples
 

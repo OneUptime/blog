@@ -107,7 +107,7 @@ ORDER BY sum_timer_wait DESC;
 
 -- Per host
 SELECT host, sum_connections, sum_errors
-FROM performance_schema.host_status;
+FROM performance_schema.status_by_host;
 ```
 
 ## Thread Monitoring

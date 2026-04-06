@@ -8,6 +8,8 @@ Description: Learn how to track DDL changes in MySQL using the general query log
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 DDL (Data Definition Language) changes - `CREATE`, `ALTER`, `DROP`, `TRUNCATE` - modify the structure of a database rather than its data. Tracking these changes is critical for compliance, debugging production incidents, and understanding how a schema evolved over time.
 
 ## What Counts as a DDL Change

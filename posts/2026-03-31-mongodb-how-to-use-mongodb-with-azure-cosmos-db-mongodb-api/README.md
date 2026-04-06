@@ -36,8 +36,6 @@ const { MongoClient } = require("mongodb")
 const connectionString = process.env.COSMOS_DB_CONNECTION_STRING
 
 const client = new MongoClient(connectionString, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
   // Cosmos DB requires these settings
   ssl: true,
   retryWrites: false,  // not supported in Cosmos DB

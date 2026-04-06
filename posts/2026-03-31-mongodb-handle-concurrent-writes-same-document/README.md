@@ -19,10 +19,7 @@ If both writers are in a transaction, a `WriteConflict` error is raised on the s
 Enable retryable writes in your connection string to let the driver automatically retry single-statement write operations:
 
 ```javascript
-const client = new MongoClient(
-  "mongodb://localhost:27017/?retryWrites=true",
-  { useUnifiedTopology: true }
-);
+const client = new MongoClient("mongodb://localhost:27017/?retryWrites=true");
 ```
 
 With retryable writes, operations like `insertOne`, `updateOne`, and `deleteOne` are automatically retried once on network errors or primary failovers without changes to your application code.

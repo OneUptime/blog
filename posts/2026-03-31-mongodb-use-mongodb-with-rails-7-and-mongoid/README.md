@@ -75,7 +75,7 @@ class Article
   validates :title, presence: true, length: { maximum: 200 }
   validates :slug, uniqueness: true
 
-  scope :published, -> { where(status: 'published').gt(published_at: Time.now) }
+  scope :published, -> { where(status: 'published').lte(published_at: Time.current) }
   scope :recent,    -> { order(published_at: :desc) }
 end
 ```

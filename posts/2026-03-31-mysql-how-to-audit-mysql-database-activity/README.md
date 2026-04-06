@@ -8,6 +8,8 @@ Description: Learn how to audit MySQL database activity using the general query 
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## Why Audit MySQL Activity
 
 Auditing tracks who accessed what data, when, and from where. It is required for compliance with PCI-DSS, HIPAA, SOX, and GDPR. Auditing helps detect unauthorized access, investigate security incidents, and demonstrate regulatory compliance.

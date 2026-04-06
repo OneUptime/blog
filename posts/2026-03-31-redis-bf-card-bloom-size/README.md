@@ -10,11 +10,11 @@ Description: Learn how to use BF.CARD in Redis to return the number of unique it
 
 ## How BF.CARD Works
 
-`BF.CARD` returns the cardinality (number of unique elements) that have been added to a Bloom filter. This is an estimate because Bloom filters are probabilistic structures - they do not store the actual items, only hashed bit positions. Redis tracks the number of `BF.ADD` and `BF.MADD` insertions internally and returns that count via `BF.CARD`.
+`BF.CARD` returns the cardinality of a Bloom filter: the number of items RedisBloom detected as unique and added to the filter. Redis documents this as the number of items that caused at least one bit to be set in at least one sub-filter.
 
 ```mermaid
 graph TD
-    A["BF.ADD myfilter item1"] --> B["Filter tracks item count"]
+    A["BF.ADD myfilter item1"] --> B["Filter tracks unique-detected inserts"]
     C["BF.ADD myfilter item2"] --> B
     D["BF.ADD myfilter item3"] --> B
     B --> E["BF.CARD myfilter"]
@@ -28,8 +28,8 @@ BF.CARD key
 ```
 
 - `key` - the name of the Bloom filter
-- Returns the number of items added to the filter as an integer
-- Returns 0 if the key does not exist
+- Returns the number of items detected as unique and added to the filter
+- Returns `0` if the key does not exist
 
 ## Examples
 
@@ -89,22 +89,20 @@ BF.CARD url-seen
 Overfilled Bloom filters produce more false positives. Poll `BF.CARD` to alert before the filter exceeds its designed capacity.
 
 ```redis
--- After every batch of inserts, check cardinality
 BF.CARD crawled-urls
 ```
 
 If the count approaches the `BF.RESERVE` capacity, create a new filter and start routing new items there.
 
-### Tracking Unique Event Counts Approximately
+### Tracking Filter Growth
 
 ```redis
--- Log each unique session once
 BF.ADD sessions:2026-03-31 "sess:abc123"
 BF.ADD sessions:2026-03-31 "sess:def456"
-BF.ADD sessions:2026-03-31 "sess:abc123"
--- Third add is a re-insertion; count still increments in some versions
 BF.CARD sessions:2026-03-31
 ```
+
+Use the result to track how quickly a Bloom filter is filling up during a batch job or ingest window.
 
 ### Validating Filter Population After Bulk Load
 
@@ -136,8 +134,8 @@ Use `BF.CARD` in hot paths where you only need to check how full a filter is. Us
 
 - `BF.CARD` is O(1) - it reads a stored counter, not the filter bits.
 - It does not re-scan the underlying bit array.
-- Safe to call frequently without memory or CPU impact.
+- Safe to call frequently without significant CPU or memory overhead.
 
 ## Summary
 
-`BF.CARD` returns the number of items inserted into a Redis Bloom filter in O(1) time. Use it to monitor filter saturation, compare against the reserved capacity set by `BF.RESERVE`, and trigger rotation or expansion before false positive rates climb above the configured error rate.
+`BF.CARD` returns the number of items RedisBloom detected as unique and added to a Bloom filter in O(1) time. Use it to monitor filter saturation, compare against the reserved capacity set by `BF.RESERVE`, and trigger rotation or expansion before false positive rates climb above the configured error rate.

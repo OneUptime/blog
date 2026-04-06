@@ -17,7 +17,7 @@ Connection pool mismanagement is a silent killer of MongoDB application performa
 app.get('/users/:id', async (req, res) => {
   const client = new MongoClient(uri);  // new connection every time!
   await client.connect();
-  const user = await client.db('app').collection('users').findOne({ _id: req.params.id });
+  const user = await client.db('app').collection('users').findOne({ _id: new ObjectId(req.params.id) });
   await client.close();
   res.json(user);
 });
@@ -31,7 +31,7 @@ Initialize the client once at application startup and reuse it across all reques
 
 ```javascript
 // GOOD - single client shared across all requests
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const client = new MongoClient(process.env.MONGO_URI, {
   maxPoolSize: 20,
@@ -49,7 +49,7 @@ async function connectToDatabase() {
 }
 
 app.get('/users/:id', async (req, res) => {
-  const user = await db.collection('users').findOne({ _id: req.params.id });
+  const user = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
   res.json(user);
 });
 

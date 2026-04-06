@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Placement Service, Raft, Consensus, Configuration
 
-Description: Configure Raft consensus parameters in the Dapr placement service to optimize leader election speed, log retention, and cluster stability in production environments.
+Description: Understand how the Dapr placement service uses Raft consensus, which HA settings are exposed through Helm, and how to verify quorum and leader election in production.
 
 ---
 
-The Dapr placement service uses the Raft distributed consensus algorithm to maintain a consistent actor placement table across multiple replicas. Understanding and tuning Raft parameters helps you balance leader election speed, log retention overhead, and cluster stability.
+The Dapr placement service uses the Raft distributed consensus algorithm to maintain a consistent actor placement table across multiple replicas. In practice, Dapr exposes high-availability settings such as replica count and keep-alive intervals through Helm; it does not document raw per-node Raft timer flags as part of the supported operator workflow.
 
 ## How Raft Works in Placement Service
 
@@ -37,47 +37,31 @@ Check the current Raft configuration via placement service logs:
 kubectl logs dapr-placement-server-0 -n dapr-system | grep -i "raft\|config\|cluster"
 ```
 
-## Configuring Raft Parameters via Helm
+## Configuring Placement HA via Helm
 
 ```bash
-helm upgrade dapr dapr/dapr \
+helm upgrade --install dapr dapr/dapr \
   --namespace dapr-system \
-  --set dapr_placement.ha.enabled=true \
+  --create-namespace \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
   --set dapr_placement.replicaCount=3 \
-  --set dapr_placement.ha.timeoutInSec=1 \
+  --set dapr_placement.keepAliveTime=2s \
+  --set dapr_placement.keepAliveTimeout=3s \
   --wait
 ```
 
-## Key Raft Parameters
+## Operator-Facing Settings
 
-**heartbeatInterval**: How often the leader sends heartbeats to followers. Lower values detect failures faster but increase network traffic.
+**`dapr_placement.replicaCount`**: Run an odd number of replicas, typically `3` for the smallest production-ready cluster.
 
-**electionTimeout**: How long a follower waits before starting an election. Should be significantly larger than heartbeatInterval to prevent spurious elections.
+**`dapr_placement.keepAliveTime`**: Controls how often peers send keep-alive traffic.
 
-**snapshotInterval**: How often the Raft log is compacted into a snapshot. Reduces log size but takes CPU time.
+**`dapr_placement.keepAliveTimeout`**: Controls how long a peer waits before treating another peer as unavailable.
 
-Dapr's placement service uses defaults tuned for Kubernetes environments. Override them if needed:
+**`global.ha.enabled`** and **`dapr_placement.ha`**: Enable the HA topology that renders placement as a multi-replica Raft-backed control-plane service.
 
-```bash
-kubectl exec dapr-placement-server-0 -n dapr-system -- \
-  ./placement \
-  --raft-heartbeat-interval=500ms \
-  --raft-election-timeout=2000ms \
-  --raft-snapshot-interval=120s
-```
-
-## Cluster Bootstrap
-
-When starting a new placement cluster, all replicas must be listed so they can discover each other:
-
-```yaml
-# Placement StatefulSet with cluster peers
-containers:
-  - name: dapr-placement-server
-    args:
-      - "--initial-cluster"
-      - "dapr-placement-server-0=http://dapr-placement-server-0.dapr-placement-server:8201,dapr-placement-server-1=http://dapr-placement-server-1.dapr-placement-server:8201,dapr-placement-server-2=http://dapr-placement-server-2.dapr-placement-server:8201"
-```
+Avoid hand-crafting placement peer lists or undocumented Raft flags. The supported path is to let the Helm chart render the StatefulSet and peer discovery configuration.
 
 ## Checking Raft Leader
 
@@ -91,17 +75,18 @@ done
 
 ## Recovering from Split-Brain
 
-A split-brain occurs when network partitions cause two replicas to believe they are the leader. Raft prevents this by requiring quorum for writes, but network partitions can cause read inconsistencies.
+A split-brain occurs when network partitions cause multiple nodes to think they can lead. Raft prevents committed writes without quorum, so the practical failure mode is loss of actor placement updates until a healthy majority is restored.
 
 To resolve a suspected split-brain:
 1. Verify connectivity between all placement pods
-2. Restart all placement pods simultaneously if needed
-3. Check that only one pod logs "leadership acquired"
+2. Restore quorum before changing settings
+3. Restart only failed or isolated placement pods if needed
+4. Check that only one pod logs "leadership acquired"
 
 ```bash
-kubectl rollout restart statefulset dapr-placement-server -n dapr-system
+kubectl get pods -n dapr-system -l app=dapr-placement-server -o wide
 ```
 
 ## Summary
 
-Raft consensus in the Dapr placement service provides strong consistency guarantees for actor table updates. Understanding quorum requirements, heartbeat parameters, and leader election behavior helps you configure the placement service for reliable operation and enables faster diagnosis of split-brain or election failures.
+Raft consensus in the Dapr placement service provides strong consistency guarantees for actor table updates. The supported tuning surface is the documented Helm configuration for HA, replica count, and keep-alive behavior, not ad-hoc placement binary flags. Focus on odd replica counts, healthy quorum, and leader-election visibility in logs and metrics to operate the service safely.

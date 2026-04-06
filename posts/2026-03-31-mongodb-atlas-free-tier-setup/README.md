@@ -143,10 +143,7 @@ const mongoose = require("mongoose");
 const uri = "mongodb+srv://myapp-user:YourPassword@cluster0.abc12.mongodb.net/myapp?retryWrites=true&w=majority";
 
 async function connect() {
-  await mongoose.connect(uri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  });
+  await mongoose.connect(uri);
   console.log("Mongoose connected to Atlas!");
 }
 

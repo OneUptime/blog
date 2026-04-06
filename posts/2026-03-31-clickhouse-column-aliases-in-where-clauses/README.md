@@ -69,7 +69,7 @@ ClickHouse has a non-standard feature that allows aliases in some filter context
 
 ```sql
 -- Enable new analyzer which supports alias reuse
-SET allow_experimental_analyzer = 1;
+SET enable_analyzer = 1;
 
 SELECT
     multiIf(duration_ms < 100, 'fast', duration_ms < 1000, 'normal', 'slow') AS bucket,

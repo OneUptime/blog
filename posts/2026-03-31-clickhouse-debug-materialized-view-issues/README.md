@@ -74,7 +74,7 @@ If this query fails or returns unexpected results, the view has the same problem
 Errors in the materialized view query can be suppressed:
 
 ```sql
-SET allow_experimental_analyzer = 1;
+SET enable_analyzer = 1;
 ```
 
 Check the error log during a test insert:

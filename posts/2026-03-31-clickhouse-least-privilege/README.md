@@ -82,15 +82,15 @@ GRANT SELECT(event_time, event_type, page_url, session_id)
 -- Show all grants for a specific user
 SHOW GRANTS FOR analyst1;
 
--- See all users and their roles
-SELECT name, granted_roles
+-- See all users and their default roles
+SELECT name, default_roles_all, default_roles_list
 FROM system.users
 ORDER BY name;
 
 -- See all role grants
-SELECT role_name, user_name
+SELECT user_name, role_name, granted_role_name, with_admin_option
 FROM system.role_grants
-ORDER BY role_name;
+ORDER BY user_name, role_name, granted_role_name;
 ```
 
 ## Revoking Unnecessary Permissions
@@ -125,12 +125,12 @@ ALTER USER etl_service SETTINGS PROFILE etl_limits;
 ```sql
 SELECT
     u.name AS username,
-    u.storage AS auth_type,
-    groupArray(gr.role_name) AS roles,
+    u.auth_type AS auth_types,
+    groupArray(gr.granted_role_name) AS roles,
     u.host_ip AS allowed_ips
 FROM system.users u
 LEFT JOIN system.role_grants gr ON u.name = gr.user_name
-GROUP BY username, auth_type, allowed_ips
+GROUP BY username, auth_types, allowed_ips
 ORDER BY username;
 ```
 

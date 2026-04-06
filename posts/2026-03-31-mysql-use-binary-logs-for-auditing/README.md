@@ -8,6 +8,8 @@ Description: Learn how to use MySQL binary logs for auditing data changes, track
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 MySQL binary logs record every data modification made to the database. While not designed specifically as an audit trail, they can serve as a valuable source of audit information - particularly for tracking data changes, detecting unauthorized modifications, and supporting compliance requirements.
 
 ## Prerequisites for Audit-Grade Binary Logging

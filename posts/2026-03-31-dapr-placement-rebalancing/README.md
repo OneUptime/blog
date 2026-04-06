@@ -10,28 +10,27 @@ Description: Learn how to handle Dapr placement rebalancing events to minimize a
 
 ## What Is Placement Rebalancing?
 
-Dapr's Placement service maintains a consistent hash ring that maps actor types to specific host instances. When nodes join or leave a cluster, the Placement service triggers a rebalancing event - redistributing actor ownership across the updated set of hosts. During rebalancing, in-flight actor calls may be temporarily blocked until the new table is disseminated.
+Dapr's Placement service maintains a consistent hash ring that maps actor types to specific host instances. When actor hosts join or leave the cluster, the placement service recalculates the ring and disseminates an updated table to connected sidecars. During rebalancing, in-flight actor calls may fail briefly until the new table is applied.
 
 ## How Rebalancing Works
 
-The Placement service uses a gossip protocol to detect membership changes. When a new Dapr sidecar connects or an existing one disconnects, the service recalculates the hash ring and pushes an updated placement table to all connected sidecars.
+When a new Dapr sidecar registers actor types or an existing sidecar disconnects, the service recalculates the hash ring and pushes an updated placement table to all connected sidecars.
 
 ```bash
 # Watch placement rebalancing events in logs
 kubectl logs -n dapr-system -l app=dapr-placement-server --follow | grep -i "rebalance\|table"
 ```
 
-## Configuring Dissemination Settings
+## Configure HA for Stable Rebalancing
 
-You can tune how aggressively Dapr pushes placement updates using Helm values.
+The supported placement settings are the HA and keep-alive values exposed by the Helm chart. Use them to keep leader failover predictable during rebalancing events.
 
 ```yaml
 dapr_placement:
+  ha: true
   replicaCount: 3
-  extraArgs:
-    - --disseminate-in-sec=2
-    - --max-api-level=10
-    - --min-api-level=0
+  keepAliveTime: 2s
+  keepAliveTimeout: 3s
 ```
 
 Apply the configuration:
@@ -39,6 +38,8 @@ Apply the configuration:
 ```bash
 helm upgrade dapr dapr/dapr \
   --namespace dapr-system \
+  --set global.ha.enabled=true \
+  --set dapr_placement.ha=true \
   --set dapr_placement.replicaCount=3 \
   --reuse-values
 ```
@@ -98,4 +99,4 @@ Set up an alert if rebalancing is too frequent, which may indicate unstable node
 
 ## Summary
 
-Dapr Placement rebalancing redistributes actors when cluster membership changes. By tuning dissemination settings, configuring graceful shutdown, and monitoring rebalancing frequency with Prometheus metrics, you can minimize disruptions and keep actor workloads stable during scaling events or node failures.
+Dapr Placement rebalancing redistributes actors when cluster membership changes. By using the documented HA settings, configuring graceful shutdown, and monitoring rebalancing frequency with Prometheus metrics, you can minimize disruptions and keep actor workloads stable during scaling events or node failures.

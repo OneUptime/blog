@@ -8,6 +8,8 @@ Description: Learn how to install and configure the MySQL Audit Plugin to log da
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## How MySQL Audit Logging Works
 
 MySQL audit logging captures database events - logins, logouts, query execution, schema changes, and more - and writes them to an audit log file. This is essential for security compliance (PCI-DSS, HIPAA, SOC 2) and for forensic investigation after a security incident.
@@ -26,13 +28,9 @@ flowchart LR
     ALF -- "forward" --> SIEM
 ```
 
-MySQL provides two audit log implementations:
-- **MySQL Enterprise Audit** - commercial plugin included in MySQL Enterprise Edition
-- **MySQL Community Audit Log Plugin** - available in MySQL 8.0.30+ for community edition
+MySQL's first-party audit implementation is **MySQL Enterprise Audit**, which ships with MySQL Enterprise Edition. Community Edition does not include the Enterprise audit plugin; use other logging features or a separately supported third-party tool if you need audit trails there.
 
-The open-source alternative **MariaDB Audit Plugin** can also be used with MySQL.
-
-## Installing the Community Audit Log Plugin (MySQL 8.0.30+)
+## Installing MySQL Enterprise Audit
 
 ### Install the Plugin
 
@@ -121,7 +119,7 @@ Expected output:
 
 ## Filtering Audit Events
 
-MySQL Enterprise Audit supports filtering to log only events from specific users, databases, or query types. For community audit, filtering is done at the policy level or using log rotation tools.
+MySQL Enterprise Audit supports filtering to log only events from specific users, databases, or query types. Community Edition users need to rely on other logging features or separately supported third-party tooling for equivalent filtering.
 
 ### Using Audit Log Filter Functions (Enterprise)
 
@@ -185,25 +183,9 @@ grep '"sql_command": "drop_table"' /var/log/mysql/audit.log
 grep '"user": "appuser"' /var/log/mysql/audit.log | grep '"class": "general"'
 ```
 
-## MariaDB Audit Plugin for MySQL Community Edition
+## Community Edition Alternatives
 
-The MariaDB Audit Plugin works with MySQL community edition and offers per-user filtering:
-
-```bash
-# Copy the plugin to MySQL plugin directory
-sudo cp server_audit.so /usr/lib/mysql/plugin/
-```
-
-```ini
-# my.cnf
-[mysqld]
-plugin-load-add          = server_audit=server_audit.so
-server_audit_logging     = ON
-server_audit_events      = CONNECT,QUERY,TABLE
-server_audit_file_path   = /var/log/mysql/audit.log
-server_audit_file_rotate_size = 100000000
-server_audit_excl_users  = 'monitoring_user,backup_user'
-```
+If you run MySQL Community Edition, prefer built-in logging features such as binary logs, the general log, and Performance Schema, or evaluate a separately supported third-party audit solution with explicit compatibility testing.
 
 ## Forwarding Audit Logs to a SIEM
 

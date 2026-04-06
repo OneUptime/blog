@@ -760,11 +760,7 @@
 - Angle bracket syntax
 - Angular
 - Animations
-- ANN
-- ANN Index
 - Annotation
-- Annoy
-- Annoy Index
 - Annual
 - Anomaly
 - Anomaly Detection
@@ -1293,10 +1289,8 @@
 - Atlas
 - Atlas Charts
 - Atlas Data Federation
-- Atlas Device Sync
 - Atlas Functions
 - Atlas Search
-- Atlas Serverless
 - Atlas Stream Processing
 - Atlas Triggers
 - Atlas Vector Search
@@ -4561,7 +4555,6 @@
 - Data Analytics
 - Data Annotation
 - Data Anonymization
-- Data API
 - Data Architecture
 - Data Archival
 - Data Archiving
@@ -5140,7 +5133,6 @@
 - Deployment Stacks
 - Deployment Strategies
 - Deployment Strategy
-- Deployment Tool
 - Deployment Tracking
 - Deployment Verification
 - Deployment Windows
@@ -5253,7 +5245,6 @@
 - Device Services
 - Device Shadow
 - Device State
-- Device Sync
 - Device Telemetry
 - Device Template
 - Device Trust
@@ -6000,7 +5991,6 @@
 - Edge NGram
 - Edge Runtime
 - Edge Security
-- Edge Server
 - Edge Stack
 - Edge Termination
 - Edge TPU
@@ -6290,7 +6280,6 @@
 - Erlang
 - Erlang Distribution
 - ERP
-- ERR No Such Key
 - Errata
 - Errgroup
 - Errno
@@ -7009,7 +6998,6 @@
 - Flexible Environment
 - Flexible NetFlow
 - Flexible Server
-- Flexible Sync
 - Flight Search
 - Flink
 - Flink Operator
@@ -9539,7 +9527,6 @@
 - Key Distribution
 - Key Enumeration
 - Key Expiration
-- Key Expiry
 - Key Extraction
 - Key Generation
 - Key Groups
@@ -14459,7 +14446,6 @@
 - Real-Time Weather
 - Real-User Monitoring
 - Realm
-- Realm Sync
 - Realmd
 - Realtime
 - Realtime Database
@@ -16155,7 +16141,6 @@
 - ServiceMonitor
 - ServiceNow
 - ServiceNow Cloud Observability
-- ServiceSpec
 - Serving
 - Serving Layer
 - SES
@@ -18866,7 +18851,6 @@
 - USE INDEX
 - USE Method
 - Use_tempaddr
-- usearch
 - UseCallback
 - UseDeferredValue
 - UseEffect
@@ -19334,7 +19318,6 @@
 - VSCode
 - vsftpd
 - vSphere
-- vstart
 - VTEP
 - VTI
 - VTL

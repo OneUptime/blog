@@ -8,6 +8,8 @@ Description: Learn how to enable and configure MySQL audit logging to track user
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## Why Audit Logging Matters
 
 Audit logging records who connected to your MySQL server, which queries they ran, and what data they accessed or modified. It is essential for compliance frameworks like PCI-DSS, HIPAA, and SOC 2, and helps you investigate security incidents by providing a tamper-evident trail of database activity.

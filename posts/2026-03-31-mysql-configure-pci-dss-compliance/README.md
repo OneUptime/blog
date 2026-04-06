@@ -8,6 +8,8 @@ Description: Learn how to configure MySQL to meet PCI DSS requirements including
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 PCI DSS (Payment Card Industry Data Security Standard) mandates strict controls for systems that store, process, or transmit cardholder data. MySQL databases in a cardholder data environment (CDE) must be configured to meet requirements across encryption, access control, logging, and vulnerability management. This guide covers the key MySQL configurations for PCI DSS compliance.
 
 ## PCI DSS Requirements Relevant to MySQL

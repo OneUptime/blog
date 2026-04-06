@@ -8,15 +8,17 @@ Description: The MySQL Audit Plugin records user activity and database events to
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## Overview
 
 The MySQL Audit Plugin logs database activity - connections, query executions, schema changes, and privilege operations - to an audit log file. It is essential for meeting compliance requirements (PCI-DSS, HIPAA, SOX, GDPR) that mandate tracking who accessed or modified data and when.
 
-MySQL Enterprise Edition includes a commercial audit plugin. For community edition users, the open-source `audit_log` plugin (included in MySQL 8.0) or Percona's Audit Log Plugin are available alternatives.
+MySQL Enterprise Edition includes **MySQL Enterprise Audit**. MySQL Community Edition does not ship that first-party audit plugin, so community deployments typically rely on binary logs, the general log, Performance Schema, or separately supported third-party tooling.
 
-## Installing the MySQL Audit Log Plugin
+## Installing MySQL Enterprise Audit
 
-The audit plugin is included in MySQL 8.0:
+MySQL Enterprise Audit is configured through MySQL Enterprise Edition:
 
 ```text
 [mysqld]
@@ -137,20 +139,9 @@ Or via configuration:
 audit_log_rotate_on_size = 1073741824  -- 1 GB
 ```
 
-## Audit Log with Percona (Community Edition)
+## Community Edition Alternatives
 
-Percona's audit plugin offers similar functionality for community MySQL:
-
-```bash
-apt-get install percona-server-server
-```
-
-```text
-[mysqld]
-plugin-load-add = audit_log.so
-audit_log_handler = FILE
-audit_log_file = /var/log/mysql/audit.log
-```
+If you run MySQL Community Edition, use built-in logging features such as binary logs, the general log, and Performance Schema, or evaluate a separately supported third-party audit solution after verifying compatibility.
 
 ## Summary
 

@@ -8,6 +8,8 @@ Description: Learn how to use SHOW PLUGINS in MySQL to list installed plugins, c
 
 ---
 
+> Note: MySQL's first-party audit plugin is **MySQL Enterprise Audit**. Community Edition deployments need other supported logging approaches or separately supported third-party tooling.
+
 ## What Is SHOW PLUGINS
 
 `SHOW PLUGINS` lists all plugins installed in the MySQL server, including their name, status, type, library file, and license. MySQL uses a plugin architecture for many features including storage engines, authentication methods, password validation, audit logging, and full-text search. `SHOW PLUGINS` is the primary way to see what functionality is available on a MySQL instance.

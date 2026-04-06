@@ -189,9 +189,9 @@ FROM system.role_grants
 ORDER BY user_name;
 
 -- See privilege grants
-SELECT grantee, access_type, database, table, column, is_partial_revoke
+SELECT user_name, role_name, access_type, database, table, column, is_partial_revoke
 FROM system.grants
-ORDER BY grantee;
+ORDER BY user_name, role_name, access_type;
 
 -- Show grants for a specific user
 SHOW GRANTS FOR alice;

@@ -1,16 +1,16 @@
-# How to Use Pod Security Policies with Rook-Ceph
+# How to Secure Rook-Ceph with Pod Security Admission
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Security, Pod Security, Kubernetes
 
-Description: Secure Rook-Ceph pods using Kubernetes Pod Security Standards and Pod Security Admission to enforce privilege controls for OSD, MON, MGR, and operator pods.
+Description: Secure Rook-Ceph pods using Kubernetes Pod Security Standards and Pod Security Admission to enforce privilege controls for OSD, MON, MGR, and operator pods in modern Kubernetes clusters.
 
 ---
 
 ## Pod Security in Modern Kubernetes
 
-PodSecurityPolicy (PSP) was deprecated in Kubernetes 1.21 and removed in 1.25. The replacement is Pod Security Admission (PSA) with Pod Security Standards (PSS). Rook-Ceph requires certain privileges that must be explicitly permitted at the namespace level.
+PodSecurityPolicy (PSP) was deprecated in Kubernetes 1.21 and removed in Kubernetes 1.25. For modern clusters, use Pod Security Admission (PSA) with Pod Security Standards (PSS). Rook-Ceph requires certain privileges that must be explicitly permitted at the namespace level.
 
 ## Understanding Rook's Privilege Requirements
 
@@ -34,6 +34,7 @@ metadata:
   name: rook-ceph
   labels:
     pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
 ```
@@ -90,27 +91,6 @@ csi:
   cephFSAttachRequired: true
 ```
 
-## Admission Webhook for Custom Policies
-
-For more granular control, deploy OPA Gatekeeper with a custom constraint:
-
-```yaml
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sPSPPrivilegedContainer
-metadata:
-  name: restrict-privileged
-spec:
-  match:
-    kinds:
-      - apiGroups: [""]
-        kinds: ["Pod"]
-    namespaces:
-      - production
-      - staging
-```
-
-This blocks privileged containers in application namespaces while allowing them in rook-ceph.
-
 ## Audit PSA Violations
 
 Check if any Rook pods would violate a stricter policy:
@@ -134,4 +114,4 @@ kubectl label namespace rook-ceph \
 
 ## Summary
 
-Pod Security Standards replace PodSecurityPolicies in modern Kubernetes. Rook-Ceph requires the `privileged` enforcement level on its own namespace due to OSD device access requirements. Application namespaces should use `restricted` mode since they only interact with Ceph through the CSI driver and never need host-level access.
+Pod Security Admission and Pod Security Standards replace PodSecurityPolicy in modern Kubernetes. Rook-Ceph requires the `privileged` enforcement level on its own namespace due to OSD device access requirements. Application namespaces should use `restricted` mode since they only interact with Ceph through the CSI driver and never need host-level access.
