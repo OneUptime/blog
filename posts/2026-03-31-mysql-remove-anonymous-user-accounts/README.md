@@ -50,9 +50,6 @@ DROP USER ''@'::1';
 
 -- Remove anonymous user from any host if present
 DROP USER ''@'%';
-
--- Flush privileges
-FLUSH PRIVILEGES;
 ```
 
 ## Using mysql_secure_installation
@@ -86,13 +83,11 @@ Run these checks as part of initial MySQL hardening:
 DROP DATABASE IF EXISTS test;
 
 -- 2. Disable remote root login
-DELETE FROM mysql.user WHERE user = 'root' AND host != 'localhost';
+DROP USER IF EXISTS 'root'@'%';
+DROP USER IF EXISTS 'root'@'::1';
 
 -- 3. Set a strong root password if not already set
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'StrongRootPassword!';
-
--- 4. Flush all privilege changes
-FLUSH PRIVILEGES;
 ```
 
 ## Preventing Anonymous Users in Future Installations
@@ -101,10 +96,10 @@ You can script these steps for automated deployments:
 
 ```bash
 mysql -u root -p"${ROOT_PASSWORD}" <<EOF
-DELETE FROM mysql.user WHERE user = '';
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE db = 'test' OR db = 'test\\_%';
-FLUSH PRIVILEGES;
+DROP USER IF EXISTS 'root'@'%';
 EOF
 ```
 
@@ -123,4 +118,4 @@ ERROR 1045 (28000): Access denied for user ''@'localhost' (using password: NO)
 
 ## Summary
 
-Anonymous MySQL users are a critical security gap that should be eliminated before any production deployment. Use `DROP USER ''@'localhost'` to remove them, verify with a `SELECT` query against `mysql.user`, and run `mysql_secure_installation` as part of your standard post-installation hardening checklist. Follow up by removing the test database and disabling remote root access for a complete baseline security configuration.
+Anonymous MySQL users are a critical security gap that should be eliminated before any production deployment. Use `DROP USER` to remove them, verify with a `SELECT` query against `mysql.user`, and run `mysql_secure_installation` as part of your standard post-installation hardening checklist. Follow up by removing the test database and disabling remote root access for a complete baseline security configuration.

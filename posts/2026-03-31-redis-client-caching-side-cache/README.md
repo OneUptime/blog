@@ -10,13 +10,13 @@ Description: Learn how to use CLIENT CACHING in Redis to control client-side cac
 
 ## Overview
 
-`CLIENT CACHING` is part of Redis's client-side caching protocol, which allows clients to cache data locally and receive invalidation messages when cached keys change. `CLIENT CACHING yes` opts the current command into the tracking list, and `CLIENT CACHING no` excludes it. This is used in combination with `CLIENT TRACKING` (enabled with `RESP3` protocol or via `CLIENT TRACKING ON`) to give fine-grained control over which key accesses are tracked for invalidation.
+`CLIENT CACHING` is part of Redis's client-side caching protocol, which allows clients to cache data locally and receive invalidation messages when cached keys change. `CLIENT CACHING yes` and `CLIENT CACHING no` are used with `CLIENT TRACKING` in `OPTIN` and `OPTOUT` modes to control whether the next read is tracked for invalidation.
 
 ```mermaid
 flowchart TD
-    A[Client enables tracking: CLIENT TRACKING ON BCAST] --> B[Client caches data locally]
+    A[Client enables tracking: CLIENT TRACKING ON OPTIN / OPTOUT] --> B[Client caches data locally]
     B --> C[Another client modifies a tracked key]
-    C --> D[Redis sends invalidation message]
+    C --> D[Redis sends invalidation payload]
     D --> E[Client evicts local cache entry]
     E --> F[Next access fetches fresh data from Redis]
 ```
@@ -24,25 +24,26 @@ flowchart TD
 ## Prerequisites
 
 Client-side caching requires:
-1. RESP3 protocol (via `HELLO 3`) or `CLIENT TRACKING ON` with a Pub/Sub invalidation channel
-2. `CLIENT CACHING` is meaningful only when tracking is enabled
+1. `CLIENT TRACKING` to be enabled
+2. `CLIENT CACHING` to be used in `OPTIN` or `OPTOUT` mode
 
 ## Enabling Tracking
 
-### With RESP3
+### With OPTIN
 
 ```redis
-HELLO 3
-CLIENT TRACKING ON
+CLIENT TRACKING ON OPTIN
+CLIENT CACHING yes
+GET user:profile:123
 ```
 
-### With RESP2 and an invalidation channel
+### With OPTOUT
 
 ```redis
-CLIENT TRACKING ON BCAST PREFIX user: REDIRECT 12
+CLIENT TRACKING ON OPTOUT
+CLIENT CACHING no
+GET temporary:counter:abc
 ```
-
-Where `12` is the ID of another connection subscribed to `__redis__:invalidate`.
 
 ## CLIENT CACHING Syntax
 
@@ -51,19 +52,19 @@ CLIENT CACHING yes
 CLIENT CACHING no
 ```
 
-- `yes`: Include the next command's accessed keys in the tracking list (default when tracking is on)
-- `no`: Exclude the next command's accessed keys from the tracking list
+- `yes`: Track the next read command in `OPTIN` mode
+- `no`: Skip tracking for the next read command in `OPTOUT` mode
 
 This affects only the next command issued after `CLIENT CACHING`.
 
 ## How It Works
 
-When `CLIENT TRACKING` is enabled without the `BCAST` option (normal mode), Redis only tracks keys that the client has explicitly read. `CLIENT CACHING yes` before a command ensures the key is tracked. `CLIENT CACHING no` before a command tells Redis to skip tracking for that specific read.
+When `CLIENT TRACKING` is enabled in `OPTIN` mode, Redis only tracks keys that you explicitly opt in with `CLIENT CACHING yes`. In `OPTOUT` mode, Redis tracks reads by default and `CLIENT CACHING no` skips tracking for a specific command.
 
 ### Track a specific key
 
 ```redis
-CLIENT TRACKING ON
+CLIENT TRACKING ON OPTIN
 CLIENT CACHING yes
 GET user:profile:123
 ```
@@ -73,7 +74,7 @@ Redis will now send an invalidation notification if `user:profile:123` changes.
 ### Skip tracking for a transient read
 
 ```redis
-CLIENT TRACKING ON
+CLIENT TRACKING ON OPTOUT
 CLIENT CACHING no
 GET temporary:counter:abc
 ```
@@ -87,8 +88,7 @@ sequenceDiagram
     participant App as Application
     participant LocalCache as Local Cache
     participant Redis
-    App->>Redis: HELLO 3
-    App->>Redis: CLIENT TRACKING ON
+    App->>Redis: CLIENT TRACKING ON OPTIN
     App->>LocalCache: Check user:profile:123
     LocalCache-->>App: Miss
     App->>Redis: CLIENT CACHING yes
@@ -104,29 +104,29 @@ sequenceDiagram
     Redis-->>App: "Jane Doe"
 ```
 
-## Broadcast Mode vs Normal Mode
+## OPTIN vs OPTOUT
 
-| Mode | How tracking works | CLIENT CACHING use |
+| Mode | How tracking works | `CLIENT CACHING` use |
 |------|-------------------|-------------------|
-| Normal (`CLIENT TRACKING ON`) | Only keys explicitly read are tracked | Use `CLIENT CACHING yes/no` to opt in/out per command |
-| Broadcast (`CLIENT TRACKING ON BCAST PREFIX foo:`) | All keys matching the prefix are tracked regardless of reads | `CLIENT CACHING` is less relevant; all matching keys trigger invalidations |
+| `OPTIN` | Only keys explicitly opted in are tracked | Use `CLIENT CACHING yes` before the read |
+| `OPTOUT` | Reads are tracked by default | Use `CLIENT CACHING no` before reads you want to skip |
 
 ## Practical Use Case: Selective Caching
 
-Not every key is worth caching locally. Use `CLIENT CACHING no` for frequently changing data and `CLIENT CACHING yes` for stable configuration data:
+Not every key is worth caching locally. Use `OPTIN` for stable configuration data and `OPTOUT` for volatile reads you do not want to track:
 
 ```redis
-CLIENT TRACKING ON
-
-# Track this - config changes rarely
+# Stable configuration data
+CLIENT TRACKING ON OPTIN
 CLIENT CACHING yes
 HGETALL config:global
 
-# Do not track this - changes every second
+# Frequently changing counters
+CLIENT TRACKING ON OPTOUT
 CLIENT CACHING no
 GET stats:requests:total
 ```
 
 ## Summary
 
-`CLIENT CACHING yes/no` controls whether the next command's accessed keys are added to the invalidation tracking list for client-side caching. It is effective only when `CLIENT TRACKING` is enabled. Use `CLIENT CACHING yes` to opt into tracking for keys you want to cache locally, and `CLIENT CACHING no` to skip tracking for volatile or uncacheable data. This gives fine-grained control over which data is subject to invalidation notifications, reducing unnecessary invalidation traffic for data that does not benefit from local caching.
+`CLIENT CACHING yes/no` controls whether the next read is tracked for client-side caching. It is effective only when `CLIENT TRACKING` is enabled in `OPTIN` or `OPTOUT` mode. Use `CLIENT CACHING yes` to opt into tracking for keys you want to cache locally, and `CLIENT CACHING no` to skip tracking for volatile or uncacheable data. This gives fine-grained control over which data is subject to invalidation notifications, reducing unnecessary invalidation traffic for data that does not benefit from local caching.

@@ -70,7 +70,7 @@ Now when tracked keys change, invalidation messages arrive on connection 42 via 
 
 ## BCAST Mode: Broadcasting
 
-In BCAST (broadcasting) mode, Redis does not maintain per-client tracking tables. Instead, it sends invalidation messages for ALL modifications to keys matching the specified prefixes to ALL subscribed clients.
+In BCAST (broadcasting) mode, Redis does not maintain per-client tracking tables. Instead, it sends invalidation messages for ALL modifications to keys matching the specified prefixes to tracking-enabled clients.
 
 ```bash
 # Enable BCAST mode for keys with "user:" and "session:" prefixes
@@ -131,23 +131,13 @@ This is useful when the application updates the local cache immediately after wr
 
 ## Tracking Table Memory
 
-The server-side tracking table for default mode uses memory. Monitor it:
+Inspect the current tracking state with `CLIENT TRACKINGINFO`:
+
 ```bash
-# Check tracking table size
-redis-cli INFO stats | grep tracking
+redis-cli CLIENT TRACKINGINFO
 ```
 
-```text
-tracking_keys:12543
-```
-
-Control maximum tracking table size:
-```text
-# redis.conf
-tracking-table-max-keys 1000000
-```
-
-When the table exceeds the limit, Redis randomly evicts entries and sends invalidations for them.
+That reply includes the active flags, redirect client ID, and prefixes. In Redis Open Source, there is no `CONFIG SET tracking-table-max-keys` knob for client tracking, so cache sizing is an application-side concern.
 
 ## Python Implementation Using REDIRECT
 
@@ -173,11 +163,15 @@ def setup_tracking():
     def handle_invalidations():
         for msg in pubsub.listen():
             if msg['type'] == 'message':
-                keys = msg['data']
-                if isinstance(keys, list):
-                    for k in keys:
-                        local_cache.pop(k, None)
-                        print(f"Invalidated: {k}")
+                payload = msg['data']
+                if payload is None:
+                    local_cache.clear()
+                    continue
+
+                keys = payload if isinstance(payload, list) else [payload]
+                for k in keys:
+                    local_cache.pop(k, None)
+                    print(f"Invalidated: {k}")
 
     t = threading.Thread(target=handle_invalidations, daemon=True)
     t.start()
@@ -210,4 +204,4 @@ print(cached_get('user:1'))   # Miss again - cache was invalidated
 
 ## Summary
 
-`CLIENT TRACKING` is the server-side mechanism that makes Redis client-side caching reliable and consistent. Default mode tracks keys per client with the lowest overhead per key; BCAST mode trades precision for scalability by broadcasting invalidations by prefix. Use REDIRECT to receive invalidations on a separate Pub/Sub connection, NOLOOP to avoid self-invalidations, and OPTIN when you need fine-grained control over which keys are cached locally.
+`CLIENT TRACKING` is the server-side mechanism that makes Redis client-side caching reliable and consistent. Default mode tracks keys per client with the lowest overhead per key; BCAST mode trades precision for scalability by sending prefix-based invalidations to tracking-enabled clients. Use `REDIRECT` to receive invalidations on a separate connection, `NOLOOP` to avoid self-invalidations, and `OPTIN` or `OPTOUT` when you need fine-grained control over which keys are cached locally.

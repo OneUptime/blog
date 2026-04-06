@@ -55,9 +55,15 @@ class RedisClientSideCache:
             for msg in pubsub.listen():
                 if msg['type'] != 'message':
                     continue
-                key = msg['data']
-                if key:
+                payload = msg['data']
+                if payload is None:
                     with self._lock:
+                        self._cache.clear()
+                    continue
+
+                keys = payload if isinstance(payload, list) else [payload]
+                with self._lock:
+                    for key in keys:
                         self._cache.pop(key, None)
 
         t = threading.Thread(target=listen_for_invalidations, daemon=True)

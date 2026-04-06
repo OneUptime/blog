@@ -155,7 +155,7 @@ Track archival metrics with Prometheus:
 
 ```bash
 # Monitor archive workflow execution
-dapr workflow get --workflow-id archival-workflow-id --app-id archival-service
+dapr workflow history --workflow-id archival-workflow-id --app-id archival-service
 ```
 
 ## Summary

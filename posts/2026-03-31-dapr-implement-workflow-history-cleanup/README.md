@@ -27,10 +27,10 @@ For long-running workflows with many activities, a single instance can store hun
 ```bash
 # Purge a completed workflow
 curl -X DELETE \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-123/purge"
+  "http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/purge"
 
 # Check it's gone
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-123/status"
+curl "http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/status"
 # Returns 404
 ```
 
@@ -39,7 +39,7 @@ curl "http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-123/status"
 ```bash
 # Purge all completed workflows older than 30 days
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/purge" \
+  "http://localhost:3500/v1.0/workflows/dapr/purge" \
   -H "Content-Type: application/json" \
   -d '{
     "createdTimeTo": "2026-03-01T00:00:00Z",
@@ -48,7 +48,7 @@ curl -X POST \
 
 # Purge failed workflows older than 7 days
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/purge" \
+  "http://localhost:3500/v1.0/workflows/dapr/purge" \
   -H "Content-Type: application/json" \
   -d '{
     "createdTimeTo": "2026-03-24T00:00:00Z",
@@ -83,7 +83,7 @@ func purgeOldWorkflows(daprHost string, olderThan time.Duration, status string) 
     })
 
     resp, err := http.Post(
-        fmt.Sprintf("http://%s:3500/v1.0-beta1/workflows/dapr/purge", daprHost),
+        fmt.Sprintf("http://%s:3500/v1.0/workflows/dapr/purge", daprHost),
         "application/json",
         bytes.NewBuffer(payload),
     )
@@ -127,7 +127,7 @@ spec:
             - -c
             - |
               CUTOFF=$(date -d '30 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
-              curl -X POST http://workflow-service:3500/v1.0-beta1/workflows/dapr/purge \
+              curl -X POST http://workflow-service:3500/v1.0/workflows/dapr/purge \
                 -H "Content-Type: application/json" \
                 -d "{\"createdTimeTo\": \"$CUTOFF\", \"status\": \"COMPLETED\"}"
           restartPolicy: OnFailure

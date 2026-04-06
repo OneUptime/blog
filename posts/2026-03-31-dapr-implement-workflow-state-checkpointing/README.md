@@ -99,7 +99,7 @@ Query workflow state to determine if it was mid-execution:
 
 ```bash
 # Check workflow state
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-123/status
+curl http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/status
 
 # Response shows last completed step
 {
@@ -119,10 +119,10 @@ Checkpoint data accumulates over time. Purge completed workflows:
 ```bash
 # Purge a specific completed workflow
 curl -X DELETE \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-123/purge
+  http://localhost:3500/v1.0/workflows/dapr/order-workflow-123/purge
 
 # Purge all completed workflows (use with caution)
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/purge \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/purge \
   -H "Content-Type: application/json" \
   -d '{"createdTimeTo": "2026-03-01T00:00:00Z", "status": "COMPLETED"}'
 ```

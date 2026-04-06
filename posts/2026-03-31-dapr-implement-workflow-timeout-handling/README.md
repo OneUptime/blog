@@ -108,11 +108,11 @@ func ParentWorkflow(ctx *workflow.WorkflowContext) (any, error) {
 
 ```bash
 # Find long-running workflows
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr?status=RUNNING&createdTimeTo=2026-03-30T00:00:00Z"
+curl "http://localhost:3500/v1.0/workflows/dapr?status=RUNNING&createdTimeTo=2026-03-30T00:00:00Z"
 
 # Terminate a stuck workflow
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/stuck-workflow-123/terminate" \
+  "http://localhost:3500/v1.0/workflows/dapr/stuck-workflow-123/terminate" \
   -H "Content-Type: application/json" \
   -d '{"terminationReason": "manual timeout enforcement"}'
 ```

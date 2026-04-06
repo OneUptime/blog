@@ -91,7 +91,7 @@ with DaprClient() as d:
 ## Checking Saga Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order_saga_workflow/ORD-123
+curl http://localhost:3500/v1.0/workflows/dapr/order_saga_workflow/ORD-123
 ```
 
 ## Component Configuration

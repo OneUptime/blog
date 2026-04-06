@@ -50,19 +50,13 @@ FROM mysql.default_roles
 WHERE User = 'alice';
 ```
 
-Alternatively, use `SHOW GRANTS`:
+Alternatively, use `SHOW CREATE USER`:
 
 ```sql
-SHOW GRANTS FOR 'alice'@'%';
+SHOW CREATE USER 'alice'@'%';
 ```
 
-The output includes a line like:
-
-```text
-GRANT `app_reader`@`%` TO `alice`@`%`
-```
-
-And for default roles, a separate entry appears showing the `SET DEFAULT ROLE` configuration.
+The output includes the account definition, including any default-role configuration. If you need the assigned defaults directly, query `mysql.default_roles` as above.
 
 ## Effect at Login
 

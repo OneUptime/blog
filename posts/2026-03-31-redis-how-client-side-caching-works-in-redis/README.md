@@ -20,7 +20,7 @@ This eliminates the round-trip to Redis for frequently read, rarely changed data
 2. Client reads a key - Redis records this in a tracking table
 3. Client stores the value in local memory
 4. Another client modifies the same key in Redis
-5. Redis sends an invalidation message to the tracking client
+5. Redis sends an invalidation payload to the tracking client
 6. Client removes the key from local cache
 7. Next read goes to Redis (cache miss), re-populates local cache
 
@@ -31,7 +31,7 @@ Client A                     Redis                    Client B
    |<--"Alice"---------------|                            |
    |  (cache "user:123"="Alice" locally)                 |
    |                         |<---SET user:123 "Bob"------|
-   |<--INVALIDATE user:123---|                            |
+   |<--invalidate ["user:123"]--|                        |
    |  (remove from local cache)                          |
    |---GET user:123--------->|  (cache miss, re-fetch)   |
    |<--"Bob"-----------------|                            |
@@ -41,7 +41,7 @@ Client A                     Redis                    Client B
 
 **Default mode:** Redis tracks which keys each client has accessed and sends invalidations only for those specific keys. More precise but requires Redis memory to store the tracking table.
 
-**Broadcast mode:** The client subscribes to key prefixes. Redis sends invalidations for any key modification matching those prefixes, regardless of whether the client read the key. No per-client tracking table is maintained in Redis.
+**Broadcast mode:** The client tracks key prefixes. Redis sends invalidations for any key modification matching those prefixes, regardless of whether the client read the key. No per-client tracking table is maintained in Redis.
 
 ```bash
 # Default mode - track only keys this client reads
@@ -53,7 +53,7 @@ CLIENT TRACKING ON BCAST PREFIX user: PREFIX config:
 
 ## Invalidation Channel
 
-In default mode, invalidation messages arrive on the special `__redis__:invalidate` channel. The client must subscribe to this channel on a second connection (since the main connection cannot both read data and subscribe simultaneously).
+In default mode, invalidation messages arrive on the special `__redis__:invalidate` pseudo-channel. The client must subscribe to this channel on a second connection (since the main connection cannot both read data and subscribe simultaneously).
 
 ## Redirect Mode
 
@@ -77,16 +77,13 @@ SUBSCRIBE __redis__:invalidate
 
 ## Memory and Tracking Table
 
-In default mode, Redis maintains an in-memory table per client recording which keys it has read. Configure the maximum number of tracked keys:
+In default mode, Redis maintains an in-memory table per client recording which keys it has read. Inspect the current tracking state with `CLIENT TRACKINGINFO`:
 
 ```bash
-redis-cli CONFIG GET tracking-table-max-keys
-# Default: 0 (unlimited)
-
-redis-cli CONFIG SET tracking-table-max-keys 100000
+redis-cli CLIENT TRACKINGINFO
 ```
 
-When the table is full, Redis sends a full flush invalidation and the client must clear its entire local cache.
+The reply includes the active flags, redirect client ID, and prefixes. In Redis Open Source, there is no `CONFIG SET tracking-table-max-keys` knob for client tracking, so cache sizing is an application-side concern.
 
 ## Optin Mode
 
@@ -146,13 +143,13 @@ data_conn.execute_command('CLIENT', 'TRACKING', 'ON', 'REDIRECT', sub_id)
 def invalidation_listener():
     for msg in pubsub.listen():
         if msg['type'] == 'message':
-            keys = msg['data']
-            if keys is None:
+            payload = msg['data']
+            if payload is None:
                 # Full flush
                 with cache_lock:
                     local_cache.clear()
             else:
-                for key in (keys if isinstance(keys, list) else [keys]):
+                for key in (payload if isinstance(payload, list) else [payload]):
                     k = key.decode() if isinstance(key, bytes) else key
                     with cache_lock:
                         local_cache.pop(k, None)
@@ -173,4 +170,4 @@ def get(key):
 
 ## Summary
 
-Redis client-side caching uses the tracking protocol to deliver key invalidation messages to clients when keys they have read are modified. Default mode tracks per-client key access with server-side memory; broadcast mode eliminates server tracking overhead by delivering all invalidations for subscribed prefixes. Implement local caching with an invalidation listener thread that clears stale entries when Redis sends `__redis__:invalidate` messages, reducing Redis round-trips for hot read-heavy keys.
+Redis client-side caching uses the tracking protocol to deliver key invalidation payloads to clients when keys they have read are modified. Default mode tracks per-client key access with server-side memory; broadcast mode eliminates per-client tracking overhead by sending prefix-based invalidations to tracking-enabled clients. Implement local caching with an invalidation listener thread that clears stale entries when Redis sends `__redis__:invalidate` payloads, reducing Redis round-trips for hot read-heavy keys.

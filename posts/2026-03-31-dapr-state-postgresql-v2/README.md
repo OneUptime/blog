@@ -99,12 +99,12 @@ with DaprClient() as client:
 query = {
     "filter": {
         "AND": [
-            {"EQ": {"value.status": "active"}},
-            {"GT": {"value.score": 50}}
+            {"EQ": {"status": "active"}},
+            {"GT": {"score": 50}}
         ]
     },
     "sort": [
-        {"key": "value.score", "order": "DESC"}
+        {"key": "score", "order": "DESC"}
     ],
     "page": {
         "limit": 10

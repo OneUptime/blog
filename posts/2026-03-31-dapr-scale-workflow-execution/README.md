@@ -101,7 +101,7 @@ import aiohttp
 DAPR_PORT = 3500
 
 async def start_workflow(session: aiohttp.ClientSession, instance_id: str, payload: dict):
-    url = f"http://localhost:{DAPR_PORT}/v1.0-beta1/workflows/dapr/OrderProcessingWorkflow/start?instanceID={instance_id}"
+    url = f"http://localhost:{DAPR_PORT}/v1.0/workflows/dapr/OrderProcessingWorkflow/start?instanceID={instance_id}"
     async with session.post(url, json=payload) as resp:
         return await resp.json()
 
@@ -142,11 +142,11 @@ spec:
 
 ```bash
 # Check workflow instance count
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingWorkflow/instances" | \
+curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingWorkflow/instances" | \
   jq '.instances | length'
 
 # Check running vs completed
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingWorkflow/instances?runtimeStatus=Running" | \
+curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingWorkflow/instances?runtimeStatus=Running" | \
   jq '.instances | length'
 ```
 

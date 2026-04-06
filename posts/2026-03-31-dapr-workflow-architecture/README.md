@@ -93,16 +93,15 @@ Workflows require a state store for event persistence. Configure it in your Dapr
 
 ```yaml
 apiVersion: dapr.io/v1alpha1
-kind: Configuration
+kind: Component
 metadata:
-  name: appconfig
+  name: actorbackend
 spec:
-  features:
-  - name: WorkflowBackend
-    enabled: true
+  type: workflowbackend.actor
+  version: v1
 ```
 
-The default workflow backend uses the app's configured state store. For production, use a persistent store like PostgreSQL or Azure CosmosDB instead of Redis.
+Dapr Workflow uses the actor backend by default, so you do not need to define a workflow backend component for normal usage. For production, use a persistent state store like PostgreSQL or Azure Cosmos DB instead of Redis.
 
 ## Scaling Considerations
 
@@ -118,7 +117,7 @@ Multiple app instances share workflow execution:
 Long-running workflows accumulate large event histories. Monitor history size:
 
 ```bash
-dapr workflow get --app-id myapp --workflow-id <id>
+dapr workflow history <id> --app-id myapp
 ```
 
 Purge completed workflow history regularly to reclaim state store space.

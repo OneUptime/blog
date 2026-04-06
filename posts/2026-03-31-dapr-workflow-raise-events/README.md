@@ -58,7 +58,7 @@ print("Approval event sent")
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/approval-REQ-001/raiseEvent/approval-decision" \
+  "http://localhost:3500/v1.0/workflows/dapr/approval-REQ-001/raiseEvent/approval-decision" \
   -H "Content-Type: application/json" \
   -d '{"approved": true, "approver": "alice@example.com"}'
 ```

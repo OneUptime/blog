@@ -26,9 +26,6 @@ kind: Configuration
 metadata:
   name: appconfig
 spec:
-  features:
-  - name: WorkflowBackend
-    enabled: true
   workflow:
     maxConcurrentWorkflowInvocations: 50
     maxConcurrentActivityInvocations: 100

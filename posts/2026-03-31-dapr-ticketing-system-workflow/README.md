@@ -169,11 +169,11 @@ func handleResolveTicket(w http.ResponseWriter, r *http.Request) {
 
 ```bash
 # List all active tickets
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/TicketWorkflow/instances \
+curl http://localhost:3500/v1.0/workflows/dapr/TicketWorkflow/instances \
   -H "Content-Type: application/json"
 
 # Check specific ticket status
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/TicketWorkflow/instances/TICKET-123
+curl http://localhost:3500/v1.0/workflows/dapr/TicketWorkflow/instances/TICKET-123
 ```
 
 ## Summary

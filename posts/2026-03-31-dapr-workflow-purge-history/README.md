@@ -62,7 +62,7 @@ Via HTTP API:
 
 ```bash
 curl -X DELETE \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-ORD-001/purge
+  http://localhost:3500/v1.0/workflows/dapr/order-ORD-001/purge
 ```
 
 ## Bulk Purge of Completed Workflows

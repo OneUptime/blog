@@ -12,12 +12,12 @@ Description: Learn how AggregateFunction stores binary aggregate states, how to 
 
 ## How AggregateFunction Works
 
-When you call `uniqState(user_id)` the result is a compact binary blob encoding the HyperLogLog sketch, not a plain number. Calling `uniqMerge(state_column)` combines multiple blobs and returns the final cardinality estimate. The same `-State`/`-Merge` pattern applies to any aggregate function.
+When you call `uniqState(user_id)` the result is a compact binary aggregate state, not a plain number. Calling `uniqMerge(state_column)` combines multiple states and returns the final cardinality estimate. The exact internal representation depends on the aggregate function, but the same `-State`/`-Merge` pattern applies to any aggregate function.
 
 ```sql
 -- Demonstrate the State/Merge pattern manually
 SELECT
-    uniqState(number) AS hll_state,
+    uniqState(number) AS uniq_state,
     toTypeName(uniqState(number)) AS state_type
 FROM numbers(1000);
 

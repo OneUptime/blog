@@ -208,10 +208,10 @@ func OrderWorkflowV2(ctx *task.OrchestrationContext) (any, error) {
 
 ```bash
 # Query workflow status via Dapr HTTP API
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderWorkflow/instances" | jq '.instances[] | {id, status}'
+curl "http://localhost:3500/v1.0/workflows/dapr/OrderWorkflow/instances" | jq '.instances[] | {id, status}'
 
 # Check for instances still running old version
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderWorkflowV1/instances?runtimeStatus=RUNNING"
+curl "http://localhost:3500/v1.0/workflows/dapr/OrderWorkflowV1/instances?runtimeStatus=RUNNING"
 ```
 
 ## Summary

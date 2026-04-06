@@ -135,7 +135,7 @@ func main() {
 ## Checking Saga Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/OrderSaga/instances/INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/OrderSaga/instances/INSTANCE_ID
 ```
 
 ## Summary

@@ -64,7 +64,7 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   # FSID of the external Ceph cluster
-  clusterID: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
+  clusterID: rook-ceph-external
   # RBD pool on the external cluster
   pool: replicapool
   # RBD image format - always use 2
@@ -97,7 +97,7 @@ metadata:
   name: rook-ceph-block-external-retain
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
+  clusterID: rook-ceph-external
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
@@ -123,7 +123,7 @@ metadata:
   name: rook-cephfs-external
 provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
-  clusterID: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
+  clusterID: rook-ceph-external
   # CephFS filesystem name on the external cluster
   fsName: myfs
   # CephFS pool where data will be stored
@@ -155,7 +155,7 @@ metadata:
   name: rook-ceph-block-ec-external
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
+  clusterID: rook-ceph-external
   # Data pool uses erasure coding for space efficiency
   pool: ec-data-pool
   # Required: metadata pool must be replicated
@@ -183,9 +183,9 @@ metadata:
   name: csi-rbdplugin-snapclass-external
 driver: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph-external
+  clusterID: rook-ceph-external
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph-external
 deletionPolicy: Delete
 ```
 

@@ -26,14 +26,7 @@ This hash started with `*` and used the SHA1-based algorithm. It was stored dire
 
 ## Old Way to Create Users (Pre-5.7)
 
-```sql
--- Old approach - no longer valid in MySQL 8.0
-INSERT INTO mysql.user (Host, User, Password)
-VALUES ('%', 'olduser', PASSWORD('mypassword'));
-FLUSH PRIVILEGES;
-```
-
-This pattern is completely unsupported in MySQL 8.0 and should never be used in new code.
+Historically, administrators sometimes wrote password hashes directly into grant tables. That workflow is not supported in MySQL 8.0 and should not be used in new code or recovery scripts.
 
 ## Deprecation in MySQL 5.7.6
 

@@ -37,7 +37,7 @@ import (
 )
 
 type Product struct {
-    ID   bson.ObjectID `bson:"_id"`
+    ID   bson.ObjectId `bson:"_id"`
     Name string        `bson:"name"`
 }
 

@@ -14,21 +14,6 @@ The Dapr Query State API (alpha) lets you filter, sort, and paginate state recor
 
 Not all state stores support the query API. MongoDB and Azure Cosmos DB are the primary supported backends.
 
-## Enabling the Query API
-
-Add the feature flag to your Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: appconfig
-spec:
-  features:
-    - name: QueryStateAlpha1
-      enabled: true
-```
-
 ## Basic Query
 
 Filter orders by status:
@@ -39,7 +24,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": {"value.status": "pending"}
+      "EQ": {"status": "pending"}
     }
   }'
 ```
@@ -53,8 +38,8 @@ curl -X POST \
   -d '{
     "filter": {
       "AND": [
-        {"EQ": {"value.status": "pending"}},
-        {"GT": {"value.amount": 100}}
+        {"EQ": {"status": "pending"}},
+        {"GT": {"amount": 100}}
       ]
     }
   }'
@@ -70,10 +55,10 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": {"value.status": "pending"}
+      "EQ": {"status": "pending"}
     },
     "sort": [
-      {"key": "value.createdAt", "order": "DESC"}
+      {"key": "createdAt", "order": "DESC"}
     ]
   }'
 ```
@@ -85,7 +70,7 @@ curl -X POST \
   "http://localhost:3500/v1.0-alpha1/state/statestore/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "filter": {"EQ": {"value.status": "pending"}},
+    "filter": {"EQ": {"status": "pending"}},
     "page": {
       "limit": 10,
       "token": ""
@@ -113,8 +98,8 @@ Pass the token to get the next page:
 
 ```go
 query := `{
-  "filter": {"EQ": {"value.org": "Engineering"}},
-  "sort": [{"key": "value.person.id", "order": "ASC"}],
+  "filter": {"EQ": {"org": "Engineering"}},
+  "sort": [{"key": "person.id", "order": "ASC"}],
   "page": {"limit": 5}
 }`
 
@@ -126,4 +111,4 @@ for _, item := range result.Results {
 
 ## Summary
 
-The Dapr Query State API (alpha) enables filtering, sorting, and paginating state records using a JSON query language. Enable it with the `QueryStateAlpha1` feature flag, POST queries to `/v1.0-alpha1/state/{store}/query`, and use the returned pagination token for multi-page results. MongoDB and Cosmos DB are the primary supported state stores.
+The Dapr Query State API (alpha) enables filtering, sorting, and paginating state records using a JSON query language. POST queries to `/v1.0-alpha1/state/{store}/query`, use bare document field names such as `status`, `amount`, `org`, and `person.id`, and consume the returned pagination token for multi-page results. MongoDB and Cosmos DB are the primary supported state stores.

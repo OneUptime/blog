@@ -40,18 +40,9 @@ WHERE db = 'test' OR db = 'test\_%';
 DROP DATABASE IF EXISTS test;
 ```
 
-## Removing Test Database Entries from the Grant Tables
+## Removing Test Database Access
 
-Even after dropping the database, entries in `mysql.db` may remain and grant access to any future database matching the pattern:
-
-```sql
--- Remove all permissions for the test database pattern
-DELETE FROM mysql.db
-WHERE db = 'test' OR db = 'test\_%';
-
--- Apply changes
-FLUSH PRIVILEGES;
-```
+Use `DROP DATABASE` to remove the database itself. If you have custom `test.*` grants on named accounts, revoke them explicitly with `REVOKE` rather than editing `mysql.db` by hand.
 
 ## Using mysql_secure_installation
 
@@ -78,21 +69,12 @@ For automated server provisioning:
 MYSQL_ROOT_PASS="${1}"
 
 mysql -u root -p"${MYSQL_ROOT_PASS}" <<'EOF'
--- Drop test database
 DROP DATABASE IF EXISTS test;
 
--- Remove test database permissions
-DELETE FROM mysql.db WHERE db = 'test' OR db = 'test\_%';
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 
--- Remove anonymous users
-DELETE FROM mysql.user WHERE user = '';
-
--- Disallow remote root login
-DELETE FROM mysql.user
-  WHERE user = 'root' AND host NOT IN ('localhost', '127.0.0.1', '::1');
-
--- Apply all changes
-FLUSH PRIVILEGES;
+DROP USER IF EXISTS 'root'@'%';
 EOF
 
 echo "MySQL hardening complete."
@@ -122,4 +104,4 @@ Standard system databases that should remain: `information_schema`, `mysql`, `pe
 
 ## Summary
 
-Removing the `test` database is a fundamental MySQL security hardening step. Use `DROP DATABASE IF EXISTS test` to remove it, then clean up the `mysql.db` grant table entries and run `FLUSH PRIVILEGES`. Automate this in provisioning scripts so no newly installed MySQL server is left with the default insecure configuration.
+Removing the `test` database is a fundamental MySQL security hardening step. Use `DROP DATABASE IF EXISTS test` to remove it, then handle any account cleanup with `DROP USER` and `REVOKE`. Automate this in provisioning scripts so no newly installed MySQL server is left with the default insecure configuration.

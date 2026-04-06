@@ -37,7 +37,7 @@ metadata:
   name: rook-ceph-block-delete
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
@@ -66,7 +66,7 @@ metadata:
     description: "Production RBD volumes - data preserved after PVC deletion"
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock

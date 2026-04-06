@@ -25,19 +25,17 @@ Key requirements affecting MySQL deployments:
 
 ```sql
 -- Remove anonymous users
-DELETE FROM mysql.user WHERE user = '';
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 
 -- Remove test database
 DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE db = 'test' OR db = 'test\_%';
 
 -- Disable remote root login
-DELETE FROM mysql.user WHERE user = 'root' AND host != 'localhost';
+DROP USER IF EXISTS 'root'@'%';
 
 -- Set strong root password
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'ComplexR00tP@ssw0rd!';
-
-FLUSH PRIVILEGES;
 ```
 
 ## Requirement 3: Encrypt Cardholder Data at Rest

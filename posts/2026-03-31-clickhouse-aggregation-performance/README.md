@@ -116,8 +116,8 @@ Exact aggregations like `uniqExact` and `quantileExact` require storing all valu
 SELECT uniqExact(user_id) FROM events_raw;
 
 -- Approximate: uses O(1) memory, sub-percent error
-SELECT uniq(user_id)      FROM events_raw;  -- HyperLogLog, ~1% error
-SELECT uniqHLL12(user_id) FROM events_raw;  -- Smaller state, ~2% error
+SELECT uniq(user_id)      FROM events_raw;  -- compact approximate distinct state
+SELECT uniqHLL12(user_id) FROM events_raw;  -- HLL-based state, ~2% error
 
 -- Exact quantile: sorts all values, O(n log n)
 SELECT quantileExact(0.99)(response_ms) FROM requests;
@@ -131,11 +131,12 @@ SELECT quantiles(0.5, 0.95, 0.99)(response_ms) FROM requests;
 
 ## Tune GROUP BY with group_by_overflow_mode
 
-When the number of keys in a GROUP BY exceeds memory limits, ClickHouse defaults to throwing an exception. Change the overflow mode to spill to disk or use approximate grouping.
+When the number of keys in a GROUP BY exceeds memory limits, ClickHouse can spill intermediate state to disk with `max_bytes_before_external_group_by`. `group_by_overflow_mode` is separate: it controls what happens once `max_rows_to_group_by` is hit.
 
 ```sql
 SET max_bytes_before_external_group_by = 10000000000;  -- 10 GB spill threshold
-SET group_by_overflow_mode = 'any';  -- drop rare keys instead of failing
+SET max_rows_to_group_by = 100000;
+SET group_by_overflow_mode = 'any';  -- return a partial result once the row cap is hit
 
 SELECT
     user_id,
@@ -144,6 +145,7 @@ FROM events_raw
 GROUP BY user_id
 SETTINGS
     max_bytes_before_external_group_by = 10000000000,
+    max_rows_to_group_by = 100000,
     group_by_overflow_mode = 'any';
 ```
 

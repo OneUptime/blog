@@ -73,10 +73,10 @@ from dapr.clients import DaprClient
 
 query = {
     "filter": {
-        "EQ": {"value.tier": "premium"}
+        "EQ": {"tier": "premium"}
     },
     "sort": [
-        {"key": "value.score", "order": "DESC"}
+        {"key": "score", "order": "DESC"}
     ],
     "page": {
         "limit": 10
@@ -100,13 +100,13 @@ with DaprClient() as client:
 query = {
     "filter": {
         "AND": [
-            {"EQ": {"value.tier": "premium"}},
-            {"GT": {"value.score": 70}},
-            {"IN": {"value.region": ["us-east", "eu-west"]}}
+            {"EQ": {"tier": "premium"}},
+            {"GT": {"score": 70}},
+            {"IN": {"region": ["us-east", "eu-west"]}}
         ]
     },
     "sort": [
-        {"key": "value.score", "order": "DESC"}
+        {"key": "score", "order": "DESC"}
     ],
     "page": {
         "limit": 5,
@@ -122,7 +122,7 @@ token = None
 all_results = []
 
 while True:
-    q = {"filter": {"EQ": {"value.status": "active"}}, "page": {"limit": 50}}
+    q = {"filter": {"EQ": {"status": "active"}}, "page": {"limit": 50}}
     if token:
         q["page"]["token"] = token
 

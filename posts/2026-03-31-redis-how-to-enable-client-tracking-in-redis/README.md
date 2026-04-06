@@ -62,12 +62,12 @@ def handle_invalidations():
     pubsub.subscribe('__redis__:invalidate')
     for msg in pubsub.listen():
         if msg['type'] == 'message':
-            keys = msg['data']
-            if keys is None:
+            payload = msg['data']
+            if payload is None:
                 cache.clear()
                 print("Full cache flush")
             else:
-                for key in (keys if isinstance(keys, list) else [keys]):
+                for key in (payload if isinstance(payload, list) else [payload]):
                     k = key.decode() if isinstance(key, bytes) else key
                     cache.pop(k, None)
                     print(f"Invalidated: {k}")

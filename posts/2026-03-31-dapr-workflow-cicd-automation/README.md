@@ -147,7 +147,7 @@ def approve_deployment():
 ## Triggering the Pipeline
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/deployment_pipeline_workflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/deployment_pipeline_workflow \
   -H "Content-Type: application/json" \
   -d '{"service": "api-server", "version": "v2.5.0", "gitSha": "abc123"}'
 ```

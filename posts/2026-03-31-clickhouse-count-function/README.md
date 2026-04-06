@@ -76,7 +76,7 @@ SELECT count(DISTINCT status) FROM orders;
 
 ### count(DISTINCT) vs uniq()
 
-For large datasets, prefer `uniq()` over `count(DISTINCT)`. `uniq()` uses a HyperLogLog-based approximation that is orders of magnitude faster and uses much less memory, with error rates typically under 2%.
+For large datasets, prefer `uniq()` over `count(DISTINCT)`. `uniq()` uses a compact approximate-distinct algorithm that is orders of magnitude faster and uses much less memory.
 
 ```sql
 -- Exact distinct count (slower, more memory)

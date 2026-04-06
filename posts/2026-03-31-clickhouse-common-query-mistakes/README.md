@@ -26,13 +26,13 @@ WHERE user_id = 42;
 
 ## Mistake 2: Using uniqExact When Approximate is Fine
 
-`uniqExact()` requires sorting all distinct values, which is slow and memory-intensive. `uniq()` uses HyperLogLog and is typically 99% accurate.
+`uniqExact()` requires tracking all distinct values, which is slow and memory-intensive. `uniq()` uses a compact approximate-distinct algorithm and is typically accurate enough for analytics workloads.
 
 ```sql
 -- BAD: exact count requires storing all user_ids in memory
 SELECT uniqExact(user_id) FROM events;  -- 180 seconds on 10B rows
 
--- GOOD: approximate count, 99% accurate, much faster
+-- GOOD: approximate count with a small error margin, much faster
 SELECT uniq(user_id) FROM events;  -- 4 seconds on 10B rows
 ```
 

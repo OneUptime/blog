@@ -35,7 +35,7 @@ annotations:
 The workflow status API reveals the current state of any workflow instance:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order_workflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/order_workflow/{instance_id}
 ```
 
 Response fields to inspect:
@@ -113,10 +113,10 @@ Pause a running workflow to inspect its state without terminating it:
 
 ```bash
 # Pause
-curl -X POST "http://localhost:3500/v1.0-beta1/workflows/dapr/order_workflow/{instance_id}/pause"
+curl -X POST "http://localhost:3500/v1.0/workflows/dapr/order_workflow/{instance_id}/pause"
 
 # Resume after inspection
-curl -X POST "http://localhost:3500/v1.0-beta1/workflows/dapr/order_workflow/{instance_id}/resume"
+curl -X POST "http://localhost:3500/v1.0/workflows/dapr/order_workflow/{instance_id}/resume"
 ```
 
 ## Testing Determinism Issues

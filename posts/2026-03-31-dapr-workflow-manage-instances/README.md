@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, Workflow, Instance Management, Operation, CLI
 
-Description: Learn how to manage Dapr workflow instances - start, query, pause, resume, terminate, and purge workflows using the CLI, HTTP API, and SDK.
+Description: Learn how to manage Dapr workflow instances - start, query, suspend, resume, terminate, and purge workflows using the CLI, HTTP API, and SDK.
 
 ---
 
@@ -38,7 +38,7 @@ instance_id = client.schedule_new_workflow(
 Via HTTP API:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/my_workflow/start \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/my_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"input": {"key": "value"}}'
 ```
@@ -58,7 +58,7 @@ print(f"Last updated: {state.last_updated_at}")
 Via HTTP API:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-ORD-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001
 ```
 
 Response:
@@ -76,29 +76,29 @@ Response:
 Via CLI:
 
 ```bash
-dapr workflow get --app-id myapp --workflow-id order-processing-ORD-001
+dapr workflow history order-processing-ORD-001 --app-id myapp
 ```
 
-## Pausing and Resuming a Workflow
+## Suspending and Resuming a Workflow
 
-Pause a running workflow (it stops processing new events but retains state):
+Suspend a running workflow (it stops processing new events but retains state):
 
 ```python
 client.pause_workflow("order-processing-ORD-001")
 ```
 
 ```bash
-dapr workflow pause --app-id myapp --workflow-id order-processing-ORD-001
+dapr workflow suspend order-processing-ORD-001 --app-id myapp
 ```
 
-Resume a paused workflow:
+Resume a suspended workflow:
 
 ```python
 client.resume_workflow("order-processing-ORD-001")
 ```
 
 ```bash
-dapr workflow resume --app-id myapp --workflow-id order-processing-ORD-001
+dapr workflow resume order-processing-ORD-001 --app-id myapp
 ```
 
 ## Terminating a Workflow
@@ -110,7 +110,7 @@ client.terminate_workflow("order-processing-ORD-001")
 ```
 
 ```bash
-dapr workflow terminate --app-id myapp --workflow-id order-processing-ORD-001
+dapr workflow terminate order-processing-ORD-001 --app-id myapp
 ```
 
 Terminated workflows retain their history. Use purge to remove the history.
@@ -124,7 +124,7 @@ client.purge_workflow("order-processing-ORD-001")
 ```
 
 ```bash
-dapr workflow purge --app-id myapp --workflow-id order-processing-ORD-001
+dapr workflow purge order-processing-ORD-001 --app-id myapp
 ```
 
 Purging completed or terminated workflows frees state store space in long-running deployments.
@@ -142,7 +142,7 @@ client.raise_workflow_event(
 ```
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-ORD-001/raiseEvent/payment-confirmed \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001/raiseEvent/payment-confirmed \
   -H "Content-Type: application/json" \
   -d '{"payment_id": "pay-abc123"}'
 ```

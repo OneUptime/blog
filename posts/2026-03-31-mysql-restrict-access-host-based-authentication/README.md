@@ -25,7 +25,6 @@ To create a user that can only connect from a specific IP address:
 ```sql
 CREATE USER 'appuser'@'192.168.1.50' IDENTIFIED BY 'StrongPassword!';
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp.* TO 'appuser'@'192.168.1.50';
-FLUSH PRIVILEGES;
 ```
 
 To allow a subnet:
@@ -38,8 +37,7 @@ GRANT SELECT ON reporting.* TO 'readonly'@'10.0.1.%';
 To restrict the root account to localhost only (best practice):
 
 ```sql
-DELETE FROM mysql.user WHERE User='root' AND Host != 'localhost';
-FLUSH PRIVILEGES;
+DROP USER IF EXISTS 'root'@'%';
 ```
 
 ## Viewing Existing Host Restrictions
@@ -64,7 +62,6 @@ If an account was created with `%`, you can tighten it by creating a host-specif
 CREATE USER 'appuser'@'10.0.0.5' IDENTIFIED BY 'StrongPassword!';
 GRANT SELECT, INSERT ON myapp.* TO 'appuser'@'10.0.0.5';
 DROP USER 'appuser'@'%';
-FLUSH PRIVILEGES;
 ```
 
 ## Using Hostname Instead of IP
@@ -115,4 +112,4 @@ ALTER USER 'appuser'@'192.168.1.50' REQUIRE CIPHER 'DHE-RSA-AES256-SHA';
 
 ## Summary
 
-Host-based authentication in MySQL is a simple but effective layer of defense. By tying user accounts to specific IP addresses or subnets rather than using `%`, you prevent unauthorized machines from even attempting a password-based login. Always audit accounts with wildcard hosts, restrict root to localhost, and combine host restrictions with SSL requirements for production environments.
+Host-based authentication in MySQL is a simple but effective layer of defense. By tying user accounts to specific IP addresses or subnets rather than using `%`, you prevent unauthorized machines from even attempting a password-based login. Always audit accounts with wildcard hosts, restrict root to localhost by dropping remote root accounts, and combine host restrictions with SSL requirements for production environments.

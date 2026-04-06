@@ -43,7 +43,7 @@ stateDiagram-v2
 Get the current status of a workflow instance:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-001
 ```
 
 Response example:
@@ -171,14 +171,14 @@ Suspend a running workflow:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/suspend
+  http://localhost:3500/v1.0/workflows/dapr/order-001/suspend
 ```
 
 Resume a suspended workflow:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/resume
+  http://localhost:3500/v1.0/workflows/dapr/order-001/resume
 ```
 
 ## Terminating a Workflow
@@ -187,7 +187,7 @@ Terminate a stuck or unwanted workflow:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/terminate" \
+  "http://localhost:3500/v1.0/workflows/dapr/order-001/terminate" \
   -H "Content-Type: application/json" \
   -d '{"output": "Terminated by admin"}'
 ```
@@ -198,7 +198,7 @@ After a workflow completes or is terminated, purge its history to free storage:
 
 ```bash
 curl -X DELETE \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/purge
+  http://localhost:3500/v1.0/workflows/dapr/order-001/purge
 ```
 
 ## Polling Workflow Status to Completion

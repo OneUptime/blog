@@ -48,7 +48,7 @@ else:
 Via HTTP API:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-ORD-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-ORD-001
 ```
 
 Response:
@@ -68,7 +68,7 @@ Response:
 Via CLI:
 
 ```bash
-dapr workflow get --app-id order-service --workflow-id order-ORD-001
+dapr workflow history order-ORD-001 --app-id order-service
 ```
 
 ## Polling Until Completion

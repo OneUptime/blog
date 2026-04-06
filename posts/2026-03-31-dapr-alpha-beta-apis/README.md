@@ -16,48 +16,19 @@ Dapr labels its APIs with stability tiers to communicate expected reliability:
 - **Beta** - feature-complete, may have minor breaking changes
 - **Alpha** - experimental, breaking changes expected
 
-## Enabling Alpha and Beta APIs
-
-By default, only stable APIs are enabled. To opt in to alpha and beta features, annotate your Dapr configuration:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: app-config
-spec:
-  features:
-    - name: StateEncryption
-      enabled: true
-    - name: QueryStateAlpha1
-      enabled: true
-```
-
-Apply in Kubernetes:
-
-```bash
-kubectl apply -f app-config.yaml
-```
-
-For self-hosted mode, reference the configuration file:
-
-```bash
-dapr run --app-id myapp --config ./app-config.yaml -- node app.js
-```
-
 ## Calling Alpha APIs via HTTP
 
 Alpha APIs typically include a version label in their path:
 
 ```bash
 # Query state store using alpha query API
-curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
+  curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
       "EQ": {"person.org": "Dev Ops"}
     },
-    "sort": [{"key": "state.person.id", "order": "ASC"}],
+    "sort": [{"key": "person.id", "order": "ASC"}],
     "page": {"limit": 10}
   }'
 ```
@@ -100,4 +71,4 @@ curl http://localhost:3500/v1.0/metadata | jq '.enabledFeatures'
 
 ## Summary
 
-Dapr alpha and beta APIs let you test cutting-edge features before they graduate to stable status. Enable them via a Configuration resource with feature flags, call them using versioned API paths like `/v1.0-alpha1/`, and be prepared for breaking changes when upgrading Dapr versions.
+Dapr alpha and beta APIs let you test cutting-edge features before they graduate to stable status. Call them using the versioned API paths documented for each feature, validate payloads against the current docs, and be prepared for breaking changes when upgrading Dapr versions.

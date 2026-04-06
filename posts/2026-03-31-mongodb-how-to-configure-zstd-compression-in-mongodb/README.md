@@ -54,23 +54,24 @@ db.createCollection("metrics", {
 
 ## Zstd Compression Levels
 
-Zstd supports compression levels 1-22. Higher levels compress more but are slower to compress (decompression speed remains fast):
+MongoDB exposes `storage.wiredTiger.engineConfig.zstdCompressionLevel` for tuning Zstd. Higher values compress more but are slower to compress; decompression remains fast:
 
-```javascript
-db.createCollection("cold_archive", {
-  storageEngine: {
-    wiredTiger: {
-      configString: "block_compressor=zstd,block_compressor_level=15"
-    }
-  }
-})
+```yaml
+# mongod.conf
+storage:
+  wiredTiger:
+    engineConfig:
+      zstdCompressionLevel: 15
 ```
 
 For real-time data, use lower levels:
 
-```javascript
-// Level 3 is a good balance for active collections
-configString: "block_compressor=zstd,block_compressor_level=3"
+```yaml
+# mongod.conf
+storage:
+  wiredTiger:
+    engineConfig:
+      zstdCompressionLevel: 3
 ```
 
 ## Comparing Zstd to Other Algorithms

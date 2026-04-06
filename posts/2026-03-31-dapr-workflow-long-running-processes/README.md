@@ -207,7 +207,7 @@ wfr.start()
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order_workflow/start?instanceID=order-001 \
+  http://localhost:3500/v1.0/workflows/dapr/order_workflow/start?instanceID=order-001 \
   -H "Content-Type: application/json" \
   -d '{"orderId": "order-001", "amount": 99.99}'
 ```
@@ -215,7 +215,7 @@ curl -X POST \
 ## Checking Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-001
 ```
 
 Response:

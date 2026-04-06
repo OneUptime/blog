@@ -240,7 +240,7 @@ func main() {
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/batch_orders_workflow/start?instanceID=batch-001" \
+  "http://localhost:3500/v1.0/workflows/dapr/batch_orders_workflow/start?instanceID=batch-001" \
   -H "Content-Type: application/json" \
   -d '{
     "orders": [
@@ -256,8 +256,8 @@ curl -X POST \
 Each child workflow gets its own instance ID. Check them individually:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-ord-01
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-ord-02
+curl http://localhost:3500/v1.0/workflows/dapr/order-ord-01
+curl http://localhost:3500/v1.0/workflows/dapr/order-ord-02
 ```
 
 ## Child Workflow Instance IDs

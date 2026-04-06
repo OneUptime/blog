@@ -80,7 +80,7 @@ ORDER BY event_date, user_id;
 
 ## Counting Distinct Values with uniq()
 
-When you only need the count of distinct values (not the values themselves), use `uniq()` instead of `COUNT(DISTINCT ...)`. `uniq()` uses a HyperLogLog-based approximation and is significantly faster on large datasets.
+When you only need the count of distinct values (not the values themselves), use `uniq()` instead of `COUNT(DISTINCT ...)`. `uniq()` uses a compact approximate-distinct algorithm and is significantly faster on large datasets.
 
 ```sql
 -- Approximate distinct user count (fast, slightly imprecise)
@@ -91,7 +91,7 @@ FROM events;
 SELECT count(DISTINCT user_id) AS exact_unique_users
 FROM events;
 
--- uniqExact for exact count with HLL-style syntax
+-- uniqExact for exact count
 SELECT uniqExact(user_id) AS exact_unique_users
 FROM events;
 ```

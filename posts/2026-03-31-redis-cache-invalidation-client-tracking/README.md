@@ -12,7 +12,7 @@ Cache invalidation is the hardest part of client-side caching. Redis's tracking 
 
 ## How Invalidation Works
 
-When a tracked key is modified, Redis sends an `INVALIDATE` message to the client's redirect connection via the `__redis__:invalidate` Pub/Sub channel:
+When a tracked key is modified, Redis sends an `INVALIDATE` payload to the client's redirect connection. In RESP2, the redirect connection typically subscribes to the `__redis__:invalidate` pseudo-channel:
 
 ```bash
 # Client reads a key - Redis tracks it
@@ -22,7 +22,7 @@ GET user:42
 SET user:42 '{"name":"Alice","role":"admin"}'
 
 # Redis sends to the tracking client's redirect:
-# Message on __redis__:invalidate: "user:42"
+# Message on __redis__:invalidate: ["user:42"]
 ```
 
 The client removes `user:42` from its local cache on receiving this message.
@@ -67,8 +67,17 @@ class ResilientCacheClient:
         def listen():
             try:
                 for msg in pubsub.listen():
-                    if msg['type'] == 'message' and msg['data']:
-                        self._invalidate(msg['data'])
+                    if msg['type'] != 'message':
+                        continue
+
+                    payload = msg['data']
+                    if payload is None:
+                        self.cache.clear()
+                        continue
+
+                    keys = payload if isinstance(payload, list) else [payload]
+                    for key in keys:
+                        self._invalidate(key)
             except Exception:
                 self.connected = False
                 time.sleep(1)
@@ -108,17 +117,20 @@ Always set TTLs on cached values as a fallback for missed invalidations:
 
 ## Handling Invalidation of Multiple Keys
 
-Redis can send a list of keys in a single invalidation message (when a pipeline or multi-key operation changes multiple keys at once):
+Redis can send an array of keys in a single invalidation payload, and a flush sends `null`:
 
 ```python
 def on_invalidate_message(self, msg):
     data = msg['data']
-    if isinstance(data, list):
+    if data is None:
+        # FlushAll / FlushDb invalidation
+        self.cache.clear()
+    elif isinstance(data, list):
         # Multiple keys invalidated at once
         for key in data:
             if key in self.cache:
                 del self.cache[key]
-    elif isinstance(data, str):
+    else:
         if data in self.cache:
             del self.cache[data]
 ```
@@ -151,4 +163,4 @@ class TestCacheInvalidation(unittest.TestCase):
 
 ## Summary
 
-Handle Redis client-side cache invalidation by flushing the entire local cache on reconnection (to prevent stale data from missed invalidations), applying TTLs as a safety fallback, and handling both single-key and multi-key invalidation messages. Reconnection-triggered cache flushes trade a brief performance dip for guaranteed consistency - a sound trade-off for most applications.
+Handle Redis client-side cache invalidation by flushing the entire local cache on reconnection (to prevent stale data from missed invalidations), applying TTLs as a safety fallback, and handling array payloads plus `null` flush invalidations correctly. Reconnection-triggered cache flushes trade a brief performance dip for guaranteed consistency - a sound trade-off for most applications.

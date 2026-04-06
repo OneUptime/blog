@@ -74,12 +74,12 @@ from dapr.clients import DaprClient
 query = {
     "filter": {
         "AND": [
-            {"EQ": {"value.tier": "premium"}},
-            {"GTE": {"value.score": 75}}
+            {"EQ": {"tier": "premium"}},
+            {"GTE": {"score": 75}}
         ]
     },
     "sort": [
-        {"key": "value.score", "order": "DESC"}
+        {"key": "score", "order": "DESC"}
     ],
     "page": {
         "limit": 10
@@ -106,15 +106,15 @@ Cosmos DB supports all Dapr query filter operators:
 
 ```python
 # Equality
-{"EQ": {"value.status": "active"}}
+{"EQ": {"status": "active"}}
 
 # Comparison
-{"GT": {"value.amount": 100}}
-{"LT": {"value.age": 30}}
-{"GTE": {"value.score": 50}}
+{"GT": {"amount": 100}}
+{"LT": {"age": 30}}
+{"GTE": {"score": 50}}
 
 # Set membership
-{"IN": {"value.region": ["us-east-1", "us-west-2"]}}
+{"IN": {"region": ["us-east-1", "us-west-2"]}}
 
 # Logical
 {"AND": [{"EQ": ...}, {"GT": ...}]}

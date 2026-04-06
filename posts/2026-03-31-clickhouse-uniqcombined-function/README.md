@@ -8,7 +8,7 @@ Description: Learn how uniqCombined() uses a hybrid algorithm in ClickHouse for 
 
 ---
 
-ClickHouse's `uniqCombined()` function provides approximate distinct counting using a hybrid algorithm that combines three techniques: a small sorted array for tiny cardinalities, a hash set for medium cardinalities, and HyperLogLog (HLL) for large cardinalities. This adaptive approach gives better accuracy than `uniq()` across a wide range of cardinalities, making it the recommended approximate distinct count function in most scenarios.
+ClickHouse's `uniqCombined()` function provides approximate distinct counting using a hybrid algorithm that keeps exact representations for small cardinalities and switches to an approximate sketch as the number of distinct values grows. This adaptive approach gives better accuracy than `uniq()` across a wide range of cardinalities, making it a strong choice when you want more accuracy than the default approximate function.
 
 ## Basic Syntax
 
@@ -44,7 +44,7 @@ WHERE event_date = today();
 
 ## uniqCombined() vs uniq()
 
-`uniq()` always uses HLL with 12-bit precision (4,096 registers). `uniqCombined()` uses 17-bit HLL (131,072 registers), giving roughly 3x better accuracy:
+`uniq()` is the default approximate distinct-count function. `uniqCombined()` uses a larger internal sketch for better accuracy on higher-cardinality datasets:
 
 ```sql
 -- Compare accuracy of uniq vs uniqCombined
@@ -57,8 +57,8 @@ WHERE event_date = today();
 ```
 
 Typical error rates:
-- `uniq()`: ~2.2% relative error
-- `uniqCombined()`: ~0.5% to 1% relative error
+- `uniq()`: small relative error, optimized for speed
+- `uniqCombined()`: lower relative error than `uniq()` on large cardinalities
 - `uniqExact()`: 0% error
 
 ## uniqCombined64() for Very High Cardinality
@@ -136,4 +136,4 @@ SELECT uniq(user_id) AS rough_dau FROM events WHERE event_date = today();
 
 ## Summary
 
-`uniqCombined()` is the recommended approximate distinct count function in ClickHouse for most workloads, offering better accuracy than `uniq()` through its hybrid array, hash set, and HyperLogLog approach with 17-bit HLL precision. Use `uniqCombined64()` when working with very large cardinalities where 32-bit hash collisions could skew results. Reserve `uniqExact()` for scenarios where a precise count is mandatory, such as billing and compliance reports.
+`uniqCombined()` is a good approximate distinct-count option in ClickHouse when you want better accuracy than `uniq()` without paying for exact counting. Use `uniqCombined64()` when working with very large cardinalities where 32-bit hash collisions could skew results. Reserve `uniqExact()` for scenarios where a precise count is mandatory, such as billing and compliance reports.

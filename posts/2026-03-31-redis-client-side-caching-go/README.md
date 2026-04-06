@@ -83,8 +83,13 @@ func (c *ClientSideCache) setupTracking() error {
     go func() {
         ch := pubsub.Channel()
         for msg := range ch {
-            key := msg.Payload
-            if key != "" {
+            if msg.Payload == "" {
+                c.FlushLocal()
+                continue
+            }
+
+            keys := []string{msg.Payload}
+            for _, key := range keys {
                 c.cache.Delete(key)
                 fmt.Printf("Invalidated key: %s\n", key)
             }

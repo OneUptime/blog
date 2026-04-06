@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Compression, WiredTiger, Storage, Performance
 
-Description: Learn how to configure snappy, zlib, and zstd compression for MongoDB collections to reduce disk usage and improve I/O performance.
+Description: Learn how to configure WiredTiger collection compression and index prefix compression in MongoDB to reduce disk usage and improve I/O performance.
 
 ---
 
 ## Compression in MongoDB
 
-MongoDB's WiredTiger storage engine supports compression at the collection and index level. Compression reduces disk storage and I/O bandwidth but uses CPU to compress and decompress data.
+MongoDB's WiredTiger storage engine supports compression for collection data. Indexes use prefix compression, and the journal uses its own compressor. Compression reduces disk storage and I/O bandwidth but uses CPU to compress and decompress data.
 
 Available algorithms:
 
@@ -64,26 +64,15 @@ db.createCollection("rawImages", {
 })
 ```
 
-## Setting Index Compression
+## Index Compression
 
-Indexes have separate compression settings:
+Indexes use prefix compression. There is no per-collection block compressor for index data:
 
-```javascript
-// Create collection with zstd data compression and zstd index prefix compression
-db.createCollection("products", {
-  storageEngine: {
-    wiredTiger: {
-      configString: "block_compressor=zstd"
-    }
-  },
-  indexOptionDefaults: {
-    storageEngine: {
-      wiredTiger: {
-        configString: "block_compressor=zstd"
-      }
-    }
-  }
-})
+```yaml
+storage:
+  wiredTiger:
+    indexConfig:
+      prefixCompression: true
 ```
 
 ## Changing Default Compression in mongod.conf
@@ -112,39 +101,27 @@ Note: existing collections are not affected - this only applies to newly created
 
 ## Changing Compression on an Existing Collection
 
-MongoDB does not support in-place compression changes. You must recreate the collection:
+MongoDB does not change a collection's block compressor in place. Create a new collection with the desired compression, copy the data into it, then swap names:
 
 ```javascript
-// Step 1: export data
-mongodump --db mydb --collection orders --out /tmp/dump
-
-// Step 2: drop the old collection (with a backup!)
-db.orders.renameCollection("orders_backup")
-
-// Step 3: create new collection with desired compression
-db.createCollection("orders", {
+db.createCollection("orders_compressed", {
   storageEngine: {
     wiredTiger: { configString: "block_compressor=zstd" }
   }
-})
+});
 
-// Step 4: copy data from backup
-db.orders_backup.find().forEach(doc => db.orders.insertOne(doc))
+db.orders.aggregate([
+  { $match: {} },
+  {
+    $merge: {
+      into: "orders_compressed",
+      whenMatched: "replace",
+      whenNotMatched: "insert"
+    }
+  }
+]);
 
-// Step 5: recreate indexes
-db.orders.createIndex({ customerId: 1 })
-db.orders.createIndex({ status: 1, createdAt: -1 })
-
-// Step 6: verify and drop backup
-db.orders.countDocuments()  // verify count matches
-db.orders_backup.drop()
-```
-
-Or use mongorestore:
-
-```bash
-# Restore with new collection configuration
-mongorestore --db mydb --collection orders /tmp/dump/mydb/orders.bson
+// Recreate indexes on the new collection, verify counts, then rename/swap collections.
 ```
 
 ## Measuring Compression Savings

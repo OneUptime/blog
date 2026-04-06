@@ -59,7 +59,7 @@ curl -X POST http://localhost:3500/v1.0/state/statestore \
 ## Querying State with Filters and Sorting
 
 ```bash
-curl -X POST http://localhost:3500/v1.0/state/statestore/query \
+curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
@@ -110,11 +110,11 @@ func main() {
 
 ```bash
 # First page
-curl -X POST http://localhost:3500/v1.0/state/statestore/query \
+curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -d '{"filter": {"EQ": {"active": true}}, "page": {"limit": 20}}'
 
 # Subsequent pages using the token from previous response
-curl -X POST http://localhost:3500/v1.0/state/statestore/query \
+curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -d '{"filter": {"EQ": {"active": true}}, "page": {"limit": 20, "token": "eyJsYXN0S2V5IjoiIn0="}}'
 ```
 

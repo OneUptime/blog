@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Materialized View, Unique Visitor, HyperLogLog, AggregatingMergeTree
+Tags: ClickHouse, Materialized View, Unique Visitor, AggregatingMergeTree, Approximate Count
 
-Description: Count unique visitors efficiently in ClickHouse using materialized views with AggregatingMergeTree and HyperLogLog sketches for approximate distinct counts.
+Description: Count unique visitors efficiently in ClickHouse using materialized views and aggregate states for approximate distinct counts.
 
 ---
 
@@ -14,7 +14,7 @@ Counting distinct users across billions of events is expensive. `uniqExact()` re
 
 ## AggregatingMergeTree for Unique Counts
 
-ClickHouse's `AggregatingMergeTree` engine stores aggregate function states (like HyperLogLog sketches) and merges them on query. This enables exact or approximate distinct counts on pre-aggregated data.
+ClickHouse's `AggregatingMergeTree` engine stores aggregate function states and merges them on query. This enables exact or approximate distinct counts on pre-aggregated data.
 
 ```sql
 CREATE TABLE page_visits
@@ -32,7 +32,7 @@ ORDER BY (page, event_time);
 ## Daily Unique Visitor Materialized View
 
 ```sql
--- Target: AggregatingMergeTree with HLL sketch
+-- Target: AggregatingMergeTree with an approximate distinct state
 CREATE TABLE daily_unique_visitors
 (
     visit_date Date,
@@ -123,8 +123,8 @@ ENGINE = AggregatingMergeTree
 ORDER BY (visit_date, page);
 ```
 
-Note: `uniqExact` uses significantly more memory than `uniq` (HLL). Use `uniq` for dashboards (0.81% typical error) and `uniqExact` only when precision is required.
+Note: `uniqExact` uses significantly more memory than `uniq`. Use `uniq` for dashboards and `uniqExact` only when precision is required.
 
 ## Summary
 
-Use AggregatingMergeTree with `uniqState` / `uniqMerge` to maintain unique visitor counts in ClickHouse materialized views. This pattern pre-computes HyperLogLog sketches at insert time, allowing DAU, WAU, and MAU calculations to return in milliseconds. Sketches are mergeable across dimensions, so one daily materialized view supports country, page, and device breakdowns without additional queries.
+Use AggregatingMergeTree with `uniqState` / `uniqMerge` to maintain unique visitor counts in ClickHouse materialized views. This pattern pre-computes mergeable approximate distinct states at insert time, allowing DAU, WAU, and MAU calculations to return in milliseconds. States are mergeable across dimensions, so one daily materialized view supports country, page, and device breakdowns without additional queries.

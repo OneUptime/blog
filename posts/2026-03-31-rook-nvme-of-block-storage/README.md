@@ -190,7 +190,7 @@ metadata:
     description: "High-performance NVMe-oF backed block storage"
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   # Use the NVMe-dedicated pool
   pool: nvmeof-pool
   imageFormat: "2"

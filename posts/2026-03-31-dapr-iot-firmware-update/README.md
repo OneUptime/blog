@@ -121,7 +121,7 @@ done
 
 ```bash
 # Check workflow instance status
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/firmware-rollout-wf/instances/rollout-v2-1-0
+curl http://localhost:3500/v1.0/workflows/dapr/firmware-rollout-wf/instances/rollout-v2-1-0
 
 # Check a specific device actor state
 curl http://localhost:3500/v1.0/actors/FirmwareUpdateActor/sensor-42/state/update

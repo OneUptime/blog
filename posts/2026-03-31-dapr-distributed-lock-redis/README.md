@@ -173,7 +173,7 @@ Use the Dapr HTTP API to test manually:
 dapr run --app-id test-app --dapr-http-port 3500 --components-path ./components -- sleep 300 &
 
 # Acquire lock
-curl -X POST http://localhost:3500/v1.0-beta1/lock/redislock \
+curl -X POST http://localhost:3500/v1.0/lock/redislock \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "test-resource", "lockOwner": "test-owner-1", "expiryInSeconds": 60}'
 
@@ -182,7 +182,7 @@ redis-cli KEYS "dapr*"
 redis-cli TTL "dapr||test-app||test-resource"
 
 # Release lock
-curl -X POST http://localhost:3500/v1.0-beta1/unlock/redislock \
+curl -X POST http://localhost:3500/v1.0/unlock/redislock \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "test-resource", "lockOwner": "test-owner-1"}'
 ```

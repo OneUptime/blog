@@ -79,11 +79,10 @@ db.adminCommand({
 Use `$currentOp` to find transactions approaching the limit:
 
 ```javascript
-db.adminCommand({
-  currentOp: true,
-  active: true,
-  transaction: { $exists: true }
-});
+const operations = db.adminCommand({ currentOp: 1, active: true }).inprog;
+operations
+  .filter(op => op.transaction && op.secs_running > 5)
+  .forEach(op => print("Long transaction:", op.opid, "- running", op.secs_running, "secs"));
 ```
 
 Look for the `timeOpenMicros` field - transactions close to `transactionLifetimeLimitSeconds * 1000000` microseconds are at risk of being aborted.
@@ -113,7 +112,7 @@ async function runWithRetry(session, fn) {
 
 ## Replica Set vs Sharded Clusters
 
-On sharded clusters, the setting must be applied to **all mongos and mongod instances** for consistent behavior. Use `mongos` to propagate the parameter or update each node's `mongod.conf`.
+`transactionLifetimeLimitSeconds` is a `mongod` parameter. On sharded clusters, apply the same value to every shard and config server member so behavior stays consistent across the deployment. `mongos` does not use this parameter.
 
 ## Summary
 

@@ -30,9 +30,6 @@ metadata:
   name: appconfig
   namespace: production
 spec:
-  features:
-  - name: WorkflowBackend
-    enabled: true
   workflow:
     maxConcurrentWorkflowInvocations: 100
     maxConcurrentActivityInvocations: 100

@@ -91,7 +91,7 @@ runtime.start()
 Start a new workflow instance:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/travel_booking_workflow/start \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/travel_booking_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"orderId": "ord-999", "destination": "Paris", "nights": 3}'
 ```
@@ -99,7 +99,7 @@ curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/travel_booking_work
 ## Checking Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/travel_booking_workflow/instances/INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/travel_booking_workflow/instances/INSTANCE_ID
 ```
 
 Response:

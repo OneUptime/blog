@@ -154,7 +154,7 @@ metadata:
   name: rook-ceph-block-stretched
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <cluster-fsid>
+  clusterID: rook-ceph
   pool: stretched-pool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock

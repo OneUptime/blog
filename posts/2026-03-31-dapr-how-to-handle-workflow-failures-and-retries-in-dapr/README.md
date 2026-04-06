@@ -195,7 +195,7 @@ public override async Task<OrderResult> RunAsync(WorkflowContext context, OrderR
 Check the status of a failed workflow instance:
 
 ```bash
-dapr workflow get --app-id orderservice --workflow-id abc123
+dapr workflow history abc123 --app-id orderservice
 ```
 
 Example output showing a failed instance:

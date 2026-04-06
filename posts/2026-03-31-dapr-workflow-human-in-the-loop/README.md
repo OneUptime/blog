@@ -123,7 +123,7 @@ with DaprClient() as d:
 ## Checking Pending Approvals
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/expense_approval_workflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/expense_approval_workflow/{instance_id}
 ```
 
 Look for `"runtimeStatus": "RUNNING"` and `"serializedCustomStatus": "Waiting for approval"` to find workflows awaiting human input.

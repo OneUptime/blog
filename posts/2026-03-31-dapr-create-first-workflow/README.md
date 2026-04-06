@@ -112,7 +112,7 @@ dapr run --app-id order-processor \
 Query the workflow status using the Dapr HTTP API:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/{instance-id}
+curl http://localhost:3500/v1.0/workflows/dapr/{instance-id}
 ```
 
 Response:

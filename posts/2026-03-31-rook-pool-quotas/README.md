@@ -176,7 +176,7 @@ metadata:
   name: rook-ceph-block-team-a
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <cluster-fsid>
+  clusterID: rook-ceph
   pool: team-a-pool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock

@@ -181,17 +181,14 @@ You can also run parts of the hardening manually via SQL after connecting as roo
 
 ```sql
 -- Remove anonymous users
-DELETE FROM mysql.user WHERE User = '';
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 
 -- Disallow remote root login
-DELETE FROM mysql.user WHERE User = 'root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP USER IF EXISTS 'root'@'%';
 
 -- Remove test database
 DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE Db = 'test' OR Db = 'test\\_%';
-
--- Reload privileges
-FLUSH PRIVILEGES;
 ```
 
 ## Summary

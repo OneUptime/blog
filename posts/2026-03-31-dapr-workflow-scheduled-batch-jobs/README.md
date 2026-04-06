@@ -110,10 +110,10 @@ def handle_batch_trigger():
 
 ```bash
 # List all workflow instances
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/batch_job_workflow"
+curl "http://localhost:3500/v1.0/workflows/dapr/batch_job_workflow"
 
 # Check a specific run
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/batch_job_workflow/{instance_id}"
+curl "http://localhost:3500/v1.0/workflows/dapr/batch_job_workflow/{instance_id}"
 ```
 
 ## Handling Large Batches with Chunking

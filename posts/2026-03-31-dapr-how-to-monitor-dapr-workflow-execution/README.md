@@ -17,13 +17,13 @@ Monitoring long-running workflows is critical for operational visibility. Dapr e
 The Dapr workflow management API lets you check the state of any workflow instance:
 
 ```bash
-GET http://localhost:3500/v1.0-beta1/workflows/dapr/{instanceId}
+GET http://localhost:3500/v1.0/workflows/dapr/{instanceId}
 ```
 
 Example using curl:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-workflow-abc123
+curl http://localhost:3500/v1.0/workflows/dapr/order-workflow-abc123
 ```
 
 Response:
@@ -100,9 +100,7 @@ public override async Task<OrderResult> RunAsync(WorkflowContext context, OrderR
 Check a specific workflow instance:
 
 ```bash
-dapr workflow get \
-  --app-id orderservice \
-  --workflow-id order-workflow-abc123
+dapr workflow history order-workflow-abc123 --app-id orderservice
 ```
 
 Terminate a stuck workflow:
@@ -202,7 +200,7 @@ def wait_for_workflow(app_id: str, instance_id: str, timeout_seconds: int = 300)
     dapr_port = 3500
 
     while time.time() - start < timeout_seconds:
-        url = f"http://localhost:{dapr_port}/v1.0-beta1/workflows/dapr/{instance_id}"
+        url = f"http://localhost:{dapr_port}/v1.0/workflows/dapr/{instance_id}"
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()

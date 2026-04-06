@@ -125,7 +125,7 @@ public class LoanApplicationWorkflow : Workflow<LoanApplication, LoanDecision>
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/LoanApplicationWorkflow/start?instanceID=loan-app-001" \
+  "http://localhost:3500/v1.0/workflows/dapr/LoanApplicationWorkflow/start?instanceID=loan-app-001" \
   -H "Content-Type: application/json" \
   -d '{
     "applicantName": "Alice Johnson",
@@ -140,7 +140,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/LoanApplicationWorkflow/loan-app-001/raiseEvent/underwriter-decision" \
+  "http://localhost:3500/v1.0/workflows/dapr/LoanApplicationWorkflow/loan-app-001/raiseEvent/underwriter-decision" \
   -H "Content-Type: application/json" \
   -d '{
     "approved": true,
@@ -154,7 +154,7 @@ curl -X POST \
 ## Check Workflow Status Anytime
 
 ```bash
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/LoanApplicationWorkflow/loan-app-001"
+curl "http://localhost:3500/v1.0/workflows/dapr/LoanApplicationWorkflow/loan-app-001"
 ```
 
 Response:

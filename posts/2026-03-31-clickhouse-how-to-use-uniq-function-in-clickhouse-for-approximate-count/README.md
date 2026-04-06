@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ClickHouse, Cardinality, Distinct Count, Analytics, HyperLogLog
 
-Description: Learn how to use uniq() and related functions in ClickHouse for fast approximate count distinct using HyperLogLog with controllable accuracy.
+Description: Learn how to use uniq() and related functions in ClickHouse for fast approximate count distinct, including exact and HyperLogLog-based variants.
 
 ---
 
 ## Overview
 
-ClickHouse provides `uniq()` and a family of related functions for counting distinct values. These use HyperLogLog-based algorithms and are much faster and more memory-efficient than `count(DISTINCT ...)` for large datasets.
+ClickHouse provides `uniq()` and a family of related functions for counting distinct values. `uniq()` is the default approximate function, `uniqHLL12()` is HyperLogLog-based, and `uniqCombined()` mixes strategies depending on cardinality. They are much faster and more memory-efficient than `count(DISTINCT ...)` for large datasets.
 
 ## Basic uniq()
 

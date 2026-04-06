@@ -203,7 +203,7 @@ func CancelRequestActivity(ctx context.Context, input map[string]string) error {
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/approval_workflow/start?instanceID=order-001" \
+  "http://localhost:3500/v1.0/workflows/dapr/approval_workflow/start?instanceID=order-001" \
   -H "Content-Type: application/json" \
   -d '{"orderId": "order-001", "amount": 5000.00}'
 ```
@@ -215,13 +215,13 @@ When the human approver clicks "Approve" in your UI, your backend raises the eve
 ```bash
 # Approved
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/raiseEvent/approval_decision" \
+  "http://localhost:3500/v1.0/workflows/dapr/order-001/raiseEvent/approval_decision" \
   -H "Content-Type: application/json" \
   -d '{"approved": true}'
 
 # Rejected
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/raiseEvent/approval_decision" \
+  "http://localhost:3500/v1.0/workflows/dapr/order-001/raiseEvent/approval_decision" \
   -H "Content-Type: application/json" \
   -d '{"approved": false, "reason": "Amount exceeds budget"}'
 ```
@@ -229,7 +229,7 @@ curl -X POST \
 ## Checking Workflow Status While Waiting
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-001
+curl http://localhost:3500/v1.0/workflows/dapr/order-001
 ```
 
 The status will show `RUNNING` while the workflow is waiting for the external event.

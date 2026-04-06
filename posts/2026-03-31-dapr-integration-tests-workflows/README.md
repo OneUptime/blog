@@ -105,7 +105,7 @@ func TestWorkflowExecution(t *testing.T) {
 
     // Start workflow
     resp, err := http.Post(
-        fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/OrderWorkflow/start?instanceID=%s", daprURL, instanceID),
+        fmt.Sprintf("%s/v1.0/workflows/dapr/OrderWorkflow/start?instanceID=%s", daprURL, instanceID),
         "application/json",
         strings.NewReader(`{"orderId":"` + instanceID + `","amount":200}`),
     )
@@ -116,7 +116,7 @@ func TestWorkflowExecution(t *testing.T) {
     // Poll for completion
     var status map[string]interface{}
     for i := 0; i < 30; i++ {
-        r, _ := http.Get(fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/%s", daprURL, instanceID))
+        r, _ := http.Get(fmt.Sprintf("%s/v1.0/workflows/dapr/%s", daprURL, instanceID))
         json.NewDecoder(r.Body).Decode(&status)
         r.Body.Close()
         if status["runtimeStatus"] == "COMPLETED" {
@@ -139,24 +139,24 @@ func TestWorkflowPauseResume(t *testing.T) {
     instanceID := fmt.Sprintf("pause-test-%d", time.Now().UnixMilli())
 
     http.Post(
-        fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/OrderWorkflow/start?instanceID=%s", daprURL, instanceID),
+        fmt.Sprintf("%s/v1.0/workflows/dapr/OrderWorkflow/start?instanceID=%s", daprURL, instanceID),
         "application/json",
         strings.NewReader(`{"orderId":"` + instanceID + `"}`),
     )
 
     // Pause the workflow
-    http.Post(fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/%s/pause", daprURL, instanceID), "", nil)
+    http.Post(fmt.Sprintf("%s/v1.0/workflows/dapr/%s/pause", daprURL, instanceID), "", nil)
     time.Sleep(1 * time.Second)
 
     var pausedStatus map[string]interface{}
-    r, _ := http.Get(fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/%s", daprURL, instanceID))
+    r, _ := http.Get(fmt.Sprintf("%s/v1.0/workflows/dapr/%s", daprURL, instanceID))
     json.NewDecoder(r.Body).Decode(&pausedStatus)
     if pausedStatus["runtimeStatus"] != "SUSPENDED" {
         t.Errorf("expected SUSPENDED, got %v", pausedStatus["runtimeStatus"])
     }
 
     // Resume
-    http.Post(fmt.Sprintf("%s/v1.0-beta1/workflows/dapr/%s/resume", daprURL, instanceID), "", nil)
+    http.Post(fmt.Sprintf("%s/v1.0/workflows/dapr/%s/resume", daprURL, instanceID), "", nil)
 }
 ```
 

@@ -114,7 +114,7 @@ You can also trigger delayed delivery using Dapr's scheduled workflow API:
 
 ```bash
 # Schedule a workflow to start 1 hour from now
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/DelayedWorkflow/start \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/DelayedWorkflow/start \
   -H "Content-Type: application/json" \
   -d '{
     "input": {

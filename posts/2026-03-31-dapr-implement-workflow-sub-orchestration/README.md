@@ -140,10 +140,10 @@ func main() {
 
 ```bash
 # Get parent workflow status
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/fulfillment-order-123/status"
+curl "http://localhost:3500/v1.0/workflows/dapr/fulfillment-order-123/status"
 
 # Get child workflow status directly
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/payment-order-123/status"
+curl "http://localhost:3500/v1.0/workflows/dapr/payment-order-123/status"
 ```
 
 ## Summary

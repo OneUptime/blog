@@ -40,10 +40,10 @@ curl -X POST http://localhost:3500/v1.0-alpha1/state/querystore/query \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": {"value.status": "pending"}
+      "EQ": {"status": "pending"}
     },
     "sort": [
-      {"key": "value.createdAt", "order": "DESC"}
+      {"key": "createdAt", "order": "DESC"}
     ],
     "page": {
       "limit": 20
@@ -73,14 +73,14 @@ async def list_orders(
     if status and customer_id:
         query_filter = {
             "AND": [
-                {"EQ": {"value.status": status}},
-                {"EQ": {"value.customerId": customer_id}}
+                {"EQ": {"status": status}},
+                {"EQ": {"customerId": customer_id}}
             ]
         }
     elif status:
-        query_filter = {"EQ": {"value.status": status}}
+        query_filter = {"EQ": {"status": status}}
     elif customer_id:
-        query_filter = {"EQ": {"value.customerId": customer_id}}
+        query_filter = {"EQ": {"customerId": customer_id}}
 
     page = {"limit": limit}
     if token:
@@ -88,7 +88,7 @@ async def list_orders(
 
     query_body = {
         "filter": query_filter,
-        "sort": [{"key": "value.createdAt", "order": "DESC"}],
+        "sort": [{"key": "createdAt", "order": "DESC"}],
         "page": page
     }
 

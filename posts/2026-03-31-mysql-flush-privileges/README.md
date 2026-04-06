@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Security, Administration
 
-Description: Learn when and how to use FLUSH PRIVILEGES in MySQL to reload grant tables and apply user permission changes made directly to system tables.
+Description: Learn when and how to use FLUSH PRIVILEGES in MySQL to reload grant tables after legacy recovery steps, and why normal account-management statements do not need it.
 
 ---
 
 ## What Is FLUSH PRIVILEGES
 
-`FLUSH PRIVILEGES` instructs MySQL to re-read the grant tables from the `mysql` system database and update its in-memory privilege cache. MySQL stores user accounts, passwords, and access rights in tables like `mysql.user`, `mysql.db`, and `mysql.tables_priv`. When these tables are modified through `GRANT`, `REVOKE`, `CREATE USER`, or `DROP USER` statements, MySQL automatically refreshes the cache. However, when you modify those tables directly with `INSERT`, `UPDATE`, or `DELETE`, you must run `FLUSH PRIVILEGES` manually.
+`FLUSH PRIVILEGES` instructs MySQL to re-read the grant tables from the `mysql` system database and update its in-memory privilege cache. MySQL stores user accounts, passwords, and access rights in tables like `mysql.user`, `mysql.db`, and `mysql.tables_priv`. When these tables are modified through `GRANT`, `REVOKE`, `CREATE USER`, or `DROP USER` statements, MySQL automatically refreshes the cache. If you inherit a legacy server that was repaired by editing grant tables directly, you may need `FLUSH PRIVILEGES` afterward to force MySQL to reread them.
 
 ```sql
 FLUSH PRIVILEGES;
@@ -18,17 +18,7 @@ FLUSH PRIVILEGES;
 
 ## When You Need FLUSH PRIVILEGES
 
-You need `FLUSH PRIVILEGES` only when you bypass the standard privilege statements and write directly to the grant tables:
-
-```sql
--- Direct INSERT into mysql.user - requires FLUSH PRIVILEGES after
-INSERT INTO mysql.user (Host, User, authentication_string, plugin)
-VALUES ('localhost', 'analyst', '', 'caching_sha2_password');
-
-FLUSH PRIVILEGES;
-```
-
-You do NOT need `FLUSH PRIVILEGES` when using:
+You need `FLUSH PRIVILEGES` only after a legacy manual repair of the grant tables. You do NOT need `FLUSH PRIVILEGES` when using:
 
 ```sql
 -- These auto-reload the grant tables
@@ -46,25 +36,9 @@ To run `FLUSH PRIVILEGES`, you need the `RELOAD` privilege:
 GRANT RELOAD ON *.* TO 'dba_user'@'localhost';
 ```
 
-## Example: Creating a User Manually
+## Legacy Recovery Only
 
-This pattern is sometimes used in automation scripts or when restoring a database:
-
-```sql
--- Step 1: insert the user record
-INSERT INTO mysql.user (
-  Host, User, authentication_string, plugin,
-  Select_priv, Insert_priv, Update_priv
-) VALUES (
-  '%', 'app_user', SHA2('MyPassword123', 256), 'caching_sha2_password',
-  'Y', 'Y', 'Y'
-);
-
--- Step 2: apply the changes
-FLUSH PRIVILEGES;
-```
-
-After the flush, `app_user` can connect to MySQL.
+If you inherited a server that was edited manually in the past, run `FLUSH PRIVILEGES` after the repair step so MySQL rereads the grant tables. Do not use `INSERT`, `UPDATE`, or `DELETE` against grant tables in normal administration.
 
 ## Verifying the Effect
 
@@ -82,7 +56,7 @@ WHERE User = 'analyst';
 
 ## FLUSH PRIVILEGES on a Replica
 
-If you are running replication and you manually modify grant tables on the primary, the `INSERT`/`UPDATE`/`DELETE` statements will be replicated to replicas. However, the `FLUSH PRIVILEGES` command itself will also be replicated (unless you use `FLUSH LOCAL PRIVILEGES`):
+If you are running replication and you repair a legacy grant-table state on the primary, the flush will also be replicated (unless you use `FLUSH LOCAL PRIVILEGES`):
 
 ```sql
 -- Replicate the flush to all replicas
@@ -109,4 +83,4 @@ Running it when not needed is harmless but adds confusion about when it is actua
 
 ## Summary
 
-`FLUSH PRIVILEGES` reloads the grant tables into memory and is only necessary when you directly modify the `mysql` system tables using DML statements. Always prefer `CREATE USER`, `GRANT`, `REVOKE`, and `DROP USER` which handle cache updates automatically, reserving `FLUSH PRIVILEGES` for direct table edits in scripts or recovery scenarios.
+`FLUSH PRIVILEGES` reloads the grant tables into memory and is only necessary after legacy manual repairs to the `mysql` system tables. Always prefer `CREATE USER`, `GRANT`, `REVOKE`, `ALTER USER`, and `DROP USER`, which handle cache updates automatically.

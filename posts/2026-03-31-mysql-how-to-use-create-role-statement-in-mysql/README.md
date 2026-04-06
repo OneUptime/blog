@@ -112,19 +112,20 @@ GRANT 'app_superuser' TO 'carol'@'%';
 ## Viewing Roles and Privileges
 
 ```sql
--- List all roles
-SELECT user, host FROM mysql.user WHERE account_locked = 'Y';
-
--- Show grants for a role
+-- Inspect a role's grants
 SHOW GRANTS FOR 'app_reader';
+
+-- See which roles are granted to users
+SELECT FROM_USER AS role_name, TO_USER AS user_name, TO_HOST AS host
+FROM mysql.role_edges
+ORDER BY role_name, user_name, host;
 
 -- Show all grants for a user including role privileges
 SHOW GRANTS FOR 'alice'@'%' USING 'app_reader';
 
--- List role assignments
-SELECT FROM_USER, TO_USER, TO_HOST
-FROM information_schema.applicable_roles
-WHERE TO_USER = 'alice';
+-- List roles that apply to the current session
+SELECT ROLE_NAME, IS_DEFAULT, IS_MANDATORY
+FROM information_schema.applicable_roles;
 ```
 
 ## Revoking Roles and Dropping Roles

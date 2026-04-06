@@ -187,12 +187,12 @@ curl "${DAPR_BASE}/v1.0/configuration/configstore/subscribe?key=feature-flags"
 
 ```bash
 # Acquire lock
-curl -X POST ${DAPR_BASE}/v1.0-beta1/lock/lockstore \
+curl -X POST ${DAPR_BASE}/v1.0/lock/lockstore \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "resource1", "lockOwner": "app-instance-1", "expiryInSeconds": 60}'
 
 # Release lock
-curl -X POST ${DAPR_BASE}/v1.0-beta1/unlock/lockstore \
+curl -X POST ${DAPR_BASE}/v1.0/unlock/lockstore \
   -H "Content-Type: application/json" \
   -d '{"resourceId": "resource1", "lockOwner": "app-instance-1"}'
 ```

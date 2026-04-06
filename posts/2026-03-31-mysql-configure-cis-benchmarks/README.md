@@ -65,16 +65,14 @@ max_connect_errors = 10
 
 ```sql
 -- Remove anonymous users
-DELETE FROM mysql.user WHERE User = '';
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 
 -- Remove test database
 DROP DATABASE IF EXISTS test;
 
 -- Ensure all accounts have passwords
 SELECT User, Host FROM mysql.user WHERE authentication_string = '';
-
--- Lock accounts without passwords instead of deleting (safer)
-ALTER USER ''@'localhost' ACCOUNT LOCK;
 ```
 
 ## Restricting SUPER and FILE Privileges

@@ -62,7 +62,7 @@ def evaluate_task(ctx: WorkflowActivityContext, data: dict) -> dict:
 Start a workflow instance using the Dapr HTTP API:
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/agent_workflow/start \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/agent_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"input": {"task_id": "task-123", "risk_score": 30}}'
 ```
@@ -70,7 +70,7 @@ curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/agent_workflow/star
 Check the status of a running workflow:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/agent_workflow/{instance_id}
+curl http://localhost:3500/v1.0/workflows/dapr/agent_workflow/{instance_id}
 ```
 
 ## Combining Agents with Pub/Sub Triggers

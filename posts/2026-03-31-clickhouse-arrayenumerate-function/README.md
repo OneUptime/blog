@@ -35,9 +35,10 @@ SELECT
     pos
 FROM (
     SELECT
-        arrayJoin(['apple', 'banana', 'cherry']) AS val,
-        arrayJoin(arrayEnumerate(['apple', 'banana', 'cherry'])) AS pos
-);
+        ['apple', 'banana', 'cherry'] AS items,
+        arrayEnumerate(items) AS pos
+)
+ARRAY JOIN items AS val, pos;
 ```
 
 A cleaner approach uses `ARRAY JOIN` with both the array and its enumeration together:

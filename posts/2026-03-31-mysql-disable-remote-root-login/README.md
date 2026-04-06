@@ -26,34 +26,19 @@ A root entry with `host = '%'` means root can connect from any remote IP.
 
 ## Remove Remote Root Access
 
-Delete any root entries that allow remote connections:
+Use `DROP USER` to remove each explicit remote root account:
 
 ```sql
--- Remove root access from any host
-DELETE FROM mysql.user WHERE user = 'root' AND host != 'localhost';
-
--- Apply changes immediately
-FLUSH PRIVILEGES;
-
--- Verify only localhost remains
-SELECT user, host FROM mysql.user WHERE user = 'root';
+DROP USER IF EXISTS 'root'@'%';
+DROP USER IF EXISTS 'root'@'::1';
 ```
 
 After this change, only `root@localhost` should remain.
 
-## Using DROP USER Instead of DELETE
-
-A safer approach uses `DROP USER` and `CREATE USER` to avoid partial state:
+Ensure `root@localhost` exists with a strong password:
 
 ```sql
--- Drop remote root accounts explicitly
-DROP USER IF EXISTS 'root'@'%';
-DROP USER IF EXISTS 'root'@'::1';
-
--- Ensure localhost root exists with a strong password
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'Very$tr0ng!RootPass';
-
-FLUSH PRIVILEGES;
 ```
 
 ## Create a Dedicated Admin Account for Remote Access
@@ -63,7 +48,6 @@ Instead of using root remotely, create a named admin account restricted to speci
 ```sql
 CREATE USER 'dbadmin'@'10.0.1.100' IDENTIFIED BY 'Admin$ecure!Pass#1';
 GRANT ALL PRIVILEGES ON *.* TO 'dbadmin'@'10.0.1.100' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
 ```
 
 This provides the same administrative capabilities as root but with:
@@ -132,4 +116,4 @@ Review the audit log periodically for root login attempts from unexpected hosts.
 
 ## Summary
 
-Disabling remote root login requires deleting MySQL user entries where `user = 'root'` and `host != 'localhost'`, then running `FLUSH PRIVILEGES`. Replace remote root access with a named administrative account bound to a specific trusted IP. Combine this with `bind-address = 127.0.0.1` in `my.cnf` and `mysql_secure_installation` for a complete baseline security posture.
+Disabling remote root login requires dropping the remote `root` account variants with `DROP USER`. Replace remote root access with a named administrative account bound to a specific trusted IP. Combine this with `bind-address = 127.0.0.1` in `my.cnf` and `mysql_secure_installation` for a complete baseline security posture.

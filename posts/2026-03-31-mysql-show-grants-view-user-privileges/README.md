@@ -39,7 +39,7 @@ SHOW GRANTS FOR CURRENT_USER();
 
 ## Checking Effective Privileges (MySQL 8.0+)
 
-In MySQL 8.0, roles contribute to a user's effective privileges but do not appear in `SHOW GRANTS` unless roles are activated. Use:
+In MySQL 8.0, `SHOW GRANTS FOR 'user'@'host'` lists the roles granted to that account. Add a `USING` clause when you want the privileges inherited from one or more roles to appear in the output. Use:
 
 ```sql
 SHOW GRANTS FOR 'alice'@'localhost' USING 'analyst_role';

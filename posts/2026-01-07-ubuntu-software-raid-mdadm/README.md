@@ -469,7 +469,7 @@ sudo mdadm --monitor --scan --test --oneshot
 
 ### Using mdmonitor for Automatic Alerts
 
-Ubuntu and Debian ship with `mdmonitor`, a built-in daemon that continuously watches your RAID arrays and sends email alerts on failures. There is no need to write a custom monitoring script — just ensure the service is running.
+Ubuntu and Debian ship with `mdmonitor`, a built-in daemon that continuously watches your RAID arrays and sends email alerts on failures. There is no need to write a custom monitoring script - just ensure the service is running.
 
 ```bash
 # Verify mdmonitor is active

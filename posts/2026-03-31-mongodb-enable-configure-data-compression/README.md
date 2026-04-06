@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Compression, WiredTiger, Storage, Performance
 
-Description: Learn how to configure WiredTiger compression algorithms in MongoDB to reduce disk usage and improve I/O performance for your collections and indexes.
+Description: Learn how to configure WiredTiger collection compression and index prefix compression in MongoDB to reduce disk usage and improve I/O performance.
 
 ---
 
 ## MongoDB Compression Overview
 
-MongoDB uses WiredTiger, which supports three compression algorithms for collection data and indexes:
+MongoDB uses WiredTiger collection compression for collection data. Indexes use prefix compression, and the journal uses a separate compressor:
 
 - **snappy** (default) - fast compression with moderate ratio, good for most workloads
 - **zlib** - higher compression ratio, more CPU overhead, good for archival data
 - **zstd** - best ratio with competitive speed, available from MongoDB 4.2+
 - **none** - no compression, fastest writes but highest disk usage
 
-Compression is configured at the collection level (for data) and globally (for indexes and the journal).
+Collection block compression is configured at the collection level or globally for new collections. Index prefix compression and journal compression are configured separately.
 
 ## Setting Compression in mongod.conf
 
-Configure the default compression for all new collections and indexes:
+Configure the default compression for all new collections:
 
 ```yaml
 storage:
@@ -73,39 +73,36 @@ print(`Compression ratio: ${ratio}x`);
 
 ## Recompressing an Existing Collection
 
-To change compression for an existing collection, you must recreate it. The safest zero-downtime approach uses `$out` in an aggregation pipeline:
+MongoDB does not change a collection's block compressor in place. Create a new collection with the desired compression, copy the data into it, then swap names:
 
 ```javascript
-// 1. Write to a new collection with desired compression
-db.old_events.aggregate([
-  { $match: {} },
-  { $out: "new_events" }
-]);
-
-// 2. Create with correct compression first
 db.createCollection("new_events", {
   storageEngine: { wiredTiger: { configString: "block_compressor=zstd" } }
 });
 
-// 3. Rename once migration is complete
-db.old_events.renameCollection("old_events_backup");
-db.new_events.renameCollection("old_events");
-```
+db.old_events.aggregate([
+  { $match: {} },
+  {
+    $merge: {
+      into: "new_events",
+      whenMatched: "replace",
+      whenNotMatched: "insert"
+    }
+  }
+]);
 
-Alternatively, run `mongodump` and `mongorestore` with the new instance configured for the desired compressor.
+// Recreate indexes on the new collection, verify counts, then rename/swap collections.
+```
 
 ## Compression for Index Prefix
 
 Index prefix compression reduces index size on disk with no query performance impact:
 
-```javascript
-db.createCollection("users", {
-  storageEngine: {
-    wiredTiger: {
-      configString: "block_compressor=snappy,prefix_compression=true"
-    }
-  }
-});
+```yaml
+storage:
+  wiredTiger:
+    indexConfig:
+      prefixCompression: true
 ```
 
 Prefix compression is enabled by default for indexes and should not be disabled unless you have a very specific reason.

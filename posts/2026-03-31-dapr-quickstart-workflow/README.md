@@ -176,7 +176,7 @@ Response:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-ord-001/terminate"
+  "http://localhost:3500/v1.0/workflows/dapr/order-ord-001/terminate"
 ```
 
 ## Purging a Workflow
@@ -185,7 +185,7 @@ Remove the workflow history:
 
 ```bash
 curl -X DELETE \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-ord-001/purge"
+  "http://localhost:3500/v1.0/workflows/dapr/order-ord-001/purge"
 ```
 
 ## Durable Execution

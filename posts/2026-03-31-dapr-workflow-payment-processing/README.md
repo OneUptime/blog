@@ -130,7 +130,7 @@ with DaprClient() as d:
 ## Checking Payment Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/payment_processing_workflow/order-ORD-123
+curl http://localhost:3500/v1.0/workflows/dapr/payment_processing_workflow/order-ORD-123
 ```
 
 ## Retry Policy for Payment Capture

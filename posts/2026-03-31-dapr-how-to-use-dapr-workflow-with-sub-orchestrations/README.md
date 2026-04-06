@@ -171,7 +171,7 @@ var fulfillment = await context.CallChildWorkflowAsync<FulfillmentResult>(
 Then query it directly:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/fulfillment-order-123
+curl http://localhost:3500/v1.0/workflows/dapr/fulfillment-order-123
 ```
 
 ## Registering Sub-Workflows

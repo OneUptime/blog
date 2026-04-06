@@ -14,14 +14,14 @@ Redis client-side caching in BCAST (broadcast) mode sends invalidation notificat
 
 In default tracking mode, Redis tracks which keys each client has read and sends targeted invalidations only when those specific keys change.
 
-In BCAST mode, Redis sends an invalidation message to all subscribed clients whenever any key matching a prefix changes - regardless of whether the client has read that key.
+In BCAST mode, Redis sends an invalidation message to tracking-enabled clients whenever any key matching a prefix changes - regardless of whether the client has read that key.
 
 ```bash
 # Enable BCAST mode with key prefixes
 CLIENT TRACKING ON BCAST PREFIX user: PREFIX product:
 
 # Redis will send invalidation for ANY key starting with user: or product:
-# when those keys change - to ALL clients in BCAST mode
+# when those keys change - to any client tracking those prefixes
 ```
 
 ## Setting Up BCAST Tracking
@@ -59,10 +59,16 @@ class BcastCacheClient:
         def listen():
             for msg in pubsub.listen():
                 if msg['type'] == 'message':
-                    invalidated_key = msg['data']
-                    if invalidated_key in self.local_cache:
-                        del self.local_cache[invalidated_key]
-                        print(f"Invalidated: {invalidated_key}")
+                    payload = msg['data']
+                    if payload is None:
+                        self.local_cache.clear()
+                        continue
+
+                    keys = payload if isinstance(payload, list) else [payload]
+                    for invalidated_key in keys:
+                        if invalidated_key in self.local_cache:
+                            del self.local_cache[invalidated_key]
+                            print(f"Invalidated: {invalidated_key}")
 
         thread = threading.Thread(target=listen, daemon=True)
         thread.start()
@@ -124,10 +130,10 @@ BCAST mode sends more invalidations than default mode (false positives where the
 # Verify tracking is enabled
 CLIENT INFO
 
-# View tracking stats
-INFO stats
-# tracking_keys: 0  (BCAST doesn't track individual keys)
-# tracking_clients: 5
+# View tracking info
+CLIENT TRACKINGINFO
+# flags: on, bcast
+# prefixes: user:, product:
 ```
 
 ## When to Use BCAST vs Default Mode
@@ -143,4 +149,4 @@ Use default mode when:
 
 ## Summary
 
-Redis CLIENT TRACKING in BCAST mode broadcasts invalidation messages to all subscribed clients when any key matching a configured prefix changes. It is more efficient than default mode for clients with large or unpredictable cache key sets, since Redis avoids maintaining a per-client key tracking table. Configure BCAST with narrow prefixes to minimize false invalidations while keeping server overhead low.
+Redis CLIENT TRACKING in BCAST mode sends prefix-based invalidation messages to tracking-enabled clients when any key matching a configured prefix changes. It is more efficient than default mode for clients with large or unpredictable cache key sets, since Redis avoids maintaining a per-client key tracking table. Configure BCAST with narrow prefixes to minimize false invalidations while keeping server overhead low.

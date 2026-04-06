@@ -129,7 +129,7 @@ def provision_database(ctx, tenant: dict) -> dict:
 ## Starting a Provisioning Run
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/provision_tenant_workflow \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow \
   -H "Content-Type: application/json" \
   -d '{"id": "tenant-abc", "region": "us-east-1", "tier": "pro", "domain": "abc.example.com"}'
 ```
@@ -139,7 +139,7 @@ curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/provision_tenant_wo
 ```bash
 # Poll until done
 while true; do
-  STATUS=$(curl -s http://localhost:3500/v1.0-beta1/workflows/dapr/provision_tenant_workflow/{id} | jq -r .runtimeStatus)
+  STATUS=$(curl -s http://localhost:3500/v1.0/workflows/dapr/provision_tenant_workflow/{id} | jq -r .runtimeStatus)
   echo "Status: $STATUS"
   [ "$STATUS" != "RUNNING" ] && break
   sleep 5

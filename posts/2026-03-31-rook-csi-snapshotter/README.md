@@ -54,8 +54,8 @@ driver: rook-ceph.rbd.csi.ceph.com
 deletionPolicy: Delete
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ```
 
 Create a VolumeSnapshotClass for CephFS:
@@ -69,8 +69,8 @@ driver: rook-ceph.cephfs.csi.ceph.com
 deletionPolicy: Delete
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ```
 
 Apply both:

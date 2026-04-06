@@ -169,7 +169,7 @@ Track saga completion rates:
 
 ```bash
 # Check workflow status
-dapr workflow get --workflow-id <instance-id> --app-id order-service
+dapr workflow history --workflow-id <instance-id> --app-id order-service
 ```
 
 ## Summary

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, User, Error, Account, Security
 
-Description: Fix MySQL ERROR 1396 Operation CREATE USER failed by dropping residual user records from mysql.user, flushing privileges, or using DROP USER IF EXISTS first.
+Description: Fix MySQL ERROR 1396 Operation CREATE USER failed by dropping and recreating the account with supported account-management statements.
 
 ---
 
@@ -13,7 +13,7 @@ MySQL ERROR 1396 occurs when you try to create a user that already exists or has
 ## Why This Happens
 
 The most common causes are:
-- The user was deleted with `DELETE FROM mysql.user` directly instead of `DROP USER`
+- The user was removed inconsistently in an older manual recovery flow instead of `DROP USER`
 - A partial `CREATE USER` left inconsistent records in the grant tables
 - The user exists in `mysql.user` but not in the `mysql.db` or `mysql.proxies_priv` tables
 - Replication transferred a `DROP USER` but not the subsequent `CREATE USER`
@@ -42,30 +42,21 @@ DROP USER IF EXISTS 'myapp'@'%';
 -- Now create the user
 CREATE USER 'myapp'@'%' IDENTIFIED BY 'strong_password';
 GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'myapp'@'%';
-FLUSH PRIVILEGES;
 ```
 
-## Fix 2: Clean Up Inconsistent Grant Tables
+## Fix 2: Recreate the Account Cleanly
 
-If the user record exists but DROP USER fails:
+If the account already exists under one or more host patterns, drop each explicit account with `DROP USER IF EXISTS` and recreate it:
 
 ```sql
--- Check all grant tables for orphaned records
-SELECT * FROM mysql.user WHERE User = 'myapp';
-SELECT * FROM mysql.db WHERE User = 'myapp';
-SELECT * FROM mysql.tables_priv WHERE User = 'myapp';
-SELECT * FROM mysql.columns_priv WHERE User = 'myapp';
+DROP USER IF EXISTS 'myapp'@'localhost';
+DROP USER IF EXISTS 'myapp'@'%';
 
--- Delete orphaned records manually (as a last resort)
-DELETE FROM mysql.db WHERE User = 'myapp';
-DELETE FROM mysql.tables_priv WHERE User = 'myapp';
-DELETE FROM mysql.columns_priv WHERE User = 'myapp';
-DELETE FROM mysql.user WHERE User = 'myapp' AND Host = '%';
-
-FLUSH PRIVILEGES;
+CREATE USER 'myapp'@'%' IDENTIFIED BY 'strong_password';
+GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'myapp'@'%';
 ```
 
-After flushing, try `CREATE USER` again.
+If the server still reports inconsistent grant-table state after a supported drop/recreate cycle, restore the affected instance from backup rather than editing `mysql.user` or related grant tables by hand.
 
 ## Fix 3: Use FLUSH PRIVILEGES
 
@@ -107,4 +98,4 @@ SHOW GRANTS FOR 'myapp'@'%';
 
 ## Summary
 
-ERROR 1396 is caused by leftover or inconsistent records in MySQL's grant tables. The cleanest fix is `DROP USER IF EXISTS` followed by `CREATE USER`. For persistent issues, audit all grant tables for orphaned records and clean them with direct DELETE statements followed by `FLUSH PRIVILEGES`. Prefer `DROP USER` over direct `DELETE FROM mysql.user` to keep grant tables consistent.
+ERROR 1396 is caused by leftover or inconsistent account state. The cleanest fix is `DROP USER IF EXISTS` followed by `CREATE USER`. Avoid direct edits to the grant tables; if the account state is badly inconsistent, restore from backup or rebuild the instance rather than deleting rows by hand.

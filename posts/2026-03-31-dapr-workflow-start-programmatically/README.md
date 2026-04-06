@@ -74,7 +74,7 @@ Start a workflow without the SDK using the Dapr HTTP API:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order_workflow/start?instanceID=order-ORD-001" \
+  "http://localhost:3500/v1.0/workflows/dapr/order_workflow/start?instanceID=order-ORD-001" \
   -H "Content-Type: application/json" \
   -d '{"id": "ORD-001", "amount": 99.99, "items": ["widget-1"]}'
 ```

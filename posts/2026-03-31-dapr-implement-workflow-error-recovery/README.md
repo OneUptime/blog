@@ -167,10 +167,10 @@ func compensate(ctx *workflow.WorkflowContext, steps []string, order Order, paym
 
 ```bash
 # List failed workflows
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr?status=FAILED"
+curl "http://localhost:3500/v1.0/workflows/dapr?status=FAILED"
 
 # Get failure details
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/order-123/status" | jq '.failureDetails'
+curl "http://localhost:3500/v1.0/workflows/dapr/order-123/status" | jq '.failureDetails'
 ```
 
 ## Summary

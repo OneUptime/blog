@@ -48,7 +48,7 @@ metadata:
   name: rook-ceph-block
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
   # These features are required for online expansion

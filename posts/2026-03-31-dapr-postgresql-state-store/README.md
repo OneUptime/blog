@@ -86,10 +86,10 @@ curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": {"value.status": "active"}
+      "EQ": {"status": "active"}
     },
     "sort": [
-      {"key": "value.name", "order": "ASC"}
+      {"key": "name", "order": "ASC"}
     ],
     "page": {
       "limit": 10

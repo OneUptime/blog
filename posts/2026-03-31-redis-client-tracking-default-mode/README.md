@@ -22,7 +22,7 @@ CLIENT TRACKING ON REDIRECT <client-id>
 GET user:42
 
 # When user:42 is modified by anyone:
-# Redis sends: INVALIDATE user:42 -> to this client's redirect connection
+# Redis sends: ["user:42"] -> to this client's redirect connection
 ```
 
 ## Setting Up Default Mode Tracking
@@ -54,10 +54,16 @@ class DefaultTrackingClient:
             for msg in pubsub.listen():
                 if msg['type'] != 'message':
                     continue
-                key = msg['data']
-                if key and key in self.local_cache:
-                    del self.local_cache[key]
-                    print(f"Invalidated key: {key}")
+                payload = msg['data']
+                if payload is None:
+                    self.local_cache.clear()
+                    continue
+
+                keys = payload if isinstance(payload, list) else [payload]
+                for key in keys:
+                    if key in self.local_cache:
+                        del self.local_cache[key]
+                        print(f"Invalidated key: {key}")
 
         t = threading.Thread(target=invalidation_listener, daemon=True)
         t.start()
@@ -87,26 +93,17 @@ class DefaultTrackingClient:
 
 ## Key Tracking Table
 
-Redis maintains a tracking table in memory: a mapping from key to the set of clients that have read that key. The table grows with the number of tracked keys:
+Redis maintains a tracking table in memory: a mapping from key to the set of clients that have read that key. The table grows with the number of tracked keys.
+
+## Tracking Table Memory
+
+Inspect the current tracking state with `CLIENT TRACKINGINFO`:
 
 ```bash
-# View approximate tracking table size
-INFO stats
-# tracking_keys: 2847   <- number of keys being tracked
-# tracking_clients: 12  <- number of tracking clients
+redis-cli CLIENT TRACKINGINFO
 ```
 
-## Tracking Table Memory Limits
-
-Limit the tracking table size to prevent memory exhaustion:
-
-```bash
-# Limit tracking table to 1000 keys per client (oldest evicted first)
-CLIENT TRACKING ON REDIRECT 42 BCAST NOLOOP OPTIN
-
-# Or set a server-wide limit
-CONFIG SET tracking-table-max-keys 1000000
-```
+That reply includes the active flags, redirect client ID, and prefixes. In Redis Open Source, there is no `CONFIG SET tracking-table-max-keys` knob for client tracking, so cache sizing is an application-side concern.
 
 ## OPTIN Mode: Track Only Specific Keys
 
@@ -143,4 +140,4 @@ CLIENT TRACKING OFF
 
 ## Summary
 
-Redis CLIENT TRACKING in default mode sends precise invalidation messages only for keys a specific client has previously read. This gives exact invalidation with minimal false positives. Use OPTIN mode to selectively cache high-value keys while ignoring others. Monitor the tracking table size via `INFO stats` and set `tracking-table-max-keys` to bound server memory usage.
+Redis CLIENT TRACKING in default mode sends precise invalidation messages only for keys a specific client has previously read. This gives exact invalidation with minimal false positives. Use `OPTIN` mode to selectively cache high-value keys while ignoring others, and inspect the current tracking state with `CLIENT TRACKINGINFO` when you need to confirm redirect or prefix settings.

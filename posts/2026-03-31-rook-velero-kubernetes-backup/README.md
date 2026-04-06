@@ -102,8 +102,8 @@ driver: rook-ceph.rbd.csi.ceph.com
 deletionPolicy: Retain
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ```
 
 The `velero.io/csi-volumesnapshot-class: "true"` label tells Velero to use this snapshot class for RBD volumes.
@@ -127,8 +127,8 @@ driver: rook-ceph.cephfs.csi.ceph.com
 deletionPolicy: Retain
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-cephfs-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ```
 
 ## Step 4 - Create a Backup

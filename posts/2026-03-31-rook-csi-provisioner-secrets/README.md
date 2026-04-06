@@ -107,7 +107,7 @@ metadata:
   name: rook-ceph-block
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
@@ -140,10 +140,10 @@ metadata:
   name: csi-rbdplugin-snapclass
 driver: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <ceph-cluster-fsid>
+  clusterID: rook-ceph
   # Provisioner secret is used for snapshot create/delete
-  csi.storage.k8s.io/volumesnapshot/secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/volumesnapshot/secret-namespace: rook-ceph
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 deletionPolicy: Delete
 ```
 

@@ -36,41 +36,6 @@ A query request supports three optional fields:
 
 - Dapr initialized with a query-capable state store (MongoDB, Cosmos DB, or PostgreSQL)
 - State items saved with JSON values
-- Query API alpha feature enabled in Dapr configuration
-
-## Enabling the Query API
-
-In self-hosted mode, create or update your Dapr configuration:
-
-```yaml
-# ~/.dapr/config.yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: daprConfig
-spec:
-  features:
-  - name: State.QueryAPI
-    enabled: true
-```
-
-On Kubernetes:
-
-```yaml
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: daprConfig
-  namespace: default
-spec:
-  features:
-  - name: State.QueryAPI
-    enabled: true
-```
-
-```bash
-kubectl apply -f dapr-config.yaml
-```
 
 ## Saving Queryable State
 
@@ -97,7 +62,7 @@ curl -X POST "http://localhost:3500/v1.0-alpha1/state/statestore/query" \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": { "value.status": "pending" }
+      "EQ": { "status": "pending" }
     }
   }'
 ```
@@ -120,16 +85,16 @@ Response:
 ### Equality
 
 ```json
-{"EQ": {"value.status": "pending"}}
+{"EQ": {"status": "pending"}}
 ```
 
 ### Comparison
 
 ```json
-{"GT": {"value.amount": 100}}
-{"LT": {"value.amount": 200}}
-{"GTE": {"value.amount": 100}}
-{"LTE": {"value.amount": 200}}
+{"GT": {"amount": 100}}
+{"LT": {"amount": 200}}
+{"GTE": {"amount": 100}}
+{"LTE": {"amount": 200}}
 ```
 
 ### Logical AND
@@ -137,8 +102,8 @@ Response:
 ```json
 {
   "AND": [
-    {"EQ": {"value.status": "pending"}},
-    {"EQ": {"value.region": "us-east"}}
+    {"EQ": {"status": "pending"}},
+    {"EQ": {"region": "us-east"}}
   ]
 }
 ```
@@ -148,8 +113,8 @@ Response:
 ```json
 {
   "OR": [
-    {"EQ": {"value.status": "pending"}},
-    {"EQ": {"value.status": "processing"}}
+    {"EQ": {"status": "pending"}},
+    {"EQ": {"status": "processing"}}
   ]
 }
 ```
@@ -161,10 +126,10 @@ curl -X POST "http://localhost:3500/v1.0-alpha1/state/statestore/query" \
   -H "Content-Type: application/json" \
   -d '{
     "filter": {
-      "EQ": {"value.region": "us-east"}
+      "EQ": {"region": "us-east"}
     },
     "sort": [
-      {"key": "value.amount", "order": "DESC"}
+      {"key": "amount", "order": "DESC"}
     ]
   }'
 ```
@@ -178,7 +143,7 @@ Use `page.limit` and `page.token` for cursor-based pagination:
 curl -X POST "http://localhost:3500/v1.0-alpha1/state/statestore/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "filter": {"EQ": {"value.status": "pending"}},
+    "filter": {"EQ": {"status": "pending"}},
     "page": {"limit": 2}
   }'
 ```
@@ -198,7 +163,7 @@ Fetch the next page:
 curl -X POST "http://localhost:3500/v1.0-alpha1/state/statestore/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "filter": {"EQ": {"value.status": "pending"}},
+    "filter": {"EQ": {"status": "pending"}},
     "page": {"limit": 2, "token": "eyJhbGci..."}
   }'
 ```
@@ -216,11 +181,11 @@ def query_orders(status=None, region=None, min_amount=None, limit=10):
 
     filters = []
     if status:
-        filters.append({"EQ": {"value.status": status}})
+        filters.append({"EQ": {"status": status}})
     if region:
-        filters.append({"EQ": {"value.region": region}})
+        filters.append({"EQ": {"region": region}})
     if min_amount:
-        filters.append({"GT": {"value.amount": min_amount}})
+        filters.append({"GT": {"amount": min_amount}})
 
     query_body = {"page": {"limit": limit}}
     if len(filters) == 1:
@@ -272,11 +237,11 @@ func main() {
     query := QueryRequest{
         Filter: map[string]interface{}{
             "AND": []map[string]interface{}{
-                {"EQ": map[string]interface{}{"value.status": "pending"}},
-                {"GT": map[string]interface{}{"value.amount": 100}},
+                {"EQ": map[string]interface{}{"status": "pending"}},
+                {"GT": map[string]interface{}{"amount": 100}},
             },
         },
-        Sort: []SortItem{{Key: "value.amount", Order: "ASC"}},
+        Sort: []SortItem{{Key: "amount", Order: "ASC"}},
         Page: &PageRequest{Limit: 5},
     }
 
@@ -299,4 +264,4 @@ func main() {
 
 ## Summary
 
-The Dapr state query API provides a portable, backend-agnostic way to filter, sort, and paginate over state items using a JSON query language. It supports equality, comparison, and logical operators. Since it is an alpha feature, it must be explicitly enabled in the Dapr configuration. Supported backends include MongoDB, PostgreSQL, CosmosDB, and CockroachDB.
+The Dapr state query API provides a portable, backend-agnostic way to filter, sort, and paginate over state items using a JSON query language. It supports equality, comparison, and logical operators. Supported backends include MongoDB, PostgreSQL, CosmosDB, and CockroachDB.

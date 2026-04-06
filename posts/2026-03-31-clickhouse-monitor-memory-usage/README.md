@@ -262,7 +262,7 @@ SELECT user_id, uniqExact(session_id) AS exact_sessions
 FROM events
 GROUP BY user_id;
 
--- Lower memory: uniq uses HyperLogLog approximation
+-- Lower memory: uniq uses a compact approximate-distinct algorithm
 SELECT user_id, uniq(session_id) AS approx_sessions
 FROM events
 GROUP BY user_id;

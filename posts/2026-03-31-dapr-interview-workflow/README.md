@@ -81,17 +81,17 @@ def approval_workflow(ctx: wf.DaprWorkflowContext, request_id: str):
 
 ```bash
 # Start workflow via Dapr HTTP API
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/order-fulfillment/start \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/order-fulfillment/start \
   -H "Content-Type: application/json" \
   -d '{"input": "order-123"}'
 
 # Returns: {"instanceID": "abc-123-xyz"}
 
 # Check status
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/abc-123-xyz
+curl http://localhost:3500/v1.0/workflows/dapr/abc-123-xyz
 
 # Send external event (for approval workflow)
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/abc-123-xyz/raiseEvent/approval-decision \
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/abc-123-xyz/raiseEvent/approval-decision \
   -d 'true'
 ```
 

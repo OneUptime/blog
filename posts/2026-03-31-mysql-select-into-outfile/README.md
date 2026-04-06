@@ -52,7 +52,7 @@ SHOW VARIABLES LIKE 'secure_file_priv';
 -- Check user has FILE privilege
 SHOW GRANTS FOR CURRENT_USER;
 
--- Grant FILE privilege to a user if needed (requires SUPER)
+-- Grant FILE privilege to a user if needed
 GRANT FILE ON *.* TO 'export_user'@'localhost';
 ```
 

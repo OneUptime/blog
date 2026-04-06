@@ -39,8 +39,18 @@ class RedisClientSideCache {
     // Subscribe to the invalidation channel
     await this.invalidationConn.subscribe('__redis__:invalidate');
 
-    this.invalidationConn.on('message', (channel, key) => {
-      if (channel === '__redis__:invalidate' && key) {
+    this.invalidationConn.on('message', (channel, payload) => {
+      if (channel !== '__redis__:invalidate') {
+        return;
+      }
+
+      if (payload === null) {
+        this.localCache.clear();
+        return;
+      }
+
+      const keys = Array.isArray(payload) ? payload : [payload];
+      for (const key of keys) {
         if (this.localCache.has(key)) {
           this.localCache.delete(key);
           console.log(`Invalidated: ${key}`);

@@ -10,9 +10,9 @@ Description: Learn how to choose between Snappy, Zlib, and Zstd block compressio
 
 ## Why Block Compression Matters
 
-MongoDB's WiredTiger storage engine compresses data blocks on disk. Compression reduces storage costs and I/O bandwidth - which is often the bottleneck for read-heavy workloads - but it adds CPU overhead for encoding and decoding. Choosing the right algorithm for your workload is a balance between compression ratio, CPU cost, and read/write latency.
+MongoDB's WiredTiger storage engine compresses collection data blocks on disk. Compression reduces storage costs and I/O bandwidth - which is often the bottleneck for read-heavy workloads - but it adds CPU overhead for encoding and decoding. Choosing the right algorithm for your workload is a balance between compression ratio, CPU cost, and read/write latency.
 
-MongoDB supports three compression algorithms for collection and index data: Snappy (default), Zlib, and Zstd.
+MongoDB supports four collection compression settings: Snappy (default), Zlib, Zstd, and none. Indexes use separate prefix compression, which is enabled by default.
 
 ## Comparison of Algorithms
 
@@ -30,7 +30,7 @@ Zstd        High                Low-Medium  Best ratio-per-CPU, MongoDB 4.2+
 
 ## Configuring Compression at the Database Level
 
-Set the default compression for all new collections and indexes in `mongod.conf`:
+Set the default compression for all new collections in `mongod.conf`:
 
 ```yaml
 storage:
@@ -41,7 +41,7 @@ storage:
       prefixCompression: true
 ```
 
-Restart `mongod` after changing this setting. Existing collections are not retroactively recompressed.
+Restart `mongod` after changing this setting. Existing collections are not retroactively recompressed, and existing indexes keep their current prefix-compression setting.
 
 ## Configuring Compression per Collection
 

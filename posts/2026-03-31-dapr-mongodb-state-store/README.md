@@ -135,12 +135,12 @@ curl -X POST http://localhost:3500/v1.0-alpha1/state/statestore/query \
   -d '{
     "filter": {
       "AND": [
-        {"EQ": {"value.status": "active"}},
-        {"GT": {"value.price": 10.0}}
+        {"EQ": {"status": "active"}},
+        {"GT": {"price": 10.0}}
       ]
     },
     "sort": [
-      {"key": "value.price", "order": "DESC"}
+      {"key": "price", "order": "DESC"}
     ],
     "page": {
       "limit": 20

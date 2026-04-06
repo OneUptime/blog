@@ -135,7 +135,7 @@ def order_processing_workflow(ctx: DaprWorkflowContext, order_data: dict):
 Check workflow status:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-workflow/instance/{instanceId}
+curl http://localhost:3500/v1.0/workflows/dapr/order-processing-workflow/instance/{instanceId}
 ```
 
 ## Analyzing Failed Workflows

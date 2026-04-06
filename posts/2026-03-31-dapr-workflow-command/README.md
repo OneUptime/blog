@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Dapr, CLI, Workflow, Orchestration, Management
 
-Description: Learn how to use the dapr workflow command to start, terminate, pause, resume, and purge Dapr workflow instances from the CLI.
+Description: Learn how to use the dapr workflow command to start, terminate, suspend, resume, and purge Dapr workflow instances from the CLI.
 
 ---
 
 ## Overview
 
-The `dapr workflow` command provides lifecycle management for Dapr workflow instances directly from the command line. You can start new workflow instances, check their status, pause and resume running workflows, terminate stuck instances, and purge completed workflow history.
+The `dapr workflow` command provides lifecycle management for Dapr workflow instances directly from the command line. You can start new workflow instances, check their status, suspend and resume running workflows, terminate stuck instances, and purge completed workflow history.
 
 ## Starting a Workflow Instance
 
 ```bash
 dapr workflow run \
+  OrderFulfillmentWorkflow \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-name OrderFulfillmentWorkflow \
   --input '{"orderId": "ord-123", "customerId": "cust-456"}'
 ```
 
@@ -31,10 +30,7 @@ Successfully started workflow. Instance ID: abc12345-1234-1234-1234-abc123456789
 ## Checking Workflow Status
 
 ```bash
-dapr workflow get \
-  --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-instance-id abc12345-1234-1234-1234-abc123456789
+dapr workflow history abc12345-1234-1234-1234-abc123456789 --app-id order-processor
 ```
 
 Sample output:
@@ -52,19 +48,17 @@ Sample output:
 ## Pausing a Running Workflow
 
 ```bash
-dapr workflow pause \
+dapr workflow suspend \
+  abc12345-1234-1234-1234-abc123456789 \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-instance-id abc12345-1234-1234-1234-abc123456789
 ```
 
 ## Resuming a Paused Workflow
 
 ```bash
 dapr workflow resume \
+  abc12345-1234-1234-1234-abc123456789 \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-instance-id abc12345-1234-1234-1234-abc123456789
 ```
 
 ## Terminating a Workflow
@@ -73,9 +67,8 @@ Force-stop a running or stuck workflow:
 
 ```bash
 dapr workflow terminate \
+  abc12345-1234-1234-1234-abc123456789 \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-instance-id abc12345-1234-1234-1234-abc123456789
 ```
 
 ## Purging Workflow History
@@ -84,9 +77,8 @@ Remove all history for a completed or terminated workflow:
 
 ```bash
 dapr workflow purge \
+  abc12345-1234-1234-1234-abc123456789 \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-instance-id abc12345-1234-1234-1234-abc123456789
 ```
 
 ## Scripted Workflow Automation
@@ -96,18 +88,14 @@ Start a workflow and poll for completion:
 ```bash
 #!/bin/bash
 INSTANCE_ID=$(dapr workflow run \
+  OrderFulfillmentWorkflow \
   --app-id order-processor \
-  --workflow-component dapr \
-  --workflow-name OrderFulfillmentWorkflow \
   --input '{"orderId":"ord-999"}' | grep "Instance ID" | awk '{print $NF}')
 
 echo "Started workflow: $INSTANCE_ID"
 
 while true; do
-  STATUS=$(dapr workflow get \
-    --app-id order-processor \
-    --workflow-component dapr \
-    --workflow-instance-id $INSTANCE_ID | jq -r '.runtimeStatus')
+  STATUS=$(dapr workflow history $INSTANCE_ID --app-id order-processor | jq -r '.runtimeStatus')
 
   echo "Status: $STATUS"
   if [[ "$STATUS" == "COMPLETED" || "$STATUS" == "FAILED" ]]; then
@@ -119,4 +107,4 @@ done
 
 ## Summary
 
-The `dapr workflow` CLI command provides complete lifecycle management for workflow instances without requiring application code changes or API calls. It is particularly useful for operational tasks like pausing workflows during maintenance windows, terminating stuck instances, and purging old workflow history to manage storage costs.
+The `dapr workflow` CLI command provides complete lifecycle management for workflow instances without requiring application code changes or API calls. It is particularly useful for operational tasks like suspending workflows during maintenance windows, terminating stuck instances, and purging old workflow history to manage storage costs.

@@ -93,8 +93,11 @@ service AppCallback {
   // Called when a pub/sub message arrives
   rpc OnTopicEvent(TopicEventRequest) returns (TopicEventResponse);
 
-  // Called to retrieve actor configurations
-  rpc GetConfigurationAlpha1(ConfigurationItem) returns (ConfigurationResponse);
+  // Called to retrieve input bindings
+  rpc ListInputBindings(google.protobuf.Empty) returns (ListInputBindingsResponse);
+
+  // Called when an input binding triggers
+  rpc OnBindingEvent(BindingEventRequest) returns (BindingEventResponse);
 }
 ```
 

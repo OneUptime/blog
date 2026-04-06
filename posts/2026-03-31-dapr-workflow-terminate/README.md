@@ -43,7 +43,7 @@ dapr workflow terminate --app-id order-service --workflow-id order-processing-OR
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-ORD-001/terminate
+  http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001/terminate
 ```
 
 ## Handling Termination in Workflow Code

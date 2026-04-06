@@ -135,9 +135,9 @@ If your state store supports it, query across keys:
 ```javascript
 const result = await client.state.query(STORE, {
   filter: {
-    EQ: { 'value.status': 'active' }
+    EQ: { 'status': 'active' }
   },
-  sort: [{ key: 'value.createdAt', order: 'DESC' }],
+  sort: [{ key: 'createdAt', order: 'DESC' }],
   page: { limit: 10 }
 });
 ```

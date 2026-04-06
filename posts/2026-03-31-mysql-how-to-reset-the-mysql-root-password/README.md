@@ -48,17 +48,9 @@ For MySQL 5.7.6+ and MySQL 8.0+:
 ```sql
 FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPassword!';
-FLUSH PRIVILEGES;
 ```
 
-For older MySQL 5.7.5 and earlier:
-
-```sql
-UPDATE mysql.user
-SET authentication_string = PASSWORD('NewStrongPassword!')
-WHERE User = 'root' AND Host = 'localhost';
-FLUSH PRIVILEGES;
-```
+For older MySQL releases, upgrade first or follow the vendor's archived recovery procedure for that version. Do not edit `mysql.user` directly in modern MySQL.
 
 ### Step 5 - Restart MySQL Normally
 
@@ -138,7 +130,6 @@ Open a new command prompt:
 ```sql
 FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPassword!';
-FLUSH PRIVILEGES;
 EXIT;
 ```
 

@@ -335,19 +335,19 @@ dapr run \
 
 ```bash
 # Get workflow instance state
-curl "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}"
+curl "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}"
 
 # Terminate a workflow
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/terminate"
+  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/terminate"
 
 # Pause a workflow
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/pause"
+  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/pause"
 
 # Resume a paused workflow
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/resume"
+  "http://localhost:3500/v1.0/workflows/dapr/OrderProcessingOrchestrator/${ORDER_ID}/resume"
 ```
 
 ## Summary

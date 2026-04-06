@@ -85,7 +85,7 @@ FROM workspace_users
 GROUP BY workspace_id;
 ```
 
-`uniqExact` is precise but requires full state. `uniq` uses HyperLogLog and is approximate. `uniqUpTo` is exact up to N and then caps - perfect for threshold checks.
+`uniqExact` is precise but requires full state. `uniq` uses a compact approximate-distinct algorithm and is approximate. `uniqUpTo` is exact up to N and then caps - perfect for threshold checks.
 
 ## API Rate Limit Tracking
 

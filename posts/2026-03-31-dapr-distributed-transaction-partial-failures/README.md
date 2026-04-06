@@ -87,7 +87,7 @@ If `schedule_shipment` fails and the pod restarts, Dapr replays the workflow fro
 Query workflow state to find stuck transactions:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order_fulfillment_workflow/instances/INSTANCE_ID
+curl http://localhost:3500/v1.0/workflows/dapr/order_fulfillment_workflow/instances/INSTANCE_ID
 ```
 
 ```json
@@ -107,11 +107,11 @@ Terminate and replay a stuck workflow instance:
 ```bash
 # Terminate the stuck instance
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order_fulfillment_workflow/instances/INSTANCE_ID/terminate
+  http://localhost:3500/v1.0/workflows/dapr/order_fulfillment_workflow/instances/INSTANCE_ID/terminate
 
 # Start a new instance with the same order (idempotency handles deduplication)
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order_fulfillment_workflow/start \
+  http://localhost:3500/v1.0/workflows/dapr/order_fulfillment_workflow/start \
   -H "Content-Type: application/json" \
   -d '{"orderId": "ord-456", "items": [...]}'
 ```

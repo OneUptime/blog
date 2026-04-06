@@ -111,11 +111,11 @@ var query = new StateQueryRequest
     {
         ["AND"] = new[]
         {
-            new { EQ = new { key = "value.status", value = "active" } },
-            new { GT = new { key = "value.score", value = 50 } }
+            new { EQ = new { key = "status", value = "active" } },
+            new { GT = new { key = "score", value = 50 } }
         }
     },
-    Sort = new[] { new { Key = "value.score", Order = "DESC" } },
+    Sort = new[] { new { Key = "score", Order = "DESC" } },
     Page = new { Limit = 20 }
 };
 

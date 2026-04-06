@@ -15,16 +15,16 @@ The Dapr Workflow API manages long-running, durable workflow instances. Workflow
 ## Base URL
 
 ```yaml
-http://localhost:{daprPort}/v1.0-beta1/workflows/{workflowComponentName}/{workflowName}
+http://localhost:{daprPort}/v1.0/workflows/{workflowComponentName}/{workflowName}
 ```
 
 ## Starting a Workflow
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{workflowName}/start`
+**POST** `/v1.0/workflows/{componentName}/{workflowName}/start`
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/OrderFulfillmentWorkflow/start?instanceID=ord-workflow-001" \
+  "http://localhost:3500/v1.0/workflows/dapr/OrderFulfillmentWorkflow/start?instanceID=ord-workflow-001" \
   -H "Content-Type: application/json" \
   -d '{"orderId": "ord-001", "customerId": "cust-123"}'
 ```
@@ -39,10 +39,10 @@ Response:
 
 ## Getting Workflow Status
 
-**GET** `/v1.0-beta1/workflows/{componentName}/{instanceID}`
+**GET** `/v1.0/workflows/{componentName}/{instanceID}`
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001
+curl http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001
 ```
 
 Response:
@@ -62,37 +62,37 @@ Response:
 
 ## Pausing a Workflow
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{instanceID}/pause`
+**POST** `/v1.0/workflows/{componentName}/{instanceID}/pause`
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001/pause
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/pause
 ```
 
 ## Resuming a Workflow
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{instanceID}/resume`
+**POST** `/v1.0/workflows/{componentName}/{instanceID}/resume`
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001/resume
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/resume
 ```
 
 ## Terminating a Workflow
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{instanceID}/terminate`
+**POST** `/v1.0/workflows/{componentName}/{instanceID}/terminate`
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001/terminate
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/terminate
 ```
 
 ## Raising an External Event
 
 Send an external event to a waiting workflow (e.g., for approval flows):
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{instanceID}/raiseEvent/{eventName}`
+**POST** `/v1.0/workflows/{componentName}/{instanceID}/raiseEvent/{eventName}`
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001/raiseEvent/ManagerApproval \
+  http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/raiseEvent/ManagerApproval \
   -H "Content-Type: application/json" \
   -d '{"approved": true, "approvedBy": "manager@example.com"}'
 ```
@@ -111,10 +111,10 @@ if (!approval.Approved)
 
 ## Purging Workflow History
 
-**POST** `/v1.0-beta1/workflows/{componentName}/{instanceID}/purge`
+**POST** `/v1.0/workflows/{componentName}/{instanceID}/purge`
 
 ```bash
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/ord-workflow-001/purge
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/ord-workflow-001/purge
 ```
 
 ## Runtime Status Values

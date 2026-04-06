@@ -46,17 +46,17 @@ state = client.get_workflow_state("order-processing-ORD-001")
 print(f"Status: {state.runtime_status}")  # RUNNING
 ```
 
-## Pausing and Resuming via CLI
+## Suspending and Resuming via CLI
 
 ```bash
 # Pause
-dapr workflow pause --app-id order-service --workflow-id order-processing-ORD-001
+dapr workflow suspend order-processing-ORD-001 --app-id order-service
 
 # Check status
-dapr workflow get --app-id order-service --workflow-id order-processing-ORD-001
+dapr workflow history order-processing-ORD-001 --app-id order-service
 
 # Resume
-dapr workflow resume --app-id order-service --workflow-id order-processing-ORD-001
+dapr workflow resume order-processing-ORD-001 --app-id order-service
 ```
 
 ## Pausing via HTTP API
@@ -64,11 +64,11 @@ dapr workflow resume --app-id order-service --workflow-id order-processing-ORD-0
 ```bash
 # Pause
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-ORD-001/pause
+  http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001/pause
 
 # Resume
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/order-processing-ORD-001/resume
+  http://localhost:3500/v1.0/workflows/dapr/order-processing-ORD-001/resume
 ```
 
 ## Use Case: Maintenance Window

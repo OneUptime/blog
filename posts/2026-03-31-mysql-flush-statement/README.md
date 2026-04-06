@@ -76,15 +76,7 @@ After `FLUSH TABLES WITH READ LOCK`, no writes are allowed until you run `UNLOCK
 
 ## FLUSH PRIVILEGES
 
-When you modify the grant tables directly using `INSERT`, `UPDATE`, or `DELETE` rather than `GRANT`/`REVOKE`, MySQL does not automatically reload them. You must flush privileges manually:
-
-```sql
--- After manually updating grant tables
-INSERT INTO mysql.user (User, Host, ...) VALUES ('appuser', '%', ...);
-FLUSH PRIVILEGES;
-```
-
-If you use `GRANT` and `REVOKE`, `FLUSH PRIVILEGES` is not needed because MySQL handles the reload automatically.
+`FLUSH PRIVILEGES` is only needed after legacy manual repair of grant tables. If you use `GRANT`, `REVOKE`, `CREATE USER`, `ALTER USER`, or `DROP USER`, `FLUSH PRIVILEGES` is not needed because MySQL handles the reload automatically.
 
 ## FLUSH LOGS
 
@@ -129,4 +121,4 @@ FLUSH NO_WRITE_TO_BINLOG TABLES;
 
 ## Summary
 
-The `FLUSH` statement is a powerful administrative tool in MySQL for clearing caches, reloading configurations, and rotating logs. Use `FLUSH PRIVILEGES` after manual grant table edits, `FLUSH TABLES WITH READ LOCK` for consistent backups, and `FLUSH LOGS` for log rotation. Always use `LOCAL` on replicas to avoid replicating administrative flush operations.
+The `FLUSH` statement is a powerful administrative tool in MySQL for clearing caches, reloading configurations, and rotating logs. Use `FLUSH PRIVILEGES` only after legacy grant-table repair, `FLUSH TABLES WITH READ LOCK` for consistent backups, and `FLUSH LOGS` for log rotation. Always use `LOCAL` on replicas to avoid replicating administrative flush operations.

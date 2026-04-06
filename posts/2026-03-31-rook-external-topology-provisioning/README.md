@@ -83,7 +83,7 @@ metadata:
   name: rook-ceph-block-topology
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: <external-ceph-cluster-fsid>
+  clusterID: rook-ceph-external
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock

@@ -209,7 +209,7 @@ Once the workflow is waiting, any service can raise the event via the Dapr HTTP 
 ```bash
 # Approve the expense
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
+  "http://localhost:3500/v1.0/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "approved",
@@ -219,7 +219,7 @@ curl -X POST \
 
 # Reject the expense
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
+  "http://localhost:3500/v1.0/workflows/dapr/ExpenseApprovalWorkflow/expense-1234/raiseEvent/ApprovalDecision" \
   -H "Content-Type: application/json" \
   -d '{
     "decision": "rejected",

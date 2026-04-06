@@ -33,10 +33,9 @@ After running the secure installation script, verify no anonymous accounts remai
 
 ```sql
 SELECT user, host FROM mysql.user WHERE user = '';
-DELETE FROM mysql.user WHERE user = '';
 DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE db = 'test' OR db = 'test\\_%';
-FLUSH PRIVILEGES;
+DROP USER IF EXISTS ''@'localhost';
+DROP USER IF EXISTS ''@'::1';
 ```
 
 ## Use the Principle of Least Privilege
@@ -51,8 +50,6 @@ GRANT SELECT ON mydb.* TO 'app_readonly'@'10.0.1.%';
 -- Application user with DML only (no DDL, no DROP)
 CREATE USER 'app_user'@'10.0.1.%' IDENTIFIED BY 'AnotherStr0ng!Pass';
 GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'app_user'@'10.0.1.%';
-
-FLUSH PRIVILEGES;
 ```
 
 Never grant `ALL PRIVILEGES` to application accounts.

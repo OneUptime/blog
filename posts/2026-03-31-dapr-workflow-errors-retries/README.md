@@ -252,7 +252,7 @@ If a workflow is stuck in a retrying state, terminate it via the HTTP API:
 
 ```bash
 curl -X POST \
-  "http://localhost:3500/v1.0-beta1/workflows/dapr/order-001/terminate" \
+  "http://localhost:3500/v1.0/workflows/dapr/order-001/terminate" \
   -H "Content-Type: application/json" \
   -d '{"output": "Manually terminated by operator"}'
 ```

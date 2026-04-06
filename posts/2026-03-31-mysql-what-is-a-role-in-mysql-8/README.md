@@ -84,17 +84,18 @@ SET PERSIST mandatory_roles = 'app_reader';
 ## Checking Roles
 
 ```sql
--- View all roles
-SELECT user, host FROM mysql.user WHERE account_locked = 'Y';
+-- Inspect a specific role
+SHOW GRANTS FOR 'app_reader';
 
 -- View role grants for a user
 SHOW GRANTS FOR 'alice'@'%';
 SHOW GRANTS FOR 'alice'@'%' USING 'app_reader';
 
--- View all role assignments
-SELECT * FROM information_schema.role_table_grants;
+-- View role assignments
+SELECT FROM_USER AS role_name, TO_USER AS user_name, TO_HOST AS host
+FROM mysql.role_edges;
 
--- Visualize role hierarchy
+-- See roles applicable to the current session
 SELECT * FROM information_schema.applicable_roles;
 ```
 

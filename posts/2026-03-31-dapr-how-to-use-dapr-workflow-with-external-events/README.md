@@ -104,7 +104,7 @@ public class PaymentWorkflow : Workflow<PaymentRequest, PaymentResult>
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/ApprovalWorkflow/start?instanceID=order-wf-001 \
+  http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/start?instanceID=order-wf-001 \
   -H "Content-Type: application/json" \
   -d '{
     "orderId": "order-001",
@@ -119,7 +119,7 @@ When the human approver clicks "Approve" in your admin panel:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
+  http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
   -H "Content-Type: application/json" \
   -d '{
     "approved": true,
@@ -132,7 +132,7 @@ For rejection:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
+  http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001/raiseEvent/approval-decision \
   -H "Content-Type: application/json" \
   -d '{
     "approved": false,
@@ -168,7 +168,7 @@ app.MapPost("/admin/orders/{instanceId}/approve", async (string instanceId, Appr
 ## Check Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/ApprovalWorkflow/order-wf-001
+curl http://localhost:3500/v1.0/workflows/dapr/ApprovalWorkflow/order-wf-001
 ```
 
 Response:

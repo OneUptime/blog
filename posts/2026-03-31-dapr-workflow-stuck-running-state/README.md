@@ -15,7 +15,7 @@ Dapr Workflows (built on the Workflow Engine, which uses Actors internally) can 
 Query the status of a specific workflow instance:
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/<workflow-name>/<instance-id>
+curl http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>
 ```
 
 A stuck workflow returns:
@@ -72,14 +72,14 @@ To forcefully terminate a stuck workflow instance:
 
 ```bash
 curl -X POST \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/<workflow-name>/<instance-id>/terminate
+  http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>/terminate
 ```
 
 Or purge it entirely (removes all history):
 
 ```bash
 curl -X DELETE \
-  http://localhost:3500/v1.0-beta1/workflows/dapr/<workflow-name>/<instance-id>
+  http://localhost:3500/v1.0/workflows/dapr/<workflow-name>/<instance-id>
 ```
 
 ## Pausing and Resuming
@@ -88,10 +88,10 @@ If the underlying issue is temporary (state store restart), pause then resume:
 
 ```bash
 # Pause
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/<name>/<id>/pause
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/<name>/<id>/pause
 
 # After fixing the issue, resume
-curl -X POST http://localhost:3500/v1.0-beta1/workflows/dapr/<name>/<id>/resume
+curl -X POST http://localhost:3500/v1.0/workflows/dapr/<name>/<id>/resume
 ```
 
 ## Monitoring Workflow State

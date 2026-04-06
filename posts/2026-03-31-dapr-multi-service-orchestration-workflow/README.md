@@ -124,7 +124,7 @@ var payment = await context.CallActivityAsync<PaymentResult>(
 ## Querying Workflow Status
 
 ```bash
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/checkout-001/status
+curl http://localhost:3500/v1.0/workflows/dapr/checkout-001/status
 ```
 
 ```json

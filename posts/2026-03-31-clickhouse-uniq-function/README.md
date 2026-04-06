@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, SQL, Aggregate Function, uniq, Count Distinct, HyperLogLog
+Tags: ClickHouse, SQL, Aggregate Function, uniq, Count Distinct, Approximate Count
 
-Description: Learn how uniq() computes approximate distinct counts in ClickHouse using HyperLogLog, and when to prefer it over uniqExact() for performance at scale.
+Description: Learn how uniq() computes approximate distinct counts in ClickHouse, and when to prefer it over uniqExact() for performance at scale.
 
 ---
 
-Counting distinct values is one of the most common operations in analytics. In ClickHouse, `uniq()` provides an approximate count of distinct values using the HyperLogLog algorithm. It is significantly faster and uses far less memory than `uniqExact()`, making it the preferred choice for high-cardinality columns on large datasets where a small margin of error is acceptable.
+Counting distinct values is one of the most common operations in analytics. In ClickHouse, `uniq()` provides an approximate count of distinct values using a compact internal algorithm. It is significantly faster and uses far less memory than `uniqExact()`, making it the preferred choice for high-cardinality columns on large datasets where a small margin of error is acceptable.
 
 ## Basic Syntax
 
@@ -26,13 +26,13 @@ SELECT uniq(user_id, session_id) AS distinct_sessions
 FROM page_views;
 ```
 
-## How HyperLogLog Works
+## How uniq() Works
 
-`uniq()` uses a variant of HyperLogLog (HLL) to estimate distinct counts. HLL hashes each value and uses bit patterns in the hash to estimate the cardinality of the full set. The key properties are:
+`uniq()` uses an internal approximation algorithm to estimate distinct counts. The key properties are:
 
 - Memory usage: approximately 2.5 KB of state per aggregation group, regardless of cardinality
 - Error rate: typically within 2.2% of the true count
-- Mergeability: HLL states can be merged across shards
+- Mergeability: the aggregate state can be merged across shards
 
 ```sql
 -- Even on a billion-row table, memory is bounded
@@ -143,4 +143,4 @@ For everything else - dashboards, exploration, alerting - `uniq()` is the right 
 
 ## Summary
 
-`uniq()` provides fast, memory-efficient approximate distinct counting using HyperLogLog in ClickHouse, with typical error rates around 2%. It is the standard choice for high-cardinality analytics queries where speed matters more than exact precision. Use `uniqState()` and `uniqMerge()` in materialized views for incremental distinct count tracking, and reserve `uniqExact()` for cases where an exact answer is required.
+`uniq()` provides fast, memory-efficient approximate distinct counting in ClickHouse, with typical error rates around 2%. It is the standard choice for high-cardinality analytics queries where speed matters more than exact precision. Use `uniqState()` and `uniqMerge()` in materialized views for incremental distinct count tracking, and reserve `uniqExact()` for cases where an exact answer is required.

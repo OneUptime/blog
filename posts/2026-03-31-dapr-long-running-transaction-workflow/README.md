@@ -111,7 +111,7 @@ Dapr Workflow preserves the custom status string in its state store:
 
 ```bash
 # Query workflow status
-curl http://localhost:3500/v1.0-beta1/workflows/dapr/order-saga-001/status
+curl http://localhost:3500/v1.0/workflows/dapr/order-saga-001/status
 ```
 
 Response:

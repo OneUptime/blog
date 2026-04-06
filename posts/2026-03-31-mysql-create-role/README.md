@@ -81,17 +81,23 @@ Or the user can activate it manually at login:
 SET ROLE 'read_only';
 ```
 
-## Listing All Roles on the Server
+## Inspecting Role Grants and Assignments
 
-Roles are stored in `mysql.user` with a special flag. Query them:
+MySQL does not expose a dedicated "list every role in the server" view. To inspect a specific role, use `SHOW GRANTS FOR`:
 
 ```sql
-SELECT user AS role_name, host
-FROM mysql.user
-WHERE account_locked = 'Y' AND password_expired = 'Y';
+SHOW GRANTS FOR 'read_only';
 ```
 
-Or check `information_schema.APPLICABLE_ROLES` for the current session:
+To see which roles are granted to users, query the role edge table:
+
+```sql
+SELECT FROM_USER AS role_name, TO_USER AS user_name, TO_HOST AS host
+FROM mysql.role_edges
+ORDER BY role_name, user_name, host;
+```
+
+To see roles that are applicable in the current session, use:
 
 ```sql
 SELECT ROLE_NAME, IS_DEFAULT, IS_MANDATORY

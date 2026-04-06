@@ -18,9 +18,9 @@ Exact aggregations on billions of rows are expensive in time and memory. ClickHo
 Function         | Algorithm      | Relative Error | Memory (per state) | Notes
 -----------------|----------------|----------------|--------------------|---------------------------
 count(DISTINCT)  | Exact          | 0%             | O(n)               | Exact but high memory
-uniq             | HyperLogLog++  | ~2.2%          | ~2.5KB             | Good default
-uniqHLL12        | HyperLogLog    | ~2.2%          | ~2.5KB             | Explicit HLL12
-uniqCombined     | HLL + hash set | ~0.3-2%        | Variable           | Better accuracy, more memory
+uniq             | Adaptive sampling | ~2.2%       | ~2.5KB             | Good default
+uniqHLL12        | HyperLogLog      | ~2.2%       | ~2.5KB             | Explicit HLL12
+uniqCombined     | Combined strategies | ~0.3-2%   | Variable           | Better accuracy, more memory
 uniqExact        | Hash set       | 0%             | O(n)               | Exact, high memory
 ```
 
