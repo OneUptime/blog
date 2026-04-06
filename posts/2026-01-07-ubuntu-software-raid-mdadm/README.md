@@ -467,93 +467,18 @@ sudo systemctl enable mdadm-monitor.service
 sudo mdadm --monitor --scan --test --oneshot
 ```
 
-### Creating a Monitoring Script
+### Using mdmonitor for Automatic Alerts
 
-Create a custom monitoring script for comprehensive RAID health checks.
-
-```bash
-#!/bin/bash
-# RAID Health Check Script
-# Save this as /usr/local/bin/raid-health-check.sh
-
-# Script: raid-health-check.sh
-# Purpose: Monitor RAID array health and send alerts
-# Usage: Run via cron for automated monitoring
-
-LOGFILE="/var/log/raid-health.log"
-EMAIL="admin@example.com"
-DATE=$(date '+%Y-%m-%d %H:%M:%S')
-
-# Function to log messages with timestamps
-log_message() {
-    echo "[$DATE] $1" >> "$LOGFILE"
-}
-
-# Function to send alert emails
-send_alert() {
-    echo "$1" | mail -s "RAID Alert: $2" "$EMAIL"
-    log_message "ALERT: $2 - $1"
-}
-
-# Check all RAID arrays for degraded state
-check_arrays() {
-    # Parse /proc/mdstat for array status
-    while read -r line; do
-        if [[ $line =~ ^md[0-9]+ ]]; then
-            array=$(echo "$line" | awk '{print $1}')
-
-            # Check for degraded status
-            if grep -q "\[.*_.*\]" <<< "$(cat /proc/mdstat)"; then
-                send_alert "Array /dev/$array is DEGRADED!" "Degraded Array"
-            fi
-
-            # Check for rebuilding status
-            if grep -q "recovery" /proc/mdstat; then
-                progress=$(grep -A1 "$array" /proc/mdstat | grep "recovery" | awk '{print $4}')
-                log_message "Array /dev/$array is rebuilding: $progress complete"
-            fi
-        fi
-    done < /proc/mdstat
-}
-
-# Check SMART status of component disks
-check_disk_health() {
-    for array in /dev/md*; do
-        if [ -b "$array" ]; then
-            components=$(mdadm --detail "$array" | grep "/dev/sd" | awk '{print $7}')
-            for disk in $components; do
-                # Extract base device (e.g., /dev/sdb from /dev/sdb1)
-                base_disk=$(echo "$disk" | sed 's/[0-9]*$//')
-
-                # Check SMART health
-                smart_status=$(sudo smartctl -H "$base_disk" 2>/dev/null | grep "SMART overall-health")
-                if [[ ! $smart_status =~ "PASSED" ]]; then
-                    send_alert "Disk $base_disk SMART check FAILED!" "Disk Health Alert"
-                fi
-            done
-        fi
-    done
-}
-
-# Main execution
-log_message "Starting RAID health check"
-check_arrays
-check_disk_health
-log_message "RAID health check completed"
-```
-
-Make the script executable and schedule it with cron.
+Ubuntu and Debian ship with `mdmonitor`, a built-in daemon that continuously watches your RAID arrays and sends email alerts on failures. There is no need to write a custom monitoring script — just ensure the service is running.
 
 ```bash
-# Make the script executable
-sudo chmod +x /usr/local/bin/raid-health-check.sh
+# Verify mdmonitor is active
+# This daemon monitors all RAID arrays and triggers alerts on state changes
+sudo systemctl status mdmonitor
 
-# Add a cron job to run the health check every hour
-# Open the root crontab for editing
-sudo crontab -e
-
-# Add this line to run the check every hour
-# 0 * * * * /usr/local/bin/raid-health-check.sh
+# Enable mdmonitor to start on boot (usually enabled by default)
+sudo systemctl enable mdmonitor
+sudo systemctl start mdmonitor
 ```
 
 ## Disk Replacement and Recovery
@@ -703,34 +628,28 @@ echo idle | sudo tee /sys/block/md0/md/sync_action
 
 ### Setting Up Automatic Scrubs
 
-Schedule regular array scrubs using cron.
+Ubuntu and Debian include built-in systemd timers (`mdcheck_start.timer` and `mdcheck_continue.timer`) that automatically run periodic RAID scrubs. By default, scrubs run on the first Sunday of each month. You can customise the schedule without writing a custom cron script.
 
 ```bash
-# Create a weekly scrub script
-sudo tee /etc/cron.weekly/raid-scrub << 'EOF'
-#!/bin/bash
-# Weekly RAID array scrub script
-# Checks all RAID arrays for data consistency
+# Check whether the scrub timers are active
+systemctl status mdcheck_start.timer
+systemctl status mdcheck_continue.timer
 
-LOG="/var/log/raid-scrub.log"
-DATE=$(date '+%Y-%m-%d %H:%M:%S')
+# Enable the timers if they are not already active
+sudo systemctl enable --now mdcheck_start.timer
+sudo systemctl enable --now mdcheck_continue.timer
 
-echo "[$DATE] Starting weekly RAID scrub" >> $LOG
+# Customise the scrub schedule using a systemd override
+# For example, to run scrubs weekly on Sunday at 1 AM:
+sudo systemctl edit mdcheck_start.timer
 
-# Iterate through all md devices
-for md in /sys/block/md*/md/sync_action; do
-    if [ -f "$md" ]; then
-        device=$(echo $md | cut -d'/' -f4)
-        echo "[$DATE] Starting scrub on /dev/$device" >> $LOG
-        echo check > "$md"
-    fi
-done
+# In the editor that opens, add:
+# [Timer]
+# OnCalendar=
+# OnCalendar=Sun *-*-* 01:00:00
 
-echo "[$DATE] Scrub initiated on all arrays" >> $LOG
-EOF
-
-# Make the script executable
-sudo chmod +x /etc/cron.weekly/raid-scrub
+# Verify the updated schedule
+systemctl list-timers mdcheck_start.timer
 ```
 
 ### Growing and Reshaping Arrays
