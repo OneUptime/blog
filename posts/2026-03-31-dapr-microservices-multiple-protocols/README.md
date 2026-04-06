@@ -31,7 +31,6 @@ annotations:
 annotations:
   dapr.io/app-protocol: "https"
   dapr.io/app-port: "8443"
-  dapr.io/app-ssl: "true"
 ```
 
 ## HTTP Service Calling a gRPC Service

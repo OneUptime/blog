@@ -48,13 +48,13 @@ Check who has access to Rook secrets and CephCluster resources:
 
 ```bash
 kubectl get rolebindings,clusterrolebindings -n rook-ceph -o wide
-kubectl auth can-i get secret --as system:serviceaccount:rook-ceph:rook-ceph-system -n rook-ceph
+kubectl auth can-i get secret --as system:serviceaccount:rook-ceph:rook-ceph-operator -n rook-ceph
 ```
 
 Verify the Rook operator service account has minimal necessary permissions:
 
 ```bash
-kubectl -n rook-ceph get clusterrole rook-ceph-system -o yaml | grep -A3 "resources:"
+kubectl -n rook-ceph get clusterrole rook-ceph-operator -o yaml | grep -A3 "resources:"
 ```
 
 ## Step 3: Verify OSD Encryption at Rest

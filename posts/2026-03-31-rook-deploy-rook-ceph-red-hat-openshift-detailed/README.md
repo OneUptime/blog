@@ -26,7 +26,7 @@ Rook-Ceph requires privileged access. Create the necessary SCC bindings:
 ```bash
 # Create a privileged SCC for Rook
 oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:rook-ceph:rook-ceph-system
+  system:serviceaccount:rook-ceph:rook-ceph-operator
 
 oc adm policy add-scc-to-user privileged \
   system:serviceaccount:rook-ceph:rook-ceph-default

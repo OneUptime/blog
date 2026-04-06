@@ -12,9 +12,9 @@ Description: Learn the differences between the three Rook CSI drivers - RBD, Cep
 
 Rook deploys three CSI (Container Storage Interface) drivers that expose different Ceph storage types to Kubernetes. Each driver maps to a different Ceph backend and has different access mode capabilities and performance characteristics:
 
-- `rbd.csi.ceph.com` - RADOS Block Device, block storage
-- `cephfs.csi.ceph.com` - CephFS, shared filesystem
-- `nfs.csi.ceph.com` - NFS-Ganesha, NFS protocol over CephFS
+- `rook-ceph.rbd.csi.ceph.com` - RADOS Block Device, block storage
+- `rook-ceph.cephfs.csi.ceph.com` - CephFS, shared filesystem
+- `rook-ceph.nfs.csi.ceph.com` - NFS-Ganesha, NFS protocol over CephFS
 
 Choosing the right driver depends on your access pattern, whether you need shared access, and the protocols your application expects.
 
@@ -27,7 +27,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-ceph-block
-provisioner: rbd.csi.ceph.com
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: replicapool
@@ -50,7 +50,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-cephfs
-provisioner: cephfs.csi.ceph.com
+provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   fsName: my-fs
@@ -72,7 +72,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-nfs
-provisioner: nfs.csi.ceph.com
+provisioner: rook-ceph.nfs.csi.ceph.com
 parameters:
   nfsCluster: my-nfs
   server: rook-ceph-nfs-my-nfs-0.rook-ceph.svc

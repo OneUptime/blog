@@ -53,7 +53,7 @@ Create the privileged SCC for Rook operator:
 
 ```bash
 oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:rook-ceph:rook-ceph-system
+  system:serviceaccount:rook-ceph:rook-ceph-operator
 ```
 
 Add privileged SCC for the Rook-Ceph default service account:

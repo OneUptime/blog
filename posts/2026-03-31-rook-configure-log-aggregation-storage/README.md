@@ -32,10 +32,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     --secret-key=loki-secret-key
 
 # Create the log storage bucket
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-    --bucket=loki-chunks \
-    --uid=loki
+aws s3 mb s3://loki-chunks \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 Configure Loki to use RGW as the backend:

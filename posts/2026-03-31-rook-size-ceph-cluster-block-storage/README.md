@@ -107,7 +107,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-ceph-block
-provisioner: rook-ceph.rook.io/block
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: rbd-pool

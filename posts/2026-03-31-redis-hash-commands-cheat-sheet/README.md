@@ -93,7 +93,7 @@ HGETDEL user:42 FIELDS 1 session_token
 
 # Get and set expiration
 HGETEX user:42 EX 60 FIELDS 1 session_token
-HSETEX user:42 60 session_token "abc123"
+HSETEX user:42 60 FIELDS 1 session_token "abc123"
 ```
 
 ## Common Patterns

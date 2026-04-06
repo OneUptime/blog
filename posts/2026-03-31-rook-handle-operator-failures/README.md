@@ -52,7 +52,7 @@ Check for permission errors (usually RBAC misconfiguration):
 kubectl -n rook-ceph logs deployment/rook-ceph-operator --tail=200 | grep -i "forbidden\|unauthorized\|permission"
 ```
 
-If you see `forbidden: User "system:serviceaccount:rook-ceph:rook-ceph-system" cannot ...`, re-apply the RBAC resources:
+If you see `forbidden: User "system:serviceaccount:rook-ceph:rook-ceph-operator" cannot ...`, re-apply the RBAC resources:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.16/deploy/examples/common.yaml

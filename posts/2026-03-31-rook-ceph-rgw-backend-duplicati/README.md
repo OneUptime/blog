@@ -27,13 +27,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --display-name="Duplicati Backup User"
 ```
 
-Note the `access_key` and `secret_key` from the output. Then create a bucket:
+Note the `access_key` and `secret_key` from the output. Then create a bucket using the S3 API:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=duplicati-backups \
-  --uid=duplicati
+aws s3 mb s3://duplicati-backups \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Step 2 - Configure Duplicati via Web UI

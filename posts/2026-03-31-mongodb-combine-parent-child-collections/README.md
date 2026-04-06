@@ -131,7 +131,7 @@ const enriched = await db.collection("orders").aggregate([
       as: "items.productDetails",
     },
   },
-  { $unwind: { path: "$items.productDetails", preserveNullAndEmpty: true } },
+  { $unwind: { path: "$items.productDetails", preserveNullAndEmptyArrays: true } },
 ]).toArray();
 ```
 

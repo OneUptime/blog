@@ -45,7 +45,7 @@ path "secret/metadata/rook-ceph/*" {
 EOF
 
 vault write auth/kubernetes/role/rook-ceph-kms \
-  bound_service_account_names=rook-ceph-system,rook-ceph-default \
+  bound_service_account_names=rook-ceph-operator,rook-ceph-default \
   bound_service_account_namespaces=rook-ceph \
   policies=rook-ceph-kms \
   ttl=1h
@@ -116,10 +116,10 @@ If provisioning fails with Vault auth errors:
 vault audit enable file file_path=/vault/logs/audit.log
 
 # Verify service account exists
-kubectl get serviceaccount rook-ceph-system -n rook-ceph
+kubectl get serviceaccount rook-ceph-operator -n rook-ceph
 
 # Test token auth manually
-SA_TOKEN=$(kubectl create token rook-ceph-system -n rook-ceph)
+SA_TOKEN=$(kubectl create token rook-ceph-operator -n rook-ceph)
 curl --request POST \
   --data "{\"jwt\": \"$SA_TOKEN\", \"role\": \"rook-ceph-kms\"}" \
   https://vault.example.com:8200/v1/auth/kubernetes/login

@@ -103,7 +103,7 @@ When running on OpenShift, Ceph pods need additional SCC permissions:
 
 ```bash
 oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:rook-ceph:rook-ceph-system
+  system:serviceaccount:rook-ceph:rook-ceph-operator
 
 oc adm policy add-scc-to-user anyuid \
   system:serviceaccount:rook-ceph:rook-ceph-default

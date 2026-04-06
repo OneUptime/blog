@@ -57,7 +57,7 @@ metadata:
   name: rook-ceph-operator-minimal-binding
 subjects:
   - kind: ServiceAccount
-    name: rook-ceph-system
+    name: rook-ceph-operator
     namespace: rook-ceph
 roleRef:
   kind: ClusterRole
@@ -97,7 +97,7 @@ Test that the restricted service account cannot perform actions outside its scop
 
 ```bash
 kubectl auth can-i delete nodes \
-  --as=system:serviceaccount:rook-ceph:rook-ceph-system
+  --as=system:serviceaccount:rook-ceph:rook-ceph-operator
 
 kubectl auth can-i get secrets \
   --as=system:serviceaccount:rook-ceph:rook-ceph-osd \

@@ -22,7 +22,7 @@ graph TD
     C --> G[Create Secret with credentials]
 
     H[Method 2: Manual] --> I[radosgw-admin user create]
-    I --> J[radosgw-admin bucket create]
+    I --> J[aws s3 mb s3://bucket-name]
 ```
 
 ## Method 1 - ObjectBucketClaim (Kubernetes Native)
@@ -155,13 +155,13 @@ radosgw-admin user create \
 
 # Note the access_key and secret_key from the output
 
-# Create a bucket under the user
-radosgw-admin bucket create \
-  --bucket=my-manual-bucket \
-  --uid=myuser
+# Exit the tools pod, then create a bucket via the S3 API
+aws s3 mb s3://my-manual-bucket \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 
 # List all buckets
-radosgw-admin bucket list
+aws s3 ls \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 
 # Check bucket stats
 radosgw-admin bucket stats --bucket=my-manual-bucket

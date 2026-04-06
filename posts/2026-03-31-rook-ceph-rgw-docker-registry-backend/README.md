@@ -22,11 +22,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --access-key=REGISTRY_ACCESS_KEY \
   --secret-key=REGISTRY_SECRET_KEY
 
-# Create a bucket for registry data
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=docker-registry \
-  --uid=registry
+# Create a bucket for registry data via S3 API
+aws s3 mb s3://docker-registry \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 ## Configure the Docker Distribution Registry

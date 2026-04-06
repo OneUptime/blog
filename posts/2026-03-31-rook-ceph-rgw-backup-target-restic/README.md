@@ -26,10 +26,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --uid=restic-backup \
   --display-name="Restic Backup User"
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=restic-repo \
-  --uid=restic-backup
+# Create the bucket via S3 API
+aws s3 mb s3://restic-repo \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 ## Step 2 - Configure Restic Environment Variables

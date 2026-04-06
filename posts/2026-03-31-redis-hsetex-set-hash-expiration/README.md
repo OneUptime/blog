@@ -16,7 +16,7 @@ Description: Learn how to use the Redis HSETEX command (Redis 7.4+) to set hash 
 
 ```mermaid
 flowchart TD
-    A["HSETEX user:1 EX 3600 FIELDS 1 token abc123"] --> B[Set field token = abc123]
+    A["HSETEX user:1 3600 FIELDS 1 token abc123"] --> B[Set field token = abc123]
     B --> C[Apply TTL of 3600s to token field]
     C --> D[Return OK or field count]
 ```

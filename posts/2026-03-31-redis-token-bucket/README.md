@@ -41,14 +41,14 @@ local new_tokens = math.min(capacity, tokens + elapsed * refill_rate)
 
 if new_tokens < requested then
     -- Update last_refill time but do not consume tokens
-    redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+    redis.call('HSET', key, 'tokens', new_tokens, 'last_refill', now)
     redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
     return 0  -- rejected
 end
 
 -- Consume tokens
 new_tokens = new_tokens - requested
-redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+redis.call('HSET', key, 'tokens', new_tokens, 'last_refill', now)
 redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
 return 1  -- allowed
 ```

@@ -91,7 +91,7 @@ sp.createStreamProcessor("enrichOrders", [
       as: "customerInfo"
     }
   },
-  { $unwind: { path: "$customerInfo", preserveNullAndEmpty: true } },
+  { $unwind: { path: "$customerInfo", preserveNullAndEmptyArrays: true } },
 
   // Add enriched fields
   {

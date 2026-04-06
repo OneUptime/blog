@@ -35,8 +35,8 @@ Note the `access_key` and `secret_key` from the output.
 ## Step 2 - Create a Bucket for Velero Backups
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create --bucket=velero-backups --uid=velero
+aws s3 mb s3://velero-backups \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Step 3 - Create a Kubernetes Secret for Velero Credentials

@@ -122,9 +122,8 @@ Dapr automatically applies mTLS between sidecars. For app-to-sidecar TLS, config
 
 ```yaml
 annotations:
-  dapr.io/app-ssl: "true"
   dapr.io/app-port: "50051"
-  dapr.io/app-protocol: "grpc"
+  dapr.io/app-protocol: "grpcs"
 ```
 
 ## Summary

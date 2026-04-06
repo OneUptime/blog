@@ -107,7 +107,7 @@ For high-throughput INSERT workloads, use mode 2 with row-based binary logging. 
 
 ```sql
 -- Check auto-increment mutex contention in performance_schema
-SELECT EVENT_NAME, COUNT_STAR, SUM_WAIT_SECS
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT
 FROM performance_schema.events_waits_summary_global_by_event_name
 WHERE EVENT_NAME LIKE '%auto_inc%';
 ```

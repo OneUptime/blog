@@ -79,11 +79,11 @@ With `innodb_adaptive_max_sleep_delay` set (non-zero), InnoDB automatically adju
 
 ```sql
 -- Check for thread concurrency waits
-SELECT EVENT_NAME, COUNT_STAR, SUM_WAIT_TIME / 1e9 AS total_ms
+SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e9 AS total_ms
 FROM performance_schema.events_waits_summary_global_by_event_name
 WHERE EVENT_NAME LIKE '%concurrency_ticket%'
    OR EVENT_NAME LIKE '%innodb_mutex%'
-ORDER BY SUM_WAIT_TIME DESC
+ORDER BY SUM_TIMER_WAIT DESC
 LIMIT 10;
 
 -- Check current thread states

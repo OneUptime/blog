@@ -18,7 +18,7 @@ Redis provides built-in geospatial indexing using a Sorted Set under the hood. K
 
 ```bash
 # Add vehicle location
-GEOADD fleet:vehicles 40.7128 -74.0060 "vehicle-001"
+GEOADD fleet:vehicles -74.0060 40.7128 "vehicle-001"
 
 # Get distance between two vehicles (in km)
 GEODIST fleet:vehicles vehicle-001 vehicle-002 km

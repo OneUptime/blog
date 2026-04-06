@@ -164,9 +164,8 @@ radosgw-admin bucket list --uid=app-user
 ### Create a Bucket Programmatically
 
 ```bash
-radosgw-admin bucket create \
-  --bucket=my-app-data \
-  --uid=app-user
+aws s3 mb s3://my-app-data \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ### Check Bucket Statistics

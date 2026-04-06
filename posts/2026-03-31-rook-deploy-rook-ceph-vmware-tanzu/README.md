@@ -51,9 +51,9 @@ helm install rook-ceph rook-release/rook-ceph \
 For Tanzu with PSP restrictions (older TKG versions):
 
 ```bash
-kubectl create clusterrolebinding rook-ceph-system-psp \
+kubectl create clusterrolebinding rook-ceph-operator-psp \
   --clusterrole=psp:privileged \
-  --serviceaccount=rook-ceph:rook-ceph-system
+  --serviceaccount=rook-ceph:rook-ceph-operator
 ```
 
 ## Step 3 - Deploy the Ceph Cluster

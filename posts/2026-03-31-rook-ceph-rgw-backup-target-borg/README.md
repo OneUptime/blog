@@ -24,10 +24,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --uid=borg-backup \
   --display-name="Borg Backup User"
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=borg-repos \
-  --uid=borg-backup
+aws s3 mb s3://borg-repos \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Step 2 - Install and Configure rclone

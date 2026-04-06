@@ -106,7 +106,7 @@ curl -X POST http://localhost:3500/v1.0-alpha1/conversation/deepseek-conversatio
 
 ## Code Review Example
 
-```python
+````python
 import requests
 import json
 
@@ -137,7 +137,7 @@ def get_user(user_id):
 
 review = review_code_with_deepseek(code, "python")
 print(review)
-```
+````
 
 ## Comparing Models in the Same Application
 

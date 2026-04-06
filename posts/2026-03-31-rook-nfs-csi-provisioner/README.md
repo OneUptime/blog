@@ -10,7 +10,7 @@ Description: Learn how to use the NFS CSI driver with a Rook CephNFS cluster to 
 
 ## What Is the NFS CSI Provisioner
 
-Rook includes support for the NFS CSI driver (`nfs.csi.ceph.com`), which allows Kubernetes applications to dynamically provision PersistentVolumeClaims backed by NFS exports from a `CephNFS` cluster. Unlike manually creating NFS PVs, the CSI provisioner automates export creation and deletion, integrating NFS into the standard Kubernetes storage workflow.
+Rook includes support for the NFS CSI driver (`rook-ceph.nfs.csi.ceph.com`), which allows Kubernetes applications to dynamically provision PersistentVolumeClaims backed by NFS exports from a `CephNFS` cluster. Unlike manually creating NFS PVs, the CSI provisioner automates export creation and deletion, integrating NFS into the standard Kubernetes storage workflow.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-nfs
-provisioner: nfs.csi.ceph.com
+provisioner: rook-ceph.nfs.csi.ceph.com
 parameters:
   nfsCluster: my-nfs
   server: rook-ceph-nfs-my-nfs-0.rook-ceph.svc

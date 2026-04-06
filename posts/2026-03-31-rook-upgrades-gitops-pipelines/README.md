@@ -49,7 +49,7 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: rook-ceph-system
+      serviceAccountName: rook-ceph-operator
       containers:
       - name: health-check
         image: rook/ceph:v1.14.0

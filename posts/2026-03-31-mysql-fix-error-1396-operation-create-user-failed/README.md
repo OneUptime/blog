@@ -79,11 +79,20 @@ CREATE USER IF NOT EXISTS 'myapp'@'%' IDENTIFIED BY 'strong_password';
 
 This will not update the password if the user already exists.
 
-## Fix 5: Use CREATE OR REPLACE USER (MySQL 8.0+)
+## Fix 5: Drop and Recreate in a Single Script
+
+MySQL does not support `CREATE OR REPLACE USER`. If you need a one-step replacement, combine `DROP USER IF EXISTS` with `CREATE USER`:
 
 ```sql
-CREATE OR REPLACE USER 'myapp'@'%' IDENTIFIED BY 'new_password';
+DROP USER IF EXISTS 'myapp'@'%';
+CREATE USER 'myapp'@'%' IDENTIFIED BY 'new_password';
 GRANT SELECT, INSERT, UPDATE ON mydb.* TO 'myapp'@'%';
+```
+
+If the user already exists and you only need to change the password, use `ALTER USER` instead:
+
+```sql
+ALTER USER 'myapp'@'%' IDENTIFIED BY 'new_password';
 ```
 
 ## Verify After Fix

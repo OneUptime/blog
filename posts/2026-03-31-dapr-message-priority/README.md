@@ -61,6 +61,7 @@ spec:
   template:
     metadata:
       annotations:
+        dapr.io/enabled: "true"
         dapr.io/app-id: task-consumer-critical
 
 # Low priority consumer - 1 replica

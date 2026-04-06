@@ -70,7 +70,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: rook-ceph-system
+          serviceAccountName: rook-ceph-operator
           containers:
           - name: key-rotator
             image: bitnami/kubectl:latest

@@ -97,7 +97,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: rook-ceph-system
+          serviceAccountName: rook-ceph-operator
           containers:
           - name: ceph-pause-scrub
             image: rook/ceph:latest

@@ -75,7 +75,7 @@ ORDER BY ROUTINE_NAME;
 
 ## Dropping and Recreating a Procedure (Replace Pattern)
 
-MySQL does not support `CREATE OR REPLACE PROCEDURE` before version 8.0. The standard pattern for updating a procedure is to drop it first, then recreate it:
+MySQL does not support `CREATE OR REPLACE PROCEDURE`. The standard pattern for updating a procedure is to drop it first, then recreate it:
 
 ```sql
 DROP PROCEDURE IF EXISTS calculate_discount;
@@ -88,7 +88,7 @@ END$$
 DELIMITER ;
 ```
 
-In MySQL 8.0 and later, you can also use `CREATE OR REPLACE PROCEDURE` in some contexts via the `ALTER PROCEDURE` statement for changing procedure characteristics, though the full body still requires drop-and-recreate.
+MySQL does not support `CREATE OR REPLACE PROCEDURE` (that syntax is available in MariaDB but not in MySQL). `ALTER PROCEDURE` in MySQL can only change procedure characteristics (such as the SQL security context or comment), not the procedure body. The drop-and-recreate pattern shown above is the standard approach.
 
 ## Permissions Required to Drop a Procedure
 

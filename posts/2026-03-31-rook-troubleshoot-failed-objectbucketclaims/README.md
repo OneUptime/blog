@@ -103,7 +103,7 @@ If the Rook operator lacks permissions:
 kubectl get clusterrolebinding | grep rook
 
 # Check service account
-kubectl get sa -n rook-ceph rook-ceph-system
+kubectl get sa -n rook-ceph rook-ceph-operator
 ```
 
 ## Common Failure: Namespace Mismatch

@@ -139,8 +139,8 @@ kubectl get pv | grep rook
 Clean up orphaned cluster-scoped resources:
 
 ```bash
-kubectl delete clusterrole rook-ceph-system
-kubectl delete clusterrolebinding rook-ceph-system
+kubectl delete clusterrole rook-ceph-operator
+kubectl delete clusterrolebinding rook-ceph-operator
 ```
 
 Delete orphaned PersistentVolumes (data is already gone after namespace deletion):

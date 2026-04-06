@@ -42,17 +42,21 @@ aws s3 ls \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
-## Create a Bucket with radosgw-admin
+## Create a Bucket with the S3 API
+
+Buckets in Ceph RGW are created via the S3 API (not `radosgw-admin`):
 
 ```bash
+# Create a bucket
+aws s3 mb s3://my-admin-bucket \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
+
+# List all buckets
+aws s3 ls \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
+
+# Get bucket details
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # Create a bucket linked to a user
-  radosgw-admin bucket create --bucket=my-admin-bucket --uid=myuser
-
-  # List all buckets
-  radosgw-admin bucket list
-
-  # Get bucket details
   radosgw-admin bucket stats --bucket=my-admin-bucket
 "
 ```

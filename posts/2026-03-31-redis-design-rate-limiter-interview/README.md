@@ -68,7 +68,7 @@ if new_tokens < 1 then
     return 0  -- rate limited
 end
 
-redis.call('HMSET', key, 'tokens', new_tokens - 1, 'last_refill', now)
+redis.call('HSET', key, 'tokens', new_tokens - 1, 'last_refill', now)
 redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
 return 1  -- allowed
 ```

@@ -70,14 +70,16 @@ END //
 DELIMITER ;
 ```
 
-## Using CREATE OR REPLACE (MySQL 8.0+)
+## Why CREATE OR REPLACE Does Not Work in MySQL
 
-MySQL 8.0 introduced `CREATE OR REPLACE PROCEDURE`, which drops and recreates in one atomic statement:
+Unlike MariaDB and Oracle, MySQL does **not** support `CREATE OR REPLACE PROCEDURE`. Attempting to use it will produce a syntax error. The correct approach in all MySQL versions is to use `DROP PROCEDURE IF EXISTS` followed by `CREATE PROCEDURE`:
 
 ```sql
+DROP PROCEDURE IF EXISTS calculate_order_stats;
+
 DELIMITER //
 
-CREATE OR REPLACE PROCEDURE calculate_order_stats(IN p_customer_id INT)
+CREATE PROCEDURE calculate_order_stats(IN p_customer_id INT)
 BEGIN
     DECLARE v_count INT;
 
@@ -90,7 +92,9 @@ END //
 DELIMITER ;
 ```
 
-`CREATE OR REPLACE` is the cleanest way to update procedures in MySQL 8.0 and later.
+This two-step pattern is the standard way to replace a stored procedure in MySQL.
+
+**Note:** Some online resources incorrectly claim that MySQL 8.0 added `CREATE OR REPLACE PROCEDURE`. This is not true. Only MariaDB supports this syntax. Always use the `DROP` + `CREATE` pattern in MySQL.
 
 ## Safe Deployment with Transactions
 
@@ -165,4 +169,4 @@ GRANT EXECUTE ON PROCEDURE mydb.calculate_order_stats TO 'app_user'@'%';
 
 ## Summary
 
-`ALTER PROCEDURE` only modifies metadata like `SQL SECURITY` and `COMMENT`, not the procedure body. To change logic, use `DROP PROCEDURE IF EXISTS` followed by `CREATE PROCEDURE`, or use `CREATE OR REPLACE PROCEDURE` in MySQL 8.0+. Store procedure definitions in version control and export them with `mysqldump --routines`. Always verify grants after recreating procedures in older MySQL versions.
+`ALTER PROCEDURE` only modifies metadata like `SQL SECURITY` and `COMMENT`, not the procedure body. To change logic, use `DROP PROCEDURE IF EXISTS` followed by `CREATE PROCEDURE`, since MySQL does not support `CREATE OR REPLACE PROCEDURE` (that syntax is available in MariaDB and Oracle, not MySQL). Store procedure definitions in version control and export them with `mysqldump --routines`. Always verify grants after recreating procedures in older MySQL versions.

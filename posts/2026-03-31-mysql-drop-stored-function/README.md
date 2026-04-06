@@ -86,18 +86,7 @@ END //
 DELIMITER ;
 ```
 
-Alternatively, MySQL 8.0 supports `CREATE OR REPLACE FUNCTION` as a single atomic statement:
-
-```sql
-CREATE OR REPLACE FUNCTION format_phone(p_raw VARCHAR(20))
-RETURNS VARCHAR(15)
-DETERMINISTIC
-BEGIN
-    RETURN CONCAT('(', SUBSTRING(p_raw,1,3), ') ',
-                       SUBSTRING(p_raw,4,3), '-',
-                       SUBSTRING(p_raw,7));
-END;
-```
+The `DROP FUNCTION IF EXISTS` followed by `CREATE FUNCTION` pattern is the standard approach in MySQL, since MySQL does not support `CREATE OR REPLACE FUNCTION` (that syntax is available in MariaDB but not in MySQL).
 
 ## Handling Dependencies
 

@@ -104,7 +104,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-ceph-nvme-iops
-provisioner: rook-ceph.rook.io/block
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: iops-pool

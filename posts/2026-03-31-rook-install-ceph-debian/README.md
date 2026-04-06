@@ -46,10 +46,10 @@ On all nodes:
 apt install -y ceph ceph-mgr ceph-mon ceph-osd ceph-mds radosgw
 ```
 
-On the admin node only:
+On the admin node, install `cephadm` which is the modern tool for bootstrapping and managing Ceph clusters (the older `ceph-deploy` tool is deprecated and no longer maintained):
 
 ```bash
-apt install -y ceph-deploy
+apt install -y cephadm
 ```
 
 ## Step 3 - Bootstrap the Cluster with cephadm
@@ -57,9 +57,6 @@ apt install -y ceph-deploy
 Use `cephadm` for modern cluster bootstrapping:
 
 ```bash
-# Install cephadm
-apt install -y cephadm
-
 # Bootstrap the first monitor on node1
 cephadm bootstrap \
   --mon-ip 192.168.1.10 \

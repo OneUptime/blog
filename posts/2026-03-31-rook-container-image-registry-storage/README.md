@@ -56,10 +56,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     --secret-key=registry-secret-key
 
 # Create the registry bucket
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-    --bucket=registry-images \
-    --uid=registry
+aws s3 mb s3://registry-images \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Deploying Harbor with Ceph RGW Backend

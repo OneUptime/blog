@@ -84,7 +84,7 @@ Redis promotes the replica with the smallest replication offset lag (most caught
 redis-cli -p 7004 INFO replication | grep master_repl_offset
 ```
 
-Replicas with `slave-priority 0` are never promoted:
+Replicas with `replica-priority 0` are never promoted:
 
 ```bash
 # Prevent a specific replica from being promoted

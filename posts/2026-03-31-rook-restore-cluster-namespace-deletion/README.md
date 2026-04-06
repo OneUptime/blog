@@ -140,7 +140,7 @@ Protect the namespace from accidental deletion using ResourceQuota policies and 
 ```bash
 kubectl create clusterrolebinding protect-rook-namespace \
   --clusterrole=cluster-admin \
-  --serviceaccount=rook-ceph:rook-ceph-system
+  --serviceaccount=rook-ceph:rook-ceph-operator
 ```
 
 Use admission webhooks or OPA policies to require confirmation before deleting the `rook-ceph` namespace.

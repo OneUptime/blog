@@ -31,12 +31,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     --access-key=fn-access-key \
     --secret-key=fn-secret-key
 
-# Create buckets
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create --bucket=function-artifacts --uid=serverless
+# Create buckets via S3 API
+aws s3 mb s3://function-artifacts \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create --bucket=function-state --uid=serverless
+aws s3 mb s3://function-state \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 ## Knative with Ceph Storage

@@ -58,7 +58,7 @@ metadata:
   name: my-nvmeof
   namespace: rook-ceph
 spec:
-  serviceAccountName: rook-ceph-system
+  serviceAccountName: rook-ceph-operator
   gateway:
     svcPort: 5500
     instances: 2

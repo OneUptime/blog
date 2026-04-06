@@ -46,7 +46,7 @@ EOF
 
 # Create a role binding the policy to the Rook service account
 vault write auth/kubernetes/role/rook-ceph \
-  bound_service_account_names=rook-ceph-system \
+  bound_service_account_names=rook-ceph-operator \
   bound_service_account_namespaces=rook-ceph \
   policies=rook-ceph \
   ttl=1h

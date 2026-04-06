@@ -100,7 +100,7 @@ metadata:
   namespace: rook-ceph
 spec:
   storage:
-    useAllNodes: true
+    useAllNodes: false
     useAllDevices: false
     nodes:
     - name: "new-node"

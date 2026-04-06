@@ -34,11 +34,9 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
     --access-key=CEPH_MIGRATE_KEY \
     --secret-key=CEPH_MIGRATE_SECRET
 
-# Create a matching bucket
-kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-    --bucket=my-bucket \
-    --uid=minio-migrator
+# Create a matching bucket via S3 API
+aws s3 mb s3://my-bucket \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 ## Step 2: Configure mc for Both Endpoints

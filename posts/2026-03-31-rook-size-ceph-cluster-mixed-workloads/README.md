@@ -115,7 +115,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: ceph-nvme-db
-provisioner: rook-ceph.rook.io/block
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   pool: db-pool-nvme
   clusterID: rook-ceph
@@ -124,7 +124,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: ceph-ssd-files
-provisioner: rook-ceph.rook.io/block
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   pool: fs-pool-ssd
   clusterID: rook-ceph

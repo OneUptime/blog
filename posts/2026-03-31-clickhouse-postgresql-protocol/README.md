@@ -117,7 +117,7 @@ SELECT
     toStartOfHour(ts) AS hour,
     count()           AS events
 FROM default.events
-WHERE ts >= now() - INTERVAL '1 hour'
+WHERE ts >= now() - INTERVAL 1 HOUR
 GROUP BY hour
 ORDER BY hour;
 ```

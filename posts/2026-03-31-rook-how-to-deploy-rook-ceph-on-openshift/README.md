@@ -65,7 +65,7 @@ volumes:
 - persistentVolumeClaim
 - secret
 users:
-- system:serviceaccount:rook-ceph:rook-ceph-system
+- system:serviceaccount:rook-ceph:rook-ceph-operator
 - system:serviceaccount:rook-ceph:rook-ceph-osd
 - system:serviceaccount:rook-ceph:rook-ceph-mgr
 ```

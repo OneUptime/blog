@@ -35,7 +35,7 @@ db.orders.aggregate([
       as: "product"
     }
   },
-  { $unwind: { path: "$product", preserveNullAndEmpty: false } },
+  { $unwind: { path: "$product", preserveNullAndEmptyArrays: false } },
   {
     $project: {
       productName: "$product.name",

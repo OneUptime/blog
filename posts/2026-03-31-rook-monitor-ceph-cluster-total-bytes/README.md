@@ -117,8 +117,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ```yaml
 spec:
   storage:
-    useAllNodes: true
-    useAllDevices: true
+    useAllNodes: false
+    useAllDevices: false
     nodes:
     - name: new-worker-4
       devices:

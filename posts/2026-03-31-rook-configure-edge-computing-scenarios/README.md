@@ -77,7 +77,7 @@ spec:
     count: 1
     allowMultiplePerNode: true
   storage:
-    useAllNodes: true
+    useAllNodes: false
     useAllDevices: false
     nodes:
       - name: edge-node-01

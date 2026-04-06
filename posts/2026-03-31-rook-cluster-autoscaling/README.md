@@ -142,7 +142,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: rook-ceph-system
+          serviceAccountName: rook-ceph-operator
           restartPolicy: OnFailure
           containers:
             - name: capacity-check

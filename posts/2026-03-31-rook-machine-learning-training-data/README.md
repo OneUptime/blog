@@ -26,10 +26,8 @@ Store large training datasets in Ceph RGW:
 
 ```bash
 # Create a dataset bucket
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-    --bucket=ml-datasets \
-    --uid=mluser
+aws s3 mb s3://ml-datasets \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 
 # Upload dataset from local machine
 aws s3 sync ./imagenet-subset/ s3://ml-datasets/imagenet/ \

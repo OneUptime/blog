@@ -97,6 +97,7 @@ For RBD (block device) mounts, unmap the device explicitly:
 ```bash
 # List mapped RBD devices
 ssh stuck-node "sudo rbd device list"
+```
 
 ```text
 id  pool        namespace  image                  snap  device

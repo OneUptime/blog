@@ -38,10 +38,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --access-key=velero-access-key \
   --secret-key=velero-secret-key
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=velero-backups \
-  --uid=velero
+aws s3 mb s3://velero-backups \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 Get the RGW endpoint:

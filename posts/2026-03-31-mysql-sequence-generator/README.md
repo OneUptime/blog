@@ -30,7 +30,7 @@ INSERT INTO sequences (name, current_value, step) VALUES
 
 ## Generating the Next Value
 
-Use `UPDATE ... RETURNING` pattern (or a two-step update-and-select) to atomically fetch the next value:
+Use a two-step update-and-select to atomically fetch the next value:
 
 ```sql
 DELIMITER $$

@@ -109,7 +109,7 @@ Ceph BlueStore uses a RocksDB metadata store (DB) and a Write-Ahead Log (WAL). B
 ```yaml
 spec:
   storage:
-    useAllNodes: true
+    useAllNodes: false
     useAllDevices: false
     nodes:
       - name: "node1"

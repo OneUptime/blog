@@ -51,7 +51,7 @@ The Rook operator needs ClusterRole and ClusterRoleBinding permissions. Check if
 ```bash
 kubectl get clusterrole rook-ceph-global
 kubectl get clusterrolebinding rook-ceph-global
-kubectl get serviceaccount rook-ceph-system -n rook-ceph
+kubectl get serviceaccount rook-ceph-operator -n rook-ceph
 ```
 
 If missing, reapply the RBAC manifests:

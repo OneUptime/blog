@@ -43,10 +43,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --access-key=harbor-access-key \
   --secret-key=harbor-secret-key
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket create \
-  --bucket=harbor-registry \
-  --uid=harbor
+# Create the bucket via S3 API
+aws s3 mb s3://harbor-registry \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 Get the RGW service endpoint:

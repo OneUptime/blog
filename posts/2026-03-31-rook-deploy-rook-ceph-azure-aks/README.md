@@ -97,8 +97,8 @@ AKS nodes use certain security policies. Ensure Rook's PSP (if applicable) allow
 
 ```bash
 kubectl create clusterrolebinding rook-ceph-privileged \
-  --clusterrole=rook-ceph-system \
-  --serviceaccount=rook-ceph:rook-ceph-system
+  --clusterrole=rook-ceph-operator \
+  --serviceaccount=rook-ceph:rook-ceph-operator
 ```
 
 For AKS with Azure Policy addon, add exemptions:

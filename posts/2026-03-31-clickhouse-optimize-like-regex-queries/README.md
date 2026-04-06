@@ -88,7 +88,7 @@ ALTER TABLE logs ADD COLUMN error_class String
     MATERIALIZED extract(log_line, 'Exception: (\\w+)');
 
 -- Then index and query the extracted column
-CREATE INDEX idx_error_class ON logs (error_class);
+ALTER TABLE logs ADD INDEX idx_error_class (error_class) TYPE bloom_filter GRANULARITY 1;
 SELECT count() FROM logs WHERE error_class = 'NullPointerException';
 ```
 
