@@ -90,7 +90,7 @@ for pod in $OSD_PODS; do
   echo "Restarting $pod..."
   kubectl -n rook-ceph delete pod "$pod"
   sleep 30
-  kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
     ceph status | grep HEALTH
 done
 ```
