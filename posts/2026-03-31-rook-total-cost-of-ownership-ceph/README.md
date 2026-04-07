@@ -66,7 +66,7 @@ year_2_5_annual:
   staff: 75000
   total_per_year: 82847
 
-five_year_tco: 504435
+five_year_tco: 504235
 usable_tb: 160
 cost_per_tb_per_year: 630
 ```

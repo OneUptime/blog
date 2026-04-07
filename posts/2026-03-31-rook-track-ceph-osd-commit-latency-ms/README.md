@@ -32,7 +32,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd perf
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd dump | grep -i latency
+  ceph osd perf | sort -k3 -rn | head -10
 ```
 
 ## Querying in Prometheus
@@ -118,8 +118,9 @@ High commit latency causes:
 Check for slow ops related to commit:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 ops | head -50
+kubectl -n rook-ceph exec -it \
+  $(kubectl -n rook-ceph get pod -l ceph-osd-id=0 -o jsonpath='{.items[0].metadata.name}') \
+  -- ceph daemon osd.0 dump_ops_in_flight
 ```
 
 ## Grafana Time Series Panel
