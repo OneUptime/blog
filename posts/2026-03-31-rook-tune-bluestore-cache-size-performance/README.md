@@ -34,7 +34,10 @@ import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
 print('Cache bytes:', bs.get('bluestore_cache_bytes', 0))
-print('Cache hit ratio:', bs.get('bluestore_cache_hit_ratio', 'N/A'))
+h = bs.get('bluestore_cache_hit', 0)
+m = bs.get('bluestore_cache_miss', 0)
+total = h + m
+print(f'Cache hit ratio: {h/total:.3f}' if total > 0 else 'Cache hit ratio: N/A')
 "
 ```
 
@@ -49,7 +52,7 @@ BlueStore cache size should be based on available RAM per OSD:
 | 8 GB | 3-4 GB |
 | 16 GB | 6-8 GB |
 
-Default values are conservative: 1 GB for SSD OSDs, 300 MB for HDD OSDs.
+Default values are: 3 GB for SSD OSDs, 1 GB for HDD OSDs.
 
 ## Setting Cache Size
 
@@ -87,8 +90,8 @@ kubectl apply -f rook-config-override.yaml
 Adjust the ratio of cache used for data vs RocksDB metadata:
 
 ```bash
-# Default ratio: 0.37 for meta (RocksDB), 0.13 for kv_sync, remainder for data
-ceph config show osd.0 bluestore_cache_meta_ratio
+# Default ratio: 0.4 for meta (onode metadata), 0.4 for kv (RocksDB), remainder for data
+ceph config get osd.0 bluestore_cache_meta_ratio
 
 # For workloads with many objects (high metadata pressure):
 ceph config set osd bluestore_cache_meta_ratio 0.5
@@ -108,8 +111,8 @@ for OSD in $(ceph osd ls); do
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-h = bs.get('bluestore_cache_hits', {}).get('avgcount', 0)
-m = bs.get('bluestore_cache_misses', {}).get('avgcount', 0)
+h = bs.get('bluestore_cache_hit', 0)
+m = bs.get('bluestore_cache_miss', 0)
 total = h + m
 print(f'OSD $OSD: hits={h}, misses={m}, ratio={h/total:.3f}' if total > 0 else 'N/A')
   ")
@@ -122,16 +125,22 @@ done
 Signs the cache is too small:
 
 ```bash
-# Check for cache trim events
+# Check cache miss rate as an indicator of pressure
 ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-print('Cache trims:', bs.get('bluestore_cache_trim_max_skip_pinned', 0))
+h = bs.get('bluestore_cache_hit', 0)
+m = bs.get('bluestore_cache_miss', 0)
+total = h + m
+ratio = h / total if total > 0 else 0
+print(f'Hit ratio: {ratio:.3f} (hits={h}, misses={m})')
+if ratio < 0.5:
+    print('Warning: Low hit ratio - consider increasing cache size')
 "
 ```
 
-High trim rates indicate the cache is being evicted frequently and should be increased.
+A consistently low cache hit ratio indicates the cache is too small for the working set and should be increased.
 
 ## Summary
 
