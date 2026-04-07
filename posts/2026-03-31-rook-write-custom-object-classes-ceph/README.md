@@ -102,7 +102,7 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
         ioctx.write_full("testobj", b"the quick brown fox jumps over the lazy dog")
 
         # Call the word_count class method
-        result = ioctx.execute("testobj", "myclass", "word_count", b"")
+        ret, result = ioctx.execute("testobj", "myclass", "word_count", b"")
         import struct
         count = struct.unpack("<i", result)[0]
         print(f"Word count: {count}")  # 9
