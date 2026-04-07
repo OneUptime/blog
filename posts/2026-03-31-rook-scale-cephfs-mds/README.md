@@ -143,8 +143,8 @@ Set the MDS cache size via Ceph configuration:
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
   # Set cache size to 4GB per MDS
   ceph config set mds mds_cache_memory_limit 4294967296
-  # Set cache target (percentage of max to actively use)
-  ceph config set mds mds_cache_trim_threshold 0.95
+  # Set cache reservation (fraction of max kept as free buffer, default 0.05)
+  ceph config set mds mds_cache_reservation 0.05
 "
 ```
 
@@ -185,11 +185,11 @@ If you do not need multiple active MDS daemons but still want failover without e
 spec:
   metadataServer:
     activeCount: 1
-    # false = use standby-replay daemons (lower cost than hot standby)
+    # false = no dedicated standby per active MDS (fewer total pods)
     activeStandby: false
 ```
 
-With `activeStandby: false`, standby daemons are cold standbys that have not preloaded the MDS journal.
+With `activeStandby: false`, Rook deploys `activeCount + 1` MDS pods instead of `activeCount * 2`. The extra MDS daemon serves as a shared standby rather than a dedicated hot standby for each active.
 
 ## Monitoring MDS Performance
 
@@ -197,21 +197,21 @@ Check per-MDS performance metrics:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph tell mds.myfs.0 perf dump | jq '.mds.request'
+  ceph tell mds.myfs-a perf dump | jq '.mds.request'
 ```
 
 Check MDS session count:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph tell mds.myfs.0 session ls | jq 'length'
+  ceph tell mds.myfs-a session ls | jq 'length'
 ```
 
 Check slow MDS requests:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph tell mds.myfs.0 dump_ops_in_flight
+  ceph tell mds.myfs-a dump_ops_in_flight
 ```
 
 ## Summary
