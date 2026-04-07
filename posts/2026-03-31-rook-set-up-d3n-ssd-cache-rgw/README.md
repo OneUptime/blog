@@ -44,9 +44,6 @@ echo "/dev/nvme1n1  /var/lib/ceph/rgw/cache  xfs  defaults,noatime  0 0" >> /etc
 XFS with `noatime` is recommended. Additional tuning:
 
 ```bash
-# Disable write barriers for non-critical cache data (only if using UPS-backed storage)
-mount -o remount,noatime,nobarrier /var/lib/ceph/rgw/cache
-
 # Set readahead for sequential cache reads
 blockdev --setra 256 /dev/nvme1n1
 ```
@@ -55,18 +52,18 @@ blockdev --setra 256 /dev/nvme1n1
 
 ```bash
 # Set the cache path and size (leave ~10% free for metadata)
-ceph config set client.rgw.myzone d3n_l1_local_datacache_enabled true
-ceph config set client.rgw.myzone d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
-ceph config set client.rgw.myzone d3n_l1_datacache_size 85899345920
+ceph config set client.rgw.myzone rgw_d3n_l1_local_datacache_enabled true
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 85899345920
 ```
 
 In `ceph.conf`:
 
 ```ini
 [client.rgw.myzone]
-d3n_l1_local_datacache_enabled = true
-d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
-d3n_l1_datacache_size = 85899345920
+rgw_d3n_l1_local_datacache_enabled = true
+rgw_d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
+rgw_d3n_l1_datacache_size = 85899345920
 ```
 
 ## Setting Permissions
