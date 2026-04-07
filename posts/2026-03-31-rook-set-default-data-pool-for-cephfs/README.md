@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, CephFS
 
-Description: Learn how to set and change the default data pool for a CephFS filesystem so new files are stored in the correct pool without manual per-directory configuration.
+Description: Learn how the default data pool for a CephFS filesystem is determined at creation time and how to use per-directory overrides to control where new files are stored.
 
 ---
 
 ## What Is the Default Data Pool
 
-When a CephFS filesystem has multiple data pools, each new file written to the filesystem goes into the default data pool unless a different pool is specified via extended attributes on the parent directory. The default data pool is set at filesystem creation time and can be changed afterward.
+When a CephFS filesystem has multiple data pools, each new file written to the filesystem goes into the default data pool unless a different pool is specified via extended attributes on the parent directory. The default data pool is set at filesystem creation time and cannot be changed afterward.
 
 ## Checking the Current Default Data Pool
 
@@ -21,42 +21,30 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 ```
 
 ```bash
-ceph fs get myfs | grep "data_pools\|default_data_pool"
+ceph fs get myfs
 ```
 
-Or use the fs dump:
+Or use the fs dump to see data pools in JSON format:
 
 ```bash
 ceph fs dump --format json | jq '.filesystems[] | {name: .mdsmap.fs_name, data_pools: .mdsmap.data_pools}'
 ```
 
-The first pool in the `data_pools` array is typically the default.
+The first pool in the `data_pools` array is the default data pool, which is the pool specified when the filesystem was created with `ceph fs new`.
 
-## Setting the Default Data Pool
+## The Default Data Pool Cannot Be Changed
 
-Use `ceph fs set-default-data-pool` to change which pool is used by default:
+The default data pool is set when the filesystem is created with `ceph fs new` and cannot be changed afterward. Ceph does not provide a command to change the default data pool of an existing filesystem.
 
-```bash
-ceph fs set-default-data-pool myfs myfs-ssd-data
-```
+If you need new files to go to a different pool, use per-directory layout overrides with `setfattr` (described below) to direct writes to the desired pool.
 
-Where `myfs-ssd-data` is the name of the pool you want new files to go into by default.
+## Planning the Default Data Pool
 
-Verify:
+Because the default data pool is immutable after creation, plan your pool choice carefully. Consider:
 
-```bash
-ceph fs get myfs
-```
-
-The specified pool should now appear first in `data_pools`.
-
-## Why Change the Default Data Pool
-
-You might change the default data pool when:
-
-- Adding an SSD-backed pool and wanting new writes to go there
-- Migrating from one pool type to another (replicated to erasure-coded)
-- Separating a backup or archive pool from the hot data pool
+- If you want SSD-backed storage for most writes, make the SSD pool the default at creation
+- Use per-directory overrides for cold or archive data on HDD pools
+- If you need to change the default, you must create a new filesystem with the desired default pool and migrate data
 
 ## Setting Default Pool at Filesystem Creation
 
@@ -127,4 +115,4 @@ getfattr -n ceph.file.layout.pool /mnt/myfs/testfile
 
 ## Summary
 
-The default CephFS data pool determines where new files are stored when no per-directory pool override is configured. Set it at creation by ordering pools in `ceph fs new`, or change it later with `ceph fs set-default-data-pool`. In Rook, the first `dataPools` entry is the default. Use per-directory `setfattr` overrides for tiered storage where different directories need different pools.
+The default CephFS data pool determines where new files are stored when no per-directory pool override is configured. It is set at creation time with `ceph fs new` and cannot be changed afterward. In Rook, the first `dataPools` entry in the CephFilesystem CRD becomes the default. Use per-directory `setfattr` overrides for tiered storage where different directories need different pools.
