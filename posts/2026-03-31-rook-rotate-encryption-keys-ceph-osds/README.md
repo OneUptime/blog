@@ -47,16 +47,16 @@ CURRENT_KEY=$(kubectl -n rook-ceph get secret rook-ceph-osd-encryption-key-osd-0
 NEW_KEY=$(openssl rand -base64 64)
 
 # Add new key to LUKS
-echo "$CURRENT_KEY" | cryptsetup luksAddKey /dev/sdb \
+printf '%s' "$CURRENT_KEY" | cryptsetup luksAddKey /dev/sdb \
   --key-file=- \
-  --new-keyfile=<(echo "$NEW_KEY")
+  --new-keyfile=<(printf '%s' "$NEW_KEY")
 ```
 
 ## Step 3: Update the Kubernetes Secret
 
 ```bash
 kubectl -n rook-ceph patch secret rook-ceph-osd-encryption-key-osd-0 \
-  -p "{\"data\": {\"dmcrypt-key\": \"$(echo -n $NEW_KEY | base64)\"}}"
+  -p "{\"data\": {\"dmcrypt-key\": \"$(printf '%s' "$NEW_KEY" | base64)\"}}"
 ```
 
 ## Step 4: Remove the Old Key Slot
@@ -64,16 +64,16 @@ kubectl -n rook-ceph patch secret rook-ceph-osd-encryption-key-osd-0 \
 After confirming the new key works:
 
 ```bash
-echo "$NEW_KEY" | cryptsetup luksKillSlot /dev/sdb 0 --key-file=-
+printf '%s' "$NEW_KEY" | cryptsetup luksKillSlot /dev/sdb 0 --key-file=-
 ```
 
 ## Step 5: Verify the Key Rotation
 
 ```bash
-cryptsetup luksDump /dev/sdb | grep "Key Slot"
+cryptsetup luksDump /dev/sdb
 ```
 
-Slot 0 should show DISABLED, slot 1 should show ENABLED.
+In the `Keyslots:` section of the output, slot 0 should no longer be listed, and slot 1 should be present.
 
 ## Rotation via OSD Re-provisioning (Simplest Approach)
 
@@ -95,13 +95,13 @@ This approach requires data to re-replicate, so ensure your cluster has sufficie
 
 ## If Using Vault
 
-With Vault KV v2, update the key version:
+With Vault KV v2, you must update both the LUKS header and the Vault secret. First, perform Steps 2 through 4 above to rotate the passphrase on the LUKS device. Then update the stored key in Vault:
 
 ```bash
-vault kv put rook/osd/osd-0 dmcrypt-key="$(openssl rand -base64 64)"
+vault kv put rook/osd/osd-0 dmcrypt-key="$NEW_KEY"
 ```
 
-Then trigger a Rook key refresh by restarting the OSD pod.
+Simply updating the Vault secret without also updating the LUKS header will cause the OSD to fail on next restart, since the passphrase in Vault would no longer match the LUKS device.
 
 ## Summary
 
