@@ -188,7 +188,7 @@ kubectl -n rook-ceph patch cephcluster rook-ceph \
 Watch the OSD pods roll out with new resource specs:
 
 ```bash
-kubectl -n rook-ceph rollout status daemonset/rook-ceph-osd
+kubectl -n rook-ceph get deployment -l app=rook-ceph-osd -w
 ```
 
 ## Checking Actual Resource Usage
