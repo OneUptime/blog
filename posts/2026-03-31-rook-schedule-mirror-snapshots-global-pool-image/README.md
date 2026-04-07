@@ -28,10 +28,10 @@ A global schedule applies to all mirrored images across all pools unless overrid
 
 ```bash
 # Schedule a snapshot every hour globally
-rbd mirror snapshot schedule add --interval 1h
+rbd mirror snapshot schedule add 1h
 
 # Schedule at a specific start time
-rbd mirror snapshot schedule add --interval 24h --start-time 02:00:00
+rbd mirror snapshot schedule add 24h 02:00:00
 
 # List the global schedule
 rbd mirror snapshot schedule ls
@@ -43,15 +43,10 @@ Override the global schedule for a specific pool:
 
 ```bash
 # Set hourly snapshots for replicapool
-rbd mirror snapshot schedule add \
-  --pool replicapool \
-  --interval 30m
+rbd mirror snapshot schedule add --pool replicapool 30m
 
 # Set a daily schedule at midnight
-rbd mirror snapshot schedule add \
-  --pool replicapool \
-  --interval 1d \
-  --start-time 00:00:00
+rbd mirror snapshot schedule add --pool replicapool 1d 00:00:00
 
 # List pool-level schedules
 rbd mirror snapshot schedule ls --pool replicapool
@@ -63,15 +58,10 @@ For fine-grained control, set a schedule on a specific image:
 
 ```bash
 # Set a 15-minute schedule on a critical image
-rbd mirror snapshot schedule add \
-  --pool replicapool \
-  --image critical-db \
-  --interval 15m
+rbd mirror snapshot schedule add --pool replicapool --image critical-db 15m
 
 # List image-level schedules
-rbd mirror snapshot schedule ls \
-  --pool replicapool \
-  --image critical-db
+rbd mirror snapshot schedule ls --pool replicapool --image critical-db
 ```
 
 ## Viewing All Active Schedules
@@ -105,23 +95,18 @@ spec:
         startTime: "00:00:00"
 ```
 
-For image-level schedules in Rook, use the `CephRBDMirror` resource or annotate the image directly via the toolbox:
+For image-level schedules in Rook, use the toolbox to run the CLI command directly:
 
 ```bash
 kubectl -n rook-ceph exec -it $TOOLBOX -- \
-  rbd mirror snapshot schedule add \
-    --pool replicapool \
-    --image myimage \
-    --interval 30m
+  rbd mirror snapshot schedule add --pool replicapool --image myimage 30m
 ```
 
 ## Removing a Schedule
 
 ```bash
 # Remove pool-level schedule
-rbd mirror snapshot schedule remove \
-  --pool replicapool \
-  --interval 30m
+rbd mirror snapshot schedule remove --pool replicapool 30m
 ```
 
 ## Summary
