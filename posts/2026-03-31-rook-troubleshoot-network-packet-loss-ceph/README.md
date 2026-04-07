@@ -55,7 +55,7 @@ Adjust heartbeat thresholds to tolerate brief loss without flapping:
 
 ```bash
 # Require more missed heartbeats before marking OSD down
-ceph config set osd osd_heartbeat_grace 20
+ceph config set osd osd_heartbeat_grace 40
 ceph config set osd osd_heartbeat_min_peers 3
 ```
 
