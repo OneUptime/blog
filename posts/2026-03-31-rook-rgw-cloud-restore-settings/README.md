@@ -24,34 +24,29 @@ This is analogous to AWS S3 Glacier restore operations.
 Configure a cloud storage zone first:
 
 ```bash
-# Create a cloud storage zone target (remote S3 bucket)
-radosgw-admin zone placement add \
-  --rgw-zone default \
-  --placement-id cloud-tier \
-  --storage-class CLOUD
-
-# Create the tier type
+# Add a cloud storage class to the zonegroup placement
 radosgw-admin zonegroup placement add \
   --rgw-zonegroup default \
-  --placement-id cloud-tier
+  --placement-id default-placement \
+  --storage-class CLOUD \
+  --tier-type cloud-s3
 
 # Configure the cloud target
-radosgw-admin zone placement modify \
-  --rgw-zone default \
-  --placement-id cloud-tier \
+radosgw-admin zonegroup placement modify \
+  --rgw-zonegroup default \
+  --placement-id default-placement \
   --storage-class CLOUD \
-  --tier-type cloud \
-  --tier-config "endpoint=https://s3.amazonaws.com,access_key=AWS_KEY,secret=AWS_SECRET,target_path=my-archive-bucket"
+  --tier-config=endpoint=https://s3.amazonaws.com,access_key=AWS_KEY,secret=AWS_SECRET,target_path=my-archive-bucket,retain_head_object=true
 ```
 
 ## Cloud Restore Parameters
 
 ```bash
 # Check cloud restore settings
-ceph config get client.rgw rgw_cloud_restore_interval
+ceph config get client.rgw rgw_restore_processor_period
 
 # Set restore check interval (seconds)
-ceph config set client.rgw rgw_cloud_restore_interval 300
+ceph config set client.rgw rgw_restore_processor_period 300
 ```
 
 ## Initiating a Cloud Restore
@@ -93,19 +88,16 @@ metadata:
 data:
   config: |
     [client.rgw.my-store.a]
-    rgw_cloud_restore_interval = 300
+    rgw_restore_processor_period = 300
 ```
 
 ## Monitoring Restore Operations
 
 ```bash
-# Check pending restores
-radosgw-admin restore list --bucket=my-bucket
-
 # Check restore status for a specific object
 radosgw-admin object stat --bucket=my-bucket --object=archived-data/file.tar.gz
 ```
 
 ## Summary
 
-Ceph RGW cloud restore brings cloud-tiered objects back to local RADOS storage using the S3 restore API. Configure `rgw_cloud_restore_interval` to set how often the restore worker checks for completion. Initiate restores via the `aws s3api restore-object` command and monitor status via `head-object`. Objects remain locally accessible for the number of days specified in the restore request.
+Ceph RGW cloud restore brings cloud-tiered objects back to local RADOS storage using the S3 restore API. Configure `rgw_restore_processor_period` to set how often the restore worker checks for completion. Initiate restores via the `aws s3api restore-object` command and monitor status via `head-object`. Objects remain locally accessible for the number of days specified in the restore request.
