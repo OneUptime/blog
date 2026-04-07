@@ -26,7 +26,7 @@ ceph auth get-or-create client.appA \
   osd 'allow rw pool=app-a-data'
 ```
 
-This user can only read and write to the `app-a-data` pool. Any attempt to access another pool results in an authentication error.
+This user can only read and write to the `app-a-data` pool. Any attempt to access another pool results in a permission denied error.
 
 ## Restricting to Multiple Pools
 
@@ -70,7 +70,7 @@ ceph auth get-or-create client.restricted \
   mon 'allow r' \
   osd 'allow rw pool=allowed-pool'
 
-KEYRING=$(ceph auth get client.restricted)
+ceph auth get client.restricted -o /tmp/test.keyring
 
 # This should succeed
 rados --keyring /tmp/test.keyring --name client.restricted -p allowed-pool ls
