@@ -142,11 +142,11 @@ In cephadm-managed clusters, avoid editing ceph.conf manually on nodes. Instead:
 # Set config via ceph config
 ceph config set osd osd_scrub_begin_hour 23
 
-# Generate and distribute updated ceph.conf
+# Generate a minimal ceph.conf for reference
 ceph config generate-minimal-conf
 
-# Apply to all managed hosts
-ceph cephadm distribute-ssh-config
+# Enable cephadm to manage /etc/ceph/ceph.conf on all hosts
+ceph config set mgr mgr/cephadm/manage_etc_ceph_ceph_conf true
 ```
 
 ## Summary
