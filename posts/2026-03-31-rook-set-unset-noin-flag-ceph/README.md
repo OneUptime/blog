@@ -68,8 +68,8 @@ ceph osd unset noin
 # Mark one OSD in
 ceph osd in osd.5
 
-# Mark all OSDs in (equivalent to unsetting noin)
-ceph osd in all
+# Mark multiple OSDs in
+for i in 5 6 7 8; do ceph osd in osd.$i; done
 ```
 
 ## Unsetting the noin Flag
