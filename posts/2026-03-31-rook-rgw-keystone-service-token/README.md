@@ -54,14 +54,6 @@ ceph config set client.rgw rgw_keystone_service_token_enabled true
 
 ```yaml
 apiVersion: v1
-kind: Secret
-metadata:
-  name: rgw-keystone-service-secret
-  namespace: rook-ceph
-stringData:
-  password: "SERVICE_PASSWORD"
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: rook-config-override
@@ -72,6 +64,7 @@ data:
     rgw_keystone_url = https://keystone.example.com:5000
     rgw_keystone_api_version = 3
     rgw_keystone_admin_user = rgw-service
+    rgw_keystone_admin_password = SERVICE_PASSWORD
     rgw_keystone_admin_project = service
     rgw_keystone_admin_domain = Default
     rgw_keystone_service_token_enabled = true
