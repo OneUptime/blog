@@ -33,12 +33,13 @@ ceph mon set-location mon-arbiter datacenter=arbiter
 Check the tiebreaker monitor is correctly designated:
 
 ```bash
-ceph quorum_status --format json-pretty | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print('tiebreaker_mon:', d.get('tiebreaker_mon', 'NOT SET'))
-print('quorum:', d.get('quorum_names', []))
-"
+ceph mon dump
+```
+
+The output will show the stretch mode tiebreaker monitor and its location. Verify the tiebreaker is assigned to a third site (e.g., `datacenter=arbiter`) separate from the two data sites. You can also check quorum membership:
+
+```bash
+ceph quorum_status --format json-pretty
 ```
 
 ## Diagnosing CRUSH Rule Problems
@@ -49,10 +50,10 @@ If PGs are stuck in `unknown` or `incomplete` state, the CRUSH rule may be misco
 ceph osd crush rule dump stretch_rule
 ```
 
-Verify that the `step chooseleaf` uses `datacenter` type:
+Verify the rule structure. A correct stretch mode rule uses `step chooseleaf` with `host` type (not `datacenter`), and separates placement across datacenters using either multiple `take` steps or a `step choose` with `datacenter` type:
 
 ```bash
-ceph osd crush rule dump stretch_rule | grep "step chooseleaf"
+ceph osd crush rule dump stretch_rule
 ```
 
 Test the CRUSH rule mapping:
@@ -61,11 +62,33 @@ Test the CRUSH rule mapping:
 ceph osd map <pool> <object>
 ```
 
-If the OSD set returned does not include OSDs from both sites, the rule is wrong. Re-create it:
+If the OSD set returned does not include OSDs from both sites, the rule is wrong. Re-create it by editing the CRUSH map directly, since stretch mode requires a multi-step rule that `create-replicated` cannot produce:
 
 ```bash
-ceph osd crush rule rm stretch_rule
-ceph osd crush rule create-replicated stretch_rule default datacenter osd
+ceph osd getcrushmap > crush.map.bin
+crushtool -d crush.map.bin -o crush.map.txt
+```
+
+Edit `crush.map.txt` to add or fix the stretch rule:
+
+```text
+rule stretch_rule {
+    id 1
+    type replicated
+    step take site1
+    step chooseleaf firstn 2 type host
+    step emit
+    step take site2
+    step chooseleaf firstn 2 type host
+    step emit
+}
+```
+
+Then recompile and apply the CRUSH map:
+
+```bash
+crushtool -c crush.map.txt -o crush2.map.bin
+ceph osd setcrushmap -i crush2.map.bin
 ```
 
 ## Diagnosing Pool Misconfiguration
@@ -117,10 +140,10 @@ flags stretch_mode_enabled
 
 ## Disabling Stretch Mode for Debugging
 
-If stretch mode must be disabled temporarily for debugging (not recommended in production):
+Disabling stretch mode is only available in Ceph Reef 18.2.8 or later, and only works when the cluster is in healthy or degraded stretch mode (not during recovery). This is not recommended in production:
 
 ```bash
-ceph osd unset stretch_mode_enabled
+ceph mon disable_stretch_mode --yes-i-really-mean-it
 ```
 
 Re-enable with:
