@@ -62,7 +62,7 @@ data:
       "vault-token-kms": {
         "encryptionKMSType": "vault",
         "vaultAddress": "https://vault.example.com:8200",
-        "vaultBackend": "secret",
+        "vaultBackend": "v2",
         "vaultBackendPath": "secret/",
         "vaultDestroyKeys": "true",
         "vaultCAFromSecret": "vault-ca-cert",
