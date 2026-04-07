@@ -56,10 +56,6 @@ Create a Ceph block device for each pool:
 ```bash
 rbd create bench-no-compress/test-rbd --size 10G
 rbd create bench-compress/test-rbd --size 10G
-
-# Map the devices
-rbd map bench-no-compress/test-rbd
-rbd map bench-compress/test-rbd
 ```
 
 Run fio:
