@@ -30,7 +30,7 @@ With a wildcard entry, `mybucket.s3.example.com` automatically resolves to the R
 
 ## Configuring Rook for Virtual Host-Style Access
 
-Set the `dnsNames` and `advertiseEndpoint` in the gateway hosting section:
+Set the `dnsNames` and `advertiseEndpoint` in the `hosting` section of the CephObjectStore spec:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -48,13 +48,13 @@ spec:
   gateway:
     port: 80
     instances: 2
-    hosting:
-      advertiseEndpoint:
-        dnsName: s3.example.com
-        port: 80
-        useTls: false
-      dnsNames:
-        - s3.example.com
+  hosting:
+    advertiseEndpoint:
+      dnsName: s3.example.com
+      port: 80
+      useTls: false
+    dnsNames:
+      - s3.example.com
 ```
 
 This tells RGW to accept requests coming in on `s3.example.com` and route virtual host-style requests by extracting the bucket name from the subdomain.
@@ -100,13 +100,13 @@ Reference it in the object store:
 gateway:
   securePort: 443
   sslCertificateRef: rgw-wildcard-tls
-  hosting:
-    advertiseEndpoint:
-      dnsName: s3.example.com
-      port: 443
-      useTls: true
-    dnsNames:
-      - s3.example.com
+hosting:
+  advertiseEndpoint:
+    dnsName: s3.example.com
+    port: 443
+    useTls: true
+  dnsNames:
+    - s3.example.com
 ```
 
 ## Testing Virtual Host-Style Access
