@@ -44,7 +44,7 @@ radosgw-admin usage show --start-date=2026-01-01 --end-date=2026-03-31
 # Show usage for a specific user
 radosgw-admin usage show --uid=testuser --start-date=2026-01-01 --end-date=2026-03-31
 
-# Show summary only (no per-category breakdown)
+# Show per-category breakdown without summary totals
 radosgw-admin usage show --uid=testuser --show-log-sum=false
 ```
 
