@@ -79,13 +79,15 @@ Get-SmbServerConfiguration | Select-Object EnableSMB2Protocol
 For laptop users who need occasional disconnected access:
 
 ```powershell
-# Enable Offline Files
-Enable-WindowsOptionalFeature -Online -FeatureName OfflineFiles
+# Enable the Offline Files service
+Set-Service -Name CscService -StartupType Automatic
+Start-Service CscService
 
-# Set synchronization policy for the share
-$share = "\\samba01\cephshare"
-(New-Object -ComObject CSC.CSCManager).EnableShare($share, $true)
+# Verify the service is running
+Get-Service -Name CscService
 ```
+
+After enabling the service, right-click the mapped drive in File Explorer and select **"Always available offline"** to enable caching for the share.
 
 ## Tuning SMB Performance
 
@@ -115,10 +117,9 @@ Test-NetConnection -ComputerName samba01 -Port 445
 Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*File*"}
 ```
 
-Enable SMB diagnostic logging:
+View SMB client diagnostic logs:
 
 ```powershell
-Set-SmbClientConfiguration -EnableMultiChannel $true -Force
 Get-WinEvent -LogName Microsoft-Windows-SMBClient/Operational | Select-Object -First 20
 ```
 
