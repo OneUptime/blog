@@ -21,9 +21,13 @@ Backup repositories need reliable, scalable, and cost-effective object storage. 
 ## Step 1: Create a Backup Bucket
 
 ```bash
-aws s3 mb s3://k8s-backups --endpoint-url https://rgw.example.com
+# Create bucket with Object Lock enabled (required if you plan to use immutable backups)
+aws s3api create-bucket \
+  --bucket k8s-backups \
+  --object-lock-enabled-for-bucket \
+  --endpoint-url https://rgw.example.com
 
-# Enable versioning (required for Velero)
+# Enable versioning (required for Velero and Object Lock)
 aws s3api put-bucket-versioning \
   --bucket k8s-backups \
   --versioning-configuration Status=Enabled \
