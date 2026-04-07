@@ -130,9 +130,9 @@ spec:
           - name: verify
             image: ceph/ceph:latest
             command:
-          - /bin/bash
-          - -c
-          - |
+            - /bin/bash
+            - -c
+            - |
               rbd export testpool/myimage@mysnap /tmp/verify.img
               sha256sum /tmp/verify.img
           restartPolicy: OnFailure
