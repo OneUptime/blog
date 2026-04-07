@@ -78,7 +78,7 @@ spec:
       osdsPerDevice: "1"
 ```
 
-Alternatively use device filter with mapper paths:
+Alternatively use device path filter with mapper paths:
 
 ```yaml
 spec:
@@ -87,19 +87,18 @@ spec:
     useAllDevices: false
     nodes:
     - name: worker-1
-      deviceFilter: "^mapper/mpath"
+      devicePathFilter: "^/dev/mapper/mpath"
 ```
 
 ## Step 3: Allow Device Mapper in OSD Pods
 
-Rook OSD pods need access to the device mapper. Ensure the Rook operator has the necessary privileges and that the `/dev/mapper` directory is accessible:
+Rook OSD pods need access to the device mapper. The Rook operator runs OSD pods with the necessary privileges by default to access `/dev/mapper` devices. You can verify the OSD configuration includes the correct device class:
 
 ```yaml
 spec:
   storage:
     config:
       deviceClass: ssd
-      encryptedDevice: "false"
 ```
 
 Check if the device is properly detected:
@@ -130,7 +129,7 @@ kubectl -n rook-ceph logs -l app=rook-ceph-osd-prepare --tail=50
 Verify device mapper symlinks inside the node:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl debug node/worker-1 -it --image=busybox -- \
   chroot /host ls -la /dev/mapper/
 ```
 
