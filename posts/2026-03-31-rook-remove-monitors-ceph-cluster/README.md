@@ -68,7 +68,7 @@ Delete the associated Kubernetes resources:
 # Delete the MON pod and deployment
 kubectl -n rook-ceph delete deploy rook-ceph-mon-<name>
 
-# Delete the MON configmap entry if present
+# Delete the MON service
 kubectl -n rook-ceph delete svc rook-ceph-mon-<name>
 
 # Remove MON PVC if using PVC-backed monitors
