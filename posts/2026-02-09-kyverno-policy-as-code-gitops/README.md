@@ -105,7 +105,7 @@ Create production overlay with enforcement:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
 patchesStrategicMerge:
@@ -144,7 +144,7 @@ Development overlay remains in audit:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
 # Keep default Audit mode for development
@@ -259,7 +259,6 @@ spec:
     - apiVersion: kyverno.io/v1
       kind: ClusterPolicy
       name: require-labels
-  validation: client  # Validate before applying
   wait: true
   timeout: 5m
 ```
@@ -291,9 +290,9 @@ jobs:
           tar -xzf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
           sudo mv kyverno /usr/local/bin/
 
-          # Validate all policies
-          kyverno validate base/validation/*.yaml
-          kyverno validate base/mutation/*.yaml
+          # Validate all policy files
+          kyverno apply base/validation/*.yaml --cluster=false
+          kyverno apply base/mutation/*.yaml --cluster=false
 
       - name: Test policies
         run: |

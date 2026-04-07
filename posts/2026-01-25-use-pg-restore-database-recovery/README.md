@@ -52,7 +52,7 @@ pg_restore -h localhost -U postgres -C -d postgres backup.dump
 pg_restore -h dbserver.example.com -p 5432 -U admin -d mydb backup.dump
 
 # Use connection string
-pg_restore "host=localhost dbname=mydb user=postgres" backup.dump
+pg_restore -d "host=localhost dbname=mydb user=postgres" backup.dump
 
 # Prompt for password
 pg_restore -W -d mydb backup.dump

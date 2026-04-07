@@ -13,8 +13,6 @@ Wiki.js is a modern, full-featured wiki platform built on Node.js. It supports m
 ## Deploy as a Stack
 
 ```yaml
-version: "3.8"
-
 services:
   wikijs:
     image: ghcr.io/requarks/wiki:2

@@ -219,10 +219,10 @@ spec:
   backends:
     # Stable version
     - service: backend-v1
-      weight: "900m"  # 90% expressed as milli-units
+      weight: 900  # 90%
     # Canary version
     - service: backend-v2
-      weight: "100m"  # 10%
+      weight: 100  # 10%
 ```
 
 Ensure the versioned services exist:

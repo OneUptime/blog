@@ -112,7 +112,7 @@ This command checks your Kubernetes version and cluster connectivity:
 ```bash
 # Verify Kubernetes version (must be 1.13.0 or later)
 
-kubectl version --short
+kubectl version
 
 # Check cluster nodes are ready
 kubectl get nodes -o wide

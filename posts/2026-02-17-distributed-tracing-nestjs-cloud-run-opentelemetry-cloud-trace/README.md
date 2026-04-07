@@ -303,7 +303,8 @@ When your NestJS service calls another service, the trace context needs to propa
 
 ```typescript
 // src/external/payment.service.ts - Calling external services with trace propagation
-import { Injectable, HttpService } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
 import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('payment-client');
@@ -368,10 +369,9 @@ After deploying and sending some requests, view your traces in the Cloud Console
 
 ```bash
 # Open Cloud Trace in the browser
-gcloud beta trace list --project=your-project --limit=10
-
-# Or navigate to:
-# Console -> Trace -> Trace explorer
+# Navigate to: Console -> Trace -> Trace explorer
+# Or open directly:
+# https://console.cloud.google.com/traces/list?project=your-project
 ```
 
 In the Cloud Trace console, you can:
@@ -387,9 +387,10 @@ In the Cloud Trace console, you can:
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 ENV PORT=8080
 EXPOSE 8080
 # Load tracing before the application starts

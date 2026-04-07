@@ -196,7 +196,7 @@ if os.getenv('FLASK_ENV') != 'production':
 # Configure CORS
 CORS(app, resources={
     # API routes with strict CORS
-    r"/api/*": {
+    r"/api/.*": {
         "origins": ALLOWED_ORIGINS,
         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
         "allow_headers": ["Content-Type", "Authorization", "X-Request-ID"],
@@ -205,7 +205,7 @@ CORS(app, resources={
         "max_age": 86400
     },
     # Public routes with relaxed CORS
-    r"/public/*": {
+    r"/public/.*": {
         "origins": "*",
         "methods": ["GET"],
         "allow_headers": ["Content-Type"],

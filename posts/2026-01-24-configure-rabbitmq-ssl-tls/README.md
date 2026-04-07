@@ -359,8 +359,7 @@ async function createTlsConnection(options = {}) {
     // The ca option contains trusted CA certificates
     const tlsOptions = {
         ca: [fs.readFileSync(caCert)],
-        // Enable hostname verification
-        checkServerIdentity: () => undefined, // Use default verification
+        // Hostname verification is enabled by default in Node.js TLS
         // Minimum TLS version
         minVersion: 'TLSv1.2',
         // Reject unauthorized connections

@@ -115,7 +115,7 @@ SET GLOBAL general_log = 'OFF';
 mysqladmin -u root -p flush-logs
 
 # Or execute within MySQL
-FLUSH GENERAL LOGS;
+FLUSH LOGS;
 ```
 
 ## Summary

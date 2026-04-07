@@ -6,6 +6,8 @@ Tags: Elemental, Edge Computing, Kubernetes, Rancher, IoT
 
 Description: Configure Elemental for real-world edge deployments including low-bandwidth connectivity, offline operation, and hardware-specific optimizations.
 
+---
+
 ## Introduction
 
 Edge deployments present unique challenges: intermittent connectivity, limited hardware resources, physical security concerns, and the need for autonomous operation. Elemental is purpose-built for these scenarios, providing an immutable OS with Kubernetes-native management that works even in challenging edge environments.

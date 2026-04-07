@@ -55,6 +55,11 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "container_image" {
+  description = "Container image to deploy"
+  type        = string
+}
 ```
 
 ## Step 3: Create Core Kubernetes Resources

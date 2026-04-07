@@ -1325,7 +1325,7 @@ Return only a JSON object with 'score' (float) and 'reasoning' (string).
 """
 
         result = judge_llm.invoke(eval_prompt)
-        parsed = eval(result.content)  # In production, use proper JSON parsing
+        parsed = json.loads(result.content)
 
         return {
             "key": criteria,

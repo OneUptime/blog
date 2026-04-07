@@ -21,34 +21,30 @@ mkdir -p /opt/borgmatic
 ```yaml
 # /opt/borgmatic/config.yaml
 
-location:
-  source_directories:
-    - /mnt/source        # Bind-mounted source data
-  repositories:
-    - path: /mnt/borg-repo    # Local repository (or SSH remote)
-      label: local
+source_directories:
+  - /mnt/source        # Bind-mounted source data
 
-storage:
-  encryption_passphrase: "your-strong-passphrase"
-  compression: lz4
-  archive_name_format: "{hostname}-{now}"
+repositories:
+  - path: /mnt/borg-repo    # Local repository (or SSH remote)
+    label: local
 
-retention:
-  keep_daily: 7
-  keep_weekly: 4
-  keep_monthly: 6
+encryption_passphrase: "your-strong-passphrase"
+compression: lz4
+archive_name_format: "{hostname}-{now}"
 
-consistency:
-  checks:
-    - name: repository
-      frequency: 2 weeks
-    - name: archives
-      frequency: 2 weeks
+keep_daily: 7
+keep_weekly: 4
+keep_monthly: 6
 
-hooks:
-  # Send result to monitoring endpoint
-  on_error:
-    - echo "Borgmatic backup FAILED" | curl -X POST https://your-alert-webhook -d @-
+checks:
+  - name: repository
+    frequency: 2 weeks
+  - name: archives
+    frequency: 2 weeks
+
+# Send result to monitoring endpoint
+on_error:
+  - echo "Borgmatic backup FAILED" | curl -X POST https://your-alert-webhook -d @-
 ```
 
 ## Step 2: Deploy Borgmatic via Portainer Stack
@@ -120,12 +116,11 @@ borgmatic extract --archive latest --path /mnt/source/important-data
 Borgmatic supports monitoring integrations. Add to the hooks section:
 
 ```yaml
-hooks:
-  healthchecks: https://hc-ping.com/your-check-uuid
-  # Or use ntfy for push notifications
-  ntfy:
-    topic: backup-alerts
-    server: https://ntfy.sh
+healthchecks: https://hc-ping.com/your-check-uuid
+# Or use ntfy for push notifications
+ntfy:
+  topic: backup-alerts
+  server: https://ntfy.sh
 ```
 
 ## Summary

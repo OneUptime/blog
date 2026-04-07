@@ -131,7 +131,7 @@ BACKUP_FILE="/opt/backups/portainer-pre-upgrade-20260320-020000.tar.gz"
 tar -tzf "$BACKUP_FILE" | head -10
 
 # Verify portainer.db exists and has size > 0
-SIZE=$(tar -tzf "$BACKUP_FILE" --stat 2>/dev/null | grep "portainer.db" | awk '{print $3}' || \
+SIZE=$(tar -tvzf "$BACKUP_FILE" 2>/dev/null | grep "portainer.db" | awk '{print $3}' || \
        tar -xzOf "$BACKUP_FILE" ./portainer.db 2>/dev/null | wc -c)
 
 echo "portainer.db size in backup: $SIZE bytes"

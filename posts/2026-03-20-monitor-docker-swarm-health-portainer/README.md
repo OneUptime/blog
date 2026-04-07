@@ -65,8 +65,8 @@ services:
       mode: global        # Run on every node
     ports:
       - target: 9100
+        published: 9100
         mode: host
-    network_mode: host
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

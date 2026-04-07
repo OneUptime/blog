@@ -101,8 +101,8 @@ docker node ps <node-id>
 docker service create \
   --name myapp \
   --replicas 3 \
-  --update-failure-action rollback \    # Auto-rollback on failure
-  --update-max-failure-ratio 0.25 \     # Allow 25% failure before rollback
+  --update-failure-action rollback \
+  --update-max-failure-ratio 0.25 \
   --rollback-parallelism 1 \
   --rollback-delay 5s \
   myapp:latest

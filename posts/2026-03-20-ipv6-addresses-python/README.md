@@ -32,10 +32,10 @@ print(full)            # 2001:db8::1  (compressed)
 print(full.exploded)   # 2001:0db8:0000:0000:0000:0000:0000:0001
 
 # Check address type
-print(addr.is_global)         # True
+print(addr.is_global)         # False (2001:db8::/32 is documentation range)
 print(addr.is_loopback)       # False
 print(addr.is_link_local)     # False
-print(addr.is_private)        # True (2001:db8::/32 is documentation range)
+print(addr.is_private)        # False (Python 3.11+; True in older versions)
 ```
 
 ## Validating IPv6 User Input

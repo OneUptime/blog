@@ -194,7 +194,7 @@ Test your documentation locally with `ansible-doc`:
 
 ansible-doc my_namespace.my_collection.config_entry
 
-# View examples only
+# View playbook snippet (short format)
 ansible-doc my_namespace.my_collection.config_entry -s
 
 # View documentation for a filter plugin

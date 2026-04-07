@@ -83,7 +83,6 @@ func updateServiceWithSSA(ctx context.Context, kubeClient kubernetes.Interface) 
         data,
         metav1.PatchOptions{
             FieldManager: "my-controller",  // Identifies this manager
-            Force:        false,             // Don't override other managers
         },
     )
 

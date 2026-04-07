@@ -165,8 +165,8 @@ commitlog_sync_batch_window_in_ms: 2
 # Memory allocation
 # -----------------
 # Let ScyllaDB auto-tune, but you can set limits
-# This reserves 90% of RAM for ScyllaDB
-memory_total: 90%
+# Set via command line or /etc/scylla.d/memory.conf:
+# SCYLLA_ARGS="--memory 90%"
 
 # Enable metrics endpoint for monitoring
 prometheus_port: 9180
@@ -285,23 +285,17 @@ curl -s http://localhost:10000/scheduling_groups | jq .
 
 ### Tuning Scheduling Group Shares
 
-```yaml
-# /etc/scylla.d/scheduling.yaml
+```bash
 # Adjust shares to prioritize query processing over background tasks
-
-# Default scheduling group shares (adjust based on workload)
-# Higher values = more CPU time
+# Use the ScyllaDB REST API to tune scheduling group shares at runtime
 
 # For latency-sensitive workloads, prioritize main (queries) over compaction
-scheduling_groups:
-  main:
-    shares: 1000      # Query processing - highest priority
-  compaction:
-    shares: 200       # Compaction - reduced to minimize latency impact
-  streaming:
-    shares: 200       # Streaming - only during maintenance
-  memtable:
-    shares: 500       # Memtable flush - important for write path
+# Reduce compaction shares to minimize latency impact
+curl -X POST http://localhost:10000/compaction_manager/compaction \
+  -d '{"compaction_static_shares": 200}'
+
+# View current scheduling group shares
+curl -s http://localhost:10000/scheduling_groups | jq .
 ```
 
 ### Monitoring Scheduling Group Performance

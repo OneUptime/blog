@@ -224,7 +224,7 @@ interface Flag {
 
 interface TargetingRule {
   attribute: string;
-  operator: 'equals' | 'contains' | 'in' | 'matches';
+  operator: 'equals' | 'contains' | 'in' | 'matches' | 'lessThan' | 'greaterThan' | 'percentile';
   value: any;
   variant: string;
 }
@@ -818,7 +818,7 @@ Test that downstream consumers can handle both flag states:
 
 ```typescript
 // tests/contracts/consumer-contracts.test.ts
-import { Pact } from '@pact-foundation/pact';
+import { Pact, Matchers } from '@pact-foundation/pact';
 
 describe('Consumer Contract: Mobile App -> Checkout API', () => {
   const provider = new Pact({
@@ -852,9 +852,9 @@ describe('Consumer Contract: Mobile App -> Checkout API', () => {
             'Content-Type': 'application/json',
           },
           body: {
-            orderId: Pact.string('order-123'),
-            total: Pact.decimal(99.99),
-            status: Pact.term({
+            orderId: Matchers.string('order-123'),
+            total: Matchers.decimal(99.99),
+            status: Matchers.term({
               generate: 'completed',
               matcher: '^(pending|completed|failed)$',
             }),
@@ -896,19 +896,19 @@ describe('Consumer Contract: Mobile App -> Checkout API', () => {
             'Content-Type': 'application/json',
           },
           body: {
-            orderId: Pact.string('order-123'),
-            total: Pact.decimal(99.99),
-            status: Pact.term({
+            orderId: Matchers.string('order-123'),
+            total: Matchers.decimal(99.99),
+            status: Matchers.term({
               generate: 'completed',
               matcher: '^(pending|processing|completed|failed)$',
             }),
             breakdown: {
-              subtotal: Pact.decimal(89.99),
-              tax: Pact.decimal(7.00),
-              shipping: Pact.decimal(3.00),
-              discount: Pact.decimal(0),
+              subtotal: Matchers.decimal(89.99),
+              tax: Matchers.decimal(7.00),
+              shipping: Matchers.decimal(3.00),
+              discount: Matchers.decimal(0),
             },
-            estimatedDelivery: Pact.iso8601DateTime(),
+            estimatedDelivery: Matchers.iso8601DateTime(),
           },
         },
       });

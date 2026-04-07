@@ -50,11 +50,10 @@ Using the command line:
 ```bash
 mongod \
   --bind_ip 127.0.0.1,10.0.1.20 \
-  --port 27017 \
-  --noipv6
+  --port 27017
 ```
 
-The `--noipv6` flag prevents mongod from binding to any IPv6 addresses.
+By not passing the `--ipv6` flag, mongod will not bind to any IPv6 addresses (IPv6 is disabled by default).
 
 ## Verifying IPv4-Only Binding
 
@@ -100,4 +99,4 @@ Disabling IPv6 at the OS level also prevents other processes from accidentally u
 
 ## Summary
 
-Configure MongoDB for IPv4-only by setting `ipv6: false` in `mongod.conf` and binding only to IPv4 addresses in `net.bindIp`. Use the `--noipv6` command-line flag for the same effect. Verify with `ss -tlnp` that no IPv6 sockets are listening. Use numeric IPv4 addresses (`127.0.0.1`) in connection strings on systems where `localhost` resolves to IPv6, and optionally disable IPv6 at the OS level for complete isolation.
+Configure MongoDB for IPv4-only by setting `ipv6: false` in `mongod.conf` and binding only to IPv4 addresses in `net.bindIp`. On the command line, simply omit the `--ipv6` flag since IPv6 is disabled by default. Verify with `ss -tlnp` that no IPv6 sockets are listening. Use numeric IPv4 addresses (`127.0.0.1`) in connection strings on systems where `localhost` resolves to IPv6, and optionally disable IPv6 at the OS level for complete isolation.

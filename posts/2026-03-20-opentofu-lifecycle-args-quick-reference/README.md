@@ -43,18 +43,15 @@ resource "aws_instance" "app" {
   instance_type = var.instance_type
 
   lifecycle {
-    # Ignore AMI changes (managed by auto-update outside OpenTofu)
-    ignore_changes = [ami]
-
-    # Ignore tag changes (managed by a separate tagging system)
-    ignore_changes = [tags]
-
-    # Ignore multiple attributes
+    # Ignore multiple attributes (AMI managed by auto-update,
+    # user_data and tags managed externally)
     ignore_changes = [ami, user_data, tags["LastModified"]]
-
-    # Ignore all attributes (use sparingly - defeats IaC purpose)
-    ignore_changes = all
   }
+
+  # Alternative: Ignore all attributes (use sparingly - defeats IaC purpose)
+  # lifecycle {
+  #   ignore_changes = all
+  # }
 }
 ```
 
@@ -95,10 +92,7 @@ resource "aws_instance" "app" {
   instance_type = var.instance_type
 
   lifecycle {
-    # Replace the instance when the launch template changes
-    replace_triggered_by = [aws_launch_template.app]
-
-    # Or trigger replacement from a specific attribute
+    # Replace the instance when the launch template version changes
     replace_triggered_by = [aws_launch_template.app.latest_version]
   }
 }

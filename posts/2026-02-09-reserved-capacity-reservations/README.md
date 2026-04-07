@@ -99,7 +99,6 @@ managedNodeGroups:
   - key: reserved-capacity
     value: "true"
     effect: NoSchedule
----
 # On-demand burst pool
 - name: on-demand-burst
   instanceType: t3.xlarge

@@ -182,7 +182,7 @@ end
     - role: ../
   post_tasks:
     - name: Verify role applied correctly
-      ansible.builtin.service:
+      ansible.builtin.systemd:
         name: nginx
         state: started
       register: svc

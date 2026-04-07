@@ -6,6 +6,8 @@ Tags: Link-Local, IPv6, SLAAC, Fe80, Address Generation, No Router
 
 Description: Understand how IPv6 hosts automatically generate link-local addresses independently of SLAAC and Router Advertisements, and when link-local-only communication is sufficient.
 
+---
+
 ## Introduction
 
 IPv6 hosts generate link-local addresses (fe80::/10 prefix) automatically when an interface is enabled, before any Router Advertisement is received. This process is part of SLAAC but is independent of router prefix delegation. Link-local addresses enable communication within a single link (subnet) without a router. They are used for NDP, routing protocols between directly connected routers, and as the source/destination for many control-plane functions.

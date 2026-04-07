@@ -60,7 +60,7 @@ Each overlay patches the base to override environment-specific values.
 
 ```yaml
 # k8s/overlays/production/kustomization.yaml
-bases:
+resources:
   - ../../base
 patches:
   - statestore-patch.yaml

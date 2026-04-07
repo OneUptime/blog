@@ -137,8 +137,8 @@ istioctl proxy-status | grep test-namespace
 # Run Istio analysis
 istioctl analyze -n test-namespace
 
-# Verify mTLS is working
-istioctl authn tls-check <pod-name>.test-namespace
+# Verify mTLS is working (check peer authentication policies and proxy config)
+istioctl proxy-config secret <pod-name>.test-namespace
 
 # Check application health
 kubectl get pods -n test-namespace
@@ -229,8 +229,8 @@ istioctl analyze --all-namespaces
 # Verify all proxy versions match
 istioctl proxy-status
 
-# Check for any configuration issues
-istioctl proxy-config listener --all
+# Check for any configuration issues across all namespaces
+istioctl analyze --all-namespaces
 
 # Verify certificate issuance
 istioctl proxy-config secret deploy/<any-pod> | head -10

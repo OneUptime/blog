@@ -84,7 +84,7 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get ccnp
 ```
 
 ### Hardening with Default-Deny

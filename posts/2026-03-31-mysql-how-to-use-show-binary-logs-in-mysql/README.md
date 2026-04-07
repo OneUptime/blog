@@ -147,10 +147,11 @@ Or from MySQL directly:
 ```sql
 SELECT
     COUNT(*) AS log_count,
-    SUM(file_size) / 1024 / 1024 AS total_mb
-FROM information_schema.FILES
-WHERE file_type = 'BINARY LOG';
+    ROUND(SUM(file_size) / 1024 / 1024, 2) AS total_mb
+FROM performance_schema.binary_log_status;
 ```
+
+Note: `performance_schema.binary_log_status` is available in MySQL 8.4+. On earlier versions, parse the output of `SHOW BINARY LOGS` from your application code or use the shell command above.
 
 ## Summary
 

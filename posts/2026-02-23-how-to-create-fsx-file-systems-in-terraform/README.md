@@ -119,7 +119,7 @@ resource "aws_fsx_windows_file_system" "main" {
   daily_automatic_backup_start_time = "02:00"
 
   # Maintenance window (UTC)
-  weekly_maintenance_start_time = "7:01:00:00"
+  weekly_maintenance_start_time = "7:01:00"
 
   # Enable data deduplication to save storage
   aliases = ["fsx.example.com"]
@@ -199,15 +199,11 @@ resource "aws_fsx_lustre_file_system" "hpc" {
   # Valid values depend on deployment type
   per_unit_storage_throughput = 125
 
-  # Optional S3 data repository integration
-  import_path = "s3://${var.data_bucket}"
-  export_path = "s3://${var.data_bucket}/export"
-
-  # Auto-import policy for new/changed/deleted objects
-  auto_import_policy = "NEW_CHANGED_DELETED"
-
   # Enable compression to reduce storage costs
   data_compression_type = "LZ4"
+
+  # Note: For PERSISTENT_2 deployments, use aws_fsx_data_repository_association
+  # instead of import_path/export_path (which are only for PERSISTENT_1/SCRATCH)
 
   tags = {
     Name     = "lustre-hpc-cluster"
@@ -256,7 +252,7 @@ resource "aws_fsx_ontap_file_system" "enterprise" {
   endpoint_ip_address_range = "198.19.255.0/24"
 
   # Weekly maintenance window
-  weekly_maintenance_start_time = "7:02:00:00"
+  weekly_maintenance_start_time = "7:02:00"
 
   # Automatic backups
   automatic_backup_retention_days   = 30

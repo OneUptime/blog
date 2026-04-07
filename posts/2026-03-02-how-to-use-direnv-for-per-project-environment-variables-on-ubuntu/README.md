@@ -118,11 +118,11 @@ direnv allow
 # Allow a specific path
 direnv allow /path/to/project
 
-# Deny a previously allowed directory
+# Deny/block a previously allowed directory
 direnv deny
 
-# Revoke all permissions
-direnv revoke /path/to/project
+# Deny a specific path
+direnv deny /path/to/project
 ```
 
 The permissions are stored in `~/.local/share/direnv/allow/`.

@@ -488,10 +488,7 @@ const manager = new SLAThresholdManager({
   services: ['api-gateway', 'checkout-service', 'payment-service']
 });
 
-const status = manager.calculateErrorBudget(
-  downtimeMinutesThisPeriod: 25,
-  currentHourIndex: 360  // 15 days into the month
-);
+const status = manager.calculateErrorBudget(25, 360); // 25 minutes downtime, 360 hours into the month
 
 console.log(`Budget status: ${status.remainingMinutes.toFixed(1)} minutes remaining`);
 console.log(`Recommendation: ${status.thresholdRecommendation.reason}`);

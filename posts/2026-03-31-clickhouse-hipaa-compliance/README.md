@@ -61,7 +61,7 @@ SELECT
     rows_read,
     query
 FROM system.query_log
-WHERE has(tables, 'patient_records')
+WHERE has(tables, 'health_db.patient_records')
   AND type = 'QueryFinish'
 ORDER BY event_time DESC;
 ```

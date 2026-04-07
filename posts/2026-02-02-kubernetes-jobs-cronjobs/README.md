@@ -863,8 +863,6 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      # Container-level timeout
-      activeDeadlineSeconds: 3000
       containers:
         - name: worker
           image: worker:latest

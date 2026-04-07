@@ -155,10 +155,10 @@ package main
 
 import (
     "context"
-    "net"
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/resolver"
 )
 
@@ -213,10 +213,12 @@ func connectWithCustomResolver() (*grpc.ClientConn, error) {
     })
 
     // Connect using custom scheme
-    return grpc.Dial("custom:///grpc-service",
-        grpc.WithInsecure(),
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    return grpc.DialContext(ctx, "custom:///grpc-service",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithBlock(),
-        grpc.WithTimeout(5*time.Second),
     )
 }
 ```
@@ -247,7 +249,7 @@ import (
     "crypto/tls"
     "crypto/x509"
     "fmt"
-    "io/ioutil"
+    "os"
     "time"
 
     "google.golang.org/grpc"
@@ -257,7 +259,7 @@ import (
 // SecureConnection creates a gRPC connection with proper TLS
 func SecureConnection(address string, caCertPath string) (*grpc.ClientConn, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile(caCertPath)
+    caCert, err := os.ReadFile(caCertPath)
     if err != nil {
         return nil, fmt.Errorf("failed to read CA certificate: %w", err)
     }
@@ -290,7 +292,7 @@ func SecureConnectionWithClientCert(
     clientKeyPath string,
 ) (*grpc.ClientConn, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile(caCertPath)
+    caCert, err := os.ReadFile(caCertPath)
     if err != nil {
         return nil, fmt.Errorf("failed to read CA certificate: %w", err)
     }
@@ -352,6 +354,8 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/backoff"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
 )
 
@@ -369,11 +373,11 @@ func CreateConnectionWithTimeouts(address string) (*grpc.ClientConn, error) {
     }
 
     return grpc.DialContext(ctx, address,
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithBlock(),
         grpc.WithKeepaliveParams(kaParams),
         grpc.WithConnectParams(grpc.ConnectParams{
-            Backoff: grpc.BackoffConfig{
+            Backoff: backoff.Config{
                 BaseDelay:  1 * time.Second,
                 Multiplier: 1.6,
                 MaxDelay:   30 * time.Second,
@@ -392,6 +396,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "time"
 
     pb "myapp/proto/user"
@@ -462,11 +467,12 @@ spec:
 package main
 
 import (
+    "context"
     "fmt"
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 // ConnectToKubernetesService connects to a gRPC service in Kubernetes
@@ -475,11 +481,13 @@ func ConnectToKubernetesService(serviceName, namespace string) (*grpc.ClientConn
     // This works with headless services
     target := fmt.Sprintf("dns:///%s.%s.svc.cluster.local:50051", serviceName, namespace)
 
-    return grpc.Dial(target,
-        grpc.WithInsecure(),
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    return grpc.DialContext(ctx, target,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin":{}}]}`),
         grpc.WithBlock(),
-        grpc.WithTimeout(10*time.Second),
     )
 }
 ```
@@ -519,6 +527,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
 )
 
@@ -561,7 +570,7 @@ func ConnectWithRetry(address string, config RetryConfig) (*grpc.ClientConn, err
 
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
         conn, err = grpc.DialContext(ctx, address,
-            grpc.WithInsecure(),
+            grpc.WithTransportCredentials(insecure.NewCredentials()),
             grpc.WithBlock(),
         )
         cancel()

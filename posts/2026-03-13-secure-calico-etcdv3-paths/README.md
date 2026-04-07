@@ -43,14 +43,15 @@ etcdctl --cert=calico-felix.crt --key=calico-felix.key \
 Enable etcd encryption at rest to protect Calico policy data from physical storage attacks:
 
 ```bash
-# etcd encryption at rest via kms or aescbc
-etcd --experimental-encryption-provider-config=/etc/etcd/encryption.yaml
+# Kubernetes API server encryption at rest for etcd data via kms or aescbc
+# This is a kube-apiserver flag, not an etcd flag
+kube-apiserver --encryption-provider-config=/etc/kubernetes/encryption.yaml
 ```
 
 ```yaml
 # encryption.yaml
-kind: EncryptionConfig
-apiVersion: v1
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
 resources:
   - resources:
       - secrets
@@ -59,6 +60,7 @@ resources:
           keys:
             - name: key1
               secret: <base64-encoded-key>
+      - identity: {}
 ```
 
 ## Security Layer 3: Protect Against Path Injection
@@ -87,13 +89,13 @@ Enable etcd audit logging for Calico paths:
 Create a monitoring rule to alert on unauthorized access:
 
 ```yaml
-- alert: CalicoEtcdUnauthorizedAccess
-  expr: increase(etcd_grpc_requests_total{grpc_code="PermissionDenied",grpc_service=~".*calico.*"}[5m]) > 0
+- alert: EtcdUnauthorizedAccess
+  expr: increase(grpc_server_handled_total{grpc_code="PermissionDenied"}[5m]) > 0
   for: 1m
   labels:
     severity: critical
   annotations:
-    summary: "Unauthorized etcd access attempt for Calico paths"
+    summary: "Unauthorized etcd access attempt detected (may affect Calico paths)"
 ```
 
 ## Security Layer 5: Restrict etcd Network Access

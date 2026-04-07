@@ -94,6 +94,9 @@ spec:
     matchLabels:
       app: pos
   template:
+    metadata:
+      labels:
+        app: pos
     spec:
       # Pin to store-specific node
       nodeSelector:
@@ -132,7 +135,13 @@ metadata:
   namespace: store-apps
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: local-cache
   template:
+    metadata:
+      labels:
+        app: local-cache
     spec:
       containers:
         - name: redis

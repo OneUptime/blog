@@ -257,24 +257,22 @@ apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
 metadata:
   name: rate-limit
-spec:
-  plugin: rate-limiting
-  config:
-    minute: 100
-    policy: redis
-    redis_host: redis.default.svc.cluster.local
+plugin: rate-limiting
+config:
+  minute: 100
+  policy: redis
+  redis_host: redis.default.svc.cluster.local
 
 ---
 apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
 metadata:
   name: key-auth
-spec:
-  plugin: key-auth
-  config:
-    key_names:
-      - X-API-Key
-      - apikey
+plugin: key-auth
+config:
+  key_names:
+    - X-API-Key
+    - apikey
 ```
 
 ## Apache APISIX Setup
@@ -516,7 +514,7 @@ spec:
             key: remote_addr
             rejected_code: 429
             rejected_msg: "Rate limit exceeded. Try again later."
-            policy: sliding_window
+            policy: local
 ```
 
 ## Request/Response Transformation

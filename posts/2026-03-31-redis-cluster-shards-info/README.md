@@ -152,9 +152,7 @@ r = redis.RedisCluster(
     port=7001
 )
 
-# Access a single node for CLUSTER SHARDS
-node = r.get_redis_connection(host='192.168.1.10', port=7001)
-shards = node.execute_command('CLUSTER SHARDS')
+shards = r.execute_command('CLUSTER SHARDS')
 for shard in shards:
     print(shard)
 ```

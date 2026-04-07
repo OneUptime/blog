@@ -196,6 +196,9 @@ spec:
       - analysis:
           templates:
           - templateName: success-rate
+          args:
+          - name: service-name
+            value: web-app
       - setWeight: 25
       - pause: {duration: 2m}
       - setWeight: 50
@@ -320,10 +323,6 @@ spec:
     canary:
       analysis:
         templates:
-        - templateName: continuous-analysis
-        startingStep: 1
-      backgroundAnalysis:
-        templates:
         - templateName: background-metrics
       steps:
       - setWeight: 10
@@ -339,13 +338,13 @@ spec:
   metrics:
   - name: error-rate
     interval: 1m
+    successCondition: result[0] < 0.01
     failureLimit: 3
     provider:
       prometheus:
         address: http://prometheus:9090
         query: |
           rate(http_requests_total{status=~"5..",service="web-app"}[5m])
-          > 0.01
 ```
 
 Background analysis runs continuously and fails the rollout if metrics degrade.

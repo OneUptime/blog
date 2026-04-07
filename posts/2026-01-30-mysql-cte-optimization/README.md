@@ -37,9 +37,9 @@ When MySQL merges (inlines) a CTE, it treats the CTE like a derived table and ca
 
 MySQL 8.0.14 introduced optimizer hints that let you control CTE materialization behavior explicitly.
 
-### Forcing Materialization
+### Preventing Merge (Forcing Materialization)
 
-Use the `MATERIALIZED` hint when your CTE is referenced multiple times or when you want to ensure consistent results:
+Use the `NO_MERGE` hint when your CTE is referenced multiple times or when you want to ensure consistent results through materialization:
 
 ```sql
 -- Force materialization for a CTE referenced multiple times
@@ -53,7 +53,7 @@ WITH order_totals AS (
     WHERE order_date >= '2024-01-01'
     GROUP BY customer_id
 )
-SELECT /*+ MATERIALIZED(order_totals) */
+SELECT /*+ NO_MERGE(order_totals) */
     c.customer_name,
     ot.order_count,
     ot.total_spent,
@@ -283,7 +283,7 @@ WITH materialized_cte AS (
     FROM large_transactions
     GROUP BY customer_id
 )
-SELECT /*+ MATERIALIZED(materialized_cte) */
+SELECT /*+ NO_MERGE(materialized_cte) */
     COUNT(*)
 FROM materialized_cte mc1
 JOIN materialized_cte mc2 ON mc1.customer_id = mc2.customer_id;
@@ -319,7 +319,7 @@ flowchart TD
     B -->|No| D{Need Predicate Pushdown?}
 
     C -->|Yes| E[Consider Breaking into Temp Table]
-    C -->|No| F[Use MATERIALIZED Hint]
+    C -->|No| F[Use NO_MERGE Hint]
 
     D -->|Yes| G[Use MERGE Hint]
     D -->|No| H[Let Optimizer Decide]
@@ -496,7 +496,7 @@ LIMIT 10;
 Optimizing MySQL CTEs requires understanding both the execution model and your specific use case. Key takeaways:
 
 1. **Understand materialization**: Know when MySQL materializes CTEs vs merges them
-2. **Use hints wisely**: Apply `MATERIALIZED` or `MERGE` hints based on your query pattern
+2. **Use hints wisely**: Apply `NO_MERGE` or `MERGE` hints based on your query pattern
 3. **Analyze execution plans**: Use `EXPLAIN` and `EXPLAIN ANALYZE` to verify optimization choices
 4. **Optimize recursive CTEs**: Add depth limits, proper indexes, and minimize selected columns
 5. **Avoid anti-patterns**: Keep CTEs simple and purposeful

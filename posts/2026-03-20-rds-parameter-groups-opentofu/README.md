@@ -51,7 +51,7 @@ resource "aws_db_parameter_group" "postgres_prod" {
   parameter {
     name  = "work_mem"
     value = "16384"  # 16 MB per sort operation
-    apply_method = "pending-reboot"
+    apply_method = "immediate"
   }
 
   parameter {

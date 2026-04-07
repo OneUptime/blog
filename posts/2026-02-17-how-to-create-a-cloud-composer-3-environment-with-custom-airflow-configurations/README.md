@@ -36,16 +36,6 @@ gcloud composer environments create my-composer3-env \
 
 The `--environment-size` flag accepts `small`, `medium`, or `large`, which controls the base resource allocation for the Airflow components.
 
-For more control over the environment, use a YAML configuration file:
-
-```bash
-# Create a Composer 3 environment with a config file
-gcloud composer environments create my-composer3-env \
-  --location=us-central1 \
-  --image-version=composer-3-airflow-2.9.3 \
-  --config=composer-config.yaml
-```
-
 ## Step 2: Configure Airflow Properties
 
 Airflow has hundreds of configuration options. You can override any of them when creating the environment. Here are the most commonly customized settings:

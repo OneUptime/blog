@@ -112,9 +112,15 @@ func (a *OrderActor) OnDeactivate() error {
 Save snapshots on a schedule to avoid losing state on sudden termination:
 
 ```go
-func (a *OrderActor) RegisterTimer(ctx context.Context) error {
-    return a.GetStateManager().RegisterTimer(ctx, "snapshot-timer",
-        "SaveSnapshot", "1m", "1m", nil)
+func (a *OrderActor) RegisterSnapshotTimer(ctx context.Context) error {
+    return a.RegisterActorTimer(ctx, &actor.RegisterTimerRequest{
+        ActorType: a.Type(),
+        ActorID:   a.ID(),
+        Name:      "snapshot-timer",
+        DueTime:   "1m",
+        Period:    "1m",
+        CallBack:  "SaveSnapshot",
+    })
 }
 
 func (a *OrderActor) SaveSnapshot(ctx context.Context) error {

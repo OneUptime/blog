@@ -33,7 +33,7 @@ data:
           "interfaceName": "eth0",
           "vppDriver": "dpdk",
           "newDriverName": "vfio-pci",
-          "numRxQueues": 8,    # Match VPP worker thread count
+          "numRxQueues": 8,
           "numTxQueues": 8,
           "rxQueueSize": 4096,
           "txQueueSize": 4096

@@ -92,11 +92,15 @@ count = await User.find(User.role == "user").count()
 user.age = 31
 await user.save()
 
-# Atomic update operator
+# Atomic update operators
 from beanie.operators import Set, Inc
 await User.find_one(User.email == "alice@example.com").update(
-    Set({User.age: 31}),
-    Inc({User.age: 0})  # or Inc for incrementing
+    Set({User.role: "admin"})
+)
+
+# Increment a field
+await User.find_one(User.email == "alice@example.com").update(
+    Inc({User.age: 1})
 )
 
 # Bulk update

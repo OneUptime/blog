@@ -40,13 +40,13 @@ spec:
         dapr.io/app-id: "myapp"
         dapr.io/app-port: "8080"
         # Increase initial delay for slow-starting apps
-        dapr.io/sidecar-liveness-probe-delay: "15"
+        dapr.io/sidecar-liveness-probe-delay-seconds: "15"
         # Check every 10 seconds
-        dapr.io/sidecar-liveness-probe-period: "10"
+        dapr.io/sidecar-liveness-probe-period-seconds: "10"
         # Allow 5 failures before restarting
-        dapr.io/sidecar-liveness-probe-failure-threshold: "5"
+        dapr.io/sidecar-liveness-probe-threshold: "5"
         # Timeout per probe request
-        dapr.io/sidecar-liveness-probe-timeout: "5"
+        dapr.io/sidecar-liveness-probe-timeout-seconds: "5"
     spec:
       containers:
       - name: myapp
@@ -100,4 +100,4 @@ kubectl logs myapp-xxxxxxxxx -c daprd --previous --tail=50
 
 ## Summary
 
-Dapr sidecar liveness probe timing is configured via pod annotations. Increasing `sidecar-liveness-probe-delay` prevents premature restarts when the daprd sidecar takes time to initialize component connections. Always pair sidecar liveness probes with application-level probes to ensure Kubernetes restarts pods when either layer is unhealthy.
+Dapr sidecar liveness probe timing is configured via pod annotations. Increasing `sidecar-liveness-probe-delay-seconds` prevents premature restarts when the daprd sidecar takes time to initialize component connections. Always pair sidecar liveness probes with application-level probes to ensure Kubernetes restarts pods when either layer is unhealthy.

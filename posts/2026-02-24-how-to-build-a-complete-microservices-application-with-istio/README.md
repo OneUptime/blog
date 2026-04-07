@@ -481,7 +481,7 @@ istioctl proxy-status
 curl -k https://shop.example.com/
 
 # Verify mTLS is working
-istioctl authn tls-check product-service.ecommerce.svc.cluster.local
+istioctl proxy-config secret deploy/product-service -n ecommerce
 ```
 
 This gives you a complete microservices application with traffic management, security, and observability, all handled by the mesh. Your application code stays focused on business logic, and Istio handles the infrastructure concerns.

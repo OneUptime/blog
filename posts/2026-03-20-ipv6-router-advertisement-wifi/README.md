@@ -48,7 +48,7 @@ interface wlan0 {
 sudo systemctl enable --now radvd
 
 # Verify RA is being sent
-sudo radvdump -i wlan0
+sudo radvdump
 
 # Check radvd status
 sudo systemctl status radvd
@@ -135,7 +135,7 @@ sudo ip6tables -I FORWARD -i wlan0 -p icmpv6 \
 sudo tcpdump -i wlan0 -nn icmp6 and ip6[40]==134
 
 # Parse RA with radvdump
-sudo radvdump -i wlan0
+sudo radvdump
 
 # Show received RA details on a Linux client
 ip -6 route show proto ra
@@ -146,7 +146,7 @@ sysctl net.ipv6.conf.wlan0.accept_ra
 # Should be 1 (accept RA)
 
 # Force RS (Router Solicitation) to trigger RA response
-ndisc6 -1 wlan0
+rdisc6 wlan0
 
 # View prefix information learned from RA
 ip -6 addr show dev wlan0 | grep "scope global"

@@ -231,7 +231,7 @@ istio_requests_total{destination_service="hello-function.default.svc.cluster.loc
 Or check latency percentiles:
 
 ```text
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="hello-function.default.svc.cluster.local"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_seconds_bucket{destination_service="hello-function.default.svc.cluster.local"}[5m])) by (le))
 ```
 
 These metrics are especially useful for FaaS because they help you understand cold start impact on your p99 latency.

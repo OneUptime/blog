@@ -160,7 +160,9 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref APITargetGroup
 
-  # Also listen on TCP 80 and redirect to HTTPS
+  # Also listen on TCP 80 and forward to the same target group
+  # Note: NLB cannot redirect HTTP to HTTPS natively.
+  # Your application must handle the redirect if needed.
   TCPListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -169,7 +171,7 @@ Resources:
       Protocol: TCP
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref RedirectTargetGroup
+          TargetGroupArn: !Ref APITargetGroup
 
   APITargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -191,8 +193,6 @@ Resources:
 Outputs:
   NLBDnsName:
     Value: !GetAtt NetworkLoadBalancer.DNSName
-  StaticIPs:
-    Value: !Join [",", !GetAtt NetworkLoadBalancer.StaticIPs]
 ```
 
 ## TLS Passthrough vs TLS Termination

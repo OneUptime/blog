@@ -96,8 +96,7 @@ As a last resort:
 ```bash
 minikube stop
 minikube delete
-minikube start --network-plugin=cni --cni=false
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+minikube start --cni=calico
 ```
 
 ## Conclusion

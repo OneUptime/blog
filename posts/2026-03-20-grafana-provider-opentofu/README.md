@@ -22,23 +22,18 @@ This guide covers How to Configure the Grafana Provider in OpenTofu using OpenTo
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    grafana = {
+      source  = "grafana/grafana"
+      version = "~> 3.0"
     }
   }
 }
 
-# Configure the provider with credentials
+# Configure the Grafana provider with credentials
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "grafana" {
+  url  = var.grafana_url
+  auth = var.grafana_api_key
 }
 ```
 
@@ -46,83 +41,133 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export GRAFANA_URL="https://grafana.example.com"
+export GRAFANA_AUTH="your-api-key"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "grafana_url" {
+  description = "URL of the Grafana instance"
+  type        = string
+}
+
+variable "grafana_api_key" {
+  description = "API key for Grafana authentication"
   type        = string
   sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "environment" {
+  description = "Environment name"
   type        = string
+  default     = "production"
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+# Create a Grafana folder to organize dashboards
+resource "grafana_folder" "main" {
+  title = "${var.environment}-dashboards"
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+# Create a Prometheus data source
+resource "grafana_data_source" "prometheus" {
+  type = "prometheus"
+  name = "${var.environment}-prometheus"
+  url  = "http://prometheus:9090"
+
+  json_data_encoded = jsonencode({
+    httpMethod = "POST"
+    timeInterval = "15s"
+  })
+}
+
+# Create a team for access control
+resource "grafana_team" "developers" {
+  name = "developers"
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+# Create a contact point for alert notifications
+resource "grafana_contact_point" "email" {
+  name = "critical-email"
 
-  notification {
-    channel = var.notification_channel
+  email {
+    addresses = ["ops-team@example.com"]
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Create a notification policy
+resource "grafana_notification_policy" "default" {
+  contact_point = grafana_contact_point.email.name
+  group_by      = ["alertname"]
+
+  group_wait      = "30s"
+  group_interval  = "5m"
+  repeat_interval = "4h"
+}
+
+# Create an alert rule
+resource "grafana_rule_group" "cpu_alerts" {
+  name             = "cpu-alerts"
+  folder_uid       = grafana_folder.main.uid
+  interval_seconds = 60
+
+  rule {
+    name      = "High CPU Usage"
+    condition = "C"
+
+    data {
+      ref_id         = "A"
+      datasource_uid = grafana_data_source.prometheus.uid
+
+      relative_time_range {
+        from = 600
+        to   = 0
+      }
+
+      model = jsonencode({
+        expr = "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+      })
+    }
+
+    data {
+      ref_id         = "C"
+      datasource_uid = "__expr__"
+
+      relative_time_range {
+        from = 0
+        to   = 0
+      }
+
+      model = jsonencode({
+        type       = "threshold"
+        expression = "A"
+        conditions = [{
+          evaluator = { type = "gt", params = [90] }
+        }]
+      })
+    }
+  }
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "folder_uid" {
+  description = "The UID of the created Grafana folder"
+  value       = grafana_folder.main.uid
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "prometheus_datasource_uid" {
+  description = "The UID of the Prometheus data source"
+  value       = grafana_data_source.prometheus.uid
 }
 ```
 
@@ -155,4 +200,4 @@ Pin to a specific provider version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Grafana Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the Grafana provider in OpenTofu. This provider enables you to manage dashboards, data sources, alerts, and access control as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials like API keys.

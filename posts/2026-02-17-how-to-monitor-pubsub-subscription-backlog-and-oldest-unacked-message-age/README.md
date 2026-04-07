@@ -27,17 +27,10 @@ A healthy subscription has a small, stable backlog and a low oldest message age.
 You can quickly check a subscription's backlog with gcloud:
 
 ```bash
-# Check the number of undelivered messages
+# Check subscription details including message retention and ack deadline
 
 gcloud pubsub subscriptions describe my-subscription \
-  --format="value(messageRetentionDuration)"
-
-# Use Cloud Monitoring to get the current backlog
-gcloud monitoring read \
-  "pubsub.googleapis.com/subscription/num_undelivered_messages" \
-  --filter='resource.labels.subscription_id = "my-subscription"' \
-  --interval-start-time="$(date -u -d '-5 minutes' +%Y-%m-%dT%H:%M:%SZ)" \
-  --format=json
+  --format="yaml(ackDeadlineSeconds, messageRetentionDuration)"
 ```
 
 For a quick snapshot, you can also use the Pub/Sub API directly:

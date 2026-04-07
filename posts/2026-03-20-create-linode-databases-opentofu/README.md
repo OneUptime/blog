@@ -98,7 +98,7 @@ output "ha_replica" {
 Use the Linode CLI to discover available engine versions:
 
 ```bash
-linode-cli databases engines-list
+linode-cli databases engines list
 ```
 
 ## Updating the Allow List

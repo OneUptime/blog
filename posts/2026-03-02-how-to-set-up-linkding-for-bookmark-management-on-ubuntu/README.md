@@ -303,12 +303,12 @@ This lets you share a curated reading list or resource collection without requir
 ## Export and Backup
 
 ```bash
-# Export bookmarks to Netscape HTML format via API
+# Export bookmarks to Netscape HTML format via the export endpoint
 curl -H "Authorization: Token $API_TOKEN" \
-  "https://bookmarks.example.com/api/bookmarks/?format=html&limit=10000" \
+  "https://bookmarks.example.com/api/bookmarks/export/" \
   -o bookmarks-export-$(date +%Y%m%d).html
 
-# Or export all bookmarks as JSON
+# Or export all bookmarks as JSON via the list endpoint
 curl -H "Authorization: Token $API_TOKEN" \
   "https://bookmarks.example.com/api/bookmarks/?limit=10000" \
   -o bookmarks-$(date +%Y%m%d).json
@@ -316,8 +316,8 @@ curl -H "Authorization: Token $API_TOKEN" \
 # Backup the entire data directory (includes SQLite database)
 tar -czf linkding-backup-$(date +%Y%m%d).tar.gz /opt/linkding/data/
 
-# Schedule daily backup
-echo "0 4 * * * $USER tar -czf /backup/linkding-\$(date +\%Y\%m\%d).tar.gz /opt/linkding/data/ >> /var/log/linkding-backup.log 2>&1" | \
+# Schedule daily backup (appends to existing crontab)
+(crontab -l 2>/dev/null; echo "0 4 * * * tar -czf /backup/linkding-\$(date +\%Y\%m\%d).tar.gz /opt/linkding/data/ >> /var/log/linkding-backup.log 2>&1") | \
   crontab -
 ```
 

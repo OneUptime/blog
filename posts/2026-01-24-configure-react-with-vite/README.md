@@ -593,10 +593,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      react({
-        // Enable React Fast Refresh
-        fastRefresh: true,
-      }),
+      react(),
       svgr(),
     ],
 

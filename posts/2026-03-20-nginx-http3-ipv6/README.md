@@ -73,11 +73,9 @@ server {
 
     # Advertise HTTP/3 support via Alt-Svc header
     add_header Alt-Svc 'h3=":443"; ma=86400';
-    add_header Alt-Svc 'h3=":443"; ma=86400, h3-29=":443"; ma=86400';
 
     # QUIC-specific settings
     quic_retry on;       # Enable QUIC retry for DDoS protection
-    quic_gso on;         # Enable Generic Segmentation Offload
     ssl_early_data on;   # Enable 0-RTT
 
     location / {
@@ -146,12 +144,13 @@ nc -6 -u -zv 2001:db8::1 443
 ```nginx
 # Optimize QUIC performance
 http {
-    # Increase buffer sizes for QUIC
-    quic_active_connection_id_limit 4;
-
     # Set appropriate MTU for IPv6
     # IPv6 minimum MTU is 1280 bytes
     # QUIC overhead: ~50 bytes for IPv6+UDP+QUIC headers
+
+    # Increase proxy buffer sizes for QUIC connections
+    proxy_buffer_size 16k;
+    proxy_buffers 4 32k;
 }
 ```
 

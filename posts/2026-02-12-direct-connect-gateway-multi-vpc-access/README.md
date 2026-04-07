@@ -67,13 +67,13 @@ aws ec2 attach-vpn-gateway \
 aws directconnect create-direct-connect-gateway-association \
   --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
   --gateway-id vgw-0123456789abcdef0 \
-  --add-allowed-prefixes-to-direct-connect-gateway cidr=10.1.0.0/16
+  --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.1.0.0/16"}]'
 
 # Repeat for VPCs in other regions
 aws directconnect create-direct-connect-gateway-association \
   --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
   --gateway-id vgw-abcdef0123456789a \
-  --add-allowed-prefixes-to-direct-connect-gateway cidr=10.2.0.0/16
+  --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.2.0.0/16"}]'
 ```
 
 The `--add-allowed-prefixes` parameter is crucial. It controls which CIDR blocks are advertised to your on-premises network via BGP. If you don't set this, the VPC CIDR is used by default.
@@ -106,7 +106,7 @@ aws directconnect create-transit-virtual-interface \
 aws directconnect create-direct-connect-gateway-association \
   --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
   --gateway-id tgw-0123456789abcdef0 \
-  --add-allowed-prefixes-to-direct-connect-gateway cidr=10.0.0.0/8
+  --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.0.0.0/8"}]'
 ```
 
 Note the MTU of 8500 - jumbo frames are supported on Direct Connect and can improve throughput for large data transfers. Make sure your on-premises network supports jumbo frames end-to-end before enabling this.
@@ -186,14 +186,14 @@ aws directconnect create-direct-connect-gateway-association-proposal \
   --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
   --direct-connect-gateway-owner-account 111111111111 \
   --gateway-id vgw-0123456789abcdef0 \
-  --add-allowed-prefixes-to-direct-connect-gateway cidr=10.5.0.0/16
+  --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.5.0.0/16"}]'
 
 # From the gateway-owning account: accept the proposal
 aws directconnect accept-direct-connect-gateway-association-proposal \
   --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
   --association-proposal-id proposal-abc123 \
   --associated-gateway-owner-account 222222222222 \
-  --override-allowed-prefixes-to-direct-connect-gateway cidr=10.5.0.0/16
+  --override-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.5.0.0/16"}]'
 ```
 
 ## Limits to Keep in Mind

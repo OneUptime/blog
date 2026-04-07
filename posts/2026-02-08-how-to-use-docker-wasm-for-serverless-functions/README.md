@@ -67,6 +67,7 @@ Write the function handler:
 
 ```rust
 // src/main.rs - Serverless function that processes image resize requests
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 
@@ -97,7 +98,8 @@ fn handle_request(body: &str) -> Result<String, String> {
         .map_err(|e| format!("Invalid request: {}", e))?;
 
     // Decode the base64 image data
-    let image_bytes = base64::decode(&request.image_data)
+    let image_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&request.image_data)
         .map_err(|e| format!("Invalid base64: {}", e))?;
 
     let original_size = image_bytes.len();

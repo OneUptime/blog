@@ -83,11 +83,12 @@ For encrypted Sentinel communications:
 
 ```text
 # sentinel.conf
-sentinel tls-port 26380
-sentinel tls-cert-file /etc/redis/sentinel.crt
-sentinel tls-key-file /etc/redis/sentinel.key
-sentinel tls-ca-cert-file /etc/redis/ca.crt
-sentinel tls-auth-clients yes
+tls-port 26380
+tls-cert-file /etc/redis/sentinel.crt
+tls-key-file /etc/redis/sentinel.key
+tls-ca-cert-file /etc/redis/ca.crt
+tls-auth-clients yes
+tls-replication yes
 ```
 
 ## Connect Clients via Sentinel

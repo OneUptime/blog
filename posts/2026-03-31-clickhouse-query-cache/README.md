@@ -44,8 +44,8 @@ Query cache is enabled per query or per profile. Enable it globally in `users.xm
   <default>
     <use_query_cache>true</use_query_cache>
     <query_cache_ttl>60</query_cache_ttl>
-    <query_cache_max_size_in_bytes>10485760</query_cache_max_size_in_bytes>
-    <query_cache_max_entries>100</query_cache_max_entries>
+    <query_cache_min_query_runs>2</query_cache_min_query_runs>
+    <query_cache_min_query_duration>300</query_cache_min_query_duration>
   </default>
 </profiles>
 ```
@@ -108,10 +108,10 @@ Only share cache between users if all users are allowed to see all data (no row-
 SELECT
     query,
     result_size,
-    entry_expiry_ts,
-    hits
+    expires_at,
+    stale
 FROM system.query_cache
-ORDER BY hits DESC;
+ORDER BY expires_at DESC;
 ```
 
 ## Clearing the Cache
@@ -138,10 +138,10 @@ SELECT normalizeQuery('SELECT count() FROM events WHERE event_time >= today() - 
 
 ```sql
 SELECT
-    metric,
+    event,
     value
-FROM system.metrics
-WHERE metric IN ('QueryCacheHits', 'QueryCacheMisses');
+FROM system.events
+WHERE event IN ('QueryCacheHits', 'QueryCacheMisses');
 ```
 
 ## Summary

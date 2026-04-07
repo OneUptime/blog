@@ -97,14 +97,12 @@ print "Leader: $top[0] with score $top[1]\n";
 ## Pipelining
 
 ```perl
-$redis->pipeline_incr([sub {
-    print "Async incr done\n";
-}]);
+# Queue commands without waiting for responses
+$redis->set("item:$_", $_, sub {}) for 1..50;
 
-# Manual pipelining via multi-bulk
-my @commands = map { ['SET', "item:$_", $_] } 1..50;
-my @replies = $redis->execute_pipeline(@commands);
-print "Pipeline replies: ", scalar @replies, "\n";
+# Wait for all queued responses
+$redis->wait_all_responses;
+print "Pipeline complete\n";
 ```
 
 ## Pub/Sub

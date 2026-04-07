@@ -87,7 +87,7 @@ class DataclassUser:
 ```python
 from dataclasses import dataclass, field
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class BlogPost:
@@ -102,7 +102,7 @@ class BlogPost:
     tags: List[str] = field(default_factory=list)
 
     # Dynamic default using a factory function
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Field that is not part of __init__
     word_count: int = field(init=False, default=0)
@@ -249,13 +249,13 @@ print(debug_config.debug)  # True
 ```python
 from dataclasses import dataclass, field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class BaseModel:
     """Base class for all database models."""
     id: Optional[int] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
 
 @dataclass
@@ -435,7 +435,7 @@ class DatabaseConfig:
 ```python
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Generic, TypeVar
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -445,7 +445,7 @@ class ApiResponse(Generic[T]):
     data: T
     success: bool = True
     message: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         result = asdict(self)

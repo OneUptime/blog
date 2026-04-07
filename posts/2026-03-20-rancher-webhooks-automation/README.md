@@ -178,9 +178,18 @@ def get_pod_logs(namespace: str, pod: str) -> str:
 def scale_deployment(namespace: str, deployment: str):
     """Scale a deployment up by 1 replica"""
     try:
+        # Get current replica count
+        result = subprocess.run(
+            ['kubectl', 'get', 'deployment', deployment,
+             '-n', namespace, '-o', 'jsonpath={.spec.replicas}'],
+            capture_output=True, text=True, check=True, timeout=10
+        )
+        current = int(result.stdout.strip())
+        new_count = current + 1
+
         subprocess.run(
             ['kubectl', 'scale', 'deployment', deployment,
-             '-n', namespace, '--replicas=+1'],
+             '-n', namespace, f'--replicas={new_count}'],
             check=True, timeout=30
         )
     except subprocess.CalledProcessError as e:
@@ -228,6 +237,9 @@ spec:
     matchLabels:
       app: webhook-handler
   template:
+    metadata:
+      labels:
+        app: webhook-handler
     spec:
       containers:
         - name: handler

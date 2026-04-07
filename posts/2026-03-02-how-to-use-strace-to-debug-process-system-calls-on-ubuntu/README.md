@@ -198,8 +198,8 @@ By default, strace truncates long strings. Increase the limit:
 # Show strings up to 500 characters
 strace -s 500 myapp
 
-# Show complete strings (no limit)
-strace -s 0 myapp
+# Show complete strings (very large limit)
+strace -s 99999 myapp
 ```
 
 This is important when debugging configuration file parsing or HTTP requests.

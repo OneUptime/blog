@@ -47,8 +47,8 @@ Route traffic based on source address - packets from `2001:db8:1::/64` use ISP1,
 ```bash
 # Step 1: Create separate routing tables for each ISP
 # Table IDs 100 and 200 (or add named entries to /etc/iproute2/rt_tables)
-echo "100 isp1" >> /etc/iproute2/rt_tables6
-echo "200 isp2" >> /etc/iproute2/rt_tables6
+echo "100 isp1" >> /etc/iproute2/rt_tables
+echo "200 isp2" >> /etc/iproute2/rt_tables
 
 # Step 2: Add default routes in each table
 sudo ip -6 route add default via fe80::isp1 dev eth0 table 100

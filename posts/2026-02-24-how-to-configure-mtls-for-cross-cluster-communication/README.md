@@ -120,9 +120,9 @@ spec:
 Install the east-west gateway in each cluster:
 
 ```bash
-# Generate east-west gateway manifest
-istioctl install -f samples/multicluster/gen-eastwest-gateway.sh --context=cluster1 --network network1
-istioctl install -f samples/multicluster/gen-eastwest-gateway.sh --context=cluster2 --network network2
+# Generate and install east-west gateway
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | istioctl install -y --context=cluster1 -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network2 | istioctl install -y --context=cluster2 -f -
 ```
 
 Expose services through the east-west gateway:

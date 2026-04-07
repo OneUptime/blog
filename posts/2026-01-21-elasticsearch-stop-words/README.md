@@ -191,6 +191,8 @@ curl -X PUT "https://localhost:9200/articles" \
 
 ## Combining Built-in and Custom Stop Words
 
+You cannot mix a predefined list like `_english_` with custom words in a single `stopwords` array. Instead, use two separate filters chained together:
+
 ```bash
 curl -X PUT "https://localhost:9200/articles" \
   -H "Content-Type: application/json" \
@@ -199,16 +201,20 @@ curl -X PUT "https://localhost:9200/articles" \
     "settings": {
       "analysis": {
         "filter": {
-          "combined_stop": {
+          "english_stop": {
             "type": "stop",
-            "stopwords": ["_english_", "custom1", "custom2", "custom3"]
+            "stopwords": "_english_"
+          },
+          "custom_stop": {
+            "type": "stop",
+            "stopwords": ["custom1", "custom2", "custom3"]
           }
         },
         "analyzer": {
           "combined_analyzer": {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "combined_stop"]
+            "filter": ["lowercase", "english_stop", "custom_stop"]
           }
         }
       }

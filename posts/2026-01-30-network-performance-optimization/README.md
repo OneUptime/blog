@@ -167,6 +167,7 @@ Choosing the right protocol for your use case can dramatically impact latency.
 ### HTTP/2 and HTTP/3 Optimization
 
 ```python
+import asyncio
 import httpx
 
 async def make_optimized_request():
@@ -204,13 +205,13 @@ def create_optimized_channel(target):
         ('grpc.keepalive_timeout_ms', 5000),
 
         # Allow keepalive pings even without active calls
-        ('grpc.keepalive_permit_without_calls', True),
+        ('grpc.keepalive_permit_without_calls', 1),
 
         # Maximum message size (4MB)
         ('grpc.max_receive_message_length', 4 * 1024 * 1024),
 
         # Enable retries for transient failures
-        ('grpc.enable_retries', True),
+        ('grpc.enable_retries', 1),
     ]
 
     return grpc.insecure_channel(target, options=options)
@@ -460,8 +461,11 @@ def connect_with_cached_dns(hostname, port):
 ```bash
 # Check if systemd-resolved is running
 systemctl status systemd-resolved
+```
 
-# Configure DNS caching in /etc/systemd/resolved.conf
+Configure DNS caching in `/etc/systemd/resolved.conf`:
+
+```ini
 [Resolve]
 DNS=8.8.8.8 8.8.4.4
 Cache=yes

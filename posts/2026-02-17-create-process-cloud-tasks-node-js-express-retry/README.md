@@ -345,7 +345,7 @@ function verifyCloudTasksRequest(req, res, next) {
 }
 
 // Apply to all task handler routes
-app.use('/tasks/*', verifyCloudTasksRequest);
+app.use('/tasks', verifyCloudTasksRequest);
 ```
 
 For production, configure OIDC authentication on your tasks so Cloud Tasks includes a signed token that you can verify.

@@ -129,7 +129,7 @@ async function onUserRegistration(user) {
 Agenda does not retry by default. Implement retry logic within the job definition:
 
 ```javascript
-agenda.define('process payment', { attempts: 3 }, async (job) => {
+agenda.define('process payment', async (job) => {
   try {
     const { orderId, amount } = job.attrs.data;
     await processPayment(orderId, amount);

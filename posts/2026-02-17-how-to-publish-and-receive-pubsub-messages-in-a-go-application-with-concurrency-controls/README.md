@@ -171,7 +171,11 @@ func receiveMessages(projectID, subscriptionID string) error {
         log.Printf("Received message: %s (ID: %s)", string(msg.Data), msg.ID)
 
         // Simulate some processing work
-        processMessage(msg)
+        if err := processMessage(msg); err != nil {
+            log.Printf("Failed to process message %s: %v", msg.ID, err)
+            msg.Nack()
+            return
+        }
 
         // Acknowledge the message after successful processing
         msg.Ack()
@@ -184,9 +188,10 @@ func receiveMessages(projectID, subscriptionID string) error {
 }
 
 // processMessage simulates work on a message
-func processMessage(msg *pubsub.Message) {
+func processMessage(msg *pubsub.Message) error {
     // In a real app, this might write to a database or call an API
     time.Sleep(50 * time.Millisecond)
+    return nil
 }
 ```
 

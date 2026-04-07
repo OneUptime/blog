@@ -134,7 +134,7 @@ This code creates a histogram metric that records query durations alongside the 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metrics_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Set up the meter provider with OTLP export
 reader = PeriodicExportingMetricReader(
@@ -261,7 +261,7 @@ For a Node.js application, you can also instrument database calls using the `@op
 // Node.js example using the pg (PostgreSQL) instrumentation
 const { PgInstrumentation } = require('@opentelemetry/instrumentation-pg');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const { MeterProvider } = require('@opentelemetry/sdk-metrics');
+const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 
 // Create a meter for recording query metrics
@@ -289,13 +289,10 @@ const queryDuration = meter.createHistogram('db.query.duration', {
 registerInstrumentations({
   instrumentations: [
     new PgInstrumentation({
-      // Hook into query execution to record custom metrics
+      enhancedDatabaseReporting: true,
+      // Hook to enrich query spans with custom attributes
       responseHook: (span, responseInfo) => {
-        const duration = responseInfo.duration;
-        queryDuration.record(duration, {
-          'db.system': 'postgresql',
-          'db.query.slow': duration > 500,
-        });
+        span.setAttribute('db.rows_affected', responseInfo.data.rowCount ?? 0);
       },
     }),
   ],

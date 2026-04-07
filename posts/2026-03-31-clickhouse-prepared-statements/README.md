@@ -43,10 +43,10 @@ client.execute(
 The HTTP interface supports typed parameters directly in the URL:
 
 ```bash
-curl -X POST "http://localhost:8123/" \
+curl "http://localhost:8123/" \
   --data-urlencode "query=SELECT count() FROM events WHERE user_id={uid:String} AND ts > {since:DateTime}" \
-  -G --data-urlencode "uid=abc123" \
-     --data-urlencode "since=2026-01-01 00:00:00"
+  -G --data-urlencode "param_uid=abc123" \
+     --data-urlencode "param_since=2026-01-01 00:00:00"
 ```
 
 ## Node.js with @clickhouse/client

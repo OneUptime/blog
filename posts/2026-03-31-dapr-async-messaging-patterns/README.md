@@ -88,6 +88,7 @@ Guarantee event delivery even if the service crashes after saving state but befo
 
 ```python
 import dapr.clients as dapr
+from dapr.clients.grpc._state import TransactionalStateOperation, TransactionOperationType
 import json
 import threading
 import time
@@ -105,19 +106,21 @@ class OutboxPublisher:
 
             operations = [
                 # Save business state
-                {
-                    "key": state_key,
-                    "value": json.dumps(state_value)
-                },
+                TransactionalStateOperation(
+                    key=state_key,
+                    data=json.dumps(state_value),
+                    operation_type=TransactionOperationType.upsert,
+                ),
                 # Save outbox entry
-                {
-                    "key": outbox_id,
-                    "value": json.dumps({
+                TransactionalStateOperation(
+                    key=outbox_id,
+                    data=json.dumps({
                         "topic": event_topic,
                         "data": event_data,
                         "createdAt": time.time()
-                    })
-                }
+                    }),
+                    operation_type=TransactionOperationType.upsert,
+                )
             ]
 
             client.execute_state_transaction(self.store_name, operations)
@@ -167,10 +170,7 @@ def process_payment_exactly_once(event_data: dict):
             idempotency_key,
             json.dumps(payment_result),
             etag=existing.etag,
-            options=dapr.StateOptions(
-                concurrency=dapr.Concurrency.FirstWrite
-            ),
-            metadata={"ttlInSeconds": "86400"}
+            state_metadata={"ttlInSeconds": "86400"}
         )
 
 def charge_payment(order_id: str, amount: float) -> dict:

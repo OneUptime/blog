@@ -96,8 +96,8 @@ Verify the permissions work as expected:
 # Create a test pod using the prometheus ServiceAccount
 kubectl run test-pod \
   --image=bitnami/kubectl:latest \
-  --serviceaccount=prometheus \
   --namespace=monitoring \
+  --overrides='{"spec":{"serviceAccountName":"prometheus"}}' \
   --command -- sleep 3600
 
 # Exec into the pod and test access

@@ -343,14 +343,7 @@ spec:
 Keep your Artifact Registry clean with cleanup policies:
 
 ```bash
-# Delete untagged images older than 30 days
-gcloud artifacts docker images delete \
-  us-central1-docker.pkg.dev/my-project/my-docker-repo/my-app \
-  --filter="NOT tags:*" \
-  --older-than=30d \
-  --quiet
-
-# Or set up a cleanup policy
+# Set up a cleanup policy to automatically manage image lifecycle
 gcloud artifacts repositories set-cleanup-policies my-docker-repo \
   --location=us-central1 \
   --policy=cleanup-policy.json

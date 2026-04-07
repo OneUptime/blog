@@ -303,19 +303,21 @@ main:
 Workflows provides built-in connectors for Cloud Functions and Cloud Run that simplify the syntax.
 
 ```yaml
-# Using the Cloud Functions connector
+# Using a direct HTTP call (Cloud Functions v2 are HTTP-triggered)
 main:
   steps:
-    - call_with_connector:
-        call: googleapis.cloudfunctions.v2.projects.locations.functions.call
+    - call_function:
+        call: http.post
         args:
-          function_name: projects/my-project/locations/us-central1/functions/my-function
+          url: https://us-central1-my-project.cloudfunctions.net/my-function
+          auth:
+            type: OIDC
           body:
             data: "input payload"
-        result: connector_result
+        result: function_result
 
     - return_result:
-        return: ${connector_result}
+        return: ${function_result.body}
 ```
 
 ## Testing Your Workflow Locally
@@ -323,13 +325,7 @@ main:
 Before deploying, validate your workflow syntax.
 
 ```bash
-# Validate workflow syntax without deploying
-gcloud workflows deploy test-validation \
-  --location=us-central1 \
-  --source=my-workflow.yaml \
-  --validate-only
-
-# If validation passes, deploy for real
+# Deploy the workflow (the API validates syntax during deployment)
 gcloud workflows deploy my-workflow \
   --location=us-central1 \
   --source=my-workflow.yaml \

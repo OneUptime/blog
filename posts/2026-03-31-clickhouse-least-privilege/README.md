@@ -88,9 +88,9 @@ FROM system.users
 ORDER BY name;
 
 -- See all role grants
-SELECT user_name, role_name, granted_role_name, with_admin_option
+SELECT user_name, granted_role_name, with_admin_option
 FROM system.role_grants
-ORDER BY user_name, role_name, granted_role_name;
+ORDER BY user_name, granted_role_name;
 ```
 
 ## Revoking Unnecessary Permissions
@@ -111,11 +111,10 @@ DROP ROLE IF EXISTS old_readonly_role;
 Pair least-privilege access with resource constraints:
 
 ```sql
-CREATE SETTINGS PROFILE etl_limits
-    CONSTRAINTS
-        max_memory_usage MAX 4294967296,
-        max_execution_time MAX 3600,
-        max_rows_to_read MAX 5000000000;
+CREATE SETTINGS PROFILE etl_limits SETTINGS
+    max_memory_usage = 4294967296 MAX 4294967296,
+    max_execution_time = 3600 MAX 3600,
+    max_rows_to_read = 5000000000 MAX 5000000000;
 
 ALTER USER etl_service SETTINGS PROFILE etl_limits;
 ```
@@ -125,12 +124,11 @@ ALTER USER etl_service SETTINGS PROFILE etl_limits;
 ```sql
 SELECT
     u.name AS username,
-    u.auth_type AS auth_types,
-    groupArray(gr.granted_role_name) AS roles,
-    u.host_ip AS allowed_ips
+    u.storage AS auth_info,
+    groupArray(gr.granted_role_name) AS roles
 FROM system.users u
 LEFT JOIN system.role_grants gr ON u.name = gr.user_name
-GROUP BY username, auth_types, allowed_ips
+GROUP BY username, auth_info
 ORDER BY username;
 ```
 

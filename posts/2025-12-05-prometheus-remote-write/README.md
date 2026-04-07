@@ -375,8 +375,8 @@ Prometheus uses Write-Ahead Log (WAL) for buffering:
 # prometheus.yml
 storage:
   tsdb:
-    wal-compression: true
-    out-of-order-time-window: 30m
+    wal_compression: true
+    out_of_order_time_window: 30m
 ```
 
 ## Security Best Practices

@@ -290,7 +290,7 @@ kubectl exec -n calico-system calico-node-xxxxx -c calico-node -- \
 Track metrics in Prometheus:
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: calico-bpf-metrics

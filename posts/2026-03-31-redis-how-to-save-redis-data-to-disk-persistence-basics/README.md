@@ -42,7 +42,7 @@ rdbcompression yes
 
 ```bash
 # Synchronous save (blocks Redis until done - avoid in production)
-redis-cli BGSAVE
+redis-cli SAVE
 
 # Asynchronous save (non-blocking, recommended)
 redis-cli BGSAVE

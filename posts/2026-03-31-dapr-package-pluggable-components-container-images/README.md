@@ -86,15 +86,14 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /install /usr/local
 COPY component.py .
 
-ENV PATH=/root/.local/bin:$PATH
 ENV DAPR_COMPONENT_SOCKET_FOLDER=/tmp/dapr-components
 
 USER 65534:65534

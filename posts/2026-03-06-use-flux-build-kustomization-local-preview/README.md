@@ -279,7 +279,7 @@ For local development without a cluster connection, you can still build Kustomiz
 
 ```bash
 # Build locally (substitutions from cluster will be skipped)
-flux build kustomization apps --path ./clusters/production/apps --dry-run
+flux build kustomization apps --path ./clusters/production/apps
 ```
 
 ## Validating the Build Output
@@ -328,7 +328,6 @@ flux build kustomization apps --path ./clusters/production/apps \
 |------|-------------|
 | `--path` | Local path to the Kustomization directory |
 | `--namespace` | Namespace of the Kustomization resource |
-| `--dry-run` | Build without connecting to the cluster |
 
 ## Troubleshooting
 

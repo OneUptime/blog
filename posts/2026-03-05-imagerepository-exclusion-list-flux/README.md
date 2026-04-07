@@ -30,7 +30,7 @@ Here is an ImageRepository that excludes the `latest` tag.
 # imagerepository-exclude-latest.yaml
 
 # Exclude the 'latest' tag from scan results
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app
@@ -57,7 +57,7 @@ CI/CD systems often push tags based on Git commit SHAs. These tags are usually n
 ```yaml
 # imagerepository-exclude-sha.yaml
 # Exclude SHA-based tags from CI/CD pipelines
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app
@@ -81,7 +81,7 @@ Some CI pipelines tag images with branch names. Exclude these to focus on versio
 ```yaml
 # imagerepository-exclude-branches.yaml
 # Exclude branch-name tags
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app
@@ -108,7 +108,7 @@ If you only want stable release tags, exclude pre-release versions.
 ```yaml
 # imagerepository-exclude-prerelease.yaml
 # Exclude pre-release and development tags
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ Filter out old versions that are no longer relevant.
 ```yaml
 # imagerepository-exclude-old.yaml
 # Exclude old major versions
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: nginx
@@ -161,7 +161,7 @@ A comprehensive exclusion list might combine several types of patterns.
 ```yaml
 # imagerepository-comprehensive-exclusion.yaml
 # Comprehensive exclusion list for a production application
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app

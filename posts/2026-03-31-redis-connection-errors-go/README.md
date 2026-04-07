@@ -14,7 +14,10 @@ Redis connection errors in Go fall into several categories: the server being unr
 
 ```go
 import (
+    "context"
     "errors"
+    "fmt"
+    "log"
     "net"
     "github.com/redis/go-redis/v9"
 )
@@ -51,7 +54,13 @@ func handleRedisError(err error) {
 ## Retry with Exponential Backoff
 
 ```go
-import "time"
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+    "github.com/redis/go-redis/v9"
+)
 
 func withRetry(ctx context.Context, maxRetries int, fn func() error) error {
     backoff := 100 * time.Millisecond
@@ -138,6 +147,14 @@ func getUser(ctx context.Context, rdb *redis.Client, userId string) (*User, erro
 ## Health Check Endpoint
 
 ```go
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "time"
+    "github.com/redis/go-redis/v9"
+)
+
 func redisHealthCheck(rdb *redis.Client) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)

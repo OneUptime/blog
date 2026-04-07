@@ -34,6 +34,11 @@ public class DocumentActor : Actor, IDocumentActor
 {
     private readonly DaprClient _daprClient;
 
+    public DocumentActor(ActorHost host, DaprClient daprClient) : base(host)
+    {
+        _daprClient = daprClient;
+    }
+
     public async Task ApplyOperation(DocumentOperation op)
     {
         // Get current document state
@@ -61,7 +66,7 @@ public class DocumentActor : Actor, IDocumentActor
 The gateway routes user actions to the appropriate document actor:
 
 ```javascript
-const { DaprClient, DaprServer, ActorProxyBuilder } = require('@dapr/dapr');
+const { DaprClient, DaprServer } = require('@dapr/dapr');
 const WebSocket = require('ws');
 
 const daprClient = new DaprClient();
@@ -132,7 +137,7 @@ def update_presence(document_id: str, user_id: str, is_active: bool):
         client.save_state('statestore', key, json.dumps(presence))
 
         # Broadcast presence update
-        client.publish_event('pubsub', f'doc-{document_id}-presence', presence)
+        client.publish_event('pubsub', f'doc-{document_id}-presence', json.dumps(presence))
 ```
 
 ## Handle Conflicts with Operational Transforms

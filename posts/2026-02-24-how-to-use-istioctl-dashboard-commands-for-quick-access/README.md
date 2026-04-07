@@ -85,7 +85,7 @@ Opens the Prometheus UI on port 9090. From here, you can query raw Istio metrics
 rate(istio_requests_total{reporter="destination"}[5m])
 
 # 99th percentile latency
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (le, destination_service))
+histogram_quantile(0.99, sum(rate(istio_request_duration_seconds_bucket{reporter="destination"}[5m])) by (le, destination_service))
 
 # Error rate
 sum(rate(istio_requests_total{response_code=~"5.*", reporter="destination"}[5m])) by (destination_service)

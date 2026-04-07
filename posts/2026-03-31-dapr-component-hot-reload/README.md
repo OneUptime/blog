@@ -19,21 +19,14 @@ Dapr component hot reload allows you to modify component YAML files and have Dap
 
 ## Step 1: Enable Hot Reload
 
-Hot reload is enabled via the `--enable-hot-reloading` flag on `dapr run`:
+Hot reload is enabled via the `--enable-hot-reload` flag on `dapr run`:
 
 ```bash
 dapr run \
   --app-id myapp \
   --app-port 8080 \
-  --enable-hot-reloading \
+  --enable-hot-reload \
   node app.js
-```
-
-You can also set it via environment variable:
-
-```bash
-export DAPR_ENABLE_HOT_RELOADING=true
-dapr run --app-id myapp --app-port 8080 node app.js
 ```
 
 ## Step 2: Default Components Directory
@@ -45,7 +38,7 @@ dapr run \
   --app-id myapp \
   --app-port 8080 \
   --resources-path ./components \
-  --enable-hot-reloading \
+  --enable-hot-reload \
   node app.js
 ```
 
@@ -130,4 +123,4 @@ curl http://localhost:3500/v1.0/metadata | python3 -m json.tool | grep -A2 compo
 
 ## Summary
 
-Dapr component hot reload eliminates the need to restart sidecars when modifying component configurations. By launching apps with `--enable-hot-reloading`, changes to YAML files in the components directory are detected and applied automatically. This significantly speeds up iteration during development by allowing real-time component reconfiguration.
+Dapr component hot reload eliminates the need to restart sidecars when modifying component configurations. By launching apps with `--enable-hot-reload`, changes to YAML files in the components directory are detected and applied automatically. This significantly speeds up iteration during development by allowing real-time component reconfiguration.

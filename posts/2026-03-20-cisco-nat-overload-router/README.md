@@ -6,6 +6,8 @@ Tags: Cisco, NAT, PAT, IPv4, IOS, Internet Access, Networking
 
 Description: Configure NAT overload (PAT) on a Cisco IOS router to allow multiple internal IPv4 hosts to share a single public IP address for internet access.
 
+---
+
 ## Introduction
 
 NAT overload, also called Port Address Translation (PAT), maps many internal IPv4 addresses to a single public IP by differentiating connections using port numbers. This is the most common form of NAT used in small and medium networks.

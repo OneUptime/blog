@@ -52,12 +52,12 @@ rules:
       - group: "authentication.k8s.io"
         resources: ["tokenreviews"]
 
-  # Log all Pod Security Policy decisions
+  # Log all Pod Security Admission decisions
   - level: Request
     verbs: ["create", "update", "patch"]
     resources:
-      - group: "policy"
-        resources: ["podsecuritypolicies"]
+      - group: ""
+        resources: ["namespaces"]
 
   # Default: log metadata for everything else
   - level: Metadata
@@ -130,6 +130,7 @@ Create a service that receives audit events, signs them cryptographically, and s
 package main
 
 import (
+    "bytes"
     "crypto"
     "crypto/rand"
     "crypto/rsa"
@@ -138,7 +139,7 @@ import (
     "encoding/base64"
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "log"
     "net/http"
     "time"
@@ -242,7 +243,7 @@ func storeInS3(signedEvent SignedAuditEvent) error {
 }
 
 func auditHandler(w http.ResponseWriter, r *http.Request) {
-    body, err := ioutil.ReadAll(r.Body)
+    body, err := io.ReadAll(r.Body)
     if err != nil {
         http.Error(w, "Failed to read body", http.StatusBadRequest)
         return

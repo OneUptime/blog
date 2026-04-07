@@ -52,9 +52,8 @@ mirrors:
       - "https://registry.plant.internal:5000"
 EOF
 
-curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_EXEC="--private-registry=/etc/rancher/k3s/registries.yaml" \
-  sh -
+curl -sfL https://get.k3s.io | sh -
+# K3s automatically reads /etc/rancher/k3s/registries.yaml at startup
 ```
 
 ## Step 2: Deploy Industrial IoT Data Collection
@@ -68,7 +67,13 @@ metadata:
   namespace: iiot
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto-broker
   template:
+    metadata:
+      labels:
+        app: mosquitto-broker
     spec:
       containers:
         - name: mosquitto
@@ -87,7 +92,14 @@ metadata:
   name: opcua-adapter
   namespace: iiot
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opcua-adapter
   template:
+    metadata:
+      labels:
+        app: opcua-adapter
     spec:
       containers:
         - name: adapter
@@ -141,7 +153,14 @@ metadata:
   name: predictive-maintenance
   namespace: iiot
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: predictive-maintenance
   template:
+    metadata:
+      labels:
+        app: predictive-maintenance
     spec:
       containers:
         - name: inference

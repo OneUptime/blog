@@ -475,7 +475,7 @@ bootstrap:
         hot_standby: "on"
         max_wal_senders: 10
         max_replication_slots: 10
-        wal_keep_segments: 8
+        wal_keep_size: 128MB
 
   initdb:
     - encoding: UTF8

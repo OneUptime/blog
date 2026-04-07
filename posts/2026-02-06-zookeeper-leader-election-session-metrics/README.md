@@ -107,7 +107,7 @@ receivers:
         severity:
           parse_from: attributes.level
       - type: filter
-        expr: 'body contains "LEADING" or body contains "FOLLOWING" or body contains "LOOKING"'
+        expr: 'body matches "LEADING|FOLLOWING|LOOKING"'
       - type: move
         from: attributes.message
         to: body

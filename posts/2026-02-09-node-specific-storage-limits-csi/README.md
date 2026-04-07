@@ -372,7 +372,7 @@ spec:
           - key: node.kubernetes.io/storage-capacity
             operator: Gt
             values:
-            - "500Gi"
+            - "500"
   containers:
   - name: app
     image: myapp:latest

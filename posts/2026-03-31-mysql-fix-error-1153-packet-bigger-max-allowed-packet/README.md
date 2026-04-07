@@ -65,13 +65,15 @@ SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';
 
 Note: This does not persist across restarts. Always update the config file for a permanent fix.
 
-## Fix 3: Set max_allowed_packet for a Specific Session
+## Fix 3: Set max_allowed_packet for the Current Connection
 
-For bulk operations in a single session:
+Note: In MySQL, `max_allowed_packet` is a session-readable but only globally settable variable. To change it for new connections without a restart, use `SET GLOBAL`:
 
 ```sql
-SET SESSION max_allowed_packet = 268435456;
+SET GLOBAL max_allowed_packet = 268435456;
 ```
+
+Then reconnect for the new value to take effect on your session.
 
 ## Fix 4: Increase When Using mysqldump or mysql CLI
 

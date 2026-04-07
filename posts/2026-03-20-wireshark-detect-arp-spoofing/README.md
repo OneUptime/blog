@@ -97,15 +97,14 @@ arp.isgratuitous
 
 ```bash
 # Capture ARP and look for duplicate IPs
-sudo tcpdump -i eth0 -nn arp | awk '
-/ARP/ {
-    if (match($0, /reply, ([0-9.]+) is-at ([0-9a-f:]+)/, arr)) {
-        ip=arr[1]; mac=arr[2]
-        if (seen[ip] && seen[ip] != mac) {
-            print "ARP SPOOF DETECTED: " ip " claimed by " seen[ip] " AND " mac
-        }
-        seen[ip]=mac
+sudo tshark -i eth0 -Y "arp.opcode == 2" -T fields \
+  -e arp.src.proto_ipv4 -e arp.src.hw_mac 2>/dev/null | awk '
+{
+    ip=$1; mac=$2
+    if (seen[ip] && seen[ip] != mac) {
+        print "ARP SPOOF DETECTED: " ip " claimed by " seen[ip] " AND " mac
     }
+    seen[ip]=mac
 }'
 ```
 

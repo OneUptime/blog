@@ -99,12 +99,12 @@ exports.handler = async (event) => {
 
 ## Step 4: Enable Connection Limits in MongoDB
 
-Use `setParameter` to limit connections per user:
+Set the maximum number of simultaneous connections with `maxIncomingConnections`:
 
 ```javascript
 db.adminCommand({
   setParameter: 1,
-  internalQueryPlannerMaxIndexedSolutions: 64
+  maxIncomingConnections: 1000
 });
 ```
 
@@ -114,10 +114,15 @@ On Atlas, connection limits are enforced by tier. You can also use a connection 
 
 ```bash
 atlas alerts settings create \
-  --event CONNECTIONS_PERCENT_USED \
-  --threshold 80 \
+  --eventTypeName CONNECTIONS_PERCENT \
+  --enabled \
   --notificationType EMAIL \
-  --notificationEmailAddress ops@example.com
+  --notificationEmailAddress ops@example.com \
+  --metricThresholdMetricName CONNECTIONS_PERCENT \
+  --metricThresholdMode AVERAGE \
+  --metricThresholdOperator GREATER_THAN \
+  --metricThresholdThreshold 80 \
+  --metricThresholdUnits RAW
 ```
 
 ## Summary

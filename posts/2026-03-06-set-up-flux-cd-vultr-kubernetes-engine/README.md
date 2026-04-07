@@ -302,7 +302,7 @@ Configure Flux to watch Vultr Container Registry for new images.
 
 ```yaml
 # infrastructure/image-automation/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: my-app
@@ -314,7 +314,7 @@ spec:
     name: vcr-credentials
 ---
 # infrastructure/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -327,7 +327,7 @@ spec:
       range: ">=1.0.0"
 ---
 # infrastructure/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
+apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system
@@ -374,7 +374,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ```yaml
 # infrastructure/notifications/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -386,7 +386,7 @@ spec:
     name: slack-webhook-url
 ---
 # infrastructure/notifications/alert.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: vultr-alerts

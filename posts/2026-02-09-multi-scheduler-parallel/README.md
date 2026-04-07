@@ -433,20 +433,18 @@ Verify that your schedulers behave differently:
 # Create test workloads for each scheduler
 for i in {1..5}; do
   kubectl run test-default-$i --image=nginx --restart=Never \
-    --overrides='{"spec":{"schedulerName":"default-scheduler"}}' \
-    --requests=cpu=100m,memory=128Mi
+    --overrides='{"spec":{"schedulerName":"default-scheduler","containers":[{"name":"test-default-'"$i"'","image":"nginx","resources":{"requests":{"cpu":"100m","memory":"128Mi"}}}]}}'
 
   kubectl run test-binpack-$i --image=nginx --restart=Never \
-    --overrides='{"spec":{"schedulerName":"bin-packing-scheduler"}}' \
-    --requests=cpu=100m,memory=128Mi
+    --overrides='{"spec":{"schedulerName":"bin-packing-scheduler","containers":[{"name":"test-binpack-'"$i"'","image":"nginx","resources":{"requests":{"cpu":"100m","memory":"128Mi"}}}]}}'
 done
 
 # Compare pod distribution
 echo "Default scheduler distribution:"
-kubectl get pods -l run=test-default -o wide | awk '{print $7}' | sort | uniq -c
+kubectl get pods -o wide | grep test-default | awk '{print $7}' | sort | uniq -c
 
 echo "Bin-packing scheduler distribution:"
-kubectl get pods -l run=test-binpack -o wide | awk '{print $7}' | sort | uniq -c
+kubectl get pods -o wide | grep test-binpack | awk '{print $7}' | sort | uniq -c
 ```
 
 The bin-packing scheduler should concentrate pods on fewer nodes, while the default scheduler should spread them more evenly.

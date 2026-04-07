@@ -97,7 +97,7 @@ sudo tcpdump -i eth0 -v \
 
 # Send an unsolicited NA manually (gratuitous neighbor announcement)
 # Useful after network failover
-sudo ndisc6 -v eth0 2001:db8::1
+sudo ndsend 2001:db8::1 eth0
 ```
 
 ## Parsing NA Flags

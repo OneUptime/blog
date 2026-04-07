@@ -154,7 +154,7 @@ data:
   vector.toml: |
     [sources.argocd_logs]
     type = "kubernetes_logs"
-    extra_namespace_label_selector = "app.kubernetes.io/part-of=argocd"
+    extra_label_selector = "app.kubernetes.io/part-of=argocd"
 
     [transforms.parse_argocd]
     type = "remap"

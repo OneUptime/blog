@@ -77,7 +77,7 @@ Inspect individual monitor health metrics:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mon health
+  ceph health detail
 ```
 
 ## Comparing Monmap Epoch Across Monitors

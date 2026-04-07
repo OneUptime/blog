@@ -6,6 +6,8 @@ Tags: OpenTelemetry, Tracing, Troubleshooting, Backend, Debugging, Observability
 
 Description: A practical troubleshooting guide to diagnose and fix traces not appearing in your OpenTelemetry backend, covering SDK, collector, and exporter issues.
 
+---
+
 You have instrumented your application with OpenTelemetry, deployed the collector, and configured your backend. But when you open the trace viewer, nothing is there. No spans, no traces, just an empty screen staring back at you. This is one of the most common and frustrating problems teams run into when adopting OpenTelemetry.
 
 The good news is that traces going missing almost always comes down to a handful of well-known causes. This guide walks through each layer of the telemetry pipeline, from the SDK inside your application to the collector and finally the backend, with concrete steps to find and fix the problem.

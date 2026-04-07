@@ -38,7 +38,7 @@ Find the current digest for any tag:
 docker inspect --format '{{index .RepoDigests 0}}' node:20-alpine
 
 # Or query the registry without pulling
-docker manifest inspect node:20-alpine | jq -r '.config.digest'
+docker buildx imagetools inspect node:20-alpine --format '{{.Manifest.Digest}}'
 ```
 
 Maintain a file that maps friendly names to digests for easy reference:
@@ -285,7 +285,7 @@ Locked dependencies need regular updates. Automate this process while maintainin
 # Run this on a schedule, then review and merge the changes
 
 echo "Updating base image digests..."
-NEW_DIGEST=$(docker manifest inspect node:20-alpine | jq -r '.config.digest')
+NEW_DIGEST=$(docker buildx imagetools inspect node:20-alpine --format '{{.Manifest.Digest}}')
 sed -i "s|node@sha256:.*|node@${NEW_DIGEST}|g" Dockerfile
 
 echo "Updating npm dependencies..."

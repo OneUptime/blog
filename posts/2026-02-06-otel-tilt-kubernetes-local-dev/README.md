@@ -247,7 +247,7 @@ Now edit `service-a/app.py`. Add a new attribute to the span:
 
 ```python
 with tracer.start_as_current_span("call-service-b") as span:
-    span.setAttribute("target.service", "service-b")
+    span.set_attribute("target.service", "service-b")
     response = requests.get("http://service-b:8000/data")
 ```
 

@@ -53,10 +53,7 @@ sudo modprobe overlay
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
+  "storage-driver": "overlay2"
 }
 EOF
 
@@ -152,10 +149,6 @@ sudo tee /etc/docker/daemon.json << 'EOF'
 {
   "storage-driver": "overlay2",
   "data-root": "/mnt/fast-storage/docker",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true",
-    "overlay2.size=20G"
-  ],
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "100m",

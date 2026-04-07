@@ -55,9 +55,8 @@ hostname = "webserver"
 enabled = ["httpd", "firewalld", "sshd"]
 
 # Configure the firewall
-[[customizations.firewall.ports]]
-port = "443"
-protocol = "tcp"
+[customizations.firewall]
+ports = ["443:tcp"]
 ```
 
 ## Building the ISO

@@ -116,7 +116,6 @@ data:
 
         # Deep queue for absorbing spikes
         queue_limit_length 128
-        queued_chunks_limit_size 512MB
 
         # Total buffer size limit
         total_limit_size 8GB
@@ -142,9 +141,6 @@ data:
         compress gzip
       </buffer>
 
-      # Bulk insert optimization
-      bulk_message_request_threshold 20MB
-      flush_thread_count 8
     </match>
 ```
 

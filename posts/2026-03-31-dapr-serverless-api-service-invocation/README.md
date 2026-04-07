@@ -102,6 +102,8 @@ package main
 
 import (
     "context"
+    "encoding/json"
+
     dapr "github.com/dapr/go-sdk/client"
 )
 

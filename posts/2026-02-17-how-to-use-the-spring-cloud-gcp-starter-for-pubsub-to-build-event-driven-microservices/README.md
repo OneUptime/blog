@@ -85,14 +85,17 @@ public class OrderEventPublisher {
                     "version", "1.0"
             );
 
-            ListenableFuture<String> future = pubSubTemplate.publish(
+            CompletableFuture<String> future = pubSubTemplate.publish(
                     "orders-topic", jsonPayload, headers);
 
             // Add a callback to handle success or failure
-            future.addCallback(
-                    messageId -> System.out.println("Published message: " + messageId),
-                    failure -> System.err.println("Failed to publish: " + failure.getMessage())
-            );
+            future.whenComplete((messageId, failure) -> {
+                if (failure == null) {
+                    System.out.println("Published message: " + messageId);
+                } else {
+                    System.err.println("Failed to publish: " + failure.getMessage());
+                }
+            });
 
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize order event", e);

@@ -83,9 +83,9 @@ If your network has inherent latency, tuning OSD heartbeat thresholds can reduce
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_heartbeat_grace 30
 
-# Increase lag threshold
+# Increase heartbeat interval (default is 6 seconds)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_heartbeat_min_size 1500
+  ceph config set osd osd_heartbeat_interval 10
 ```
 
 These can also be set in a ConfigMap for persistence:

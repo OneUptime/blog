@@ -130,7 +130,7 @@ hubble observe --verdict DROPPED --namespace production --output compact
 
 # Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp -A -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
 ```
 
 ## Advanced Security Configuration

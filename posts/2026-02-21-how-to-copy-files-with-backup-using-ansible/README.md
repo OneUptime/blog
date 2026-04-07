@@ -158,7 +158,7 @@ Over time, backup files accumulate. Here is how to clean them up:
 - name: Find backup files older than 7 days
   ansible.builtin.find:
     paths: /etc/myapp
-    patterns: "*.~"
+    patterns: "*~"
     age: "7d"
     recurse: true
   register: old_backups

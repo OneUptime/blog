@@ -43,8 +43,7 @@ ldapwhoami \
   -H ldaps://dc01.corp.example.com:636 \
   -x \
   -D "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com" \
-  -w "ServicePassword!" \
-  -ZZ
+  -w "ServicePassword!"
 
 # Common error codes:
 # 49 = Invalid credentials (wrong password or DN)

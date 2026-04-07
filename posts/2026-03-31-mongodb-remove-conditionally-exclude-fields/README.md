@@ -10,7 +10,7 @@ Description: Learn how to use $$REMOVE in MongoDB aggregation to conditionally o
 
 In MongoDB aggregation, setting a field to `null` and omitting a field are different outcomes. `$$REMOVE` is a system variable that, when assigned as a field's value, instructs MongoDB to omit that field from the output document entirely - not set it to null.
 
-## The Problem $$$REMOVE Solves
+## The Problem $$REMOVE Solves
 
 Without `$$REMOVE`, conditional field inclusion requires two separate pipeline stages:
 

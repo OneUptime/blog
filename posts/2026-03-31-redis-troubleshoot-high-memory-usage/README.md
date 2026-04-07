@@ -148,9 +148,9 @@ redis-cli CONFIG SET maxmemory-policy allkeys-lru
 ## Step 5: Optimize Data Structures
 
 ```bash
-# Check if hashes are using ziplist encoding (more memory efficient)
+# Check if hashes are using listpack encoding (more memory efficient)
 redis-cli OBJECT ENCODING user:1001
-# "ziplist" = compact; "hashtable" = expanded
+# "listpack" = compact (Redis 7+); "hashtable" = expanded
 
 # Tune thresholds to keep small hashes compact
 redis-cli CONFIG SET hash-max-listpack-entries 128

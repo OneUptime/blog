@@ -179,7 +179,7 @@ tofu show -json changes.tfplan | jq '
         issue_number: context.issue.number,
         owner: context.repo.owner,
         repo: context.repo.repo,
-        body: `## Terraform Plan\n```\n${plan}\n````
+        body: `## Terraform Plan\n\`\`\`\n${plan}\n\`\`\``
       });
 ```
 

@@ -587,17 +587,14 @@ db.articles.find(
 
 ### 4. Consider Background Index Building
 
-Build indexes in the background for production systems:
+Index builds in MongoDB 4.2+ use an optimized process that yields to read and write operations automatically. The `background` option is ignored in modern versions:
 
 ```javascript
-// Build index without blocking other operations
+// Index builds automatically yield to other operations in MongoDB 4.2+
+// No special options needed
 db.articles.createIndex(
-    { title: "text", content: "text" },
-    { background: true }
+    { title: "text", content: "text" }
 );
-
-// Note: In MongoDB 4.2+, all index builds use an optimized process
-// that yields to read/write operations
 ```
 
 ### 5. Monitor Query Performance

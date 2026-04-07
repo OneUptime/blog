@@ -59,11 +59,6 @@ falco:
   json_include_output_property: true
   log_level: info
 
-  # Enable Kubernetes metadata enrichment
-  metadata_download:
-    enabled: true
-    max_mb: 100
-
 collectors:
   kubernetes:
     enabled: true
@@ -156,7 +151,7 @@ customRules:
       condition: >
         outbound and
         container and
-        not (fd.sport in (80, 443, 53, 8080, 8443))
+        not (fd.rport in (80, 443, 53, 8080, 8443))
       output: >
         Unexpected outbound connection
         (command=%proc.cmdline connection=%fd.name container=%container.name)
@@ -169,7 +164,7 @@ customRules:
       condition: >
         outbound and
         fd.l4proto=tcp and
-        fd.sport in (3333, 4444, 8333, 9999)
+        fd.rport in (3333, 4444, 8333, 9999)
       output: >
         Possible crypto mining detected
         (command=%proc.cmdline connection=%fd.name container=%container.name)

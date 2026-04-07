@@ -109,21 +109,23 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph nfs export info my-nfs /cephfs-export
 
-# Update export (applies new config)
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph nfs export update --json '{
-    "cluster_id": "my-nfs",
-    "path": "/",
-    "pseudo": "/cephfs-export",
-    "access_type": "RO",
-    "squash": "root_squash",
-    "protocols": [4],
-    "transports": ["TCP"],
-    "fsal": {
-      "name": "CEPH",
-      "fs_name": "myfs"
-    }
-  }'
+# Update export (applies new config via ceph nfs export apply)
+kubectl exec -i -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph nfs export apply my-nfs -i - <<'EOF'
+{
+  "cluster_id": "my-nfs",
+  "path": "/",
+  "pseudo": "/cephfs-export",
+  "access_type": "RO",
+  "squash": "root_squash",
+  "protocols": [4],
+  "transports": ["TCP"],
+  "fsal": {
+    "name": "CEPH",
+    "fs_name": "myfs"
+  }
+}
+EOF
 
 # Delete an export
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \

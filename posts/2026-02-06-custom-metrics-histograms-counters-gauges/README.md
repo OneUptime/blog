@@ -254,13 +254,13 @@ The default boundaries work well for general-purpose latency, but if your reques
 
 ```python
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View
+from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 
 # Define a view with custom histogram bucket boundaries
 # These are tuned for a fast API where most responses are under 50ms
 fast_api_view = View(
     instrument_name="http.request.duration",
-    aggregation=metrics.ExplicitBucketHistogramAggregation(
+    aggregation=ExplicitBucketHistogramAggregation(
         boundaries=[1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
     ),
 )

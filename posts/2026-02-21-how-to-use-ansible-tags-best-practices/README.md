@@ -49,7 +49,7 @@ Run only specific tagged tasks:
 # Run only tasks tagged with 'configuration'
 ansible-playbook site.yml --tags configuration
 
-# Run tasks tagged with 'nginx' AND 'configuration'
+# Run tasks tagged with 'nginx' OR 'configuration'
 ansible-playbook site.yml --tags "nginx,configuration"
 
 # Skip tasks with specific tags

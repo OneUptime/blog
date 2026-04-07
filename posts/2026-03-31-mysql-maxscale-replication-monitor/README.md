@@ -34,7 +34,7 @@ Create the monitor user on MySQL:
 
 ```sql
 CREATE USER 'maxscale_monitor'@'%' IDENTIFIED BY 'monitor_secret';
-GRANT REPLICATION CLIENT, SLAVE MONITOR ON *.* TO 'maxscale_monitor'@'%';
+GRANT REPLICATION CLIENT, REPLICATION SLAVE ON *.* TO 'maxscale_monitor'@'%';
 FLUSH PRIVILEGES;
 ```
 

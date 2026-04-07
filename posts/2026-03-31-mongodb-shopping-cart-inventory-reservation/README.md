@@ -48,6 +48,7 @@ Shopping carts that don't reserve inventory risk overselling: two customers add 
 {
   _id: "TCT-M-RED",             // variantSku as _id for atomic updates
   productId: "prod_001",
+  price: 2499,                   // Unit price in cents
   available: 10,
   reserved: 2,                   // Currently held in active carts
   total: 12
@@ -168,28 +169,36 @@ for (const cart of expiredCarts) {
 async function checkout(cartId, paymentData) {
   const session = client.startSession();
 
-  await session.withTransaction(async () => {
-    const cart = await db.collection("carts").findOneAndUpdate(
-      { _id: cartId, status: "active" },
-      { $set: { status: "converted" } },
-      { session }
-    );
+  try {
+    await session.withTransaction(async () => {
+      const cart = await db.collection("carts").findOneAndUpdate(
+        { _id: cartId, status: "active" },
+        { $set: { status: "converted" } },
+        { session, returnDocument: "before" }
+      );
 
-    // Convert reserved inventory to sold
-    for (const item of cart.items) {
-      await db.collection("inventory").updateOne(
-        { _id: item.variantSku },
-        { $inc: { reserved: -item.quantity, total: -item.quantity } },
+      if (!cart) {
+        throw new Error("Cart not found or not active");
+      }
+
+      // Convert reserved inventory to sold
+      for (const item of cart.items) {
+        await db.collection("inventory").updateOne(
+          { _id: item.variantSku },
+          { $inc: { reserved: -item.quantity, total: -item.quantity } },
+          { session }
+        );
+      }
+
+      // Create order
+      await db.collection("orders").insertOne(
+        { cartId, items: cart.items, ...paymentData },
         { session }
       );
-    }
-
-    // Create order
-    await db.collection("orders").insertOne(
-      { cartId, items: cart.items, ...paymentData },
-      { session }
-    );
-  });
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 ```
 

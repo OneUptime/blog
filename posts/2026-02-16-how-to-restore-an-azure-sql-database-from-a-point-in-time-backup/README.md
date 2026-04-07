@@ -152,12 +152,12 @@ You can also use T-SQL from the master database:
 ```sql
 -- Restore a database to a specific point in time using T-SQL
 -- Run this in the master database
-RESTORE DATABASE [mydb_restored]
-FROM DATABASE_SNAPSHOT = 'mydb'
-WITH POINT_IN_TIME = '2026-02-16T10:30:00Z';
+CREATE DATABASE [mydb_restored]
+AS COPY OF [myserver].[mydb]
+AT POINT_IN_TIME = '2026-02-16T10:30:00Z';
 ```
 
-Note: The T-SQL syntax varies and may not support all options. The Portal and CLI methods are more reliable for Azure SQL Database restores.
+Note: The T-SQL syntax for point-in-time restore in Azure SQL Database uses `CREATE DATABASE ... AS COPY OF ... AT POINT_IN_TIME`. The Portal and CLI methods are more commonly used and support additional options.
 
 ## Swapping Databases After Restore
 

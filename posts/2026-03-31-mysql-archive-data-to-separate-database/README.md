@@ -79,14 +79,22 @@ CURRENT_ID=$MIN_ID
 while [ "$CURRENT_ID" -le "$MAX_ID" ]; do
   NEXT_ID=$((CURRENT_ID + BATCH_SIZE))
 
-  # Copy batch to archive database
-  mysql -h "$PROD_HOST" -u "$DB_USER" -p"$DB_PASS" myapp -e "
-    INSERT IGNORE INTO ${ARCH_HOST}.orders_archive.orders
-    SELECT *, NOW() AS archived_at
+  # Export batch from production
+  mysql -h "$PROD_HOST" -u "$DB_USER" -p"$DB_PASS" myapp -sNe "
+    SELECT id, user_id, total, status, created_at
     FROM orders
     WHERE id >= $CURRENT_ID AND id < $NEXT_ID
       AND created_at < '$CUTOFF_DATE';
+  " | mysql -h "$ARCH_HOST" -u "$DB_USER" -p"$DB_PASS" orders_archive -e "
+    LOAD DATA LOCAL INFILE '/dev/stdin' IGNORE INTO TABLE orders
+    FIELDS TERMINATED BY '\t'
+    (id, user_id, total, status, created_at);
   "
+
+  # Alternative: use mysqldump and pipe to archive
+  # mysqldump -h "$PROD_HOST" -u "$DB_USER" -p"$DB_PASS" myapp orders \
+  #   --where="id >= $CURRENT_ID AND id < $NEXT_ID AND created_at < '$CUTOFF_DATE'" \
+  #   --no-create-info | mysql -h "$ARCH_HOST" -u "$DB_USER" -p"$DB_PASS" orders_archive
 
   # Verify rows were inserted before deleting
   ARCHIVED=$(mysql -h "$ARCH_HOST" -u "$DB_USER" -p"$DB_PASS" orders_archive -sNe \

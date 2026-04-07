@@ -243,32 +243,39 @@ Console.WriteLine($"Published order {order.OrderId} to topic");
 
 ```csharp
 // Create a batch for efficient sending
-using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
 
-foreach (var order in ordersToPublish)
+try
 {
-    var message = CreateOrderMessage(order);
-
-    // TryAddMessage returns false if batch is full
-    if (!batch.TryAddMessage(message))
+    foreach (var order in ordersToPublish)
     {
-        // Send current batch and create a new one
-        await sender.SendMessagesAsync(batch);
-        batch.Dispose();
+        var message = CreateOrderMessage(order);
 
-        batch = await sender.CreateMessageBatchAsync();
-
+        // TryAddMessage returns false if batch is full
         if (!batch.TryAddMessage(message))
         {
-            throw new Exception($"Message too large for batch: {order.OrderId}");
+            // Send current batch and create a new one
+            await sender.SendMessagesAsync(batch);
+            batch.Dispose();
+
+            batch = await sender.CreateMessageBatchAsync();
+
+            if (!batch.TryAddMessage(message))
+            {
+                throw new Exception($"Message too large for batch: {order.OrderId}");
+            }
         }
     }
-}
 
-// Send any remaining messages
-if (batch.Count > 0)
+    // Send any remaining messages
+    if (batch.Count > 0)
+    {
+        await sender.SendMessagesAsync(batch);
+    }
+}
+finally
 {
-    await sender.SendMessagesAsync(batch);
+    batch.Dispose();
 }
 ```
 
@@ -772,25 +779,32 @@ public class OrderEventPublisher : IOrderEventPublisher, IAsyncDisposable
 
     public async Task PublishBatchAsync(IEnumerable<IOrderEvent> events)
     {
-        using var batch = await _sender.CreateMessageBatchAsync();
+        var batch = await _sender.CreateMessageBatchAsync();
 
-        foreach (var evt in events)
+        try
         {
-            var message = CreateMessage(evt);
+            foreach (var evt in events)
+            {
+                var message = CreateMessage(evt);
 
-            if (!batch.TryAddMessage(message))
+                if (!batch.TryAddMessage(message))
+                {
+                    await _sender.SendMessagesAsync(batch);
+                    batch.Dispose();
+
+                    batch = await _sender.CreateMessageBatchAsync();
+                    batch.TryAddMessage(message);
+                }
+            }
+
+            if (batch.Count > 0)
             {
                 await _sender.SendMessagesAsync(batch);
-                batch.Dispose();
-
-                using var newBatch = await _sender.CreateMessageBatchAsync();
-                newBatch.TryAddMessage(message);
             }
         }
-
-        if (batch.Count > 0)
+        finally
         {
-            await _sender.SendMessagesAsync(batch);
+            batch.Dispose();
         }
     }
 

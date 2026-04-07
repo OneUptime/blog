@@ -73,7 +73,7 @@ enable-reflector=no
 [rlimits]
 rlimit-core=0
 rlimit-data=4194304
-rlimit-fstack=4194304
+rlimit-stack=4194304
 rlimit-nofile=768
 rlimit-nproc=3
 EOF

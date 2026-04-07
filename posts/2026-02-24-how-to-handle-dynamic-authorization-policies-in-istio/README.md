@@ -73,6 +73,8 @@ import (
     "os"
     "strings"
 
+    "time"
+
     "github.com/redis/go-redis/v9"
     "google.golang.org/grpc"
 
@@ -117,7 +119,7 @@ func (s *server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
     key := "rate:" + principal
     count, _ := s.rdb.Incr(ctx, key).Result()
     if count == 1 {
-        s.rdb.Expire(ctx, key, 60) // 1 minute window
+        s.rdb.Expire(ctx, key, 60*time.Second) // 1 minute window
     }
     if count > 100 { // 100 requests per minute
         return denied("Rate limit exceeded"), nil
@@ -131,7 +133,7 @@ func denied(msg string) *auth.CheckResponse {
         Status: &status.Status{Code: int32(codes.PermissionDenied)},
         HttpResponse: &auth.CheckResponse_DeniedResponse{
             DeniedResponse: &auth.DeniedHttpResponse{
-                Status: &envoy_type.HttpStatus{Code: 403},
+                Status: &envoy_type.HttpStatus{Code: envoy_type.StatusCode_Forbidden},
                 Body:   msg,
             },
         },
