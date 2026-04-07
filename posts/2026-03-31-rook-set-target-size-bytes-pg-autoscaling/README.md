@@ -98,7 +98,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set mypool target_size_ratio 0.2
 ```
 
-When both are set, the larger of the two values takes precedence.
+Do not set both `target_size_bytes` and `target_size_ratio` on the same pool. Ceph will generate a `POOL_HAS_TARGET_SIZE_BYTES_AND_RATIO` health warning if both are configured. Use one or the other.
 
 ## Summary
 
