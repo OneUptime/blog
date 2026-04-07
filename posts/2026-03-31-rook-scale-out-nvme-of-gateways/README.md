@@ -74,7 +74,7 @@ for i in 2 3; do
     -o jsonpath='{.status.hostIP}')
 
   kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph nvmeof gateway add_listener \
+    ceph nvmeof listener add \
     --nqn $NQN \
     --host-name nvmeof-gw-$i \
     --traddr $GW_IP \
