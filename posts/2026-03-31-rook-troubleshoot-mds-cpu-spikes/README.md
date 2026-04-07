@@ -39,11 +39,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Dump current operation queue
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a ops
+  ceph tell mds.myfs.a dump_ops_in_flight
 
 # Check connected client count
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session ls | wc -l
+  ceph tell mds.myfs.a session ls | jq length
 ```
 
 ## Diagnosing Cache Pressure
@@ -52,7 +52,7 @@ High CPU during cache trimming often correlates with cache being too small:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a cache status
+  ceph tell mds.myfs.a cache status
 ```
 
 If `cache_size` is near `mds_cache_memory_limit`, the MDS is constantly trimming. Increase the cache limit:
@@ -69,7 +69,7 @@ Backup agents, indexers, and monitoring tools that traverse entire directory tre
 ```bash
 # Check which clients are generating the most requests
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session ls | \
+  ceph tell mds.myfs.a session ls | \
   python3 -c "import json,sys; sessions=json.load(sys.stdin); \
   [print(s['client_metadata'].get('hostname','?'), s.get('num_leases',0)) for s in sessions]"
 ```
