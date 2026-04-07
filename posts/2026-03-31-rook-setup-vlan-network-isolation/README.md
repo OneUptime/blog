@@ -37,7 +37,7 @@ interface GigabitEthernet1/0/1
  switchport trunk allowed vlan 10,20,30
  spanning-tree portfast trunk
 !
-! Configure VLAN 10 (public) with jumbo frames
+! Configure VLANs
 vlan 10
  name CEPH-PUBLIC
 !

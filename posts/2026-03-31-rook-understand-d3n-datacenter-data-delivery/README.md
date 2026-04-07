@@ -30,10 +30,9 @@ Client --> RGW --> D3N Cache --> (hit) --> Client
 
 D3N uses the following key components:
 
-- **Cache backend** - SSD or RAM directory on the RGW host
-- **Redis** - Optional distributed cache index for multi-RGW setups
+- **Cache backend** - NVMe SSD, persistent memory, or tmpfs directory on the RGW host
 - **libaio** - Asynchronous I/O library for non-blocking cache operations
-- **Cache eviction policy** - LFUDA (Least Frequently Used with Dynamic Aging) by default
+- **Cache eviction policy** - LRU (Least Recently Used) by default
 
 ## When to Use D3N
 
@@ -52,25 +51,25 @@ D3N is configured in the Ceph configuration file or via `ceph config set`:
 
 ```bash
 # Enable D3N on a specific RGW instance
-ceph config set client.rgw.myzone d3n_l1_local_datacache_enabled true
-ceph config set client.rgw.myzone d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
-ceph config set client.rgw.myzone d3n_l1_datacache_size 10737418240
+ceph config set client.rgw.myzone rgw_d3n_l1_local_datacache_enabled true
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 10737418240
 ```
 
 Or in `ceph.conf`:
 
 ```ini
 [client.rgw.myzone]
-d3n_l1_local_datacache_enabled = true
-d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
-d3n_l1_datacache_size = 10737418240
+rgw_d3n_l1_local_datacache_enabled = true
+rgw_d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
+rgw_d3n_l1_datacache_size = 10737418240
 ```
 
 ## Verifying D3N is Active
 
 ```bash
 # Check D3N config settings
-ceph config get client.rgw.myzone d3n_l1_local_datacache_enabled
+ceph config get client.rgw.myzone rgw_d3n_l1_local_datacache_enabled
 
 # View RGW logs for D3N activity
 journalctl -u ceph-radosgw@rgw.myzone --no-pager | grep -i d3n
@@ -78,4 +77,4 @@ journalctl -u ceph-radosgw@rgw.myzone --no-pager | grep -i d3n
 
 ## Summary
 
-D3N is a powerful read cache layer in Ceph RGW that reduces latency and bandwidth consumption by caching frequently accessed objects locally. It is especially valuable in multi-site deployments. Understanding its architecture - including cache backends, Redis coordination, and LFUDA eviction - is the foundation for tuning and monitoring D3N effectively in production.
+D3N is a powerful read cache layer in Ceph RGW that reduces latency and bandwidth consumption by caching frequently accessed objects locally. It is especially valuable in multi-site deployments. Understanding its architecture - including cache backends, libaio for async I/O, and LRU eviction - is the foundation for tuning and monitoring D3N effectively in production.

@@ -75,6 +75,14 @@ parameters:
   pool: ssd-pool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Retain
+allowVolumeExpansion: true
 ```
 
 ## Migrating PVCs Between Storage Classes
@@ -114,7 +122,7 @@ spec:
   restartPolicy: Never
 EOF
 
-kubectl wait --for=condition=Succeeded pod/pvc-migrate --timeout=600s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/pvc-migrate --timeout=600s
 ```
 
 ## Changing the Default StorageClass

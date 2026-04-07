@@ -16,12 +16,13 @@ Each Ceph OSD uses multiple thread pools to handle client I/O, recovery, scrubbi
 
 The main OSD thread settings are:
 
-| Parameter | Default | Description |
-| --- | --- | --- |
-| `osd_op_num_threads_per_shard` | 2 | Threads per I/O shard |
-| `osd_op_num_shards` | 8 | Number of I/O operation shards |
-| `osd_recovery_threads` | 1 | Threads for data recovery |
-| `osd_snap_trim_thread_timeout` | 1800 | Timeout for snapshot trim threads |
+| Parameter | Default (SSD) | Default (HDD) | Description |
+| --- | --- | --- | --- |
+| `osd_op_num_threads_per_shard_ssd` | 2 | — | Threads per I/O shard for SSDs/NVMe |
+| `osd_op_num_threads_per_shard_hdd` | — | 5 | Threads per I/O shard for HDDs |
+| `osd_op_num_shards_ssd` | 8 | — | Number of I/O operation shards for SSDs/NVMe |
+| `osd_op_num_shards_hdd` | — | 1 | Number of I/O operation shards for HDDs |
+| `osd_recovery_max_active` | 10 | 3 | Maximum concurrent recovery operations |
 
 ## Configuring I/O Threads
 
@@ -42,16 +43,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_op_num_shards 4
 ```
 
-## Recovery Thread Tuning
+## Recovery Tuning
 
-Recovery threads control how fast Ceph replicates data after an OSD failure:
+The `osd_recovery_max_active` parameter controls how many recovery operations run concurrently per OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_recovery_threads 2
+  ceph config set osd osd_recovery_max_active 5
 ```
 
-Increasing recovery threads speeds up recovery but competes with client I/O. Pair this with a lower recovery priority:
+Increasing this value speeds up recovery but competes with client I/O. Pair this with a lower recovery priority:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -68,10 +69,10 @@ metadata:
   namespace: rook-ceph
 spec:
   cephConfig:
-    osd:
-      osd_op_num_shards: "8"
-      osd_op_num_threads_per_shard: "2"
-      osd_recovery_threads: "1"
+    "osd.*":
+      osd_op_num_shards_ssd: "8"
+      osd_op_num_threads_per_shard_ssd: "2"
+      osd_recovery_max_active: "5"
       osd_recovery_op_priority: "3"
 ```
 
@@ -81,7 +82,7 @@ Check current OSD operation queues to determine if threads are saturated:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 ops | head -20
+  ceph daemon osd.0 dump_ops_in_flight | head -20
 ```
 
 View OSD thread count and CPU usage from within the OSD pod:

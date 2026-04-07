@@ -18,7 +18,7 @@ PG splitting is the opposite of PG merging, which occurs when `pg_num` decreases
 
 When `pg_num` is doubled (e.g., from 64 to 128):
 
-1. New PG IDs are allocated (64.0 splits into 64.0 and 64.64)
+1. New PG IDs are allocated (1.0 splits into 1.0 and 1.40, since PG ID 64 = 0x40 in hex)
 2. Each existing primary OSD splits its PG into two
 3. Objects are redistributed based on the new CRUSH mapping
 4. Replicas are synchronized to secondary OSDs

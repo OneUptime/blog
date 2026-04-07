@@ -75,6 +75,8 @@ rbd status proxmox-vms/${IMAGE}
 ## Diagnosing VM That Won't Start
 
 ```bash
+VMID=100
+
 # Check the Proxmox task log
 pvesh get /nodes/$(hostname)/tasks --output-format json 2>/dev/null | \
   python3 -c "

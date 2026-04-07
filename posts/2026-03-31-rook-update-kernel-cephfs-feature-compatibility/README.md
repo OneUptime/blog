@@ -71,7 +71,7 @@ uname -r  # verify after reboot
 ```bash
 # Enable ELRepo for mainline kernels
 sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-sudo dnf install elrepo-release
+sudo dnf install https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm
 
 # Install latest mainline kernel
 sudo dnf --enablerepo=elrepo-kernel install kernel-ml

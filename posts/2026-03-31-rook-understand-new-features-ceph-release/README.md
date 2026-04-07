@@ -10,7 +10,7 @@ Description: A practical guide to tracking and evaluating new features in each C
 
 ## Overview
 
-Ceph follows a major release cadence with named versions - Quincy, Reef, Squid, Tentacle. Each release brings new features, performance improvements, and changes that affect Rook deployments. Knowing how to evaluate these is essential for planning upgrades.
+Ceph follows a major release cadence with named versions - Quincy, Reef, Squid, and so on. Each release brings new features, performance improvements, and changes that affect Rook deployments. Knowing how to evaluate these is essential for planning upgrades.
 
 ## Where to Find Release Notes
 
@@ -41,10 +41,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph features
 
 ### RBD (Block Storage)
 
-Evaluate new RBD features that may enhance snapshot and clone performance:
+View enabled RBD features on an image to evaluate snapshot and clone capabilities:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd feature list
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd info mypool/myimage
 ```
 
 Enable a new RBD feature on existing images:
@@ -64,15 +64,15 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mds stat
 
 ### RGW (Object Storage)
 
-New S3 API compatibility features are listed per release:
+Review RGW zone configuration and enabled features:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin feature list
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin zone get
 ```
 
 ## Rook-Specific Feature Gates
 
-Rook exposes new features through the CephCluster spec and feature flags:
+Rook exposes new Ceph features through the CephCluster spec. For example, to set the Ceph version and enable modules:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -80,14 +80,16 @@ kind: CephCluster
 spec:
   cephVersion:
     image: quay.io/ceph/ceph:v19.2.0
-  features:
-    pg_autoscaler: true
+  mgr:
+    modules:
+      - name: pg_autoscaler
+        enabled: true
 ```
 
-Check which features Rook has enabled:
+Check the current CephCluster configuration:
 
 ```bash
-kubectl -n rook-ceph get cephcluster rook-ceph -o jsonpath='{.spec.features}'
+kubectl -n rook-ceph get cephcluster rook-ceph -o jsonpath='{.spec.mgr.modules}'
 ```
 
 ## Tracking the Changelog Programmatically
@@ -99,7 +101,7 @@ Script to compare features between two releases:
 PREV_VER="18.2.0"
 NEW_VER="19.2.0"
 echo "Comparing Ceph $PREV_VER vs $NEW_VER"
-curl -s "https://raw.githubusercontent.com/ceph/ceph/v${NEW_VER}/doc/releases/${NEW_VER%%.*}.rst" | head -100
+curl -s "https://raw.githubusercontent.com/ceph/ceph/v${NEW_VER}/doc/releases/squid.rst" | head -100
 ```
 
 ## Summary

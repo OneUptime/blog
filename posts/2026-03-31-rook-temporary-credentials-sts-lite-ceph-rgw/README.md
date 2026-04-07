@@ -10,7 +10,7 @@ Description: Learn how to configure and use STS Lite in Ceph RGW to issue tempor
 
 ## Overview
 
-STS Lite in Ceph RGW provides a simplified mechanism for issuing temporary credentials without the full IAM role setup required by `AssumeRole`. It is designed for cases where you want to grant time-limited S3 access to existing RGW users using their primary credentials. STS Lite uses a token stored in RADOS to track sessions.
+STS Lite in Ceph RGW provides a simplified mechanism for issuing temporary credentials without the full IAM role setup required by `AssumeRole`. It is designed for cases where you want to grant time-limited S3 access to existing RGW users using their primary credentials. The session token is a self-contained encrypted blob (encrypted with `rgw_sts_key`) that embeds the temporary credentials and expiration.
 
 ## Step 1 - Enable STS Lite in RGW
 
@@ -155,12 +155,12 @@ class RefreshingS3Client:
 ## Step 6 - Monitor Active Sessions
 
 ```bash
-# List active STS sessions stored in RADOS
-rados -p default.rgw.otp ls | grep sts
-
 # Check RGW logs for STS operations
 kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=100 \
-  | grep -i "get_session_token\|sts_lite"
+  | grep -i "get_session_token\|sts"
+
+# Verify STS configuration is active
+ceph config get client.rgw.my-store rgw_s3_auth_use_sts
 ```
 
 ## Summary

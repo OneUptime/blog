@@ -70,7 +70,7 @@ groups:
     annotations:
       summary: "Ceph cluster is degraded - OSD {{ $labels.ceph_daemon }} is down but in"
 
-  - alert: CephOSDNearFull
+  - alert: CephOSDAvailabilityLow
     expr: (sum(ceph_osd_up) / count(ceph_osd_up)) < 0.75
     for: 5m
     labels:
@@ -99,7 +99,7 @@ sum(ceph_osd_in) / count(ceph_osd_in)
 Combine OSD status with capacity metrics:
 
 ```promql
-# Bytes available per up OSD
+# Total bytes for up OSDs only (filtered by up status)
 ceph_osd_stat_bytes * on(ceph_daemon) group_left() ceph_osd_up
 ```
 
@@ -117,7 +117,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd find <osd-id>
 
 # Check OSD pod status
-kubectl -n rook-ceph get pods -l ceph_daemon_type=osd
+kubectl -n rook-ceph get pods -l app=rook-ceph-osd
 
 # View OSD logs
 kubectl -n rook-ceph logs rook-ceph-osd-<id>-<hash> --tail=100

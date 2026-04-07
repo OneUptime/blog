@@ -49,8 +49,9 @@ Target: 1PB usable with EC 8+3
 
 Per node capacity: 24 * 20TB = 480TB raw
 Raw needed: 1.72PB = 1720TB
-Minimum nodes: 1720 / 480 = 3.6 -> 4 nodes minimum
+Capacity-only minimum: 1720 / 480 = 3.6 -> 4 nodes
 
+EC 8+3 minimum: 11 nodes (8 data + 3 coding chunks need 11 failure domains)
 Recommended for fault tolerance: 12+ nodes (1 per rack)
 ```
 

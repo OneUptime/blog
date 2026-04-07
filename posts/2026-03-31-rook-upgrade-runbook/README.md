@@ -24,9 +24,23 @@ All conditions must be true:
 - All PGs are `active+clean`
 - No ongoing recovery operations
 
-## Step 1: Upgrade the Rook Operator
+## Step 1: Update CRDs
 
-Rook operator upgrades must happen before Ceph image upgrades. Use the Helm upgrade:
+CRDs must be updated before the operator upgrade. The new operator may depend on CRD fields that do not exist yet, so always apply CRDs first:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/crds.yaml
+```
+
+Verify the CRDs were updated:
+
+```bash
+kubectl get crd | grep ceph
+```
+
+## Step 2: Upgrade the Rook Operator
+
+With CRDs in place, upgrade the Rook operator. Use the Helm upgrade:
 
 ```bash
 helm repo update
@@ -46,20 +60,6 @@ Monitor the operator rollout:
 
 ```bash
 kubectl -n rook-ceph rollout status deploy/rook-ceph-operator
-```
-
-## Step 2: Verify CRD Updates
-
-Rook upgrades often include new CRD versions. Apply them:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/crds.yaml
-```
-
-Check for any CRD migration warnings:
-
-```bash
-kubectl get crd | grep ceph
 ```
 
 ## Step 3: Update the Ceph Image Version
@@ -107,7 +107,7 @@ Ensure all daemons report the new version.
 
 ## Rollback Procedure
 
-If the upgrade causes issues, revert the Ceph image in the CephCluster spec and re-apply. Rook will roll back the daemon versions:
+If the upgrade causes issues, revert the Ceph image in the CephCluster spec and re-apply. Rook will roll back the daemon versions. Note that Ceph downgrades are not always safe — if internal data formats were upgraded during the new version's startup, reverting the image may cause issues. Test rollback procedures in a non-production environment first:
 
 ```bash
 kubectl -n rook-ceph patch cephcluster rook-ceph --type merge \
@@ -116,4 +116,4 @@ kubectl -n rook-ceph patch cephcluster rook-ceph --type merge \
 
 ## Summary
 
-A Ceph upgrade runbook ensures every step is documented and repeatable. The sequence is: validate health, upgrade the operator, update CRDs, bump the Ceph image, and confirm all daemons are running the new version. Always verify cluster health before and after each phase.
+A Ceph upgrade runbook ensures every step is documented and repeatable. The sequence is: validate health, update CRDs, upgrade the operator, bump the Ceph image, and confirm all daemons are running the new version. Always verify cluster health before and after each phase.

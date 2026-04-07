@@ -63,7 +63,7 @@ ceph config set mgr mgr/telemetry/channel_crash true
 ceph config set mgr mgr/telemetry/channel_ident true
 
 # Enable performance stats channel
-ceph config set mgr mgr/telemetry/channel_perf_schema true
+ceph config set mgr mgr/telemetry/channel_perf true
 ```
 
 List available channels:

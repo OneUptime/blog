@@ -37,7 +37,6 @@ mc alias set ceph \
 Verify the connection:
 
 ```bash
-mc admin info ceph
 mc ls ceph
 ```
 

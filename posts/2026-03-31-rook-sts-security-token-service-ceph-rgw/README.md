@@ -22,7 +22,7 @@ radosgw-admin --version
 Configure RGW to enable STS:
 
 ```bash
-ceph config set client.rgw rgw_sts_key "your-32-char-secret-key-here!!"
+ceph config set client.rgw rgw_sts_key "your-32-char-secret-key-here!!!!"
 ceph config set client.rgw rgw_s3_auth_use_sts true
 ```
 

@@ -54,7 +54,7 @@ spec:
   capacity:
     storage: 200Gi
   csi:
-    driver: cephfs.csi.ceph.com
+    driver: rook-ceph.cephfs.csi.ceph.com
     nodeStageSecretRef:
       name: rook-csi-cephfs-node
       namespace: rook-ceph

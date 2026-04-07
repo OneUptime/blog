@@ -41,10 +41,16 @@ metadata:
 spec:
   replicas: 3
   serviceName: postgresql
+  selector:
+    matchLabels:
+      app: postgresql-ha
   podManagementPolicy: OrderedReady
   updateStrategy:
     type: RollingUpdate
   template:
+    metadata:
+      labels:
+        app: postgresql-ha
     spec:
       affinity:
         podAntiAffinity:
@@ -81,7 +87,7 @@ parameters:
 
 ## Automated Snapshot Schedule
 
-```bash
+```yaml
 # Create recurring snapshots using a CronJob
 apiVersion: batch/v1
 kind: CronJob
@@ -93,6 +99,7 @@ spec:
     spec:
       template:
         spec:
+          restartPolicy: Never
           containers:
             - name: snapshot
               image: bitnami/kubectl:latest

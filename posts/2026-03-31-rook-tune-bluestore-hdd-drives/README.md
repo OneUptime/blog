@@ -22,36 +22,38 @@ Larger allocation sizes reduce fragmentation and improve sequential write patter
 ceph config set osd bluestore_min_alloc_size_hdd 65536
 ```
 
-The default is 64KB for HDD. Consider 128KB for very write-heavy workloads:
+The default is 4KB (4096) for HDD in Ceph Pacific and later. Setting 64KB reduces fragmentation significantly for most workloads. Consider 128KB for very write-heavy workloads:
 
 ```bash
 ceph config set osd bluestore_min_alloc_size_hdd 131072
 ```
 
+**Important:** This value is baked into the OSD at creation time. Changing it after OSD deployment requires destroying and recreating the OSD.
+
 ### 2. Increase Maximum Blob Size
 
-Larger blobs mean fewer seeks when reading large objects:
+Larger blobs mean fewer seeks when reading large objects. The default is 512KB (524288). Increase to 1MB for large-object workloads:
 
 ```bash
-ceph config set osd bluestore_max_blob_size_hdd 524288
+ceph config set osd bluestore_max_blob_size_hdd 1048576
 ```
 
 ### 3. BlueStore Cache Size for HDD
 
-HDDs benefit from caching metadata heavily in memory. RocksDB reads are the main bottleneck:
+HDDs benefit from caching metadata heavily in memory. RocksDB reads are the main bottleneck. The default is 1GB (1073741824). Increase to 2GB for better metadata caching:
 
 ```bash
-ceph config set osd bluestore_cache_size_hdd 1073741824
+ceph config set osd bluestore_cache_size_hdd 2147483648
 ```
 
-Set to 1-2GB. Very large caches on HDD OSDs may not pay off given the sequential access pattern.
+Set to 2-4GB depending on available memory. Very large caches on HDD OSDs may not pay off given the sequential access pattern.
 
 ### 4. Tune Deferred Write Batch Operations
 
-HDD benefits from larger deferred write batches to group I/O operations:
+HDD benefits from larger deferred write batches to group I/O operations. The default is 64. Increase to 128 for better batching:
 
 ```bash
-ceph config set osd bluestore_deferred_batch_ops_hdd 64
+ceph config set osd bluestore_deferred_batch_ops_hdd 128
 ```
 
 ### 5. Separate BlueFS onto SSD (Recommended)
@@ -75,11 +77,13 @@ spec:
 
 ### 6. Limit OSD Threads
 
-HDDs cannot benefit from deep parallelism due to seek overhead:
+HDDs cannot benefit from deep parallelism due to seek overhead. The default for `osd_op_num_threads_per_shard_hdd` is already 1, but you can reduce the number of shards to further limit parallelism:
 
 ```bash
-ceph config set osd osd_op_num_threads_per_shard_hdd 1
+ceph config set osd osd_op_num_shards_hdd 3
 ```
+
+The default is 5 shards. Reducing to 3 can help on slower drives by limiting concurrent I/O paths.
 
 ## Applying Settings via Rook
 
@@ -93,8 +97,8 @@ spec:
   cephConfig:
     osd:
       bluestore_min_alloc_size_hdd: "65536"
-      bluestore_max_blob_size_hdd: "524288"
-      bluestore_cache_size_hdd: "1073741824"
+      bluestore_max_blob_size_hdd: "1048576"
+      bluestore_cache_size_hdd: "2147483648"
 ```
 
 ## Benchmarking HDD Performance

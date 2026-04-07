@@ -34,7 +34,7 @@ ceph pg stat
 ceph pg dump | awk '{print $1, $16}'
 
 # Count PGs by state
-ceph pg stat --format json | jq '.num_pgs_by_state'
+ceph pg stat --format json | jq '.num_pg_by_state'
 ```
 
 ## How a PG Becomes active
@@ -85,11 +85,14 @@ ceph pg <pg-id> query | jq '.state'
 If a PG is stuck in peering:
 
 ```bash
-# Check acting set
+# Check what is blocking peering
+ceph pg <pg-id> query | jq '.peering_state'
+
+# Check which OSDs are needed
 ceph pg <pg-id> query | jq '.acting'
 
-# Force peering
-ceph pg <pg-id> mark_unfound_lost revert
+# Last resort - force PG recreation (WARNING: causes data loss for this PG)
+ceph pg force_create_pg <pg-id>
 ```
 
 ## Summary

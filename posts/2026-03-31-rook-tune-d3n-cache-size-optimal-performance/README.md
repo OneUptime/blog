@@ -28,10 +28,10 @@ Begin with a conservative cache size and grow it:
 
 ```bash
 # Start with 10GB
-ceph config set client.rgw.myzone d3n_l1_datacache_size 10737418240
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 10737418240
 
 # Check current setting
-ceph config get client.rgw.myzone d3n_l1_datacache_size
+ceph config get client.rgw.myzone rgw_d3n_l1_datacache_size
 ```
 
 ## Measuring Cache Utilization
@@ -82,7 +82,7 @@ for section in data.values():
 
 ```bash
 # Increase cache size to 50GB
-ceph config set client.rgw.myzone d3n_l1_datacache_size 53687091200
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 53687091200
 
 # Restart RGW to apply
 kubectl -n rook-ceph delete pod -l app=rook-ceph-rgw

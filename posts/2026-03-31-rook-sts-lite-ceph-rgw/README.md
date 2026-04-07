@@ -106,7 +106,7 @@ from botocore.exceptions import ClientError
 try:
     s3_client.list_objects_v2(Bucket='mybucket')
 except ClientError as e:
-    if e.response['Error']['Code'] == 'ExpiredTokenException':
+    if e.response['Error']['Code'] == 'ExpiredToken':
         # Re-obtain session token
         pass
 ```

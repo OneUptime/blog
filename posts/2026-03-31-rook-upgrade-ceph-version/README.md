@@ -147,16 +147,23 @@ kubectl -n rook-ceph logs -l app=rook-ceph-osd --tail=100
 
 If the cluster gets stuck in `Updating` state, check the operator logs for the specific failure reason. A common issue is insufficient PGs or objects in a non-clean state blocking OSD upgrades.
 
-Force the cluster health check to allow the upgrade to proceed on HEALTH_WARN (use with caution):
+To prevent OSDs from being marked out during the rolling restart, set the `noout` flag:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd set noout
 ```
 
-After resolving the issue, unset the flag:
+After resolving the issue and completing the upgrade, unset the flag:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd unset noout
+```
+
+To allow the upgrade to proceed even when the cluster is not fully healthy, update the CephCluster spec (use with caution):
+
+```bash
+kubectl -n rook-ceph patch cephcluster rook-ceph --type merge \
+  -p '{"spec":{"continueUpgradeAfterChecksEvenIfNotHealthy":true}}'
 ```
 
 ## Post-Upgrade Validation

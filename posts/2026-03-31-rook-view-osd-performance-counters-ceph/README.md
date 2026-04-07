@@ -27,9 +27,10 @@ ceph tell osd.0 perf dump | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 op = data.get('osd', {})
-print('op_r:', op.get('op_r', {}).get('val', 0))
-print('op_w:', op.get('op_w', {}).get('val', 0))
-print('op_r_latency (avg ms):', op.get('op_r_latency', {}).get('avgcount', 0))
+print('op_r:', op.get('op_r', 0))
+print('op_w:', op.get('op_w', 0))
+lat = op.get('op_r_latency', {})
+print('op_r_latency (avg s):', lat.get('avgtime', 0))
 "
 ```
 
@@ -51,7 +52,7 @@ ceph daemon osd.0 perf dump
 | `osd.op_w_latency` | Write latency histogram |
 | `osd.op_r_process_latency` | Time processing reads |
 | `filestore.journal_latency` | Journal write latency (FileStore) |
-| `bluestore.submit_latency` | BlueStore commit latency |
+| `bluestore.submit_lat` | BlueStore submit latency |
 | `osd.op_in_bytes` | Bytes received |
 | `osd.op_out_bytes` | Bytes sent |
 
@@ -64,18 +65,25 @@ watch -n 2 "ceph daemon osd.0 perf dump | python3 -c \"
 import json,sys
 d=json.load(sys.stdin)
 osd=d.get('osd',{})
-print('reads/s:', osd.get('op_r',{}).get('avgcount',0))
-print('writes/s:', osd.get('op_w',{}).get('avgcount',0))
+print('reads:', osd.get('op_r',0))
+print('writes:', osd.get('op_w',0))
+print('read_latency_avg:', osd.get('op_r_latency',{}).get('avgtime',0))
 \""
 ```
 
-## Using `ceph perf` for Cluster-Wide View
+## Cluster-Wide Counter Collection
+
+To collect performance counters from all OSDs at once:
 
 ```bash
-ceph perf dump
+ceph tell osd.* perf dump
 ```
 
-This aggregates counters across all daemons. Use `ceph perf schema` to see all available counter definitions with types and descriptions.
+This queries counters from every OSD daemon. To see all available counter definitions with types and descriptions for a specific OSD:
+
+```bash
+ceph tell osd.0 perf schema
+```
 
 ## BlueStore-Specific Counters
 
@@ -86,11 +94,11 @@ ceph daemon osd.0 perf dump | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 bs=d.get('bluestore',{})
-print('kv_sync_latency:', bs.get('kv_sync_latency',{}).get('sum',0))
-print('kv_final_latency:', bs.get('kv_final_latency',{}).get('sum',0))
+print('kv_sync_lat:', bs.get('kv_sync_lat',{}).get('avgtime',0))
+print('kv_final_lat:', bs.get('kv_final_lat',{}).get('avgtime',0))
 "
 ```
 
 ## Summary
 
-Ceph OSD performance counters are accessed via `ceph tell osd.<id> perf dump` for remote access or `ceph daemon osd.<id> perf dump` locally. Focus on `op_r_latency`, `op_w_latency`, and BlueStore `kv_sync_latency` to diagnose I/O performance problems. Use `ceph perf dump` for a cluster-wide aggregated view.
+Ceph OSD performance counters are accessed via `ceph tell osd.<id> perf dump` for remote access or `ceph daemon osd.<id> perf dump` locally. Focus on `op_r_latency`, `op_w_latency`, and BlueStore `kv_sync_lat` to diagnose I/O performance problems. Use `ceph tell osd.* perf dump` for a cluster-wide view.

@@ -17,7 +17,7 @@ Sizing a Ceph cluster requires understanding the difference between raw capacity
 For a 3-way replication (the default):
 
 ```text
-Usable capacity = Raw capacity / replication factor / overhead factor
+Usable capacity = Raw capacity / replication factor * (1 - safety buffer)
 ```
 
 To achieve 10TB usable with 3x replication and a 20% safety buffer:

@@ -8,7 +8,7 @@ Description: Configure stretch pool settings in Ceph for multi-site or multi-zon
 
 ---
 
-Ceph stretch cluster mode enables data to survive the loss of an entire datacenter site. Stretch pools use a specialized CRUSH rule that distributes data across two or more distinct zones, ensuring reads and writes can continue even if one zone becomes completely unavailable.
+Ceph stretch cluster mode enables data to survive the loss of an entire datacenter site. Stretch pools use a specialized CRUSH rule that distributes data across two distinct zones, ensuring reads and writes can continue even if one zone becomes completely unavailable.
 
 ## Prerequisites for Stretch Pools
 
@@ -46,8 +46,8 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph mon set_location <tiebreaker-mon-name> datacenter=tiebreaker
 
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd enable-stretch-mode <tiebreaker-mon-name> \
-  stretched_mode_rule datacenter
+  ceph mon enable_stretch_mode <tiebreaker-mon-name> \
+  stretch_rule datacenter
 ```
 
 ## Configure a Stretch Pool via Rook
@@ -84,7 +84,7 @@ Key fields:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd crush rule dump stretched_mode_rule
+  ceph osd crush rule dump stretch_rule
 ```
 
 ## Check Stretch Mode Status

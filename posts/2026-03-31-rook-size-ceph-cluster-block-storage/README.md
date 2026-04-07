@@ -25,7 +25,7 @@ RBD workloads:
 
 ## Capacity Calculation for RBD
 
-RBD pools always use replication (not EC) because RBD requires the layering feature:
+RBD pools typically use replication rather than erasure coding. While Ceph does support RBD on EC pools (since Luminous) via the `allow_ec_overwrites` flag, replication is strongly recommended for latency-sensitive block storage workloads:
 
 ```text
 Usable = Raw / replication_factor / overhead
@@ -79,7 +79,7 @@ spec:
     - name: "sdh"
     - name: "sdi"
     config:
-      storeType: bluestore
+      osdsPerDevice: "1"
 ```
 
 ## CephBlockPool for RBD
@@ -144,8 +144,9 @@ Ceph supports thin provisioning - PVCs consume space only as data is written:
 kubectl get pvc my-pvc -o jsonpath='{.spec.resources.requests.storage}'
 # 1Ti
 
-# Actual space used:
-rbd du rbd-pool/csi-vol-abc123
+# Actual space used (run inside the toolbox):
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  rbd du rbd-pool/csi-vol-abc123
 # PROVISIONED  USED
 # 1 TiB        10 GiB
 ```
@@ -154,4 +155,4 @@ Monitor actual usage to avoid overprovisioning beyond what your raw capacity can
 
 ## Summary
 
-Sizing Rook-Ceph for RBD block storage requires 3x replication factor overhead (EC is not supported for RBD), drive selection matching the latency requirements of your workloads, and enabling thin provisioning monitoring to avoid overcommitting. A 6-node SSD cluster with 8 drives per node comfortably serves 50TB of RBD block storage while maintaining the fault tolerance needed for production Kubernetes PVCs.
+Sizing Rook-Ceph for RBD block storage requires 3x replication factor overhead (replication is recommended over EC for RBD due to latency), drive selection matching the latency requirements of your workloads, and enabling thin provisioning monitoring to avoid overcommitting. A 6-node SSD cluster with 8 drives per node comfortably serves 50TB of RBD block storage while maintaining the fault tolerance needed for production Kubernetes PVCs.

@@ -26,12 +26,12 @@ Log files, JSON, XML, CSV, and database dumps typically achieve 3-5x compression
 
 ```bash
 # Test compression ratio on your data
-zstd --test -v /var/log/app/*.log
+zstd -c -v /var/log/app/*.log > /dev/null
 ```
 
 Expected output:
 ```text
-app.log: 1.2 MB -> 180 KB (6.7x compression)
+/var/log/app/app.log : 14.93% (1.20 MB => 183.6 KB)
 ```
 
 ### Sparse Files

@@ -120,12 +120,14 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: ceph-post-upgrade-verify
+  namespace: rook-ceph
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
     spec:
+      serviceAccountName: rook-ceph-operator
       containers:
       - name: verify
         image: rook/ceph:v1.14.0

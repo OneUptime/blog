@@ -43,10 +43,10 @@ Verify the cluster reports degraded PGs but remains accessible:
 ceph pg stat
 ```
 
-Recover the OSD:
+Recover the OSD by restarting its daemon (the OSD will re-report itself as up):
 
 ```bash
-ceph osd up osd.0
+sudo systemctl restart ceph-osd@0
 ```
 
 ## Scenario 2 - Simulating Full Site Failure
@@ -77,8 +77,9 @@ Verify the cluster continues operating from site B:
 
 ```bash
 ceph status
-rados -p testpool put testobj /dev/urandom
-rados -p testpool get testobj /dev/null
+dd if=/dev/urandom of=/tmp/testfile bs=4K count=1
+rados -p testpool put testobj /tmp/testfile
+rados -p testpool get testobj /tmp/testfile-out
 ```
 
 ## Scenario 3 - Network Partition Test

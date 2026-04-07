@@ -108,9 +108,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg dump_stuck inactive
 
-# Force a specific PG to peer
+# Query a specific PG's state
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg <pg-id> query
+
+# Force a specific PG to re-peer
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph pg repeer <pg-id>
 ```
 
 ## Monitoring PG Scrub Activity

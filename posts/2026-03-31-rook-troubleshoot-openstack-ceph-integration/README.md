@@ -47,7 +47,8 @@ virsh secret-list
 virsh secret-get-value <uuid>  # should return the base64 key
 
 # Test the libvirt secret value matches the Ceph key
-ceph auth get-key client.nova | base64
+# ceph auth get-key already returns a base64-encoded key
+ceph auth get-key client.nova
 virsh secret-get-value <nova-secret-uuid>
 ```
 
@@ -89,8 +90,8 @@ virsh -c qemu+tcp://compute2/system list
 # Check firewall ports
 firewall-cmd --list-ports | grep -E "16514|49152"
 
-# Abort a stuck migration
-openstack server migrate --abort <instance-id>
+# Abort a stuck migration (requires both server and migration ID)
+openstack server migration abort <instance-id> <migration-id>
 ```
 
 ## Diagnosing Manila/CephFS Issues

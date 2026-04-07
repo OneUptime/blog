@@ -36,8 +36,9 @@ ldconfig -p | grep libhisi_zip
 
 ```bash
 ceph config set client.rgw rgw_compression_type zlib
-ceph config set client.rgw uadk_enabled true
 ```
+
+When Ceph is built with UADK support and the UADK libraries and hardware accelerator are available, the zlib compressor plugin automatically offloads compression to the UADK hardware engine. No additional configuration flag is needed.
 
 Apply compression to a placement target:
 
@@ -66,8 +67,8 @@ ceph daemon client.rgw.$(hostname -s) perf dump | grep compress
 Monitor CPU usage before and after enabling UADK:
 
 ```bash
-# Upload a large compressible file and monitor CPU
-dd if=/dev/urandom bs=1M count=100 | tr 'A-Za-z' 'N-ZA-Mn-za-m' > test.txt
+# Generate a large compressible file and monitor CPU
+yes "The quick brown fox jumps over the lazy dog" | head -c 100M > test.txt
 time aws s3 cp test.txt s3://mybucket/ --endpoint-url http://your-rgw-host:7480
 
 # Compare top output with and without UADK
@@ -78,13 +79,11 @@ time aws s3 cp test.txt s3://mybucket/ --endpoint-url http://your-rgw-host:7480
 Use a simple benchmark to compare throughput:
 
 ```bash
-# Without UADK (software zlib)
-ceph config set client.rgw uadk_enabled false
+# Without UADK (run on a node without UADK hardware or libraries)
 time aws s3 cp large-file.csv s3://mybucket/test-no-uadk.csv \
   --endpoint-url http://your-rgw-host:7480
 
-# With UADK enabled
-ceph config set client.rgw uadk_enabled true
+# With UADK (run on a node with UADK hardware and libraries available)
 time aws s3 cp large-file.csv s3://mybucket/test-with-uadk.csv \
   --endpoint-url http://your-rgw-host:7480
 ```
@@ -110,4 +109,4 @@ nodeSelector:
 
 ## Summary
 
-UADK acceleration in Ceph RGW offloads ZLIB compression to ARM hardware accelerators, reducing CPU overhead during object uploads and downloads. Enable it with `uadk_enabled = true` and ensure the UADK libraries and device drivers are present on RGW nodes. This is particularly effective on HiSilicon Kunpeng servers with dedicated compression engines.
+UADK acceleration in Ceph RGW offloads ZLIB compression to ARM hardware accelerators, reducing CPU overhead during object uploads and downloads. Ensure Ceph is built with UADK support and that the UADK libraries and device drivers are present on RGW nodes. The zlib compressor plugin automatically uses UADK hardware when available. This is particularly effective on HiSilicon Kunpeng servers with dedicated compression engines.

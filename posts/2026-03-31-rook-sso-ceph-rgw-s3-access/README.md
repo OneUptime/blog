@@ -42,13 +42,13 @@ curl -X POST "https://keycloak.example.com/auth/admin/realms/myrealm/clients" \
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set \
   client.rgw.my-store rgw_s3_auth_use_sts true
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set \
-  client.rgw.my-store rgw_sts_key "sso-sts-key-32chars-exactly!!!"
+  client.rgw.my-store rgw_sts_key "$(openssl rand -hex 16)"
 
 # Create IAM admin user
 radosgw-admin user create \
   --uid=iam-admin \
   --display-name="IAM Admin" \
-  --caps="roles=*;oidc-provider=*;policies=*"
+  --caps="roles=*;oidc-provider=*;user-policy=*"
 ```
 
 ## Step 3 - Register the OIDC Provider and Create Roles
@@ -155,8 +155,8 @@ For the Ceph Dashboard SSO, use SAML:
 # Enable SSO on the Ceph dashboard
 ceph dashboard sso setup saml2 \
   https://dashboard.example.com \
-  "https://keycloak.example.com/auth/realms/myrealm/protocol/saml" \
-  username email
+  "https://keycloak.example.com/auth/realms/myrealm/protocol/saml/descriptor" \
+  username
 ceph dashboard sso enable saml2
 ```
 
@@ -171,7 +171,7 @@ aws --endpoint-url http://rgw.example.com:7480 \
 # Test token exchange manually
 JWT=$(curl -s -X POST "${KEYCLOAK_URL}/protocol/openid-connect/token" \
   -d "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials&scope=openid" \
-  | jq -r '.id_token')
+  | jq -r '.access_token')
 
 aws --endpoint-url http://rgw.example.com:7480 \
   sts assume-role-with-web-identity \

@@ -84,10 +84,9 @@ Set proper POSIX ownership and permissions on each share directory:
 ```bash
 # Set ownership for marketing share
 chown root:marketing-team /mnt/cephfs/volumes/smb-shares/marketing
-chmod 2775 /mnt/cephfs/volumes/smb-shares/marketing
 
-# Set group sticky bit so new files inherit group
-chmod g+s /mnt/cephfs/volumes/smb-shares/marketing
+# Set permissions with setgid bit so new files inherit the group
+chmod 2775 /mnt/cephfs/volumes/smb-shares/marketing
 ```
 
 ## Configuring User Groups

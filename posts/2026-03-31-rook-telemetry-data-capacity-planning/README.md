@@ -132,8 +132,11 @@ Use Prometheus queries for ongoing capacity tracking:
 # Current utilization percentage
 (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100
 
-# Days until full (linear projection)
+# Predicted utilization ratio in 30 days (linear projection)
 predict_linear(ceph_cluster_total_used_bytes[7d], 30 * 24 * 3600) / ceph_cluster_total_bytes
+
+# Days until full (linear projection)
+(ceph_cluster_total_bytes - ceph_cluster_total_used_bytes) / deriv(ceph_cluster_total_used_bytes[7d]) / 86400
 ```
 
 ## Summary

@@ -53,9 +53,9 @@ ceph daemon osd.0 perf dump | jq '.bluestore'
 ```
 
 Look at:
-- `state_kv_queued` - time waiting to write to RocksDB
-- `state_io_done` - time for I/O to complete
-- `state_finishing` - post-write cleanup time
+- `bluestore_state_kv_queued_lat` - time waiting to write to RocksDB
+- `bluestore_state_io_done_lat` - time for I/O to complete
+- `bluestore_state_finishing_lat` - post-write cleanup time
 
 ### Step 5: Check Disk Queue Depth and Latency
 

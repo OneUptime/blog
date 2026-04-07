@@ -116,7 +116,7 @@ radosgw-admin bucket check --bucket mybucket
 radosgw-admin bucket check --bucket mybucket --fix
 
 # Rebuild the index from scratch
-radosgw-admin bucket rebuild-index --bucket mybucket
+radosgw-admin bi rebuild --bucket mybucket
 ```
 
 ## Resolving 404 Errors for Existing Objects
@@ -127,11 +127,11 @@ If objects exist in RADOS but return 404:
 # Check bucket stats and marker
 radosgw-admin bucket stats --bucket mybucket
 
-# Sync bucket stats
-radosgw-admin bucket sync status --bucket mybucket
+# Check index against actual objects in RADOS
+radosgw-admin bucket check --bucket mybucket --check-objects
 
-# Reset bucket stats
-radosgw-admin bucket resync --bucket mybucket
+# Fix missing index entries
+radosgw-admin bucket check --bucket mybucket --check-objects --fix
 ```
 
 ## Summary

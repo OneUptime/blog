@@ -10,12 +10,12 @@ Description: Diagnose and recover from OSD failures in Rook-Ceph by analyzing po
 
 ## How OSD Failures Manifest in Rook-Ceph
 
-OSD (Object Storage Daemon) failures cause data to be unavailable from affected placement groups. Ceph marks the OSD as `down` then `out`, triggering rebalancing to restore the configured replication factor. If too many OSDs fail simultaneously (based on the minimum_size setting), the cluster can become degraded or unavailable.
+OSD (Object Storage Daemon) failures cause data to be unavailable from affected placement groups. Ceph marks the OSD as `down` then `out`, triggering rebalancing to restore the configured replication factor. If too many OSDs fail simultaneously (based on the min_size setting), the cluster can become degraded or unavailable.
 
 ```mermaid
 flowchart TD
     A["OSD Crash or Drive Failure"] --> B["OSD marked 'down'"]
-    B --> C{"Wait for osd_down_out_interval\n(default 600s)"}
+    B --> C{"Wait for mon_osd_down_out_interval\n(default 600s)"}
     C --> D["OSD marked 'out'"]
     D --> E["Ceph rebalances PGs to remaining OSDs"]
     E --> F{"Enough OSDs?"}
@@ -187,7 +187,7 @@ Rook will detect the new disk and provision a new OSD.
 Monitor the recovery progress:
 
 ```bash
-watch kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+watch kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
 ```
 
 Check that PGs are recovering:

@@ -39,8 +39,8 @@ nc -zv ceph-mon-1 6789
 nc -zv ceph-osd-1 6800
 nc -zv ceph-osd-1 6801
 
-# MGR dashboard and metrics
-nc -zv ceph-mgr-1 7000
+# MGR dashboard (8443 default SSL port) and Prometheus metrics
+nc -zv ceph-mgr-1 8443
 nc -zv ceph-mgr-1 9283
 ```
 

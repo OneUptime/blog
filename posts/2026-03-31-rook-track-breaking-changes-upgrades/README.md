@@ -29,13 +29,18 @@ CRD schema changes can break existing custom resources. Compare the CRD schemas 
 # Export current CRDs
 kubectl get crd cephclusters.ceph.rook.io -o yaml > current-cephcluster-crd.yaml
 
-# Download target version CRD
+# Download target version CRDs and extract the specific CRD for comparison
 ROOK_VERSION="v1.15.0"
-curl -o target-cephcluster-crd.yaml \
-  "https://raw.githubusercontent.com/rook/rook/${ROOK_VERSION}/deploy/examples/crds.yaml"
+curl -sL "https://raw.githubusercontent.com/rook/rook/${ROOK_VERSION}/deploy/examples/crds.yaml" \
+  | kubectl slice -f - --kind CustomResourceDefinition --name cephclusters.ceph.rook.io \
+  > target-cephcluster-crd.yaml
 
-# Compare (look for removed or changed fields)
-diff current-cephcluster-crd.yaml target-cephcluster-crd.yaml | grep -E "^\+|^\-" | grep -v "resourceVersion\|generation\|creationTimestamp"
+# Alternatively, use kubectl diff against the full CRD manifest in a staging cluster
+kubectl diff -f <(curl -sL "https://raw.githubusercontent.com/rook/rook/${ROOK_VERSION}/deploy/examples/crds.yaml")
+
+# Or compare the openAPIV3Schema sections manually
+diff <(kubectl get crd cephclusters.ceph.rook.io -o jsonpath='{.spec.versions[0].schema}' | python3 -m json.tool) \
+     <(cat target-cephcluster-crd.yaml | kubectl apply --dry-run=client -o jsonpath='{.spec.versions[0].schema}' | python3 -m json.tool)
 ```
 
 Pay attention to fields that have moved, been renamed, or had their types changed.
@@ -48,16 +53,7 @@ Rook marks deprecated fields in the CRD spec with descriptions. Check for deprec
 kubectl -n rook-ceph logs -l app=rook-ceph-operator | grep -i deprecat
 ```
 
-Common deprecations between Rook versions:
-
-```text
-v1.13 -> v1.14:
-  - mgr.modules field renamed to mgr.modules.enabled
-  - monitoring.enabled moved to monitoring.metricsDisabled
-
-v1.14 -> v1.15:
-  - network.provider "host" deprecated in favor of network.provider "host" with explicit config
-```
+Check the Rook upgrade guide and release notes for each version to identify deprecated fields specific to your upgrade path. Deprecation details vary between releases, so always consult the official documentation rather than relying on third-party summaries.
 
 ## Using helm diff for Pre-Upgrade Analysis
 
@@ -83,7 +79,7 @@ Rook upgrades sometimes change which Kubernetes API versions they use for intern
 
 ```bash
 # Check Kubernetes version
-kubectl version --short
+kubectl version
 
 # Check deprecated API usage
 kubectl api-resources | grep batch
@@ -134,28 +130,25 @@ echo "5. Helm values changes (run: helm diff upgrade)"
 
 ## Handling API Removals
 
-If a field is removed (not just deprecated) in the target version, update your CephCluster CR before upgrading:
+If a field is removed (not just deprecated) in the target version, update your CephCluster CR before upgrading. For example, if a configuration field is moved to a different location in the spec:
 
 ```yaml
-# Before upgrade (old field)
+# Before upgrade (old location)
 spec:
-  mon:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: fast-ssd
+  storage:
+    config:
+      osdsPerDevice: "1"
 
-# After upgrade (field moved)
+# After upgrade (field moved to device-level config)
 spec:
-  mon:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: fast-ssd
-        resources:
-          requests:
-            storage: 10Gi
+  storage:
+    devices:
+      - name: sda
+        config:
+          osdsPerDevice: "1"
 ```
 
-Apply the updated CR to the existing cluster before upgrading the operator.
+Apply the updated CR to the existing cluster before upgrading the operator. Consult the release notes for the specific fields affected in your upgrade path.
 
 ## Summary
 

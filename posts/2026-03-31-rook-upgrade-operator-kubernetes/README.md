@@ -32,7 +32,7 @@ Before upgrading, ensure:
 - The Ceph cluster is healthy (`ceph status` shows `HEALTH_OK` or `HEALTH_WARN` with non-critical warnings)
 - You have `kubectl` configured with cluster admin access
 - You have a backup of your CephCluster CRDs and any custom configurations
-- You have reviewed the [Rook release notes](https://rook.io/docs/rook/latest/Contributing/development-flow/) for breaking changes between versions
+- You have reviewed the [Rook upgrade guide](https://rook.io/docs/rook/latest/Upgrade/rook-upgrade/) for breaking changes between versions
 
 Check the current Rook operator version:
 

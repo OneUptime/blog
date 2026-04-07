@@ -80,7 +80,7 @@ If degradation is due to a recoverable OSD coming back:
 ceph osd stat
 
 # Increase recovery speed
-ceph config set osd osd_recovery_max_active_hdd 3
+ceph config set osd osd_recovery_max_active_hdd 10
 ceph config set osd osd_recovery_op_priority 10
 ```
 
@@ -95,7 +95,7 @@ ceph osd out osd.3
 ```bash
 watch ceph status
 # Look for transition from:
-# active+degraded -> active+recovering -> active+clean
+# active+degraded -> active+recovering+degraded -> active+clean
 ```
 
 ## Summary

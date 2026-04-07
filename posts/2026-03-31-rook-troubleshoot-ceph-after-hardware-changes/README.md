@@ -56,7 +56,8 @@ ceph mon dump
 # Check OSD bind addresses
 ceph osd dump | grep -E "^osd\.[0-9]+" | grep -v "^osd_\|^osd_heartbeat"
 
-# If IP changed, update the MON map
+# If IP changed, extract and inspect the MON map
+ceph mon getmap -o /tmp/monmap
 monmaptool --print /tmp/monmap
 ```
 
@@ -84,7 +85,7 @@ ceph osd crush tree
 
 # If missing, add it
 ceph osd crush add-bucket new-host host
-ceph osd crush move new-host host=new-host root=default
+ceph osd crush move new-host root=default
 ```
 
 ## After a RAM Upgrade

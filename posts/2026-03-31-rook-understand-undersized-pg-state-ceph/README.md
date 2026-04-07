@@ -51,7 +51,7 @@ ceph pg dump | grep undersized
 For a specific PG:
 
 ```bash
-ceph pg <pg-id> query | jq '{state: .state, acting: .acting, up: .up, size: .info.stats.acting_primary}'
+ceph pg <pg-id> query | jq '{state: .state, acting: .acting, up: .up}'
 ```
 
 ## Risk Assessment

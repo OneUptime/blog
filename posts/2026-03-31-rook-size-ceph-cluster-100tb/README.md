@@ -31,14 +31,14 @@ EC 4+2 cuts raw storage requirements nearly in half, making it the preferred cho
 
 ## Node and OSD Planning
 
-### Option A: 12 nodes with 16TB drives (replication)
+### Option A: 12 nodes with 8TB drives (replication)
 
 ```text
 12 nodes * 8 drives * 8TB = 768TB raw
 Usable (3x): 768 / 3 / 1.2 = 213TB
 ```
 
-### Option B: 8 nodes with 16TB drives (EC 4+2)
+### Option B: 8 nodes with 8TB drives (EC 4+2)
 
 ```text
 8 nodes * 10 drives * 8TB = 640TB raw

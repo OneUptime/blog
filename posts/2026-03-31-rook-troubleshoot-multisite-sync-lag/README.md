@@ -95,7 +95,7 @@ kubectl -n rook-ceph exec -it rook-ceph-rgw-us-east-<pod> -- date
 kubectl -n rook-ceph exec -it rook-ceph-rgw-us-west-<pod> -- date
 ```
 
-Ensure NTP is running on all nodes. Maximum acceptable clock skew is 5 minutes.
+Ensure NTP or chrony is running on all nodes. Ceph monitors default to a clock drift threshold of 0.05 seconds, and RGW multisite sync relies on accurate timestamps for conflict resolution. Keep clocks synchronized within sub-second accuracy.
 
 ## Root Cause 5: RGW Instance Restart Required
 

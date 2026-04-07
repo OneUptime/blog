@@ -42,13 +42,38 @@ spec:
   storageClassName: rook-ceph-stretch-block
 ```
 
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fio-test
+spec:
+  containers:
+  - name: fio
+    image: nixery.dev/shell/fio
+    command:
+    - fio
+    - --name=write
+    - --ioengine=libaio
+    - --rw=write
+    - --bs=4k
+    - --numjobs=1
+    - --size=1G
+    - --filename=/data/test.dat
+    - --runtime=3600
+    - --time_based
+    volumeMounts:
+    - name: stretch-data
+      mountPath: /data
+  volumes:
+  - name: stretch-data
+    persistentVolumeClaim:
+      claimName: stretch-test-pvc
+```
+
 ```bash
 kubectl apply -f stretch-test-pvc.yaml
-# Start a continuous write workload
-kubectl run fio-test --image=nixery.dev/shell/fio -- \
-  fio --name=write --ioengine=libaio --rw=write \
-  --bs=4k --numjobs=1 --size=1G --filename=/data/test.dat \
-  --runtime=3600 --time_based
+kubectl apply -f fio-test-pod.yaml
 ```
 
 ## Step 2 - Simulate Zone A Loss

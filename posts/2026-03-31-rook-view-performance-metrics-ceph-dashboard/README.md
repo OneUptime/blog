@@ -69,7 +69,7 @@ The Clients section (accessible from Dashboard > Clients) shows:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs-a perf dump | grep -i client
+  ceph tell mds.myfs-a perf dump | grep -i client
 ```
 
 ## Prometheus Integration for Historical Metrics
@@ -92,8 +92,8 @@ Key Prometheus metrics to graph:
 # Pool write throughput (bytes/s)
 rate(ceph_pool_wr_bytes[5m])
 
-# OSD apply latency p99
-histogram_quantile(0.99, ceph_osd_apply_latency_ms_bucket)
+# OSD apply latency p99 (across all OSDs)
+quantile(0.99, ceph_osd_apply_latency_ms)
 
 # Client IOPS
 rate(ceph_pool_rd[5m]) + rate(ceph_pool_wr[5m])

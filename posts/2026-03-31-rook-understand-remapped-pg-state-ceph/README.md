@@ -41,7 +41,7 @@ ceph pg <pg-id> query | jq '{state: .state, up: .up, acting: .acting}'
 ```bash
 # Check if CRUSH map recently changed
 ceph osd dump | grep epoch
-ceph report | jq '.osdmap_clean_epochs'
+ceph osd dump --format json | jq '.epoch'
 ```
 
 ## remapped + backfilling

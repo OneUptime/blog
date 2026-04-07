@@ -52,7 +52,7 @@ ceph pg stat --format json | jq '.num_pgs_by_state[] | select(.state_name == "ac
 After an OSD failure and recovery, PGs transition through several states before reaching clean:
 
 ```text
-active+degraded -> active+recovering -> active+clean
+active+degraded -> active+degraded+recovering -> active+clean
 ```
 
 Watch the transition:

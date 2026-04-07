@@ -136,4 +136,4 @@ systemctl start ceph-osd@0
 
 ## Summary
 
-BlueStore WAL and DB devices dramatically impact OSD write performance - placing them on NVMe while keeping data on HDDs achieves near-SSD random write IOPS at HDD cost per GB. Size DB devices at roughly 4% of the total HDD data capacity per OSD. In Rook, specify the `metadataDevice` field per OSD to let the operator configure separate WAL/DB placement automatically.
+BlueStore WAL and DB devices dramatically impact OSD write performance - placing them on NVMe while keeping data on HDDs achieves near-SSD random write IOPS at HDD cost per GB. Size DB devices according to the data device capacity (see the sizing table above). In Rook, specify the `metadataDevice` field per OSD to let the operator configure separate WAL/DB placement automatically.

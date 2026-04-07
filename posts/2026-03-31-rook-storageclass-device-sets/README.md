@@ -103,11 +103,10 @@ spec:
       - name: ssd-set
         count: 3
         portable: true
+        crushDeviceClass: ssd
         volumeClaimTemplates:
           - metadata:
               name: data
-              annotations:
-                crushDeviceClass: ssd
             spec:
               resources:
                 requests:
@@ -119,11 +118,10 @@ spec:
       - name: hdd-set
         count: 6
         portable: true
+        crushDeviceClass: hdd
         volumeClaimTemplates:
           - metadata:
               name: data
-              annotations:
-                crushDeviceClass: hdd
             spec:
               resources:
                 requests:

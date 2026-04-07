@@ -59,10 +59,12 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd crush rule create-replicated nvme-rule default host nvme
 
 # Create SSD CRUSH rule
-ceph osd crush rule create-replicated ssd-rule default host ssd
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd crush rule create-replicated ssd-rule default host ssd
 
 # Create HDD CRUSH rule
-ceph osd crush rule create-replicated hdd-rule default host hdd
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd crush rule create-replicated hdd-rule default host hdd
 ```
 
 ## Creating Per-Tier Pools
@@ -119,6 +121,13 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   pool: db-pool-nvme
   clusterID: rook-ceph
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -128,6 +137,13 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   pool: fs-pool-ssd
   clusterID: rook-ceph
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
 ```
 
 ## Monitoring Per-Tier Utilization

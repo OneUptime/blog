@@ -86,8 +86,8 @@ NVMES_PER_NODE=$((NVME_OSDS_NEEDED / NODES + 1))
 echo "NVMe per node: ${NVMES_PER_NODE}"
 # Capacity: 3 nodes x 4 NVMe x 4 TB = 48 TB raw / 3 = 16 TB usable
 
-# Need more capacity, add nodes:
-CAPACITY_NODES=$((300 / (NVMES_PER_NODE * NVME_CAPACITY_TB)))
+# Need more capacity, add nodes (375 TB raw from Step 2):
+CAPACITY_NODES=$((375 / (NVMES_PER_NODE * NVME_CAPACITY_TB)))
 echo "Nodes for capacity: ${CAPACITY_NODES}"
 ```
 
@@ -105,7 +105,7 @@ hardware:
   per_node:
     cpu: "32 cores"
     ram: "128 GB"
-    nvme_osds: "4 x 4 TB NVMe"
+    nvme_osds: "5 x 4 TB NVMe"
     network: "2 x 25 GbE"
 
 # Example 2: Large object storage (backup/archive)

@@ -163,8 +163,10 @@ if __name__ == "__main__":
 ```bash
 # After cluster recovers, verify object checksums
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-# Scrub all PGs to verify data integrity
-ceph pg scrub all
+# Scrub all pools to verify data integrity
+for pool in \$(ceph osd pool ls); do
+  ceph osd pool scrub \"\$pool\"
+done
 
 # Wait for scrub to complete and check for inconsistencies
 sleep 60

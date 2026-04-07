@@ -106,7 +106,7 @@ kubectl -n rook-ceph get pods -w
 Watch the cluster health throughout the process:
 
 ```bash
-watch kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph status
+watch kubectl -n rook-ceph exec <toolbox-pod> -- ceph status
 ```
 
 It is normal for health to temporarily show `HEALTH_WARN` during an OSD rolling restart. Wait for it to return to `HEALTH_OK` before proceeding.

@@ -109,15 +109,15 @@ aws s3api put-object \
 
 ## Environment Variable Shortcut
 
-Instead of always passing `--endpoint-url`, export it:
+Instead of always passing `--endpoint-url`, export the built-in `AWS_ENDPOINT_URL` environment variable supported by AWS CLI v2:
 
 ```bash
 export AWS_DEFAULT_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=myaccesskey
 export AWS_SECRET_ACCESS_KEY=mysecretkey
-export S3_ENDPOINT=http://rook-ceph-rgw-my-store.rook-ceph:80
+export AWS_ENDPOINT_URL=http://rook-ceph-rgw-my-store.rook-ceph:80
 
-aws s3 ls --endpoint-url $S3_ENDPOINT
+aws s3 ls
 ```
 
 ## Summary

@@ -120,7 +120,7 @@ ceph config get osd osd_memory_target
 ceph config get osd osd_memory_cache_min
 
 # Check current cache usage
-ceph daemon osd.0 perf dump | grep -A5 "bluefs"
+ceph tell osd.0 perf dump | grep -A5 "bluestore_cache"
 ```
 
 ## Monitor OSD Memory Usage
@@ -131,11 +131,11 @@ kubectl top pods -n rook-ceph -l app=rook-ceph-osd
 
 # Detailed OSD stats from Ceph
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 dump_mempools
+  ceph tell osd.0 dump_mempools
 
 # Check BlueStore cache statistics
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A10 bluestore_cache
+  ceph tell osd.0 perf dump | python3 -m json.tool | grep -A10 bluestore_cache
 ```
 
 ## Memory Tuning for Different Workloads

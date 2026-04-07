@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Recovery, Throttle, Performance, Operation
 
-Description: Throttle Ceph recovery operations using sleep intervals, bandwidth limits, and priority settings to minimize the impact on production client I/O during data recovery.
+Description: Throttle Ceph recovery operations using sleep intervals, concurrency limits, and priority settings to minimize the impact on production client I/O during data recovery.
 
 ---
 
@@ -42,18 +42,6 @@ ceph config set osd osd_recovery_sleep_ssd 0.1
 ceph config set osd osd_recovery_sleep 0
 ceph config set osd osd_recovery_sleep_hdd 0
 ceph config set osd osd_recovery_sleep_ssd 0
-```
-
-## Bandwidth Limiting
-
-Cap recovery bandwidth per OSD:
-
-```bash
-# Limit recovery to 50 MB/s per OSD (production hours)
-ceph config set osd osd_max_recovery_bandwidth 52428800
-
-# Remove limit for maintenance
-ceph config rm osd osd_max_recovery_bandwidth
 ```
 
 ## Concurrency Throttling
@@ -140,4 +128,4 @@ ceph config get osd osd_max_backfills
 
 ## Summary
 
-Recovery throttling in Ceph involves three mechanisms: sleep intervals between operations (`osd_recovery_sleep`), bandwidth caps (`osd_max_recovery_bandwidth`), and the mClock I/O scheduler priority system. For production clusters, use the `high_client_ops` mClock profile combined with `osd_recovery_sleep_hdd=0.1` to keep recovery running in the background without impacting client P99 latency. Switch to unthrottled settings during scheduled maintenance windows for faster completion.
+Recovery throttling in Ceph involves three mechanisms: sleep intervals between operations (`osd_recovery_sleep`), concurrency limits (`osd_max_backfills` and `osd_recovery_max_active`), and the mClock I/O scheduler priority system. For production clusters, use the `high_client_ops` mClock profile combined with `osd_recovery_sleep_hdd=0.1` to keep recovery running in the background without impacting client P99 latency. Switch to unthrottled settings during scheduled maintenance windows for faster completion.

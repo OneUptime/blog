@@ -50,24 +50,23 @@ pool cephfs-data id 2
   client io 540 op/s rd, 230 op/s wr, 60 MiB/s rd, 30 MiB/s wr
 ```
 
-## Prometheus Metrics for Per-Client Tracking
+## Prometheus Metrics for Per-Pool IO Tracking
 
-For Kubernetes workloads, correlate PVC names with Ceph pool activity. Use the Rook CSI metrics exposed through csi-metrics-rbdplugin:
+For detailed IO monitoring, use the Ceph manager Prometheus exporter that Rook enables by default. The metrics are exposed through the rook-ceph-mgr service:
 
 ```bash
-# List CSI metrics endpoints
-kubectl -n rook-ceph get pods -l app=csi-rbdplugin -o wide
-
-# Port-forward and inspect metrics
-kubectl -n rook-ceph port-forward <csi-pod> 9091:9091 &
-curl -s http://localhost:9091/metrics | grep kubelet_volume_stats
+# Port-forward to the Ceph manager Prometheus endpoint
+kubectl -n rook-ceph port-forward svc/rook-ceph-mgr 9283:9283 &
+curl -s http://localhost:9283/metrics | grep ceph_pool
 ```
 
-Key metrics to track per PVC:
+Key metrics to track per-pool IO rates:
 
 ```text
-kubelet_volume_stats_used_bytes{persistentvolumeclaim="my-pvc"}
-kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="my-pvc"}
+ceph_pool_rd{pool_id="1"}
+ceph_pool_wr{pool_id="1"}
+ceph_pool_rd_bytes{pool_id="1"}
+ceph_pool_wr_bytes{pool_id="1"}
 ```
 
 ## Track IO Per OSD
@@ -80,11 +79,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
 "
 ```
 
-Compare `op_r` and `op_w` counters across OSDs. Significant differences indicate some OSDs are handling disproportionate client load.
+Compare `commit_latency_ms` and `apply_latency_ms` values across OSDs. Significantly higher latencies on certain OSDs indicate uneven load or hardware issues.
 
-## Use rados list to Find Heavy Objects
+## Use rados df to View Pool Usage
 
-Identify pools with the most active objects:
+Identify pools with the most objects and storage usage:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "

@@ -10,9 +10,9 @@ Description: Tune osd_recovery_max_active in Ceph to control concurrent recovery
 
 ## What osd_recovery_max_active Controls
 
-`osd_recovery_max_active` sets the maximum number of active recovery operations each OSD can run at any given time. This includes both incoming (backfill) and outgoing (primary) recovery work. A higher value means faster recovery but more I/O competition with client operations.
+`osd_recovery_max_active` sets the maximum number of active recovery operations each OSD can run at any given time. This controls recovery (re-replication of missing objects), which is separate from backfill operations controlled by `osd_max_backfills`. A higher value means faster recovery but more I/O competition with client operations.
 
-Ceph 15+ separates this into `osd_recovery_max_active_hdd` and `osd_recovery_max_active_ssd` for device-specific tuning.
+Ceph Nautilus (14.2.0)+ separates this into `osd_recovery_max_active_hdd` and `osd_recovery_max_active_ssd` for device-specific tuning.
 
 ## Default Values and Their Limitations
 
@@ -28,7 +28,7 @@ ceph config get osd osd_recovery_max_active_ssd
 # Default: 10
 ```
 
-With 3 concurrent recovery ops on HDD, recovery of a 4 TB OSD at 100 MB/s takes approximately 11 hours. Doubling to 6 ops cuts this to roughly 5-6 hours.
+With 3 concurrent recovery ops on HDD, recovery of a 4 TB OSD with each op averaging ~33 MB/s takes approximately 11 hours. Doubling to 6 ops (assuming the disk has headroom beyond 100 MB/s total) cuts this to roughly 5-6 hours.
 
 ## Calculating the Right Value
 
@@ -82,8 +82,8 @@ ceph config set osd osd_recovery_sleep 0
 Measure actual recovery throughput:
 
 ```bash
-# Show recovery bytes/second
-ceph osd perf | grep recovering
+# Show overall recovery progress
+ceph status | grep recovery
 
 # Watch PG states change over time
 watch -n 5 'ceph pg stat'

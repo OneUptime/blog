@@ -35,7 +35,7 @@ kubectl -n rook-ceph top pods -l app=rook-ceph-mgr
 
 ## Prometheus CPU Metrics for Ceph
 
-Use container-level CPU metrics from cAdvisor (exposed via kube-state-metrics or Prometheus node exporter):
+Use container-level CPU metrics from cAdvisor (built into the kubelet and scraped by Prometheus):
 
 ```bash
 # CPU usage rate per rook-ceph container (cores)
@@ -45,7 +45,7 @@ rate(container_cpu_usage_seconds_total{namespace="rook-ceph"}[5m])
 topk(5, rate(container_cpu_usage_seconds_total{namespace="rook-ceph"}[5m]))
 
 # CPU throttle ratio (indicates limits are too low)
-rate(container_cpu_cfs_throttled_seconds_total{namespace="rook-ceph"}[5m])
+rate(container_cpu_cfs_throttled_periods_total{namespace="rook-ceph"}[5m])
   / rate(container_cpu_cfs_periods_total{namespace="rook-ceph"}[5m])
 ```
 
@@ -127,7 +127,7 @@ spec:
       rules:
         - alert: CephOSDCPUThrottled
           expr: |
-            rate(container_cpu_cfs_throttled_seconds_total{namespace="rook-ceph",container="osd"}[5m])
+            rate(container_cpu_cfs_throttled_periods_total{namespace="rook-ceph",container="osd"}[5m])
             / rate(container_cpu_cfs_periods_total{namespace="rook-ceph",container="osd"}[5m]) > 0.25
           for: 10m
           labels:

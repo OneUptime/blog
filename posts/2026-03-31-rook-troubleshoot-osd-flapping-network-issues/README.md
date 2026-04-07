@@ -69,9 +69,24 @@ metadata:
 spec:
   network:
     provider: host
-    selectors:
-      public: "10.0.0.0/24"
-      cluster: "192.168.1.0/24"
+    connections:
+      encryption:
+        enabled: false
+```
+
+If you need separate public and cluster networks, configure them via the Rook ConfigMap override:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-config-override
+  namespace: rook-ceph
+data:
+  config: |
+    [global]
+    public_network = 10.0.0.0/24
+    cluster_network = 192.168.1.0/24
 ```
 
 ## Adjusting OSD Heartbeat Settings
@@ -100,7 +115,7 @@ data:
   config: |
     [osd]
     osd_heartbeat_grace = 30
-    osd_heartbeat_interval = 6
+    osd_heartbeat_interval = 10
 ```
 
 ## Reviewing OSD Logs

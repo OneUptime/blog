@@ -16,8 +16,9 @@ Upstream Ceph is the open-source project hosted at ceph.io. It is released by th
 
 ```bash
 # Add upstream Ceph repository (Reef)
-curl -L https://download.ceph.com/keys/release.asc | sudo apt-key add -
-echo "deb https://download.ceph.com/debian-reef/ $(lsb_release -sc) main" \
+curl -fsSL https://download.ceph.com/keys/release.asc \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/ceph-archive-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/ceph-archive-keyring.gpg] https://download.ceph.com/debian-reef/ $(lsb_release -sc) main" \
   | sudo tee /etc/apt/sources.list.d/ceph.list
 sudo apt update && sudo apt install -y ceph
 ```

@@ -41,10 +41,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: my-fs-data0
-    namespace: nfs-ns
-    object: conf-nfs.my-nfs
   server:
     active: 3
 ```
@@ -66,7 +62,7 @@ spec:
   selector:
     app: rook-ceph-nfs
     ceph_nfs: my-nfs
-    instance: "0"
+    ceph_daemon_id: "my-nfs-0"
   ports:
     - name: nfs
       port: 2049
@@ -76,7 +72,7 @@ spec:
       protocol: TCP
 ```
 
-The label `instance: "0"` ensures this Service routes only to the first NFS pod.
+The label `ceph_daemon_id: "my-nfs-0"` ensures this Service routes only to the first NFS pod.
 
 ## Distributing Clients Across Servers
 
@@ -104,9 +100,9 @@ For detailed Ganesha status on a specific instance:
 
 ```bash
 kubectl -n rook-ceph exec -it rook-ceph-nfs-my-nfs-0 -- \
-  ganesha_mgr status
+  ceph nfs cluster info my-nfs
 ```
 
 ## Summary
 
-Rook creates one Kubernetes Service per NFS server pod, reflecting NFS's stateful nature. Configure the number of servers via `spec.server.active` in the `CephNFS` CR. For external access, create additional LoadBalancer Services that select individual pods by instance label. This per-server Service model ensures client sessions remain pinned to a specific server, preserving NFS state and file locking semantics.
+Rook creates one Kubernetes Service per NFS server pod, reflecting NFS's stateful nature. Configure the number of servers via `spec.server.active` in the `CephNFS` CR. For external access, create additional LoadBalancer Services that select individual pods by daemon ID label. This per-server Service model ensures client sessions remain pinned to a specific server, preserving NFS state and file locking semantics.

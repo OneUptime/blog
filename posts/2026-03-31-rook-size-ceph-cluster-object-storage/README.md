@@ -33,7 +33,7 @@ EC 8+4: 1.5x raw overhead, tolerates 4 OSD failures (large clusters)
 
 Target: 500TB usable
 Using EC 6+3: 500TB * 1.5 / 0.8 = 938TB raw required
-With 20TB drives: 938TB / 20TB = 47 drives -> 50 drives (6 nodes, 9 drives each)
+With 20TB drives: 938TB / 20TB = 47 drives -> 54 drives (9 nodes, 6 drives each)
 ```
 
 ## Node and Drive Selection
@@ -118,7 +118,7 @@ spec:
   type: LoadBalancer
   selector:
     app: rook-ceph-rgw
-    rgw: my-store
+    rook_object_store: my-store
   ports:
   - port: 80
     targetPort: 8080

@@ -90,7 +90,7 @@ Enable verbose logging on the initiator:
 
 ```bash
 # Increase nvme-cli verbosity
-nvme discover -t tcp -a 10.0.1.10 -s 4420 -v
+nvme discover -t tcp -a 10.0.1.10 -s 8009 -v
 
 # Check dmesg for connection errors
 dmesg | grep nvme | tail -30

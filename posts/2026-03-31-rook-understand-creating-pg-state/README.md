@@ -10,7 +10,7 @@ Description: Learn what the creating PG state means in Ceph, why placement group
 
 ## What is the creating PG State
 
-When Ceph creates a new pool or adds OSDs, placement groups (PGs) go through a `creating` state. This is a transient phase where Ceph allocates PGs to OSDs and begins distributing data. In most cases it resolves in seconds. When it lingers, you have a problem worth diagnosing.
+When Ceph creates a new pool or increases the PG count of an existing pool, placement groups (PGs) go through a `creating` state. This is a transient phase where Ceph allocates PGs to OSDs and begins distributing data. In most cases it resolves in seconds. When it lingers, you have a problem worth diagnosing.
 
 Check PG states with:
 
@@ -85,11 +85,12 @@ storage:
 **Fix CRUSH rules:** If the CRUSH map is broken, recompile it:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd getcrushmap -o /tmp/crushmap
-crushtool -d /tmp/crushmap -o /tmp/crushmap.txt
-# Edit the text file, then recompile
-crushtool -c /tmp/crushmap.txt -o /tmp/crushmap.new
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd setcrushmap -i /tmp/crushmap.new
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c '\
+  ceph osd getcrushmap -o /tmp/crushmap && \
+  crushtool -d /tmp/crushmap -o /tmp/crushmap.txt && \
+  # Edit /tmp/crushmap.txt as needed, then recompile
+  crushtool -c /tmp/crushmap.txt -o /tmp/crushmap.new && \
+  ceph osd setcrushmap -i /tmp/crushmap.new'
 ```
 
 **Restart stuck OSDs:** If an OSD is down and blocking creation, identify and restart it:

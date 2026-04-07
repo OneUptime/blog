@@ -32,9 +32,9 @@ flowchart TD
 ## useAllNodes: true (Automatic Node Discovery)
 
 When set to `true`, Rook deploys OSDs on every node that:
-- Is a Kubernetes worker node (not a control-plane node unless tolerated)
+- Is a Kubernetes worker node (not a control-plane node unless taints are tolerated via `placement`)
 - Has an eligible raw block device
-- Does not have a `ceph-osd-preexist` taint
+- Matches any `placement` constraints defined in the CephCluster CRD
 
 ```yaml
 spec:

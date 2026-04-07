@@ -102,7 +102,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg repair 2.1f
 After the repair, monitor recovery progress:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- watch ceph status
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph -w
 ```
 
 ## Forcing PG Recovery
@@ -110,7 +110,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- watch ceph status
 If PGs are stuck in a backfill queue and not progressing, you can force them:
 
 ```bash
-# Set backfill priority
+# Raise the backfillfull threshold so backfill is not blocked by near-full OSDs
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd set-backfillfull-ratio 0.95
 
 # Force recovery on a specific PG

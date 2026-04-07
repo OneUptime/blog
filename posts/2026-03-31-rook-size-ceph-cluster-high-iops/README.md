@@ -58,7 +58,6 @@ spec:
       - name: "nvme3n1"
     config:
       osdsPerDevice: "1"
-      storeType: bluestore
 ```
 
 ## Pool Configuration for Low Latency
@@ -120,16 +119,52 @@ Use `xfs` for database workloads as it performs better than `ext4` for concurren
 
 ## Measuring IOPS
 
-```bash
-# Run fio IOPS benchmark from a pod using the storage class
-kubectl run fio-test --image=nixery.dev/fio --restart=Never -- \
-  fio --name=randread \
-    --filename=/data/testfile \
-    --bs=4k --iodepth=128 --rw=randread \
-    --ioengine=libaio --direct=1 \
-    --size=10G --numjobs=4 \
-    --group_reporting
+First create a PVC using the StorageClass, then run fio in a pod that mounts it:
 
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fio-test-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: rook-ceph-nvme-iops
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fio-test
+spec:
+  containers:
+  - name: fio
+    image: nixery.dev/fio
+    command:
+    - fio
+    - --name=randread
+    - --filename=/data/testfile
+    - --bs=4k
+    - --iodepth=128
+    - --rw=randread
+    - --ioengine=libaio
+    - --direct=1
+    - --size=10G
+    - --numjobs=4
+    - --group_reporting
+    volumeMounts:
+    - name: ceph-vol
+      mountPath: /data
+  volumes:
+  - name: ceph-vol
+    persistentVolumeClaim:
+      claimName: fio-test-pvc
+  restartPolicy: Never
+```
+
+```bash
 # Check results
 kubectl logs fio-test
 ```
@@ -141,9 +176,9 @@ kubectl logs fio-test
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd perf
 
-# Watch real-time latency
+# Watch real-time cluster events
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph --watch-debug
+  ceph -w
 ```
 
 ## Summary

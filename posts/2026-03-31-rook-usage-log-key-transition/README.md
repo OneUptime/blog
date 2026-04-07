@@ -12,7 +12,7 @@ Ceph RGW stores usage accounting data in RADOS objects using a specific key form
 
 ## Understanding Usage Log Keys
 
-Usage logs track per-user bandwidth and request counts. They are stored in the `.rgw.root` pool under keys prefixed with `usage.`. When upgrading Ceph or changing configuration, the key format can shift and old records may not merge correctly with new ones.
+Usage logs track per-user bandwidth and request counts. They are stored in the `default.rgw.usage` pool (or the zone-specific usage pool) under keys based on user and time period. When upgrading Ceph or changing configuration, the key format can shift and old records may not merge correctly with new ones.
 
 Check current usage log configuration:
 
@@ -57,7 +57,7 @@ radosgw-admin usage show --uid=testuser --start-date=2026-01-01 --end-date=2026-
 
 Sample output:
 
-```bash
+```json
 {
     "entries": [...],
     "summary": [

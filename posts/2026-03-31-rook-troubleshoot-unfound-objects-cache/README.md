@@ -35,13 +35,13 @@ HEALTH_ERR 3 pg degraded; 2 pg stuck unclean; 1 pg has unfound objects
 Identify which PGs have unfound objects:
 
 ```bash
-ceph pg dump_stuck unfound
+ceph pg dump_stuck unclean
 ```
 
 List the unfound objects in a specific PG:
 
 ```bash
-ceph pg 2.4 list_missing
+ceph pg 2.4 list_unfound
 ```
 
 Output:

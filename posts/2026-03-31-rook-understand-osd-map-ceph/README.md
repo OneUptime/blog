@@ -18,7 +18,7 @@ The OSD map stores:
 - The epoch number (incremented on every change)
 - All OSD entries with their state (`up`/`down`, `in`/`out`) and weight
 - CRUSH device class assignments
-- Blacklisted (blocked) client addresses
+- Blocklisted client addresses
 - Cluster-wide OSD flags (noout, nobackfill, etc.)
 
 ## Viewing the OSD Map

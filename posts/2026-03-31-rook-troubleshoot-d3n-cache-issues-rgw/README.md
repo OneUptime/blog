@@ -16,13 +16,13 @@ D3N issues typically fall into a few categories: cache not being populated at al
 
 ```bash
 # Check that D3N is enabled for the RGW instance
-ceph config get client.rgw.myzone d3n_l1_local_datacache_enabled
+ceph config get client.rgw.myzone rgw_d3n_l1_local_datacache_enabled
 
 # Verify the cache path is configured
-ceph config get client.rgw.myzone d3n_l1_datacache_persistent_path
+ceph config get client.rgw.myzone rgw_d3n_l1_datacache_persistent_path
 
 # Check the cache size setting
-ceph config get client.rgw.myzone d3n_l1_datacache_size
+ceph config get client.rgw.myzone rgw_d3n_l1_datacache_size
 ```
 
 If any of these return empty, D3N is not configured. Refer to the D3N setup guide.
@@ -57,7 +57,7 @@ df -h /var/lib/ceph/rgw/cache
 
 # Check if cache size config exceeds available disk space
 DISK_FREE=$(df -B1 /var/lib/ceph/rgw/cache | awk 'NR==2{print $4}')
-CACHE_SIZE=$(ceph config get client.rgw.myzone d3n_l1_datacache_size)
+CACHE_SIZE=$(ceph config get client.rgw.myzone rgw_d3n_l1_datacache_size)
 echo "Disk free: $DISK_FREE bytes"
 echo "Cache size: $CACHE_SIZE bytes"
 ```
@@ -65,7 +65,7 @@ echo "Cache size: $CACHE_SIZE bytes"
 If configured cache size exceeds disk space, reduce it:
 
 ```bash
-ceph config set client.rgw.myzone d3n_l1_datacache_size 5368709120
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 5368709120
 ```
 
 ## Redis Connectivity Issues

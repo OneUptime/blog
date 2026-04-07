@@ -20,8 +20,9 @@ Deploy the RBD CSI controller as a Nomad system job:
 
 ```hcl
 job "ceph-csi-rbdplugin-provisioner" {
-  type = "system"
+  type = "service"
   group "controller" {
+    count = 1
     task "csi-rbdplugin-provisioner" {
       driver = "docker"
       config {
@@ -90,7 +91,7 @@ capacity_max = "10GiB"
 
 capability {
   access_mode     = "single-node-writer"
-  attachment_mode = "block-device"
+  attachment_mode = "file-system"
 }
 
 parameters {

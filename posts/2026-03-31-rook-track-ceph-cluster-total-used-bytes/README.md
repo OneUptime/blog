@@ -62,13 +62,13 @@ groups:
   rules:
   - alert: CephRapidStorageGrowth
     expr: |
-      rate(ceph_cluster_total_used_bytes[1h]) > 1073741824
+      rate(ceph_cluster_total_used_bytes[1h]) * 3600 > 1073741824
     for: 30m
     labels:
       severity: warning
     annotations:
       summary: "Ceph is consuming more than 1 GiB/hour of raw storage"
-      description: "Current rate: {{ $value | humanize }}B/s"
+      description: "Current hourly rate: {{ $value | humanize }}B/h"
 
   - alert: CephClusterWillFillIn7Days
     expr: |
@@ -96,11 +96,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Compare with pool-level data:
 
 ```promql
-# Sum of all pool usage vs cluster total
-sum(ceph_pool_raw_bytes_used) vs ceph_cluster_total_used_bytes
+# Sum of all pool raw usage
+sum(ceph_pool_raw_bytes_used)
+
+# Cluster total used
+ceph_cluster_total_used_bytes
 ```
 
-The difference is overhead from metadata pools and system data.
+Compare these two values side by side. The difference is overhead from metadata pools and system data.
 
 ## Integrating with Cluster Autoscaling
 

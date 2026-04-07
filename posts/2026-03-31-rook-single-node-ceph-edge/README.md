@@ -108,7 +108,7 @@ Since there is no redundancy, implement frequent backups:
 rbd snap create single-node-pool/myvolume@$(date +%Y%m%d)
 
 # Export to external storage
-rbd export single-node-pool/myvolume@latest /backup/vol-backup.img
+rbd export single-node-pool/myvolume@$(date +%Y%m%d) /backup/vol-backup.img
 ```
 
 ## Recovering from OSD Failure

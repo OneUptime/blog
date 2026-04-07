@@ -12,20 +12,14 @@ Description: Leverage udev rules to automate device labeling, discovery, and man
 
 udev is the Linux device manager that handles device events and applies rules to configure devices as they appear. For Ceph device management with Rook, udev rules control automatic detection of new storage devices, device naming, and triggering of OSD provisioning.
 
-## Rook's Built-in udev Rules
+## Rook's Built-in Device Discovery
 
-Rook's discover DaemonSet installs udev rules on each node to catch block device events. View the installed rules:
+Rook's discover DaemonSet runs on each node and monitors udev events programmatically to detect block device changes. It uses Go-based udev monitoring (not static udev rule files) to watch for device add, change, and remove events. When a new device appears, the discover daemon evaluates it and updates the cluster's device inventory.
+
+You can check discovered devices via the Rook discover ConfigMap:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
-  chroot /host cat /etc/udev/rules.d/99-rook.rules
-```
-
-Typical output includes:
-
-```text
-SUBSYSTEM=="block", ACTION=="add", RUN+="/usr/bin/rook discover --context=..."
-SUBSYSTEM=="block", ACTION=="change", ENV{ID_FS_TYPE}=="", RUN+="..."
+kubectl -n rook-ceph get configmap rook-ceph-discover-worker-1 -o jsonpath='{.data.devices}'
 ```
 
 ## Creating Custom udev Rules
@@ -66,15 +60,17 @@ spec:
       hostPID: true
       containers:
       - name: installer
-        image: busybox
+        image: ubuntu:22.04
         command:
         - sh
         - -c
         - |
           cp /config/60-ceph-devices.rules /host/etc/udev/rules.d/
-          udevadm control --reload-rules
-          udevadm trigger
+          nsenter --target 1 --mount -- udevadm control --reload-rules
+          nsenter --target 1 --mount -- udevadm trigger --subsystem-match=block
           sleep infinity
+        securityContext:
+          privileged: true
         volumeMounts:
         - name: host-udev
           mountPath: /host/etc/udev/rules.d

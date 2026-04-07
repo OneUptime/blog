@@ -22,10 +22,10 @@ ceph_cluster_total_bytes{namespace="rook-ceph"}
 ceph_cluster_total_used_bytes{namespace="rook-ceph"}
 
 # Available raw capacity
-ceph_cluster_total_used_raw_bytes{namespace="rook-ceph"}
+ceph_cluster_available_bytes{namespace="rook-ceph"}
 
 # Per-pool used bytes
-ceph_pool_bytes_used{namespace="rook-ceph"}
+ceph_pool_stored{namespace="rook-ceph"}
 ```
 
 ## Building a Capacity Over Time Panel
@@ -55,7 +55,7 @@ Display this as a Stat panel labeled "Daily Growth Rate" with a unit of bytes.
 Use Prometheus's `predict_linear()` function to project when storage will be full:
 
 ```promql
-# Days until cluster is 85% full (using 7-day trend)
+# Projected usage percentage in 30 days (using 7-day trend)
 (
   predict_linear(ceph_cluster_total_used_bytes{namespace="rook-ceph"}[7d], 86400 * 30)
   / ceph_cluster_total_bytes{namespace="rook-ceph"}
@@ -70,7 +70,7 @@ Track growth per pool to identify which workloads are consuming the most space:
 
 ```promql
 # Pool-level growth rate (bytes/day)
-deriv(ceph_pool_bytes_used{namespace="rook-ceph"}[7d]) * 86400
+deriv(ceph_pool_stored{namespace="rook-ceph"}[7d]) * 86400
 ```
 
 Use a Bar chart panel grouped by the `name` label to compare pool growth rates side by side.

@@ -92,16 +92,16 @@ Username: cloudstack
 AuthSecret: <ceph-key>
 ```
 
-Or use the CloudStack API:
+Or use CloudMonkey (`cmk`), the CloudStack CLI:
 
 ```bash
-cloudstack add-primary-storage \
-  --zone-id <zone-id> \
-  --name ceph-primary \
-  --url "rbd://192.168.1.10:6789/cloudstack" \
-  --provider DefaultPrimary \
-  --username cloudstack \
-  --password <ceph-key>
+cmk create storagepool \
+  name=ceph-primary \
+  zoneid=<zone-id> \
+  podid=<pod-id> \
+  clusterid=<cluster-id> \
+  url="rbd://192.168.1.10/cloudstack" \
+  provider=DefaultPrimary
 ```
 
 ## Step 5 - Verify VM Disk Creation

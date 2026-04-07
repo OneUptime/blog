@@ -21,7 +21,7 @@ Ceph OSD pods need:
 
 Ceph MON and MGR pods need:
 - No special host privileges in most deployments
-- Capability to bind to ports below 1024
+- MON uses ports 6789 and 3300, MGR uses ports starting at 6800 (all above 1024)
 
 ## Configuring Pod Security Admission
 
@@ -68,47 +68,45 @@ Set security context on the Rook operator deployment (in Helm values or direct m
 
 ```yaml
 securityContext:
-  runAsNonRoot: false
+  runAsNonRoot: true
   readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
-    add:
-      - NET_BIND_SERVICE
 ```
 
 ## OSD Pod Security Context
 
-OSD pods require privileged access for device management. Verify in the Rook operator configuration:
+OSD pods require privileged access for device management. The Rook operator automatically sets the appropriate security context for OSD pods. You can verify OSD pods are running with privileged access:
 
-```yaml
-csi:
-  provisionerTolerations:
-    - operator: Exists
-  pluginTolerations:
-    - operator: Exists
-  cephFSAttachRequired: true
+```bash
+kubectl get pod -n rook-ceph -l app=rook-ceph-osd \
+  -o jsonpath='{.items[0].spec.containers[0].securityContext}'
 ```
 
 ## Audit PSA Violations
 
-Check if any Rook pods would violate a stricter policy:
+Check if any Rook pods would violate a stricter policy by using `warn` mode, which prints warnings to the client when pods are created:
 
 ```bash
 kubectl label namespace rook-ceph \
-  pod-security.kubernetes.io/audit=baseline \
+  pod-security.kubernetes.io/warn=baseline \
   --overwrite
+```
 
-# Check audit logs
-kubectl get events -n rook-ceph | grep FailedCreate
+Then recreate or rollout restart a pod to see warnings in the kubectl output. You can also use `dry-run` to test without actually creating pods:
+
+```bash
+kubectl get pod -n rook-ceph -l app=rook-ceph-osd -o yaml | \
+  kubectl apply --dry-run=server -f -
 ```
 
 Revert to privileged after auditing:
 
 ```bash
 kubectl label namespace rook-ceph \
-  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged \
   --overwrite
 ```
 

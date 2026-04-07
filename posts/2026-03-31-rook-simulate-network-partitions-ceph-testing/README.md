@@ -47,11 +47,11 @@ for n in nodes:
 for ip in $CLUSTER_IPS; do
   if [[ "$ip" != "$NODE_IP" ]]; then
     if [[ "$DIRECTION" == "in" || "$DIRECTION" == "both" ]]; then
-      kubectl debug node/"$TARGET_NODE" --image=busybox -- \
+      kubectl debug node/"$TARGET_NODE" --profile=sysadmin --image=nicolaka/netshoot -- \
         sh -c "iptables -A INPUT -s $ip -j DROP" 2>/dev/null || true
     fi
     if [[ "$DIRECTION" == "out" || "$DIRECTION" == "both" ]]; then
-      kubectl debug node/"$TARGET_NODE" --image=busybox -- \
+      kubectl debug node/"$TARGET_NODE" --profile=sysadmin --image=nicolaka/netshoot -- \
         sh -c "iptables -A OUTPUT -d $ip -j DROP" 2>/dev/null || true
     fi
   fi
@@ -115,6 +115,13 @@ spec:
     labelSelectors:
       app: rook-ceph-mon
   direction: both
+  target:
+    mode: all
+    selector:
+      namespaces:
+        - rook-ceph
+      labelSelectors:
+        app: rook-ceph-mon
   duration: "60s"
 ```
 
@@ -171,7 +178,7 @@ done
 
 ```bash
 # Remove iptables rules after test
-kubectl debug node/"$TARGET_NODE" --image=busybox -- \
+kubectl debug node/"$TARGET_NODE" --profile=sysadmin --image=nicolaka/netshoot -- \
   sh -c "iptables -F INPUT; iptables -F OUTPUT"
 
 # Remove tc rules

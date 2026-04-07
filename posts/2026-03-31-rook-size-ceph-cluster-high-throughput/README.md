@@ -139,7 +139,7 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 # Object storage throughput benchmark
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   rados -p throughput-pool bench 60 write \
-    --block-size=4M --num-objects=1000
+    -b 4M --max-objects=1000
 ```
 
 ## Summary

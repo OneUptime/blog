@@ -123,10 +123,10 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph df | grep cephfs
 
-# Count inodes per MDS
+# Check MDS cache inode count
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mds.0 dump cache | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print(len(d['inodes']))"
+  ceph tell mds.0 perf dump | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(d['mds_mem']['ino'])"
 ```
 
 ## CephFS Quotas
@@ -137,9 +137,10 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   setfattr -n ceph.quota.max_bytes -v 10737418240 /mnt/cephfs/tenant-a
 
 # Check current quota
-getfattr -n ceph.quota.max_bytes /mnt/cephfs/tenant-a
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  getfattr -n ceph.quota.max_bytes /mnt/cephfs/tenant-a
 ```
 
 ## Summary
 
-Sizing Rook-Ceph for file storage requires separate attention to the metadata pool (SSD, replicated) and data pool (HDD, replicated or EC). MDS RAM is the primary constraint for metadata performance - allocate 16-32GB per active MDS. Use multiple active MDS instances with directory pinning when serving many tenants or large file counts, and monitor inode counts per MDS to proactively balance the metadata workload.
+Sizing Rook-Ceph for file storage requires separate attention to the metadata pool (SSD, replicated) and data pool (HDD, replicated or EC). MDS RAM is the primary constraint for metadata performance - allocate 32-64GB per active MDS. Use multiple active MDS instances with directory pinning when serving many tenants or large file counts, and monitor inode counts per MDS to proactively balance the metadata workload.
