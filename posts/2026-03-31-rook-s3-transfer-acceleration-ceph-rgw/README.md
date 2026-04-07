@@ -62,7 +62,7 @@ spec:
   type: LoadBalancer
   selector:
     app: rook-ceph-rgw
-    rgw: my-store
+    rook_object_store: my-store
   ports:
     - port: 80
       targetPort: 8080
