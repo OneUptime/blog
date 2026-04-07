@@ -137,9 +137,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  const WORKER_COUNT = 5;
+  const WORKER_COUNT = 50;
   let completed = 0;
   const total = postsToValidate.length;
+
+  // Mutex to serialize git commit operations across parallel workers
+  let commitLock: Promise<void> = Promise.resolve();
+
+  function withCommitLock(fn: () => void): Promise<void> {
+    commitLock = commitLock.then(() => new Promise<void>((resolve) => {
+      fn();
+      resolve();
+    }));
+    return commitLock;
+  }
 
   function updateProgress(): void {
     const percent = Math.round((completed / total) * 100);
@@ -176,18 +187,23 @@ async function main(): Promise<void> {
       child.on('close', () => {
         clearTimeout(timeout);
 
-        // Commit after each validated post (serialized via spawnSync)
         const validationPath = path.join(postDir, VALIDATION_JSON);
         if (fs.existsSync(validationPath)) {
-          spawnSync('git', ['add', postDir], { cwd: process.cwd() });
-          spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
-            cwd: process.cwd(),
+          withCommitLock(() => {
+            spawnSync('git', ['add', postDir], { cwd: process.cwd() });
+            spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
+              cwd: process.cwd(),
+            });
+          }).then(() => {
+            completed++;
+            updateProgress();
+            resolve();
           });
+        } else {
+          completed++;
+          updateProgress();
+          resolve();
         }
-
-        completed++;
-        updateProgress();
-        resolve();
       });
 
       child.on('error', () => {
