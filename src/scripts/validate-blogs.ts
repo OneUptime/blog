@@ -36,7 +36,7 @@
  * 30. Relative link validation — Check that relative markdown links resolve to real files
  * 31. Tag normalization — Detect near-duplicate tags across posts (e.g., "Docker" vs "docker" vs "Dockers")
  * 32. social-media.png dimensions — Verify the image is the expected size (1200x630)
- * 33. validation.json coverage — Every post must have a validation.json in its folder with status "validated" or "not-code-blog"
+ * 33. validation.json coverage — Every post must have a validation.json in its folder with status "validated", "not-code-blog", or "not-technically-relevant"
  * 34. Tag casing — Tags must not start with lowercase unless listed in LowercaseTagAllowlist.json
  *
  * Run with: npm run validate
@@ -90,7 +90,7 @@ interface BlogIssue {
 }
 
 interface ValidationJson {
-  status: 'validated' | 'not-code-blog';
+  status: 'validated' | 'not-code-blog' | 'not-technically-relevant';
   validatedAt: string;
 }
 
@@ -2267,7 +2267,7 @@ function checkSocialMediaDimensions(postsDir: string[]): void {
 function checkCodeValidation(postsDir: string[]): void {
   logHeader(`Checking ${VALIDATION_JSON} for all blog posts`);
 
-  const validStatuses = new Set<string>(['validated', 'not-code-blog']);
+  const validStatuses = new Set<string>(['validated', 'not-code-blog', 'not-technically-relevant']);
   const errors: string[] = [];
 
   for (const dir of postsDir) {
@@ -2283,7 +2283,7 @@ function checkCodeValidation(postsDir: string[]): void {
 
     if (!validStatuses.has(entry.status)) {
       errors.push(
-        `  - ${colors.red}${dir}${colors.reset}: invalid status "${entry.status}" (must be "validated" or "not-code-blog")`
+        `  - ${colors.red}${dir}${colors.reset}: invalid status "${entry.status}" (must be "validated", "not-code-blog", or "not-technically-relevant")`
       );
     }
   }
@@ -2297,7 +2297,29 @@ function checkCodeValidation(postsDir: string[]): void {
       console.log(err);
     }
     console.log(
-      `\n${colors.bold}How to fix:${colors.reset}\n  Add a ${VALIDATION_JSON} file in each post folder with {"status": "validated", "validatedAt": "..."} or {"status": "not-code-blog", "validatedAt": "..."}.\n`
+      `\n${colors.bold}How to fix:${colors.reset}\n` +
+      `  Create a ${VALIDATION_JSON} file inside the post's folder (e.g., posts/<post-slug>/${VALIDATION_JSON}).\n\n` +
+      `  The file must contain a JSON object with "status" and "validatedAt" fields.\n\n` +
+      `  ${colors.bold}Before setting the status, you must review the post:${colors.reset}\n` +
+      `    1. Read the blog post thoroughly — understand the topic, code examples, commands, and technical claims.\n` +
+      `    2. Cross-reference with official documentation from the technology's official sources\n` +
+      `       (e.g., official docs, RFCs, language specs, GitHub repos of the project being discussed).\n` +
+      `    3. Verify that all code examples are syntactically correct, use current/non-deprecated APIs,\n` +
+      `       and would actually work as described.\n` +
+      `    4. Check that terminal commands, configuration snippets, and file paths are accurate.\n` +
+      `    5. If you find any technical errors, outdated information, or incorrect code — fix them directly\n` +
+      `       in the post's README.md before marking it as validated.\n\n` +
+      `  ${colors.bold}Choose the right status:${colors.reset}\n` +
+      `    • ${colors.green}"validated"${colors.reset}                — The post has been reviewed against official documentation, all code examples\n` +
+      `                                    and technical claims are correct (or have been fixed), and it is ready to publish.\n` +
+      `    • ${colors.green}"not-code-blog"${colors.reset}            — The post does not contain any code examples or technical implementation details,\n` +
+      `                                    so code validation is not applicable (e.g., opinion pieces, company updates).\n` +
+      `    • ${colors.green}"not-technically-relevant"${colors.reset} — The post is not technically relevant and should be removed from the blog.\n\n` +
+      `  ${colors.bold}Example ${VALIDATION_JSON}:${colors.reset}\n` +
+      `    {\n` +
+      `      "status": "validated",\n` +
+      `      "validatedAt": "${new Date().toISOString().split('T')[0]}"\n` +
+      `    }\n`
     );
   } else {
     logSuccess(`All ${postsDir.length} blog posts have a valid ${VALIDATION_JSON}`);
