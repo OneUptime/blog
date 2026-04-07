@@ -88,11 +88,12 @@ When using non-DNS-safe bucket names, always use path-style access:
 
 ```python
 import boto3
+from botocore.config import Config
 
 s3 = boto3.client(
     's3',
     endpoint_url='http://rook-ceph-rgw-my-store.rook-ceph.svc',
-    config=boto3.session.Config(s3={'addressing_style': 'path'})
+    config=Config(s3={'addressing_style': 'path'})
 )
 
 s3.create_bucket(Bucket='my_legacy_bucket')
