@@ -89,6 +89,7 @@ spec:
     - --bs=4k
     - --numjobs=4
     - --iodepth=32
+    - --size=1G
     - --runtime=60
     - --filename=/data/testfile
     - --output-format=json
