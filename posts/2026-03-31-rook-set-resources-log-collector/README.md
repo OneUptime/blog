@@ -10,7 +10,7 @@ Description: Configure resource requests and limits for Rook-Ceph log collector 
 
 ## Overview
 
-The Rook-Ceph log collector gathers logs from Ceph daemons running on each Kubernetes node and makes them accessible via standard `kubectl logs`. It runs as a sidecar or DaemonSet component depending on Rook configuration. Proper resource allocation ensures log collection keeps up with high-volume logging without impacting Ceph daemon performance.
+The Rook-Ceph log collector gathers logs from Ceph daemons running on each Kubernetes node and makes them accessible via standard `kubectl logs`. It runs as a sidecar container within each Ceph daemon pod, handling log file rotation and cleanup. Proper resource allocation ensures log collection keeps up with high-volume logging without impacting Ceph daemon performance.
 
 ## Configuring Log Collector Resources
 
@@ -40,12 +40,12 @@ Apply and check:
 ```bash
 kubectl apply -f cephcluster.yaml
 
-# Verify log collector pods
-kubectl -n rook-ceph get pods | grep log
+# Verify log collector sidecar in daemon pods
+kubectl -n rook-ceph get pods -l app=rook-ceph-osd
 
-# Check resource settings
-kubectl -n rook-ceph describe pod rook-ceph-logcollector-<node>-<hash> | \
-    grep -A10 "Limits:"
+# Check resource settings on a daemon pod's log-collector container
+kubectl -n rook-ceph describe pod <daemon-pod-name> | \
+    grep -A10 "log-collector" | grep -A10 "Limits:"
 ```
 
 ## Log Collector Configuration Options
@@ -55,7 +55,7 @@ spec:
   logCollector:
     enabled: true
     # How often to rotate collected logs
-    periodicity: "daily"   # Options: hourly, daily, weekly
+    periodicity: "daily"   # Options: hourly, daily, weekly, monthly
     # Maximum size before rotation
     maxLogSize: "500M"
 ```
@@ -63,14 +63,14 @@ spec:
 ## Viewing Collected Logs
 
 ```bash
-# View logs from a specific log collector pod
-kubectl -n rook-ceph logs rook-ceph-logcollector-<node>-<hash>
+# View logs from a daemon pod's log-collector sidecar
+kubectl -n rook-ceph logs <daemon-pod-name> -c log-collector
 
 # Follow logs in real time
-kubectl -n rook-ceph logs -f rook-ceph-logcollector-<node>-<hash>
+kubectl -n rook-ceph logs -f <daemon-pod-name> -c log-collector
 
 # Check log sizes on node
-kubectl -n rook-ceph exec rook-ceph-logcollector-<node>-<hash> -- \
+kubectl -n rook-ceph exec <daemon-pod-name> -c log-collector -- \
     ls -lh /var/log/ceph/
 ```
 
@@ -104,12 +104,11 @@ spec:
 
 ```bash
 # Check disk usage by log collector on a node
-kubectl -n rook-ceph exec rook-ceph-logcollector-<node>-<hash> -- \
+kubectl -n rook-ceph exec <daemon-pod-name> -c log-collector -- \
     du -sh /var/log/ceph/*
 
-# Force log rotation if disk space is low
-kubectl -n rook-ceph exec rook-ceph-logcollector-<node>-<hash> -- \
-    logrotate -f /etc/logrotate.d/ceph
+# Log rotation is handled automatically by the sidecar based on
+# the periodicity and maxLogSize settings in spec.logCollector
 ```
 
 ## Integrating with External Log Systems
