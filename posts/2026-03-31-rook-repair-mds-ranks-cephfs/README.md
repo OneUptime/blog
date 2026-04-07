@@ -60,7 +60,7 @@ Attempt to recover as many metadata entries as possible from the journal:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-journal-tool --rank=cephfs:0 journal recover-dentries
+  cephfs-journal-tool --rank=cephfs:0 event recover_dentries
 ```
 
 ## Reset the Journal
@@ -78,10 +78,10 @@ After journal operations, scan the metadata pool for orphaned or inconsistent ob
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-data-scan scan_extents cephfs-metadata
+  cephfs-data-scan scan_extents cephfs-data0
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-data-scan scan_inodes cephfs-metadata
+  cephfs-data-scan scan_inodes cephfs-data0
 ```
 
 ## Bring the Filesystem Back Online
