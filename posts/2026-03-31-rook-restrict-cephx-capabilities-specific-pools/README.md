@@ -21,7 +21,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   mon 'allow r' \
   osd 'allow rw pool=app-a-data'
 
-# Read access to production, read-write to staging
+# Read access to app-a's pool, read-write to app-b's pool
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth get-or-create client.app-b \
   mon 'allow r' \
@@ -72,13 +72,13 @@ Test that a restricted key cannot access unauthorized pools:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth get-key client.app-a > /tmp/app-a.key
 
-# Try to access an unauthorized pool - should fail
+# Try to write an object to an unauthorized pool - should fail
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph --id app-a --key $(cat /tmp/app-a.key) \
-  osd pool stats app-b-data 2>&1
+  rados --id app-a --key $(cat /tmp/app-a.key) \
+  -p app-b-data put testobj /etc/hostname 2>&1
 ```
 
-Expected output: `Error EACCES: access denied`
+Expected output: `error putting app-b-data/testobj: (1) Operation not permitted`
 
 ## Review All Key Capabilities
 
