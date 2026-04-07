@@ -45,7 +45,7 @@ ceph config set osd osd_scrub_auto_repair_num_errors 5  # max errors to auto-rep
 ceph pg stat | grep repair
 
 # Watch the repair state clear
-watch ceph health detail | grep -E "inconsistent|repair"
+watch 'ceph health detail | grep -E "inconsistent|repair"'
 ```
 
 For a specific PG:
@@ -104,11 +104,11 @@ In this case:
 
 ```bash
 # Identify which objects are still inconsistent
-rados list-inconsistent-obj <pg-id> --pool mypool
+rados list-inconsistent-obj <pg-id>
 
-# If all copies are bad, the object is unrecoverable
-# Mark it as lost (last resort)
-ceph pg <pg-id> mark_unfound_lost delete
+# If all copies are bad, the object may be unrecoverable
+# Remove the corrupt object as a last resort
+rados -p <pool-name> rm <object-name>
 ```
 
 ## Repair During Scrub
