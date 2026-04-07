@@ -72,7 +72,6 @@ velero install \
   --backup-location-config \
     region=us-east-1,s3ForcePathStyle=true,s3Url=http://<rgw-ip>:80 \
   --use-volume-snapshots=true \
-  --features=EnableCSI \
   --namespace velero
 ```
 
@@ -215,4 +214,4 @@ spec:
 
 ## Summary
 
-Velero integrates with Rook-Ceph using two features: the RGW object store as an S3-compatible backup location for Velero metadata and snapshot data, and CSI volume snapshots for point-in-time backup of PVC data. Configure the backup location with `s3ForcePathStyle=true` for RGW compatibility, create VolumeSnapshotClasses labeled for Velero, and enable `--features=EnableCSI` during Velero installation. Schedule regular backups and periodically test restores to validate recovery capability.
+Velero integrates with Rook-Ceph using two features: the RGW object store as an S3-compatible backup location for Velero metadata and snapshot data, and CSI volume snapshots for point-in-time backup of PVC data. Configure the backup location with `s3ForcePathStyle=true` for RGW compatibility, create VolumeSnapshotClasses labeled for Velero, and enable `--use-volume-snapshots=true` during Velero installation. Schedule regular backups and periodically test restores to validate recovery capability.
