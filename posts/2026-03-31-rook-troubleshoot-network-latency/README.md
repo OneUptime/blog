@@ -57,17 +57,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Monitor network interface statistics on nodes:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host sar -n DEV 5 10
 
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host netstat -s | grep -E "retransmit|error"
 ```
 
 Check for packet drops or errors:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host ip -s link show eth0
 ```
 
@@ -76,14 +76,14 @@ kubectl -n rook-ceph debug node/worker-1 -- \
 CPU interrupt handling can affect latency. Check and configure NIC interrupts:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host cat /proc/interrupts | grep eth0
 ```
 
 Set interrupt affinity for storage NICs:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host systemctl start irqbalance
 ```
 
@@ -92,9 +92,9 @@ kubectl -n rook-ceph debug node/worker-1 -- \
 Review TCP settings that affect Ceph latency:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host sysctl net.ipv4.tcp_congestion_control
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host sysctl net.core.rmem_max
 ```
 
@@ -110,7 +110,7 @@ net.ipv4.tcp_congestion_control = bbr
 ```
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl -n rook-ceph debug node/worker-1 -it --image=busybox -- \
   chroot /host sysctl -p /etc/sysctl.d/90-ceph-network.conf
 ```
 
