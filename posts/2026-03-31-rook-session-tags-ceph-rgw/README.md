@@ -8,15 +8,15 @@ Description: Learn how to use session tags with Ceph RGW STS to pass attributes 
 
 ---
 
-Session tags are key-value pairs that you can pass when assuming an IAM role via STS. These tags become available as condition variables in IAM policies, enabling attribute-based access control (ABAC) without creating separate roles for each user or group.
+Session tags are key-value pairs that can be passed when assuming an IAM role via STS. These tags become available as condition variables in IAM policies, enabling attribute-based access control (ABAC) without creating separate roles for each user or group.
 
 ## What Are Session Tags
 
-When you call `AssumeRole` or `AssumeRoleWithWebIdentity`, you can include session tags. These tags are then accessible in policy conditions via the `aws:PrincipalTag` prefix.
+In Ceph RGW, session tags are currently supported via `AssumeRoleWithWebIdentity`. When using an OIDC provider, session tags are passed as claims inside the JWT token under the `https://aws.amazon.com/tags` namespace. These tags are then accessible in policy conditions via the `aws:PrincipalTag` prefix.
 
 ## Setting Up a Role with Tag-Based Policies
 
-Create a role and attach a policy that uses session tags as conditions:
+Create a role and attach a trust policy that validates session tags:
 
 ```bash
 radosgw-admin role create \
@@ -27,10 +27,10 @@ radosgw-admin role create \
     "Statement": [
       {
         "Effect": "Allow",
-        "Principal": {"AWS": "arn:aws:iam:::user/myuser"},
-        "Action": "sts:AssumeRole",
+        "Principal": {"Federated": "arn:aws:iam:::oidc-provider/your-idp.example.com"},
+        "Action": "sts:AssumeRoleWithWebIdentity",
         "Condition": {
-          "StringLike": {"sts:TagKeys": "department"}
+          "StringEquals": {"aws:RequestTag/department": "engineering"}
         }
       }
     ]
@@ -49,64 +49,76 @@ radosgw-admin role-policy put \
       {
         "Effect": "Allow",
         "Action": ["s3:GetObject", "s3:PutObject"],
-        "Resource": "arn:aws:s3:::${aws:PrincipalTag/department}/*"
+        "Resource": "arn:aws:s3:::engineering-bucket/*",
+        "Condition": {
+          "StringEquals": {"aws:PrincipalTag/department": "engineering"}
+        }
       }
     ]
   }'
 ```
 
-## Passing Session Tags with AssumeRole
+## Passing Session Tags via OIDC JWT
 
-```bash
-aws sts assume-role \
-  --role-arn "arn:aws:iam:::role/TaggedAccessRole" \
-  --role-session-name "alice-session" \
-  --tags '[{"Key":"department","Value":"engineering"},{"Key":"team","Value":"backend"}]' \
-  --endpoint-url http://your-rgw-host:7480
+Session tags in Ceph RGW are passed as claims in the JWT token from your OIDC provider. The token must include a `https://aws.amazon.com/tags` claim with a `principal_tags` structure:
+
+```json
+{
+  "sub": "alice",
+  "iss": "https://your-idp.example.com",
+  "aud": "your-client-id",
+  "https://aws.amazon.com/tags": {
+    "principal_tags": {
+      "department": ["engineering"],
+      "team": ["backend"]
+    }
+  }
+}
 ```
 
-## Using Tags in Python with boto3
+## Using AssumeRoleWithWebIdentity in Python with boto3
 
 ```python
 import boto3
 
 sts = boto3.client(
     'sts',
-    endpoint_url='http://your-rgw-host:7480',
-    aws_access_key_id='myuser-access-key',
-    aws_secret_access_key='myuser-secret-key'
+    endpoint_url='http://your-rgw-host:7480'
 )
 
-response = sts.assume_role(
+response = sts.assume_role_with_web_identity(
     RoleArn='arn:aws:iam:::role/TaggedAccessRole',
     RoleSessionName='alice-session',
-    Tags=[
-        {'Key': 'department', 'Value': 'engineering'},
-        {'Key': 'project', 'Value': 'infra-tools'}
-    ]
+    WebIdentityToken='<your-jwt-token-with-tags-claim>'
 )
 
 creds = response['Credentials']
 print(f"Access Key: {creds['AccessKeyId']}")
 ```
 
-## Transitive Session Tags
+## Validating Tags with Trust Policy Conditions
 
-Mark tags as transitive so they persist when the assumed role assumes another role:
+You can use `aws:RequestTag` and `aws:TagKeys` in the role's trust policy to control which tags are required or allowed:
 
-```bash
-aws sts assume-role \
-  --role-arn "arn:aws:iam:::role/TaggedAccessRole" \
-  --role-session-name "alice-session" \
-  --tags '[{"Key":"department","Value":"engineering"}]' \
-  --transitive-tag-keys department \
-  --endpoint-url http://your-rgw-host:7480
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {"Federated": "arn:aws:iam:::oidc-provider/your-idp.example.com"},
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {"aws:RequestTag/department": "engineering"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["department", "team"]}
+      }
+    }
+  ]
+}
 ```
 
-## Inheriting Tags from OIDC Tokens
-
-When using `AssumeRoleWithWebIdentity`, RGW can map OIDC claims to session tags based on the role's tag mapping configuration. Ensure the JWT contains the relevant claims and the role trust policy references them via `sts:RequestTag`.
+The `aws:RequestTag` condition validates the value of a specific tag in the request, while `aws:TagKeys` validates which tag keys are present.
 
 ## Summary
 
-Session tags in Ceph RGW enable attribute-based access control by allowing callers to inject key-value pairs into their assumed role sessions. Policy conditions then use `aws:PrincipalTag` to dynamically restrict access based on those tags, reducing the number of roles needed and enabling a more scalable permission model.
+Session tags in Ceph RGW enable attribute-based access control by embedding key-value pairs as claims in OIDC JWT tokens used with `AssumeRoleWithWebIdentity`. Policy conditions then use `aws:PrincipalTag` to restrict access based on those tags, and trust policies use `aws:RequestTag` and `aws:TagKeys` to validate incoming tags, reducing the number of roles needed and enabling a more scalable permission model.
