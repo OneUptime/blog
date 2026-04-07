@@ -102,7 +102,7 @@ If OSD upgrades have started but are causing failures, pause the update by patch
 ```bash
 # Pause the operator reconciliation temporarily
 kubectl annotate cephcluster rook-ceph -n rook-ceph \
-  rook.io/do-not-reconcile=true
+  rook.io/pause-reconciliation=true
 
 # Revert Ceph version image
 kubectl patch cephcluster rook-ceph -n rook-ceph \
@@ -111,16 +111,20 @@ kubectl patch cephcluster rook-ceph -n rook-ceph \
 
 # Resume reconciliation
 kubectl annotate cephcluster rook-ceph -n rook-ceph \
-  rook.io/do-not-reconcile-
+  rook.io/pause-reconciliation-
 
 # Operator will now downgrade in-progress daemons
 ```
 
 ## Rollback a Specific Daemon Deployment
 
-For fine-grained control, roll back a single daemon deployment:
+For fine-grained control, roll back a single daemon deployment. You must first pause operator reconciliation, otherwise the operator will detect the drift and redeploy the daemon to match the CephCluster CR:
 
 ```bash
+# Pause operator reconciliation first
+kubectl annotate cephcluster rook-ceph -n rook-ceph \
+  rook.io/pause-reconciliation=true
+
 # Check rollout history
 kubectl rollout history deployment rook-ceph-mgr-a -n rook-ceph
 
@@ -129,6 +133,10 @@ kubectl rollout undo deployment rook-ceph-mgr-a -n rook-ceph
 
 # For OSD (replace with actual deployment name)
 kubectl rollout undo deployment rook-ceph-osd-3 -n rook-ceph
+
+# Resume reconciliation after verifying the rollback
+kubectl annotate cephcluster rook-ceph -n rook-ceph \
+  rook.io/pause-reconciliation-
 ```
 
 ## Verify Cluster After Rollback
@@ -150,7 +158,7 @@ kubectl get pvc --all-namespaces | grep Bound
 
 ## Ceph Version Downgrade Limitations
 
-Ceph supports downgrading within a minor version (e.g., 18.2.4 -> 18.2.2) but not across major versions (e.g., 18.x -> 17.x). Check the Ceph docs for the specific version's downgrade support:
+Ceph does not officially support downgrades. However, reverting within the same minor release series (e.g., 18.2.4 -> 18.2.2) is generally safe in practice since on-disk formats typically do not change between point releases. Downgrading across major versions (e.g., 18.x -> 17.x) is not supported and can cause data corruption due to incompatible on-disk format changes. Check which versions your daemons are running:
 
 ```bash
 # Check if downgrade is supported
@@ -164,9 +172,9 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 # Review operator logs from the failed upgrade attempt
 kubectl logs -n rook-ceph deploy/rook-ceph-operator --tail=200 > operator-logs.txt
 
-# Check Ceph log for daemon errors
+# Watch Ceph cluster log for daemon errors
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph log last 100
+  ceph -w
 
 # Review CephCluster conditions
 kubectl describe cephcluster rook-ceph -n rook-ceph | grep -A20 Conditions
@@ -174,4 +182,4 @@ kubectl describe cephcluster rook-ceph -n rook-ceph | grep -A20 Conditions
 
 ## Summary
 
-Rolling back a failed Rook-Ceph upgrade involves reverting the operator image (via Helm rollback or `kubectl set image`) and patching the `CephCluster` CRD to the previous Ceph version image. If an OSD rolling update is in progress, annotate the CephCluster to pause reconciliation before reverting. Always verify daemon version consistency with `ceph versions` and cluster health with `ceph status` after the rollback completes.
+Rolling back a failed Rook-Ceph upgrade involves reverting the operator image (via Helm rollback or `kubectl set image`) and patching the `CephCluster` CRD to the previous Ceph version image. If an OSD rolling update is in progress, annotate the CephCluster with `rook.io/pause-reconciliation` to pause reconciliation before reverting. Always verify daemon version consistency with `ceph versions` and cluster health with `ceph status` after the rollback completes.
