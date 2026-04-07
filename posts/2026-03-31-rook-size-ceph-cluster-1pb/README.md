@@ -58,10 +58,10 @@ Recommended for fault tolerance: 12+ nodes (1 per rack)
 With 12 nodes at 480TB each = 5.76PB raw, yielding:
 
 ```text
-5760TB / 1.375 / 1.2 = ~3.5PB usable
+5760TB / 1.375 / 1.25 = ~3.4PB usable
 ```
 
-This provides 3.5x your 1PB target for comfortable growth.
+This provides over 3x your 1PB target for comfortable growth.
 
 ## Rack-Level Fault Domain Configuration
 
@@ -113,7 +113,7 @@ spec:
     nodes:
     - name: "storage-node-01"
       devices:
-      - name: "/dev/sd[b-y]"   # 20 drives per node
+      - name: "/dev/sd[b-y]"   # 24 drives per node
 ```
 
 ## CRUSH Map Customization
@@ -125,11 +125,11 @@ At 1PB scale, you will need a custom CRUSH map to reflect your rack topology:
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd getcrushmap -o /tmp/crush.bin
 
-ceph-deosd -i /tmp/crush.bin -o /tmp/crush.txt
+crushtool -d /tmp/crush.bin -o /tmp/crush.txt
 
 # Edit crush.txt to define rack buckets
 # ...then compile and apply
-ceph-osd -i /tmp/crush.txt -o /tmp/crush-new.bin
+crushtool -c /tmp/crush.txt -o /tmp/crush-new.bin
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd setcrushmap -i /tmp/crush-new.bin
 ```
@@ -140,12 +140,16 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 # Enable the balancer
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph mgr module enable balancer
-ceph balancer mode upmap
-ceph balancer on
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph balancer mode upmap
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph balancer on
 
 # Enable PG autoscaler
-ceph mgr module enable pg_autoscaler
-ceph config set global osd_pool_default_pg_autoscale_mode on
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph mgr module enable pg_autoscaler
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph config set global osd_pool_default_pg_autoscale_mode on
 ```
 
 ## Summary
