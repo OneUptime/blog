@@ -8,7 +8,7 @@ Description: Tune rgw_thread_pool_size in Ceph RGW to match your hardware concur
 
 ---
 
-The `rgw_thread_pool_size` parameter controls the number of worker threads in the RGW HTTP server. Getting this value right is critical for matching CPU resources to request concurrency.
+The `rgw_thread_pool_size` parameter controls the size of the worker thread pool used by the RGW beast frontend for async I/O processing. Getting this value right is critical for matching CPU resources to request concurrency.
 
 ## Default and Recommended Values
 
@@ -38,13 +38,13 @@ ceph config set client.rgw rgw_thread_pool_size 64
 
 Note: More threads does not always mean better performance. Each thread consumes memory (stack size) and context switching overhead increases with thread count.
 
-## Relationship with Frontend Threads
+## Relationship with Frontend Configuration
 
-For the beast frontend, threads are configured via `rgw_frontends`, and `rgw_thread_pool_size` controls the backend RADOS processing pool:
+For the beast frontend (the default since Luminous), `rgw_thread_pool_size` controls the worker thread pool that handles all async I/O processing. Note that `num_threads` is a CivetWeb-only option and is not valid for the beast frontend:
 
 ```bash
-# Frontend acceptor threads and backend processing threads
-ceph config set client.rgw rgw_frontends "beast port=7480 num_threads=512"
+# Configure beast frontend port and the worker thread pool size
+ceph config set client.rgw rgw_frontends "beast port=7480"
 ceph config set client.rgw rgw_thread_pool_size 512
 ```
 
@@ -62,7 +62,7 @@ data:
   config: |
     [client.rgw.my-store.a]
     rgw_thread_pool_size = 256
-    rgw_frontends = beast port=7480 num_threads=256
+    rgw_frontends = beast port=7480
 ```
 
 Also set resource limits in the CephObjectStore:
@@ -100,4 +100,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-rgw-my-store-a -- \
 
 ## Summary
 
-`rgw_thread_pool_size` controls how many RADOS backend threads RGW uses for processing operations. Set it to approximately 2x your available CPU cores per RGW instance, and match the beast frontend `num_threads` parameter. Apply resource limits in the Rook CephObjectStore spec to ensure predictable performance.
+`rgw_thread_pool_size` controls the size of the worker thread pool used by the RGW beast frontend for async I/O processing. Set it to approximately 2x your available CPU cores per RGW instance. Apply resource limits in the Rook CephObjectStore spec to ensure predictable performance.
