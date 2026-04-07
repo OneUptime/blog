@@ -41,7 +41,7 @@ Run an S3-Select query with AWS CLI:
 aws s3api select-object-content \
   --bucket analytics \
   --key sales.csv \
-  --expression "SELECT region, SUM(CAST(revenue AS DECIMAL)) FROM S3Object GROUP BY region" \
+  --expression "SELECT * FROM S3Object WHERE CAST(revenue AS DECIMAL) > 10000" \
   --expression-type SQL \
   --input-serialization '{"CSV": {"FileHeaderInfo": "USE"}, "CompressionType": "NONE"}' \
   --output-serialization '{"CSV": {}}' \
@@ -105,11 +105,11 @@ aws s3api select-object-content \
 ## Supported SQL Features
 
 Ceph RGW S3-Select supports:
-- `SELECT`, `WHERE`, `LIMIT`, `GROUP BY`, `HAVING`
+- `SELECT`, `WHERE`, `LIMIT`
 - `CAST`, `COALESCE`, `NULLIF`
 - String functions: `LOWER`, `UPPER`, `SUBSTRING`, `TRIM`
 - Aggregate functions: `SUM`, `COUNT`, `MIN`, `MAX`, `AVG`
 
 ## Summary
 
-S3-Select in Ceph RGW enables server-side SQL queries against CSV and compressed objects, significantly reducing the data returned to clients. Use the AWS S3 API or boto3 to push query predicates and aggregations to the storage layer, ideal for analytics workflows that only need a subset of large datasets.
+S3-Select in Ceph RGW enables server-side SQL queries against CSV and compressed objects, significantly reducing the data returned to clients. Use the AWS S3 API or boto3 to push query predicates to the storage layer, ideal for analytics workflows that only need a subset of large datasets.
