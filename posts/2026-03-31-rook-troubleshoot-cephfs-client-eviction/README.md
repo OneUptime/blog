@@ -74,7 +74,7 @@ Increase the timeout before MDS evicts a laggy client. Use the config to allow m
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph config set mds mds_session_blacklist_on_timeout false
+  ceph config set mds mds_session_blocklist_on_timeout false
 
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   ceph config set mds mds_session_timeout 120
