@@ -48,7 +48,7 @@ groups:
         expr: ceph_pool_degraded_ratio > 0
 
       - record: ceph_pool_downtime_total_seconds
-        expr: sum_over_time(ceph_pool_is_degraded[1h]) * 3600
+        expr: avg_over_time(ceph_pool_is_degraded[1h]) * 3600
 ```
 
 This records the total seconds a pool has been degraded over rolling windows.
@@ -58,12 +58,12 @@ This records the total seconds a pool has been degraded over rolling windows.
 With event data stored in Prometheus, you can derive MTBF and MTTR using PromQL. First, track state transitions using `changes()`:
 
 ```text
-# Number of failure events in the last 7 days
+# Number of state transitions in the last 7 days (each incident has 2 transitions)
 changes(ceph_pool_is_degraded[7d])
 
-# MTTR: average recovery duration (approximate)
+# MTTR: average recovery duration per incident (approximate)
 avg_over_time(ceph_pool_is_degraded[7d]) * 7 * 24 * 3600
-  / changes(ceph_pool_is_degraded[7d])
+  / (changes(ceph_pool_is_degraded[7d]) / 2)
 ```
 
 For a more precise calculation, use Prometheus alertmanager to record alert start and end times:
@@ -82,13 +82,13 @@ Alertmanager timestamps can be exported to a database to compute exact MTBF and 
 
 ## Visualizing with Grafana
 
-Import the Ceph dashboard (ID 2842) into Grafana, then add a custom panel using the query below:
+Import the Ceph dashboard (ID 2842) into Grafana, then add a custom panel using the recording rule defined earlier:
 
 ```text
-(time() - ceph_pool_last_ok_time) / 3600
+avg_over_time(ceph_pool_is_degraded[1h]) * 60
 ```
 
-This shows hours since the pool was last fully healthy. Add threshold lines at 1 hour (warning) and 4 hours (critical) to quickly see SLA compliance.
+This shows minutes of pool degradation within the last hour. Add threshold lines at 5 minutes (warning) and 30 minutes (critical) to quickly see SLA compliance.
 
 ## Automating Reports
 
@@ -105,7 +105,7 @@ def get_pool_failures(pool_name: str, duration: str = "7d") -> dict:
     data = resp.json()["data"]["result"]
     failures = float(data[0]["value"][1]) if data else 0
 
-    downtime_query = f'sum_over_time(ceph_pool_is_degraded{{name="{pool_name}"}}[{duration}]) * 60'
+    downtime_query = f'avg_over_time(ceph_pool_is_degraded{{name="{pool_name}"}}[{duration}]) * {7 * 24 * 60}'
     resp2 = requests.get(f"{PROMETHEUS}/api/v1/query", params={"query": downtime_query})
     data2 = resp2.json()["data"]["result"]
     downtime_minutes = float(data2[0]["value"][1]) if data2 else 0
