@@ -73,7 +73,7 @@ Track PVC growth over time with a simple script:
 ```bash
 #!/bin/bash
 DATE=$(date +%Y-%m-%d)
-TOTAL=$(kubectl get pvc -A --no-headers | awk '{print $6}' | \
+TOTAL=$(kubectl get pvc -A --no-headers | awk '{print $5}' | \
   sed 's/Gi//' | awk '{sum+=$1} END {print sum}')
 echo "$DATE,$TOTAL" >> /var/log/pvc-capacity.csv
 echo "Total PVC capacity requested: ${TOTAL}Gi"
