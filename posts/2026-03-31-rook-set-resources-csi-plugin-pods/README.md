@@ -23,64 +23,69 @@ The CSI plugin DaemonSet includes multiple containers:
 
 Each container needs its own resource configuration.
 
-## Configuring CSI Plugin Resources via CephCluster
+## Configuring CSI Plugin Resources via Operator ConfigMap
+
+CSI plugin resources are configured through the Rook operator, not the CephCluster CR. Set them in the `rook-ceph-operator-config` ConfigMap:
 
 ```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: rook-ceph
+  name: rook-ceph-operator-config
   namespace: rook-ceph
-spec:
-  csi:
-    csiRBDPluginResource: |
-      - name: driver-registrar
-        resource:
-          requests:
-            memory: 128Mi
-            cpu: 50m
-          limits:
-            memory: 256Mi
-            cpu: 100m
-      - name: csi-rbdplugin
-        resource:
-          requests:
-            memory: 512Mi
-            cpu: 250m
-          limits:
-            memory: 1Gi
-            cpu: 500m
-      - name: liveness-prometheus
-        resource:
-          requests:
-            memory: 128Mi
-            cpu: 50m
-          limits:
-            memory: 256Mi
-            cpu: 100m
-    csiCephFSPluginResource: |
-      - name: driver-registrar
-        resource:
-          requests:
-            memory: 128Mi
-            cpu: 50m
-          limits:
-            memory: 256Mi
-            cpu: 100m
-      - name: csi-cephfsplugin
-        resource:
-          requests:
-            memory: 512Mi
-            cpu: 250m
-          limits:
-            memory: 1Gi
-            cpu: 500m
+data:
+  CSI_RBD_PLUGIN_RESOURCE: |
+    - name: driver-registrar
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+    - name: csi-rbdplugin
+      resource:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+    - name: liveness-prometheus
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+  CSI_CEPHFS_PLUGIN_RESOURCE: |
+    - name: driver-registrar
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+    - name: csi-cephfsplugin
+      resource:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+    - name: liveness-prometheus
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
 ```
+
+Alternatively, if deploying Rook via Helm, set these in the `rook-ceph` operator chart values under `csi.csiRBDPluginResource` and `csi.csiCephFSPluginResource`.
 
 ## Applying the Configuration
 
 ```bash
-kubectl apply -f cephcluster.yaml
+kubectl apply -f operator-configmap.yaml
 
 # Watch CSI plugin pods roll
 kubectl -n rook-ceph get pods -l app=csi-rbdplugin -w
@@ -115,7 +120,7 @@ If PVC mounts time out, the CSI plugin may be CPU-starved:
 journalctl -u kubelet | grep -i "volume\|mount\|csi" | tail -20
 
 # Increase CPU limit for the plugin container
-# (update resources via CephCluster spec and re-apply)
+# (update resources via operator ConfigMap and re-apply)
 ```
 
 ### OOM on Large Volume Operations
@@ -144,4 +149,4 @@ For nodes that serve many PVCs, consider tainting and using nodeAffinity to appl
 
 ## Summary
 
-Rook CSI plugin pods run on every worker node and handle all Ceph volume mount/unmount operations. Configure resources through the CephCluster `csi.*PluginResource` fields for each container in the DaemonSet. Memory limits are the most critical - OOM-killed CSI plugin pods cause PVC mount failures. Start with 512Mi/1Gi request/limit and scale up based on observed usage, particularly on nodes serving many PVCs simultaneously.
+Rook CSI plugin pods run on every worker node and handle all Ceph volume mount/unmount operations. Configure resources through the `rook-ceph-operator-config` ConfigMap (`CSI_RBD_PLUGIN_RESOURCE` and `CSI_CEPHFS_PLUGIN_RESOURCE` keys) or via the rook-ceph operator Helm chart values for each container in the DaemonSet. Memory limits are the most critical - OOM-killed CSI plugin pods cause PVC mount failures. Start with 512Mi/1Gi request/limit and scale up based on observed usage, particularly on nodes serving many PVCs simultaneously.
