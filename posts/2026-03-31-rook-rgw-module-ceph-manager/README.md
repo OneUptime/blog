@@ -106,9 +106,9 @@ radosgw-admin user create --uid=testuser --display-name="Test User"
 Test S3 access using the AWS CLI:
 
 ```bash
-aws s3 ls --endpoint-url http://192.168.1.10:8080 \
-  --aws-access-key-id <access_key> \
-  --aws-secret-access-key <secret_key>
+AWS_ACCESS_KEY_ID=<access_key> \
+AWS_SECRET_ACCESS_KEY=<secret_key> \
+aws s3 ls --endpoint-url http://192.168.1.10:8080
 ```
 
 ## Summary
