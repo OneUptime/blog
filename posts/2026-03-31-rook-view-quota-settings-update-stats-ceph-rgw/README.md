@@ -12,7 +12,7 @@ Ceph RGW updates quota statistics asynchronously, which means `user stats` may l
 
 ## Why Stats Need to Be Synced
 
-Quota stats are updated asynchronously. The documented way to refresh the latest user quota usage is to run `radosgw-admin user stats --uid <uid> --sync-stats` before reading `user stats` output. Ceph also caches quota settings on each RGW instance, so quota enforcement across multiple gateways is not perfectly synchronized unless those cache intervals are tuned.
+Quota stats are updated asynchronously. The documented way to refresh the latest user quota usage is to run `radosgw-admin user stats --uid <uid> --sync-stats` before reading `user stats` output. Ceph also caches quota statistics on each RGW instance, so quota enforcement across multiple gateways is not perfectly synchronized unless those cache and sync intervals are tuned.
 
 ## Viewing User Quota and Current Stats
 
