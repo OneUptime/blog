@@ -25,7 +25,6 @@ List all inconsistent PGs:
 
 ```bash
 ceph pg ls inconsistent
-ceph pg ls +inconsistent
 ```
 
 View details for a specific PG:
@@ -40,8 +39,8 @@ Get a detailed error report for a specific PG:
 
 ```bash
 rados list-inconsistent-pg pool_name
-rados list-inconsistent-obj pool_name --pgid=3.4f
-rados list-inconsistent-snapset pool_name --pgid=3.4f
+rados list-inconsistent-obj 3.4f
+rados list-inconsistent-snapset 3.4f
 ```
 
 Output example shows which OSD has the bad copy:
@@ -52,8 +51,8 @@ Output example shows which OSD has the bad copy:
   "inconsistents": [
     {
       "object": { "name": "myfile", "nspace": "", "locator": "" },
-      "errors": ["data_digest_mismatch_info"],
-      "union_shard_errors": ["data_digest_mismatch_info"],
+      "errors": ["data_digest_mismatch"],
+      "union_shard_errors": ["data_digest_mismatch"],
       "selected_object_info": { ... },
       "shards": [...]
     }
