@@ -84,7 +84,7 @@ kubectl -n rook-ceph logs -f deploy/rook-ceph-operator
 kubectl -n rook-ceph get pods -w
 ```
 
-Monitor Ceph daemons upgrading in order - MGR, MON, OSD, MDS, RGW:
+Monitor Ceph daemons upgrading in order - MON, MGR, OSD, MDS, RGW:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph versions
