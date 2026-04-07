@@ -86,18 +86,44 @@ roleRef:
 
 ## Preventing Access to Rook Secrets
 
-Ceph admin keys are stored as Kubernetes Secrets. Restrict access to these:
+Ceph admin keys are stored as Kubernetes Secrets. Restrict which service accounts can read them by creating a Role that only grants secret access to the Rook operator:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rook-ceph-secret-reader
+  namespace: rook-ceph
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rook-ceph-secret-reader-binding
+  namespace: rook-ceph
+subjects:
+  - kind: ServiceAccount
+    name: rook-ceph-system
+    namespace: rook-ceph
+roleRef:
+  kind: Role
+  name: rook-ceph-secret-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+You can further limit network access to the rook-ceph namespace with a NetworkPolicy:
+
+```yaml
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: restrict-rook-secrets
+  name: restrict-rook-namespace
   namespace: rook-ceph
 spec:
-  podSelector:
-    matchLabels:
-      app: rook-ceph-operator
+  podSelector: {}
   policyTypes:
     - Ingress
   ingress:
