@@ -84,7 +84,7 @@ spec:
           serviceAccountName: rook-ceph-tools
           containers:
             - name: backup
-              image: rook/ceph:v1.13.0
+              image: rook/ceph:v1.16.0
               command:
                 - /bin/bash
                 - -c
@@ -95,10 +95,25 @@ spec:
               volumeMounts:
                 - name: backup-vol
                   mountPath: /backup
+                - name: ceph-config
+                  mountPath: /etc/ceph/ceph.conf
+                  subPath: ceph.conf
+                - name: mon-secret
+                  mountPath: /etc/ceph/keyring
+                  subPath: keyring
           volumes:
             - name: backup-vol
               persistentVolumeClaim:
                 claimName: ceph-backup-pvc
+            - name: ceph-config
+              configMap:
+                name: rook-ceph-config
+            - name: mon-secret
+              secret:
+                secretName: rook-ceph-mon
+                items:
+                  - key: ceph-secret
+                    path: keyring
           restartPolicy: OnFailure
 ```
 
