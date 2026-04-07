@@ -82,9 +82,9 @@ Note: EC pools for RBD require a replicated metadata pool. Create a `CephBlockPo
 
 ```yaml
 parameters:
-  pool: ec-pool
+  pool: replicapool
   dataPool: ec-pool
-  # Uses ec-pool for data and the replica pool for RBD object headers
+  # pool is the replicated metadata pool; dataPool is the EC data pool
 ```
 
 ## Decision Framework
