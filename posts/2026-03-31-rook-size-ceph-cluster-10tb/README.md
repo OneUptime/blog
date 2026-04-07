@@ -34,7 +34,7 @@ Rounding up: provision at least **40TB raw** across your OSDs.
 
 ```yaml
 3 nodes * 4 drives * 4TB each = 48TB raw
-Usable: 48 / 3 / 1.2 = ~13TB usable
+Usable: 48 / 3 * 0.8 = ~12.8TB usable
 ```
 
 This comfortably covers 10TB with some headroom.
@@ -43,7 +43,7 @@ This comfortably covers 10TB with some headroom.
 
 ```yaml
 5 nodes * 3 drives * 3TB each = 45TB raw
-Usable: 45 / 3 / 1.2 = ~12.5TB usable
+Usable: 45 / 3 * 0.8 = ~12TB usable
 ```
 
 More nodes improves fault tolerance and parallel I/O.
