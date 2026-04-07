@@ -65,7 +65,7 @@ rados --name client.tenant1 --keyring /tmp/tenant1.keyring \
 The last command should return:
 
 ```text
-RADOS returned error: -13 (Permission denied)
+error listing shared-pool/tenant2-ns: (1) Operation not permitted
 ```
 
 ## Using Namespaces with RBD
