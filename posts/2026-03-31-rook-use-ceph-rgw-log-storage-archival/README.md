@@ -52,7 +52,6 @@ ceph osd pool set default.rgw.buckets.data compression_algorithm zstd
   path logs/%Y/%m/%d/
   s3_object_key_format %{path}%{time_slice}_%{index}.%{file_extension}
   time_slice_format %Y%m%d-%H
-  time_slice_wait 10m
   store_as gzip
   <buffer time>
     @type file
@@ -85,7 +84,7 @@ inputs = ["parse_logs"]
 bucket = "application-logs"
 endpoint = "https://rgw.example.com"
 region = "us-east-1"
-key_prefix = "logs/{{ host }}/{{ now() | strftime(\"%Y/%m/%d/\") }}"
+key_prefix = "logs/{{ host }}/%Y/%m/%d/"
 encoding.codec = "ndjson"
 compression = "gzip"
 auth.access_key_id = "your-access-key"
