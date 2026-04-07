@@ -47,6 +47,20 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --rgw-realm=tenant-b \
   --rgw-zonegroup=tenant-b-eu \
   --master --default
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zone create \
+  --rgw-realm=tenant-b \
+  --rgw-zonegroup=tenant-b-eu \
+  --rgw-zone=tenant-b-primary \
+  --master --default
+
+# Commit period changes for both realms
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin period update --commit --rgw-realm=tenant-a
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin period update --commit --rgw-realm=tenant-b
 ```
 
 ## Deploying Separate RGW Instances per Realm
@@ -125,7 +139,9 @@ spec:
   - host: s3.tenant-a.example.com
     http:
       paths:
-      - backend:
+      - path: /
+        pathType: Prefix
+        backend:
           service:
             name: rook-ceph-rgw-tenant-a-store
             port:
@@ -133,7 +149,9 @@ spec:
   - host: s3.tenant-b.example.com
     http:
       paths:
-      - backend:
+      - path: /
+        pathType: Prefix
+        backend:
           service:
             name: rook-ceph-rgw-tenant-b-store
             port:
