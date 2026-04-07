@@ -154,8 +154,16 @@ radosgw-admin user create \
   --email=app@example.com
 
 # Note the access_key and secret_key from the output
+```
 
-# Exit the tools pod, then create a bucket via the S3 API
+Exit the toolbox, then configure the AWS CLI credentials and create a bucket via the S3 API:
+
+```bash
+# Set credentials from the radosgw-admin output above
+export AWS_ACCESS_KEY_ID=<access_key from output>
+export AWS_SECRET_ACCESS_KEY=<secret_key from output>
+
+# Create a bucket via the S3 API
 aws s3 mb s3://my-manual-bucket \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 
@@ -163,8 +171,9 @@ aws s3 mb s3://my-manual-bucket \
 aws s3 ls \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 
-# Check bucket stats
-radosgw-admin bucket stats --bucket=my-manual-bucket
+# Check bucket stats from the toolbox
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  radosgw-admin bucket stats --bucket=my-manual-bucket
 ```
 
 ## Bucket Policies and ACLs
