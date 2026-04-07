@@ -34,12 +34,12 @@ ceph fs snap-schedule retention add /data h 24 --fs myfs
 
 | Code | Period |
 |------|--------|
-| m | Minute |
 | h | Hour |
 | d | Day |
 | w | Week |
 | M | Month |
 | y | Year |
+| n | Last N (regardless of timing) |
 
 ### Viewing Retention Settings
 
@@ -57,27 +57,12 @@ Look for the `retention` field in the output:
 ### Removing a Retention Rule
 
 ```bash
-ceph fs snap-schedule retention rm /data d --fs myfs
+ceph fs snap-schedule retention remove /data d 7 --fs myfs
 ```
 
 ## RBD Snapshot Retention
 
-RBD snap schedule manages retention via the `--retain-count` option:
-
-```bash
-# Keep only the last 5 snapshots
-rbd snap schedule add --pool mypool --image myimage 1d --retain 5
-```
-
-For images using the snap schedule module:
-
-```bash
-rbd snap schedule ls --pool mypool --image myimage --format json
-```
-
-## Custom Retention Script for RBD
-
-For pools without built-in retention, use a script:
+Ceph does not provide a built-in snapshot retention mechanism for RBD images. Unlike CephFS, RBD has no native snapshot scheduler with retention support. To automatically prune old RBD snapshots, use a custom script:
 
 ```bash
 #!/bin/bash
@@ -128,4 +113,4 @@ ceph df detail | grep myfs
 
 ## Summary
 
-Snapshot retention policies in Ceph are set using `ceph fs snap-schedule retention add` for CephFS directories, specifying the time period code and count. For RBD, use the `--retain` flag with `rbd snap schedule add` or implement a custom pruning script. Implement a graduated retention strategy with more frequent short-term snapshots and fewer long-term ones, matching retention counts to your recovery time and recovery point objectives.
+Snapshot retention policies in Ceph are set using `ceph fs snap-schedule retention add` for CephFS directories, specifying the time period code and count. For RBD, implement a custom pruning script since there is no built-in retention mechanism. Implement a graduated retention strategy with more frequent short-term snapshots and fewer long-term ones, matching retention counts to your recovery time and recovery point objectives.
