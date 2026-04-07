@@ -77,7 +77,7 @@ spec:
           role: admin-client
     ports:
     - protocol: TCP
-      port: 7480
+      port: 8080
 ```
 
 ## Using radosgw-admin Instead
@@ -112,4 +112,4 @@ data:
 
 ## Summary
 
-The RGW admin API entry point is controlled by `rgw_admin_entry` (default: `admin`) and must be explicitly included in `rgw_enable_apis`. In production, restrict access to the admin API using Kubernetes NetworkPolicies and prefer `radosgw-admin` for cluster-internal management tasks.
+The RGW admin API entry point is controlled by `rgw_admin_entry` (default: `admin`) and is included in `rgw_enable_apis` by default. If you override `rgw_enable_apis`, ensure `admin` is in the list to keep the admin API enabled. In production, restrict access to the admin API using Kubernetes NetworkPolicies and prefer `radosgw-admin` for cluster-internal management tasks.
