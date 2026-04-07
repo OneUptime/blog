@@ -11,6 +11,7 @@
     "generate-social-image:js": "node dist/scripts/generate-social-image.js",
     "validate:js": "node dist/scripts/validate-blogs.js",
     "validate-posts": "npx ts-node src/scripts/validate-posts.ts",
+    "validtae-posts:codex": "npx ts-node src/scripts/validate-posts.ts --codex",
     "count": "echo \"Total blogs: $(node -e \"console.log(require('./Blogs.json').length)\")\"",
     "count-validation": "npx ts-node src/scripts/count-validation.ts"
   },
