@@ -32,7 +32,7 @@ Enable Multi-Channel in `/etc/samba/smb.conf`:
     server multi channel support = yes
     aio read size = 1
     aio write size = 1
-    max protocol = SMB3
+    max protocol = SMB3_11
     min protocol = SMB2
 ```
 
@@ -92,7 +92,7 @@ samba01       10.0.1.100  10.0.1.10   True                True                Tr
 samba01       10.0.1.100  10.0.1.11   True                True                False
 ```
 
-View bandwidth distribution:
+View configured interface constraints for Multi-Channel:
 
 ```powershell
 Get-SmbMultichannelConstraint
