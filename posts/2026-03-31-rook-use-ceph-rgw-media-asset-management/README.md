@@ -35,9 +35,16 @@ aws s3api put-bucket-acl \
 
 For files >100MB, use multipart upload:
 
+First, configure the multipart chunk size:
+
+```bash
+aws configure set default.s3.multipart_chunksize 64MB
+```
+
+Then upload:
+
 ```bash
 aws s3 cp large-video.mp4 s3://media-assets/videos/2026/large-video.mp4 \
-  --multipart-chunksize 64mb \
   --expected-size 5368709120 \
   --endpoint-url https://rgw.example.com
 ```
