@@ -13,9 +13,11 @@ Bucket listing (S3 ListObjects and ListObjectsV2) performance and behavior is co
 ## Key Listing Parameters
 
 ```bash
-# Check current listing limits
+# Check current object listing limit
+ceph config get client.rgw rgw_max_listing_results
+
+# Check current bucket listing chunk size
 ceph config get client.rgw rgw_list_buckets_max_chunk
-ceph config get client.rgw rgw_default_max_tag_list_entries
 ```
 
 ## Setting Maximum Keys per ListObjects Request
@@ -24,14 +26,14 @@ The S3 protocol allows clients to request up to 1000 keys per page. RGW respects
 
 ```bash
 # Maximum objects returned per listing page (default 1000, S3 max)
-ceph config set client.rgw rgw_list_buckets_max_chunk 1000
+ceph config set client.rgw rgw_max_listing_results 1000
 ```
 
-For internal metadata listing (radosgw-admin bucket list), set a higher limit:
+For listing buckets in an account (S3 ListBuckets), the chunk size is controlled separately:
 
 ```bash
-# Max entries for admin bucket listing
-ceph config set client.rgw rgw_list_buckets_max_chunk 10000
+# Max entries per chunk when listing buckets (default 1000)
+ceph config set client.rgw rgw_list_buckets_max_chunk 1000
 ```
 
 ## Optimizing with Bucket Index Sharding
@@ -92,4 +94,4 @@ aws s3api list-objects-v2 \
 
 ## Summary
 
-Bucket listing performance in Ceph RGW is controlled by `rgw_list_buckets_max_chunk`, index sharding, and dynamic resharding. For buckets with more than 100,000 objects, enable dynamic resharding with `rgw_dynamic_resharding = true` and set `rgw_max_objs_per_shard` to an appropriate threshold to keep listing latency low.
+Bucket listing performance in Ceph RGW is controlled by `rgw_max_listing_results`, index sharding, and dynamic resharding. For buckets with more than 100,000 objects, enable dynamic resharding with `rgw_dynamic_resharding = true` and set `rgw_max_objs_per_shard` to an appropriate threshold to keep listing latency low.
