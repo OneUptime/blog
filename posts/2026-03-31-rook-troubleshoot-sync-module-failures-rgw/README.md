@@ -74,22 +74,22 @@ kubectl -n rook-ceph exec deploy/rook-ceph-rgw-my-store-a -- \
 ## Step 4 - Manually Retry Failed Objects
 
 ```bash
-# Retry sync for a specific object
+# Retry sync for a specific bucket
 radosgw-admin bucket sync run \
-  --bucket=mybucket \
-  --source-zone=primary-zone \
-  --key=myobject.txt
-
-# Reset sync state for a bucket to force re-sync
-radosgw-admin bucket sync reset \
   --bucket=mybucket \
   --source-zone=primary-zone
 
-# Trim the error log for a specific key
-radosgw-admin sync error trim \
-  --source-zone=primary-zone \
+# Reset sync state for a bucket by disabling and re-enabling
+radosgw-admin bucket sync disable \
   --bucket=mybucket \
-  --object=myobject.txt
+  --source-zone=primary-zone
+radosgw-admin bucket sync enable \
+  --bucket=mybucket \
+  --source-zone=primary-zone
+
+# Trim the sync error log
+radosgw-admin sync error trim \
+  --source-zone=primary-zone
 ```
 
 ## Step 5 - Handle Elasticsearch Index Failures
@@ -122,10 +122,9 @@ curl -X PUT "http://elasticsearch:9200/rgw-primary-newbucket" \
 When sync is deeply broken, a full resync may be needed:
 
 ```bash
-# Reset the entire data sync state for a zone (use with caution)
-radosgw-admin data sync reset \
-  --source-zone=primary-zone \
-  --rgw-zone=secondary-zone
+# Reinitialize the data sync state for a zone (use with caution)
+radosgw-admin data sync init \
+  --source-zone=primary-zone
 
 # Force a full resync
 radosgw-admin data sync run \
@@ -136,8 +135,8 @@ watch -n 10 "radosgw-admin sync status 2>&1 | grep -E 'full sync|behind|caught u
 
 # After full sync completes, trim old error entries
 radosgw-admin sync error trim \
-  --start-time=$(date -d '30 days ago' +%s) \
-  --end-time=$(date -d '1 hour ago' +%s)
+  --start-date=$(date -d '30 days ago' +%Y-%m-%d) \
+  --end-date=$(date -d '1 hour ago' +%Y-%m-%d)
 ```
 
 ## Summary
