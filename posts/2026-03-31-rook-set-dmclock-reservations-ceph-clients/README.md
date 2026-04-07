@@ -29,43 +29,45 @@ ceph config set osd osd_mclock_scheduler_client_res 1000
 
 This applies to all OSDs unless overridden at the OSD level.
 
-## Setting Per-Client Reservations via RBD QoS
+## Setting Per-Image Rate Limits via RBD QoS
 
-For RBD images, set per-image I/O reservations using image metadata:
+RBD QoS provides client-side rate limiting (not DmClock reservations). These settings cap the maximum I/O rate for an image, which can complement DmClock by preventing noisy neighbors:
 
 ```bash
-# Set minimum IOPS reservation for a specific RBD image
-rbd config image set mypool/prod-db rbd_qos_iops_burst_seconds 1
+# Set IOPS limits for a specific RBD image
 rbd config image set mypool/prod-db rbd_qos_read_iops_limit 5000
 rbd config image set mypool/prod-db rbd_qos_write_iops_limit 2000
+rbd config image set mypool/prod-db rbd_qos_iops_limit 6000
 ```
 
 Check image QoS settings:
 
 ```bash
-rbd config image get mypool/prod-db
+rbd config image list mypool/prod-db
 ```
 
-## Per-Client Reservation via Ceph Config DB
+## Per-OSD Reservation via Ceph Config DB
 
-Set reservations for specific RADOS clients using the config database:
+The mClock reservation parameter is an OSD-level setting. You can set different reservation values for individual OSDs:
 
 ```bash
-# Get the client ID from auth list
-ceph auth list | grep client.
+# Set reservation for a specific OSD
+ceph config set osd.5 osd_mclock_scheduler_client_res 500
 
-# Set reservation for a specific client
-ceph config set client.db-server osd_mclock_scheduler_client_res 500
+# Or set it for all OSDs in a device class
+ceph config set osd osd_mclock_scheduler_client_res 500
 ```
 
-## Setting Reservations for CephFS Clients
+## DmClock and CephFS Workloads
 
-For CephFS workloads, configure QoS at the MDS level:
+CephFS I/O passes through OSDs for data operations, so OSD-level mClock reservations apply to CephFS data traffic as well. Set the reservation on the OSDs that back your CephFS data pool:
 
 ```bash
-ceph config set mds mds_max_caps_per_client 50000
-ceph config set client client_caps_release_delay 5
+# Set reservation for OSDs serving the CephFS data pool
+ceph config set osd osd_mclock_scheduler_client_res 1000
 ```
+
+Note that MDS metadata operations are separate from data I/O and are not governed by DmClock.
 
 ## Monitoring Reservation Utilization
 
@@ -76,7 +78,7 @@ Check whether clients are hitting their reservation limits:
 ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A5 "mclock"
 ```
 
-Monitor per-OSD IOPS to see if any client is being throttled to reservation:
+Monitor per-OSD latency to identify OSDs under heavy load:
 
 ```bash
 ceph osd perf | sort -k3 -rn | head -10
@@ -118,4 +120,4 @@ The reserved client should maintain close to its guaranteed minimum rate.
 
 ## Summary
 
-DmClock reservations give critical Ceph clients a guaranteed minimum I/O rate that is honored even under cluster-wide congestion. Setting client-level reservations through the config database, RBD image metadata, or global OSD config ensures production databases and other latency-sensitive workloads are protected from interference by background operations or less-critical clients.
+DmClock reservations give critical Ceph clients a guaranteed minimum I/O rate that is honored even under cluster-wide congestion. Setting OSD-level reservations through the config database or global OSD config, combined with RBD client-side rate limiting to control noisy neighbors, ensures production databases and other latency-sensitive workloads are protected from interference by background operations or less-critical clients.
