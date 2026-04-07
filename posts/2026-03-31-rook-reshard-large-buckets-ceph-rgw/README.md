@@ -42,7 +42,7 @@ radosgw-admin reshard status --bucket my-large-bucket
 
 ## Dynamic Resharding (Automatic)
 
-Ceph Nautilus and later support automatic dynamic resharding. When enabled, RGW monitors bucket object counts and reshards automatically when thresholds are exceeded.
+Ceph has supported automatic dynamic resharding since Luminous (12.2.x), with significant reliability improvements in Nautilus and later releases. When enabled, RGW monitors bucket object counts and reshards automatically when thresholds are exceeded.
 
 Enable it globally:
 
@@ -82,7 +82,7 @@ radosgw-admin bucket stats --bucket my-large-bucket | grep num_shards
 List the RADOS index objects directly:
 
 ```bash
-rados ls -p default.rgw.buckets.index | grep "$(radosgw-admin bucket stats --bucket my-large-bucket | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d['id'])\")"
+rados ls -p default.rgw.buckets.index | grep "$(radosgw-admin bucket stats --bucket my-large-bucket | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["id"])')"
 ```
 
 ## Summary
