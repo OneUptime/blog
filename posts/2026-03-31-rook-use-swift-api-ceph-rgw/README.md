@@ -10,7 +10,7 @@ Description: Learn how to use the OpenStack Swift API with Ceph RGW for object s
 
 ## Overview
 
-Ceph RGW implements the OpenStack Swift API alongside the S3 API on the same endpoint. This allows Swift-native clients, including OpenStack services and Python swiftclient, to store and retrieve objects from Ceph. Swift uses a different authentication model and terminology compared to S3 (containers instead of buckets, accounts instead of users).
+Ceph RGW implements the OpenStack Swift API alongside the S3 API from the same RGW service, typically using a different URL prefix for Swift requests. This allows Swift-native clients, including OpenStack services and Python swiftclient, to store and retrieve objects from Ceph. Swift uses a different authentication model and terminology compared to S3 (containers instead of buckets, accounts instead of users).
 
 ## Swift Terminology vs. S3
 
@@ -19,7 +19,7 @@ Ceph RGW implements the OpenStack Swift API alongside the S3 API on the same end
 | Account | User/Tenant |
 | Container | Bucket |
 | Object | Object |
-| Subuser | Access Key |
+| Subuser | No direct S3 equivalent |
 
 ## Creating a Swift-Compatible Subuser
 
@@ -50,17 +50,18 @@ radosgw-admin user info --uid=swiftuser | jq '.swift_keys'
 
 ## Authenticating with Swift v1
 
-Swift v1 auth uses a simple HTTP header exchange:
+With Ceph's default `rgw_swift_auth_entry`, Swift v1 auth uses a simple HTTP header exchange:
 
 ```bash
 # Get the auth token and storage URL
-curl -i http://rgw-host:80/auth/1.0 \
+curl -i http://rgw-host:80/auth \
   -H "X-Auth-User: swiftuser:main" \
   -H "X-Auth-Key: YOUR_SWIFT_SECRET"
 
 # Response headers include:
 # X-Auth-Token: TOKEN_VALUE
-# X-Storage-Url: http://rgw-host:80/swift/v1
+# X-Storage-Url: returned by RGW, typically http://rgw-host:80/swift/v1
+# or http://rgw-host:80/swift/v1/AUTH_<account> depending on configuration
 ```
 
 ## Using swiftclient CLI
@@ -70,7 +71,8 @@ curl -i http://rgw-host:80/auth/1.0 \
 pip install python-swiftclient
 
 # Set environment variables
-export ST_AUTH=http://rgw-host:80/auth/1.0
+export ST_AUTH=http://rgw-host:80/auth
+export ST_AUTH_VERSION=1.0
 export ST_USER=swiftuser:main
 export ST_KEY=YOUR_SWIFT_SECRET
 
@@ -96,10 +98,10 @@ swift list mycontainer
 import swiftclient
 
 conn = swiftclient.Connection(
-    authurl='http://rgw-host:80/auth/1.0',
+    authurl='http://rgw-host:80/auth',
     user='swiftuser:main',
     key='YOUR_SWIFT_SECRET',
-    auth_version='1'
+    auth_version='1.0'
 )
 
 # Create a container
@@ -136,4 +138,4 @@ swift copy --destination /destcontainer/newfile.txt mycontainer file.txt
 
 ## Summary
 
-Ceph RGW's Swift API compatibility allows OpenStack-native clients to use Ceph for object storage without modification. Create Swift subusers via `radosgw-admin`, authenticate using Swift v1 auth, and use standard swiftclient commands or the Python library for container and object operations. Swift and S3 users can coexist on the same Ceph cluster with independent credentials.
+Ceph RGW's Swift API compatibility allows Swift-native clients to use Ceph for object storage operations. Create Swift subusers via `radosgw-admin`, authenticate using Swift v1 auth, and use standard swiftclient commands or the Python library for container and object operations. Swift and S3 clients can coexist on the same Ceph cluster with independent credentials.

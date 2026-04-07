@@ -44,7 +44,7 @@ Verify:
 - Weights reflect the disk sizes
 
 ```bash
-ceph osd df | awk '{print $1, $7, $8}' | column -t
+ceph osd df tree
 ```
 
 ## Check 4 - CRUSH Map Topology
@@ -71,7 +71,12 @@ For each pool, verify:
 ```bash
 ceph config get mon public_network
 ceph config get osd cluster_network
-ceph mon dump | grep -E "addr|public_addr"
+ceph quorum_status --format json-pretty | python3 -c "
+import sys, json
+q = json.load(sys.stdin)
+for mon in q['monmap']['mons']:
+    print(mon['name'], 'addr=', mon['addr'], 'public_addr=', mon['public_addr'])
+"
 ```
 
 Verify bindings are on the expected networks and not on 0.0.0.0 unless intended.
@@ -92,7 +97,7 @@ spec:
   storageClassName: rook-ceph-block
 EOF
 
-kubectl wait --for=condition=Bound pvc/validation-pvc --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/validation-pvc --timeout=60s
 kubectl delete pvc validation-pvc
 ```
 
@@ -100,9 +105,10 @@ kubectl delete pvc validation-pvc
 
 ```bash
 TOOLBOX=$(kubectl get pod -n rook-ceph -l app=rook-ceph-tools -o name | head -1)
-kubectl exec -n rook-ceph "$TOOLBOX" -- rados bench -p replicapool 30 write --no-cleanup
-kubectl exec -n rook-ceph "$TOOLBOX" -- rados bench -p replicapool 30 seq
-kubectl exec -n rook-ceph "$TOOLBOX" -- rados cleanup -p replicapool
+POOL=$(kubectl get storageclass rook-ceph-block -o jsonpath='{.parameters.pool}')
+kubectl exec -n rook-ceph "$TOOLBOX" -- rados bench -p "$POOL" 30 write --no-cleanup
+kubectl exec -n rook-ceph "$TOOLBOX" -- rados bench -p "$POOL" 30 seq
+kubectl exec -n rook-ceph "$TOOLBOX" -- rados cleanup -p "$POOL"
 ```
 
 Record this baseline for future comparison.

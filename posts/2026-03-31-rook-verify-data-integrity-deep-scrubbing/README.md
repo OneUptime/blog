@@ -26,13 +26,13 @@ By default, Ceph performs:
 Check when each placement group was last scrubbed:
 
 ```bash
-ceph pg dump | awk '{print $1, $18, $19}' | head -20
+ceph health detail | grep -E "PG_NOT_SCRUBBED|PG_NOT_DEEP_SCRUBBED"
 ```
 
-Or use the dashboard query:
+Or inspect PG details in JSON:
 
 ```bash
-ceph pg ls | grep -v "active+clean"
+ceph pg dump pgs --format=json-pretty
 ```
 
 ## Triggering Manual Deep Scrub
@@ -46,7 +46,7 @@ ceph pg deep-scrub 2.1a
 Force deep scrub on all PGs in a pool:
 
 ```bash
-for pg in $(ceph pg ls-by-pool mypool | awk '{print $1}'); do
+for pg in $(ceph pg ls-by-pool mypool | awk '/^[0-9]+\./ {print $1}'); do
   ceph pg deep-scrub $pg
 done
 ```
@@ -62,6 +62,7 @@ ceph config set osd osd_scrub_max_interval 604800
 
 # Deep scrub interval
 ceph config set osd osd_deep_scrub_interval 604800
+ceph config set mgr osd_deep_scrub_interval 604800
 
 # Limit scrub load impact
 ceph config set osd osd_scrub_load_threshold 0.5
@@ -84,10 +85,11 @@ kubectl -n rook-ceph logs -l app=rook-ceph-osd | grep -i "deep-scrub\|scrub erro
 
 ## Prioritizing Scrubs on Specific Pools
 
-For critical data, increase scrub priority:
+For critical data, shorten the pool-specific scrub intervals:
 
 ```bash
-ceph osd pool set critical-pool scrub_priority 10
+ceph osd pool set critical-pool scrub_min_interval 43200
+ceph osd pool set critical-pool deep_scrub_interval 259200
 ```
 
 ## Using Rook CephBlockPool to Set Scrub Parameters
@@ -102,8 +104,8 @@ spec:
   replicated:
     size: 3
   parameters:
-    osd_scrub_min_interval: "86400"
-    osd_deep_scrub_interval: "604800"
+    scrub_min_interval: "86400"
+    deep_scrub_interval: "604800"
 ```
 
 ## Repairing Found Inconsistencies
@@ -117,7 +119,7 @@ ceph health detail | grep inconsistent
 ceph pg repair 2.1a
 ```
 
-Ceph overwrites the corrupted replica with data from a healthy one.
+Ceph attempts to repair the PG by fixing inconsistent metadata and, in replicated pools, marking the bad copy missing so normal recovery can refill it from an authoritative replica.
 
 ## Summary
 

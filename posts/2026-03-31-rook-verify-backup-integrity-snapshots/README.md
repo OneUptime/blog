@@ -40,12 +40,15 @@ Before exporting, record checksums of critical objects:
 ```bash
 #!/bin/bash
 POOL="mypool"
+SNAP="mysnap"
 CHECKSUMS="/tmp/checksums-$(date +%Y%m%d).txt"
 
-for obj in $(rados ls -p $POOL); do
-  rados get -p $POOL $obj /tmp/obj_tmp
-  echo "$(md5sum /tmp/obj_tmp | awk '{print $1}') $obj" >> $CHECKSUMS
-done
+while IFS= read -r obj; do
+  TMP_FILE="$(mktemp)"
+  rados -p "$POOL" -s "$SNAP" get "$obj" "$TMP_FILE"
+  echo "$(md5sum "$TMP_FILE" | awk '{print $1}') $obj" >> "$CHECKSUMS"
+  rm -f "$TMP_FILE"
+done < <(rados -p "$POOL" ls)
 echo "Checksums written to $CHECKSUMS"
 ```
 
@@ -85,26 +88,28 @@ Import the exported image to a test pool:
 rbd import /backup/myimage-snap.img testpool/restored-image
 
 # Map the restored image
-rbd map testpool/restored-image
+rbd device map testpool/restored-image
 
-# Mount and verify filesystem
+# Verify the filesystem before mounting it
+fsck -n /dev/rbd0
+
+# Mount and verify filesystem contents
 mount /dev/rbd0 /mnt/test-restore
 ls -la /mnt/test-restore
-fsck /dev/rbd0
 ```
 
 ## Verifying CephFS Snapshot Consistency
 
-Mount the snapshot and diff against source:
+Access the snapshot through the `.snap` directory and diff it against the live directory:
 
 ```bash
-diff -r /mnt/cephfs/.snap/mysnap /mnt/cephfs/current-data
+diff -r /mnt/cephfs/data/.snap/mysnap /mnt/cephfs/data
 ```
 
 Or use rsync in dry-run mode:
 
 ```bash
-rsync -anv /mnt/cephfs/.snap/mysnap/ /mnt/verify/
+rsync -anv /mnt/cephfs/data/.snap/mysnap/ /mnt/verify/
 ```
 
 ## Automated Verification CronJob
@@ -125,10 +130,10 @@ spec:
           - name: verify
             image: ceph/ceph:latest
             command:
-            - /bin/bash
-            - -c
-            - |
-              rbd export testpool/myimage@latest /tmp/verify.img
+          - /bin/bash
+          - -c
+          - |
+              rbd export testpool/myimage@mysnap /tmp/verify.img
               sha256sum /tmp/verify.img
           restartPolicy: OnFailure
 ```

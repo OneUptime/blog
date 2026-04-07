@@ -4,41 +4,48 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Quota, Statistics, Object Storage, Administration, Monitoring
 
-Description: View quota settings and synchronize usage statistics in Ceph RGW to ensure accurate quota enforcement and reporting across users and buckets.
+Description: View quota settings and synchronize usage statistics in Ceph RGW to improve quota reporting and quota enforcement visibility across users and buckets.
 
 ---
 
-Ceph RGW tracks usage statistics asynchronously, which means the stored stats may lag behind the actual current usage. To get accurate quota enforcement and reporting, you need to periodically synchronize (sync) stats. This guide covers how to view quota settings and update stats effectively.
+Ceph RGW updates quota statistics asynchronously, which means `user stats` may lag behind the actual current usage. To get the latest quota usage numbers, run `user stats` with `--sync-stats` before reading them. This guide covers how to view quota settings and update stats effectively.
 
 ## Why Stats Need to Be Synced
 
-RGW maintains usage counters in a distributed cache and flushes them periodically. Commands like `user stats` or `bucket stats` may show stale numbers unless you explicitly trigger a sync. For quota enforcement, RGW uses the last-known stats, so stale stats can temporarily allow over-quota uploads.
+Quota stats are updated asynchronously. The documented way to refresh the latest user quota usage is to run `radosgw-admin user stats --uid <uid> --sync-stats` before reading `user stats` output. Ceph also caches quota settings on each RGW instance, so quota enforcement across multiple gateways is not perfectly synchronized unless those cache intervals are tuned.
 
 ## Viewing User Quota and Current Stats
 
 Always sync before viewing to get accurate numbers:
 
 ```bash
-# Sync user stats first
+# Sync and view current user usage
 radosgw-admin user stats --uid alice --sync-stats
 
-# View user info including quota and usage
+# View configured quota settings
 radosgw-admin user info --uid alice
 ```
 
-Look for the `stats` and `user_quota` sections in the output:
+Look for the `stats` section in `user stats` output:
 
 ```json
 {
-  "user_id": "alice",
   "stats": {
     "size": 5368709120,
     "size_actual": 5368709120,
     "num_objects": 45000
-  },
+  }
+}
+```
+
+Look for the `user_quota` section in `user info` output:
+
+```json
+{
+  "user_id": "alice",
   "user_quota": {
     "enabled": true,
-    "max_size": 10737418240,
+    "max_size_kb": 10485760,
     "max_objects": 1000000
   }
 }
@@ -47,51 +54,39 @@ Look for the `stats` and `user_quota` sections in the output:
 ## Viewing Bucket Quota and Stats
 
 ```bash
-# Get bucket stats with sync
+# View bucket stats
 radosgw-admin bucket stats --bucket mybucket
+
+# View the bucket quota configured for buckets owned by alice
+radosgw-admin user info --uid alice | jq '.bucket_quota'
 ```
 
-To force a stat update:
-
-```bash
-radosgw-admin bucket sync --bucket mybucket
-radosgw-admin bucket stats --bucket mybucket
-```
+Unlike `user stats`, the documented `--sync-stats` flag does not apply to `bucket stats`. The `bucket sync enable` and `bucket sync disable` commands are multisite sync controls, not usage refresh commands.
 
 ## Getting Quota Settings Only
 
 ```bash
-# User quota
-radosgw-admin quota get \
-  --uid alice \
-  --quota-scope user
+# User quota settings
+radosgw-admin user info --uid alice | jq '.user_quota'
 
-# Bucket quota
-radosgw-admin quota get \
-  --uid alice \
-  --bucket mybucket \
-  --quota-scope bucket
+# Bucket quota settings for buckets owned by the user
+radosgw-admin user info --uid alice | jq '.bucket_quota'
 ```
 
 ## Syncing Stats for All Buckets of a User
 
 ```bash
-# List all buckets owned by the user
-BUCKETS=$(radosgw-admin bucket list --uid alice | jq -r '.[]')
-
-for BUCKET in $BUCKETS; do
-  echo "Syncing stats for $BUCKET"
-  radosgw-admin bucket sync --bucket "$BUCKET"
-done
+# Refresh the user's quota stats from the current bucket indexes
+radosgw-admin user stats --uid alice --sync-stats
 ```
 
 ## Global Stats Sync
 
-To sync stats for all users (useful after a cluster restart or after fixing inconsistencies):
+To refresh quota stats for all users:
 
 ```bash
-radosgw-admin user list | jq -r '.[]' | while read UID; do
-  radosgw-admin user stats --uid "$UID" --sync-stats
+radosgw-admin user list | jq -r '.[]' | while read -r USER_ID; do
+  radosgw-admin user stats --uid "$USER_ID" --sync-stats
 done
 ```
 
@@ -101,19 +96,20 @@ A script to check quota utilization:
 
 ```bash
 #!/bin/bash
-UID=$1
-STATS=$(radosgw-admin user stats --uid "$UID" --sync-stats)
-USED=$(echo "$STATS" | jq -r '.stats.size')
-MAX=$(radosgw-admin quota get --uid "$UID" --quota-scope user | jq -r '.max_size')
+USER_ID=$1
+STATS=$(radosgw-admin user stats --uid "$USER_ID" --sync-stats)
+USED=$(echo "$STATS" | jq -r '.stats.size // 0')
+MAX_KB=$(radosgw-admin user info --uid "$USER_ID" | jq -r '.user_quota.max_size_kb // -1')
 
-if [ "$MAX" != "-1" ] && [ "$MAX" -gt 0 ]; then
+if [ "$MAX_KB" != "-1" ] && [ "$MAX_KB" -gt 0 ]; then
+  MAX=$((MAX_KB * 1024))
   PERCENT=$(echo "scale=1; $USED * 100 / $MAX" | bc)
-  echo "User $UID: ${PERCENT}% of quota used ($USED / $MAX bytes)"
+  echo "User $USER_ID: ${PERCENT}% of quota used ($USED / $MAX bytes)"
 else
-  echo "User $UID: no quota limit set"
+  echo "User $USER_ID: no quota limit set"
 fi
 ```
 
 ## Summary
 
-Accurate quota and usage reporting in Ceph RGW requires syncing stats with `--sync-stats` before reading them, since RGW flushes usage counters asynchronously. Use `quota get` for the configured limits and `user stats` or `bucket stats` for current consumption. Build periodic stat-sync jobs to keep usage reporting current and ensure quota enforcement is accurate.
+Accurate quota and usage reporting in Ceph RGW requires syncing `user stats` with `--sync-stats` before reading them, since RGW updates quota stats asynchronously. Use `user info` for the configured limits and `user stats` or `bucket stats` for current consumption. Build periodic stat-sync jobs to keep user quota reporting current and reduce stale usage data.

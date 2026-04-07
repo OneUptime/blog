@@ -10,7 +10,7 @@ Description: Configure and use s3cmd to manage buckets and objects on Ceph RGW's
 
 ## Overview
 
-`s3cmd` is a command-line tool for S3-compatible object storage. It supports Ceph RGW natively via custom endpoint configuration, making it a popular choice for scripting and admin tasks on Ceph clusters.
+`s3cmd` is a command-line tool for S3-compatible object storage. It works with Ceph RGW through custom endpoint configuration, making it a popular choice for scripting and admin tasks on Ceph clusters.
 
 ## Install s3cmd
 
@@ -18,8 +18,8 @@ Description: Configure and use s3cmd to manage buckets and objects on Ceph RGW's
 # On Debian/Ubuntu
 apt-get install s3cmd
 
-# On RHEL/CentOS
-yum install s3cmd
+# On RHEL/CentOS (from the EPEL RPM repository)
+dnf install s3cmd
 
 # Via pip
 pip install s3cmd
@@ -33,14 +33,14 @@ Run the interactive configuration:
 s3cmd --configure
 ```
 
-Or create the config file directly at `~/.s3cfg`:
+Or create the config file directly at `~/.s3cfg`. For the common path-style setup against a Rook RGW service, point both `host_base` and `host_bucket` at the RGW endpoint:
 
 ```ini
 [default]
 access_key = myaccesskey
 secret_key = mysecretkey
 host_base = rook-ceph-rgw-my-store.rook-ceph:80
-host_bucket = rook-ceph-rgw-my-store.rook-ceph:80/%(bucket)s
+host_bucket = rook-ceph-rgw-my-store.rook-ceph:80
 use_https = False
 signature_v2 = False
 ```
@@ -122,4 +122,4 @@ s3cmd du s3://my-bucket/reports/
 
 ## Summary
 
-`s3cmd` is a versatile CLI tool that works out of the box with Ceph RGW by setting the `host_base` and `host_bucket` configuration options. It supports all common S3 operations and is well-suited for shell scripts that need to interact with Ceph object storage.
+`s3cmd` is a versatile CLI tool that works with Ceph RGW by pointing `host_base` and `host_bucket` at the RGW endpoint. It supports common S3 operations and is well-suited for shell scripts that need to interact with Ceph object storage.

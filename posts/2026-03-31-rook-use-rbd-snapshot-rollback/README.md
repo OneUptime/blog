@@ -21,7 +21,7 @@ Snapshot rollback reverts an RBD image to its state at a specific snapshot point
 ## Prerequisites
 
 - An RBD image with an existing snapshot
-- The image must be unmapped and not in use
+- Access to stop all clients so the image is no longer in use
 
 ## Step 1: List Available Snapshots
 
@@ -36,19 +36,24 @@ SNAPID  NAME            SIZE    PROTECTED  TIMESTAMP
 2       snap-after-deploy    10 GiB  no  Tue Mar 31 11:00:00 2026
 ```
 
-## Step 2: Unmap and Stop Using the Image
+## Step 2: Stop Using the Image and Confirm It Has No Open Clients
 
 For Kubernetes PVCs, scale down the workload:
 
 ```bash
 kubectl scale deployment myapp --replicas=0 -n myapp
-kubectl patch pv <pv-name> -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
 ```
 
 Wait for pods to terminate:
 
 ```bash
-kubectl wait --for=delete pod -l app=myapp --timeout=120s
+kubectl wait --for=delete pod -l app=myapp -n myapp --timeout=120s
+```
+
+Then confirm Ceph sees no open clients for the image:
+
+```bash
+rbd status mypool/myimage
 ```
 
 ## Step 3: Perform the Rollback
@@ -69,11 +74,12 @@ Rolling back to snapshot: 100% complete...done.
 Map the image and check the filesystem:
 
 ```bash
-rbd map mypool/myimage
-mount /dev/rbd0 /mnt/check
+DEV=$(rbd device map mypool/myimage)
+mkdir -p /mnt/check
+mount "$DEV" /mnt/check
 ls /mnt/check
 umount /mnt/check
-rbd unmap /dev/rbd0
+rbd device unmap "$DEV"
 ```
 
 ## Step 5: Restart the Workload
@@ -106,7 +112,7 @@ spec:
 
 Then update your deployment to use the new PVC name.
 
-## Protecting a Snapshot Before Rollback
+## Creating a Pre-Rollback Snapshot
 
 Before rolling back, protect the current state as a new snapshot:
 
@@ -118,4 +124,4 @@ This ensures you can undo the rollback if needed.
 
 ## Summary
 
-RBD snapshot rollback reverts a block device image to a previous state using `rbd snap rollback`. Always unmount and stop all users of the image before rolling back, and create a pre-rollback snapshot to preserve the ability to undo the operation. For Kubernetes PVC rollback, create a new PVC from the target VolumeSnapshot and update the workload's volume reference rather than attempting in-place rollback.
+RBD snapshot rollback reverts a block device image to a previous state using `rbd snap rollback`. Always stop all users of the image and confirm it has no open clients before rolling back, and create a pre-rollback snapshot to preserve the ability to undo the operation. For Kubernetes PVC rollback, create a new PVC from the target VolumeSnapshot and update the workload's volume reference rather than attempting in-place rollback.

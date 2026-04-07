@@ -67,22 +67,24 @@ This explains each warning or error with affected OSD IDs, PGs, or daemon names.
 See all in-progress operations:
 
 ```bash
-ceph osd perf
+ceph ops
 ```
 
 Check for slow operations:
 
 ```bash
-ceph osd blocked-by
+ceph dump_historic_slow_ops
 ```
 
 ## Monitoring Throughput and IOPS
+
+If the `iostat` MGR module is enabled:
 
 ```bash
 ceph iostat
 ```
 
-Or use the real-time dashboard:
+Or use the real-time event stream:
 
 ```bash
 ceph -w
@@ -112,15 +114,11 @@ For use in scripts or CI pipelines, check cluster health programmatically:
 
 ```bash
 # Returns 0 on HEALTH_OK, non-zero on warnings/errors
-ceph health --format json | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-status = d.get('status', 'HEALTH_ERR')
-print(status)
-sys.exit(0 if status == 'HEALTH_OK' else 1)
-"
+status=$(ceph health | awk '{print $1}')
+printf '%s\n' "$status"
+test "$status" = "HEALTH_OK"
 ```
 
 ## Summary
 
-`ceph status` (or `ceph -s`) provides a comprehensive one-screen cluster summary including health, services, capacity, PG state, and live I/O rates. Use `ceph -w` for a streaming event log during maintenance, `ceph health detail` for specific issue diagnosis, and `ceph mgr services` to locate the web dashboard URL.
+`ceph status` (or `ceph -s`) provides a comprehensive one-screen cluster summary including health, services, capacity, PG state, and live I/O rates. Use `ceph -w` for a streaming event log during maintenance, `ceph health detail` for specific issue diagnosis, `ceph ops` and `ceph dump_historic_slow_ops` to inspect active or slow operations, and `ceph mgr services` to locate the web dashboard URL.
