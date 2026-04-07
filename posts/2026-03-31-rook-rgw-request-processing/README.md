@@ -33,8 +33,8 @@ ceph config set client.rgw rgw_max_concurrent_requests 2048
 Control how many requests can wait in the accept queue:
 
 ```bash
-# Set the socket listen backlog (OS-level queue)
-ceph config set client.rgw rgw_frontends "beast port=7480 tcp_backlog=512"
+# Set the connection accept queue size
+ceph config set client.rgw rgw_frontends "beast port=7480 max_connection_backlog=512"
 ```
 
 ## Configuring Connection-Level Tuning
@@ -43,7 +43,7 @@ ceph config set client.rgw rgw_frontends "beast port=7480 tcp_backlog=512"
 # Maximum size of a single request body (bytes)
 ceph config set client.rgw rgw_max_put_size 5368709120
 
-# Maximum chunk size for chunked transfers
+# Maximum RADOS write window size for PUT operations (bytes)
 ceph config set client.rgw rgw_put_obj_max_window_size 67108864
 
 # Maximum number of buckets per user
@@ -80,13 +80,13 @@ Use the perf dump interface to monitor request queue metrics:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-rgw-my-store-a -- \
   ceph daemon /var/run/ceph/ceph-client.rgw.*.asok perf dump | \
-  python3 -m json.tool | grep -A2 "req_"
+  python3 -m json.tool | grep -E "qactive|put_obj|get_obj"
 ```
 
 Key metrics to watch:
-- `req_active` - currently active requests
-- `req_put` - total PUT operations
-- `req_get` - total GET operations
+- `qactive` - currently active requests in queue
+- `put_obj_ops` - total PUT object operations
+- `get_obj_ops` - total GET object operations
 
 ## Scaling with Multiple Instances
 
