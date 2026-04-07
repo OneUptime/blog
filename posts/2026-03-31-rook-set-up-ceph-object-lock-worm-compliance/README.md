@@ -12,21 +12,7 @@ WORM (Write Once Read Many) storage is required by regulations like SEC 17a-4, F
 
 ## Enable Object Lock on an RGW Bucket
 
-Object Lock must be enabled at bucket creation time - it cannot be added to existing buckets.
-
-First, verify Object Lock is enabled in the RGW configuration:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config get client.rgw rgw_s3_object_lock_enabled
-```
-
-If not enabled, set it:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_s3_object_lock_enabled true
-```
+Object Lock must be enabled at bucket creation time - it cannot be added to existing buckets. Ceph RGW (Reef and later) supports S3 Object Lock by default. When you create a bucket with Object Lock enabled, versioning is automatically enabled on that bucket.
 
 Create a bucket with Object Lock enabled:
 
@@ -112,17 +98,6 @@ aws s3 rm s3://worm-compliance/financial/q4-2025-report.pdf \
 # Expected: Access Denied
 ```
 
-## Enable Versioning (Required for Object Lock)
-
-Object Lock requires versioning:
-
-```bash
-aws s3api put-bucket-versioning \
-  --bucket worm-compliance \
-  --endpoint-url https://rgw.example.com \
-  --versioning-configuration Status=Enabled
-```
-
 ## Legal Hold
 
 Apply a legal hold independent of retention dates:
@@ -137,4 +112,4 @@ aws s3api put-object-legal-hold \
 
 ## Summary
 
-Ceph RGW Object Lock provides S3-compatible WORM storage through Compliance and Governance retention modes. Enable `rgw_s3_object_lock_enabled`, create buckets with Object Lock enabled at creation time, and configure default retention policies appropriate to your regulatory requirements. Use COMPLIANCE mode for records that must be truly immutable and GOVERNANCE mode where administrative override is needed.
+Ceph RGW Object Lock provides S3-compatible WORM storage through Compliance and Governance retention modes. Create buckets with Object Lock enabled at creation time and configure default retention policies appropriate to your regulatory requirements. Use COMPLIANCE mode for records that must be truly immutable and GOVERNANCE mode where administrative override is needed.
