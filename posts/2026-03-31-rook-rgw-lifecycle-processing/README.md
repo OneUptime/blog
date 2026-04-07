@@ -24,7 +24,7 @@ ceph config get client.rgw rgw_lc_max_objs
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `rgw_lifecycle_work_time` | `00:00-06:00` | Time window for lifecycle processing |
-| `rgw_lc_lock_max_time` | 90 | Seconds to hold lock on bucket index shard |
+| `rgw_lc_lock_max_time` | 60 | Seconds to hold lock on lifecycle processing shard |
 | `rgw_lc_max_objs` | 32 | Max lifecycle processing shards |
 | `rgw_lc_debug_interval` | -1 | Debug interval override (disable with -1) |
 
@@ -82,7 +82,7 @@ aws s3api put-bucket-lifecycle-configuration \
 ## Monitoring Lifecycle Processing
 
 ```bash
-# Check lifecycle stats via the admin socket
+# List lifecycle processing status
 radosgw-admin lc list
 
 # Get detailed lifecycle info for a bucket
