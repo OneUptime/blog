@@ -63,13 +63,17 @@ kind create cluster --config kind-laptop.yaml --name ceph-dev
 ## Memory-Optimized Rook Configuration
 
 ```bash
+# Add the Rook Helm repository
+helm repo add rook-release https://charts.rook.io/release
+helm repo update
+
 # Install operator with reduced resource requests
 helm install rook-ceph rook-release/rook-ceph \
   -n rook-ceph --create-namespace \
   --set resources.requests.cpu=100m \
   --set resources.requests.memory=128Mi \
-  --set csi.csiRbdPlugin.resources.requests.memory=64Mi \
-  --set csi.csiCephFSPlugin.resources.requests.memory=64Mi
+  --set csi.csiRBDPluginResource.requests.memory=64Mi \
+  --set csi.csiCephFSPluginResource.requests.memory=64Mi
 ```
 
 ## Minimal Cluster YAML for Laptops
@@ -133,7 +137,9 @@ spec:
 # Start kind cluster
 kind create cluster --config kind-laptop.yaml --name ceph-dev
 
-# Install Rook
+# Add Rook Helm repo and install operator
+helm repo add rook-release https://charts.rook.io/release
+helm repo update
 helm install rook-ceph rook-release/rook-ceph -n rook-ceph --create-namespace
 kubectl apply -f ceph-cluster-laptop.yaml
 
@@ -154,6 +160,10 @@ spec:
     requireSafeReplicaSize: false
 EOF
 
+# Deploy the Rook toolbox for running Ceph commands
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.13/deploy/examples/toolbox.yaml
+kubectl -n rook-ceph wait deploy/rook-ceph-tools --for=condition=Available --timeout=120s
+
 # Run tests
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 
@@ -169,7 +179,7 @@ sudo losetup -d /dev/loop10 /dev/loop20 /dev/loop30
 docker pull quay.io/ceph/ceph:v18.2.0
 kind load docker-image quay.io/ceph/ceph:v18.2.0 --name ceph-dev
 
-# Keep a saved cluster snapshot for fast restore
+# Export kubeconfig to access the cluster from your host
 kind export kubeconfig --name ceph-dev
 
 # Use Skaffold for rapid Rook operator iteration
