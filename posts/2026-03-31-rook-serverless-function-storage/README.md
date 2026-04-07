@@ -81,16 +81,14 @@ kind: Function
 metadata:
   name: data-processor
   namespace: openfaas-fn
+  annotations:
+    com.openfaas.health.http.path: /healthz
 spec:
+  name: data-processor
   image: myrepo/data-processor:latest
-  volumes:
-    - name: shared-data
-      persistentVolumeClaim:
-        claimName: openfaas-shared-data
-  volumeMounts:
-    - name: shared-data
-      mountPath: /data
 ```
+
+Then in the function's `stack.yml` or deployment configuration, reference the PVC using OpenFaaS's `existing_secrets` and volume configuration. Alternatively, mount the CephFS volume at the Kubernetes level by adding a volume to the function's deployment via a profile or custom template:
 
 Create the shared PVC:
 
@@ -120,13 +118,14 @@ fission environment create \
   --image fission/python-env:latest \
   --builder fission/python-builder:latest
 
-# Deploy function with S3 as archive backend
+# Package and deploy function using Fission's archive storage
 fission fn create \
   --name myfunction \
   --env python \
-  --archive-url s3://function-artifacts/myfunction.zip \
-  --archive-url-params "endpoint=http://rook-ceph-rgw:80,accessKey=fn-access-key,secretKey=fn-secret-key"
+  --deploy myfunction.zip
 ```
+
+To back Fission's built-in storage service with Ceph, configure the `storageServiceUrl` in the Fission Helm chart to point to the RGW endpoint, or mount a CephFS-backed PVC for the Fission storage service pod.
 
 ## Tuning for Cold Start Performance
 
@@ -137,7 +136,7 @@ Function cold starts are sensitive to storage latency. Reduce startup time:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw.my-store rgw_max_chunk_size 1048576
 
-# Enable object prefetch
+# Disable ops log to reduce I/O overhead on the RGW
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw.my-store rgw_enable_ops_log false
 ```
