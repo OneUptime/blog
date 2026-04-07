@@ -68,23 +68,25 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd unset nobackfill
 ```
 
-## Configuring Backfill in CephCluster CRD
+## Persisting Backfill Settings with a ConfigMap
 
-Persist backfill settings across Rook operator restarts:
+Persist backfill settings across Rook operator restarts using the `rook-config-override` ConfigMap:
 
 ```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: rook-ceph
+  name: rook-config-override
   namespace: rook-ceph
-spec:
-  cephConfig:
-    osd:
-      osd_max_backfills: "1"
-      osd_backfill_scan_min: "8"
-      osd_backfill_scan_max: "64"
+data:
+  config: |
+    [osd]
+    osd_max_backfills = 1
+    osd_backfill_scan_min = 8
+    osd_backfill_scan_max = 64
 ```
+
+After applying the ConfigMap, restart the OSD pods to pick up the changes.
 
 ## Monitoring Backfill Progress
 
@@ -99,4 +101,4 @@ The `misplaced` object count decreases as backfill completes. When it reaches ze
 
 ## Summary
 
-Backfill in Ceph rebalances data after OSD weight changes or additions. Setting `osd_max_backfills` to 1 and reducing scan limits protects production I/O. The `nobackfill` flag lets operators pause rebalancing during critical windows without permanently changing configuration. Persisting settings in the `CephCluster` CRD ensures consistent behavior across cluster lifecycle events.
+Backfill in Ceph rebalances data after OSD weight changes or additions. Setting `osd_max_backfills` to 1 and reducing scan limits protects production I/O. The `nobackfill` flag lets operators pause rebalancing during critical windows without permanently changing configuration. Persisting settings in the `rook-config-override` ConfigMap ensures consistent behavior across cluster lifecycle events.
