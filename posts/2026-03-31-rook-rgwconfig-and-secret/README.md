@@ -15,11 +15,11 @@ Rook exposes two mechanisms for customizing RGW daemon configuration in the `Cep
 - **`rgwConfig`**: A map of Ceph config key-value pairs injected as non-sensitive configuration overrides for the RGW daemon.
 - **`rgwConfigFromSecret`**: References Kubernetes secrets to inject sensitive values (tokens, passwords, certificates) as config options without hardcoding them in the CRD.
 
-These fields let you configure any RGW option supported by `ceph.conf` without modifying the Ceph config store or running `ceph config set` commands manually.
+These fields let you configure any RGW option supported by `ceph.conf` without running `ceph config set` commands manually. Under the hood, Rook applies these values to the Ceph mon config store at runtime.
 
 ## Using rgwConfig for Non-Sensitive Settings
 
-Add any `ceph.conf`-compatible option under `rgwConfig`. Rook writes these into the RGW config file at deployment:
+Add any `ceph.conf`-compatible option under `rgwConfig`. Rook applies these to the Ceph mon config store at runtime without restarting the RGW pods:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -50,7 +50,7 @@ These values override the Ceph defaults. The keys must match Ceph configuration 
 
 ## Using rgwConfigFromSecret for Sensitive Values
 
-Sensitive values should not appear in the CRD spec. Use `rgwConfigFromSecret` to pull them from Kubernetes secrets at runtime:
+Sensitive values should not appear in the CRD spec. Use `rgwConfigFromSecret` to pull them from Kubernetes secrets at runtime. The field is a map where each key is a Ceph config option name and each value is a standard Kubernetes `SecretKeySelector`:
 
 ```yaml
 apiVersion: v1
@@ -75,29 +75,31 @@ gateway:
     rgw_ldap_uri: "ldap://ldap.example.com"
     rgw_ldap_binddn: "cn=admin,dc=example,dc=com"
   rgwConfigFromSecret:
-    - secretName: rgw-sensitive-config
-      dataField: vault_token
-      configField: rgw_crypt_vault_token
-    - secretName: rgw-sensitive-config
-      dataField: ldap_bindpw
-      configField: rgw_ldap_bindpw
+    rgw_crypt_vault_token:
+      name: rgw-sensitive-config
+      key: vault_token
+    rgw_ldap_bindpw:
+      name: rgw-sensitive-config
+      key: ldap_bindpw
 ```
 
-Each entry in `rgwConfigFromSecret` maps a secret key (`dataField`) to a Ceph config option (`configField`).
+Each key in `rgwConfigFromSecret` is the Ceph config option name. The `name` field refers to the Kubernetes Secret, and the `key` field refers to the key within that Secret's data. If both `rgwConfig` and `rgwConfigFromSecret` define the same option, the value from `rgwConfigFromSecret` takes precedence.
 
 ## Applying Config Changes
 
-When you update `rgwConfig` or `rgwConfigFromSecret`, Rook restarts the RGW pods to apply the new configuration:
+When you update `rgwConfig` or `rgwConfigFromSecret`, Rook applies the changes to the Ceph mon config store at runtime without restarting RGW pods:
 
 ```bash
 kubectl apply -f objectstore.yaml
-# Watch pods restart
-kubectl -n rook-ceph get pod -l app=rook-ceph-rgw -w
+# Verify the Rook operator reconciled the change
+kubectl -n rook-ceph logs deploy/rook-ceph-operator | tail -20
 ```
+
+Note that removing a key from `rgwConfig` or `rgwConfigFromSecret` does not automatically remove it from the Ceph config store. To revert a setting, you must explicitly set it back to its default value.
 
 ## Verifying Applied Configuration
 
-After pods restart, verify the config was applied:
+After the operator reconciles, verify the config was applied:
 
 ```bash
 RGW_POD=$(kubectl -n rook-ceph get pod -l app=rook-ceph-rgw -o name | head -1)
@@ -123,4 +125,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-`rgwConfig` and `rgwConfigFromSecret` in the Rook `CephObjectStore` CRD allow injecting arbitrary Ceph RGW configuration options without manual intervention. Use `rgwConfig` for non-sensitive tuning parameters and `rgwConfigFromSecret` to safely inject tokens, passwords, and certificates from Kubernetes secrets. Rook applies these settings by restarting RGW pods on reconciliation. This approach keeps sensitive values out of YAML manifests while providing full control over RGW behavior.
+`rgwConfig` and `rgwConfigFromSecret` in the Rook `CephObjectStore` CRD allow injecting arbitrary Ceph RGW configuration options without manual intervention. Use `rgwConfig` for non-sensitive tuning parameters and `rgwConfigFromSecret` to safely inject tokens, passwords, and certificates from Kubernetes secrets. Rook applies these settings at runtime via the Ceph mon config store without restarting RGW pods. This approach keeps sensitive values out of YAML manifests while providing full control over RGW behavior.
