@@ -24,11 +24,8 @@ ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "bluefs|bluestore" 
 ## Triggering Compaction via Admin Socket
 
 ```bash
-# Compact the BlueStore allocation database
+# Compact RocksDB and BlueFS
 ceph daemon osd.0 compact
-
-# Compact RocksDB metadata
-ceph daemon osd.0 bluestore bluefs compact
 ```
 
 Note: Compaction is I/O intensive. Run it during low-traffic periods.
@@ -36,24 +33,24 @@ Note: Compaction is I/O intensive. Run it during low-traffic periods.
 ## Checking BlueStore Fragmentation
 
 ```bash
-# View BlueStore internal stats
-ceph daemon osd.0 bluestore stats
+# View BlueStore performance counters
+ceph daemon osd.0 perf dump bluestore
 
 # Check free space fragmentation
-ceph daemon osd.0 bluestore allocator fragmentation score
+ceph daemon osd.0 bluestore allocator score
 
 # View BlueFS (internal metadata FS) allocation
-ceph daemon osd.0 bluestore bluefs stats
+ceph daemon osd.0 bluefs stats
 ```
 
 ## RocksDB Compaction
 
 ```bash
 # Trigger manual RocksDB compaction
-ceph daemon osd.0 bluestore compact
+ceph daemon osd.0 compact
 
-# Check RocksDB stats
-ceph daemon osd.0 bluestore rocksdb stats
+# Check RocksDB performance counters
+ceph daemon osd.0 perf dump rocksdb
 ```
 
 ## When to Run Manual Compaction
@@ -66,7 +63,6 @@ ceph osd df | grep osd.0  # If used% seems high after deletes
 
 # 2. Before performance benchmarking
 ceph daemon osd.0 compact
-ceph daemon osd.0 bluestore bluefs compact
 rados bench -p benchpool 30 write --no-cleanup
 
 # 3. When BlueFS is consuming unexpected space
@@ -108,4 +104,4 @@ echo "Compaction triggered on all OSDs"
 
 ## Summary
 
-Manual BlueStore compaction via the admin socket reclaims space and reduces fragmentation after large delete operations. Use `ceph daemon osd.X compact` for the allocation database and `bluestore bluefs compact` for the internal metadata filesystem. Trigger compaction during low-traffic periods, run it sequentially across OSDs, and monitor CPU and I/O impact via logs and performance counters.
+Manual BlueStore compaction via the admin socket reclaims space and reduces fragmentation after large delete operations. Use `ceph daemon osd.X compact` to trigger RocksDB and BlueFS compaction together. Trigger compaction during low-traffic periods, run it sequentially across OSDs, and monitor CPU and I/O impact via logs and performance counters.
