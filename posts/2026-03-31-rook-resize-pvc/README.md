@@ -118,7 +118,7 @@ Watch the PVC for the resize to complete:
 kubectl get pvc my-pvc -w
 ```
 
-The status should transition through `Resizing` and then back to `Bound` with the new capacity.
+The PVC phase stays `Bound` throughout. You may see conditions such as `Resizing` and `FileSystemResizePending` in `kubectl describe pvc`, and the `status.capacity` field will update once the filesystem expansion completes on the node.
 
 ## Verifying the Resize on the Node
 
@@ -138,7 +138,7 @@ kubectl describe pvc my-pvc
 
 ## Resizing an Offline PVC
 
-If the pod is not running (for example a StatefulSet with 0 replicas), the node-side filesystem resize cannot happen until the pod is scheduled again. The PVC will show the new size in `status.capacity` but the filesystem inside will only expand on the next mount.
+If the pod is not running (for example a StatefulSet with 0 replicas), the node-side filesystem resize cannot happen until the pod is scheduled again. The PVC will have a `FileSystemResizePending` condition, and `status.capacity` will not update until the pod is started and the filesystem is expanded on mount.
 
 To force the resize, temporarily scale the StatefulSet up:
 
@@ -167,7 +167,7 @@ If the PVC is stuck in `Resizing` state, check the Rook CSI provisioner logs:
 kubectl -n rook-ceph logs -l app=csi-rbdplugin-provisioner -c csi-provisioner --tail=50
 ```
 
-If you see permission errors, ensure the CSI provisioner secret has the `osd pool application set` capability on the pool.
+If you see permission errors, ensure the Ceph auth credentials used by the CSI provisioner have sufficient capabilities (e.g., `mon 'profile rbd'` and `osd 'profile rbd pool=<pool>'`) to resize images in the target pool.
 
 ## Summary
 
