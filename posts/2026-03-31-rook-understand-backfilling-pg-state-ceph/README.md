@@ -65,7 +65,7 @@ ceph config get osd osd_max_backfills
 ## Monitoring Progress
 
 ```bash
-ceph status --format json | jq '.pgmap | {backfill_bytes, backfill_bytes_per_sec}'
+ceph status --format json | jq '.pgmap | {recovering_bytes_per_sec, recovering_objects_per_sec}'
 
 watch -n5 "ceph status | grep -E 'backfill|remapped'"
 ```
@@ -94,8 +94,8 @@ ceph osd unset nobackfill
 If the target OSD is nearly full, backfill may stall:
 
 ```bash
-ceph health detail | grep "backfill_full\|too full"
-ceph df | grep -E "OSD|%"
+ceph health detail | grep "backfillfull\|too full"
+ceph osd df | grep -E "ID|%"
 ```
 
 ## What Happens After Backfill
