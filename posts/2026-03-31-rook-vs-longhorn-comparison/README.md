@@ -37,7 +37,7 @@ The two systems differ significantly in scope and complexity:
 | Feature | Rook-Ceph | Longhorn |
 |---|---|---|
 | Block storage (RWO) | Yes (RBD) | Yes |
-| Shared filesystem (RWX) | Yes (CephFS) | No |
+| Shared filesystem (RWX) | Yes (CephFS) | Yes (NFS-based) |
 | Object storage (S3) | Yes (RGW) | No |
 | Setup complexity | High | Low |
 | Operational overhead | High | Low |
