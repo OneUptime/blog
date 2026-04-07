@@ -52,14 +52,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd mirror pool peer boo
   --site-name primary mypool
 ```
 
-### Legacy OSD Creation via ceph-disk
+### Legacy FileStore OSD Backend
 
-Any remaining `ceph-disk`-based OSDs should be migrated to `ceph-volume`:
+The FileStore OSD backend is deprecated in Reef. All OSDs should use BlueStore:
 
 ```bash
-# Check OSD deployment method
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd metadata | grep osd_objectstore
+# Check OSD backend type
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd metadata | jq '.[].osd_objectstore' | sort | uniq -c
 ```
+
+If any OSDs still report `filestore`, plan a migration to `bluestore` by reprovisioning those OSDs.
 
 ## Audit Your Configuration
 
@@ -88,4 +90,4 @@ Compare against the Rook v1.14+ CRD reference to identify removed fields.
 
 ## Summary
 
-Ceph Reef deprecates several legacy features including old MDS affinity settings, bootstrap token formats, and ceph-disk OSD creation. Use `ceph health detail` and `ceph config dump` to audit your cluster, and proactively migrate deprecated configurations before upgrading to Squid to prevent service disruptions.
+Ceph Reef deprecates several legacy features including old MDS standby settings, bootstrap token formats, and the FileStore OSD backend. Use `ceph health detail` and `ceph config dump` to audit your cluster, and proactively migrate deprecated configurations before upgrading to Squid to prevent service disruptions.
