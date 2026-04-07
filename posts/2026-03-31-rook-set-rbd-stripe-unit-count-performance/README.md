@@ -14,7 +14,7 @@ By default, RBD maps an image to 4 MB RADOS objects in a linear fashion. Each wr
 
 Three parameters control RBD striping:
 - `stripe_unit`: the chunk size of each stripe (default: 4 MB, same as object size)
-- `stripe_count`: number of OSDs to stripe across
+- `stripe_count`: number of objects to stripe across before wrapping
 - `object_size`: size of each RADOS object
 
 ## When Striping Helps
@@ -39,10 +39,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     --stripe-unit 1048576 \
     --stripe-count 4 \
     --object-size 4194304 \
-    --image-feature layering
+    --image-feature layering,striping
 ```
 
-Note: `object_size` must equal `stripe_unit * stripe_count` in this configuration.
+Note: `object_size` must be a multiple of `stripe_unit`. When `stripe_count` is greater than 1, the `striping` image feature is required alongside `layering`.
 
 ## Striping via StorageClass
 
@@ -58,7 +58,7 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
-  imageFeatures: layering
+  imageFeatures: layering,striping
   stripeUnit: "1048576"
   stripeCount: "4"
   objectSize: "4194304"
