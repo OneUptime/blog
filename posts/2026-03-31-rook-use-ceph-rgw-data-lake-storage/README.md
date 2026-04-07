@@ -119,11 +119,14 @@ ORDER BY 1;
 
 ## Enabling Multipart Upload for Large Files
 
-Large data files (>100MB) should use multipart uploads:
+Large data files (>100MB) should use multipart uploads. Configure the chunk size first, then upload:
 
 ```bash
+# Set multipart chunk size to 64MB
+aws configure set default.s3.multipart_chunksize 64MB
+
+# Upload large file (multipart upload is used automatically)
 aws s3 cp large-dataset.parquet s3://datalake/raw/datasets/ \
-  --multipart-chunksize 64mb \
   --endpoint-url https://rgw.example.com
 ```
 
