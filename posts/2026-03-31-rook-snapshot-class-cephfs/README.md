@@ -138,7 +138,7 @@ ceph fs subvolume snapshot ls myfs <subvolume-name> csi
 ceph fs subvolume snapshot info myfs <subvolume-name> <snapshot-name> csi
 ```
 
-## Schedule Regular Snapshots with CephBlockPool
+## Schedule Regular CephFS Snapshots
 
 While CephFS snapshot scheduling is typically managed via the Ceph snapshot scheduler or external tooling, you can also use VolumeSnapshotSchedule solutions:
 
