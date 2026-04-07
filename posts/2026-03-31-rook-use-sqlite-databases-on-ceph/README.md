@@ -23,13 +23,17 @@ _lib = ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libcephsqlite.so")
 
 POOL = os.environ.get("CEPH_POOL", "appdata")
 DB_NAME = os.environ.get("DB_NAME", "app.db")
-CEPH_USER = os.environ.get("CEPH_USER", "admin")
+
+# Set the Ceph client ID via environment variable
+# e.g., export CEPH_ARGS='--id admin'
 
 def get_connection() -> sqlite3.Connection:
-    uri = f"file:{POOL}/{DB_NAME}?vfs=ceph&ceph_user={CEPH_USER}"
+    uri = f"file:///{POOL}/{DB_NAME}?vfs=ceph"
     conn = sqlite3.connect(uri, uri=True, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    # Enable WAL mode for better concurrency
+    # Exclusive locking is required for libcephsqlite
+    conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+    # Enable WAL mode for better write performance (requires exclusive locking)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA cache_size=10000")
@@ -104,13 +108,14 @@ def bulk_insert_events(conn: sqlite3.Connection, events: list):
 
 ## Read-Only Access Pattern
 
-For read-heavy workloads, open multiple read-only connections:
+Since libcephsqlite uses exclusive locking, only one connection can access the database at a time. For read-only queries, open a separate connection when the writer is idle:
 
 ```python
 def get_readonly_connection() -> sqlite3.Connection:
-    uri = f"file:{POOL}/{DB_NAME}?vfs=ceph&mode=ro&ceph_user={CEPH_USER}"
+    uri = f"file:///{POOL}/{DB_NAME}?vfs=ceph&mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA locking_mode=EXCLUSIVE")
     return conn
 
 # Usage
@@ -139,4 +144,4 @@ backup_to_local(conn, "/tmp/app-backup-20260331.db")
 
 ## Summary
 
-Using SQLite on Ceph with libcephsqlite requires only loading the VFS extension and changing the connection URI. Standard SQLite APIs work unchanged for schema creation, CRUD operations, transactions, and backups. Enable WAL mode for better concurrent read performance, use explicit transactions for bulk inserts, and open separate read-only connections for reporting queries. The database is stored as RADOS objects in Ceph, gaining replication and durability without any changes to application business logic.
+Using SQLite on Ceph with libcephsqlite requires only loading the VFS extension and changing the connection URI. Standard SQLite APIs work unchanged for schema creation, CRUD operations, transactions, and backups. Enable WAL mode with exclusive locking for better write performance, use explicit transactions for bulk inserts, and use the SQLite backup API for data export. Note that libcephsqlite enforces exclusive locking, so only one connection can access the database at a time. The database is stored as RADOS objects in Ceph, gaining replication and durability without any changes to application business logic.
