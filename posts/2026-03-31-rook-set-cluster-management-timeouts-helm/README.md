@@ -28,14 +28,6 @@ The default is 5 seconds. This is deliberately short - increase it in environmen
 unreachableNodeTolerationSeconds: 30
 ```
 
-### Operator Reconcile Timeout
-
-The maximum time allowed for a single reconcile loop iteration. Increase this for large clusters where reconciliation takes longer:
-
-```yaml
-operatorTimeout: 5m
-```
-
 ## CephCluster-Level Timeouts
 
 Beyond Helm values, several timeouts are set in the `CephCluster` CR rather than the operator chart:
@@ -116,4 +108,4 @@ Events showing monitor replacement attempts indicate the unreachable tolerance w
 
 ## Summary
 
-Timeout settings in the Rook Helm chart control how aggressively the operator responds to unreachable nodes and slow reconciliation. Increase `unreachableNodeTolerationSeconds` for environments with transient connectivity issues, and tune CephCluster health check intervals to match your infrastructure's expected response characteristics.
+Timeout settings in the Rook Helm chart control how aggressively the operator responds to unreachable nodes. Increase `unreachableNodeTolerationSeconds` for environments with transient connectivity issues, and tune CephCluster health check intervals to match your infrastructure's expected response characteristics.
