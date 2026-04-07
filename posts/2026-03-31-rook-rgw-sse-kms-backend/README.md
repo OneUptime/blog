@@ -21,9 +21,6 @@ Ceph RGW supports server-side encryption (SSE) for objects stored in RADOS. The 
 ```bash
 # Set the KMS backend (vault, barbican, or kmip)
 ceph config set client.rgw rgw_crypt_s3_kms_backend vault
-
-# Enable SSE by default for all objects
-ceph config set client.rgw rgw_crypt_default_encryption_key ""
 ```
 
 ## Vault KMS Configuration
@@ -32,14 +29,17 @@ ceph config set client.rgw rgw_crypt_default_encryption_key ""
 # Vault server address
 ceph config set client.rgw rgw_crypt_vault_addr https://vault.example.com:8200
 
-# Vault authentication token
-ceph config set client.rgw rgw_crypt_vault_token <vault-token>
+# Vault authentication token file
+ceph config set client.rgw rgw_crypt_vault_token_file /var/lib/ceph/vault-token
 
 # Vault auth method (token or agent)
 ceph config set client.rgw rgw_crypt_vault_auth token
 
+# Vault secret engine (transit or kv)
+ceph config set client.rgw rgw_crypt_vault_secret_engine transit
+
 # Path prefix for encryption keys
-ceph config set client.rgw rgw_crypt_vault_prefix /v1/secret/data/ceph
+ceph config set client.rgw rgw_crypt_vault_prefix /v1/transit/keys
 ```
 
 ## Uploading with SSE-KMS
@@ -85,7 +85,9 @@ data:
     rgw_crypt_s3_kms_backend = vault
     rgw_crypt_vault_addr = https://vault.example.com:8200
     rgw_crypt_vault_auth = token
-    rgw_crypt_vault_prefix = /v1/secret/data/ceph
+    rgw_crypt_vault_token_file = /var/lib/ceph/vault-token
+    rgw_crypt_vault_secret_engine = transit
+    rgw_crypt_vault_prefix = /v1/transit/keys
 ```
 
 Apply and restart:
