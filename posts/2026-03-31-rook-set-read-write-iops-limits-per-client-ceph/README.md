@@ -23,9 +23,9 @@ rbd config image set mypool/vm-disk rbd_qos_write_iops_limit 500
 rbd config image set mypool/vm-disk rbd_qos_iops_limit 1200  # Total cap
 
 # Set independent bandwidth limits
-rbd config image set mypool/vm-disk rbd_qos_read_bps_limit 524288000    # 500MB/s
-rbd config image set mypool/vm-disk rbd_qos_write_bps_limit 209715200   # 200MB/s
-rbd config image set mypool/vm-disk rbd_qos_bps_limit 629145600         # 600MB/s total
+rbd config image set mypool/vm-disk rbd_qos_read_bps_limit 524288000    # 500MiB/s
+rbd config image set mypool/vm-disk rbd_qos_write_bps_limit 209715200   # 200MiB/s
+rbd config image set mypool/vm-disk rbd_qos_bps_limit 629145600         # 600MiB/s total
 ```
 
 View all QoS settings for an image:
@@ -49,7 +49,15 @@ This allows 2000 IOPS for up to 5 seconds before throttling back to 500 IOPS.
 
 ## Applying Limits via Kubernetes StorageClass
 
-For Kubernetes workloads using Rook-Ceph CSI:
+For Kubernetes workloads using Rook-Ceph CSI, set QoS defaults at the pool level so that all images provisioned in the pool inherit the limits:
+
+```bash
+# Set pool-level QoS defaults for all new and existing images
+rbd config pool set replicapool rbd_qos_read_iops_limit 1000
+rbd config pool set replicapool rbd_qos_write_iops_limit 500
+```
+
+Then use a standard Rook-Ceph StorageClass referencing that pool:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -65,10 +73,10 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  # Per-image QoS
-  mapOptions: "qos_read_iops_limit=1000,qos_write_iops_limit=500"
 reclaimPolicy: Delete
 ```
+
+All PVCs created with this StorageClass will inherit the pool-level QoS limits. You can still override limits on individual images using `rbd config image set`.
 
 ## Setting Limits via OSD mClock
 
@@ -81,15 +89,17 @@ ceph config set osd osd_mclock_scheduler_client_lim 5000
 
 The mClock scheduler does not differentiate read and write at the config level, but the RBD layer above it does.
 
-## Applying Limits to CephFS Clients
+## Setting Global RBD Client Defaults
 
-For CephFS workloads, limit I/O at the MDS client session level:
+Set QoS defaults that apply to all RBD clients cluster-wide:
 
 ```bash
 ceph config set client rbd_qos_iops_limit 1000
 ceph config set client rbd_qos_read_iops_limit 600
 ceph config set client rbd_qos_write_iops_limit 400
 ```
+
+These settings act as defaults for all RBD images unless overridden at the pool or image level. Note that `rbd_qos_*` settings apply only to RBD (block storage), not to CephFS file workloads.
 
 ## Verifying Limits with fio
 
