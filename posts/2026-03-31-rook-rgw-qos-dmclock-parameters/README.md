@@ -37,12 +37,17 @@ ceph config set client.rgw rgw_dmclock_admin_res 100
 ceph config set client.rgw rgw_dmclock_admin_wgt 100
 ceph config set client.rgw rgw_dmclock_admin_lim 0
 
-# Data upload (PUT) requests
+# Authentication requests (swift auth, STS)
+ceph config set client.rgw rgw_dmclock_auth_res 100
+ceph config set client.rgw rgw_dmclock_auth_wgt 100
+ceph config set client.rgw rgw_dmclock_auth_lim 0
+
+# Data upload/download (PUT/GET) requests
 ceph config set client.rgw rgw_dmclock_data_res 500
 ceph config set client.rgw rgw_dmclock_data_wgt 500
 ceph config set client.rgw rgw_dmclock_data_lim 0
 
-# Background GC and lifecycle operations
+# Metadata requests (bucket operations, object metadata)
 ceph config set client.rgw rgw_dmclock_metadata_res 50
 ceph config set client.rgw rgw_dmclock_metadata_wgt 200
 ceph config set client.rgw rgw_dmclock_metadata_lim 0
@@ -64,6 +69,9 @@ data:
     rgw_dmclock_admin_res = 100
     rgw_dmclock_admin_wgt = 100
     rgw_dmclock_admin_lim = 0
+    rgw_dmclock_auth_res = 100
+    rgw_dmclock_auth_wgt = 100
+    rgw_dmclock_auth_lim = 0
     rgw_dmclock_data_res = 500
     rgw_dmclock_data_wgt = 500
     rgw_dmclock_data_lim = 0
@@ -97,4 +105,4 @@ Use dmclock QoS when:
 
 ## Summary
 
-Ceph RGW dmclock QoS uses reservation, weight, and limit parameters to allocate RADOS operation budgets across different request categories. Configure separate budgets for admin, data, and metadata operations. Set `res` for guaranteed minimums, `wgt` for proportional fair sharing, and `lim` to 0 for no cap or a positive value to enforce a ceiling.
+Ceph RGW dmclock QoS uses reservation, weight, and limit parameters to allocate RADOS operation budgets across different request categories. Configure separate budgets for admin, auth, data, and metadata operations. Set `res` for guaranteed minimums, `wgt` for proportional fair sharing, and `lim` to 0 for no cap or a positive value to enforce a ceiling.
