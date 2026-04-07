@@ -24,23 +24,25 @@ Using subvolumes provides isolation and quota enforcement:
 # Create a subvolume group for SMB shares
 ceph fs subvolumegroup create cephfs smb-shares
 
-# Create individual shares
-ceph fs subvolume create cephfs marketing --group_name smb-shares --size 500G
-ceph fs subvolume create cephfs engineering --group_name smb-shares --size 1T
-ceph fs subvolume create cephfs archives --group_name smb-shares --size 2T
+# Create individual shares (--size is in bytes)
+ceph fs subvolume create cephfs marketing --group_name smb-shares --size 536870912000
+ceph fs subvolume create cephfs engineering --group_name smb-shares --size 1099511627776
+ceph fs subvolume create cephfs archives --group_name smb-shares --size 2199023255552
 
-# Get the actual paths
+# Get the actual paths (includes a UUID component)
 ceph fs subvolume getpath cephfs marketing --group_name smb-shares
+# Example output: /volumes/smb-shares/marketing/a4f3c1e2-...
 ```
 
 ## Configuring Multiple Shares in smb.conf
 
-Add each subvolume as a separate SMB share:
+Add each subvolume as a separate SMB share. Use the actual paths returned by `ceph fs subvolume getpath` (which include a UUID subdirectory):
 
 ```ini
 [marketing]
     comment = Marketing Department Files
-    path = /volumes/smb-shares/marketing
+    # Use the path from: ceph fs subvolume getpath cephfs marketing --group_name smb-shares
+    path = /volumes/smb-shares/marketing/<uuid>
     valid users = @marketing-team
     browsable = yes
     writable = yes
@@ -53,7 +55,8 @@ Add each subvolume as a separate SMB share:
 
 [engineering]
     comment = Engineering Files
-    path = /volumes/smb-shares/engineering
+    # Use the path from: ceph fs subvolume getpath cephfs engineering --group_name smb-shares
+    path = /volumes/smb-shares/engineering/<uuid>
     valid users = @engineering-team
     browsable = yes
     writable = yes
@@ -66,7 +69,8 @@ Add each subvolume as a separate SMB share:
 
 [archives]
     comment = Read-only Archives
-    path = /volumes/smb-shares/archives
+    # Use the path from: ceph fs subvolume getpath cephfs archives --group_name smb-shares
+    path = /volumes/smb-shares/archives/<uuid>
     valid users = @all-users
     browsable = yes
     writable = no
@@ -127,7 +131,7 @@ smbclient //samba01/engineering -U alice
 Set storage quotas on the subvolumes to limit share usage:
 
 ```bash
-ceph fs subvolume resize cephfs marketing 600G --group_name smb-shares
+ceph fs subvolume resize cephfs marketing 644245094400 --group_name smb-shares
 ceph fs subvolume info cephfs marketing --group_name smb-shares | grep bytes_quota
 ```
 
