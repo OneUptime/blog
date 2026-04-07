@@ -115,4 +115,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Rook-Ceph supports runtime configuration updates via `ceph config set` (persisted in the mon KV store) and file-based overrides via the `rook-config-override` ConfigMap. Runtime changes are preferred for operational tuning, while ConfigMap overrides are better for settings that must survive daemon restarts.
+Rook-Ceph supports runtime configuration updates via `ceph config set` (persisted in the mon KV store) and file-based overrides via the `rook-config-override` ConfigMap. Both methods persist across daemon restarts. Runtime changes via `ceph config set` are preferred for most operational tuning, while ConfigMap overrides are useful for settings that must be present in `ceph.conf` before the daemon connects to the monitors.
