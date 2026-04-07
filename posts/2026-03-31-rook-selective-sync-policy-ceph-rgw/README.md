@@ -10,7 +10,7 @@ Description: Learn how to use Ceph RGW sync policy to selectively replicate spec
 
 ## Overview
 
-Ceph RGW sync policy, introduced in Pacific (16.2), replaces the older per-zone bucket sync configuration with a more flexible, hierarchical policy system. Sync policies can be applied at the zonegroup, bucket, or even per-prefix level, enabling precise control over what data replicates between zones.
+Ceph RGW sync policy, introduced in Octopus (15.2), replaces the older per-zone bucket sync configuration with a more flexible, hierarchical policy system. Sync policies can be applied at the zonegroup, bucket, or even per-prefix level, enabling precise control over what data replicates between zones.
 
 ## Step 1 - Understanding Sync Policy Groups
 
@@ -71,7 +71,7 @@ radosgw-admin sync group pipe modify \
   --group-id=selective-sync \
   --pipe-id=production-bucket-sync \
   --prefix="critical/" \
-  --prefix-rm=""
+  --prefix-rm
 
 # Verify the pipe configuration
 radosgw-admin sync policy get | jq '.groups[] | select(.id == "selective-sync")'
@@ -84,13 +84,13 @@ radosgw-admin sync policy get | jq '.groups[] | select(.id == "selective-sync")'
 # This takes priority over the zonegroup-level policy
 
 # Enable sync for a specific bucket
-radosgw-admin sync policy group create \
+radosgw-admin sync group create \
   --bucket=important-bucket \
   --group-id=bucket-sync \
   --status=enabled
 
 # Create a pipe for the bucket
-radosgw-admin sync policy group pipe create \
+radosgw-admin sync group pipe create \
   --bucket=important-bucket \
   --group-id=bucket-sync \
   --pipe-id=full-sync \
@@ -98,7 +98,7 @@ radosgw-admin sync policy group pipe create \
   --dest-zones='*'
 
 # Disable sync for a bucket that should not replicate
-radosgw-admin sync policy group create \
+radosgw-admin sync group create \
   --bucket=local-only-bucket \
   --group-id=no-sync \
   --status=forbidden
@@ -111,8 +111,7 @@ radosgw-admin sync policy group create \
 radosgw-admin sync group pipe modify \
   --group-id=selective-sync \
   --pipe-id=tagged-sync \
-  --tag-name=sync-required \
-  --tag-value=true
+  --tags-add=sync-required=true
 
 # Objects must have this tag to be synced:
 aws --endpoint-url http://rgw.example.com:7480 \
