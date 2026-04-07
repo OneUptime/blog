@@ -37,11 +37,11 @@ ceph pg dump | awk '/^[0-9]/ && $21 > 0 {print $1, $21, "inconsistent"}'
 Get detailed information about which objects are inconsistent:
 
 ```bash
-# List inconsistent objects in a specific PG
+# List inconsistent PGs in a specific pool
 rados list-inconsistent-pg <pool-name>
 
-# Get detail on a specific inconsistent PG
-rados list-inconsistent-obj <pool-name> --pgid 3.4f
+# Get detail on inconsistent objects in a specific PG
+rados list-inconsistent-obj 3.4f
 
 # Example output:
 # {
@@ -97,10 +97,10 @@ dmesg | grep -i "I/O error\|ata\|error" | grep -i sdb | tail -20
 When automatic repair doesn't work and you know the good copy:
 
 ```bash
-# Export the object from the good OSD
-ceph daemon osd.2 export_group 3.4f /tmp/pg-3.4f-export
+# Export the object from the good OSD (run on the OSD node with the OSD stopped)
+ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-2 --pgid 3.4f --op export --file /tmp/pg-3.4f-export
 
-# Identify which pool and object name
+# Or retrieve the object directly from the pool
 rados -p <pool-name> get data_file_001 /tmp/recovered-object
 
 # If the object is gone from all OSDs, check snapshots or backups
@@ -113,7 +113,7 @@ Run a deep scrub to find all inconsistencies:
 
 ```bash
 # Deep scrub all PGs in a pool
-ceph osd pool scrub <pool-name>
+ceph osd pool deep-scrub <pool-name>
 
 # Or deep scrub a specific PG
 ceph pg deep-scrub 3.4f
@@ -136,7 +136,7 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- bash
 # Run repair commands from inside toolbox
 ceph pg ls inconsistent
 ceph pg repair 3.4f
-rados list-inconsistent-obj <pool-name> --pgid 3.4f
+rados list-inconsistent-obj 3.4f
 ```
 
 ## Preventing Future Inconsistencies
