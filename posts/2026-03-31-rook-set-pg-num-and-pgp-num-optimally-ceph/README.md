@@ -14,7 +14,7 @@ Placement Groups (PGs) are the internal unit Ceph uses to distribute data across
 
 - **Data distribution balance**: Too few PGs means uneven distribution; too many wastes resources
 - **Recovery speed**: More PGs allow more parallel recovery
-- **Memory usage**: Each PG consumes memory on every OSD daemon
+- **Memory usage**: Each PG consumes memory on the OSDs that host it
 
 Setting `pg_num` too low means data concentrates on a few OSDs. Setting it too high wastes memory and slows operations.
 
