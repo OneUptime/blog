@@ -65,12 +65,12 @@ ceph pg dump | grep scrubbing
 To check the last scrub time for a pool:
 
 ```bash
-ceph pg dump --format json | jq '.pg_stats[] | select(.pgid | startswith("1.")) | {pgid, last_scrub}'
+ceph pg dump --format json | jq '.pg_stats[] | select(.pgid | startswith("1.")) | {pgid, last_scrub_stamp}'
 ```
 
 ## Per-Pool Scrub Control
 
-Since Ceph Quincy, you can control scrub at the pool level:
+You can also control scrub at the pool level:
 
 ```bash
 # Disable scrub for a specific pool
