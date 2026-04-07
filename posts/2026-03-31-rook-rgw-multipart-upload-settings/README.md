@@ -92,9 +92,11 @@ data:
 ## Testing Multipart Upload
 
 ```bash
-# Upload a 1 GB object using multipart
-aws s3 cp /dev/urandom s3://test-bucket/bigfile \
-  --expected-size 1073741824 \
+# Create a 1 GB test file
+dd if=/dev/urandom of=/tmp/bigfile bs=1M count=1024
+
+# Upload using multipart
+aws s3 cp /tmp/bigfile s3://test-bucket/bigfile \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc
 
 # List in-progress multipart uploads
