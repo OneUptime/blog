@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rook, Ceph, iSCSI, High Availability, Gateway
+Tags: Ceph, iSCSI, High Availability, Gateway
 
 Description: Learn how to set up high-availability iSCSI gateways for Ceph using multiple gateway nodes with shared configuration and automatic failover.
 
@@ -19,7 +19,7 @@ The `ceph-iscsi` configuration is stored in the Ceph RADOS gateway config pool, 
 Install the required packages on each gateway node:
 
 ```bash
-dnf install -y ceph-iscsi python3-ceph-iscsi targetcli
+dnf install -y ceph-iscsi targetcli
 ```
 
 Configure the gateway by specifying all gateway addresses in the config file on each node:
@@ -49,8 +49,8 @@ systemctl enable --now rbd-target-gw
 Verify the API is responding on each node:
 
 ```bash
-curl http://10.0.1.10:5000/api/health
-curl http://10.0.1.11:5000/api/health
+curl http://10.0.1.10:5000/api/_ping
+curl http://10.0.1.11:5000/api/_ping
 ```
 
 ## Configuring Targets Across Both Gateways
@@ -65,8 +65,8 @@ gwcli
 /> cd /iscsi-targets
 /iscsi-targets> create iqn.2024-01.com.example:ha-storage
 /iscsi-targets/iqn.../> cd gateways
-/gateways> create gw1 10.0.1.10
-/gateways> create gw2 10.0.1.11
+/gateways> create gw1.example.com 10.0.1.10
+/gateways> create gw2.example.com 10.0.1.11
 ```
 
 Both gateways automatically sync the target configuration from the shared RADOS pool.
@@ -111,13 +111,13 @@ systemctl start rbd-target-gw rbd-target-api
 Check the status of both gateways from the Ceph dashboard or CLI:
 
 ```bash
-gwcli status
+gwcli ls
 ```
 
 Use the REST API to query gateway health:
 
 ```bash
-curl http://10.0.1.10:5000/api/gateways | python3 -m json.tool
+curl http://10.0.1.10:5000/api/gateways/iqn.2024-01.com.example:ha-storage | python3 -m json.tool
 ```
 
 ## Configuring Keepalived (Optional)
