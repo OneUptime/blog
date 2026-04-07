@@ -21,7 +21,7 @@ Without the correct SANs, S3 clients will reject the connection with a certifica
 
 ## Generating a Certificate with SANs
 
-Create a certificate signing request (CSR) with the required SANs. Use a config file:
+Create a self-signed certificate with the required SANs. First, prepare an OpenSSL config file:
 
 ```text
 [req]
@@ -49,7 +49,8 @@ Generate the certificate:
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout rgw.key \
   -out rgw.crt \
-  -config san.conf
+  -config san.conf \
+  -extensions v3_req
 ```
 
 Verify the SANs in the generated certificate:
