@@ -118,13 +118,45 @@ kubectl logs restore-test
 
 ## Cross-Namespace Restore
 
-By default, a VolumeSnapshot can only be used as a dataSource within the same namespace. To restore across namespaces, you must create a `VolumeSnapshotContent` manually and bind it to a new `VolumeSnapshot` object in the target namespace:
+By default, a VolumeSnapshot can only be used as a dataSource within the same namespace. To restore across namespaces, you need to create a new `VolumeSnapshotContent` and `VolumeSnapshot` pair in the target namespace. Since `VolumeSnapshotContent` is a cluster-scoped resource, the process involves pre-provisioning a static snapshot binding:
+
+1. Get the snapshot handle from the original `VolumeSnapshotContent`:
 
 ```bash
-kubectl get volumesnapshotcontent <content-name> -o yaml > snapshot-content.yaml
-# Edit the snapshot content to reference a new VolumeSnapshot in the target namespace
-kubectl apply -f snapshot-content.yaml -n target-namespace
+kubectl get volumesnapshotcontent <content-name> -o jsonpath='{.status.snapshotHandle}'
 ```
+
+2. Create a new `VolumeSnapshotContent` that references the snapshot handle and points to a new `VolumeSnapshot` in the target namespace:
+
+```yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotContent
+metadata:
+  name: imported-snapshot-content
+spec:
+  deletionPolicy: Retain
+  driver: rook-ceph.rbd.csi.ceph.com
+  source:
+    snapshotHandle: <snapshot-handle-from-step-1>
+  volumeSnapshotRef:
+    name: imported-snapshot
+    namespace: target-namespace
+```
+
+3. Create a `VolumeSnapshot` in the target namespace bound to the new content:
+
+```yaml
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: imported-snapshot
+  namespace: target-namespace
+spec:
+  source:
+    volumeSnapshotContentName: imported-snapshot-content
+```
+
+4. Use `imported-snapshot` as the `dataSource` in a PVC in the target namespace.
 
 ## Summary
 
