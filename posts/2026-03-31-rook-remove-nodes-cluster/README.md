@@ -31,7 +31,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd out osd.4
 Wait for recovery to complete. This is the most important step:
 
 ```bash
-watch kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+watch kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
 # Wait until: "recovery io 0 B/s" and "all PGs active+clean"
 ```
 
