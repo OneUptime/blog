@@ -52,14 +52,14 @@ metadata:
   name: stretched-pool
   namespace: rook-ceph
 spec:
+  # The failure domain type (datacenter, zone, rack, host, osd)
+  failureDomain: datacenter
   replicated:
     # Total replica count across all failure domains
     size: 4
     requireSafeReplicaSize: true
     # Number of replicas to place in each failure domain bucket
     replicasPerFailureDomain: 2
-    # The failure domain type (datacenter, zone, rack, host, osd)
-    failureDomain: datacenter
     # Optional: sub-failure domain for secondary CRUSH rule
     subFailureDomain: host
 ```
@@ -99,12 +99,12 @@ metadata:
   name: replicapool
   namespace: rook-ceph
 spec:
+  failureDomain: host
   replicated:
     size: 3
     requireSafeReplicaSize: true
     # Default: 1 replica per host
     replicasPerFailureDomain: 1
-    failureDomain: host
 ```
 
 ## Step 5: Two-Site Stretched Deployment
@@ -119,12 +119,12 @@ metadata:
   name: twosite-pool
   namespace: rook-ceph
 spec:
+  failureDomain: datacenter
   replicated:
     # 2 replicas per datacenter x 2 datacenters = 4 total
     size: 4
     requireSafeReplicaSize: true
     replicasPerFailureDomain: 2
-    failureDomain: datacenter
     # Within each datacenter, replicate across different hosts
     subFailureDomain: host
 ```
