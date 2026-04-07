@@ -26,7 +26,6 @@ spec:
   rados:
     pool: my-fs-data0
     namespace: nfs-ns
-    object: conf-nfs.my-nfs
   server:
     active: 4
 ```
@@ -61,7 +60,10 @@ Before reducing the `active` count, gracefully migrate clients away from the ser
 
 ```bash
 kubectl -n rook-ceph exec -it rook-ceph-nfs-my-nfs-3 -- \
-  ganesha_mgr get_clients
+  dbus-send --type=method_call --print-reply --system \
+  --dest=org.ganesha.nfsd \
+  /org/ganesha/nfsd/ClientMgr \
+  org.ganesha.nfsd.clientmgr.ShowClients
 ```
 
 Notify clients to remount before scaling down. Then reduce the count:
