@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Security, Dashboard, Kubernetes
 
-Description: Secure the Ceph dashboard in Rook by enabling TLS, configuring SSO with Kubernetes OIDC, restricting access with Ingress rules, and managing dashboard user accounts.
+Description: Secure the Ceph dashboard in Rook by enabling TLS, configuring SSO with SAML2, restricting access with Ingress rules, and managing dashboard user accounts.
 
 ---
 
@@ -88,11 +88,8 @@ Create a read-only user for operations teams:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-create ops-user \
-    read-only \
-    --password-policy-check-strength
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-roles ops-user read-only
+    "$(openssl rand -base64 16)" \
+    read-only
 ```
 
 List all dashboard users:
@@ -102,9 +99,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-show
 ```
 
-## Enabling SSO with OIDC
+## Enabling SSO with SAML2
 
-Configure the dashboard to use an OIDC provider (such as Keycloak or Dex):
+Configure the dashboard to use a SAML2 identity provider (such as Keycloak or Dex):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -119,18 +116,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Change the default admin password immediately after deployment:
 
 ```bash
+NEW_PASSWORD="$(openssl rand -base64 32)"
+
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-set-password admin \
-    --force-password "$(openssl rand -base64 32)"
-```
+    "$NEW_PASSWORD" --force-password
 
-Store the generated password in a Kubernetes secret:
-
-```bash
 kubectl -n rook-ceph create secret generic ceph-dashboard-admin \
-  --from-literal=password="$(openssl rand -base64 32)"
+  --from-literal=password="$NEW_PASSWORD"
 ```
 
 ## Summary
 
-Securing the Ceph dashboard requires enabling TLS, restricting Ingress to trusted IP ranges, creating read-only accounts for operations staff, and rotating the default admin password. For larger organizations, OIDC/SSO integration centralizes authentication and provides audit logging of dashboard access.
+Securing the Ceph dashboard requires enabling TLS, restricting Ingress to trusted IP ranges, creating read-only accounts for operations staff, and rotating the default admin password. For larger organizations, SAML2/SSO integration centralizes authentication and provides audit logging of dashboard access.
