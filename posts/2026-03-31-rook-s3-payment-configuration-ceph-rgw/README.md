@@ -17,7 +17,7 @@ S3 Requester Pays is a bucket configuration where the requester - rather than th
 When a bucket is configured as Requester Pays:
 - Requesters must include the `x-amz-request-payer: requester` header
 - Anonymous access is disabled for that bucket
-- In Ceph, this translates to quota enforcement by user
+- Ceph RGW enforces this at the API level but does not have built-in billing; use user quotas separately to track and limit usage
 
 ## Enable Requester Pays on a Bucket
 
