@@ -86,11 +86,11 @@ kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
 kubectl get secret -n rook-ceph | grep cephfs
 ```
 
-Verify the node-stage secret contains a valid Ceph keyring:
+Verify the node-stage secret contains a valid Ceph key:
 
 ```bash
 kubectl get secret rook-csi-cephfs-node -n rook-ceph \
-  -o jsonpath='{.data.adminID}' | base64 -d
+  -o jsonpath='{.data.adminKey}' | base64 -d
 ```
 
 **Fix:** If empty or wrong, restart the operator to regenerate secrets.
@@ -130,7 +130,7 @@ Common causes: resource limits too low (OOMKilled), socket conflicts, or missing
 csi:
   csiRBDPluginResource: |
     - name: csi-rbdplugin
-      resource:
+      resources:
         limits:
           memory: 2Gi
 ```
