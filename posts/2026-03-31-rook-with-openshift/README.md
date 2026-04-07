@@ -132,7 +132,7 @@ spec:
   placement:
     all:
       tolerations:
-        - key: node-role.kubernetes.io/master
+        - key: node-role.kubernetes.io/control-plane
           operator: Exists
   resources:
     osd:
@@ -193,15 +193,22 @@ spec:
       storage: 10Gi
 ```
 
-For OpenShift DeploymentConfig:
+For an OpenShift Deployment:
 
 ```yaml
-apiVersion: apps.openshift.io/v1
-kind: DeploymentConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: my-app
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -217,20 +224,7 @@ spec:
 
 ## Monitoring Rook-Ceph with OpenShift Monitoring
 
-Enable Ceph metrics scraping in the Rook operator ConfigMap:
-
-```bash
-oc -n rook-ceph edit configmap rook-ceph-operator-config
-```
-
-Set:
-
-```yaml
-data:
-  ROOK_ENABLE_DISCOVERY_DAEMON: "true"
-```
-
-Create a ServiceMonitor for Ceph metrics (requires the OpenShift monitoring stack):
+Rook-Ceph exposes Prometheus metrics from the Ceph manager daemon by default. To scrape these metrics with the OpenShift monitoring stack, create a ServiceMonitor:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
