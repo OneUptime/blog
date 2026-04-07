@@ -40,7 +40,7 @@ kubectl apply -f https://raw.githubusercontent.com/csi-addons/volume-replication
 kubectl apply -f https://raw.githubusercontent.com/csi-addons/volume-replication-operator/main/config/manager/manager.yaml
 
 # Verify the operator is running
-kubectl get pods -n volume-replication-system
+kubectl get pods -n volume-replication-operator-system
 ```
 
 ## Step 2: Create a VolumeReplicationClass with a Specific Interval
@@ -172,6 +172,8 @@ spec:
     name: database-pvc
   # Initial replication state (primary site)
   replicationState: primary
+  # Whether to automatically resync when replication state changes
+  autoResync: false
 ```
 
 ```bash
@@ -222,7 +224,7 @@ kubectl describe volumereplication db-volume-replication -n production | grep -A
 kubectl describe volumereplication db-volume-replication -n production
 
 # Check VRO operator logs
-kubectl logs -n volume-replication-system deploy/volume-replication-operator | tail -30
+kubectl logs -n volume-replication-operator-system deploy/volume-replication-operator-controller-manager | tail -30
 
 # Verify CSI addon supports scheduling
 kubectl get csiaddon -A
