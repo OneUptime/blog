@@ -21,14 +21,11 @@ The safest approach for client key rotation is a blue-green swap:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth get client.myapp -o /tmp/myapp-old.keyring
 
-# Generate a new key value (keep the same capabilities)
+# Create a new key entity with the same capabilities
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth import -i - << 'EOF'
-[client.myapp-new]
-    key = $(ceph-authtool --gen-print-key)
-    caps mon = "allow r"
-    caps osd = "allow rw pool=myapp-data"
-EOF
+  ceph auth get-or-create client.myapp-new \
+  mon 'allow r' \
+  osd 'allow rw pool=myapp-data'
 ```
 
 A simpler approach - add the new key in a separate entity:
@@ -56,11 +53,22 @@ kubectl -n myapp-namespace set env deploy/myapp CEPH_KEY_VERSION=v2
 **Step 3: Delete the old key after confirming the application works**
 
 ```bash
+# Get the capabilities from the new key
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth del client.myapp
 
+# Recreate the original entity name with the new key
+NEW_KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph auth get-key client.myapp-v2)
+
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth rename client.myapp-v2 client.myapp
+  ceph auth get-or-create client.myapp \
+  mon 'allow r' \
+  osd 'allow rw pool=myapp-data'
+
+# Delete the temporary entity
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph auth del client.myapp-v2
 ```
 
 ## Rotating Keys In-Place
@@ -68,17 +76,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 For less critical keys, rotate in-place by regenerating the key value:
 
 ```bash
-# Generate a new random key
-NEW_KEY=$(ceph-authtool --gen-print-key)
+# Generate a new random key inside the tools pod
+NEW_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph-authtool --gen-print-key | tr -d '[:space:]')
 
-# Import updated keyring
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth import -i - << EOF
-[client.myapp]
+# Update the existing entity with the new key and same capabilities
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  bash -c "echo '[client.myapp]
     key = $NEW_KEY
-    caps mon = "allow r"
-    caps osd = "allow rw pool=myapp-data"
-EOF
+    caps mon = \"allow r\"
+    caps osd = \"allow rw pool=myapp-data\"' | ceph auth import -i -"
 ```
 
 Update the Kubernetes Secret immediately:
@@ -91,15 +98,34 @@ kubectl -n rook-ceph create secret generic ceph-client-myapp \
 
 ## Rotating Daemon Keys
 
-Ceph daemon key rotation is more complex and typically involves daemon restart. Rook handles this during upgrades. For manual rotation:
+Ceph daemon key rotation is more complex because daemons authenticate with the monitors using their keys. Deleting a daemon key and restarting the daemon will cause it to fail authentication. Rook manages daemon keys during OSD provisioning and upgrades.
+
+For manual daemon key rotation, you must generate a new key, update the auth entry, and update the keyring stored in the daemon's Kubernetes Secret before restarting:
 
 ```bash
-# Regenerate OSD key (requires OSD restart)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth del osd.5
+# Generate a new key for OSD 5
+NEW_OSD_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph-authtool --gen-print-key | tr -d '[:space:]')
 
+# Get the current caps for the OSD
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph auth get osd.5
+
+# Update the OSD auth entry with the new key (preserving caps)
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  bash -c "echo '[osd.5]
+    key = $NEW_OSD_KEY' | ceph auth import -i -"
+
+# Update the keyring secret used by the OSD pod
+kubectl -n rook-ceph get secret rook-ceph-osd-5-keyring -o json | \
+  jq --arg key "$NEW_OSD_KEY" '.data["keyring"] = ($key | @base64)' | \
+  kubectl apply -f -
+
+# Restart the OSD to pick up the new key
 kubectl -n rook-ceph rollout restart deploy/rook-ceph-osd-5
 ```
+
+> **Note:** Manual daemon key rotation is rarely needed. Rook handles daemon credentials during provisioning and upgrades.
 
 ## Summary
 
