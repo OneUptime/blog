@@ -178,8 +178,13 @@ async function main(): Promise<void> {
 
       const child = spawn('codex', ['exec', '--full-auto', prompt], {
         cwd: process.cwd(),
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+
+      let stdoutData = '';
+      let stderrData = '';
+      child.stdout?.on('data', (data: Buffer) => { stdoutData += data.toString(); });
+      child.stderr?.on('data', (data: Buffer) => { stderrData += data.toString(); });
 
       const timeout = setTimeout(() => {
         console.log(`\n[TIMEOUT] ${blog.post}: killed after 5 minutes`);
@@ -191,6 +196,12 @@ async function main(): Promise<void> {
 
         if (code !== 0) {
           console.log(`\n[FAIL] ${blog.post}: codex exited with code ${code}`);
+          if (stderrData.trim()) {
+            console.log(`  stderr: ${stderrData.trim().split('\n').slice(-5).join('\n  ')}`);
+          }
+          if (stdoutData.trim()) {
+            console.log(`  stdout: ${stdoutData.trim().split('\n').slice(-5).join('\n  ')}`);
+          }
         }
 
         const validationPath = path.join(postDir, VALIDATION_JSON);
