@@ -27,19 +27,7 @@ aws s3 mb s3://my-bucket-logs \
   --endpoint-url http://rgw.example.com:7480
 ```
 
-## Step 2: Grant Log Delivery Permissions
-
-RGW needs permission to write to the log bucket. Apply a bucket ACL:
-
-```bash
-aws s3api put-bucket-acl \
-  --bucket my-bucket-logs \
-  --grant-write 'URI="http://acs.amazonaws.com/groups/s3/LogDelivery"' \
-  --grant-read-acp 'URI="http://acs.amazonaws.com/groups/s3/LogDelivery"' \
-  --endpoint-url http://rgw.example.com:7480
-```
-
-## Step 3: Enable Logging on the Source Bucket
+## Step 2: Enable Logging on the Source Bucket
 
 Create a logging configuration JSON:
 
@@ -61,7 +49,7 @@ aws s3api put-bucket-logging \
   --endpoint-url http://rgw.example.com:7480
 ```
 
-## Step 4: Verify the Configuration
+## Step 3: Verify the Configuration
 
 ```bash
 aws s3api get-bucket-logging \
@@ -69,7 +57,7 @@ aws s3api get-bucket-logging \
   --endpoint-url http://rgw.example.com:7480
 ```
 
-## Step 5: Generate and View Logs
+## Step 4: Generate and View Logs
 
 Make a few requests against the source bucket, then list the log objects:
 
@@ -92,14 +80,15 @@ Log entries are space-delimited and include fields such as bucket owner, bucket 
 
 ## Tuning Log Delivery
 
-RGW delivers logs asynchronously. There may be a delay of minutes before log objects appear. To reduce the log flush interval, adjust:
+RGW delivers logs asynchronously. Log objects appear in the target bucket after a configurable roll time (default 5 minutes). To reduce the log object roll interval, adjust:
 
 ```ini
-[client.rgw.myzone]
-rgw_log_object_name = %Y-%m-%d-%H-%M-%S
-rgw_usage_log_flush_threshold = 1024
+[client.rgw.mygateway]
+rgw_bucket_logging_obj_roll_time = 60
 ```
+
+This sets the roll time to 60 seconds, meaning log objects are materialized more frequently.
 
 ## Summary
 
-Ceph RGW supports S3-compatible bucket access logging where request records are stored as objects in a designated log bucket. Enable logging via `put-bucket-logging`, grant write permissions to the log delivery group, and retrieve log files from the target bucket. Logs are delivered asynchronously and are useful for audit and debugging workflows.
+Ceph RGW supports S3-compatible bucket access logging where request records are stored as objects in a designated log bucket. Enable logging via `put-bucket-logging` and retrieve log files from the target bucket. Logs are delivered asynchronously and are useful for audit and debugging workflows.
