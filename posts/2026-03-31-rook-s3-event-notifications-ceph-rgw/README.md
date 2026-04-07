@@ -21,16 +21,17 @@ Ceph RGW supports three types of notification endpoints:
 
 ## Configure a Kafka Notification Topic
 
-Create a Kafka notification topic in RGW:
+Create a notification topic in RGW using the SNS API via the AWS CLI:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin topic create \
-  --uid=admin \
-  --topic=object-events \
-  --endpoint "kafka://kafka.kafka.svc:9092" \
-  --endpoint-args "kafka-ack-level=broker&use-ssl=false"
+aws sns create-topic \
+  --name object-events \
+  --attributes '{"push-endpoint": "kafka://kafka.kafka.svc:9092", "kafka-ack-level": "broker", "use-ssl": "false"}' \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph:80 \
+  --profile ceph
 ```
+
+This returns a TopicArn that you will use in the notification configuration.
 
 ## Create an S3 Bucket Notification
 
@@ -112,14 +113,14 @@ A sample event message:
 
 ## HTTP Webhook Notification
 
-For a simple HTTP endpoint:
+For a simple HTTP endpoint, create the topic via the SNS API:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin topic create \
-  --uid=admin \
-  --topic=http-events \
-  --endpoint "http://webhook-receiver.default.svc:8080/events"
+aws sns create-topic \
+  --name http-events \
+  --attributes '{"push-endpoint": "http://webhook-receiver.default.svc:8080/events"}' \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph:80 \
+  --profile ceph
 ```
 
 ## Get Current Notification Config
