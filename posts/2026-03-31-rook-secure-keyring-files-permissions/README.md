@@ -104,7 +104,7 @@ For production, avoid storing Ceph keyrings as plain Kubernetes Secrets. Use a s
 ```bash
 # Example using Vault with External Secrets Operator
 kubectl apply -f - <<EOF
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: ceph-admin-keyring
@@ -125,11 +125,25 @@ EOF
 
 ## Auditing Access to Keyring Secrets
 
-Enable Kubernetes audit logging to track Secret access:
+Enable Kubernetes API server audit logging to track Secret access. This requires an audit policy that captures read operations on Secrets:
+
+```yaml
+# Example audit policy snippet to log Secret access
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
+    namespaces: ["rook-ceph"]
+```
+
+Once audit logging is configured, review the audit log for Secret access events:
 
 ```bash
-# Check who recently accessed the admin keyring
-kubectl get events -n rook-ceph | grep -i "secret\|keyring"
+# Search audit logs for access to keyring secrets
+grep "rook-ceph-admin-keyring" /var/log/kubernetes/audit/audit.log
 ```
 
 ## Summary
