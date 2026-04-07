@@ -20,13 +20,13 @@ Ceph RGW supports S3-compatible bucket notifications that publish events (object
 
 ```bash
 # Enable bucket notifications
-ceph config set client.rgw rgw_enable_apis "s3,admin,pubsub"
+ceph config set client.rgw rgw_enable_apis "s3,admin,notifications"
 
-# Persistent topic configuration
-ceph config set client.rgw rgw_persist_notification true
+# Maximum retries for persistent notification delivery
+ceph config set client.rgw rgw_topic_persistency_max_retries 10
 
-# Number of notification worker threads
-ceph config set client.rgw rgw_notification_retry_hint 3
+# Minimum time between retries of the same persistent notification (seconds)
+ceph config set client.rgw rgw_topic_persistency_sleep_duration 1
 ```
 
 ## Creating a Persistent Topic
@@ -82,14 +82,14 @@ aws s3api put-bucket-notification-configuration \
 ## Persistent Notification Configuration
 
 ```bash
-# Set notification persistence parameters
-ceph config set client.rgw rgw_persist_notification true
+# Maximum retries for persistent notification delivery
+ceph config set client.rgw rgw_topic_persistency_max_retries 10
 
-# Retry interval for failed notifications (seconds)
-ceph config set client.rgw rgw_notification_retry_hint 5
+# Minimum time between retries of the same persistent notification (seconds)
+ceph config set client.rgw rgw_topic_persistency_sleep_duration 1
 
-# Maximum queued notifications per topic
-ceph config set client.rgw rgw_max_pending_chunks 16
+# Time-to-live for persistent notifications (seconds, 0 = unlimited)
+ceph config set client.rgw rgw_topic_persistency_time_to_live 0
 ```
 
 ## Applying in Rook
@@ -103,9 +103,9 @@ metadata:
 data:
   config: |
     [client.rgw.my-store.a]
-    rgw_persist_notification = true
-    rgw_notification_retry_hint = 3
-    rgw_enable_apis = s3,admin,pubsub
+    rgw_topic_persistency_max_retries = 10
+    rgw_topic_persistency_sleep_duration = 1
+    rgw_enable_apis = s3,admin,notifications
 ```
 
 ## Monitoring Notifications
@@ -123,4 +123,4 @@ radosgw-admin notification list --bucket=my-bucket
 
 ## Summary
 
-Ceph RGW bucket notifications publish S3 events to Kafka, AMQP, or HTTP endpoints. Enable the `pubsub` API and configure persistent topics with `rgw_persist_notification = true` to avoid event loss during broker downtime. Use `radosgw-admin topic list` to monitor active notification topics.
+Ceph RGW bucket notifications publish S3 events to Kafka, AMQP, or HTTP endpoints. Enable the `notifications` API and set the `persistent` attribute to `true` when creating topics to avoid event loss during broker downtime. Use `radosgw-admin topic list` to monitor active notification topics.
