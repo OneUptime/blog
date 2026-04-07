@@ -105,7 +105,7 @@ kubectl delete configmap -n rook-ceph \
 
 ## Step 5: Label the Disk for Replacement in CephCluster
 
-Annotate the node to tell Rook to reprovisioning once the new disk is in:
+Annotate the node to tell Rook to reprovision once the new disk is in:
 
 ```bash
 # If using spec.storage.nodes, update CephCluster to remove the old device
