@@ -121,7 +121,15 @@ function main(): void {
     const postDir = path.join(POSTS_DIR, blog.post);
     const readmePath = path.join(postDir, 'README.md');
 
-    console.log(`\n[${i + 1}/${postsToValidate.length}] Reviewing: ${blog.title}`);
+    const current = i + 1;
+    const total = postsToValidate.length;
+    const percent = Math.round((current / total) * 100);
+    const barWidth = 30;
+    const filled = Math.round((current / total) * barWidth);
+    const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+
+    console.log(`\n${bar} ${percent}% (${current}/${total})`);
+    console.log(`Reviewing: ${blog.title}`);
     console.log(`  Post: ${blog.post}`);
 
     if (!fs.existsSync(readmePath)) {
