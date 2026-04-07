@@ -48,9 +48,10 @@ ceph --version
 
 The `ceph-common` package provides:
 - `mount.ceph` helper for kernel mounts
-- `ceph-fuse` client
 - `ceph` CLI for keyring management
 - `rados` and other utilities
+
+For FUSE-based mounts, install the separate `ceph-fuse` package.
 
 ## Network Requirements
 
