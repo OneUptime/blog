@@ -36,7 +36,7 @@ Multiple space-separated names are supported to handle internal vs. external acc
 For virtual-hosted-style access to work, your DNS must resolve wildcard subdomains:
 
 ```bash
-# /etc/hosts or DNS zone entry for testing
+# DNS zone entry for testing (wildcards are not supported in /etc/hosts)
 *.s3.example.com  IN  A  10.0.0.100
 s3.example.com    IN  A  10.0.0.100
 ```
