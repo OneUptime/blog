@@ -135,6 +135,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph osd tree
 # -5   0.05539  host worker-04
 #  6   0.01846      osd.6   up  1.00000  1.00000
 #  7   0.01846      osd.7   up  1.00000  1.00000
+#  8   0.01846      osd.8   up  1.00000  1.00000
 
 # Check total cluster capacity
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph df
@@ -158,10 +159,11 @@ watch kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph status
 
 Rebalancing completes when:
 
-```yaml
-health: HEALTH_OK
-0 bytes misplaced
 ```
+health: HEALTH_OK
+```
+
+The "objects misplaced" line disappears from `ceph status` output once all data has been redistributed.
 
 ## Step 7: Update CRUSH Map Weight (Optional)
 
