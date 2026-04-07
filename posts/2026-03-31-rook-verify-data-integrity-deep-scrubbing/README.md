@@ -62,7 +62,6 @@ ceph config set osd osd_scrub_max_interval 604800
 
 # Deep scrub interval
 ceph config set osd osd_deep_scrub_interval 604800
-ceph config set mgr osd_deep_scrub_interval 604800
 
 # Limit scrub load impact
 ceph config set osd osd_scrub_load_threshold 0.5
