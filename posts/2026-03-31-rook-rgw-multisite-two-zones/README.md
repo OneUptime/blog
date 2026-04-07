@@ -42,7 +42,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --rgw-zonegroup=us \
   --rgw-zone=us-east \
   --master \
-  --default
+  --default \
+  --endpoints=http://rgw-us-east.example.com
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin period update --commit
@@ -58,6 +59,15 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --access-key=sync-access-key \
   --secret-key=sync-secret-key \
   --system
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zone modify \
+  --rgw-zone=us-east \
+  --access-key=sync-access-key \
+  --secret=sync-secret-key
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin period update --commit
 ```
 
 Save the access key and secret key for use on the secondary cluster.
@@ -132,8 +142,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --rgw-zonegroup=us \
   --rgw-zone=us-west \
   --access-key=sync-access-key \
-  --secret-key=sync-secret-key \
-  --endpoints=http://rgw-us-east.example.com
+  --secret=sync-secret-key \
+  --endpoints=http://rgw-us-west.example.com
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin period update --commit
