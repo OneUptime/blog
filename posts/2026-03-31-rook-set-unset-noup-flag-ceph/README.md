@@ -12,7 +12,7 @@ The `noup` flag prevents Ceph OSDs from transitioning to the `up` state, even wh
 
 ## What noup Does
 
-When an OSD daemon starts, it reports its state to the monitors and normally transitions to `up`. With `noup` set, the monitors acknowledge the OSD but keep it in the `down` state in the OSD map. This means no PGs are assigned to it and no client I/O flows through it.
+When an OSD daemon starts, it reports its state to the monitors and normally transitions to `up`. With `noup` set, the monitors acknowledge the OSD but keep it in the `down` state in the OSD map. This means the OSD will not actively serve PGs or handle any client I/O, even though PGs may still be mapped to it via CRUSH.
 
 ## Setting the noup Flag
 
@@ -63,15 +63,22 @@ ceph osd set noup
 ceph osd unset noup
 ```
 
-## Manually Marking an OSD Up
+## Allowing a Specific OSD to Come Up
 
-While `noup` is set, you can still manually mark individual OSDs up:
+There is no command to manually mark an individual OSD as `up` — the OSD daemon must report to the monitors itself. The global `noup` flag cannot be overridden on a per-OSD basis. To test a specific OSD while keeping others down, briefly unset the global flag and then re-set it:
 
 ```bash
-ceph osd up osd.3
+# Unset noup, let the target OSD come up
+ceph osd unset noup
+
+# Wait for osd.3 to transition to up
+ceph osd tree
+
+# Re-set noup to prevent remaining OSDs from coming up
+ceph osd set noup
 ```
 
-This is useful for testing a specific OSD before allowing all of them to start.
+Note that Ceph also supports per-OSD noup flags via `ceph osd add-noup osd.3` and `ceph osd rm-noup osd.3`, but these only add restrictions — they do not override the global `noup` flag.
 
 ## Unsetting noup
 
