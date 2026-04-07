@@ -12,10 +12,11 @@ Ceph RGW can authenticate users against an LDAP directory, enabling single sign-
 
 ## LDAP Authentication Flow
 
-When LDAP auth is enabled:
-1. Client sends credentials via HTTP Basic Auth in the `Authorization` header
-2. RGW sends a bind request to the LDAP server with those credentials
-3. On success, RGW maps the LDAP user to a local RGW user
+When LDAP auth is enabled for S3:
+1. User generates a base64-encoded LDAP token using `radosgw-token --encode --ttype=ldap`
+2. The token (containing LDAP credentials) is used as the S3 access key
+3. RGW decodes the token, extracts the credentials, and binds to LDAP to verify them
+4. On success, RGW authorizes the S3 operation
 
 ## LDAP Configuration Parameters
 
@@ -32,11 +33,11 @@ ceph config set client.rgw rgw_ldap_secret /etc/ceph/ldap.secret
 # Base DN to search for users
 ceph config set client.rgw rgw_ldap_searchdn "ou=users,dc=example,dc=com"
 
-# Search filter (restrict which users can log in)
+# DN attribute used to construct the search filter (e.g., uid, cn)
 ceph config set client.rgw rgw_ldap_dnattr uid
 
-# Token expiry in seconds (0 = no expiry)
-ceph config set client.rgw rgw_ldap_token_expire 3600
+# Enable LDAP authentication for S3
+ceph config set client.rgw rgw_s3_auth_use_ldap true
 ```
 
 ## Creating the LDAP Secret File
@@ -47,11 +48,15 @@ chmod 600 /etc/ceph/ldap.secret
 chown ceph:ceph /etc/ceph/ldap.secret
 ```
 
-## Enabling LDAP in the API List
+## Generating an LDAP Token for S3 Access
 
 ```bash
-# Add ldap to the enabled APIs
-ceph config set client.rgw rgw_enable_apis "s3,swift,swift_auth,admin,ldap"
+# Generate a base64-encoded LDAP token
+radosgw-token --encode --ttype=ldap
+
+# Use the token as the S3 access key
+export AWS_ACCESS_KEY_ID="<token-output>"
+export AWS_SECRET_ACCESS_KEY=""
 ```
 
 ## Applying in Rook via Secret
@@ -84,18 +89,20 @@ data:
     rgw_ldap_secret = /etc/ceph/ldap.secret
     rgw_ldap_searchdn = ou=users,dc=example,dc=com
     rgw_ldap_dnattr = uid
-    rgw_ldap_token_expire = 3600
+    rgw_s3_auth_use_ldap = true
 ```
 
 ## Testing LDAP Authentication
 
 ```bash
-# Test LDAP login via the S3 API
-curl -v http://rook-ceph-rgw-my-store.rook-ceph.svc/auth/1.0 \
-  -H "X-Auth-User: testuser" \
-  -H "X-Auth-Key: testpassword"
+# Generate an LDAP token (will prompt for LDAP credentials)
+TOKEN=$(radosgw-token --encode --ttype=ldap)
+
+# Test S3 access using the LDAP token as the access key
+AWS_ACCESS_KEY_ID="$TOKEN" AWS_SECRET_ACCESS_KEY="" \
+  aws s3 ls --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc
 ```
 
 ## Summary
 
-Ceph RGW LDAP authentication is configured via `rgw_ldap_uri`, `rgw_ldap_binddn`, `rgw_ldap_secret`, and `rgw_ldap_searchdn`. Enable it by adding `ldap` to `rgw_enable_apis`. Store credentials securely using Kubernetes Secrets and mount them into RGW pods for production Rook deployments.
+Ceph RGW LDAP authentication is configured via `rgw_ldap_uri`, `rgw_ldap_binddn`, `rgw_ldap_secret`, and `rgw_ldap_searchdn`. Enable it by setting `rgw_s3_auth_use_ldap` to `true`. Users authenticate by generating tokens with `radosgw-token` and using them as S3 access keys. Store credentials securely using Kubernetes Secrets and mount them into RGW pods for production Rook deployments.
