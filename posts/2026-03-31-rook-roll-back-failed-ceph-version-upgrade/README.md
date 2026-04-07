@@ -87,7 +87,7 @@ watch kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph pg stat
 Force immediate recovery if needed:
 
 ```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd set-recovery-delay 0
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph config set osd osd_recovery_delay_start 0
 ```
 
 ## Rollback Limitation: CRUSH Map Changes
