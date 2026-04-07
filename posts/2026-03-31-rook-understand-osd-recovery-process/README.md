@@ -106,8 +106,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 During recovery:
 - Data remains readable and writable on healthy PGs
-- Degraded PGs may return stale reads if `min_size` is still met
-- If PG count drops below `min_size`, reads and writes are blocked
+- Degraded PGs continue to serve normal reads and writes as long as `min_size` is still met
+- If the number of available replicas for a PG drops below `min_size`, reads and writes to that PG are blocked
 
 Monitor minimum size compliance:
 
