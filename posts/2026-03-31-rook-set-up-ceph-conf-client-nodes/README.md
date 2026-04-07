@@ -39,9 +39,9 @@ For a non-admin client, copy only the client keyring:
 scp ceph-admin:/etc/ceph/ceph.client.myapp.keyring /etc/ceph/
 ```
 
-## Using the Ceph Config Database (Reef+)
+## Using the Ceph Config Database (Nautilus+)
 
-Since Ceph Reef, clients can bootstrap from just the monitor addresses and then pull the rest from the config database:
+Since Ceph Nautilus, clients can bootstrap from just the monitor addresses and then pull the rest from the config database:
 
 ```bash
 ceph config generate-minimal-conf > /etc/ceph/ceph.conf
