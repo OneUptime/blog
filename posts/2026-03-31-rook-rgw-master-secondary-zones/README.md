@@ -12,9 +12,9 @@ Description: Learn how to configure Ceph RGW master and secondary zones in Rook,
 
 In Ceph RGW multisite:
 - **Master zone**: handles metadata operations (bucket creation, user management)
-- **Secondary zone**: handles data operations and syncs from master
+- **Secondary zone**: replicates data and metadata from the master zone
 
-Only one master zone exists per zone group. Secondary zones sync metadata from the master.
+Only one master zone exists per zone group. Secondary zones sync both data and metadata from the master.
 
 ## Configuring the Master Zone
 
@@ -104,11 +104,21 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin period pull \
-  --url=http://rgw-us-west:80
+  --url=http://rgw-us-west:80 \
+  --access-key=sync-access-key \
+  --secret-key=sync-secret-key
 
 # After sync completes, optionally re-promote us-east
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zone modify --rgw-zone=us-east --master
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zonegroup modify \
+  --rgw-zonegroup=us \
+  --master-zone=us-east
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin period update --commit
 ```
 
 ## Summary
