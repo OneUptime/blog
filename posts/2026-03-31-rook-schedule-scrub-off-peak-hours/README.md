@@ -39,12 +39,13 @@ Note: When `begin_hour` > `end_hour`, the window wraps midnight (e.g., 23 to 7 =
 Ceph also supports restricting scrubs to specific days of the week:
 
 ```bash
-# Allow scrubs only on weekends (0=Sunday, 6=Saturday)
+# Allow scrubs only on weekends (0=Sunday, 1=Monday, ..., 6=Saturday)
+# Setting begin=6 (Saturday) and end=1 (Monday) wraps around to cover Sat-Sun
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_scrub_begin_week_day 0
+  ceph config set osd osd_scrub_begin_week_day 6
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_scrub_end_week_day 2
+  ceph config set osd osd_scrub_end_week_day 1
 ```
 
 ## Combining Time Window with Interval Settings
@@ -97,15 +98,29 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: rook-ceph-operator
           containers:
           - name: ceph-pause-scrub
-            image: rook/ceph:latest
-            command:
-            - ceph
-            - osd
-            - set
-            - noscrub
+            image: quay.io/ceph/ceph:v18   # Match your cluster's Ceph version
+            command: ["/bin/bash", "-c"]
+            args: ["ceph osd set noscrub && ceph osd set nodeep-scrub"]
+            volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph
+              readOnly: true
+          volumes:
+          - name: ceph-config
+            projected:
+              sources:
+              - configMap:
+                  name: rook-ceph-config
+                  items:
+                  - key: ceph.conf
+                    path: ceph.conf
+              - secret:
+                  name: rook-ceph-mon
+                  items:
+                  - key: admin-secret
+                    path: keyring
           restartPolicy: OnFailure
 ---
 apiVersion: batch/v1
@@ -121,12 +136,27 @@ spec:
         spec:
           containers:
           - name: ceph-resume-scrub
-            image: rook/ceph:latest
-            command:
-            - ceph
-            - osd
-            - unset
-            - noscrub
+            image: quay.io/ceph/ceph:v18   # Match your cluster's Ceph version
+            command: ["/bin/bash", "-c"]
+            args: ["ceph osd unset noscrub && ceph osd unset nodeep-scrub"]
+            volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph
+              readOnly: true
+          volumes:
+          - name: ceph-config
+            projected:
+              sources:
+              - configMap:
+                  name: rook-ceph-config
+                  items:
+                  - key: ceph.conf
+                    path: ceph.conf
+              - secret:
+                  name: rook-ceph-mon
+                  items:
+                  - key: admin-secret
+                    path: keyring
           restartPolicy: OnFailure
 ```
 
