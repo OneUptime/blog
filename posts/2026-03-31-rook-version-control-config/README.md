@@ -49,26 +49,26 @@ rook-ceph-config/
 
 ## Tagging Configuration Versions
 
-Use Git tags aligned with Ceph versions:
+Use Git tags aligned with the exact Rook and Ceph versions you deploy:
 
 ```bash
-git tag -a rook-v1.14.0-ceph-v18.2.4 -m "Rook 1.14.0 with Ceph 18.2.4 - production"
-git push origin rook-v1.14.0-ceph-v18.2.4
+git tag -a rook-v1.14.0-ceph-v18.2.4-20240724 -m "Rook 1.14.0 with Ceph 18.2.4-20240724 - production"
+git push origin rook-v1.14.0-ceph-v18.2.4-20240724
 ```
 
-Track the running version in the cluster:
+Track the intended versions in Git alongside the manifests:
 
 ```yaml
-# In cluster.yaml, use a comment to track the intent
-# Ceph: v18.2.4 | Rook: v1.14.0 | Updated: 2026-03-31
+# In cluster.yaml, track the intended Ceph image; track the Rook operator image in operator.yaml
+# Ceph: v18.2.4-20240724 | Rook operator: v1.14.0 | Updated: 2026-03-31
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.4
+    image: quay.io/ceph/ceph:v18.2.4-20240724
 ```
 
 ## Capturing Live Configuration for Audit
 
-Export the live configuration to Git periodically:
+If you have the `kubectl neat` plugin installed, export the live configuration to Git periodically:
 
 ```bash
 #!/bin/bash
@@ -103,7 +103,7 @@ git push origin feat/add-ssd-pool
 
 ## Preventing Configuration Drift
 
-Use ArgoCD self-heal to detect and revert unauthorized changes:
+Use ArgoCD self-heal to reconcile drift in managed resources:
 
 ```yaml
 spec:
@@ -122,4 +122,4 @@ argocd app diff rook-ceph --hard-refresh
 
 ## Summary
 
-Version controlling Rook-Ceph configuration requires a structured repository layout, Git tagging aligned with Ceph versions, and a branch-and-review workflow for changes. Combined with ArgoCD self-healing, this ensures the live cluster always reflects the intended configuration stored in Git.
+Version controlling Rook-Ceph configuration requires a structured repository layout, Git tagging aligned with the exact Rook and Ceph versions you deploy, and a branch-and-review workflow for changes. Combined with ArgoCD self-healing and regular diff checks, this helps keep managed resources aligned with the intended configuration stored in Git.
