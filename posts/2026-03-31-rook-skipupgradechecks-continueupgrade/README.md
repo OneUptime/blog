@@ -17,7 +17,7 @@ By default, Rook performs health checks between each daemon restart during a Cep
 2. Wait for the cluster to return to healthy state
 3. Proceed to the next daemon
 
-This behavior ensures the cluster has time to recover between each daemon restart before introducing additional disruption. The operator waits up to a configured timeout before reporting the upgrade as stuck.
+This behavior ensures the cluster has time to recover between each daemon restart before introducing additional disruption. The operator waits indefinitely for the cluster to become healthy before proceeding to the next daemon.
 
 ## When Upgrades Stall
 
