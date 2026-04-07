@@ -74,7 +74,7 @@ down:failed     - The MDS daemon crashed or was killed and has not been
 down:dne        - The MDS rank does not exist (no MDS assigned).
 
 down:stopped    - The filesystem or rank was explicitly stopped via
-                  "ceph fs set down true" or "ceph fs fail".
+                  "ceph fs set <fs_name> down true" or "ceph fs fail <fs_name>".
 ```
 
 ## Common State Transitions
@@ -82,13 +82,13 @@ down:stopped    - The filesystem or rank was explicitly stopped via
 A healthy startup sequence looks like:
 
 ```text
-up:boot -> up:creating (new fs) or up:replay (existing) -> up:reconnect -> up:active
+up:boot -> up:creating (new fs) or up:replay (existing) -> up:reconnect -> up:rejoin -> up:active
 ```
 
 A failover sequence:
 
 ```text
-active MDS crashes -> down:failed -> standby promoted -> up:replay -> up:reconnect -> up:active
+active MDS crashes -> down:failed -> standby promoted -> up:replay -> up:reconnect -> up:rejoin -> up:active
 ```
 
 ## Investigate a Stuck MDS
