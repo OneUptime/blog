@@ -73,7 +73,7 @@ ceph-authtool /tmp/myapp.keyring -n client.myapp \
 Print the contents of an existing keyring:
 
 ```bash
-ceph-authtool -p /tmp/myapp.keyring
+ceph-authtool -l /tmp/myapp.keyring
 ```
 
 Sample output:
@@ -152,4 +152,4 @@ ceph auth caps client.app mon 'allow r' osd 'allow rw pool=appdata'
 
 ## Summary
 
-`ceph-authtool` manages Ceph keyring files offline. Use `--create-keyring --gen-key` to create new keyrings, `--cap` to add capabilities, `-p` to print keyring contents, and `--gen-print-key` to generate standalone key values. After offline creation, import keyrings into the cluster with `ceph auth import`. This tool is essential for disaster recovery and air-gapped deployment scenarios in Rook environments.
+`ceph-authtool` manages Ceph keyring files offline. Use `--create-keyring --gen-key` to create new keyrings, `--cap` to add capabilities, `-l` to list keyring contents, `-p` to print just the key value, and `--gen-print-key` to generate standalone key values. After offline creation, import keyrings into the cluster with `ceph auth import`. This tool is essential for disaster recovery and air-gapped deployment scenarios in Rook environments.
