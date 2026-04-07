@@ -88,8 +88,7 @@ AWS_ACCESS_KEY_ID=alpha-alice-key \
 AWS_SECRET_ACCESS_KEY=alpha-alice-secret \
 aws s3api create-bucket \
   --bucket team-data \
-  --endpoint-url http://<rgw-endpoint> \
-  --no-sign-request
+  --endpoint-url http://<rgw-endpoint>
 ```
 
 When accessed with `team-beta` credentials, `team-data` is a different bucket entirely (in the beta namespace).
