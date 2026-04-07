@@ -47,7 +47,7 @@ Renaming a pool does not affect the data, but it breaks any references that use 
 
 Because Rook names the pool after the `CephBlockPool` resource, the correct approach in Rook is to create a new `CephBlockPool` with the desired name and migrate workloads - direct CLI renaming bypasses Rook's reconciliation loop.
 
-If you rename via CLI, update the Rook CRD by deleting the old resource (with `preservePoolsOnDelete: true`) and creating a new one pointing to the renamed pool:
+If you rename via CLI, update the Rook CRD by deleting the old resource and creating a new one pointing to the renamed pool. Before deleting the old CephBlockPool CR, ensure the `cleanupPolicy` is not set so that Rook does not delete the underlying pool:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -59,7 +59,6 @@ spec:
   failureDomain: host
   replicated:
     size: 3
-  preservePoolsOnDelete: true
 ```
 
 ## Update the StorageClass
@@ -81,13 +80,14 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
 ```
 
-Apply the change:
+StorageClass `parameters` are immutable, so you must delete and recreate the StorageClass:
 
 ```bash
+kubectl delete storageclass rook-ceph-block
 kubectl apply -f storageclass.yaml
 ```
 
-Note: Updating a StorageClass only affects new PVCs. Existing PVCs retain the old pool reference in their PV spec.
+Note: Recreating a StorageClass only affects new PVCs. Existing PVCs retain the old pool reference in their PV spec.
 
 ## Update CSI Key Caps if Needed
 
