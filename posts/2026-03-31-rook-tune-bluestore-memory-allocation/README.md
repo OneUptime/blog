@@ -99,13 +99,16 @@ spec:
       osdsPerDevice: "1"
 ```
 
-Also set Ceph config via the config override:
+Also set Ceph config via the `rook-config-override` ConfigMap:
 
 ```yaml
-spec:
-  cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
-  configFileOverride: |
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-config-override
+  namespace: rook-ceph
+data:
+  config: |
     [osd]
     osd_memory_target = 8589934592
     osd_memory_autotune = true
@@ -116,7 +119,7 @@ spec:
 Watch OSD memory consumption:
 
 ```bash
-ceph osd perf dump | python3 -m json.tool | grep -i mem
+ceph daemon osd.0 perf dump | python3 -m json.tool | grep -i cache
 ceph daemon osd.0 dump_mempools
 ceph daemon osd.0 bluestore allocator score block
 ```
