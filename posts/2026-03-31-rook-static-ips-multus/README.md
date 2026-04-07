@@ -88,24 +88,26 @@ Repeat for mon-b (192.168.100.11) and mon-c (192.168.100.12).
 
 For OSDs (which do not need static IPs), use a shared Whereabouts-based NAD for the cluster network.
 
-## Annotating Monitor Pods
+## Configuring Multus Networks in Rook
 
-To associate specific static-IP NADs with specific monitor pods, use pod annotations. In Rook, you can specify per-daemon annotations in the CephCluster CR:
+Rook configures Multus networks through the `spec.network` section of the CephCluster CR, not through pod annotations directly:
 
 ```yaml
 spec:
+  network:
+    provider: multus
+    selectors:
+      public: rook-ceph/rook-public-network
+      cluster: rook-ceph/rook-cluster-network
   mon:
     count: 3
-    annotations:
-      mon:
-        k8s.v1.cni.cncf.io/networks: rook-ceph/rook-public-network
 ```
 
-However, assigning different NADs to different mon pods requires a more advanced approach using Rook's `placement` configuration combined with pod annotations per mon ID. Check the Rook documentation for the current supported method in your version.
+This applies the specified NADs to all Ceph daemons. However, assigning different static-IP NADs to different mon pods (e.g., a unique NAD per monitor) is not natively supported by Rook's Multus integration. For per-monitor static IPs, consider using Whereabouts with a narrow IP range instead, or check the Rook documentation for the current supported method in your version.
 
 ## Alternative: Static IPs via Node-Level Configuration
 
-A simpler approach for predictable addressing is to configure static IPs at the node level (on the host NIC) and use Macvlan with Whereabouts that maps to that subnet:
+A simpler approach for predictable addressing is to configure static IPs at the node level (on the host NIC) and use Whereabouts with a range that maps to that subnet:
 
 ```bash
 # On each node, assign static IPs to the storage NIC
@@ -114,7 +116,7 @@ A simpler approach for predictable addressing is to configure static IPs at the 
 # node-3: eth1 gets 192.168.100.3/24
 ```
 
-Then configure the NAD to use those node IPs directly:
+Then configure the NAD with Whereabouts to allocate pod IPs from the same subnet:
 
 ```yaml
 apiVersion: k8s.cni.cncf.io/v1
@@ -128,14 +130,16 @@ spec:
       "cniVersion": "0.3.1",
       "type": "macvlan",
       "master": "eth1",
-      "mode": "passthru",
+      "mode": "bridge",
       "ipam": {
-        "type": "static"
+        "type": "whereabouts",
+        "range": "192.168.100.0/24",
+        "exclude": ["192.168.100.1/32", "192.168.100.2/32", "192.168.100.3/32"]
       }
     }
 ```
 
-In `passthru` mode, Macvlan passes the host interface directly to the pod, giving the pod access to the host's static IP.
+This keeps pod IPs on the same subnet as the host NICs while using Whereabouts to dynamically allocate non-conflicting addresses. The `exclude` list prevents Whereabouts from assigning the node IPs to pods.
 
 ## Verifying Static IP Assignment
 
