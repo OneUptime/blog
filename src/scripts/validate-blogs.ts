@@ -36,7 +36,7 @@
  * 30. Relative link validation — Check that relative markdown links resolve to real files
  * 31. Tag normalization — Detect near-duplicate tags across posts (e.g., "Docker" vs "docker" vs "Dockers")
  * 32. social-media.png dimensions — Verify the image is the expected size (1200x630)
- * 33. validation.json coverage — Every post must have a validation.json in its folder with status "validated", "not-code-blog", or "not-technically-relevant"
+ * 33. validation.json + validation-summary.md coverage — Every post must have both files in its folder
  * 34. Tag casing — Tags must not start with lowercase unless listed in LowercaseTagAllowlist.json
  *
  * Run with: npm run validate
@@ -51,6 +51,7 @@ const POSTS_DIR = 'posts';
 const BLOGS_JSON = 'Blogs.json';
 const AUTHORS_JSON = 'Authors.json';
 const VALIDATION_JSON = 'validation.json';
+const VALIDATION_SUMMARY_MD = 'validation-summary.md';
 const LOWERCASE_TAG_ALLOWLIST_JSON = 'LowercaseTagAllowlist.json';
 const TAGS_MD = 'Tags.md';
 const MIN_DESCRIPTION_LENGTH = 50;
@@ -2285,13 +2286,22 @@ function checkCodeValidation(postsDir: string[]): void {
       errors.push(
         `  - ${colors.red}${dir}${colors.reset}: invalid status "${entry.status}" (must be "validated", "not-code-blog", or "not-technically-relevant")`
       );
+    } else if (entry.status === 'not-technically-relevant') {
+      errors.push(
+        `  - ${colors.red}${dir}${colors.reset}: marked as "not-technically-relevant" — this post should be removed from the blog`
+      );
+    }
+
+    const summaryPath = path.join(POSTS_DIR, dir, VALIDATION_SUMMARY_MD);
+    if (!fs.existsSync(summaryPath)) {
+      errors.push(`  - ${colors.red}${dir}${colors.reset}: missing ${VALIDATION_SUMMARY_MD}`);
     }
   }
 
   if (errors.length > 0) {
     hasErrors = true;
     console.log(
-      `${colors.red}${colors.bold}ERROR:${colors.reset} ${errors.length} blog post${errors.length === 1 ? '' : 's'} missing or invalid ${VALIDATION_JSON}:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} ${errors.length} issue${errors.length === 1 ? '' : 's'} with ${VALIDATION_JSON} or ${VALIDATION_SUMMARY_MD}:\n`
     );
     for (const err of errors) {
       console.log(err);
@@ -2319,10 +2329,17 @@ function checkCodeValidation(postsDir: string[]): void {
       `    {\n` +
       `      "status": "validated",\n` +
       `      "validatedAt": "${new Date().toISOString().split('T')[0]}"\n` +
-      `    }\n`
+      `    }\n\n` +
+      `  ${colors.bold}You must also create a ${VALIDATION_SUMMARY_MD}${colors.reset} in the same folder with details of your review:\n` +
+      `    — Status and post type\n` +
+      `    — Technologies covered\n` +
+      `    — Official sources consulted (with URLs)\n` +
+      `    — Issues found and fixes made\n` +
+      `    — Additional review notes\n\n` +
+      `  Or run ${colors.bold}npm run validate-posts${colors.reset} to automate this with Codex.\n`
     );
   } else {
-    logSuccess(`All ${postsDir.length} blog posts have a valid ${VALIDATION_JSON}`);
+    logSuccess(`All ${postsDir.length} blog posts have a valid ${VALIDATION_JSON} and ${VALIDATION_SUMMARY_MD}`);
   }
 }
 
