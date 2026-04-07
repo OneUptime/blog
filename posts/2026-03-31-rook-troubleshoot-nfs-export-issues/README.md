@@ -44,7 +44,7 @@ If the list is empty or missing an expected export, the export was not created. 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph nfs export create cephfs \
   --cluster-id my-nfs \
-  --pseudo /data \
+  --pseudo-path /data \
   --fsname my-fs \
   --path /
 ```
@@ -99,8 +99,7 @@ Get live Ganesha statistics:
 ```bash
 kubectl -n rook-ceph exec -it \
   $(kubectl -n rook-ceph get pod -l app=rook-ceph-nfs -o name | head -1) -- \
-  ganesha_mgr stats_reset && \
-  ganesha_mgr get_stats
+  sh -c 'ganesha_mgr stats_reset && ganesha_mgr get_stats'
 ```
 
 This shows NFS operation counts and error rates, helping identify whether errors occur at the NFS protocol level or deeper in the FSAL (filesystem abstraction layer).
