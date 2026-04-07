@@ -15,7 +15,7 @@ Client-side encryption encrypts data on the client before writing it to Ceph. Th
 | Method | Where it runs | Manages keys |
 |--------|--------------|--------------|
 | LUKS + dm-crypt | Client | Client |
-| RBD encryption (native) | librbd | Ceph (via KMIP) |
+| RBD encryption (native) | librbd | Client (passphrase file) |
 | KMS-backed encryption | OSD | Vault or Barbican |
 
 This guide covers LUKS on top of RBD (client-managed) and native RBD encryption.
@@ -48,9 +48,9 @@ cryptsetup luksClose encrypted-vol
 rbd unmap mypool/encrypted-vol
 ```
 
-## Method 2 - Native RBD Encryption (Reef+)
+## Method 2 - Native RBD Encryption (Pacific+)
 
-Since Ceph Reef, librbd supports built-in encryption without needing a separate LUKS layer:
+Since Ceph Pacific, librbd supports built-in encryption without needing a separate LUKS layer:
 
 ```bash
 # Create a passphrase file (or use a KMS)
@@ -73,14 +73,15 @@ rbd device map mypool/native-enc-vol \
 For production, manage keys via HashiCorp Vault:
 
 ```bash
-# Configure Vault KMS in ceph.conf
-cat >> /etc/ceph/ceph.conf <<EOF
-[client]
-rbd_encryption_type = luks2
-EOF
-```
+# Retrieve the passphrase from Vault and store it securely
+vault kv get -field=passphrase secret/ceph/rbd-encryption \
+  > /etc/ceph/rbd-enc-passphrase
+chmod 600 /etc/ceph/rbd-enc-passphrase
 
-Then use `rbd encryption format` with a Vault-managed key reference.
+# Use the Vault-managed passphrase with rbd encryption format
+rbd encryption format mypool/encrypted-vol \
+  luks2 /etc/ceph/rbd-enc-passphrase
+```
 
 ## QEMU and RBD Encryption
 
@@ -111,4 +112,4 @@ cryptsetup status encrypted-vol
 
 ## Summary
 
-Client-side encryption for Ceph ensures that data is encrypted before reaching the storage cluster, protecting it from administrators who have access to the Ceph nodes. LUKS over RBD is the simplest approach and is well-supported by all client types. Native RBD encryption available since Reef integrates directly into librbd and is the preferred approach for new deployments using QEMU or Kubernetes CSI.
+Client-side encryption for Ceph ensures that data is encrypted before reaching the storage cluster, protecting it from administrators who have access to the Ceph nodes. LUKS over RBD is the simplest approach and is well-supported by all client types. Native RBD encryption available since Pacific integrates directly into librbd and is the preferred approach for new deployments using QEMU or Kubernetes CSI.
