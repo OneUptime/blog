@@ -60,7 +60,8 @@ Increase backfill concurrency during a maintenance window:
 ceph config set osd osd_max_backfills 4
 ceph config set osd osd_recovery_max_active_hdd 8
 ceph config set osd osd_recovery_max_active_ssd 20
-ceph config set osd osd_recovery_sleep 0
+ceph config set osd osd_recovery_sleep_hdd 0
+ceph config set osd osd_recovery_sleep_ssd 0
 ceph config set osd osd_backfill_scan_max 512
 
 # Verify rebalancing is proceeding faster
@@ -74,6 +75,8 @@ ceph config set osd osd_max_backfills 1
 ceph config set osd osd_recovery_max_active_hdd 3
 ceph config set osd osd_recovery_max_active_ssd 10
 ceph config set osd osd_recovery_sleep_hdd 0.1
+ceph config set osd osd_recovery_sleep_ssd 0
+ceph config set osd osd_backfill_scan_max 512
 ```
 
 ## Using upmap for Precise Rebalancing
@@ -134,8 +137,8 @@ Sample Prometheus query to calculate rebalancing ETA:
 
 ```promql
 # Remaining misplaced bytes / recovery bytes/sec = seconds remaining
-ceph_cluster_stats{type="misplaced_bytes"} /
-ceph_osd_op_w_in_bytes_sum > 0
+ceph_cluster_total_bytes_misplaced
+  / on() ceph_osd_recovery_bytes > 0
 ```
 
 ## Estimating Rebalancing Time
@@ -146,15 +149,16 @@ MISPLACED_GB=$(ceph -s --format json | python3 -c "
 import json,sys
 s = json.load(sys.stdin)
 pg = s.get('pgmap', {})
-print(round(pg.get('misplace_bytes', 0) / 1e9, 1))
+print(round(pg.get('misplaced_bytes', 0) / 1e9, 1))
 ")
 
-# Current recovery rate (MB/s)
-RATE_MBS=$(ceph osd perf --format json | python3 -c "
+# Current recovery rate (MB/s) from ceph status
+RATE_MBS=$(ceph -s --format json | python3 -c "
 import json,sys
-data = json.load(sys.stdin)
-# Sum recovering_bytes_per_sec across all OSDs
-print(sum(o.get('perf_stats', {}).get('recovering_bytes_per_sec', 0) for o in data.get('osd_perf_infos', [])) / 1e6)
+s = json.load(sys.stdin)
+pg = s.get('pgmap', {})
+# recovering_bytes_per_sec is reported in pgmap during active recovery
+print(round(pg.get('recovering_bytes_per_sec', 0) / 1e6, 1))
 ")
 
 echo "Misplaced: ${MISPLACED_GB} GB at ${RATE_MBS} MB/s"
