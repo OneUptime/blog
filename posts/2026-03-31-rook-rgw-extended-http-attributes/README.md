@@ -17,26 +17,14 @@ When objects are stored with custom metadata (S3 user metadata, also called `x-a
 ## Key Configuration Parameters
 
 ```bash
-# Check extended attribute settings
-ceph config get client.rgw rgw_expose_bucket_acl
-ceph config get client.rgw rgw_expose_object_meta
+# Check metadata size limits
+ceph config get client.rgw rgw_max_attr_size
+ceph config get client.rgw rgw_max_attrs_num_in_req
 ```
 
-## Enabling Object ACL Headers
+## How User Metadata Works
 
-```bash
-# Return ACL information in response headers
-ceph config set client.rgw rgw_expose_bucket_acl true
-```
-
-## Configuring User Metadata Prefix
-
-S3 user metadata is stored with `x-amz-meta-` prefix:
-
-```bash
-# Set the prefix for user metadata in responses
-ceph config set client.rgw rgw_user_header_prefix "x-amz-meta-"
-```
+S3 user metadata uses the `x-amz-meta-` prefix automatically. When you upload an object with custom metadata, RGW stores it and returns it in GET and HEAD responses without any special configuration.
 
 ## Uploading and Retrieving Extended Metadata
 
@@ -89,7 +77,8 @@ metadata:
 data:
   config: |
     [client.rgw.my-store.a]
-    rgw_expose_bucket_acl = true
+    rgw_max_attr_size = 4096
+    rgw_max_attrs_num_in_req = 90
 ```
 
 ## Metadata Size Limits
@@ -97,10 +86,10 @@ data:
 Be aware of metadata size constraints:
 
 ```bash
-# Maximum size of all metadata headers (bytes)
+# Maximum size of a single metadata value (bytes, 0 means no limit)
 ceph config set client.rgw rgw_max_attr_size 4096
 
-# Maximum number of user metadata attributes
+# Maximum number of metadata items per request (0 means no limit)
 ceph config set client.rgw rgw_max_attrs_num_in_req 90
 ```
 
