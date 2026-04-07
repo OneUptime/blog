@@ -19,7 +19,7 @@ First, create the RBD image in the Ceph pool using the toolbox:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
-rbd create --pool replicapool --image my-static-image --size 50Gi
+rbd create --pool replicapool --image my-static-image --size 50G
 rbd info replicapool/my-static-image
 ```
 
@@ -47,13 +47,14 @@ spec:
   capacity:
     storage: 50Gi
   csi:
-    driver: rbd.csi.ceph.com
+    driver: rook-ceph.rbd.csi.ceph.com
     nodeStageSecretRef:
       name: rook-csi-rbd-node
       namespace: rook-ceph
     volumeAttributes:
       clusterID: rook-ceph
       pool: replicapool
+      imageName: my-static-image
       imageFeatures: layering
       staticVolume: "true"
     volumeHandle: 0001-0024-rook-ceph-0000000000000001-abc123def456
