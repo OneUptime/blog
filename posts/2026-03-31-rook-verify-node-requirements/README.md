@@ -140,7 +140,7 @@ nvme0n1 500G disk
 Confirm no LVM signatures remain on the target devices:
 
 ```bash
-sudo pvdisplay /dev/sdc 2>&1 | grep -c "No physical volume" && echo "Clean" || echo "Has LVM"
+sudo pvs /dev/sdc 2>/dev/null && echo "Has LVM" || echo "Clean"
 ```
 
 ## Hostname Resolution Check
@@ -205,7 +205,7 @@ echo "=== Rook-Ceph Node Requirements Check ==="
 
 echo ""
 echo "--- Kubernetes Version ---"
-kubectl version --short 2>/dev/null | head -2
+kubectl version 2>/dev/null | head -2
 
 echo ""
 echo "--- Node Status ---"
