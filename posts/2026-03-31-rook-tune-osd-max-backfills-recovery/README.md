@@ -27,7 +27,7 @@ View current recovery activity:
 
 ```bash
 ceph -s | grep -E "recovery|backfill"
-ceph pg dump_stuck backfilling
+ceph pg ls backfilling
 ceph osd perf | grep -E "commit|apply"
 ```
 
@@ -41,7 +41,7 @@ ceph config set osd osd_max_backfills 4
 
 # Also increase recovery ops
 ceph config set osd osd_recovery_max_active 4
-ceph config set osd osd_recovery_ops_per_osd 32
+ceph config set osd osd_recovery_max_single_start 4
 ```
 
 For balanced recovery during production operations:
@@ -69,8 +69,8 @@ Use a two-phase approach: aggressive during off-hours, conservative during busin
 # During maintenance window - maximize recovery
 ceph config set osd osd_max_backfills 8
 ceph config set osd osd_recovery_max_active 8
-ceph config set osd osd_backfill_scan_min 8
-ceph config set osd osd_backfill_scan_max 64
+ceph config set osd osd_backfill_scan_min 128
+ceph config set osd osd_backfill_scan_max 1024
 
 # Monitor progress
 watch -n 5 'ceph -s | grep -E "recovery|backfill|degraded"'
@@ -118,20 +118,20 @@ ceph config set osd osd_recovery_max_active 1
 
 ## Applying via Rook ConfigMap
 
-Set recovery parameters in Rook's config override:
+Set recovery parameters using the `rook-config-override` ConfigMap:
 
 ```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: rook-ceph
+  name: rook-config-override
   namespace: rook-ceph
-spec:
-  cephConfig:
-    osd:
-      osd_max_backfills: "2"
-      osd_recovery_max_active_hdd: "3"
-      osd_recovery_max_active_ssd: "10"
+data:
+  config: |
+    [osd]
+    osd_max_backfills = 2
+    osd_recovery_max_active_hdd = 3
+    osd_recovery_max_active_ssd = 10
 ```
 
 ## Summary
