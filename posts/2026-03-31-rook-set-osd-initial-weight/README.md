@@ -25,27 +25,19 @@ The `WEIGHT` column shows the CRUSH weight. The `REWEIGHT` column shows the rewe
 
 ## Starting New OSDs with Zero Weight
 
-To add an OSD without immediately triggering rebalancing, Rook supports the `startWithZeroWeight` option in the `CephCluster` spec:
+To add an OSD without immediately triggering rebalancing, set the `osd_crush_initial_weight` Ceph config option before adding the new OSD. In a Rook cluster, run this from the toolbox:
 
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
-metadata:
-  name: rook-ceph
-  namespace: rook-ceph
-spec:
-  storage:
-    config:
-      osdsPerDevice: "1"
-    nodes:
-    - name: worker-4
-      devices:
-      - name: sdb
-        config:
-          initialWeight: "0"
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set osd osd_crush_initial_weight 0
 ```
 
-The OSD joins the cluster but receives no data until you manually set its weight.
+Any OSD created after this setting is applied joins the cluster with a CRUSH weight of 0 and receives no data until you manually increase its weight. Once you are done adding OSDs, reset the option so future OSDs get their normal weight:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config rm osd osd_crush_initial_weight
+```
 
 ## Gradually Increasing OSD Weight
 
