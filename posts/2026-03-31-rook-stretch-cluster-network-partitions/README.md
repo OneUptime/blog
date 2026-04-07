@@ -14,7 +14,7 @@ Rook stretch clusters distribute Ceph monitors and OSDs across two physical site
 
 ## How Stretch Clusters Respond to Network Partitions
 
-When a network partition isolates one site, Ceph relies on its monitor quorum to determine which site can continue serving I/O. With a 3-monitor stretch layout (one per site plus a tiebreaker), the remaining two monitors form a quorum and allow the surviving site to continue operating.
+When a network partition isolates one site, Ceph relies on its monitor quorum to determine which site can continue serving I/O. With a 5-monitor stretch layout (two per data site plus a tiebreaker), the surviving site's two monitors plus the tiebreaker form a quorum of three, allowing that site to continue operating.
 
 The tiebreaker monitor is crucial - it breaks ties during a split. Without it, both sites would lose quorum and I/O would halt.
 
@@ -68,18 +68,19 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg stat
 
 ## Configuring OSD Down-out Interval
 
-You can tune how quickly Ceph marks isolated OSDs as `out` after a partition:
+You can tune how quickly Ceph detects down OSDs and how long it waits before marking them `out` (which triggers rebalancing):
 
 ```bash
-# Set the interval before OSDs are marked out (seconds)
+# Set the heartbeat grace period before OSDs are marked down (default: 20 seconds)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_heartbeat_grace 20
+  ceph config set osd osd_heartbeat_grace 30
 
+# Set the interval before down OSDs are marked out and rebalancing begins (default: 600 seconds)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mon mon_osd_down_out_interval 600
+  ceph config set mon mon_osd_down_out_interval 1800
 ```
 
-Increasing `mon_osd_down_out_interval` prevents premature rebalancing during short outages, which reduces unnecessary network traffic and potential data movement.
+Increasing `osd_heartbeat_grace` avoids falsely marking OSDs as down during brief network blips. Increasing `mon_osd_down_out_interval` (here set to 30 minutes) prevents premature rebalancing during longer outages, which reduces unnecessary data movement across sites.
 
 ## Recovery After Partition Heals
 
