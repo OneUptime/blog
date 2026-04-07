@@ -10,7 +10,7 @@ Description: Learn how to configure advertiseEndpoint and dnsNames in Rook objec
 
 ## What Hosting Settings Control
 
-The `hosting` section of the `CephObjectStore` gateway configuration controls how the RGW advertises itself to clients and to other zones in a multisite setup. Two key fields:
+The `hosting` section of the `CephObjectStore` spec controls how the RGW advertises itself to clients and to other zones in a multisite setup. Two key fields:
 
 - `advertiseEndpoint` - the publicly reachable address RGW uses when registering itself with the Ceph zone configuration
 - `dnsNames` - additional DNS names for which RGW serves requests, used for virtual host-style bucket access
@@ -37,11 +37,11 @@ spec:
   gateway:
     port: 80
     instances: 2
-    hosting:
-      advertiseEndpoint:
-        dnsName: s3.mycompany.com
-        port: 80
-        useTls: false
+  hosting:
+    advertiseEndpoint:
+      dnsName: s3.mycompany.com
+      port: 80
+      useTls: false
 ```
 
 After applying, Rook updates the Ceph zone configuration with this endpoint. Verify:
@@ -58,15 +58,15 @@ Virtual host-style S3 access routes bucket names as subdomains: `bucket-name.s3.
 gateway:
   port: 80
   instances: 2
-  hosting:
-    advertiseEndpoint:
-      dnsName: s3.mycompany.com
-      port: 80
-      useTls: false
-    dnsNames:
-      - s3.mycompany.com
-      - s3-internal.cluster.local
-      - rgw.datacenter1.mycompany.com
+hosting:
+  advertiseEndpoint:
+    dnsName: s3.mycompany.com
+    port: 80
+    useTls: false
+  dnsNames:
+    - s3.mycompany.com
+    - s3-internal.cluster.local
+    - rgw.datacenter1.mycompany.com
 ```
 
 RGW accepts connections for all listed DNS names and strips the bucket name from the subdomain.
@@ -80,13 +80,13 @@ gateway:
   port: 80
   securePort: 443
   sslCertificateRef: rgw-tls-secret
-  hosting:
-    advertiseEndpoint:
-      dnsName: s3.mycompany.com
-      port: 443
-      useTls: true
-    dnsNames:
-      - s3.mycompany.com
+hosting:
+  advertiseEndpoint:
+    dnsName: s3.mycompany.com
+    port: 443
+    useTls: true
+  dnsNames:
+    - s3.mycompany.com
 ```
 
 The TLS certificate in `rgw-tls-secret` must include `s3.mycompany.com` and ideally `*.s3.mycompany.com` as SANs for virtual-host-style bucket access.
@@ -119,4 +119,4 @@ curl https://my-test-bucket.s3.mycompany.com/
 
 ## Summary
 
-The `hosting` settings in Rook's CephObjectStore `gateway` spec control the advertised endpoint for multisite peering and the DNS names accepted for virtual-host-style bucket access. Set `advertiseEndpoint.dnsName` to the externally reachable address and populate `dnsNames` with all DNS aliases the gateway should respond to. Enable `useTls: true` when using HTTPS. These settings allow proper bucket URL routing and multisite zone discovery.
+The `hosting` settings in Rook's CephObjectStore spec control the advertised endpoint for multisite peering and the DNS names accepted for virtual-host-style bucket access. Set `advertiseEndpoint.dnsName` to the externally reachable address and populate `dnsNames` with all DNS aliases the gateway should respond to. Enable `useTls: true` when using HTTPS. These settings allow proper bucket URL routing and multisite zone discovery.
