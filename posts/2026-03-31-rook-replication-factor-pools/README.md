@@ -39,7 +39,7 @@ spec:
   replicated:
     # 3 copies of all data
     size: 3
-    # Require all 3 replicas before acknowledging writes
+    # Ensure min_size is safe (min_size=2 for size=3)
     requireSafeReplicaSize: true
 ```
 
@@ -163,21 +163,9 @@ Monitor replication progress:
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
 ```
 
-## Setting Replication in the CephCluster for All Pools
+## Setting Replication per Pool
 
-You can set a default replication policy per device class in the CephCluster:
-
-```yaml
-spec:
-  storage:
-    useAllNodes: true
-    useAllDevices: true
-    config:
-      # Number of OSDs per device
-      osdsPerDevice: "1"
-```
-
-Individual pools set their own replication via their CephBlockPool or CephFilesystem CR.
+The CephCluster CR does not have a default replication factor setting. Each pool sets its own replication independently via its CephBlockPool or CephFilesystem CR. To apply a consistent replication policy across your cluster, define the `replicated.size` and `requireSafeReplicaSize` fields in every CephBlockPool and in the `dataPools` section of every CephFilesystem resource.
 
 ## Durability vs. Capacity Tradeoffs
 
