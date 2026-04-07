@@ -13,19 +13,20 @@ The S3 Multi-Object Delete API (`DELETE /?delete`) allows clients to delete up t
 ## Key Multi-Object Delete Parameters
 
 ```bash
-# Check current delete limits
-ceph config get client.rgw rgw_max_delete_objects
-ceph config get client.rgw rgw_delete_multi_obj_max_num
+# Check current AIO concurrency for multi-object deletes
+ceph config get client.rgw rgw_multi_obj_del_max_aio
 ```
 
-## Setting Maximum Objects per Delete Request
+## Tuning Multi-Object Delete Concurrency
+
+The 1000-object-per-request limit is hardcoded per the S3 spec and cannot be changed via configuration. However, you can tune the number of concurrent RADOS operations used when processing a multi-object delete request:
 
 ```bash
-# S3 spec maximum is 1000 objects per request
-ceph config set client.rgw rgw_delete_multi_obj_max_num 1000
+# Set concurrent RADOS operations for multi-object deletes (default: 8)
+ceph config set client.rgw rgw_multi_obj_del_max_aio 16
 
-# Reduce limit to throttle bulk deletions
-ceph config set client.rgw rgw_delete_multi_obj_max_num 500
+# Reduce concurrency to limit impact on cluster
+ceph config set client.rgw rgw_multi_obj_del_max_aio 4
 ```
 
 ## Performing Multi-Object Deletion
@@ -84,16 +85,11 @@ for page in paginator.paginate(Bucket='my-bucket', Prefix='old-data/'):
 
 ## Applying in Rook
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-config-override
-  namespace: rook-ceph
-data:
-  config: |
-    [client.rgw.my-store.a]
-    rgw_delete_multi_obj_max_num = 1000
+Use the Ceph config database from the Rook toolbox pod, as `rook-config-override` may not be applied to RGW pods:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client.rgw rgw_multi_obj_del_max_aio 16
 ```
 
 ## Monitoring Deletion Performance
@@ -107,4 +103,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-rgw-my-store-a -- \
 
 ## Summary
 
-Multi-object deletion in Ceph RGW is capped at 1000 objects per request by the S3 spec. Configure `rgw_delete_multi_obj_max_num` to tune the limit for your workload. For large-scale bucket cleanup, use pagination with Python boto3 to batch deletions and avoid overwhelming the cluster with a single massive delete operation.
+Multi-object deletion in Ceph RGW is capped at 1000 objects per request by the S3 spec. Tune `rgw_multi_obj_del_max_aio` to control the concurrency of RADOS operations during bulk deletes. For large-scale bucket cleanup, use pagination with Python boto3 to batch deletions and avoid overwhelming the cluster with a single massive delete operation.
