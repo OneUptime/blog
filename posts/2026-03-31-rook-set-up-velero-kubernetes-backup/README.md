@@ -60,7 +60,7 @@ Store the credentials in a file and create the secret:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.6.0 \
   --bucket velero-backups \
   --secret-file ./credentials-velero \
   --use-volume-snapshots=true \
@@ -88,8 +88,7 @@ velero backup describe full-backup --details
 
 ```bash
 velero restore create --from-backup full-backup \
-  --include-namespaces production \
-  --restore-volumes=true
+  --include-namespaces production
 ```
 
 ```bash
@@ -107,4 +106,4 @@ Each PVC in the backed-up namespace should have a corresponding VolumeSnapshot c
 
 ## Summary
 
-Combining Rook-Ceph with Velero and the CSI snapshot plugin gives you application-consistent backups that include both Kubernetes resource definitions and persistent volume data. The RGW object store holds metadata and resource manifests while RBD snapshots preserve PVC data efficiently using copy-on-write semantics.
+Combining Rook-Ceph with Velero and the CSI snapshot plugin gives you crash-consistent backups that include both Kubernetes resource definitions and persistent volume data. The RGW object store holds metadata and resource manifests while RBD snapshots preserve PVC data efficiently using copy-on-write semantics.
