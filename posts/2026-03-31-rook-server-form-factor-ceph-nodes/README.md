@@ -46,7 +46,7 @@ echo "Available for servers: ${AVAILABLE}U"
 # For 100 TB usable with 12 TB HDDs and 3x replication:
 # Raw needed: 300 TB
 # Disks needed: 300 / 12 = 25 disks
-# With 24 drives per 4U server: 1 server handles all disks in 4U
+# With 36 drives per 4U server: 1 server handles all disks in 4U
 # With 12 drives per 2U server: need 3 servers x 2U = 6U
 ```
 
