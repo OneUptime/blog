@@ -60,9 +60,6 @@ spec:
     - name: ocs-deviceset
       count: 1
       replica: 3
-      resources:
-        requests:
-          storage: 500Gi
       dataPVCTemplate:
         spec:
           accessModes:
