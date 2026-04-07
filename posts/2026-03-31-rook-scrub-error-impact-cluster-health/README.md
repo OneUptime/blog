@@ -53,7 +53,7 @@ Get detailed information about a specific PG:
 ceph pg 2.5 query | python3 -m json.tool | grep -A 20 "inconsistent"
 ```
 
-List scrub errors on a per-OSD basis:
+Trigger a scrub on a specific OSD and then list inconsistent PGs:
 
 ```bash
 ceph osd scrub <osd-id>
@@ -86,7 +86,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg repair 2.5
 Scrub errors have the following cluster-wide effects:
 
 - Cluster enters `HEALTH_ERR` state if inconsistencies are confirmed
-- Client I/O continues unless `noscrub` or `nodeep-scrub` flags are set
+- Client I/O continues normally even when scrub errors are present
 - Replication may pause for affected PGs during repair
 - Alerts are triggered in Prometheus/Alertmanager if configured
 
