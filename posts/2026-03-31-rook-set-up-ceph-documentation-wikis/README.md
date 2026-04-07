@@ -78,7 +78,7 @@ Keep the hardware inventory page up-to-date by scripting data collection:
 echo "# Ceph Cluster State - $(date)" > /wiki/current-state.md
 echo "" >> /wiki/current-state.md
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
   echo '## Health'
   ceph health detail
   echo '## OSD Tree'
