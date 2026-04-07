@@ -29,6 +29,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Cache Tiering with a Fast Pool
 
+> **Warning:** RADOS cache tiering is deprecated since Ceph Luminous and is not recommended for production use. Consider using BlueStore with mixed device classes (WAL/DB on SSD, data on HDD) or dm-cache/bcache at the block level instead. The commands below are shown for reference only.
+
 Set up a cache tier using SSD-backed pools to cache hot objects before they flow to the HDD data pool:
 
 ```bash
@@ -68,21 +70,27 @@ metadata:
   namespace: rook-ceph
 data:
   nginx.conf: |
-    proxy_cache_path /var/cache/nginx levels=1:2
-      keys_zone=rgw_cache:100m max_size=50g
-      inactive=1h use_temp_path=off;
+    events {
+      worker_connections 1024;
+    }
 
-    server {
-      listen 80;
+    http {
+      proxy_cache_path /var/cache/nginx levels=1:2
+        keys_zone=rgw_cache:100m max_size=50g
+        inactive=1h use_temp_path=off;
 
-      location / {
-        proxy_cache rgw_cache;
-        proxy_cache_valid 200 1h;
-        proxy_cache_use_stale error timeout updating;
-        proxy_cache_lock on;
-        proxy_pass http://rook-ceph-rgw-my-store.rook-ceph.svc;
-        proxy_set_header Host $host;
-        add_header X-Cache-Status $upstream_cache_status;
+      server {
+        listen 80;
+
+        location / {
+          proxy_cache rgw_cache;
+          proxy_cache_valid 200 1h;
+          proxy_cache_use_stale error timeout updating;
+          proxy_cache_lock on;
+          proxy_pass http://rook-ceph-rgw-my-store.rook-ceph.svc;
+          proxy_set_header Host $host;
+          add_header X-Cache-Status $upstream_cache_status;
+        }
       }
     }
 ```
@@ -93,13 +101,13 @@ Enable D3N for datacenter-local read caching on each RGW node:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_d3n_l1_local_datacenter_cache_enabled true
+  ceph config set client.rgw rgw_d3n_l1_local_datacache_enabled true
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_d3n_l1_datacenter_cache_size 53687091200
+  ceph config set client.rgw rgw_d3n_l1_datacache_size 53687091200
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_d3n_l1_local_datacenter_cache_dir /var/cache/ceph/rgw
+  ceph config set client.rgw rgw_d3n_l1_datacache_persistent_path /var/cache/ceph/rgw
 ```
 
 ## Cache Hit Rate Monitoring
