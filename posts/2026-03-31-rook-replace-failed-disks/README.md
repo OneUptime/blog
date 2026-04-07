@@ -42,7 +42,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd out osd.5
 Wait for PG recovery to complete before physically replacing the disk:
 
 ```bash
-watch kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+watch kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
 ```
 
 Do not proceed until `active+clean` is reported for all PGs.
@@ -85,15 +85,14 @@ ssh worker-node-2 sudo partprobe /dev/sde
 
 ## Step 5: Trigger OSD Provisioning
 
-Rook detects new clean disks if configured with `useAllDevices: true`. Otherwise, reconcile the CephCluster:
+Rook detects new clean disks if configured with `useAllDevices: true`. To trigger an immediate reconciliation, restart the operator:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/force-delete-storage-config="true" --overwrite
-# This triggers re-evaluation of storage devices
+kubectl -n rook-ceph delete pod -l app=rook-ceph-operator
+# The operator pod restarts and re-scans for available devices
 ```
 
-Or explicitly add the device back to the node config and re-apply:
+Or explicitly add the device back to the node config in the CephCluster CR and re-apply:
 
 ```bash
 kubectl -n rook-ceph apply -f ceph-cluster.yaml
