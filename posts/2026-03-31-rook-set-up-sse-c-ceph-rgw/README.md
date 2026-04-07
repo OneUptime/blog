@@ -85,7 +85,7 @@ s3.put_object(
     Key='myfile.txt',
     Body=b'Hello, World!',
     SSECustomerAlgorithm='AES256',
-    SSECustomerKey=key_b64
+    SSECustomerKey=key_bytes
 )
 
 # Download with SSE-C
@@ -93,7 +93,7 @@ response = s3.get_object(
     Bucket='mybucket',
     Key='myfile.txt',
     SSECustomerAlgorithm='AES256',
-    SSECustomerKey=key_b64
+    SSECustomerKey=key_bytes
 )
 data = response['Body'].read()
 ```
@@ -107,10 +107,10 @@ aws s3api copy-object \
   --bucket mybucket \
   --copy-source mybucket/myfile.txt \
   --key myfile.txt \
-  --sse-c AES256 \
-  --sse-c-key "$NEW_KEY" \
-  --copy-source-sse-c AES256 \
-  --copy-source-sse-c-key "$OLD_KEY" \
+  --sse-customer-algorithm AES256 \
+  --sse-customer-key "$NEW_KEY" \
+  --copy-source-sse-customer-algorithm AES256 \
+  --copy-source-sse-customer-key "$OLD_KEY" \
   --endpoint-url https://rgw.example.com
 ```
 
