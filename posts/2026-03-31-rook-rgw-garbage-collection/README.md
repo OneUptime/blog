@@ -13,7 +13,7 @@ When objects are deleted in Ceph RGW, the metadata is removed immediately but th
 ## Understanding RGW Garbage Collection
 
 The GC process:
-1. Deleted object data is queued in the GC log (stored in the `.rgw.root` pool)
+1. Deleted object data is queued in the GC log (stored in the zone's GC pool, e.g., `default.rgw.gc`)
 2. A GC worker processes the queue and deletes RADOS objects
 3. Processing happens on a schedule to avoid impacting foreground operations
 
@@ -95,8 +95,8 @@ data:
 If GC is not keeping up:
 
 ```bash
-# Check RADOS pool usage before/after GC
-ceph df detail | grep -A5 "\.rgw\.root"
+# Check RADOS data pool usage before/after GC
+ceph df detail | grep -A5 "rgw\.buckets\.data"
 
 # Force GC to process immediately
 radosgw-admin gc process --include-all
