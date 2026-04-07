@@ -42,13 +42,15 @@ Available: Yes
 
 ## Configuring the Rook Module
 
-Set the Kubernetes namespace where Rook is deployed:
+The module auto-discovers the Kubernetes namespace from the `POD_NAMESPACE` environment variable when running inside a Rook-managed cluster. No manual namespace configuration is needed.
+
+To set the storage class used for Local Storage Operator (LSO) discovered PersistentVolumes:
 
 ```bash
 ceph config set mgr mgr/rook/storage_class rook-ceph-block
 ```
 
-The module auto-discovers the namespace from the Rook operator's environment when running inside Kubernetes.
+The default value is `local`.
 
 ## Listing Kubernetes-Managed Daemons
 
@@ -68,13 +70,13 @@ mgr.a       node-2  running  1m ago
 
 ## Deploying New OSDs
 
-Trigger OSD deployment on all available devices:
+The Rook backend does not support creating OSDs through the `ceph orch` CLI. OSD deployment must be configured directly in the `CephCluster` custom resource. Edit the CR to use all available devices:
 
 ```bash
-ceph orch apply osd --all-available-devices
+kubectl -n rook-ceph patch cephcluster rook-ceph --type merge -p '{"spec":{"storage":{"useAllDevices":true,"useAllNodes":true}}}'
 ```
 
-This creates or updates the `CephCluster` CR's storage section to include newly discovered devices.
+The Rook operator reconciles the CR and deploys OSD pods on discovered devices.
 
 ## Scaling Monitors
 
@@ -84,7 +86,7 @@ Change the monitor count through the orchestrator:
 ceph orch apply mon --placement="3"
 ```
 
-The Rook operator reconciles the `CephCluster` CR and adjusts monitor pods accordingly.
+The Rook operator reconciles the `CephCluster` CR and adjusts monitor pods accordingly. Note that only count-based placement is supported with the Rook backend. Host list or label-based placement is not available.
 
 ## Checking Rook Operator Logs
 
