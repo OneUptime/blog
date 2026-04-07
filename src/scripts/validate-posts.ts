@@ -166,6 +166,7 @@ async function main(): Promise<void> {
       const readmePath = path.join(postDir, 'README.md');
 
       if (!fs.existsSync(readmePath)) {
+        console.log(`\n[SKIP] ${blog.post}: README.md not found`);
         completed++;
         updateProgress();
         resolve();
@@ -181,33 +182,48 @@ async function main(): Promise<void> {
       });
 
       const timeout = setTimeout(() => {
+        console.log(`\n[TIMEOUT] ${blog.post}: killed after 5 minutes`);
         child.kill();
       }, 5 * 60 * 1000); // 5 minute timeout per post
 
-      child.on('close', () => {
+      child.on('close', (code) => {
         clearTimeout(timeout);
+
+        if (code !== 0) {
+          console.log(`\n[FAIL] ${blog.post}: codex exited with code ${code}`);
+        }
 
         const validationPath = path.join(postDir, VALIDATION_JSON);
         if (fs.existsSync(validationPath)) {
           withCommitLock(() => {
-            spawnSync('git', ['add', postDir], { cwd: process.cwd() });
-            spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
+            const addResult = spawnSync('git', ['add', postDir], { cwd: process.cwd() });
+            if (addResult.status !== 0) {
+              console.log(`\n[GIT ERROR] ${blog.post}: git add failed (code ${addResult.status})`);
+            }
+            const commitResult = spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
               cwd: process.cwd(),
             });
+            if (commitResult.status !== 0) {
+              console.log(`\n[GIT ERROR] ${blog.post}: git commit failed (code ${commitResult.status})`);
+            }
           }).then(() => {
             completed++;
             updateProgress();
             resolve();
           });
         } else {
+          if (code === 0) {
+            console.log(`\n[FAIL] ${blog.post}: codex succeeded but validation.json was not created`);
+          }
           completed++;
           updateProgress();
           resolve();
         }
       });
 
-      child.on('error', () => {
+      child.on('error', (err) => {
         clearTimeout(timeout);
+        console.log(`\n[ERROR] ${blog.post}: ${err.message}`);
         completed++;
         updateProgress();
         resolve();
