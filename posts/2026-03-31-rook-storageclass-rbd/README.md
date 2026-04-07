@@ -16,37 +16,41 @@ When a PersistentVolumeClaim is created with a StorageClass that uses the Rook C
 sequenceDiagram
     participant User
     participant Kubernetes
-    participant CSIProvisioner
+    participant CSIController
+    participant CSINodePlugin
     participant Ceph
 
     User->>Kubernetes: Create PVC with StorageClass
-    Kubernetes->>CSIProvisioner: Provision volume request
-    CSIProvisioner->>Ceph: rbd create pool/image --size X
-    Ceph-->>CSIProvisioner: Image created
-    CSIProvisioner-->>Kubernetes: Create PV bound to PVC
+    Kubernetes->>CSIController: Provision volume request
+    CSIController->>Ceph: rbd create pool/image --size X
+    Ceph-->>CSIController: Image created
+    CSIController-->>Kubernetes: Create PV bound to PVC
     User->>Kubernetes: Create Pod with PVC
-    Kubernetes->>CSIProvisioner: NodeStageVolume
-    CSIProvisioner->>Ceph: rbd map pool/image
-    Ceph-->>CSIProvisioner: /dev/rbdX
-    CSIProvisioner->>Kubernetes: Mount /dev/rbdX to pod
+    Kubernetes->>CSINodePlugin: NodeStageVolume / NodePublishVolume
+    CSINodePlugin->>Ceph: rbd map pool/image
+    Ceph-->>CSINodePlugin: /dev/rbdX
+    CSINodePlugin->>Kubernetes: Mount /dev/rbdX to pod
 ```
 
 ## Prerequisites
 
 Before creating the StorageClass, ensure:
 
-- A CephBlockPool exists and is healthy
+- A CephBlockPool exists and reports `Ready`
 - The CSI RBD secrets (`rook-csi-rbd-provisioner` and `rook-csi-rbd-node`) exist in the `rook-ceph` namespace
-- The Rook CSI driver is running
+- The Rook CSI RBD provisioner and node plugin are running
 
 ```bash
-# Verify the pool exists
+# Verify the pool exists and its PHASE is Ready
 kubectl -n rook-ceph get cephblockpool
 
 # Verify CSI secrets
 kubectl -n rook-ceph get secret rook-csi-rbd-provisioner rook-csi-rbd-node
 
-# Verify CSI pods are running
+# Verify the CSI provisioner is running
+kubectl -n rook-ceph get pods -l app=csi-rbdplugin-provisioner
+
+# Verify CSI node plugin pods are running
 kubectl -n rook-ceph get pods -l app=csi-rbdplugin
 ```
 
@@ -68,16 +72,19 @@ parameters:
   clusterID: rook-ceph
   # The CephBlockPool name
   pool: replicapool
-  # RBD image format (must be 2 for modern Ceph features)
+  # RBD image format (image features require format 2)
   imageFormat: "2"
-  # Features required by the CSI driver
-  imageFeatures: layering,deep-flatten,exclusive-lock,object-map,fast-diff
+  # Broadly compatible RBD image feature set
+  imageFeatures: layering
   # Provisioner secret for creating/deleting volumes
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   # Secret for expanding volumes online
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  # Secret for attach/detach operations
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   # Secret for staging the volume on the node
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
@@ -95,7 +102,7 @@ kubectl apply -f storageclass-rbd.yaml
 
 ## StorageClass with XFS Filesystem
 
-Some workloads (databases, large sequential writes) perform better on XFS:
+If your workload requires XFS, set the filesystem type to `xfs`. Rook does not recommend XFS in hyperconverged settings because of potential deadlocks when the volume is mounted on the same node as the OSDs:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -107,11 +114,13 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
-  imageFeatures: layering,deep-flatten,exclusive-lock,object-map,fast-diff
+  imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/fstype: xfs
@@ -133,11 +142,13 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
-  imageFeatures: layering,deep-flatten,exclusive-lock,object-map,fast-diff
+  imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/fstype: ext4
@@ -186,7 +197,7 @@ kubectl apply -f test-pvc.yaml
 kubectl get pvc test-pvc -w
 ```
 
-The PVC should transition from `Pending` to `Bound` within 30 seconds:
+The PVC should transition from `Pending` to `Bound` when provisioning succeeds:
 
 ```text
 NAME       STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS       AGE
@@ -202,4 +213,4 @@ kubectl delete pvc test-pvc
 
 ## Summary
 
-A Rook-Ceph RBD StorageClass connects Kubernetes dynamic provisioning to a CephBlockPool via the CSI driver. The critical parameters are `clusterID`, `pool`, `imageFormat: "2"`, `imageFeatures` with the required feature set, and the three CSI secrets for provisioning, expansion, and node staging. Setting `allowVolumeExpansion: true` lets you grow PVCs without recreating them. Use `reclaimPolicy: Retain` for volumes that must survive PVC deletion, and use separate StorageClasses for different filesystem types or pools when your workloads have different performance requirements.
+A Rook-Ceph RBD StorageClass connects Kubernetes dynamic provisioning to a CephBlockPool via the CSI driver. The critical parameters are `clusterID`, `pool`, `imageFormat: "2"`, a compatible `imageFeatures` setting such as `layering`, and the CSI secret references for provisioning, controller publish, expansion, and node staging. Setting `allowVolumeExpansion: true` lets you grow PVCs without recreating them. Use `reclaimPolicy: Retain` for volumes that must survive PVC deletion, and use separate StorageClasses for different filesystem types or pools when your workloads have different requirements.
