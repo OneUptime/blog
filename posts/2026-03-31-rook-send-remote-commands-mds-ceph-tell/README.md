@@ -36,9 +36,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph tell mds.cephfs:0 flush journal
 ```
 
-### Dump MDS State
+### Dump Historic Operations
 
-Get a full JSON dump of the MDS internal state for debugging:
+List recently completed operations for debugging slow or stuck requests:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
