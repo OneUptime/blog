@@ -13,6 +13,7 @@ interface BlogEntry {
 const BLOGS_JSON = 'Blogs.json';
 const POSTS_DIR = 'posts';
 const VALIDATION_JSON = 'validation.json';
+const VALIDATION_SUMMARY_MD = 'validation-summary.md';
 
 function getPrompt(postSlug: string, postContent: string, title: string, tags: string[]): string {
   return `You are a technical reviewer for a software engineering blog. Your job is to review a blog post for technical accuracy and correctness, then create a validation.json file.
@@ -21,7 +22,7 @@ function getPrompt(postSlug: string, postContent: string, title: string, tags: s
 
 **Title:** ${title}
 **Tags:** ${tags.join(', ')}
-**Location:** posts/${postSlug}/README.md
+**Location and post content:** posts/${postSlug}/README.md
 
 Here is the full content of the blog post:
 
@@ -80,7 +81,32 @@ For a post that is not technically relevant and should be removed:
     "validatedAt": "${new Date().toISOString().split('T')[0]}"
 }
 
-IMPORTANT: You MUST create the validation.json file. This is the primary deliverable of your review.`;
+### Step 5: Create validation-summary.md
+
+After creating validation.json, create the file posts/${postSlug}/validation-summary.md with a detailed summary of your review. Use this exact format:
+
+# Validation Summary: ${title}
+
+## Status
+<!-- One of: validated, not-code-blog, not-technically-relevant -->
+
+## Post Type
+<!-- e.g., Tutorial, Guide, Opinion piece, Company update, Reference, etc. -->
+
+## Technologies Covered
+<!-- Bulleted list of technologies, frameworks, languages discussed in the post -->
+
+## Sources Consulted
+<!-- Bulleted list of official documentation, RFCs, or authoritative sources you checked against. Include URLs where possible. -->
+
+## Issues Found
+<!-- If no issues: "No technical issues found." -->
+<!-- If issues were found, list each one: what was wrong, what you changed, and why. -->
+
+## Review Notes
+<!-- Any additional observations: things that are technically correct but could be improved in the future, deprecation warnings, version-specific caveats, etc. If none, write "None." -->
+
+IMPORTANT: You MUST create both the validation.json and validation-summary.md files. These are the primary deliverables of your review.`;
 }
 
 function main(): void {
@@ -156,12 +182,18 @@ function main(): void {
         throw result.error;
       }
 
-      // Verify validation.json was created
+      // Verify validation.json and validation-summary.md were created
       const validationPath = path.join(postDir, VALIDATION_JSON);
+      const summaryPath = path.join(postDir, VALIDATION_SUMMARY_MD);
       if (fs.existsSync(validationPath)) {
         console.log(`  ✓ ${VALIDATION_JSON} created successfully`);
       } else {
         console.log(`  ✗ ${VALIDATION_JSON} was NOT created — Codex may have failed`);
+      }
+      if (fs.existsSync(summaryPath)) {
+        console.log(`  ✓ ${VALIDATION_SUMMARY_MD} created successfully`);
+      } else {
+        console.log(`  ✗ ${VALIDATION_SUMMARY_MD} was NOT created`);
       }
     } catch (error) {
       console.error(`  ✗ Error reviewing ${blog.post}: ${(error as Error).message}`);
@@ -184,6 +216,101 @@ function main(): void {
   console.log(`  Validated: ${validated}`);
   console.log(`  Failed:    ${missing}`);
   console.log(`  Total:     ${postsToValidate.length}`);
+
+  // Generate aggregated validation-summary.md at the repo root
+  generateAggregatedSummary(blogs);
+}
+
+function generateAggregatedSummary(blogs: BlogEntry[]): void {
+  const today = new Date().toISOString().split('T')[0];
+  const lines: string[] = [];
+
+  lines.push(`# Blog Validation Summary`);
+  lines.push(``);
+  lines.push(`Generated on: ${today}`);
+  lines.push(``);
+
+  let validatedCount = 0;
+  let notCodeBlogCount = 0;
+  let notRelevantCount = 0;
+  let missingCount = 0;
+
+  interface PostResult {
+    blog: BlogEntry;
+    status: string | null;
+    hasSummary: boolean;
+  }
+
+  const results: PostResult[] = [];
+
+  for (const blog of blogs) {
+    const validationPath = path.join(POSTS_DIR, blog.post, VALIDATION_JSON);
+    const summaryPath = path.join(POSTS_DIR, blog.post, VALIDATION_SUMMARY_MD);
+    let status: string | null = null;
+
+    if (fs.existsSync(validationPath)) {
+      const raw = fs.readFileSync(validationPath, 'utf-8');
+      const entry = JSON.parse(raw);
+      status = entry.status || 'unknown';
+      if (status === 'validated') validatedCount++;
+      else if (status === 'not-code-blog') notCodeBlogCount++;
+      else if (status === 'not-technically-relevant') notRelevantCount++;
+    } else {
+      missingCount++;
+    }
+
+    results.push({ blog, status, hasSummary: fs.existsSync(summaryPath) });
+  }
+
+  const totalPosts = blogs.length;
+
+  lines.push(`## Overview`);
+  lines.push(``);
+  lines.push(`| Metric | Count |`);
+  lines.push(`|--------|-------|`);
+  lines.push(`| Total posts | ${totalPosts} |`);
+  lines.push(`| Validated | ${validatedCount} |`);
+  lines.push(`| Not a code blog | ${notCodeBlogCount} |`);
+  lines.push(`| Not technically relevant | ${notRelevantCount} |`);
+  lines.push(`| Missing validation | ${missingCount} |`);
+  lines.push(``);
+
+  // Posts table
+  lines.push(`## All Posts`);
+  lines.push(``);
+  lines.push(`| # | Post | Status | Summary |`);
+  lines.push(`|---|------|--------|---------|`);
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    const statusLabel = r.status || 'missing';
+    const summaryLink = r.hasSummary ? `[View](posts/${r.blog.post}/${VALIDATION_SUMMARY_MD})` : '—';
+    lines.push(`| ${i + 1} | ${r.blog.title} (\`${r.blog.post}\`) | ${statusLabel} | ${summaryLink} |`);
+  }
+
+  lines.push(``);
+
+  // Per-post detailed summaries
+  const postsWithSummaries = results.filter(r => r.hasSummary);
+  if (postsWithSummaries.length > 0) {
+    lines.push(`## Detailed Review Summaries`);
+    lines.push(``);
+
+    for (const r of postsWithSummaries) {
+      const summaryPath = path.join(POSTS_DIR, r.blog.post, VALIDATION_SUMMARY_MD);
+      const summaryContent = fs.readFileSync(summaryPath, 'utf-8');
+      lines.push(`<details>`);
+      lines.push(`<summary><strong>${r.blog.title}</strong> (<code>${r.blog.post}</code>) — ${r.status}</summary>`);
+      lines.push(``);
+      lines.push(summaryContent.trim());
+      lines.push(``);
+      lines.push(`</details>`);
+      lines.push(``);
+    }
+  }
+
+  fs.writeFileSync(VALIDATION_SUMMARY_MD, lines.join('\n') + '\n', 'utf-8');
+  console.log(`\n✓ Generated ${VALIDATION_SUMMARY_MD}`);
 }
 
 main();
