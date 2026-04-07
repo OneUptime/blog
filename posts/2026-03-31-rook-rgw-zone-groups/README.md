@@ -10,11 +10,10 @@ Description: Learn how to configure zone groups in Ceph RGW multisite to group g
 
 ## What Are Zone Groups
 
-Zone groups (formerly region groups) represent geographic regions in Ceph's multisite hierarchy. Each zone group:
+Zone groups (formerly regions) represent geographic regions in Ceph's multisite hierarchy. Each zone group:
 - Contains one or more zones (individual Ceph clusters)
 - Has a master zone that handles metadata writes
 - Replicates data between zones within the group
-- Can replicate to other zone groups at a configurable interval
 
 ## Creating a Zone Group
 
@@ -24,7 +23,6 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zonegroup create \
   --rgw-realm=mycompany \
   --rgw-zonegroup=us \
-  --api-name=us \
   --endpoints=http://rgw-us-east:80,http://rgw-us-west:80 \
   --master \
   --default
@@ -34,9 +32,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zonegroup create \
   --rgw-realm=mycompany \
   --rgw-zonegroup=eu \
-  --api-name=eu \
-  --endpoints=http://rgw-eu-west:80 \
-  --is-master=false
+  --endpoints=http://rgw-eu-west:80
 ```
 
 ## Adding Zones to a Zone Group
