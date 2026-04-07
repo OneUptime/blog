@@ -44,9 +44,30 @@ cat > /etc/logrotate.d/ceph << 'EOF'
 EOF
 ```
 
-Apply via a privileged DaemonSet:
+Create a ConfigMap from the logrotate config and apply it via a privileged DaemonSet:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ceph-logrotate-config
+  namespace: rook-ceph
+data:
+  ceph: |
+    /var/log/ceph/*.log {
+        daily
+        rotate 7
+        compress
+        delaycompress
+        missingok
+        notifempty
+        sharedscripts
+        postrotate
+            pkill -HUP ceph-osd || true
+            pkill -HUP ceph-mon || true
+        endscript
+    }
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -71,7 +92,7 @@ spec:
         - |
           apk add --no-cache logrotate
           while true; do
-            logrotate /etc/logrotate.d/ceph
+            logrotate -s /tmp/logrotate.status /etc/logrotate.d/ceph
             sleep 86400
           done
         securityContext:
@@ -93,14 +114,9 @@ spec:
 
 ## Configure Kubernetes Log Rotation
 
-For container stdout logs managed by the container runtime, configure log rotation in containerd:
+For container stdout logs managed by the container runtime, configure log rotation via kubelet flags on each node:
 
 ```bash
-# Edit /etc/containerd/config.toml on each node
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  max_container_log_line_size = 16384
-
-# Or use kubelet flags
 --container-log-max-size=100Mi
 --container-log-max-files=5
 ```
