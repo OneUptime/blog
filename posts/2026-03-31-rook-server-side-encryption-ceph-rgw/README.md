@@ -16,10 +16,19 @@ Before enabling SSE, ensure your Ceph cluster is running and RGW is configured. 
 
 ## Enabling SSE-S3
 
-SSE-S3 uses RGW to manage encryption keys. Enable it by setting the appropriate config option:
+SSE-S3 uses RGW to manage encryption keys. Enable it by configuring the SSE-S3 backend. For testing environments, you can use the built-in testing backend:
 
 ```bash
-ceph config set client.rgw rgw_crypt_s3_kms_encryption_keys "your-base64-encoded-key"
+ceph config set client.rgw rgw_crypt_sse_s3_backend testing
+ceph config set client.rgw rgw_crypt_require_ssl false
+```
+
+For production, use Vault as the SSE-S3 backend and enable SSL:
+
+```bash
+ceph config set client.rgw rgw_crypt_sse_s3_backend vault
+ceph config set client.rgw rgw_crypt_sse_s3_vault_addr https://vault.example.com:8200
+ceph config set client.rgw rgw_crypt_sse_s3_vault_secret_engine transit
 ceph config set client.rgw rgw_crypt_require_ssl true
 ```
 
@@ -44,7 +53,7 @@ For stronger key management, integrate with Vault:
 ```bash
 ceph config set client.rgw rgw_crypt_s3_kms_backend vault
 ceph config set client.rgw rgw_crypt_vault_addr http://vault.example.com:8200
-ceph config set client.rgw rgw_crypt_vault_token your-vault-token
+ceph config set client.rgw rgw_crypt_vault_token_file /etc/ceph/vault.token
 ceph config set client.rgw rgw_crypt_vault_secret_engine kv
 ceph config set client.rgw rgw_crypt_vault_prefix /v1/secret/data
 ```
