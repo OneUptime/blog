@@ -53,8 +53,8 @@ metadata:
 data:
   config: |
     [client.rgw.my-store]
-    rgw_crypt_require_ssl = true
-    rgw_crypt_s3_kms_encryption_keys = vault
+    rgw_crypt_require_ssl = false
+    rgw_crypt_s3_kms_backend = vault
 ```
 
 ## Using SSE-C with the AWS CLI
@@ -64,7 +64,7 @@ Test SSE-C by providing an encryption key with each request:
 ```bash
 # Generate a 256-bit key
 KEY=$(openssl rand -base64 32)
-KEY_MD5=$(echo -n "$KEY" | openssl dgst -md5 -binary | base64)
+KEY_MD5=$(echo -n "$KEY" | base64 --decode | openssl dgst -md5 -binary | base64)
 
 # Upload with SSE-C
 aws s3api put-object \
