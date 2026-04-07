@@ -20,6 +20,7 @@ Each provisioner Deployment includes multiple sidecars:
 - **csi-snapshotter** - handles VolumeSnapshot creation
 - **csi-resizer** - handles PVC expansion requests
 - **csi-attacher** - manages volume attachment to nodes
+- **csi-omap-generator** - maintains OMap mappings for RBD volumes
 - **csi-rbdplugin** or **csi-cephfsplugin** - the main Ceph CSI driver
 
 ## Configuring Provisioner Resources via CephCluster
@@ -148,7 +149,7 @@ kubectl -n rook-ceph logs -l app=csi-rbdplugin-provisioner \
     -c csi-provisioner --tail=20 | grep -i "leader\|elected"
 
 # Monitor Prometheus metrics for CSI operations
-# csi_operations_seconds_bucket{driver_name="rook-ceph.rbd.csi.ceph.com"}
+# csi_sidecar_operations_seconds_bucket{driver_name="rook-ceph.rbd.csi.ceph.com"}
 ```
 
 ## High-Volume PVC Environments
