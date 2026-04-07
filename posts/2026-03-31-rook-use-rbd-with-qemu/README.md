@@ -78,12 +78,16 @@ For latency-sensitive VMs, use `cache=none` with the virtio-blk driver:
 Freeze the filesystem inside the VM, then take a snapshot:
 
 ```bash
-# Inside the VM
-sync && echo 3 > /proc/sys/vm/drop_caches
+# Inside the VM - freeze the filesystem to ensure consistency
+sync
+fsfreeze --freeze /
 
-# On the hypervisor host
+# On the hypervisor host - take the snapshot
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd snap create replicapool/vm-disk-01@snapshot-pre-upgrade
+
+# Inside the VM - unfreeze the filesystem after the snapshot
+fsfreeze --unfreeze /
 ```
 
 ## Step 6 - Clone a VM Disk for Fast Provisioning
