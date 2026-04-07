@@ -37,7 +37,7 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/containers/rook-ceph-*.log
-        Parser            docker
+        Parser            cri
         Tag               ceph.*
         Refresh_Interval  5
 
@@ -61,9 +61,9 @@ Apply the DaemonSet:
 kubectl apply -f fluent-bit-ceph.yaml
 ```
 
-## Enable Structured Logging in Ceph
+## Direct Ceph Logs to stderr
 
-Configure Ceph to write JSON-formatted logs for easier parsing:
+Ensure Ceph daemons write logs to stderr so they are captured by the Kubernetes container logging infrastructure:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
