@@ -30,22 +30,22 @@ ceph config set client rbd_readahead_trigger_requests 5
 
 ## CephFS Read-Ahead
 
-For CephFS, read-ahead is handled by the kernel client via standard Linux block device settings and FUSE buffer settings:
-
-```bash
-# Check current readahead for the CephFS mount device
-blockdev --getra /dev/rbd0
-
-# Set readahead (in 512-byte sectors, 8192 = 4 MiB)
-blockdev --setra 8192 /dev/rbd0
-```
-
-For kernel CephFS mounts, tune via mount options:
+For kernel CephFS mounts, read-ahead is handled by the kernel VFS layer. Tune it at mount time with the `rasize` option (value in bytes):
 
 ```bash
 mount -t ceph 192.168.1.10:/ /mnt/cephfs \
   -o name=admin,secretfile=/etc/ceph/admin.secret,\
-rsize=1048576
+rasize=4194304
+```
+
+At runtime, adjust read-ahead via the backing device info (BDI) sysfs interface:
+
+```bash
+# Find the BDI for the CephFS mount and check current read-ahead
+cat /sys/class/bdi/$(stat -f %d /mnt/cephfs)/read_ahead_kb
+
+# Set read-ahead to 4 MiB
+echo 4096 > /sys/class/bdi/$(stat -f %d /mnt/cephfs)/read_ahead_kb
 ```
 
 ## Kernel RBD Read-Ahead
@@ -91,7 +91,7 @@ fio --name=seqread \
   --bs=1M \
   --size=4G \
   --filename=/dev/rbd0 \
-  --direct=1
+  --direct=0
 ```
 
 Compare results with different read-ahead values to find the optimal setting.
