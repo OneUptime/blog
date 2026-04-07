@@ -34,7 +34,7 @@ Automate a health report that is sent to the team before the meeting:
 NAMESPACE="rook-ceph"
 REPORT_FILE="/tmp/ceph-health-report-$(date +%Y-%m-%d).txt"
 
-kubectl -n $NAMESPACE exec -it deploy/rook-ceph-tools -- bash -c "
+kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- bash -c "
   echo '==== Ceph Health Report: $(date) ===='
   echo ''
   echo '-- Overall Health --'
