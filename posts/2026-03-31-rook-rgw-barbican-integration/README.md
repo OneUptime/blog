@@ -41,15 +41,16 @@ ceph config set client.rgw rgw_keystone_admin_domain Default
 On the OpenStack side, create a secret key:
 
 ```bash
-# Create a 256-bit AES key in Barbican
-openstack secret store \
+# Generate a 256-bit AES key in Barbican
+openstack secret order create key \
   --name ceph-rgw-key \
-  --payload-content-type application/octet-stream \
   --algorithm AES \
-  --bit-length 256 \
-  --secret-type symmetric
+  --bit-length 256
 
-# Get the key UUID
+# List orders to find the secret href
+openstack secret order list
+
+# Get the key UUID from the secret href
 openstack secret list --name ceph-rgw-key -f value -c "Secret href"
 ```
 
