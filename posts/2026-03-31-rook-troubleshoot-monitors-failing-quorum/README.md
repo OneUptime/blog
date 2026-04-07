@@ -58,7 +58,7 @@ Verify NTP is running on all nodes:
 ```bash
 for node in $(kubectl get nodes -o name); do
   echo "=== $node ==="
-  kubectl debug node/${node#node/} --image=busybox -- chronyc tracking 2>/dev/null | head -5
+  kubectl debug node/${node#node/} -it --image=busybox -- chroot /host timedatectl 2>/dev/null | head -5
 done
 ```
 
@@ -92,6 +92,8 @@ kubectl -n rook-ceph get svc -l app=rook-ceph-mon
 
 ## Force Rebuild of Monitor ConfigMap
 
+> **Warning**: This is a destructive operation. Back up your Rook cluster state before proceeding. Only use this as a last resort when monitors cannot recover through normal means.
+
 If the Rook ConfigMap has stale endpoints:
 
 ```bash
@@ -99,7 +101,7 @@ kubectl -n rook-ceph delete configmap rook-ceph-mon-endpoints
 kubectl -n rook-ceph delete deploy rook-ceph-mon-a rook-ceph-mon-b rook-ceph-mon-c
 ```
 
-Rook will rebuild the monitors from scratch using the existing PVCs.
+The Rook operator will detect the missing resources and recreate the monitor deployments, reattaching the existing PVCs. If the underlying monitor data is intact, the monitors should rejoin and form quorum.
 
 ## Summary
 
