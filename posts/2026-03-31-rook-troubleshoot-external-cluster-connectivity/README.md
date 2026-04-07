@@ -58,8 +58,8 @@ Test connectivity to each monitor from inside the cluster:
 ```bash
 kubectl -n rook-ceph-external run net-test --image=busybox --restart=Never -- \
   nc -zv 192.168.1.1 6789
-kubectl logs net-test
-kubectl delete pod net-test
+kubectl -n rook-ceph-external logs net-test
+kubectl -n rook-ceph-external delete pod net-test
 ```
 
 ## Step 4 - Verify Secrets Exist and Are Correct
