@@ -36,13 +36,13 @@ HEALTH_WARN 24 pgs snaptrimming; 8 pgs snaptrim_wait
 ## Step 2: Check Snaptrim Queue Length
 
 ```bash
-ceph osd pool stats mypool | grep "snaptrim"
+ceph pg dump pgs_brief | grep snaptrim
 ```
 
-Also check per-PG:
+This shows all PGs currently in a snaptrim-related state. You can also check snaptrim activity per-PG with more detail:
 
 ```bash
-ceph pg dump_stuck | grep snaptrim
+ceph pg dump | grep -E "snaptrim|snaptrim_wait"
 ```
 
 ## Step 3: Monitor OSD CPU During Snaptrim
@@ -85,8 +85,8 @@ If snaptrim is falling far behind:
 # Reduce sleep
 ceph config set osd osd_snap_trim_sleep 0.0
 
-# Increase the number of objects trimmed per operation
-ceph config set osd osd_snap_trim_max 100
+# Increase the number of concurrent snap trim operations per OSD (default is 2)
+ceph config set osd osd_pg_max_concurrent_snap_trims 4
 ```
 
 ## Step 7: Check for Blocked Snaptrim Due to Recovery
@@ -99,10 +99,18 @@ ceph status | grep "recovery\|backfill"
 
 Snaptrim priority is lower than recovery. Wait for recovery to complete.
 
-## Step 8: Force a PG to Trim Now
+## Step 8: Ensure Snaptrim is Not Disabled
+
+Verify that snap trimming has not been manually disabled on OSDs:
 
 ```bash
-ceph tell osd.0 snap_trim_force <pgid>
+ceph config get osd osd_snap_trim_sleep
+```
+
+If the sleep value was set very high to pause trimming, reset it to allow trimming to proceed:
+
+```bash
+ceph config set osd osd_snap_trim_sleep 0.0
 ```
 
 ## Preventing Snaptrim Backlogs
