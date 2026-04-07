@@ -61,7 +61,7 @@ kubectl -n rook-ceph top pods -l app=rook-ceph-osd
 for pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd -o name); do
     echo "=== $pod ==="
     kubectl -n rook-ceph exec $pod -- \
-        cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null | grep throttled_periods
+        cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null | grep nr_throttled
 done
 ```
 
