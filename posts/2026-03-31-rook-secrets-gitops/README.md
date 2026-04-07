@@ -76,11 +76,13 @@ kubectl -n rook-ceph apply -f external-secret.yaml
 For teams using Flux or ArgoCD with SOPS support:
 
 ```bash
-# Generate an Age key
+# Generate an Age key (the public key is printed to stderr)
 age-keygen -o age.agekey
+# Extract the public key from the key file
+export AGE_PUBLIC_KEY=$(grep 'public key:' age.agekey | sed 's/.*public key: //')
 
 # Encrypt the secret file
-sops --age=$(cat age.pub) \
+sops --age=$AGE_PUBLIC_KEY \
   --encrypt \
   --encrypted-regex '^(data|stringData)$' \
   rook-ceph-rgw-secret.yaml > rook-ceph-rgw-secret.enc.yaml
