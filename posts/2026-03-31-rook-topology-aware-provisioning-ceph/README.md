@@ -23,9 +23,9 @@ kubectl label node node-1 topology.kubernetes.io/region=us-east
 kubectl label node node-1 topology.rook.io/rack=rack-01
 ```
 
-## Configuring the CRUSH Map for Topology
+## Spreading OSDs Across Topology Zones
 
-Rook can automatically build a topology-aware CRUSH map from node labels. Set `topologySpreadConstraints` in the CephCluster:
+Rook automatically builds a topology-aware CRUSH map from the node labels set in the previous step. To also ensure OSD pods are evenly distributed across zones at the Kubernetes scheduling level, set `topologySpreadConstraints` in the CephCluster:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
