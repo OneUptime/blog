@@ -51,7 +51,31 @@ done
 
 The `ls` should return nothing.
 
-## Step 3: Remove Ceph Labels from Disks
+## Step 3: Remove LVM Volumes
+
+If Rook created LVM volumes on OSD disks, remove them before wiping disk signatures:
+
+```bash
+ssh node-1 "sudo pvdisplay | grep -A5 'ceph'"
+ssh node-1 "sudo vgdisplay | grep 'ceph'"
+ssh node-1 "sudo lvdisplay | grep 'ceph'"
+```
+
+Remove in reverse order (LV, VG, PV):
+
+```bash
+ssh node-1 "sudo lvremove -f /dev/ceph-xxxx/osd-block-yyyy"
+ssh node-1 "sudo vgremove ceph-xxxx"
+ssh node-1 "sudo pvremove /dev/sdb"
+```
+
+After removing LVM volumes, zero out the first few MB of the disk to ensure no LVM signatures remain:
+
+```bash
+ssh node-1 "sudo dd if=/dev/zero of=/dev/sdb bs=1M count=100 status=progress"
+```
+
+## Step 4: Remove Ceph Labels from Disks
 
 Ceph writes metadata to disk headers to identify OSD disks. These must be removed:
 
@@ -78,30 +102,6 @@ ssh node-1 "sudo wipefs /dev/sdb"
 ```
 
 Should return no output if the disk is clean.
-
-## Step 4: Remove LVM Volumes
-
-If Rook created LVM volumes on OSD disks, remove them:
-
-```bash
-ssh node-1 "sudo pvdisplay | grep -A5 'ceph'"
-ssh node-1 "sudo vgdisplay | grep 'ceph'"
-ssh node-1 "sudo lvdisplay | grep 'ceph'"
-```
-
-Remove in reverse order (LV, VG, PV):
-
-```bash
-ssh node-1 "sudo lvremove -f /dev/ceph-xxxx/osd-block-yyyy"
-ssh node-1 "sudo vgremove ceph-xxxx"
-ssh node-1 "sudo pvremove /dev/sdb"
-```
-
-After removing LVM volumes, zero out the first few MB of the disk to ensure no LVM signatures remain:
-
-```bash
-ssh node-1 "sudo dd if=/dev/zero of=/dev/sdb bs=1M count=100 status=progress"
-```
 
 ## Step 5: Remove SGDisk Partitions
 
@@ -155,4 +155,4 @@ Disks should show no filesystem labels, and `/var/lib/rook` should be empty or a
 
 ## Summary
 
-Resetting nodes after Rook-Ceph cluster removal involves stopping all Ceph processes, clearing the `dataDirHostPath`, removing Ceph disk labels with `wipefs`, deleting any LVM volumes created by Rook, clearing GPT partition tables with `sgdisk --zap-all`, unloading Ceph kernel modules, and rebooting nodes to ensure clean state. Each step must be applied to every storage node. After completing all steps, verify that disks show no Ceph signatures before attempting a fresh Rook installation.
+Resetting nodes after Rook-Ceph cluster removal involves stopping all Ceph processes, clearing the `dataDirHostPath`, deleting any LVM volumes created by Rook, removing Ceph disk labels with `wipefs`, clearing GPT partition tables with `sgdisk --zap-all`, unloading Ceph kernel modules, and rebooting nodes to ensure clean state. Each step must be applied to every storage node. After completing all steps, verify that disks show no Ceph signatures before attempting a fresh Rook installation.
