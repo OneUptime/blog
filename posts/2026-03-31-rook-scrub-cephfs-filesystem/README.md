@@ -64,28 +64,25 @@ Sample output:
 }
 ```
 
-## Step 4 - Pause and Resume Scrub
+## Step 4 - Abort a Running Scrub
 
-Scrubs can be paused if they are impacting performance:
-
-```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph tell mds.myfs:0 scrub pause
-
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph tell mds.myfs:0 scrub resume
-```
-
-## Step 5 - Force Repair During Scrub
-
-To automatically repair any inconsistencies found during the scrub, add the `force` flag:
+Scrubs can be aborted if they are impacting performance:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph tell mds.myfs:0 scrub start / recursive force
+  ceph tell mds.myfs:0 scrub abort
 ```
 
-Use with caution - `force` repair can make destructive changes to metadata to resolve inconsistencies.
+## Step 5 - Repair During Scrub
+
+To automatically repair any inconsistencies found during the scrub, add the `repair` flag:
+
+```bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
+  ceph tell mds.myfs:0 scrub start / recursive repair
+```
+
+Use with caution - `repair` can make destructive changes to metadata to resolve inconsistencies.
 
 ## Step 6 - Schedule Regular Scrubs via CronJob
 
@@ -114,6 +111,18 @@ spec:
             - start
             - /
             - recursive
+            volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph
+              readOnly: true
+          volumes:
+          - name: ceph-config
+            projected:
+              sources:
+              - configMap:
+                  name: rook-ceph-mon-endpoints
+              - secret:
+                  name: rook-ceph-mon
           restartPolicy: OnFailure
 ```
 
@@ -127,4 +136,4 @@ kubectl logs -n rook-ceph deploy/rook-ceph-mds-myfs-a | grep -E "scrub|inconsist
 
 ## Summary
 
-Regular CephFS metadata scrubs in Rook-Ceph ensure filesystem consistency by detecting orphaned inodes and corrupted directory entries. Use `ceph tell mds scrub start` with the `recursive` flag for full tree scrubs, and automate them via Kubernetes CronJobs. The `force` option enables automatic repair but should be used carefully. Always verify cluster health before initiating a scrub.
+Regular CephFS metadata scrubs in Rook-Ceph ensure filesystem consistency by detecting orphaned inodes and corrupted directory entries. Use `ceph tell mds scrub start` with the `recursive` flag for full tree scrubs, and automate them via Kubernetes CronJobs. The `repair` option enables automatic repair but should be used carefully. Always verify cluster health before initiating a scrub.
