@@ -120,11 +120,11 @@ After applying a CRUSH rule, verify PGs are placed correctly:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
   # Check which OSDs hold PGs for the pool
-  ceph pg dump | grep 'custom-pool' | head -10
+  ceph pg ls-by-pool custom-pool | head -10
 
   # Verify OSD device classes
-  ceph osd df class ssd
-  ceph osd df class hdd
+  ceph osd tree class ssd
+  ceph osd tree class hdd
 "
 ```
 
@@ -134,9 +134,15 @@ Before applying rules to production pools, test placement with the CRUSH calcula
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # Simulate 1000 PG placements for a rule
+  # First extract the CRUSH map
+  ceph osd getcrushmap -o /tmp/crushmap.bin
+
+  # Find the rule ID for your rule
+  ceph osd crush rule dump ssd-rule | grep rule_id
+
+  # Simulate PG placements for the rule (use the numeric rule ID)
   crushtool --test -i /tmp/crushmap.bin \
-    --rule ssd-rule \
+    --rule 1 \
     --num-rep 3 \
     --show-utilization
 "
