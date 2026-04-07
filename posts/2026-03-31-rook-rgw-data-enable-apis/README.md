@@ -40,13 +40,16 @@ data:
 
 `rgw_enable_apis` is a comma-separated list of API protocols to enable. Available options:
 
-- `s3` - Amazon S3 protocol (default)
+- `s3` - Amazon S3 protocol
+- `s3website` - S3 static website hosting
 - `swift` - OpenStack Swift protocol
 - `swift_auth` - Swift authentication endpoint
 - `admin` - Ceph admin API
 - `sts` - AWS Security Token Service
 - `iam` - IAM-compatible API
-- `pubsub` - Pub/Sub notification API
+- `notifications` - Pub/Sub bucket notification API (called `pubsub` in Ceph versions prior to Reef)
+
+By default, all APIs are enabled.
 
 ```bash
 # View current enabled APIs
@@ -58,8 +61,8 @@ ceph config set client.rgw rgw_enable_apis "s3,admin"
 # Enable all common APIs including STS and IAM
 ceph config set client.rgw rgw_enable_apis "s3,swift,swift_auth,admin,sts,iam"
 
-# Enable pub/sub for bucket notifications
-ceph config set client.rgw rgw_enable_apis "s3,admin,pubsub"
+# Enable bucket notifications
+ceph config set client.rgw rgw_enable_apis "s3,admin,notifications"
 ```
 
 ## Applying Changes in Rook
@@ -87,7 +90,7 @@ Test the Swift endpoint:
 ```bash
 curl -I http://rook-ceph-rgw-my-store.rook-ceph.svc/swift/v1/
 
-# HTTP/1.1 412 Precondition Failed  (auth required - Swift is active)
+# HTTP/1.1 401 Unauthorized  (auth required - Swift is active)
 ```
 
 Test the admin API:
