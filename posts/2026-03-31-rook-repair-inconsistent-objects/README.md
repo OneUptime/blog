@@ -78,7 +78,7 @@ Force a new scrub to confirm the repair:
 ceph pg deep-scrub 2.1a
 ```
 
-## Handling Unreputable Objects
+## Handling Unrepairable Objects
 
 If all replicas are corrupted and repair fails:
 
