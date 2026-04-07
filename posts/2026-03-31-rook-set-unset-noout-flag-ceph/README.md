@@ -36,7 +36,7 @@ ceph status
 
 ## Setting noout on a Specific OSD
 
-Since Ceph Reef, you can set the flag per OSD instead of cluster-wide:
+Since Ceph Nautilus, you can set the flag per OSD instead of cluster-wide:
 
 ```bash
 ceph osd set-group noout osd.2 osd.3
