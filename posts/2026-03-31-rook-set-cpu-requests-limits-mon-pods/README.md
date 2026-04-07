@@ -15,7 +15,7 @@ Ceph monitors (MONs) are the foundation of cluster quorum. If MON pods are starv
 ## Understanding MON CPU Requirements
 
 MON pods are generally CPU-light under normal operations but can spike during:
-- Map elections (when a MON restarts or a node fails)
+- Leader elections (when a MON restarts or a node fails)
 - Large CRUSH map updates
 - Many simultaneous OSD state changes
 
