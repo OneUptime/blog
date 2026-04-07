@@ -65,7 +65,7 @@ Old pg_temp entries can confuse peering:
 
 ```bash
 ceph osd dump | grep pg_temp
-ceph osd pg-temp <pg-id> []  # clear pg_temp
+ceph osd pg-temp <pg-id>  # clear pg_temp by passing no OSDs
 ```
 
 ### Stuck in WaitUpThru
@@ -76,10 +76,14 @@ The PG may wait for the monitor's epoch to advance:
 ceph pg <pg-id> query | jq '.recovery_state'
 ```
 
-If stuck in `WaitUpThru`:
+If stuck in `WaitUpThru`, the OSD is waiting for the monitor to acknowledge its up_thru value. Restarting the affected OSD or triggering an OSD map update can help:
 
 ```bash
-ceph osd stat   # forces map refresh
+# Check current OSD map epoch
+ceph osd stat
+
+# Restart the affected OSD to trigger a new map update
+systemctl restart ceph-osd@<osd-id>
 ```
 
 ## Viewing Peering Log
@@ -91,13 +95,13 @@ ceph pg <pg-id> query | jq '.peer_info'
 
 ## Forcing Peering
 
-If a PG is stuck peering and you need to force it active with fewer replicas:
+If a PG is stuck peering because not enough OSDs are available, you can lower the pool's `min_size` to allow the PG to become active with fewer replicas:
 
 ```bash
-ceph osd force-create-pg <pg-id>
+ceph osd pool set <pool-name> min_size 1
 ```
 
-This is destructive and may cause data loss - use only when all replicas are permanently unavailable.
+This allows PGs to become active with only one copy and may serve stale data. Restore the original `min_size` once the missing OSDs are recovered. Use only when you need to restore I/O and accept the risk of reduced redundancy.
 
 ## Peering After Cluster Restart
 
