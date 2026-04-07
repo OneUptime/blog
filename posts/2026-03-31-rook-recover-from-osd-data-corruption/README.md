@@ -113,7 +113,7 @@ ceph device info <device-id>
 Enable deep scrubs on a regular schedule:
 
 ```bash
-ceph osd pool set <pool-name> deep_scrub_interval 604800  # 7 days
+ceph config set global osd_deep_scrub_interval 604800  # 7 days
 ```
 
 Enable device health monitoring:
