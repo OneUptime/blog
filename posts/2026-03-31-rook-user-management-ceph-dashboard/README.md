@@ -17,7 +17,7 @@ The Ceph Dashboard supports multi-user access with role-based access control (RB
 The initial admin user is created by Rook during cluster bootstrap. Access credentials:
 
 ```bash
-# Get admin username
+# Get the admin password
 kubectl -n rook-ceph get secret rook-ceph-dashboard-password \
   -o jsonpath='{.data.password}' | base64 --decode
 
@@ -30,34 +30,48 @@ The Dashboard ships with these built-in roles:
 
 | Role | Permissions |
 |---|---|
-| administrator | Full access to all sections |
-| read-only | View-only access, no changes |
-| block-manager | Manage RBD images and pools |
-| rgw-manager | Manage Object Gateway |
-| cluster-manager | Manage OSDs, hosts, MONs |
-| pool-manager | Create and delete pools |
-| cephfs-manager | Manage CephFS filesystems |
+| administrator | Full access to all security scopes |
+| read-only | Read access to all security scopes except dashboard settings |
+| block-manager | Full access to the rbd-image, rbd-mirroring, and iscsi scopes |
+| rgw-manager | Full access to the rgw scope |
+| cluster-manager | Full access to the hosts, osd, monitor, manager, and config-opt scopes |
+| pool-manager | Full access to the pool scope |
+| cephfs-manager | Full access to the cephfs scope |
 
 ## Creating a New Dashboard User
 
 Navigate to Administration > User Management > Users, click "Create":
 
-CLI equivalent:
+CLI equivalent (these commands assume the `rook-ceph-tools` toolbox deployment is running):
 
 ```bash
+# Write the password to a temporary file inside the toolbox pod
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -lc \
+  "printf '%s' 'SecurePassword123!' > /tmp/alice-password"
+
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-create \
   --enabled \
   alice \
+  -i /tmp/alice-password \
   administrator
 
-# Set password
+# Change the password later if needed
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -lc \
+  "printf '%s' 'EvenMoreSecurePassword123!' > /tmp/alice-password"
+
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-password alice "SecurePassword123!"
+  ceph dashboard ac-user-set-password \
+  alice \
+  -i /tmp/alice-password
 
 # List users
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-show
+
+# Clean up the temporary password file
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  rm -f /tmp/alice-password
 ```
 
 ## Creating Custom Roles
@@ -81,16 +95,9 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-set-roles bob dev-readonly
 ```
 
-Available scopes for permissions:
+Available scopes for permissions include `hosts`, `config-opt`, `pool`, `osd`, `monitor`, `rbd-image`, `rbd-mirroring`, `iscsi`, `rgw`, `cephfs`, `nfs-ganesha`, `manager`, `log`, `grafana`, `prometheus`, and `dashboard-settings`.
 
-```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph dashboard ac-scope-list
-# Output includes: hosts, osd, mon, mgr, pool, pg, rbd-image, rbd-mirroring,
-#                  iscsi, nfs-ganesha, cephfs, rgw, dashboard-settings, etc.
-```
-
-## Disable or Lock a User
+## Disable, Re-enable, or Delete a User
 
 ```bash
 # Disable user (prevent login)
@@ -110,8 +117,12 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-info alice \
-  --pwd-update-required true
+  ceph dashboard ac-user-create \
+  --enabled \
+  --pwd_update_required \
+  alice \
+  -i /tmp/alice-password \
+  administrator
 ```
 
 ## Summary
