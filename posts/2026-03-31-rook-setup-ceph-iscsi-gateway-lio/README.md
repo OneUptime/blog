@@ -57,27 +57,42 @@ Inside gwcli, configure the gateway:
 /iscsi-targets/iqn.../gateways> create gateway2 10.0.1.11
 ```
 
-Add the RBD disk:
+Add the RBD disk at the top-level `/disks` path:
 
 ```text
-/iscsi-targets/iqn.../> cd disks
-/iscsi-targets/iqn.../disks> add rbd iscsi-pool disk1
+/iscsi-targets/iqn.../gateways> cd /disks
+/disks> create pool=iscsi-pool image=disk1 size=100G
 ```
 
-Map the disk to the target LUN:
+Map the disk to a host initiator:
 
 ```text
+/disks> cd /iscsi-targets/iqn.2024-01.com.example:storage/hosts
 /iscsi-targets/iqn.../hosts> create iqn.1991-05.com.microsoft:initiator1
-/iscsi-targets/iqn.../hosts/iqn.../> auth chap=initiator1/Password123
-/iscsi-targets/iqn.../hosts/iqn.../luns> add rbd/iscsi-pool/disk1
+/iscsi-targets/iqn.../hosts/iqn.../> auth username=initiator1 password=Password123
+/iscsi-targets/iqn.../hosts/iqn.../> disk add iscsi-pool/disk1
 ```
 
 ## Configuring ceph-iscsi Service
 
-Save and apply the configuration:
+Create the iSCSI gateway configuration file on each gateway node before starting the services:
 
 ```bash
-gwcli export default --file /etc/ceph/iscsi-gateway.cfg
+cat > /etc/ceph/iscsi-gateway.cfg <<EOF
+[config]
+cluster_name = ceph
+gateway_keyring = ceph.client.admin.keyring
+api_secure = false
+api_user = admin
+api_password = admin
+api_port = 5000
+trusted_ip_list = 10.0.1.10,10.0.1.11
+EOF
+```
+
+Enable and start the gateway services:
+
+```bash
 systemctl enable --now rbd-target-api rbd-target-gw
 ```
 
