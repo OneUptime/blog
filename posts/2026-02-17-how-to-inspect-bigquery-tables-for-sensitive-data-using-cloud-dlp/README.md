@@ -34,24 +34,7 @@ Make sure you have:
 - The DLP Administrator role or equivalent permissions
 - The BigQuery Data Viewer role on the tables to scan
 
-## Step 1: Run a Quick Inspection with gcloud
-
-The fastest way to start is with a simple `gcloud` command that inspects a specific BigQuery table:
-
-```bash
-# Inspect a BigQuery table for common sensitive data types
-
-gcloud dlp datasources bigquery inspect \
-  --project=PROJECT_ID \
-  --dataset=my_dataset \
-  --table=customer_records \
-  --info-types="PHONE_NUMBER,EMAIL_ADDRESS,CREDIT_CARD_NUMBER,US_SOCIAL_SECURITY_NUMBER" \
-  --max-findings=100
-```
-
-This runs a quick scan and returns up to 100 findings. It is useful for a spot check but not for comprehensive scanning.
-
-## Step 2: Create an Inspection Job via the API
+## Step 1: Create an Inspection Job via the API
 
 For a proper scan, you want to create a DLP inspection job. This gives you more control over what to scan, how deeply to scan, and where to send results.
 
@@ -116,7 +99,7 @@ curl -X POST \
   -d @inspect-job.json
 ```
 
-## Step 3: Using Python for More Flexibility
+## Step 2: Using Python for More Flexibility
 
 For programmatic scanning across multiple tables, Python is the way to go.
 
@@ -228,7 +211,7 @@ inspect_bigquery_table(
 )
 ```
 
-## Step 4: Scan Multiple Tables
+## Step 3: Scan Multiple Tables
 
 In a real environment, you want to scan all tables in a dataset or even across datasets. Here is how to iterate over tables:
 
@@ -258,7 +241,7 @@ def scan_all_tables_in_dataset(project_id, dataset_id, output_dataset):
     return jobs
 ```
 
-## Step 5: Analyze the Results
+## Step 4: Analyze the Results
 
 Once the inspection jobs complete, findings are saved to the BigQuery output table. Query them to get a clear picture:
 
@@ -287,7 +270,7 @@ GROUP BY column_name, info_type, confidence_level
 ORDER BY finding_count DESC;
 ```
 
-## Step 6: Set Up Notifications
+## Step 5: Set Up Notifications
 
 You probably want to know when a scan finds sensitive data without having to check manually. Add a Pub/Sub notification action to your job:
 

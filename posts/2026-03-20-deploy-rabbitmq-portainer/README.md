@@ -73,7 +73,6 @@ log.console.level = info
 ## Pre-Load Definitions (Queues and Exchanges)
 
 ```json
-// definitions.json - pre-configure queues/exchanges
 {
   "rabbit_version": "3.13",
   "vhosts": [{"name": "/"}],

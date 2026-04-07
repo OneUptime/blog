@@ -106,7 +106,7 @@ clientOptions := options.Client().
     SetMinPoolSize(10).            // Minimum connections to keep open
     SetMaxConnIdleTime(30*time.Second). // Close idle connections after this duration
     SetConnectTimeout(10*time.Second).  // Timeout for establishing new connections
-    SetSocketTimeout(30*time.Second)    // Timeout for socket read/write operations
+    SetTimeout(30*time.Second)          // Timeout for operations (replaces deprecated SetSocketTimeout)
 ```
 
 A few rules of thumb: set `MaxPoolSize` to roughly the number of concurrent database operations you expect. If you have 50 goroutines all hitting MongoDB simultaneously, you need at least 50 connections. Setting `MinPoolSize` keeps connections warm and avoids the latency hit of establishing new connections during traffic spikes.

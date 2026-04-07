@@ -64,7 +64,7 @@ The client-reconfig script is called after a failover when clients need to updat
 sentinel client-reconfig-script mymaster /usr/local/bin/sentinel-reconfig.sh
 ```
 
-Sentinel calls it with six arguments:
+Sentinel calls it with seven arguments:
 
 ```text
 $1 = master name
@@ -110,7 +110,7 @@ Sentinel has safeguards for script execution:
 
 ```bash
 # sentinel.conf
-# Max time a script can run before being killed (default 60s)
+# Max time a script can run before being killed (default 60000ms = 60s)
 sentinel script-max-runtime 60000
 
 # If script returns exit code 1, it is retried up to 10 times

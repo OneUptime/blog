@@ -371,6 +371,7 @@ Increase sampling when errors are detected.
 
 ```python
 # Adaptive sampling that increases rate when errors occur
+import random
 from datetime import datetime, timedelta
 from collections import deque
 

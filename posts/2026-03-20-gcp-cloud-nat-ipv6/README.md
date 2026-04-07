@@ -57,8 +57,7 @@ gcloud compute networks subnets create subnet-ipv6only \
     --network=vpc-main \
     --region="$REGION" \
     --stack-type=IPV6_ONLY \
-    --ipv6-access-type=INTERNAL \
-    --range=10.0.5.0/24
+    --ipv6-access-type=INTERNAL
 
 # Step 2: Create Cloud Router (if not existing)
 # (router-main already created above)

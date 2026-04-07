@@ -243,17 +243,17 @@ type ApplicationSpec struct {
 Common Expression Language (CEL) enables complex validation rules:
 
 ```go
+// Validate that maxReplicas >= minReplicas
+// +kubebuilder:validation:XValidation:rule="self.maxReplicas >= self.minReplicas",message="maxReplicas must be greater than or equal to minReplicas"
 type ApplicationSpec struct {
     // +kubebuilder:validation:Required
     MinReplicas int32 `json:"minReplicas"`
 
     // +kubebuilder:validation:Required
     MaxReplicas int32 `json:"maxReplicas"`
-
-    // Validate that maxReplicas >= minReplicas
-    // +kubebuilder:validation:XValidation:rule="self.maxReplicas >= self.minReplicas",message="maxReplicas must be greater than or equal to minReplicas"
 }
 
+// +kubebuilder:validation:XValidation:rule="(self.engine == 'postgres' && self.version.matches('^[0-9]+\\.[0-9]+$')) || (self.engine == 'mysql' && self.version.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')) || self.engine == 'mongodb'",message="version format must match engine requirements"
 type Database struct {
     // Engine type
     // +kubebuilder:validation:Enum=postgres;mysql;mongodb
@@ -262,7 +262,6 @@ type Database struct {
     // Version (format depends on engine)
     // Postgres: major.minor (e.g., "14.2")
     // MySQL: major.minor.patch (e.g., "8.0.28")
-    // +kubebuilder:validation:XValidation:rule="(self.engine == 'postgres' && self.version.matches('^[0-9]+\\.[0-9]+$')) || (self.engine == 'mysql' && self.version.matches('^[0-9]+\\.[0-9]+\\.[0-9]+$')) || self.engine == 'mongodb'",message="version format must match engine requirements"
     Version string `json:"version"`
 }
 ```
@@ -293,17 +292,17 @@ type ApplicationSpec struct {
 Validate fields based on other field values:
 
 ```go
+// +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.schedule)",message="schedule is required when enabled is true"
+// +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.retention)",message="retention is required when enabled is true"
 type BackupSpec struct {
     // Enabled indicates if backups should be taken
     Enabled bool `json:"enabled"`
 
-    // Schedule is required when enabled is true
-    // +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.schedule)",message="schedule is required when enabled is true"
+    // Schedule (required when enabled is true)
     // +optional
     Schedule *string `json:"schedule,omitempty"`
 
-    // Retention is required when enabled is true
-    // +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.retention)",message="retention is required when enabled is true"
+    // Retention (required when enabled is true)
     // +optional
     Retention *int32 `json:"retention,omitempty"`
 }
@@ -314,10 +313,9 @@ type BackupSpec struct {
 Ensure exactly one field from a group is set:
 
 ```go
+// Exactly one storage type must be specified
+// +kubebuilder:validation:XValidation:rule="(has(self.disk) ? 1 : 0) + (has(self.nfs) ? 1 : 0) + (has(self.s3) ? 1 : 0) == 1",message="exactly one of disk, nfs, or s3 must be specified"
 type StorageSpec struct {
-    // Exactly one storage type must be specified
-    // +kubebuilder:validation:XValidation:rule="(has(self.disk) ? 1 : 0) + (has(self.nfs) ? 1 : 0) + (has(self.s3) ? 1 : 0) == 1",message="exactly one of disk, nfs, or s3 must be specified"
-
     // +optional
     Disk *DiskStorage `json:"disk,omitempty"`
 

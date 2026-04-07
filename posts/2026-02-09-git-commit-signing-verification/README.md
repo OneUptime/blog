@@ -320,15 +320,13 @@ Require signed commits in GitHub:
 
 ```bash
 # Via GitHub CLI
-gh api repos/owner/repo/branches/main/protection \
-  --method PUT \
-  --field required_signatures[enabled]=true
+gh api repos/owner/repo/branches/main/protection/required_signatures \
+  --method POST
 
 # Via API
-curl -X PUT \
+curl -X POST \
   -H "Authorization: token $GITHUB_TOKEN" \
-  https://api.github.com/repos/owner/repo/branches/main/protection/required_signatures \
-  -d '{"enabled":true}'
+  https://api.github.com/repos/owner/repo/branches/main/protection/required_signatures
 ```
 
 ## Handling Key Rotation

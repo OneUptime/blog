@@ -40,11 +40,11 @@ The binary is named `ddrescue` after installation, not `gddrescue`.
 
 The mapfile is the most important concept in ddrescue. It records the status of every sector on the source:
 
-- `+` = sector successfully copied
+- `+` = sector successfully copied (rescued)
 - `-` = sector not yet tried
-- `?` = sector failed during copy
-- `/` = sector trimmed (partially processed)
-- `*` = sector being split
+- `?` = sector failed on first read (non-trimmed)
+- `/` = sector trimmed but not yet scraped (non-scraped)
+- `*` = sector failed after scraping (bad sector)
 
 Always use a mapfile. It turns a one-shot operation into a resumable, iterative process.
 
@@ -125,7 +125,7 @@ If the drive responds to retries, the rescued percentage will increase. Once the
 
 ```bash
 # Summary of mapfile status
-ddrescue --show-status /mnt/backup/rescue.map
+ddrescuelog -t /mnt/backup/rescue.map
 ```
 
 ## Resuming an Interrupted Recovery
@@ -168,7 +168,7 @@ Scraping reads in very small chunks around bad sectors to squeeze out maximum da
 
 ```bash
 # Enable scraping (more time-consuming but thorough)
-sudo ddrescue -f -r1 --no-split /dev/sdb /mnt/backup/disk.img /mnt/backup/rescue.map
+sudo ddrescue -f -r1 /dev/sdb /mnt/backup/disk.img /mnt/backup/rescue.map
 ```
 
 ### Multiple Drive Reads with the Same Mapfile

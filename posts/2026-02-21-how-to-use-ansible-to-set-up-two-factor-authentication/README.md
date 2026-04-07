@@ -56,15 +56,15 @@ This playbook installs the Google Authenticator PAM module on both Debian and RH
         update_cache: true
       when: ansible_os_family == "Debian"
 
-    - name: Install Google Authenticator on RHEL/CentOS
-      ansible.builtin.yum:
-        name: google-authenticator
-        state: present
-      when: ansible_os_family == "RedHat"
-
     - name: Install EPEL repository first (RHEL)
       ansible.builtin.yum:
         name: epel-release
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Google Authenticator on RHEL/CentOS
+      ansible.builtin.yum:
+        name: google-authenticator
         state: present
       when: ansible_os_family == "RedHat"
 ```

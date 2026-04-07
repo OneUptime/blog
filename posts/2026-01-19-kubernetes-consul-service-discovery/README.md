@@ -334,15 +334,16 @@ data:
             pods insecure
             fallthrough in-addr.arpa ip6.arpa
         }
-        # Forward Consul DNS queries
-        consul:53 {
-            forward . consul-dns.consul.svc:8600
-        }
         forward . /etc/resolv.conf
         cache 30
         loop
         reload
         loadbalance
+    }
+    consul:53 {
+        errors
+        cache 30
+        forward . consul-dns.consul.svc:8600
     }
 ```
 

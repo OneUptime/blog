@@ -233,10 +233,10 @@ If your app is using too much memory, garbage collection can cause long pauses.
 
 ```bash
 # Scale to a higher tier with more memory
-az webapp update \
-    --name myapp \
+az appservice plan update \
+    --name myappserviceplan \
     --resource-group myresourcegroup \
-    --plan P2V3
+    --sku P2V3
 
 # Check current memory usage
 az webapp show \

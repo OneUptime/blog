@@ -340,6 +340,11 @@ public class TokenCache implements Resource {
     }
 
     @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) {
+        // No cleanup needed for tokens
+    }
+
+    @Override
     public void afterRestore(Context<? extends Resource> context) {
         refreshToken(); // Get fresh token
     }
@@ -424,8 +429,12 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
     private static final Pattern REGEX = Pattern.compile("complex-pattern-here");
 
     static {
-        // Force class loading during init
-        MAPPER.writeValueAsString(Map.of("warmup", true));
+        try {
+            // Force class loading during init
+            MAPPER.writeValueAsString(Map.of("warmup", true));
+        } catch (Exception e) {
+            // Ignore warmup errors
+        }
 
         // Precompile templates
         TemplateEngine.compile("response-template");

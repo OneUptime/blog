@@ -318,7 +318,7 @@ Enable it in `ansible.cfg`:
 ```ini
 # ansible.cfg - Enable the notification callback
 [defaults]
-callback_whitelist = my_namespace.my_collection.deploy_notify
+callbacks_enabled = my_namespace.my_collection.deploy_notify
 ```
 
 ## Inventory Plugins

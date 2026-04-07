@@ -365,7 +365,7 @@ spec:
 
 Enterprise ArgoCD needs backup and recovery procedures:
 
-```bash
+```yaml
 # Automated backup CronJob
 apiVersion: batch/v1
 kind: CronJob

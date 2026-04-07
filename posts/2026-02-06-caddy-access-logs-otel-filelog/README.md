@@ -1,10 +1,12 @@
-# How to Collect Caddy Structured Access Logs as OpenTelemetry Logs via the
+# How to Collect Caddy Access Logs as OpenTelemetry Logs via Filelog Receiver
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Caddy, Access Logs, Filelog Receiver
 
 Description: Collect Caddy's structured JSON access logs and convert them into OpenTelemetry log records using the Collector filelog receiver pipeline.
+
+---
 
 Caddy Server writes structured access logs in JSON format by default. Each log entry contains the request method, URI, status code, response size, and timing information. The OpenTelemetry Collector's filelog receiver can tail these log files and convert them into proper OpenTelemetry log records for centralized analysis.
 

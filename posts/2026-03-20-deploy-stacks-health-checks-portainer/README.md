@@ -18,7 +18,7 @@ services:
   nginx:
     image: nginx:1.25
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

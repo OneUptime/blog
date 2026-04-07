@@ -133,7 +133,7 @@ aws s3api get-object \
 
 ## Backup Retention Policy
 
-```bash
+```hcl
 # S3 lifecycle rule: keep 90 days of state versions
 resource "aws_s3_bucket_lifecycle_configuration" "state_retention" {
   bucket = aws_s3_bucket.state.id

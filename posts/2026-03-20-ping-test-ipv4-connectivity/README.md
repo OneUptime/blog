@@ -53,8 +53,8 @@ ping -c 5 8.8.8.8
 ping -s 1400 -c 4 8.8.8.8
 
 # Set TTL (limit hops - useful to detect path segments)
-ping -t 5 -c 4 8.8.8.8   # macOS
-ping -m 5 -c 4 8.8.8.8   # Linux (use --ttl on some)
+ping -m 5 -c 4 8.8.8.8   # macOS
+ping -t 5 -c 4 8.8.8.8   # Linux (iputils-ping)
 
 # Set interval between packets (flood testing - needs root)
 sudo ping -i 0.1 -c 100 192.168.1.1

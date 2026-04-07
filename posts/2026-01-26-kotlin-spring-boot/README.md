@@ -575,6 +575,7 @@ class AsyncUserController(private val userService: AsyncUserService) {
 package com.example.demo.service
 
 import com.example.demo.dto.UserResponse
+import com.example.demo.exception.UserNotFoundException
 import com.example.demo.repository.UserCoroutineRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map

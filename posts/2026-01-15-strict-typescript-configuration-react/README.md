@@ -225,16 +225,13 @@ function UserProfile() {
   const [user, setUser] = useState<User | null>(null);
 
   // Error: 'user' is possibly 'null'
-  return <div>{user.name}</div>;
+  // return <div>{user.name}</div>;
 
   // Correct: Handle the null case
   if (!user) {
     return <div>Loading...</div>;
   }
   return <div>{user.name}</div>;
-
-  // Or use optional chaining with fallback
-  return <div>{user?.name ?? "Unknown"}</div>;
 }
 ```
 

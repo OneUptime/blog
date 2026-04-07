@@ -154,7 +154,7 @@ FROM generate_series(
 -- First and last day of each month in current year
 SELECT
     date_trunc('month', d)::DATE AS month_start,
-    (date_trunc('month', d) + INTERVAL '1 month - 1 day')::DATE AS month_end
+    (date_trunc('month', d) + INTERVAL '1 month' - INTERVAL '1 day')::DATE AS month_end
 FROM generate_series(
     date_trunc('year', CURRENT_DATE)::DATE,
     (date_trunc('year', CURRENT_DATE) + INTERVAL '11 months')::DATE,

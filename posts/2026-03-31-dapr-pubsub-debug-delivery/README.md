@@ -91,7 +91,7 @@ Search for `pubsub` in Zipkin traces to find spans showing publish and subscribe
 Configure a dead-letter topic to capture messages that cannot be processed:
 
 ```yaml
-apiVersion: dapr.io/v1alpha1
+apiVersion: dapr.io/v2alpha1
 kind: Subscription
 metadata:
   name: orders-sub

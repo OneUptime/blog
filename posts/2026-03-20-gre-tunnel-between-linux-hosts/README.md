@@ -32,9 +32,10 @@ Tunnel: gre0 on A = 172.16.0.1/30, gre0 on B = 172.16.0.2/30
 modprobe ip_gre
 
 # Create GRE tunnel
+# local = Host A's public IP, remote = Host B's public IP
 ip tunnel add gre0 mode gre \
-    local 10.0.0.1 \     # Host A's public IP
-    remote 10.0.0.2 \    # Host B's public IP
+    local 10.0.0.1 \
+    remote 10.0.0.2 \
     ttl 255
 
 # Assign tunnel endpoint IP
@@ -51,9 +52,10 @@ ip link set gre0 up
 modprobe ip_gre
 
 # Create GRE tunnel (mirrored configuration)
+# local = Host B's public IP, remote = Host A's public IP
 ip tunnel add gre0 mode gre \
-    local 10.0.0.2 \     # Host B's public IP
-    remote 10.0.0.1 \    # Host A's public IP
+    local 10.0.0.2 \
+    remote 10.0.0.1 \
     ttl 255
 
 # Assign tunnel endpoint IP

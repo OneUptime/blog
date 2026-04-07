@@ -57,9 +57,9 @@ INSERT INTO inventory (sku, quantity)
 VALUES
   ('ABC-001', 50),
   ('ABC-002', 30),
-  ('ABC-003', 75)
+  ('ABC-003', 75) AS new_values
 ON DUPLICATE KEY UPDATE
-  quantity = VALUES(quantity);
+  quantity = new_values.quantity;
 ```
 
 This inserts new SKUs or updates the quantity for existing ones, all in one atomic statement.

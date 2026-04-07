@@ -93,11 +93,17 @@ kubectl exec vpp-test-a -- ping -c 5 $POD_B_IP
 ## Step 6: Performance Benchmark
 
 ```bash
-# Install iperf3 test
+# Start iperf3 server
 kubectl run iperf-server --image=networkstatic/iperf3 -- -s
-kubectl run iperf-client --image=networkstatic/iperf3 \
-  --env="SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')" \
-  -- -c $SERVER_IP -t 10 -P 4
+
+# Wait for the server pod to get an IP
+kubectl wait --for=condition=Ready pod/iperf-server
+
+# Get the server pod IP
+SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
+
+# Run iperf3 client against the server
+kubectl run iperf-client --rm -it --image=networkstatic/iperf3 -- -c $SERVER_IP -t 10 -P 4
 
 # Compare results to non-VPP baseline
 # Expected improvement: 2-5x throughput increase
@@ -106,11 +112,7 @@ kubectl run iperf-client --image=networkstatic/iperf3 \
 ## Step 7: Verify Policy Enforcement in VPP
 
 ```bash
-# Check that Calico policies are programmed into VPP
-kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c agent -- \
-  calico-vpp-agent --show-policies
-
-# Or check VPP ACL tables
+# Check VPP ACL tables to verify Calico policies are programmed into VPP
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
   vppctl show acl-plugin acl
 ```

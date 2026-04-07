@@ -87,8 +87,7 @@ oras push registry.acme-corp.com/terraform-modules/vpc:v2.1.0 \
   vpc-module.zip:application/zip
 
 # Tag the latest version
-oras tag registry.acme-corp.com/terraform-modules/vpc:v2.1.0 \
-  registry.acme-corp.com/terraform-modules/vpc:latest
+oras tag registry.acme-corp.com/terraform-modules/vpc:v2.1.0 latest
 ```
 
 ## Version Pinning with Digest

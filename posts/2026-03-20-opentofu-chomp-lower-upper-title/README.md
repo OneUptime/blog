@@ -97,7 +97,20 @@ locals {
 resource "aws_iam_group" "team" {
   name = replace(lower(var.team_name), " ", "-")
   # "platform-engineering"
-  
+}
+
+resource "aws_iam_role" "team" {
+  name = replace(lower(var.team_name), " ", "-")
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+
   tags = {
     DisplayName = local.display_name
     # "Platform Engineering"

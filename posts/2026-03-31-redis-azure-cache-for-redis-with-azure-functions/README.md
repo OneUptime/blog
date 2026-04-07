@@ -85,6 +85,7 @@ def rate_limited_action(req: func.HttpRequest) -> func.HttpResponse:
 For C# Functions, register a singleton via dependency injection:
 
 ```csharp
+using System;
 using StackExchange.Redis;
 using Microsoft.Azure.Functions.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;

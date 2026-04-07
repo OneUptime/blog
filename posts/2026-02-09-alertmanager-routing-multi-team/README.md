@@ -450,14 +450,13 @@ route:
             severity: critical
           receiver: 'platform-oncall'
 
-    # This route stops at first match
+    # This route stops sibling evaluation on match
     - match:
         team: database
       receiver: 'database-team'
-      continue: false  # Stop after this route
+      continue: false  # Don't evaluate further sibling routes
       routes:
-        # These child routes won't be evaluated
-        # because parent has continue: false
+        # Child routes are still evaluated when the parent matches
         - match:
             severity: critical
           receiver: 'database-oncall'

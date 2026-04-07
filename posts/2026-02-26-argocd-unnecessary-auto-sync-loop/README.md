@@ -166,7 +166,7 @@ Here is a systematic approach to find the cause.
 
 ```bash
 # See exactly what ArgoCD thinks is different
-argocd app diff my-app --local-repo-root /tmp/debug 2>&1
+argocd app diff my-app
 ```
 
 ### Step 2: Sync and Immediately Check

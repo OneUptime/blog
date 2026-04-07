@@ -594,7 +594,7 @@ spec:
     - name: gpu
       rules:
         - alert: GPUHighMemoryUsage
-          expr: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE > 0.9
+          expr: DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) > 0.9
           for: 5m
           labels:
             severity: warning

@@ -130,7 +130,7 @@ spec:
 
 Containers requesting less than min or more than max get rejected:
 
-```bash
+```yaml
 # This pod would be rejected
 apiVersion: v1
 kind: Pod
@@ -139,6 +139,7 @@ metadata:
 spec:
   containers:
   - name: app
+    image: nginx
     resources:
       requests:
         memory: "16Gi"  # Exceeds max

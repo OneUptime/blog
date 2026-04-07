@@ -6,6 +6,8 @@ Tags: Rancher, Kubernetes, Ingress, Traefik
 
 Description: A practical guide to deploying and configuring Traefik as an ingress controller in Rancher-managed Kubernetes clusters.
 
+---
+
 Traefik is a modern, cloud-native reverse proxy and ingress controller that integrates natively with Kubernetes. It is the default ingress controller for K3s clusters managed by Rancher. This guide covers how to set up, configure, and use Traefik for routing traffic in your Rancher environment.
 
 ## Prerequisites

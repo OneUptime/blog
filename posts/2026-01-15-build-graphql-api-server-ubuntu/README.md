@@ -1933,7 +1933,7 @@ Compile TypeScript and prepare the application for production.
 
 ```bash
 # Install production dependencies
-npm ci --only=production
+npm ci --omit=dev
 
 # Build TypeScript
 npm run build
@@ -2251,7 +2251,7 @@ Collect metrics for monitoring API performance.
 
 ```typescript
 // src/utils/metrics.ts
-import { Counter, Histogram, Registry } from 'prom-client';
+import { Counter, Histogram, Gauge, Registry } from 'prom-client';
 
 // Create a registry for metrics
 export const registry = new Registry();
@@ -2282,7 +2282,7 @@ export const errorCounter = new Counter({
 });
 
 // Active subscriptions gauge
-export const activeSubscriptions = new Counter({
+export const activeSubscriptions = new Gauge({
   name: 'graphql_active_subscriptions',
   help: 'Number of active GraphQL subscriptions',
   registers: [registry],

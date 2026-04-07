@@ -204,17 +204,21 @@ db.aggregate([
 
 ## Generating a Range of Numbers
 
-Use `$documents` with generated arrays to create numeric ranges:
+Use `$documents` with a literal array to create numeric ranges, or combine `$range` with other stages:
 
 ```javascript
 db.aggregate([
+  { $documents: [{}] },
   {
-    $documents: {
-      $map: {
-        input: { $range: [0, 10] },
-        as: "n",
-        in: { value: "$$n", squared: { $multiply: ["$$n", "$$n"] } }
-      }
+    $project: {
+      numbers: { $range: [0, 10] }
+    }
+  },
+  { $unwind: "$numbers" },
+  {
+    $project: {
+      value: "$numbers",
+      squared: { $multiply: ["$numbers", "$numbers"] }
     }
   }
 ])

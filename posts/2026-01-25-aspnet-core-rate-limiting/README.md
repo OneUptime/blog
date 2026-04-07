@@ -370,8 +370,10 @@ builder.Services.AddRateLimiter(options =>
         context.HttpContext.Response.ContentType = "application/json";
 
         // Try to get retry information
-        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        TimeSpan retryAfter = TimeSpan.Zero;
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfterValue))
         {
+            retryAfter = retryAfterValue;
             context.HttpContext.Response.Headers.RetryAfter = retryAfter.TotalSeconds.ToString();
         }
 
@@ -491,10 +493,10 @@ public class RedisFixedWindowRateLimiter : RateLimiter
 
         if (result <= _options.PermitLimit)
         {
-            return new RateLimitLease(true);
+            return new SimpleRateLimitLease(true);
         }
 
-        return new RateLimitLease(false);
+        return new SimpleRateLimitLease(false);
     }
 
     protected override ValueTask<RateLimitLease> AcquireAsyncCore(
@@ -505,6 +507,22 @@ public class RedisFixedWindowRateLimiter : RateLimiter
     }
 
     public override TimeSpan? IdleDuration => null;
+}
+
+// RateLimitLease is abstract, so we need a concrete implementation
+public class SimpleRateLimitLease : RateLimitLease
+{
+    public SimpleRateLimitLease(bool isAcquired) => IsAcquired = isAcquired;
+
+    public override bool IsAcquired { get; }
+
+    public override IEnumerable<string> MetadataNames => Array.Empty<string>();
+
+    public override bool TryGetMetadata(string metadataName, out object? metadata)
+    {
+        metadata = null;
+        return false;
+    }
 }
 ```
 

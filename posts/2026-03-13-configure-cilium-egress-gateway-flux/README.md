@@ -160,9 +160,7 @@ spec:
 flux reconcile kustomization cilium-egress-gateway
 
 # Check egress gateway policies
-kubectl get ciliumbgpegresspolicies --all-namespaces
-# Note: In some versions, use:
-kubectl get ciliumbgpegrespolicies --all-namespaces
+kubectl get ciliumegressgatewaypolicies --all-namespaces
 
 # Verify traffic is masqueraded with the gateway IP
 kubectl exec -n production deploy/payment-service -- \

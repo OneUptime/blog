@@ -107,7 +107,7 @@ SELECT @result, @counter;  -- Returns 10, 15
 ```sql
 DELIMITER //
 
-CREATE PROCEDURE CalculateOrderTotal(IN order_id INT, OUT total DECIMAL(10,2))
+CREATE PROCEDURE CalculateOrderTotal(IN p_order_id INT, OUT total DECIMAL(10,2))
 BEGIN
     -- Declare local variables
     DECLARE subtotal DECIMAL(10,2) DEFAULT 0;
@@ -117,12 +117,12 @@ BEGIN
     -- Calculate subtotal
     SELECT SUM(quantity * price) INTO subtotal
     FROM order_items
-    WHERE order_id = order_id;
+    WHERE order_id = p_order_id;
 
     -- Get shipping cost
     SELECT shipping_cost INTO shipping
     FROM orders
-    WHERE id = order_id;
+    WHERE id = p_order_id;
 
     -- Calculate total
     SET total = subtotal + (subtotal * tax_rate) + shipping;
@@ -137,7 +137,7 @@ DELIMITER ;
 DELIMITER //
 
 CREATE PROCEDURE GetCustomerDiscount(
-    IN customer_id INT,
+    IN p_customer_id INT,
     OUT discount_percent DECIMAL(5,2)
 )
 BEGIN
@@ -148,7 +148,7 @@ BEGIN
     SELECT COUNT(*), COALESCE(SUM(total), 0)
     INTO order_count, total_spent
     FROM orders
-    WHERE customer_id = customer_id AND status = 'completed';
+    WHERE customer_id = p_customer_id AND status = 'completed';
 
     -- Determine discount tier
     IF total_spent >= 10000 THEN
@@ -172,13 +172,13 @@ DELIMITER ;
 ```sql
 DELIMITER //
 
-CREATE PROCEDURE GetOrderStatus(IN order_id INT, OUT status_text VARCHAR(50))
+CREATE PROCEDURE GetOrderStatus(IN p_order_id INT, OUT status_text VARCHAR(50))
 BEGIN
     DECLARE status_code INT;
 
     SELECT status INTO status_code
     FROM orders
-    WHERE id = order_id;
+    WHERE id = p_order_id;
 
     CASE status_code
         WHEN 1 THEN SET status_text = 'Pending';
@@ -286,9 +286,9 @@ DELIMITER ;
 DELIMITER //
 
 CREATE PROCEDURE TransferFunds(
-    IN from_account INT,
-    IN to_account INT,
-    IN amount DECIMAL(12,2),
+    IN p_from_account INT,
+    IN p_to_account INT,
+    IN p_amount DECIMAL(12,2),
     OUT result VARCHAR(100)
 )
 BEGIN
@@ -306,23 +306,23 @@ BEGIN
     -- Check source account balance
     SELECT balance INTO from_balance
     FROM accounts
-    WHERE id = from_account
+    WHERE id = p_from_account
     FOR UPDATE;  -- Lock the row
 
     IF from_balance IS NULL THEN
         ROLLBACK;
         SET result = 'Source account not found';
-    ELSEIF from_balance < amount THEN
+    ELSEIF from_balance < p_amount THEN
         ROLLBACK;
         SET result = 'Insufficient funds';
     ELSE
         -- Perform transfer
-        UPDATE accounts SET balance = balance - amount WHERE id = from_account;
-        UPDATE accounts SET balance = balance + amount WHERE id = to_account;
+        UPDATE accounts SET balance = balance - p_amount WHERE id = p_from_account;
+        UPDATE accounts SET balance = balance + p_amount WHERE id = p_to_account;
 
         -- Log the transaction
         INSERT INTO transactions (from_account, to_account, amount, created_at)
-        VALUES (from_account, to_account, amount, NOW());
+        VALUES (p_from_account, p_to_account, p_amount, NOW());
 
         COMMIT;
         SET result = 'Transfer successful';

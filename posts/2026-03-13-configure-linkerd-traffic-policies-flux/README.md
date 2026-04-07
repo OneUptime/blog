@@ -29,7 +29,7 @@ The `Server` resource declares how a service port should be handled:
 ```yaml
 # clusters/my-cluster/linkerd-policies/api-server-policy.yaml
 
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: Server
 metadata:
   name: api-server-http
@@ -50,7 +50,7 @@ spec:
 ```yaml
 # clusters/my-cluster/linkerd-policies/api-authz.yaml
 # Allow only the frontend service to call the API
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: ServerAuthorization
 metadata:
   name: allow-frontend-to-api
@@ -66,7 +66,7 @@ spec:
           namespace: production
 ---
 # Allow monitoring from the Linkerd viz extension
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: ServerAuthorization
 metadata:
   name: allow-linkerd-viz
@@ -85,7 +85,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/linkerd-policies/api-httproute.yaml
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: HTTPRoute
 metadata:
   name: api-traffic-split
@@ -129,7 +129,7 @@ Kubernetes probes come from the kubelet (not a Linkerd-meshed client) and need e
 
 ```yaml
 # clusters/my-cluster/linkerd-policies/allow-probes.yaml
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: ServerAuthorization
 metadata:
   name: allow-k8s-probes
@@ -190,7 +190,7 @@ kubectl exec -n production deploy/other-service -- \
   curl -sv http://api-service:8080/health
 
 # View effective policy for a pod
-linkerd policy -n production pod/api-service-xxx-yyy
+linkerd diagnostics policy -n production pod/api-service-xxx-yyy
 
 # Check traffic split metrics
 linkerd viz routes deployment/api-service -n production
@@ -200,9 +200,9 @@ linkerd viz routes deployment/api-service -n production
 
 - Set `config.linkerd.io/default-inbound-policy: deny` on production namespaces and create explicit `ServerAuthorization` resources for each allowed client - this enforces zero-trust at the Linkerd layer.
 - Always create a `ServerAuthorization` for the Linkerd viz prometheus scraper and the Kubernetes kubelet (for health probes) when using the `deny` default policy.
-- Use `policy.linkerd.io/v1beta3` HTTPRoute for traffic splitting alongside `ServerAuthorization` - the two resources complement each other for access control plus routing.
+- Use `policy.linkerd.io/v1beta2` HTTPRoute for traffic splitting alongside `ServerAuthorization` - the two resources complement each other for access control plus routing.
 - Name `ServerAuthorization` resources descriptively (e.g., `allow-frontend-to-api`) rather than generically so their purpose is clear in `kubectl get` output.
-- Test policy changes in a staging environment with `linkerd policy` inspection before committing to production - an incorrect policy can immediately deny all traffic to a service.
+- Test policy changes in a staging environment with `linkerd diagnostics policy` inspection before committing to production - an incorrect policy can immediately deny all traffic to a service.
 
 ## Conclusion
 

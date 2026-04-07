@@ -14,10 +14,10 @@ VXLAN adds significant overhead to each packet: outer IP header (20 bytes) + out
 
 ```text
 Physical MTU:        1500 bytes
-VXLAN overhead:       -50 bytes (20 IP + 8 UDP + 8 VXLAN + 14 inner Ethernet)
+VXLAN overhead:       -50 bytes (14 outer Ethernet + 20 outer IP + 8 UDP + 8 VXLAN)
 VXLAN payload MTU:   1450 bytes
 
-Note: Some sources include inner Ethernet (14 bytes) in the calculation.
+Note: The 50-byte overhead accounts for the outer encapsulation headers.
 The commonly used value is 1450 bytes.
 ```
 

@@ -160,18 +160,20 @@ class UserRepository {
 
 const userRepo = new UserRepository();
 
-const user = await userRepo.create('1001', {
-  name: 'Alice',
-  email: 'alice@example.com',
-  plan: 'pro'
-});
-console.log('Created:', user);
+(async () => {
+  const user = await userRepo.create('1001', {
+    name: 'Alice',
+    email: 'alice@example.com',
+    plan: 'pro'
+  });
+  console.log('Created:', user);
 
-await userRepo.update('1001', { plan: 'enterprise' });
-await userRepo.incrementField('1001', 'login_count');
+  await userRepo.update('1001', { plan: 'enterprise' });
+  await userRepo.incrementField('1001', 'login_count');
 
-const profile = await userRepo.getFields('1001', 'name', 'email', 'plan');
-console.log('Profile:', profile);
+  const profile = await userRepo.getFields('1001', 'name', 'email', 'plan');
+  console.log('Profile:', profile);
+})();
 ```
 
 ## Bulk Hash Operations with Pipeline
@@ -202,7 +204,7 @@ const users = [
   { id: '3', name: 'Carol', email: 'carol@example.com' },
 ];
 
-await bulkCreateUsers(users);
+bulkCreateUsers(users);
 ```
 
 ## Scanning Hash Fields
@@ -228,8 +230,9 @@ async function scanHashFields(key, pattern = '*') {
   return fields;
 }
 
-const metadata = await scanHashFields('product:1001:metadata', 'tag_*');
-console.log('Tags:', metadata);
+scanHashFields('product:1001:metadata', 'tag_*').then((metadata) => {
+  console.log('Tags:', metadata);
+});
 ```
 
 ## Summary

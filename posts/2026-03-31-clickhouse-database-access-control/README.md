@@ -6,6 +6,8 @@ Tags: ClickHouse, Security, Database, Infrastructure, SQL
 
 Description: Learn how to configure ClickHouse SQL-based access control with users, roles, row policies, and quotas to enforce least-privilege access at the database level.
 
+---
+
 ## Introduction
 
 ClickHouse supports a full SQL-based access control system that lets you define users, roles, privileges, row-level policies, and resource quotas. This system, introduced in ClickHouse 20.4 and significantly improved in subsequent releases, replaces the older XML-based user configuration and is now the recommended approach for production deployments.
@@ -252,7 +254,7 @@ SELECT
     client_hostname,
     exception
 FROM system.query_log
-WHERE type IN ('LoginFailure', 'QueryStart')
+WHERE type IN ('ExceptionBeforeStart', 'QueryStart')
   AND event_time >= now() - INTERVAL 1 DAY
 ORDER BY event_time DESC
 LIMIT 50;

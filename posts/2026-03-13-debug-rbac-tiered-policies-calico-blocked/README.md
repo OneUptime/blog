@@ -101,7 +101,7 @@ flowchart TD
 
 ## Common Issues
 
-1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and run `calicoctl apply --dry-run` first
+1. **Policy not applying**: Verify API version is `projectcalico.org/v3` and validate the YAML with `calicoctl get -o yaml` to compare against your intended configuration
 2. **Selector not matching**: Use `kubectl get pods -l your-selector` to verify label matches
 3. **Order conflicts**: Run `calicoctl get globalnetworkpolicies -o wide` and sort by order field
 4. **DNS failures**: Always ensure egress to port 53 is allowed when restricting egress

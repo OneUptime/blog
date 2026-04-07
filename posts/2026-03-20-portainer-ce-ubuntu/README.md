@@ -146,8 +146,8 @@ docker stop portainer && docker rm portainer
 # Restart with HTTP port exposed for redirect
 docker run -d \
   -p 8000:8000 \
-  -p 9000:9000 \    # HTTP (will show upgrade message)
-  -p 9443:9443 \    # HTTPS
+  -p 9000:9000 \
+  -p 9443:9443 \
   --name portainer \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \

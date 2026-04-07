@@ -307,10 +307,10 @@ impl<const ROWS: usize, const COLS: usize> Matrix<ROWS, COLS> {
         }
     }
 
-    const fn identity() -> Self
-    where
-        [(); ROWS - COLS]: , // Compile-time assertion that ROWS == COLS
-    {
+    /// Creates an identity matrix. Only valid when ROWS == COLS.
+    /// Panics at compile time if used with non-square dimensions.
+    const fn identity() -> Self {
+        assert!(ROWS == COLS, "Identity matrix requires ROWS == COLS");
         let mut data = [[0.0; COLS]; ROWS];
         let mut i = 0;
         while i < ROWS {

@@ -112353,10 +112353,6 @@
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
   },
-  "2026-03-04-build-a-backup-verification-and-recovery-testing-checklist": {
-    "status": "validated",
-    "validatedAt": "2026-03-05T00:00:00Z"
-  },
   "2026-03-04-build-a-post-incident-review-checklist-for-rhel-9-outages": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
@@ -113485,10 +113481,6 @@
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
   },
-  "2026-03-04-configure-rhel-9-as-a-network-gateway-with-nat": {
-    "status": "validated",
-    "validatedAt": "2026-03-05T00:00:00Z"
-  },
   "2026-03-04-configure-rhel-9-as-a-router-with-ip-forwarding-and-nat": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
@@ -113526,10 +113518,6 @@
     "validatedAt": "2026-03-05T00:00:00Z"
   },
   "2026-03-04-configure-rhel-9-for-nist-cybersecurity-framework": {
-    "status": "validated",
-    "validatedAt": "2026-03-05T00:00:00Z"
-  },
-  "2026-03-04-configure-rhel-9-for-postgresql-performance-optimized": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
   },
@@ -116413,10 +116401,6 @@
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
   },
-  "2026-03-04-install-and-configure-saltstack-master-and-minion": {
-    "status": "validated",
-    "validatedAt": "2026-03-05T00:00:00Z"
-  },
   "2026-03-04-install-and-configure-sentry-error-tracking-on-rhel-9": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
@@ -118985,10 +118969,6 @@
     "validatedAt": "2026-03-05T00:00:00Z"
   },
   "2026-03-04-set-up-bfd-bidirectional-forwarding-detection-on-rhel-9": {
-    "status": "validated",
-    "validatedAt": "2026-03-05T00:00:00Z"
-  },
-  "2026-03-04-set-up-bgp-routing-with-frrouting-on-rhel-9": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
   },
@@ -132745,10 +132725,6 @@
     "validatedAt": "2026-03-14T00:00:00Z"
   },
   "2026-03-13-optimize-service-ip-advertisement-calico": {
-    "status": "validated",
-    "validatedAt": "2026-03-14T00:00:00Z"
-  },
-  "2026-03-13-optimize-service-lb-addresses-calico": {
     "status": "validated",
     "validatedAt": "2026-03-14T00:00:00Z"
   },
@@ -170333,10 +170309,6 @@
     "validatedAt": "2026-03-20T00:00:00Z"
   },
   "2026-03-20-pfsense-ipv6-router-advertisements": {
-    "status": "validated",
-    "validatedAt": "2026-03-20T00:00:00Z"
-  },
-  "2026-03-20-pfsense-ipv6-vpn": {
     "status": "validated",
     "validatedAt": "2026-03-20T00:00:00Z"
   },
@@ -209960,10 +209932,6 @@
     "validatedAt": "2026-03-31T00:00:00Z"
   },
   "2026-03-31-mongodb-wiredtiger-write-ahead-journal": {
-    "status": "not-code-blog",
-    "validatedAt": "2026-03-31T00:00:00Z"
-  },
-  "2026-03-31-mongodb-with-dbt-data-transformation": {
     "status": "not-code-blog",
     "validatedAt": "2026-03-31T00:00:00Z"
   },

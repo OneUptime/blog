@@ -54,11 +54,11 @@ With `activeStandby: true`, Rook deploys a standby-replay MDS that tails the act
 
 ## Enable Standby-Replay Mode via CLI
 
-To explicitly set a standby MDS to replay mode for a specific rank:
+To explicitly enable standby-replay mode for a filesystem:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mds set-state cephfs:0 standby-replay
+  ceph fs set cephfs allow_standby_replay true
 ```
 
 ## Trigger Manual Failover

@@ -66,7 +66,7 @@ redis-cli -h 10.0.0.5 -p 6379 -a 'YourStrongPasswordHere!' ping
 # Expected: PONG
 
 # Test authentication
-redis-cli -h 10.0.0.5 AUTH 'YourStrongPasswordHere!'
+redis-cli -h 10.0.0.5 -p 6379 AUTH 'YourStrongPasswordHere!'
 # Expected: OK
 
 # Test without password (should fail)
@@ -81,16 +81,20 @@ redis-cli -h 10.0.0.5 -a 'password' GET testkey
 
 ## Using Redis with Application Config
 
-```bash
+```python
 # Python (redis-py)
 import redis
 r = redis.Redis(host='10.0.0.5', port=6379, password='YourStrongPasswordHere!', db=0)
 r.ping()
+```
 
-# Node.js (ioredis)
+```javascript
+// Node.js (ioredis)
 const Redis = require('ioredis');
 const client = new Redis({ host: '10.0.0.5', port: 6379, password: 'YourStrongPasswordHere!' });
+```
 
+```text
 # Redis URL format
 redis://:YourStrongPasswordHere!@10.0.0.5:6379/0
 ```

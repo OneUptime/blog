@@ -61,7 +61,6 @@ spec:
     - action: Allow
       destination:
         selector: app == 'payment-db'
-      destination:
         ports: [5432]
     - action: Allow
       protocol: UDP

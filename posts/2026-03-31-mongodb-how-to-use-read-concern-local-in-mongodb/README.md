@@ -22,7 +22,7 @@ With read concern `local`:
 ## Setting Read Concern in mongosh
 
 ```javascript
-db.orders.find({ status: "pending" }).readConcern("local");
+db.orders.find({ status: "pending" }).readConcern("local")
 ```
 
 Using `runCommand`:
@@ -38,7 +38,7 @@ db.runCommand({
 ## Setting Read Concern in Node.js Driver
 
 ```javascript
-const { MongoClient, ReadConcern } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 const client = new MongoClient("mongodb://localhost:27017");
 await client.connect();
@@ -47,8 +47,10 @@ const db = client.db("mydb");
 const orders = db.collection("orders");
 
 const results = await orders
-  .find({ status: "pending" })
-  .withReadConcern(new ReadConcern("local"))
+  .find(
+    { status: "pending" },
+    { readConcern: { level: "local" } }
+  )
   .toArray();
 ```
 

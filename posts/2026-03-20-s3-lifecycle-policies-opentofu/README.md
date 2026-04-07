@@ -216,8 +216,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "tagged" {
       and {
         prefix = "records/"
         tags = {
-          Compliance = "required"
-          DataClass  = "regulated"
+          "Compliance" = "required"
+          "DataClass"  = "regulated"
         }
       }
     }

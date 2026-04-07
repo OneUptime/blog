@@ -121,7 +121,7 @@ spec:
         env:
         - name: POD_NAMESPACE
           valueFrom:
-            fieldRefFrom:
+            fieldRef:
               fieldPath: metadata.namespace
         ports:
         - name: http

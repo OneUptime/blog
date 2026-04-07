@@ -8,7 +8,7 @@ Description: Complete guide to deploying WordPress with MySQL on Rancher for sca
 
 ## Introduction
 
-This guide covers deploying uwordpress on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
+This guide covers deploying WordPress on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
 
 ## Prerequisites
 
@@ -69,10 +69,11 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
-# Database (if applicable)
-postgresql:
+# Database
+mariadb:
   enabled: true
   auth:
+    rootPassword: "${DB_ROOT_PASSWORD}"
     password: "${DB_PASSWORD}"
   primary:
     persistence:
@@ -90,8 +91,8 @@ podDisruptionBudget:
 ## Step 4: Install with Helm
 
 ```bash
-# Install uwordpress
-helm install wordpress bitnami/wordpress   --namespace wordpress   --values wordpress-values.yaml   --version latest   --wait   --timeout 10m
+# Install WordPress
+helm install wordpress bitnami/wordpress   --namespace wordpress   --values wordpress-values.yaml   --wait   --timeout 10m
 
 # Verify deployment
 kubectl get pods -n wordpress
@@ -202,7 +203,7 @@ spec:
 ## Upgrades
 
 ```bash
-# Upgrade uwordpress
+# Upgrade WordPress
 helm upgrade wordpress bitnami/wordpress   --namespace wordpress   --values wordpress-values.yaml   --reuse-values
 
 # Rollback if needed
@@ -211,4 +212,4 @@ helm rollback wordpress 1 --namespace wordpress
 
 ## Conclusion
 
-Deploying uwordpress on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into uwordpress's health while the Helm-based installation makes upgrades and configuration changes straightforward.
+Deploying WordPress on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into WordPress's health while the Helm-based installation makes upgrades and configuration changes straightforward.

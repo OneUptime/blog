@@ -94,7 +94,7 @@ gathering = smart
 fact_caching = jsonfile
 fact_caching_connection = /tmp/ansible_prod_facts
 fact_caching_timeout = 1800
-callback_whitelist = timer, profile_tasks, log_plays
+callbacks_enabled = timer, profile_tasks, log_plays
 
 [privilege_escalation]
 become = True
@@ -156,7 +156,7 @@ host_key_checking = True
 forks = 30
 log_path = /var/log/ansible/production.log
 vault_password_file = .vault_pass
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 
 [ssh_connection]
 pipelining = True
@@ -287,7 +287,7 @@ export ANSIBLE_HOST_KEY_CHECKING=True
 export ANSIBLE_FORKS=30
 export ANSIBLE_LOG_PATH=/var/log/ansible/production.log
 export ANSIBLE_VAULT_PASSWORD_FILE=.vault_pass
-export ANSIBLE_CALLBACK_WHITELIST=timer,profile_tasks,log_plays
+export ANSIBLE_CALLBACKS_ENABLED=timer,profile_tasks,log_plays
 ```
 
 Source the environment file before running:

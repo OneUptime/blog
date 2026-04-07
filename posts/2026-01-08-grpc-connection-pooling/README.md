@@ -839,6 +839,8 @@ import (
     "net"
     "sync"
     "time"
+
+    "google.golang.org/grpc/resolver"
 )
 
 // CachingResolver implements a DNS resolver with caching
@@ -1036,11 +1038,13 @@ Track pool performance with metrics:
 package grpcpool
 
 import (
+    "fmt"
     "sync/atomic"
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
+    "google.golang.org/grpc"
 )
 
 var (

@@ -262,8 +262,8 @@ BEGIN
     ON co.customer_id = cp.customer_id;
 
   -- Step 3: Write the final report
-  DELETE FROM `my_project.my_dataset.customer_report`
-  WHERE report_date = report_date;
+  DELETE FROM `my_project.my_dataset.customer_report` cr
+  WHERE cr.report_date = report_date;
 
   INSERT INTO `my_project.my_dataset.customer_report`
   SELECT

@@ -50,13 +50,13 @@ Felix configuration parameters for TLS connections to Typha.
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
     "typhaCAFile": "/felix-tls/ca.crt",
-    "tymphaCertFile": "/felix-tls/tls.crt",
+    "typhaCertFile": "/felix-tls/tls.crt",
     "typhaKeyFile": "/felix-tls/tls.key",
-    "tymphaName": "calico-typha"
+    "typhaName": "calico-typha"
   }}'
 ```
 
-The `tymphaName` field specifies the expected server name (SNI) that Felix uses when connecting to Typha. It must match the CN or SAN in Typha's server certificate.
+The `typhaName` field specifies the expected server name (SNI) that Felix uses when connecting to Typha. It must match the CN or SAN in Typha's server certificate.
 
 ## Step 4: Verify Certificate-to-Configuration Alignment
 
@@ -68,10 +68,10 @@ kubectl get secret calico-typha-tls -n calico-system \
   openssl x509 -noout -text | grep -A5 "Subject:\|Subject Alternative"
 
 # Felix configuration typhaName
-calicoctl get felixconfiguration default -o yaml | grep -i "typhaName\|typhaCert"
+calicoctl get felixconfiguration default -o yaml | grep -i "typhaName\|typhaCertFile"
 ```
 
-The `typhaName` in FelixConfiguration must match the Typha server's CN or one of its SANs.
+The `typhaName` in FelixConfiguration must match the Typha server certificate's CN or one of its SANs.
 
 ## Step 5: Configure Certificate Path for Binary Felix
 
@@ -96,7 +96,7 @@ TyphaAddr = calico-typha.calico-system.svc.cluster.local:5473
 TyphaCAFile = /etc/calico/typha-ca.crt
 TyphaCertFile = /etc/calico/felix.crt
 TyphaKeyFile = /etc/calico/felix.key
-TymphaName = calico-typha
+TyphaName = calico-typha
 ```
 
 ## Step 6: Restart Components After TLS Configuration Changes

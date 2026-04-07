@@ -15,9 +15,7 @@ The Portainer template catalog is driven entirely by a JSON definition file. Und
 ```json
 {
   "version": "2",
-  "templates": [
-    // Array of template objects
-  ]
+  "templates": []
 }
 ```
 
@@ -172,12 +170,12 @@ Full reference for a stack template using a repository:
 
 ```json
 {
-  "name": "VARIABLE_NAME",      // Environment variable name (required)
-  "label": "Human label",       // Display label in UI (required)
-  "description": "Explains...", // Tooltip description (optional)
-  "default": "default-value",   // Default value (optional)
-  "preset": false,              // If true, hidden from user with preset default
-  "select": [                   // Dropdown options (optional)
+  "name": "VARIABLE_NAME",
+  "label": "Human label",
+  "description": "Explains...",
+  "default": "default-value",
+  "preset": false,
+  "select": [
     {
       "text": "Production",
       "value": "production",
@@ -190,6 +188,14 @@ Full reference for a stack template using a repository:
   ]
 }
 ```
+
+Field descriptions:
+- `name`: Environment variable name (required)
+- `label`: Display label in UI (required)
+- `description`: Tooltip description (optional)
+- `default`: Default value (optional)
+- `preset`: If true, hidden from user with preset default
+- `select`: Dropdown options (optional)
 
 ## Complete Example: Multi-Template File
 

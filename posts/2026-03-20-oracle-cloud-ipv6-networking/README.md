@@ -80,23 +80,28 @@ curl -6 http://myhost.example.com/health
 
 ## Step 6: Infrastructure as Code
 
-```terraform
+```hcl
 # Terraform example for Oracle Cloud Infrastructure IPv6
-# Resource with IPv6 enabled
-resource "example_instance" "main" {
-  name = "ipv6-instance"
+# VCN with IPv6 enabled
+resource "oci_core_vcn" "main" {
+  compartment_id = var.compartment_id
+  display_name   = "ipv6-vcn"
+  cidr_blocks    = ["10.0.0.0/16"]
+  is_ipv6enabled = true
 
-  # Enable dual-stack networking
-  ipv6_enabled = true
-
-  network {
-    ipv6_address = "2001:db8::1"
-  }
-
-  tags = {
+  freeform_tags = {
     Environment = "production"
     IPv6        = "enabled"
   }
+}
+
+# Subnet with IPv6 CIDR
+resource "oci_core_subnet" "main" {
+  compartment_id = var.compartment_id
+  vcn_id         = oci_core_vcn.main.id
+  display_name   = "ipv6-subnet"
+  cidr_block     = "10.0.1.0/24"
+  ipv6cidr_block = cidrsubnet(oci_core_vcn.main.ipv6cidr_blocks[0], 8, 0)
 }
 ```
 

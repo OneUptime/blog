@@ -88,7 +88,7 @@ Configure Felix with custom paths.
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{
     "typhaCAFile": "/etc/calico/tls/typha-ca.crt",
-    "tymphaCertFile": "/etc/calico/tls/felix.crt",
+    "typhaCertFile": "/etc/calico/tls/felix.crt",
     "typhaKeyFile": "/etc/calico/tls/felix.key"
   }}'
 ```

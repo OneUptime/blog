@@ -37,6 +37,7 @@ Start with an interface that defines what operations your repository supports. T
 
 namespace App\Repositories\Contracts;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -290,7 +291,9 @@ Now your UserRepository becomes much simpler:
 namespace App\Repositories\Eloquent;
 
 use App\Models\User;
+use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
+use Illuminate\Database\Eloquent\Collection;
 
 class UserRepository extends BaseRepository implements UserRepositoryInterface
 {

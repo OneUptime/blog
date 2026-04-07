@@ -683,12 +683,13 @@ For multiple server instances, use Redis as a SignalR backplane.
 ```csharp
 // Add Redis backplane for SignalR in multi-server deployments
 builder.Services.AddSignalR()
-    .AddStackExchangeRedis(options =>
-    {
-        options.Configuration = builder.Configuration
-            .GetConnectionString("Redis");
-        options.Configuration.ChannelPrefix = "Dashboard";
-    });
+    .AddStackExchangeRedis(
+        builder.Configuration.GetConnectionString("Redis")!,
+        options =>
+        {
+            options.Configuration.ChannelPrefix =
+                RedisChannel.Literal("Dashboard");
+        });
 
 // The broadcaster now works across all server instances
 // Redis handles message distribution between servers

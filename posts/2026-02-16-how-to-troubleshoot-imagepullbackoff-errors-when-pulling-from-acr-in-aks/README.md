@@ -238,10 +238,9 @@ az ad sp credential list --id <sp-object-id> --query "[].endDateTime" --output t
 az ad sp credential reset --id <sp-object-id>
 
 # Update the AKS cluster with the new credentials
-az aks update-credentials \
+az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --reset-service-principal \
   --service-principal <sp-app-id> \
   --client-secret <new-password>
 ```

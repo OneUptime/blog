@@ -41,7 +41,7 @@ Before configuring Prometheus, verify that each component is exposing metrics:
 ```bash
 # Port-forward to the application controller metrics port
 
-kubectl port-forward -n argocd deployment/argocd-application-controller 8082:8082 &
+kubectl port-forward -n argocd sts/argocd-application-controller 8082:8082 &
 
 # Check if metrics are being served
 curl localhost:8082/metrics | head -20
@@ -293,10 +293,10 @@ argocd_app_sync_total
 argocd_git_request_total
 
 # API server request metrics
-argocd_argocd_server_request_total
+grpc_server_handled_total
 
-# Repo server request metrics
-argocd_repo_server_request_total
+# Repo server Git request metrics
+argocd_git_request_duration_seconds_count
 ```
 
 Run these queries in your Prometheus UI or Grafana. If they return results, your metrics pipeline is working correctly.

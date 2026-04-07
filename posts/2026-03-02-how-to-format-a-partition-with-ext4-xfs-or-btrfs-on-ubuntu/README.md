@@ -84,9 +84,9 @@ sudo mkfs.xfs -f /dev/sdb1
 # Set block size (4096 is default and usually optimal)
 sudo mkfs.xfs -b size=4096 /dev/sdb1
 
-# Large scale storage: use 1MB block size for fewer inodes and better performance
-# with very large files
-sudo mkfs.xfs -b size=1048576 /dev/sdb1
+# Large scale storage: use 64K block size for fewer inodes and better performance
+# with very large files (64K is the maximum XFS block size)
+sudo mkfs.xfs -b size=65536 /dev/sdb1
 
 # For SSDs: set sunit and swidth to match SSD stripe parameters
 sudo mkfs.xfs -d su=128k,sw=1 /dev/sdb1

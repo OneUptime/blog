@@ -669,6 +669,7 @@ Capture Core Web Vitals and correlate them with traces.
 ```typescript
 // src/webVitals.ts
 import { onCLS, onINP, onLCP, onFCP, onTTFB, Metric } from 'web-vitals';
+import { SpanStatusCode } from '@opentelemetry/api';
 import { tracer } from './telemetry';
 
 function reportWebVital(metric: Metric): void {

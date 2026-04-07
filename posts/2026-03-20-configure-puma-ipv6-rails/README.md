@@ -15,19 +15,14 @@ Puma is the default web server for Ruby on Rails. It supports IPv6 binding using
 ```ruby
 # config/puma.rb
 
-# Bind to all IPv6 interfaces (dual-stack)
-
+# Bind to all IPv6 and IPv4 interfaces (dual-stack on most OSes)
 bind "tcp://[::]:3000"
 
+# Alternatives (uncomment one instead of the line above):
 # Bind to IPv6 loopback only (local only)
 # bind "tcp://[::1]:3000"
-
 # Bind to specific IPv6 address
 # bind "tcp://[2001:db8::1]:3000"
-
-# Dual-stack: bind both IPv4 and IPv6
-bind "tcp://0.0.0.0:3000"
-bind "tcp://[::]:3000"
 
 # Cluster mode
 workers ENV.fetch("WEB_CONCURRENCY", 2).to_i

@@ -178,7 +178,7 @@ await client.binding.send(
 In SES sandbox mode, you can only send to verified email addresses. Request production access when ready:
 
 ```bash
-aws ses put-account-sending-attributes \
+aws sesv2 put-account-sending-attributes \
   --sending-enabled \
   --region us-east-1
 ```

@@ -262,12 +262,12 @@ ORDER BY meters_to_nearest_zone ASC;
 Spatial joins can be computationally expensive. Here are key optimization strategies:
 
 ```sql
--- Tip 1: Filter by bounding box before exact spatial join
--- ST_BOUNDINGBOX is faster than ST_CONTAINS for initial filtering
+-- Tip 1: Pre-filter with ST_DWITHIN before exact spatial join
+-- ST_DWITHIN is faster than ST_CONTAINS for initial distance-based filtering
 SELECT c.*, z.zip_code
 FROM customers c
 JOIN zip_codes z
-  ON ST_INTERSECTSBOX(z.zip_code_geom, c.lng - 0.1, c.lat - 0.1, c.lng + 0.1, c.lat + 0.1)
+  ON ST_DWITHIN(z.zip_code_geom, c.location, 10000)
   AND ST_CONTAINS(z.zip_code_geom, c.location);
 
 -- Tip 2: Cluster tables on geography columns

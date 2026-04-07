@@ -47,14 +47,7 @@ module "vpc" {
 
 ## Adding Authentication with Headers
 
-Some artifact repositories require authentication. Use environment variables that OpenTofu passes to the HTTP client:
-
-```bash
-# Set environment variable for HTTP authentication
-export TF_HTTP_HEADERS="Authorization: Bearer ${ARTIFACTORY_TOKEN}"
-```
-
-Or configure in `.terraformrc` / `.tofurc`:
+Some artifact repositories require authentication. Configure credentials in `.terraformrc` / `.tofurc`:
 
 ```hcl
 # ~/.tofurc

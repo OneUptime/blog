@@ -145,7 +145,7 @@ To update a host key:
 
 ```bash
 # Remove the old key
-argocd cert rm-ssh --cert-type ssh github.com
+argocd cert rm-ssh github.com
 
 # Fetch and add the new key
 ssh-keyscan github.com 2>/dev/null | argocd cert add-ssh --batch

@@ -44,12 +44,17 @@ iperf3's UDP mode reports jitter directly.
 iperf3 -s -6 -p 5201
 
 # Run UDP test - 1 Mbps for 60 seconds, report every second
+# -u: UDP mode
+# -b 1M: 1 Mbps send rate
+# -t 60: 60-second duration
+# -i 1: Report every second
+# --format m: Mbits/s output
 iperf3 -6 -c 2001:db8::1 \
-  -u \              # UDP mode
-  -b 1M \           # 1 Mbps send rate
-  -t 60 \           # 60-second duration
-  -i 1 \            # Report every second
-  --format m        # Mbits/s output
+  -u \
+  -b 1M \
+  -t 60 \
+  -i 1 \
+  --format m
 
 # Save results as JSON for analysis
 iperf3 -6 -c 2001:db8::1 -u -b 1M -t 60 -J > jitter_test.json

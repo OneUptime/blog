@@ -1,4 +1,4 @@
-# How to Set Up Multi Span Processors in a Single TracerProvider for Enrichment,
+# How to Set Up Multiple Span Processors in a Single TracerProvider
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -16,11 +16,13 @@ Dapr Go SDK functions return standard Go errors that wrap gRPC status informatio
 
 ```go
 import (
+    dapr "github.com/dapr/go-sdk/client"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
 
-resp, err := client.InvokeMethod(ctx, "payment-service", "charge", "POST")
+content := &dapr.DataContent{ContentType: "application/json"}
+resp, err := client.InvokeMethodWithContent(ctx, "payment-service", "charge", "POST", content)
 if err != nil {
     st, ok := status.FromError(err)
     if ok {
@@ -52,13 +54,14 @@ func invokeWithRetry(ctx context.Context, client dapr.Client,
     appID, method, verb string, maxAttempts int) ([]byte, error) {
 
     var lastErr error
+    content := &dapr.DataContent{ContentType: "application/json"}
     for attempt := 0; attempt < maxAttempts; attempt++ {
         if attempt > 0 {
             backoff := time.Duration(1<<attempt) * 100 * time.Millisecond
             time.Sleep(backoff)
         }
 
-        resp, err := client.InvokeMethod(ctx, appID, method, verb)
+        resp, err := client.InvokeMethodWithContent(ctx, appID, method, verb, content)
         if err == nil {
             return resp, nil
         }

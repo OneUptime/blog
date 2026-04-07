@@ -336,7 +336,7 @@ public class QueueHealthMetrics {
         messagesProcessed.add(1,
             io.opentelemetry.api.common.Attributes.of(
                 io.opentelemetry.api.common.AttributeKey.stringKey("queue"), queue,
-                io.opentelemetry.api.common.AttributeKey.stringKey("outcome"), "failure"),
+                io.opentelemetry.api.common.AttributeKey.stringKey("outcome"), "failure",
                 io.opentelemetry.api.common.AttributeKey.stringKey("error.type"), errorType
             ));
     }

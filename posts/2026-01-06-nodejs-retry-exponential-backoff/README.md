@@ -244,10 +244,11 @@ class RetryableOperation {
   }
 
   async execute(fn) {
-    const controller = new AbortController();
     let lastError;
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      // Create a new AbortController per attempt (cannot reuse after abort)
+      const controller = new AbortController();
       try {
         // Wrap with timeout
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);

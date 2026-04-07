@@ -151,8 +151,8 @@ db.orders.dropIndex("status_1_createdAt_1");
 
 // ... run import ...
 
-// After import - recreate indexes in background
-db.orders.createIndex({ status: 1, createdAt: -1 }, { background: true });
+// After import - recreate indexes
+db.orders.createIndex({ status: 1, createdAt: -1 });
 ```
 
 ## Using mongoimport with Authentication

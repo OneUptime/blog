@@ -71,11 +71,10 @@ const LOCK_TIMEOUT_MS = 60_000; // 1 minute
 async function dequeue(col) {
   const job = await col.findOneAndUpdate(
     {
-      status: 'pending',
-      // Also pick up stalled jobs from other workers
+      // Pick up pending jobs or stalled jobs from other workers
       $or: [
-        { lockedAt: null },
-        { lockedAt: { $lt: new Date(Date.now() - LOCK_TIMEOUT_MS) } }
+        { status: 'pending' },
+        { status: 'processing', lockedAt: { $lt: new Date(Date.now() - LOCK_TIMEOUT_MS) } }
       ]
     },
     {

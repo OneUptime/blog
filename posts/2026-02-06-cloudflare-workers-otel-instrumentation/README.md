@@ -1,4 +1,4 @@
-# How to Instrument Cloudflare Workers with OpenTelemetry Using the
+# How to Instrument Cloudflare Workers with OpenTelemetry (otel-cf-workers)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

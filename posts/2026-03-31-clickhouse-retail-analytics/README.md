@@ -136,7 +136,7 @@ LEFT JOIN retail_transactions AS t
 WHERE i.snapshot_date = today() - 1
 GROUP BY i.product_id
 HAVING turnover_ratio < 1
-ORDER BY avg_stock * i.cost_per_unit DESC;
+ORDER BY avg_stock DESC;
 ```
 
 ## Summary

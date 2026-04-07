@@ -94,7 +94,7 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get cnp -n cilium-demo
 ```
 
 ### Hardening with Default-Deny

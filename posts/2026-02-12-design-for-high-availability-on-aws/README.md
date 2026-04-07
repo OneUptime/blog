@@ -201,7 +201,7 @@ app.get('/health', async (req, res) => {
 
   // Check external dependencies
   try {
-    await fetch('https://api.external-service.com/health', { timeout: 2000 });
+    await fetch('https://api.external-service.com/health', { signal: AbortSignal.timeout(2000) });
     checks.externalApi = 'ok';
   } catch (e) {
     checks.externalApi = 'degraded';

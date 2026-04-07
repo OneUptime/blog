@@ -76,17 +76,14 @@ kubectl rollout status daemonset kube-proxy -n kube-system
 
 ### For iptables Mode
 
-Strict ARP is less critical with iptables mode since it doesn't configure service IPs on nodes the same way, but you can still configure it:
+Strict ARP is less critical with iptables mode since it doesn't configure service IPs on nodes the same way. The `strictARP` setting is specific to IPVS mode and is not available under the `iptables` configuration section. If you need strict ARP behavior with iptables mode, configure the kernel parameters directly on each node:
 
-```yaml
-apiVersion: kubeproxy.config.k8s.io/v1alpha1
-kind: KubeProxyConfiguration
-mode: "iptables"
-iptables:
-  strictARP: true
+```bash
+sudo sysctl -w net.ipv4.conf.all.arp_announce=2
+sudo sysctl -w net.ipv4.conf.all.arp_ignore=1
 ```
 
-However, for optimal MetalLB compatibility, use IPVS mode with strict ARP.
+For optimal MetalLB compatibility, use IPVS mode with strict ARP.
 
 ### Using kubectl Patch (Automated Approach)
 

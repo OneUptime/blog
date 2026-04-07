@@ -96,13 +96,16 @@ Your existing application code does not need to change at all:
 // Your existing Log4j2 code works exactly as before
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.StringMapMessage;
 
 public class OrderService {
     private static final Logger logger = LogManager.getLogger(OrderService.class);
 
     public void processOrder(String orderId) {
-        // Structured key-value pairs using Log4j2 MapMessage
-        logger.info("Processing order", Map.of("order.id", orderId));
+        // Structured key-value pairs using Log4j2 StringMapMessage
+        logger.info(new StringMapMessage()
+            .with("message", "Processing order")
+            .with("order.id", orderId));
 
         try {
             // business logic

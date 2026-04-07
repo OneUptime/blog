@@ -49,16 +49,10 @@ terraform {
 }
 ```
 
-Or using a base64-encoded credentials string:
+Or pass the credentials file path via a `-backend-config` flag during init:
 
-```hcl
-terraform {
-  backend "gcs" {
-    bucket      = "my-tofu-state"
-    prefix      = "production"
-    credentials = base64decode(var.gcp_credentials_b64)
-  }
-}
+```bash
+tofu init -backend-config="credentials=/path/to/tofu-state-key.json"
 ```
 
 ## GitHub Actions

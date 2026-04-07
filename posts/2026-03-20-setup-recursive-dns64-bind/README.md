@@ -104,9 +104,9 @@ dig AAAA ipv4only.example.com @::1
 dig AAAA google.com @::1
 # Expected: real AAAA record
 
-# Confirm synthesis with well-known address
+# Confirm synthesis with well-known address (RFC 7050)
 dig AAAA ipv4only.arpa @::1
-# Expected: 64:ff9b::c000:0200 (192.0.2.0 mapped)
+# Expected: 64:ff9b::c000:00aa (192.0.0.170 mapped)
 ```
 
 ## Step 5: Verify NAT64 Gateway Integration

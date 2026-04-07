@@ -25,12 +25,27 @@ sudo ceph config show osd.0 | grep bluestore
 
 Placing the write-ahead log (WAL) and RocksDB database on NVMe drives while keeping bulk data on HDDs is the most impactful optimization:
 
+```yaml
+# osd-spec.yaml - OSD service specification with separate WAL and DB devices
+service_type: osd
+service_id: hdd-with-nvme
+placement:
+  hosts:
+  - node1
+data_devices:
+  paths:
+  - /dev/sdb
+db_devices:
+  paths:
+  - /dev/nvme0n1
+wal_devices:
+  paths:
+  - /dev/nvme0n1
+```
+
 ```bash
-# When adding a new OSD, specify separate WAL and DB devices
-sudo ceph orch daemon add osd node1 \
-    --data /dev/sdb \
-    --db-devices /dev/nvme0n1 \
-    --wal-devices /dev/nvme0n1
+# Apply the OSD specification
+sudo ceph orch apply -i osd-spec.yaml
 ```
 
 For existing OSDs, you need to recreate them with the new layout.

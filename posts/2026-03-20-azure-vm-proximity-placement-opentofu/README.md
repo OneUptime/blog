@@ -24,13 +24,6 @@ resource "azurerm_proximity_placement_group" "main" {
   location            = var.location
   resource_group_name = var.resource_group_name
 
-  # Optional: allowed VM sizes for placement validation
-  allowed_vm_sizes = [
-    "Standard_D2s_v3",
-    "Standard_D4s_v3",
-    "Standard_D8s_v3"
-  ]
-
   tags = {
     Name        = "${var.project_name}-ppg"
     Environment = var.environment

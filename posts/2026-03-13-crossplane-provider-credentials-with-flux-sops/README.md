@@ -32,15 +32,15 @@ This guide walks through configuring SOPS with age keys, encrypting Crossplane p
 brew install age
 
 # Linux
-curl -Lo /usr/local/bin/age https://github.com/FiloSottile/age/releases/latest/download/age-linux-amd64
-chmod +x /usr/local/bin/age
+# Download the latest release tarball from https://github.com/FiloSottile/age/releases
+# Extract and copy age to /usr/local/bin
 
 # Install SOPS
 # macOS
 brew install sops
 
 # Linux
-curl -Lo /usr/local/bin/sops https://github.com/getsops/sops/releases/latest/download/sops-linux.amd64
+curl -Lo /usr/local/bin/sops https://github.com/getsops/sops/releases/latest/download/sops-v3-linux.amd64
 chmod +x /usr/local/bin/sops
 ```
 

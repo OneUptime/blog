@@ -39,7 +39,7 @@ Interfaces → WAN → IPv6 Configuration
 
 ### WAN - Static IPv6
 
-```nginx
+```text
 Interfaces → WAN → IPv6 Configuration
   IPv6 Configuration Type: Static IPv6
   IPv6 address: 2001:db8:wan::2 / 64

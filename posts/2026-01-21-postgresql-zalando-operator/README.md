@@ -555,7 +555,7 @@ spec:
     matchNames:
       - default
   endpoints:
-    - port: "9187"
+    - port: metrics
       interval: 30s
       path: /metrics
 ```

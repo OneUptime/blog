@@ -47,7 +47,7 @@ kubectl get daemonset -n kube-system | grep calico
 # Verify Calico node status
 kubectl exec -n kube-system \
   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1) \
-  -- calico-node -bird-ready
+  -- calico-node --bird-ready
 
 # Check Calico CRDs
 kubectl get crd | grep projectcalico
@@ -68,7 +68,8 @@ spec:
   cidr: 10.42.0.0/16
 
   # Encapsulation mode
-  # Options: VXLAN, IPIP, IPIPCross-Subnet, VXLANCross-Subnet, None
+  # ipipMode options: Always, CrossSubnet, Never
+  # vxlanMode options: Always, CrossSubnet, Never
   ipipMode: CrossSubnet  # Use IPIP only for cross-subnet traffic
   vxlanMode: Never
 

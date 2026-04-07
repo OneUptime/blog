@@ -39,6 +39,7 @@ services:
       - --entrypoints.websecure.address=:443
       # Let's Encrypt automatic TLS
       - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@example.com
       - --certificatesresolvers.le.acme.storage=/certs/acme.json
     ports:

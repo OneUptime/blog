@@ -38,7 +38,7 @@ apk add --no-cache \
 apk add --no-cache docker docker-cli docker-compose
 
 # Start Docker service
-rc-update add docker boot
+rc-update add docker default
 service docker start
 
 # Verify Docker is running
@@ -46,19 +46,7 @@ docker --version
 docker info
 ```
 
-## Step 3: Configure Docker to Start on Boot
-
-Alpine uses OpenRC (not systemd):
-
-```bash
-# Add Docker to default runlevel
-rc-update add docker default
-
-# Verify
-rc-status | grep docker
-```
-
-## Step 4: Configure Cgroups (Alpine-Specific)
+## Step 3: Configure Cgroups (Alpine-Specific)
 
 Alpine may need cgroup configuration for Docker:
 
@@ -70,7 +58,7 @@ echo 'rc_cgroup_mode="unified"' >> /etc/rc.conf
 echo "cgroup_enable=cpuset,cpu,cpuacct,blkio,memory,devices" >> /etc/default/grub
 ```
 
-## Step 5: Deploy Portainer CE
+## Step 4: Deploy Portainer CE
 
 ```bash
 # Create data volume
@@ -90,7 +78,7 @@ docker run -d \
 docker ps
 ```
 
-## Step 6: Configure Alpine Firewall (iptables)
+## Step 5: Configure Alpine Firewall (iptables)
 
 Alpine uses iptables/nftables:
 
@@ -107,7 +95,7 @@ iptables -A INPUT -p tcp --dport 8000 -j ACCEPT
 rc-update add iptables
 ```
 
-## Step 7: Access Portainer
+## Step 6: Access Portainer
 
 ```bash
 # Get IP address

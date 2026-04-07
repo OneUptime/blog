@@ -301,13 +301,15 @@ Different platforms use slightly different token formats:
         dest: /opt/app
         version: main
       environment:
-        GIT_CREDENTIAL_HELPER: "store --file={{ cred_file.path }}"
+        GIT_CONFIG_COUNT: "1"
+        GIT_CONFIG_KEY_0: "credential.helper"
+        GIT_CONFIG_VALUE_0: "store --file={{ cred_file.path }}"
 
     - name: Remove temporary credentials
       ansible.builtin.file:
         path: "{{ cred_file.path }}"
         state: absent
-      always_run: true
+      changed_when: false
 ```
 
 ## Summary

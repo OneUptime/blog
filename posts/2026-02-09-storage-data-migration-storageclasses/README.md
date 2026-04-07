@@ -92,7 +92,7 @@ kubectl exec storage-migrator -- sh -c 'cd /destination && find . -type f -exec 
 kubectl exec storage-migrator -- diff /tmp/source-checksums.txt /tmp/dest-checksums.txt
 
 # Update application to use new PVC
-kubectl set volume deployment/myapp --add=false --name=data --claim-name=new-storage-pvc
+kubectl set volume deployment/myapp --add --overwrite --name=data --claim-name=new-storage-pvc
 
 # Scale application back up
 kubectl scale deployment myapp --replicas=3

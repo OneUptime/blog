@@ -23,8 +23,10 @@ The simplest approach: one service calls another service's REST or gRPC API to g
 ```javascript
 // BFF (Backend for Frontend) aggregates data from multiple services
 async function getOrderSummary(orderId) {
-  const [order, user, inventory] = await Promise.all([
-    fetch(`http://order-service/orders/${orderId}`).then(r => r.json()),
+  // First fetch the order, then use its data to fetch related resources
+  const order = await fetch(`http://order-service/orders/${orderId}`).then(r => r.json());
+
+  const [user, inventory] = await Promise.all([
     fetch(`http://user-service/users/${order.userId}`).then(r => r.json()),
     fetch(`http://inventory-service/products/${order.productId}`).then(r => r.json()),
   ]);

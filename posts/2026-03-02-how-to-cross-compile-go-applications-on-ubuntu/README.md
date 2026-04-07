@@ -187,9 +187,9 @@ For Linux targets, install cross-compilers:
 # Install cross-compilers for various architectures
 sudo apt update
 sudo apt install \
-    gcc-aarch64-linux-gnu \    # ARM64 Linux
-    gcc-arm-linux-gnueabihf \  # ARM 32-bit Linux (hard float)
-    gcc-i686-linux-gnu         # 32-bit x86 Linux
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    gcc-i686-linux-gnu
 ```
 
 Build with the appropriate C compiler:
@@ -268,28 +268,28 @@ A Makefile that handles common cross-compilation scenarios:
 
 APP      := myapp
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS  := -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
+GOFLAGS  := -trimpath -ldflags "-s -w -X main.Version=$(VERSION)"
 
 .PHONY: all linux-amd64 linux-arm64 darwin windows clean
 
 all: linux-amd64 linux-arm64 darwin windows
 
 linux-amd64:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) \
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(GOFLAGS) \
 		-o dist/$(APP)-linux-amd64 .
 
 linux-arm64:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) \
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(GOFLAGS) \
 		-o dist/$(APP)-linux-arm64 .
 
 darwin:
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) \
+	GOOS=darwin GOARCH=amd64 go build $(GOFLAGS) \
 		-o dist/$(APP)-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) \
+	GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) \
 		-o dist/$(APP)-darwin-arm64 .
 
 windows:
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) \
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build $(GOFLAGS) \
 		-o dist/$(APP)-windows-amd64.exe .
 
 clean:

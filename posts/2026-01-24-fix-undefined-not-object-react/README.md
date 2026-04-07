@@ -203,7 +203,7 @@ function UserCard({ user }) {
 import React from 'react';
 import PropTypes from 'prop-types';
 
-function UserCard({ user }) {
+function UserCard({ user = { name: 'Anonymous', bio: 'No bio available' } }) {
   return (
     <div className="user-card">
       <h2>{user.name}</h2>
@@ -212,7 +212,9 @@ function UserCard({ user }) {
   );
 }
 
-// Default props provide fallback values
+// Default values via destructuring (recommended for React 19+)
+// Note: defaultProps is deprecated in React 18.3+ and removed in React 19
+// UserCard.defaultProps is deprecated in modern React
 UserCard.defaultProps = {
   user: {
     name: 'Anonymous',

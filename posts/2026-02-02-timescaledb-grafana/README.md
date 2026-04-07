@@ -521,7 +521,7 @@ For quick local development, use Docker Compose to run both services.
 The compose file creates a complete environment with TimescaleDB and Grafana, including persistent volumes for data.
 
 ```yaml
-# docker-compose.yml
+# docker compose.yml
 version: '3.8'
 
 services:
@@ -565,13 +565,13 @@ Start the stack with a single command.
 
 ```bash
 # Start both services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 ## Troubleshooting Common Issues

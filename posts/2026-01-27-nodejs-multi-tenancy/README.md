@@ -316,6 +316,9 @@ class RowLevelSecurityManager {
     const client = await this.pool.connect();
 
     try {
+      // SET LOCAL only works inside a transaction block
+      await client.query('BEGIN');
+
       // Set tenant context for RLS policies
       await client.query(
         `SET LOCAL app.current_tenant = $1`,
@@ -325,7 +328,11 @@ class RowLevelSecurityManager {
       // Execute query - RLS automatically filters by tenant
       const result = await client.query(text, params);
 
+      await client.query('COMMIT');
       return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -661,10 +668,16 @@ export class TenantAwareRepository {
   async query<T>(text: string, params: any[] = []): Promise<T[]> {
     const client = await this.pool.connect();
     try {
+      // SET LOCAL only works inside a transaction block
+      await client.query('BEGIN');
       // Set tenant context for RLS
       await client.query('SET LOCAL app.current_tenant = $1', [this.tenantId]);
       const result = await client.query(text, params);
+      await client.query('COMMIT');
       return result.rows;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }

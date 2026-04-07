@@ -8,7 +8,7 @@ Description: Learn how to implement DNS Caching Strategies for High-Traffic RHEL
 
 ---
 
-DNS caching reduces latency and network traffic by storing previously resolRHELeries locally. For high-traffic servers that make many outbound DNS requests, an RHELive caching strategy can significantly improve application response times.
+DNS caching reduces latency and network traffic by storing previously resolved queries locally. For high-traffic servers that make many outbound DNS requests, an effective caching strategy can significantly improve application response times.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ DNS caching reduces latency and network traffic by storing previously resolRHELe
 
 ## Strategy 1: Local Unbound Cache
 
-Install and configure Unbound as a local caching rRHELr:
+Install and configure Unbound as a local caching resolver:
 
 ```bash
 sudo dnf install -y unbound
@@ -100,4 +100,3 @@ Key metrics:
 ## Conclusion
 
 DNS caching on high-traffic RHEL servers reduces latency and external DNS load. Use Unbound for recursive caching, nscd for system-level name service caching, and application-level caching for workloads with predictable DNS patterns.
-RHELRHEL

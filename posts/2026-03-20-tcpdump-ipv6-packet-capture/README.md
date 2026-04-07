@@ -104,7 +104,7 @@ tcpdump -i eth0 -n "ip6 and tcp and (port 80 or port 443 or port 8080)"
 tcpdump -i eth0 -n -w /tmp/ipv6-capture.pcap ip6
 
 # Save with timestamps
-tcpdump -i eth0 -n -w /tmp/ipv6.pcap ip6 -tttt
+tcpdump -i eth0 -n -tttt -w /tmp/ipv6.pcap ip6
 
 # Read capture file
 tcpdump -r /tmp/ipv6-capture.pcap
@@ -156,7 +156,7 @@ echo "Output: $OUTPUT"
 
 # Capture all IPv6 including NDP, DHCP, and data
 tcpdump -i "$IFACE" -n -w "$OUTPUT" \
-    "ip6 or (ip6 proto 58)" &
+    "ip6" &
 
 TCPDUMP_PID=$!
 sleep "$DURATION"

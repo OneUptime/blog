@@ -87,7 +87,7 @@ import { RedisAdapter } from "@auth/redis-adapter";
 import { createClient } from "redis";
 
 const redisClient = createClient({ url: process.env.REDIS_URL });
-await redisClient.connect();
+redisClient.connect();
 
 export default NextAuth({
   adapter: RedisAdapter(redisClient),

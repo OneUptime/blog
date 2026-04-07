@@ -62,7 +62,7 @@ spec:
 
 Create a workflow that triggers when Flux pushes to the dedicated branch:
 
-```yaml
+````yaml
 # .github/workflows/flux-image-update-pr.yml
 
 name: Create Flux Image Update PR
@@ -107,7 +107,7 @@ jobs:
             ### Changes
             ```diff
             ${{ steps.changes.outputs.diff }}
-            ```plaintext
+            ```
 
             ### Review Checklist
             - [ ] Verify image versions are expected
@@ -116,7 +116,7 @@ jobs:
             automation
             image-update
           reviewers: platform-team
-```yaml
+````
 
 ## Step 3: Configure Branch Protection
 

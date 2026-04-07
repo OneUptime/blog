@@ -79,8 +79,7 @@ SELECT
     count() AS events,
     avg(score) AS avg_score,
     uniq(user_id) AS unique_users
-FROM random_events
-LIMIT 10000000
+FROM (SELECT * FROM random_events LIMIT 10000000)
 GROUP BY day
 ORDER BY day;
 ```

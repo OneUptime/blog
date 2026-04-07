@@ -180,8 +180,8 @@ resource "aws_instance" "structured" {
 
               location / {
                   proxy_pass http://localhost:8080;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header Host $${host};
+                  proxy_set_header X-Real-IP $${remote_addr};
               }
           }
 
@@ -191,7 +191,7 @@ resource "aws_instance" "structured" {
       - systemctl enable fail2ban
       - systemctl start fail2ban
 
-    final_message: "Cloud-init completed after $UPTIME seconds"
+    final_message: "Cloud-init completed after $${UPTIME} seconds"
   EOF
 
   tags = {

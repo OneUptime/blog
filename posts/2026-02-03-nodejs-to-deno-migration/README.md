@@ -388,8 +388,6 @@ Any new service or feature should be written for Deno first:
 // services/analytics/mod.ts
 // New analytics service written for Deno
 
-import { serve } from "https://deno.land/std/http/server.ts";
-
 interface AnalyticsEvent {
   eventName: string;
   userId: string;
