@@ -31,7 +31,7 @@ If the rbd engine is missing, compile fio from source with librbd:
 ```bash
 dnf install -y librados-devel librbd-devel
 git clone https://github.com/axboe/fio
-cd fio && ./configure --enable-rbd && make -j4 && make install
+cd fio && ./configure && make -j4 && make install
 ```
 
 ## Creating a Test Image
