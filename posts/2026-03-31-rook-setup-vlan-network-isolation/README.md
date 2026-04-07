@@ -82,6 +82,17 @@ nmcli connection up "management"
 ### systemd-networkd
 
 ```ini
+# /etc/systemd/network/00-eth0.network
+[Match]
+Name=eth0
+
+[Network]
+VLAN=eth0.10
+VLAN=eth0.20
+VLAN=eth0.30
+```
+
+```ini
 # /etc/systemd/network/10-vlan10.netdev
 [NetDev]
 Name=eth0.10
@@ -139,8 +150,8 @@ Set Ceph to use specific IP ranges for each network:
 
 ```bash
 # Configure Ceph with VLAN-based networks
-ceph config set mon public_network 10.0.1.0/24
-ceph config set osd cluster_network 192.168.10.0/24
+ceph config set global public_network 10.0.1.0/24
+ceph config set global cluster_network 192.168.10.0/24
 ```
 
 In Rook CephCluster:
