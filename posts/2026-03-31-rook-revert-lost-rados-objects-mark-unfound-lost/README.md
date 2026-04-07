@@ -24,7 +24,7 @@ This situation typically arises when:
 ceph health detail
 
 # List PGs with unfound objects
-ceph pg dump_stuck unfound
+ceph health detail | grep unfound
 
 # Count unfound objects in a specific PG
 ceph pg 2.5 query | python3 -m json.tool | grep num_unfound
@@ -34,8 +34,8 @@ Example output:
 
 ```text
 HEALTH_ERR 1 pg has unfound objects
-pg 2.5 is active+recover+unfound
-  objects with missing copies: 3
+pg 2.5 is active+recovering+degraded, 3 unfound
+  3 unfound objects
 ```
 
 ## Exploring Recovery Options
@@ -106,8 +106,8 @@ rbd info myimage --pool=rbd
 ## Preventing Future Data Loss
 
 ```bash
-# Ensure minimum required OSDs are always available
-ceph config set global min_size 2
+# Ensure minimum replicas before writes are allowed per pool
+ceph osd pool set <pool-name> min_size 2
 
 # Set conservative noout to prevent premature OSD removal
 ceph config set global mon_osd_down_out_interval 600
