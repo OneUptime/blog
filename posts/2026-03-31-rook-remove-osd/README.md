@@ -161,7 +161,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd stat
 If the disk is still attached to the node but you do not want Rook to recreate the OSD, either:
 
 1. Remove the disk from the CephCluster's device list, or
-2. Add a `crushDeviceClass` label to prevent auto-discovery, or
+2. Set `useAllDevices: false` and use a `deviceFilter` to exclude the disk, or
 3. Wipe and remove the disk from the node
 
 If using `useAllDevices: true`, Rook will try to recreate the OSD on the same disk unless it is wiped:
