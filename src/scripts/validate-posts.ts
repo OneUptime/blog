@@ -109,7 +109,17 @@ After creating validation.json, create the file posts/${postSlug}/validation-sum
 IMPORTANT: You MUST create both the validation.json and validation-summary.md files. These are the primary deliverables of your review.`;
 }
 
+function getEngine(): 'claude' | 'codex' {
+  const args = process.argv.slice(2);
+  if (args.includes('--codex')) return 'codex';
+  if (args.includes('--claude')) return 'claude';
+  return 'claude'; // default
+}
+
 async function main(): Promise<void> {
+  const engine = getEngine();
+  console.log(`Using engine: ${engine}`);
+
   const blogsRaw = fs.readFileSync(BLOGS_JSON, 'utf-8');
   const blogs: BlogEntry[] = JSON.parse(blogsRaw);
 
@@ -176,7 +186,12 @@ async function main(): Promise<void> {
       const postContent = fs.readFileSync(readmePath, 'utf-8');
       const prompt = getPrompt(blog.post, postContent, blog.title, blog.tags);
 
-      const child = spawn('codex', ['exec', '--full-auto', prompt], {
+      const cmd = engine === 'codex' ? 'codex' : 'claude';
+      const args = engine === 'codex'
+        ? ['exec', '--full-auto', prompt]
+        : ['-p', '--dangerously-skip-permissions', prompt];
+
+      const child = spawn(cmd, args, {
         cwd: process.cwd(),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -195,7 +210,7 @@ async function main(): Promise<void> {
         clearTimeout(timeout);
 
         if (code !== 0) {
-          console.log(`\n[FAIL] ${blog.post}: codex exited with code ${code}`);
+          console.log(`\n[FAIL] ${blog.post}: ${cmd} exited with code ${code}`);
           if (stderrData.trim()) {
             console.log(`  stderr: ${stderrData.trim().split('\n').slice(-5).join('\n  ')}`);
           }
@@ -224,7 +239,7 @@ async function main(): Promise<void> {
           });
         } else {
           if (code === 0) {
-            console.log(`\n[FAIL] ${blog.post}: codex succeeded but validation.json was not created`);
+            console.log(`\n[FAIL] ${blog.post}: ${cmd} succeeded but validation.json was not created`);
           }
           completed++;
           updateProgress();
