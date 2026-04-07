@@ -20,7 +20,6 @@ Create a cold storage class backed by an erasure-coded pool:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash << 'EOF'
 # Create cold EC pool
 ceph osd pool create cold-data 64 64 erasure default
-ceph osd pool create cold-meta 32
 
 # Define the storage class
 radosgw-admin zonegroup placement add \
@@ -39,7 +38,7 @@ EOF
 
 ## Set Tiering Lifecycle Policy
 
-Use S3 lifecycle rules to automatically transition objects to COLD after 30 days of inactivity:
+Use S3 lifecycle rules to automatically transition objects to COLD after 30 days from object creation:
 
 ```json
 {
