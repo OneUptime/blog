@@ -62,8 +62,6 @@ parameters:
   fsName: myfs
   # The pool within the filesystem to use for new volumes
   pool: myfs-replicated
-  # Root path within the filesystem (subvolumes are created here)
-  rootPath: /volumes
   # Provisioner secret
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
