@@ -29,7 +29,7 @@ kubectl -n rook-ceph top pods -l app=rook-ceph-mds
 
 # MDS internal memory breakdown
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a cache status | python3 -m json.tool
+  ceph tell mds.myfs.a cache status | python3 -m json.tool
 ```
 
 Key fields in cache status:
@@ -77,9 +77,9 @@ If you cannot increase the memory limit, reduce cache usage:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_cache_memory_limit 2147483648
 
-# More aggressively trim the cache
+# More aggressively trim the cache by increasing reservation (default 0.05)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_cache_trim_threshold 0.7
+  ceph config set mds mds_cache_reservation 0.10
 
 # Reduce journal size to free memory
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -93,7 +93,7 @@ Too many open file capabilities consume significant MDS memory:
 ```bash
 # Check total capabilities in use
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session ls | \
+  ceph tell mds.myfs.a session ls | \
   python3 -c "import json,sys; s=json.load(sys.stdin); \
   print('Total caps:', sum(x.get('num_caps',0) for x in s))"
 
