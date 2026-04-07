@@ -133,12 +133,7 @@ function main(): void {
     }
   }
 
-  console.log(`Total posts:        ${blogs.length}`);
-  console.log(`Already validated:   ${alreadyValidated}`);
-  console.log(`Remaining to review: ${postsToValidate.length}\n`);
-
   if (postsToValidate.length === 0) {
-    console.log('All posts already have validation.json. Nothing to do.');
     return;
   }
 
@@ -154,12 +149,9 @@ function main(): void {
     const filled = Math.round((current / total) * barWidth);
     const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
 
-    console.log(`\n${bar} ${percent}% (${current}/${total})`);
-    console.log(`Reviewing: ${blog.title}`);
-    console.log(`  Post: ${blog.post}`);
+    process.stdout.write(`\r${bar} ${percent}% (${current}/${total})`);
 
     if (!fs.existsSync(readmePath)) {
-      console.log(`  ⚠ Skipping — README.md not found at ${readmePath}`);
       continue;
     }
 
@@ -172,7 +164,7 @@ function main(): void {
         ['exec', '--full-auto', prompt],
         {
           cwd: process.cwd(),
-          stdio: 'inherit',
+          stdio: 'ignore',
           timeout: 5 * 60 * 1000, // 5 minute timeout per post
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer
         }
@@ -182,40 +174,20 @@ function main(): void {
         throw result.error;
       }
 
-      // Verify validation.json and validation-summary.md were created
+      // Commit after each validated post
       const validationPath = path.join(postDir, VALIDATION_JSON);
-      const summaryPath = path.join(postDir, VALIDATION_SUMMARY_MD);
       if (fs.existsSync(validationPath)) {
-        console.log(`  ✓ ${VALIDATION_JSON} created successfully`);
-      } else {
-        console.log(`  ✗ ${VALIDATION_JSON} was NOT created — Codex may have failed`);
-      }
-      if (fs.existsSync(summaryPath)) {
-        console.log(`  ✓ ${VALIDATION_SUMMARY_MD} created successfully`);
-      } else {
-        console.log(`  ✗ ${VALIDATION_SUMMARY_MD} was NOT created`);
+        spawnSync('git', ['add', postDir], { cwd: process.cwd() });
+        spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
+          cwd: process.cwd(),
+        });
       }
     } catch (error) {
-      console.error(`  ✗ Error reviewing ${blog.post}: ${(error as Error).message}`);
+      // silently continue
     }
   }
 
-  // Summary
-  let validated = 0;
-  let missing = 0;
-  for (const blog of postsToValidate) {
-    const validationPath = path.join(POSTS_DIR, blog.post, VALIDATION_JSON);
-    if (fs.existsSync(validationPath)) {
-      validated++;
-    } else {
-      missing++;
-    }
-  }
-
-  console.log(`\n--- Summary ---`);
-  console.log(`  Validated: ${validated}`);
-  console.log(`  Failed:    ${missing}`);
-  console.log(`  Total:     ${postsToValidate.length}`);
+  process.stdout.write('\n');
 
   // Generate aggregated validation-summary.md at the repo root
   generateAggregatedSummary(blogs);
@@ -310,7 +282,6 @@ function generateAggregatedSummary(blogs: BlogEntry[]): void {
   }
 
   fs.writeFileSync(VALIDATION_SUMMARY_MD, lines.join('\n') + '\n', 'utf-8');
-  console.log(`\n✓ Generated ${VALIDATION_SUMMARY_MD}`);
 }
 
 main();
