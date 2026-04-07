@@ -36,25 +36,26 @@ kubectl exec -it <nvmeof-gateway-pod> -n rook-ceph -- \
 
 ## Step 2 - Scale Up the Gateway Instances
 
-Edit the `CephNVMEofGateway` resource to increase the number of instances:
+Edit the `CephNVMeOFGateway` resource to increase the number of instances:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gateway
   namespace: rook-ceph
 spec:
-  server:
-    image: quay.io/ceph/nvmeof:latest
-    instances: 6
-    resources:
-      limits:
-        cpu: "4"
-        memory: "4Gi"
-      requests:
-        cpu: "2"
-        memory: "2Gi"
+  image: quay.io/ceph/nvmeof:latest
+  instances: 6
+  pool: my-pool
+  group: my-group
+  resources:
+    limits:
+      cpu: "4"
+      memory: "4Gi"
+    requests:
+      cpu: "2"
+      memory: "2Gi"
 ```
 
 Apply the change:
@@ -71,14 +72,14 @@ kubectl get pods -n rook-ceph -l app=rook-ceph-nvmeof -w
 
 ## Step 3 - Add New Listeners for New Gateways
 
-Register the new gateway instances as listeners on existing subsystems:
+Register the new gateway instances as listeners on existing subsystems using the `ceph-nvmeof` gRPC client:
 
 ```bash
 NEW_GATEWAY_IP="192.168.1.54"
 NEW_GATEWAY_NAME="nvmeof-gateway-4"
 
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof listener add \
+ceph-nvmeof --server-address ${NEW_GATEWAY_IP} --server-port 5500 \
+  listener add \
   --subsystem nqn.2026-03.com.ceph:primary-subsystem \
   --gateway-name ${NEW_GATEWAY_NAME} \
   --traddr ${NEW_GATEWAY_IP} \
@@ -102,15 +103,15 @@ nvme connect -t tcp -n "nqn.2026-03.com.ceph:primary-subsystem" \
 Check that I/O is being distributed across gateways:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof subsystem list
+ceph-nvmeof --server-address <gateway-ip> --server-port 5500 \
+  subsystem list
 ```
 
 On each gateway pod, check connection counts:
 
 ```bash
-kubectl exec -it <nvmeof-gateway-pod> -n rook-ceph -- \
-  nvmeof gateway info
+ceph-nvmeof --server-address <gateway-ip> --server-port 5500 \
+  gateway info
 ```
 
 ## Step 6 - Set Resource Limits Per Gateway
@@ -119,17 +120,16 @@ Configure resource limits to prevent any single gateway from starving others:
 
 ```yaml
 spec:
-  server:
-    instances: 6
-    resources:
-      limits:
-        cpu: "4"
-        memory: "4Gi"
-      requests:
-        cpu: "2"
-        memory: "2Gi"
+  instances: 6
+  resources:
+    limits:
+      cpu: "4"
+      memory: "4Gi"
+    requests:
+      cpu: "2"
+      memory: "2Gi"
 ```
 
 ## Summary
 
-Scaling out the NVMe-oF gateway in Rook-Ceph is done by increasing the `instances` field in the `CephNVMEofGateway` resource and registering new gateway pods as listeners on existing subsystems. New clients connect to all available gateways using multipath, while existing clients can add new paths with `nvme connect`. Use resource limits to ensure even workload distribution across gateway pods.
+Scaling out the NVMe-oF gateway in Rook-Ceph is done by increasing the `instances` field in the `CephNVMeOFGateway` resource and registering new gateway pods as listeners on existing subsystems. New clients connect to all available gateways using multipath, while existing clients can add new paths with `nvme connect`. Use resource limits to ensure even workload distribution across gateway pods.
