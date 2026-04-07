@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 
 interface BlogEntry {
   title: string;
@@ -109,7 +109,7 @@ After creating validation.json, create the file posts/${postSlug}/validation-sum
 IMPORTANT: You MUST create both the validation.json and validation-summary.md files. These are the primary deliverables of your review.`;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const blogsRaw = fs.readFileSync(BLOGS_JSON, 'utf-8');
   const blogs: BlogEntry[] = JSON.parse(blogsRaw);
 
@@ -137,55 +137,86 @@ function main(): void {
     return;
   }
 
-  for (let i = 0; i < postsToValidate.length; i++) {
-    const blog = postsToValidate[i]!;
-    const postDir = path.join(POSTS_DIR, blog.post);
-    const readmePath = path.join(postDir, 'README.md');
+  const WORKER_COUNT = 5;
+  let completed = 0;
+  const total = postsToValidate.length;
 
-    const current = i + 1;
-    const total = postsToValidate.length;
-    const percent = Math.round((current / total) * 100);
+  function updateProgress(): void {
+    const percent = Math.round((completed / total) * 100);
     const barWidth = 30;
-    const filled = Math.round((current / total) * barWidth);
+    const filled = Math.round((completed / total) * barWidth);
     const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+    process.stdout.write(`\r${bar} ${percent}% (${completed}/${total})`);
+  }
 
-    process.stdout.write(`\r${bar} ${percent}% (${current}/${total})`);
+  function validatePost(blog: BlogEntry): Promise<void> {
+    return new Promise((resolve) => {
+      const postDir = path.join(POSTS_DIR, blog.post);
+      const readmePath = path.join(postDir, 'README.md');
 
-    if (!fs.existsSync(readmePath)) {
-      continue;
-    }
+      if (!fs.existsSync(readmePath)) {
+        completed++;
+        updateProgress();
+        resolve();
+        return;
+      }
 
-    const postContent = fs.readFileSync(readmePath, 'utf-8');
-    const prompt = getPrompt(blog.post, postContent, blog.title, blog.tags);
+      const postContent = fs.readFileSync(readmePath, 'utf-8');
+      const prompt = getPrompt(blog.post, postContent, blog.title, blog.tags);
 
-    try {
-      const result = spawnSync(
-        'codex',
-        ['exec', '--full-auto', prompt],
-        {
-          cwd: process.cwd(),
-          stdio: 'ignore',
-          timeout: 5 * 60 * 1000, // 5 minute timeout per post
-          maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      const child = spawn('codex', ['exec', '--full-auto', prompt], {
+        cwd: process.cwd(),
+        stdio: 'ignore',
+      });
+
+      const timeout = setTimeout(() => {
+        child.kill();
+      }, 5 * 60 * 1000); // 5 minute timeout per post
+
+      child.on('close', () => {
+        clearTimeout(timeout);
+
+        // Commit after each validated post (serialized via spawnSync)
+        const validationPath = path.join(postDir, VALIDATION_JSON);
+        if (fs.existsSync(validationPath)) {
+          spawnSync('git', ['add', postDir], { cwd: process.cwd() });
+          spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
+            cwd: process.cwd(),
+          });
         }
-      );
 
-      if (result.error) {
-        throw result.error;
-      }
+        completed++;
+        updateProgress();
+        resolve();
+      });
 
-      // Commit after each validated post
-      const validationPath = path.join(postDir, VALIDATION_JSON);
-      if (fs.existsSync(validationPath)) {
-        spawnSync('git', ['add', postDir], { cwd: process.cwd() });
-        spawnSync('git', ['commit', '-m', `validate: ${blog.post}`], {
-          cwd: process.cwd(),
-        });
-      }
-    } catch (error) {
-      // silently continue
+      child.on('error', () => {
+        clearTimeout(timeout);
+        completed++;
+        updateProgress();
+        resolve();
+      });
+    });
+  }
+
+  updateProgress();
+
+  // Process posts with parallel workers
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    while (index < postsToValidate.length) {
+      const blog = postsToValidate[index++]!;
+      await validatePost(blog);
     }
   }
+
+  const workers: Promise<void>[] = [];
+  for (let w = 0; w < Math.min(WORKER_COUNT, postsToValidate.length); w++) {
+    workers.push(worker());
+  }
+
+  await Promise.all(workers);
 
   process.stdout.write('\n');
 
@@ -284,4 +315,4 @@ function generateAggregatedSummary(blogs: BlogEntry[]): void {
   fs.writeFileSync(VALIDATION_SUMMARY_MD, lines.join('\n') + '\n', 'utf-8');
 }
 
-main();
+main().catch(() => process.exit(1));
