@@ -49,32 +49,23 @@ After creating the endpoint in AWS, register it with Atlas via the API:
 ```bash
 curl --user "PUBLIC_KEY:PRIVATE_KEY" --digest \
   --header "Content-Type: application/json" \
+  --header "Accept: application/vnd.atlas.2023-01-01+json" \
   --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/privateEndpoint/aws/endpointService/{endpointServiceId}/endpoint" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/privateEndpoint/AWS/endpointService/{endpointServiceId}/endpoint" \
   --data '{"id": "vpce-0abc123def456789"}'
 ```
 
-## Step 4: Update Atlas IP Access List
+Note that private endpoints bypass the Atlas IP Access List entirely. You do not need to add any IP access list entries for connections through PrivateLink to work.
 
-Even with PrivateLink, Atlas requires an entry in the IP Access List. Add the CIDR of your VPC or use `0.0.0.0/0` restricted to the endpoint:
+## Step 4: Get the Private Endpoint Connection String
 
-```bash
-curl --user "PUBLIC_KEY:PRIVATE_KEY" --digest \
-  --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/accessList" \
-  --header "Content-Type: application/json" \
-  --data '[{"awsSecurityGroup": "sg-0yoursg", "comment": "PrivateLink SG"}]'
-```
-
-## Step 5: Get the Private Endpoint Connection String
-
-Once Atlas status shows `AVAILABLE`, retrieve the private endpoint connection string from the Atlas UI under **Connect** > **Private Endpoint**:
+Once the endpoint status shows `AVAILABLE`, retrieve the private endpoint connection string from the Atlas UI under **Connect** > **Private Endpoint**:
 
 ```text
 mongodb+srv://cluster0-pl-0.abcde.mongodb.net
 ```
 
-## Step 6: Connect Using the Private Endpoint
+## Step 5: Connect Using the Private Endpoint
 
 ```javascript
 const { MongoClient } = require("mongodb");
