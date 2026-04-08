@@ -15,7 +15,7 @@ MongoDB documents can store mixed types - a field might be a string in one docum
 The `$type` query operator filters documents where a field matches a specific BSON type. You can use type numbers or alias strings:
 
 ```javascript
-// Find documents where "score" is stored as a number (double or int)
+// Find documents where "score" is stored as a number (double, int, long, or decimal)
 db.results.find({ score: { $type: "number" } });
 
 // Find documents where "createdAt" is a Date
