@@ -11,9 +11,7 @@ Description: Learn how to insert, find, update, and delete documents in MongoDB 
 ## Setup
 
 ```bash
-go get go.mongodb.org/mongo-driver/v2/mongo
-go get go.mongodb.org/mongo-driver/v2/mongo/options
-go get go.mongodb.org/mongo-driver/v2/bson
+go get go.mongodb.org/mongo-driver/v2
 ```
 
 Document struct:
@@ -51,9 +49,9 @@ if err != nil {
 fmt.Println("Inserted ID:", res.InsertedID)
 
 // Insert many
-docs := []interface{}{
-    Product{Name: "Mouse", Price: 29.99, Category: "electronics", Stock: 200},
-    Product{Name: "Monitor", Price: 299.99, Category: "electronics", Stock: 50},
+docs := []Product{
+    {Name: "Mouse", Price: 29.99, Category: "electronics", Stock: 200},
+    {Name: "Monitor", Price: 299.99, Category: "electronics", Stock: 50},
 }
 manyRes, err := coll.InsertMany(ctx, docs)
 fmt.Println("Inserted IDs:", manyRes.InsertedIDs)
@@ -128,7 +126,7 @@ coll.UpdateMany(ctx,
 )
 
 // Upsert
-opts := options.Update().SetUpsert(true)
+opts := options.UpdateOne().SetUpsert(true)
 coll.UpdateOne(ctx,
     bson.D{{Key: "name", Value: "New Product"}},
     bson.D{

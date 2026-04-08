@@ -78,7 +78,7 @@ try {
   const result = await collection.bulkWrite(operations, { ordered: false });
   console.log(`Inserted: ${result.insertedCount}, Updated: ${result.modifiedCount}`);
 } catch (err) {
-  if (err.name === 'BulkWriteError') {
+  if (err.name === 'MongoBulkWriteError') {
     console.error('Write errors:', err.writeErrors);
     console.error('Partial result:', err.result);
   } else {
@@ -91,7 +91,7 @@ Setting `ordered: false` allows partial success when some operations fail while 
 
 ## Real-World Example: Order Processing
 
-A typical e-commerce order placement might insert the order, update stock, and delete a cart in one call:
+A typical e-commerce order placement might insert the order, update stock, and delete a cart. Since `bulkWrite` operates on a single collection, you need a separate call for each collection:
 
 ```javascript
 await db.collection('orders').bulkWrite([

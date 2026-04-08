@@ -45,26 +45,17 @@ Sample output:
 
 ## Step 2 - Take the Filesystem Offline Safely
 
-Scale the MDS daemons down to zero to take the filesystem offline before running repair tools:
-
-```bash
-kubectl patch cephfilesystem myfs -n rook-ceph \
-  --type merge -p '{"spec":{"metadataServer":{"activeCount":0}}}'
-```
-
-Confirm all MDS daemons have stopped:
-
-```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- ceph fs dump
-```
-
-## Step 3 - Reset the Filesystem to Allow Repair
-
-Mark the filesystem as failed to allow direct metadata manipulation:
+Mark the filesystem as failed to stop all MDS daemons and allow direct metadata manipulation:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   ceph fs fail myfs
+```
+
+Confirm the filesystem is in failed state and all MDS daemons have stopped:
+
+```bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- ceph fs dump
 ```
 
 ## Step 4 - Run cephfs-data-scan

@@ -37,7 +37,7 @@ db.createCollection("appLogs", {
 ```
 
 - `size` - required; maximum size of the collection in bytes. Must be at least 4096 bytes. MongoDB may round up to the nearest multiple of 256.
-- `max` - optional maximum document count. MongoDB enforces the `size` limit first; the `max` limit is checked only if the size limit has not been reached.
+- `max` - optional maximum document count. MongoDB enforces both the `size` and `max` limits independently; whichever limit is reached first triggers removal of the oldest documents.
 
 ## Inserting Documents
 

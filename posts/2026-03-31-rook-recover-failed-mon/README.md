@@ -112,10 +112,17 @@ Scale the Rook operator to 0 to prevent interference:
 kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
 ```
 
-Start a temporary MON pod from the healthy MON's data with a modified monmap. Use the `ceph-mon --extract-monmap` and `monmaptool` approach:
+The `ceph-mon --extract-monmap` and `--inject-monmap` commands require the MON daemon to not be running. Patch the MON-a deployment to prevent the daemon from starting so you can manipulate the monmap on disk:
 
 ```bash
-kubectl -n rook-ceph exec -it rook-ceph-mon-a-<hash> -- bash
+kubectl -n rook-ceph patch deployment rook-ceph-mon-a --type='json' \
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command", "value": ["sleep", "infinity"]}]'
+```
+
+Wait for the patched pod to start, then exec into it:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-mon-a -- bash
 ```
 
 Inside the MON container, extract and modify the monmap:
@@ -129,13 +136,32 @@ monmaptool --print /tmp/monmap
 ceph-mon --inject-monmap /tmp/monmap --mon-data /var/lib/ceph/mon/ceph-a
 ```
 
-Start just this one MON:
+Exit the container, then remove the sleep override to let the MON daemon start with the modified monmap:
 
 ```bash
-kubectl -n rook-ceph delete pod rook-ceph-mon-b-<hash> rook-ceph-mon-c-<hash>
+kubectl -n rook-ceph rollout undo deployment rook-ceph-mon-a
 ```
 
-After the single MON starts and forms quorum with itself, verify:
+Make sure the failed MON pods are not running:
+
+```bash
+kubectl -n rook-ceph scale deployment rook-ceph-mon-b --replicas=0
+kubectl -n rook-ceph scale deployment rook-ceph-mon-c --replicas=0
+```
+
+Update the `rook-ceph-mon-endpoints` ConfigMap to only reference the surviving MON:
+
+```bash
+kubectl -n rook-ceph get configmap rook-ceph-mon-endpoints -o yaml
+```
+
+Edit it to keep only MON-a's entry in the `data` field, removing references to MON-b and MON-c:
+
+```bash
+kubectl -n rook-ceph edit configmap rook-ceph-mon-endpoints
+```
+
+After MON-a starts and forms quorum with itself, verify:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status

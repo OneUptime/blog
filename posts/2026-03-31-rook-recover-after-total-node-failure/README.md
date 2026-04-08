@@ -23,7 +23,7 @@ kubectl get nodes -o wide
 Check for any NotReady nodes:
 
 ```bash
-kubectl get nodes | grep -v Ready
+kubectl get nodes | grep NotReady
 ```
 
 Once nodes are Ready, Rook will restart OSD and monitor pods:

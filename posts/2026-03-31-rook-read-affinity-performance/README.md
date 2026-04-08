@@ -105,13 +105,20 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client rbd_localize_snap_reads true
 ```
 
-Enable balanced reads for regular (non-snapshot) reads:
+Enable balanced reads for clone parent image reads:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client rbd_balance_parent_reads true
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client rbd_localize_parent_reads true
+```
+
+For general read balancing across all RBD reads (available since Ceph Pacific/16.2), set the read-from-replica policy:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client rbd_read_from_replica_policy balance
 ```
 
 ## Configuring Primary Affinity

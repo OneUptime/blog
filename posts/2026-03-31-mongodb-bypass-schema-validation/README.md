@@ -77,7 +77,7 @@ db.raw_events.aggregate(
 
 ## Required Privilege
 
-`bypassDocumentValidation` requires the user to have the `bypassDocumentValidation` privilege, which is included in the built-in `dbAdmin` and `root` roles:
+`bypassDocumentValidation` requires the user to have the `bypassDocumentValidation` privilege, which is included in the built-in `dbOwner`, `backup`, `restore`, and `root` roles:
 
 ```javascript
 // Grant the privilege to a custom role

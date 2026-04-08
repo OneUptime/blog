@@ -27,7 +27,7 @@ rados bench -p my-pool 30 seq
 rados bench -p my-pool 30 rand
 
 # Clean up test objects
-rados bench -p my-pool 30 write --cleanup
+rados -p my-pool cleanup
 ```
 
 ## Key Command-Line Options
@@ -37,9 +37,9 @@ rados bench -p my-pool 30 write --cleanup
 | `-b <size>` | Object size in bytes | 4 MB |
 | `-t <threads>` | Concurrent write threads | 16 |
 | `--no-cleanup` | Keep objects after write test | false |
-| `-O <prefix>` | Object name prefix | benchmark_data |
+| `-O <size>` | Object size (overrides `-b` for object size) | Same as `-b` |
 | `--show-time` | Show timestamp per second | false |
-| `--run-name <name>` | Unique run ID | benchmark |
+| `--run-name <name>` | Unique run ID | benchmark_last_metadata |
 
 ## Comprehensive Benchmark Script
 

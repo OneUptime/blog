@@ -35,51 +35,50 @@ spec:
     replicated:
       size: 3
   healthCheck:
-    bucket:
+    startupProbe:
       disabled: false
-      interval: 60s
+    readinessProbe:
+      disabled: false
   gateway:
     port: 80
     instances: 2
 ```
 
-The `healthCheck.bucket` setting controls how frequently Rook checks the bucket health of the object store endpoint.
+The `healthCheck` section controls the startup and readiness probes for the RGW pods. Rook intentionally does not implement a liveness probe for RGW because RGW has internal recovery mechanisms, and restarting via a liveness probe could cause more harm than good.
 
-## Customizing Readiness and Liveness Probes
+## Customizing Startup and Readiness Probes
 
-Override the probe settings in the gateway spec:
+Override the probe settings in the `healthCheck` section of the CephObjectStore spec:
 
 ```yaml
-gateway:
-  port: 80
-  instances: 2
-  livenessProbe:
+healthCheck:
+  startupProbe:
     disabled: false
     probe:
-      httpGet:
-        path: /
-        port: 80
-      initialDelaySeconds: 30
+      initialDelaySeconds: 5
       periodSeconds: 10
-      timeoutSeconds: 5
       failureThreshold: 3
-      successThreshold: 1
   readinessProbe:
     disabled: false
     probe:
-      httpGet:
-        path: /
-        port: 80
       initialDelaySeconds: 10
-      periodSeconds: 5
-      timeoutSeconds: 3
+      periodSeconds: 10
+      timeoutSeconds: 5
       failureThreshold: 3
-      successThreshold: 1
+      successThreshold: 3
 ```
+
+Rook automatically configures the probe handler as an `exec` probe that runs an internal script using `curl` to check the RGW endpoint. You only need to customize the timing parameters shown above. Note that Rook does not support a `livenessProbe` for RGW — this is intentional because RGW has internal recovery mechanisms and restarting it via liveness probes could cause cascading failures.
 
 ## Understanding the RGW Health Endpoint
 
-RGW responds to unauthenticated HTTP `GET /` requests with an XML response or a 403/405. Both indicate the daemon is alive. The probe checks for a non-500 HTTP status code:
+Rook's probe script sends an HTTP request to the RGW endpoint and evaluates the response code. The probe logic treats the following as healthy:
+
+- **200–399**: Standard success responses.
+- **503**: RGW rate-limiting, not a true error.
+- **500**: For the readiness probe only, treated as healthy (with a warning) to avoid cascading failures. For the startup probe, 500 is a failure.
+
+All other response codes cause the probe to fail. You can test the endpoint manually:
 
 ```bash
 # Test the RGW health endpoint manually
@@ -88,15 +87,15 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   http://rook-ceph-rgw-my-store.rook-ceph.svc:80/
 ```
 
-A response of `200`, `403`, or `405` means RGW is alive. `000` or `500` indicates a problem.
+A response in the `200–399` range confirms RGW is alive. `000` indicates a connection failure.
 
 ## Disabling Probes for Debugging
 
 If you need to keep a misbehaving pod running for diagnostics:
 
 ```yaml
-gateway:
-  livenessProbe:
+healthCheck:
+  startupProbe:
     disabled: true
   readinessProbe:
     disabled: true
@@ -126,8 +125,8 @@ Rook also exposes object store health through the CRD status:
 kubectl -n rook-ceph get cephobjectstore my-store -o jsonpath='{.status}'
 ```
 
-The `.status.conditions` array shows if the bucket health check is passing.
+The `.status.conditions` array shows the reconciliation status of the object store (e.g., Progressing, Ready, Deleting).
 
 ## Summary
 
-Health probes for RGW in Rook are configured through the `gateway.livenessProbe`, `gateway.readinessProbe`, and `healthCheck.bucket` fields in the CephObjectStore CRD. The liveness probe restarts hung RGW pods, while the readiness probe removes not-ready pods from service rotation. The RGW `GET /` endpoint returns a non-500 response when the daemon is alive, making it a reliable probe target. Tune `initialDelaySeconds` to allow RGW time to initialize before probes begin.
+Health probes for RGW in Rook are configured through the `healthCheck.startupProbe` and `healthCheck.readinessProbe` fields in the CephObjectStore CRD. Rook intentionally does not implement a liveness probe for RGW because RGW has internal recovery mechanisms. The startup probe ensures the pod initializes correctly, while the readiness probe removes not-ready pods from service rotation. Rook automatically configures an `exec`-based probe handler that uses `curl` to check the RGW endpoint. Tune `initialDelaySeconds` and `periodSeconds` to match your environment's startup behavior.

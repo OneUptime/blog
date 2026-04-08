@@ -36,7 +36,7 @@ sequenceDiagram
 
 - Kubernetes v1.16+ (stable volume expansion)
 - Rook CSI driver with `allowVolumeExpansion: true` in the StorageClass
-- The `VolumeExpansion` feature gate enabled (enabled by default in Kubernetes 1.11+)
+- The `ExpandPersistentVolumes` feature gate enabled (beta and enabled by default since Kubernetes 1.11, GA since 1.24)
 
 ## Step 1: Create a StorageClass with Volume Expansion Enabled
 

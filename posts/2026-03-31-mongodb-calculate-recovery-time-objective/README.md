@@ -91,14 +91,13 @@ mongorestore \
   --noIndexRestore \
   --drop
 
-# Rebuild indexes in parallel after data is loaded
+# After data is loaded, manually create your required indexes
 mongosh --eval "
-  db.adminCommand({listDatabases:1}).databases.forEach(d => {
-    db.getSiblingDB(d.name).getCollectionNames().forEach(c => {
-      // Trigger index builds (they're stored in the backup, just need creation)
-      db.getSiblingDB(d.name).getCollection(c).reIndex();
-    });
-  });
+  // Example: recreate indexes for your collections
+  db.getSiblingDB('mydb').orders.createIndex({customerId: 1, createdAt: -1});
+  db.getSiblingDB('mydb').orders.createIndex({status: 1});
+  db.getSiblingDB('mydb').users.createIndex({email: 1}, {unique: true});
+  // Add all indexes your application requires
 "
 ```
 

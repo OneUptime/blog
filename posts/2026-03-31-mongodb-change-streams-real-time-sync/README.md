@@ -73,7 +73,7 @@ with collection.watch(**options) as stream:
         doc_id = str(event["documentKey"]["_id"])
 
         if op == "delete":
-            es.delete(index="articles", id=doc_id, ignore=[404])
+            es.options(ignore_status=404).delete(index="articles", id=doc_id)
 
         elif op in ("insert", "update", "replace"):
             doc = event["fullDocument"]
@@ -136,8 +136,8 @@ await es.index({
 
 ```javascript
 changeStream.on("change", (event) => {
-  const clusterTime = event.clusterTime?.getTime() ?? 0;
-  const lagMs = Date.now() - clusterTime * 1000;
+  const clusterTimeMs = (event.clusterTime?.t ?? 0) * 1000;
+  const lagMs = Date.now() - clusterTimeMs;
   metrics.histogram("sync_lag_ms", lagMs);
 });
 ```

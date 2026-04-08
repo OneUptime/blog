@@ -26,7 +26,7 @@ const last  = db.oplog.rs.find().sort({ $natural: -1 }).limit(1).next();
 
 const oplogStats = db.oplog.rs.stats();
 
-const durationSecs = last.ts.getTime() - first.ts.getTime();
+const durationSecs = last.ts.t - first.ts.t;
 const oplogBytes   = oplogStats.size;
 const bytesPerHour = (oplogBytes / durationSecs) * 3600;
 

@@ -10,7 +10,7 @@ Description: Learn how to recover a CephFS filesystem in Rook-Ceph after losing 
 
 ## Understanding Monitor Store Loss
 
-Ceph monitors store the cluster map, OSD map, and CRUSH map in a LevelDB/RocksDB store on disk. If all monitors lose their stores simultaneously - due to disk failure, accidental deletion, or corruption - the cluster becomes inoperative and all filesystems, including CephFS, become inaccessible.
+Ceph monitors store the cluster map, OSD map, and CRUSH map in a RocksDB store on disk. If all monitors lose their stores simultaneously - due to disk failure, accidental deletion, or corruption - the cluster becomes inoperative and all filesystems, including CephFS, become inaccessible.
 
 Recovery from monitor store loss is an advanced procedure that involves rebuilding the monitor store from OSD data.
 
@@ -48,17 +48,21 @@ Save all OSD keyrings to a secure location.
 
 ## Step 4 - Rebuild the Monitor Store
 
-Use the `ceph-monstore-tool` to rebuild the store from OSD information. Run this in the Rook toolbox:
+Use the `ceph-monstore-tool` to rebuild the store from OSD data. This tool scans OSD data stores to reconstruct the monitor database. You need to run this from a node or pod that has access to the OSD data directories:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- bash
-
-ceph-monstore-tool /var/lib/ceph/mon/ceph-a rebuild -- \
+ceph-monstore-tool /tmp/mon-store rebuild -- \
   --keyring /etc/ceph/ceph.client.admin.keyring \
-  --osd-keyring /etc/ceph/osd.keyring
+  --monmap /tmp/monmap
 ```
 
-This recreates a minimal monitor store containing OSD maps and auth keys.
+Before running `rebuild`, generate a monmap with the expected monitor addresses:
+
+```bash
+monmaptool --create --add a <mon-a-ip>:6789 --fsid <cluster-fsid> /tmp/monmap
+```
+
+The rebuild command scans all available OSD stores to reconstruct the OSD map, crush map, and authentication data. Ensure all OSD data directories are accessible from where you run this command.
 
 ## Step 5 - Inject the Rebuilt Store
 
@@ -82,6 +86,15 @@ spec:
   - name: mon-data
     persistentVolumeClaim:
       claimName: rook-ceph-mon-a
+```
+
+Apply the pod and copy the rebuilt store into it:
+
+```bash
+kubectl apply -f mon-recovery.yaml
+kubectl wait --for=condition=Ready pod/mon-recovery -n rook-ceph
+kubectl cp /tmp/mon-store mon-recovery:/var/lib/ceph/mon/ceph-a -n rook-ceph
+kubectl delete pod mon-recovery -n rook-ceph
 ```
 
 ## Step 6 - Restart Monitors and Verify

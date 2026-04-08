@@ -16,24 +16,28 @@ SSE-S3 (Server-Side Encryption with S3-Managed Keys) is an AWS S3-compatible enc
 
 - Ceph 14.2+ (Nautilus)
 - A running Ceph RGW instance
-- Ceph configured with a KMS backend (or using built-in key management)
+- A HashiCorp Vault instance for key management
 
 ## Configuring SSE-S3 on Ceph RGW
 
 ### Step 1: Set the RGW Encryption Backend
 
-For built-in key management (testing only):
+SSE-S3 in Ceph RGW requires HashiCorp Vault as the key management backend:
 
 ```bash
-ceph config set client.rgw rgw_crypt_sse_s3_backend builtin
-ceph config set client.rgw rgw_crypt_sse_s3_encryption_key "base64:$(openssl rand -base64 32)"
+ceph config set client.rgw rgw_crypt_sse_s3_backend vault
+ceph config set client.rgw rgw_crypt_sse_s3_vault_addr https://vault.example.com:8200
+ceph config set client.rgw rgw_crypt_sse_s3_vault_secret_engine transit
+ceph config set client.rgw rgw_crypt_sse_s3_vault_auth token
+ceph config set client.rgw rgw_crypt_sse_s3_vault_token_file /etc/ceph/vault.token
 ```
 
-### Step 2: Enable SSE-S3 Support
+### Step 2: Disable SSL Requirement (Testing Only)
+
+For testing environments without TLS, you can disable the SSL requirement:
 
 ```bash
 ceph config set client.rgw rgw_crypt_require_ssl false
-ceph config set client.rgw rgw_crypt_sse_s3_master_key_id "sse-s3-master-key"
 ```
 
 ### Step 3: Restart RGW

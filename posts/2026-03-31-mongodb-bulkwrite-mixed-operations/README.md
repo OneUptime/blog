@@ -10,7 +10,7 @@ Description: Learn how to use MongoDB bulkWrite() with mixed operation types to 
 
 ## Overview of bulkWrite() with Mixed Operations
 
-MongoDB's `bulkWrite()` supports six operation types in a single call: `insertOne`, `insertMany` (as multiple `insertOne`), `updateOne`, `updateMany`, `replaceOne`, and `deleteOne`/`deleteMany`. Mixing these operations in one batch minimizes network round trips and is particularly useful in ETL pipelines, data migrations, and batch processing jobs.
+MongoDB's `bulkWrite()` supports six operation types in a single call: `insertOne`, `updateOne`, `updateMany`, `replaceOne`, `deleteOne`, and `deleteMany`. Mixing these operations in one batch minimizes network round trips and is particularly useful in ETL pipelines, data migrations, and batch processing jobs.
 
 ## Full Operation Type Reference
 

@@ -52,7 +52,7 @@ db.settings.updateOne(
 )
 ```
 
-Times are in UTC in 24-hour format. The balancer only migrates chunks during this window.
+Times are in 24-hour `HH:MM` format. On MongoDB Atlas, times are interpreted as UTC. On self-managed deployments, times are relative to the time zone of the config server replica set primary. The balancer only migrates chunks during this window.
 
 ## Remove the Balancer Window
 
@@ -77,7 +77,7 @@ db.settings.updateOne(
 )
 ```
 
-Changes apply to new chunks only. Existing chunks retain their size until split naturally.
+Changes are not applied retroactively to all existing chunks at once. They take effect gradually as chunks undergo split, merge, or migration operations. If you decrease the chunk size, existing oversized chunks split over time. If you increase it, existing chunks grow through inserts until they reach the new size.
 
 ## Disable Balancing for a Specific Collection
 
@@ -101,11 +101,11 @@ db.collections.updateOne(
 ## Monitor Balancer Activity
 
 ```javascript
-// View current migrations
-use config
-db.locks.findOne({ _id: "balancer" })
+// Check if the balancer is currently running
+sh.isBalancerRunning()
 
-// View migration history
+// View migration history (switch to config database first)
+use config
 db.changelog.find({ what: /moveChunk/ }).sort({ time: -1 }).limit(10)
 
 // Count migrations per hour
@@ -133,7 +133,9 @@ This prevents incomplete migrations from leaving chunks in an inconsistent state
 
 ## Automatic Balancing Thresholds
 
-The balancer only migrates chunks when the difference between the most-loaded and least-loaded shard exceeds a threshold:
+The balancer only migrates chunks when the data distribution across shards is sufficiently uneven. In MongoDB 6.0.3 and later, the balancer uses a data-size-based threshold: a collection is considered balanced when the data size difference between shards is less than three times the configured range size (e.g., 384 MB for the default 128 MB range size).
+
+In earlier MongoDB versions (before 6.0.3), the balancer used chunk-count-based thresholds:
 
 | Total Chunks | Migration Threshold |
 |---|---|
@@ -141,7 +143,7 @@ The balancer only migrates chunks when the difference between the most-loaded an
 | 20 - 79 | 4 |
 | >= 80 | 8 |
 
-You cannot change these thresholds, but you can reduce chunk size to create more chunks, which lowers the imbalance threshold.
+You cannot change these thresholds directly.
 
 ## Summary
 

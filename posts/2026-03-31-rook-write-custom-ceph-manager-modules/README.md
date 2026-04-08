@@ -44,6 +44,7 @@ class Module(MgrModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._running = False
+        self.event = threading.Event()
 
     @CLIReadCommand("mymodule status")
     def cmd_status(self) -> tuple:

@@ -15,7 +15,7 @@ The Ceph SMB module is a Ceph Manager module that automates deploying and managi
 ## Prerequisites
 
 - A healthy Ceph cluster with CephFS deployed
-- Ceph Reef (v18) or later
+- Ceph Tentacle (v20) or later
 - The `smb` manager module available
 
 Enable the SMB module:
@@ -45,18 +45,16 @@ ceph fs subvolume getpath cephfs share1 --group_name smb-group
 Create an SMB cluster configuration using the Ceph SMB module API:
 
 ```bash
-ceph smb cluster create smb1 \
-  --domain-member=no \
+ceph smb cluster create smb1 user \
   --placement="host:samba-node1"
 ```
 
 For an Active Directory-joined SMB cluster:
 
 ```bash
-ceph smb cluster create smb-ad \
+ceph smb cluster create smb-ad active-directory \
   --domain-realm=EXAMPLE.COM \
-  --domain-join-user=administrator \
-  --domain-join-password=ADPassword123 \
+  --domain-join-user-pass=administrator%ADPassword123 \
   --placement="host:samba-node1,samba-node2"
 ```
 

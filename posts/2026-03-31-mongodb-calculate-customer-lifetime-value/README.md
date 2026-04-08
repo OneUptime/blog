@@ -78,7 +78,7 @@ db.orders.aggregate([
     $bucket: {
       groupBy: "$totalRevenue",
       boundaries: [0, 100, 500, 1000, 5000, 100000],
-      default: "5000+",
+      default: "100000+",
       output: {
         count: { $sum: 1 },
         avgRevenue: { $avg: "$totalRevenue" }

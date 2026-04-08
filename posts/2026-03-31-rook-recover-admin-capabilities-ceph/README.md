@@ -67,13 +67,10 @@ kubectl -n rook-ceph get secret rook-ceph-admin-keyring \
 
 ## Scenario 3: Admin Auth Entry Is Deleted
 
-If `client.admin` was deleted from the auth database and you cannot authenticate, use a monitor's admin socket for bootstrap:
+If `client.admin` was deleted from the auth database and you cannot authenticate, use a monitor's admin socket to recreate it (the admin socket bypasses CephX authentication):
 
 ```bash
-# On the monitor node
-ceph-mon --inject-monmap /tmp/monmap --mkfs -i $(hostname)
-
-# Or use the admin socket directly
+# Use the admin socket directly on a monitor node
 ceph --admin-daemon /var/run/ceph/ceph-mon.node1.asok \
   auth get-or-create client.admin \
   mon 'allow *' \

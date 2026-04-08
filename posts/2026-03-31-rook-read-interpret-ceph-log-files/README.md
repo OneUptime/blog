@@ -16,7 +16,7 @@ By default, Ceph writes logs to `/var/log/ceph/`:
 
 ```bash
 ls /var/log/ceph/
-# ceph.log          - cluster audit log
+# ceph.log          - cluster log
 # ceph-mon.hostname.log  - per-monitor log
 # ceph-osd.N.log    - per-OSD log
 # ceph-mgr.hostname.log  - manager log
@@ -67,7 +67,7 @@ For deeper investigation, increase log level on a specific daemon:
 ```bash
 # Increase OSD log verbosity (temporary, resets on restart)
 ceph daemon osd.2 config set debug_osd 10
-ceph daemon osd.2 config set debug_filestore 10
+ceph daemon osd.2 config set debug_bluestore 10
 
 # Reset after debugging
 ceph daemon osd.2 config set debug_osd 1

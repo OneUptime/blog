@@ -34,7 +34,7 @@ For a specific daemon:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mds metadata cephfs.rook-ceph-mds-cephfs-a-xxxxxxxxx
+  ceph mds metadata cephfs.a
 ```
 
 This returns JSON with the daemon's host, Ceph version, kernel version, and architecture.
@@ -56,17 +56,17 @@ Check how many inodes are currently cached in the MDS:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 perf dump | jq '.mds | {inodes, inode_max, caps}'
+  ceph tell mds.cephfs:0 perf dump | jq '.mds | {inodes, caps}'
 ```
 
-A high `inodes` count relative to `inode_max` indicates memory pressure on the MDS.
+A high `inodes` count indicates memory pressure on the MDS. The cache limit is controlled by the `mds_cache_memory_limit` configuration option.
 
 ## Dump the MDS Map
 
 Retrieve the full MDS map showing all filesystems and their rank assignments:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mds dump
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fs dump
 ```
 
 This includes epoch number, flags, and daemon assignments per rank.
@@ -95,7 +95,7 @@ For integration with monitoring systems, dump all MDS performance counters:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 perf dump --format json-pretty
+  ceph tell mds.cephfs:0 perf dump | jq .
 ```
 
 You can pipe this into Prometheus pushgateway or parse it with custom scripts:
@@ -107,4 +107,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Retrieving MDS metadata in CephFS gives you deep visibility into the health and performance of your metadata service. Key commands include `ceph mds metadata`, `ceph mds dump`, `session ls`, `cache status`, and `perf dump`. These tools help you monitor inode cache pressure, client connectivity, and overall MDS health in your Rook-Ceph cluster, making them indispensable for proactive operations.
+Retrieving MDS metadata in CephFS gives you deep visibility into the health and performance of your metadata service. Key commands include `ceph mds metadata`, `ceph fs dump`, `session ls`, `cache status`, and `perf dump`. These tools help you monitor inode cache pressure, client connectivity, and overall MDS health in your Rook-Ceph cluster, making them indispensable for proactive operations.
