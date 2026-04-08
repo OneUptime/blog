@@ -106,4 +106,4 @@ Alternatively, `db.orders.totalSize()` computes this sum directly.
 
 ## Summary
 
-`db.collection.storageSize()` gives you the raw disk footprint of a MongoDB collection's documents, separate from index storage. Use it alongside `size()` and `totalIndexSize()` to build a complete picture of collection storage. Automating these checks helps you get ahead of capacity issues before they affect application performance.
+`db.collection.storageSize()` gives you the raw disk footprint of a MongoDB collection's documents, separate from index storage. Use it alongside `dataSize()` and `totalIndexSize()` to build a complete picture of collection storage. Automating these checks helps you get ahead of capacity issues before they affect application performance.
