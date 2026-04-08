@@ -82,8 +82,6 @@ if let Some(p) = product {
 ## Update - Modifying Documents
 
 ```rust
-use mongodb::options::UpdateOptions;
-
 // Update one
 col.update_one(
     doc! { "name": "Laptop" },
@@ -100,7 +98,7 @@ col.update_many(
 col.update_one(
     doc! { "name": "Keyboard" },
     doc! { "$setOnInsert": { "price": 49.99, "category": "electronics", "in_stock": true } },
-).options(UpdateOptions::builder().upsert(true).build()).await?;
+).upsert(true).await?;
 ```
 
 ## Delete - Removing Documents
