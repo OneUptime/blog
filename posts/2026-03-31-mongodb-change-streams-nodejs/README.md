@@ -280,7 +280,8 @@ async function watchForCacheInvalidation(redisClient) {
 
 ```javascript
 async function auditWatcher() {
-  const stream = client.db("crm").watch([
+  const db = client.db("crm");
+  const stream = db.watch([
     { $match: { operationType: { $in: ["insert", "update", "delete"] } } }
   ]);
 
