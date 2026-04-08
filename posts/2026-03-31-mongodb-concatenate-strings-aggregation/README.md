@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Aggregation, String, Pipeline, Projection
 
-Description: Learn how to concatenate strings in MongoDB aggregation using $concat, $concatArrays for joining arrays, and combining literals with field references.
+Description: Learn how to concatenate strings in MongoDB aggregation using $concat, combining field references with string literals, and handling nulls.
 
 ---
 
@@ -74,7 +74,7 @@ db.users.aggregate([
 
 ## Building URL Slugs
 
-Combine `$toLower`, `$trim`, and `$replaceAll` before `$concat` to produce URL-safe slugs.
+Combine `$toLower` and `$replaceAll` before `$concat` to produce URL-safe slugs.
 
 ```javascript
 db.articles.aggregate([
