@@ -103,12 +103,15 @@ Always close the client when your application shuts down:
 at_exit { client.close }
 ```
 
-Or use a block form for short-lived scripts:
+For short-lived scripts, use `ensure` to guarantee cleanup:
 
 ```ruby
-Mongo::Client.new(['localhost:27017'], database: 'myapp') do |client|
+client = Mongo::Client.new(['localhost:27017'], database: 'myapp')
+begin
   # perform operations
   puts client[:users].count_documents({})
+ensure
+  client.close
 end
 ```
 
