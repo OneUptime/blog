@@ -95,11 +95,11 @@ Generate and create indexes without blocking the application:
 rails db:mongoid:create_indexes
 ```
 
-For large collections, create indexes in the background:
+Add index declarations to your models:
 
 ```ruby
 class Article
-  index({ title: 1 }, { unique: true, background: true })
+  index({ title: 1 }, { unique: true })
 end
 ```
 
