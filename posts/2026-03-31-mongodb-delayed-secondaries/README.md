@@ -106,7 +106,7 @@ rs.printReplicationInfo();
 
 Increase the oplog size if needed:
 
-```bash
+```yaml
 # Set oplog size to 10 GB in mongod.conf
 replication:
   replSetName: "rs0"
@@ -123,28 +123,31 @@ db.adminCommand({ replSetResizeOplog: 1, size: 10240 });
 
 If a catastrophic operation occurs (e.g., accidental `db.collection.drop()`), you can recover from the delayed secondary:
 
-```javascript
-// Step 1: Immediately freeze the delayed secondary to prevent it from
-// applying the destructive operation
+```bash
+# Step 1: Connect to the delayed secondary
 mongosh --host delayed.example.com:27019 --directConnection true
+```
 
-rs.freeze(86400);  // Prevent this member from applying ops for 24 hours
+```javascript
+// Step 2: Put the delayed secondary into maintenance mode to stop oplog application
+// This sets the member to RECOVERING state, halting replication
+db.adminCommand({ replSetMaintenance: true });
 
-// Step 2: Take a backup from the frozen delayed secondary
+// Step 3: Take a backup from the delayed secondary
 // (mongodump or file system snapshot)
 // The secondary still holds data from before the accident
 
-// Step 3: Restore the backup to a new standalone instance
+// Step 4: Restore the backup to a new standalone instance
 // or apply oplog replay up to the point before the error
 
-// Step 4: Unfreeze and let it catch up after data is recovered elsewhere
-rs.freeze(0);  // Unfreeze
+// Step 5: Take the member out of maintenance mode and let it catch up
+db.adminCommand({ replSetMaintenance: false });
 ```
 
 ```mermaid
 flowchart TD
     A[Accidental drop detected] --> B[Connect to delayed secondary]
-    B --> C[Call rs.freeze to stop oplog application]
+    B --> C[Enable maintenance mode to stop oplog application]
     C --> D{Is delayed secondary still before the drop?}
     D -->|Yes| E[Take backup immediately]
     D -->|No - delay already passed| F[Check off-cluster backups]
@@ -156,10 +159,12 @@ flowchart TD
 
 If you need to query historical data from the delayed secondary:
 
-```javascript
-// Connect directly with directConnection to bypass read preference routing
+```bash
+# Connect directly with directConnection to bypass read preference routing
 mongosh --host delayed.example.com:27019 --directConnection true
+```
 
+```javascript
 // Allow reads on secondary
 db.getMongo().setReadPref("nearest");
 
@@ -210,4 +215,4 @@ status.members.forEach(m => {
 
 ## Summary
 
-A delayed secondary is a hidden, non-primary replica set member that lags behind the primary by a configured number of seconds (`secondaryDelaySecs`). It provides a rolling recovery window against accidental data loss from human errors. Configure it with `priority: 0` and `hidden: true`, size the oplog to be longer than the delay, and use `rs.freeze()` immediately after an incident to stop the delayed member from applying the destructive operation. Monitor replication lag to ensure the delayed secondary stays within its configured window.
+A delayed secondary is a hidden, non-primary replica set member that lags behind the primary by a configured number of seconds (`secondaryDelaySecs`). It provides a rolling recovery window against accidental data loss from human errors. Configure it with `priority: 0` and `hidden: true`, size the oplog to be longer than the delay, and use maintenance mode (`replSetMaintenance`) immediately after an incident to stop the delayed member from applying the destructive operation. Monitor replication lag to ensure the delayed secondary stays within its configured window.
