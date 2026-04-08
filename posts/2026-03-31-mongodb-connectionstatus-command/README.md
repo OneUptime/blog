@@ -75,7 +75,7 @@ The response adds an `authenticatedUserPrivileges` array with resource-action pa
     "authenticatedUserPrivileges": [
       {
         "resource": { "db": "myapp", "collection": "" },
-        "actions": ["find", "insert", "update", "remove", "createIndex", "dropIndex"]
+        "actions": ["changeStream", "collStats", "convertToCapped", "createCollection", "createIndex", "dbHash", "dbStats", "dropCollection", "dropIndex", "find", "insert", "killCursors", "listCollections", "listIndexes", "remove", "renameCollectionSameDB", "update"]
       }
     ]
   },
