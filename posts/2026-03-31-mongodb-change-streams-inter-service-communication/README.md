@@ -130,7 +130,7 @@ def publish_changes(db, collection_name, producer):
         }
         producer.produce(
             topic=f"{collection_name}.events",
-            value=json.dumps(event).encode("utf-8")
+            value=json.dumps(event, default=str).encode("utf-8")
         )
         producer.flush()
 ```
