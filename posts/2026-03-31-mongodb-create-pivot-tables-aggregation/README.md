@@ -49,7 +49,7 @@ db.sales.aggregate([
 
 Each `$cond` checks the product name and contributes revenue only when it matches.
 
-## Dynamic Pivot Using $group + $push then $reduce
+## Dynamic Pivot Using $group + $push then $arrayToObject
 
 When product names are not known in advance, build a dynamic pivot:
 
@@ -86,7 +86,7 @@ db.sales.aggregate([
 
 ## Pivot with Row and Column Totals
 
-Add totals by incorporating a separate `$group` and `$addFields`:
+Add totals by incorporating a separate `$group` and `$project`:
 
 ```javascript
 db.sales.aggregate([
