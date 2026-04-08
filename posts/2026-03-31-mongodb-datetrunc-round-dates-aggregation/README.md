@@ -16,7 +16,7 @@ Description: Learn how to use $dateTrunc in MongoDB aggregation to truncate date
 {
   $dateTrunc: {
     date: <expression>,
-    unit: <"millisecond"|"second"|"minute"|"hour"|"day"|"week"|"month"|"quarter"|"year">,
+    unit: <"second"|"minute"|"hour"|"day"|"week"|"month"|"quarter"|"year">,
     binSize: <optional integer>,
     timezone: <optional timezone string>,
     startOfWeek: <optional "monday"|"tuesday"...>
