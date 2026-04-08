@@ -83,7 +83,7 @@ with client.watch(pipeline=pipeline, full_document="updateLookup") as stream:
 
 ## Event Shape at Database and Deployment Levels
 
-The event document is the same as collection-level change events but includes the `ns` field with both `db` and `coll`:
+The event document has the same structure as collection-level change events, including the `ns` field with both `db` and `coll`:
 
 ```json
 {
@@ -117,7 +117,7 @@ const deploymentStream = client.watch(pipeline);
 
 - Change Streams require a replica set or sharded cluster. They do not work on standalone instances.
 - `fullDocument: "updateLookup"` performs a lookup after an update, which may return a newer document than the one that triggered the event if updates happen rapidly.
-- Database and deployment-level streams generate higher oplog traffic. Apply `$match` stages to reduce the number of events your consumer processes.
+- Database and deployment-level streams produce a higher volume of events for the consumer. Apply `$match` stages early in the pipeline to filter out unwanted events.
 
 ## Persisting Resume Tokens
 
