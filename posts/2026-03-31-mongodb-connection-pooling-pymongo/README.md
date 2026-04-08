@@ -47,7 +47,7 @@ client = MongoClient(
 
 ```python
 # app.py
-from flask import Flask, g
+from flask import Flask
 from pymongo import MongoClient
 import os
 
