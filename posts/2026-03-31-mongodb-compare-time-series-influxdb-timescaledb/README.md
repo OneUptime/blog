@@ -60,7 +60,7 @@ InfluxDB and TimescaleDB achieve better compression because they specialize in n
 
 **MongoDB** is best if you already run MongoDB for application data. Adding time series collections avoids a second database to operate.
 
-**InfluxDB** is purpose-built for metrics and has a built-in query UI (Chronograf) and alerting (Kapacitor). OSS version is single-node; clustering requires InfluxDB Enterprise or Cloud.
+**InfluxDB** is purpose-built for metrics and includes a built-in query UI and alerting (via tasks and checks in InfluxDB 2.x). OSS version is single-node; clustering requires InfluxDB Enterprise or Cloud.
 
 **TimescaleDB** inherits PostgreSQL's ecosystem - replication, pgBackRest, pgBouncer, and every SQL tool you already know. Multi-node requires TimescaleDB Distributed.
 
