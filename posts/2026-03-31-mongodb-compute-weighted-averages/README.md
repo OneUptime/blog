@@ -36,7 +36,7 @@ const weightedRatings = await db.collection("reviews").aggregate([
       weightedAvgRating: {
         $cond: [
           { $eq: ["$sumWeights", 0] },
-          { $avg: "$rating" },
+          null,
           { $divide: ["$sumWeightedRating", "$sumWeights"] },
         ],
       },
