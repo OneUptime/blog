@@ -86,10 +86,9 @@ await cursor.close();
 Use `$currentOp` to list open cursors and identify idle ones:
 
 ```javascript
-db.adminCommand({
-  currentOp: true,
-  idleCursors: true
-});
+db.getSiblingDB("admin").aggregate([
+  { $currentOp: { idleCursors: true } }
+]);
 ```
 
 Or query the `serverStatus` command to see cursor counts:
