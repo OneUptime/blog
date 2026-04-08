@@ -89,8 +89,10 @@ A higher `ratio` means more compression. Typical values:
 No benchmark is universal - your actual data characteristics (entropy, repetition, field sizes) determine the real ratio. Run a quick test by loading sample data into collections with different compressors:
 
 ```bash
-# Insert 100,000 sample documents into each collection
+# Create collections with different compressors and insert 100,000 sample documents
 mongosh --eval "
+db.createCollection('test_snappy', { storageEngine: { wiredTiger: { configString: 'block_compressor=snappy' } } });
+db.createCollection('test_zstd', { storageEngine: { wiredTiger: { configString: 'block_compressor=zstd' } } });
 for (let i = 0; i < 100000; i++) {
   db.test_snappy.insertOne({ name: 'user' + i, email: 'user' + i + '@example.com', ts: new Date() });
   db.test_zstd.insertOne({ name: 'user' + i, email: 'user' + i + '@example.com', ts: new Date() });
