@@ -118,10 +118,6 @@ db.api_calls.aggregate([
       partitionBy: "$endpoint",
       sortBy: { hour: 1 },
       output: {
-        currentHourCount: {
-          $count: {},
-          window: { documents: ["current", "current"] }
-        },
         avgPrevious7Hours: {
           $avg: "$callCount",
           window: { documents: [-7, -1] }
@@ -142,7 +138,7 @@ db.api_calls.aggregate([
 
 ## Count with Preceding Documents Window
 
-Count the number of returns made in the 30 days before each order to calculate customer return rate:
+Count the number of transactions made in the 30 days before each transaction to assess customer activity:
 
 ```javascript
 db.transactions.aggregate([
@@ -151,7 +147,7 @@ db.transactions.aggregate([
       partitionBy: "$customerId",
       sortBy: { transactionDate: 1 },
       output: {
-        returns30DayPrior: {
+        transactions30DayPrior: {
           $count: {},
           window: {
             range: [-30, -1],
@@ -164,7 +160,7 @@ db.transactions.aggregate([
   { $match: { transactionType: "purchase" } },
   {
     $addFields: {
-      isHighReturnRisk: { $gte: ["$returns30DayPrior", 3] }
+      isHighActivity: { $gte: ["$transactions30DayPrior", 3] }
     }
   }
 ]);
