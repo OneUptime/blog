@@ -23,7 +23,7 @@ MongoDB is available in two main editions: Community (free, SSPL licensed) and E
 | LDAP authentication | No | Yes |
 | Kerberos authentication | No | Yes |
 | Online archive | No | Atlas only |
-| MongoDB Compass (GUI) | Limited | Full |
+| MongoDB Compass (GUI) | Yes | Yes |
 | Ops Manager / Cloud Manager | No | Yes |
 | Technical support SLA | Community forums | 24/7 enterprise support |
 
@@ -80,7 +80,7 @@ security:
     clientCertificateFile: /etc/ssl/kmip-client.pem
 ```
 
-Community relies on filesystem-level encryption (dm-crypt, BitLocker) which does not provide key rotation without downtime.
+Community relies on filesystem-level encryption (dm-crypt, BitLocker) which does not provide seamless, automated key rotation like KMIP does.
 
 ## Backup Differences
 
@@ -100,8 +100,8 @@ Enterprise includes Ops Manager which provides:
 Enterprise Ops Manager is self-hosted and provides automation, monitoring, and backup for on-premises clusters:
 
 ```bash
-# Ops Manager agent install (on managed MongoDB nodes)
-curl -OL https://cloud.mongodb.com/download/agent/automation/mongodb-mms-automation-agent.tar.gz
+# Ops Manager agent install (replace <ops-manager-host> with your Ops Manager URL)
+curl -OL https://<ops-manager-host>/download/agent/automation/mongodb-mms-automation-agent-manager-latest.x86_64.tar.gz
 ```
 
 Atlas is MongoDB's hosted cloud platform and includes most Enterprise features regardless of your plan tier.
@@ -113,7 +113,7 @@ If Enterprise cost is prohibitive, open-source alternatives cover most gaps:
 ```text
 - Encryption at rest: Use dm-crypt (Linux) or filesystem encryption
 - Audit logging: Use Percona Server for MongoDB (free, AGPL)
-- LDAP: Use mongoldap proxy or application-layer LDAP validation
+- LDAP: Use application-layer LDAP validation or an external authentication proxy
 - Ops Manager: Use PMM (Percona Monitoring and Management) - free
 ```
 
