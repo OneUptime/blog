@@ -84,7 +84,7 @@ db.createRole({
   privileges: [
     {
       resource: { db: "myapp", collection: "metrics" },
-      actions: ["find", "aggregate"]
+      actions: ["find"]
     }
   ],
   roles: [
@@ -103,7 +103,6 @@ db.createRole({
 | `remove` | Delete documents |
 | `createIndex` | Create indexes |
 | `dropCollection` | Drop a collection |
-| `aggregate` | Run aggregation pipelines |
 | `listCollections` | List collections in a database |
 
 ## View, Modify, and Drop Custom Roles
