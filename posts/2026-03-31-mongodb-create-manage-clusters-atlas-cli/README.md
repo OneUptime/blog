@@ -43,7 +43,6 @@ atlas clusters create myProdCluster \
   --tier M30 \
   --provider AWS \
   --region US_EAST_1 \
-  --members 3 \
   --mdbVersion 7.0 \
   --backup \
   --diskSizeGB 100
@@ -57,14 +56,22 @@ For complex cluster configurations, use a JSON spec file:
 {
   "name": "myCluster",
   "clusterType": "REPLICASET",
-  "providerSettings": {
-    "providerName": "AWS",
-    "regionName": "US_EAST_1",
-    "instanceSizeName": "M30"
-  },
+  "replicationSpecs": [
+    {
+      "regionConfigs": [
+        {
+          "providerName": "AWS",
+          "regionName": "US_EAST_1",
+          "priority": 7,
+          "electableSpecs": {
+            "instanceSize": "M30",
+            "nodeCount": 3
+          }
+        }
+      ]
+    }
+  ],
   "mongoDBMajorVersion": "7.0",
-  "numShards": 1,
-  "replicationFactor": 3,
   "backupEnabled": true
 }
 ```
@@ -102,11 +109,11 @@ atlas clusters update myProdCluster --diskSizeGB 200
 Pause a development cluster to stop billing compute charges:
 
 ```bash
-atlas clusters pause myFreeCluster
-atlas clusters resume myFreeCluster
+atlas clusters pause myDevCluster
+atlas clusters resume myDevCluster
 ```
 
-Note that Atlas pauses clusters automatically after 60 days of inactivity on free tiers.
+Pausing is only available for M10+ dedicated clusters. M0 free-tier clusters cannot be paused manually. Note that Atlas pauses free-tier clusters automatically after 60 days of inactivity.
 
 ## Getting the Connection String
 
