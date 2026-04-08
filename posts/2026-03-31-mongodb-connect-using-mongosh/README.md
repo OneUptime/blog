@@ -87,7 +87,7 @@ Include the database name in the URI or use `--eval`:
 
 ```bash
 mongosh "mongodb://localhost:27017/sales"
-mongosh --eval "use sales" "mongodb://localhost:27017"
+mongosh --eval "use('sales')" "mongodb://localhost:27017"
 ```
 
 ## Running a Single Command and Exiting
@@ -98,7 +98,7 @@ mongosh "mongodb://localhost:27017" --eval "db.runCommand({ping:1})" --quiet
 
 Output:
 
-```json
+```
 { ok: 1 }
 ```
 
