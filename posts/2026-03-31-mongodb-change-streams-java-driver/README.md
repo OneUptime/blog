@@ -58,7 +58,7 @@ Use an aggregation pipeline to filter only specific operation types:
 ```java
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.changestream.OperationType;
+import com.mongodb.client.model.changestream.FullDocument;
 import java.util.Arrays;
 
 MongoCursor<ChangeStreamDocument<Document>> cursor = collection
@@ -115,8 +115,13 @@ client.watch().iterator();
 If you use the async driver, wrap the cursor with a subscriber:
 
 ```java
+import com.mongodb.client.model.changestream.ChangeStreamDocument;
+import com.mongodb.client.model.changestream.FullDocument;
 import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoCollection;
+import org.bson.Document;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
 MongoCollection<Document> asyncCollection = MongoClients
     .create("mongodb://localhost:27017")
@@ -125,7 +130,13 @@ MongoCollection<Document> asyncCollection = MongoClients
 
 asyncCollection.watch()
     .fullDocument(FullDocument.UPDATE_LOOKUP)
-    .subscribe(new Subscriber<>() {
+    .subscribe(new Subscriber<ChangeStreamDocument<Document>>() {
+        private Subscription subscription;
+
+        public void onSubscribe(Subscription s) {
+            this.subscription = s;
+            s.request(Long.MAX_VALUE);
+        }
         public void onNext(ChangeStreamDocument<Document> event) {
             System.out.println(event.getFullDocument());
         }
