@@ -78,7 +78,7 @@ mongosh --eval "db.serverStatus().wiredTiger.cache['maximum bytes configured'] /
 
 ## Container Considerations
 
-In Docker or Kubernetes, MongoDB reads the host RAM, not the container limit. Set cache size explicitly:
+In Docker or Kubernetes, older MongoDB versions (before 4.0.14/4.2.1) read the host RAM instead of the container memory limit. Modern versions detect cgroup limits, but it is still best practice to set cache size explicitly:
 
 ```yaml
 # mongod.conf in a container with 4 GB memory limit
