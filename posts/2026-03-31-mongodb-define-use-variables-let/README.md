@@ -66,7 +66,7 @@ db.orders.aggregate([
 
 ## Multiple Variables in $let
 
-Define several variables that may depend on each other:
+Define several variables and use them together in the `in` expression:
 
 ```javascript
 db.sales.aggregate([
