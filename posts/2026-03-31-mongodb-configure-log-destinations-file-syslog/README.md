@@ -78,10 +78,10 @@ systemLog:
   # No destination = stdout
 ```
 
-Or launch mongod explicitly:
+Or launch mongod explicitly without `--logpath`:
 
 ```bash
-mongod --logpath "" --logappend
+mongod --port 27017 --dbpath /data/db
 ```
 
 In Kubernetes, stdout logs are captured by the container runtime and available via `kubectl logs`.
@@ -94,7 +94,7 @@ Log rotation (but not destination change) can be triggered without restarting:
 // Rotate the current log file
 db.adminCommand({ logRotate: 1 });
 
-// Rotate a specific log type (MongoDB 5.0+)
+// Rotate a specific log type (MongoDB 5.1+)
 db.adminCommand({ logRotate: "server" });
 ```
 
