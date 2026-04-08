@@ -51,8 +51,6 @@ echo "Inserted: " . $result->getInsertedCount() . " documents\n";
 ## Read - Find Documents
 
 ```php
-use MongoDB\BSON\Regex;
-
 // Find one
 $keyboard = $products->findOne(['name' => 'Wireless Keyboard']);
 if ($keyboard) {
