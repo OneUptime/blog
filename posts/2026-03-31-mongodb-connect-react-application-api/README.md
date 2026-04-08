@@ -99,8 +99,9 @@ PORT=5000
 Initialize the React app and install axios:
 
 ```bash
-npx create-react-app frontend
+npm create vite@latest frontend -- --template react
 cd frontend
+npm install
 npm install axios
 ```
 
@@ -110,7 +111,7 @@ Create an API service module:
 // src/services/api.js
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -179,7 +180,7 @@ In production, never expose your MongoDB URI to the client. Set environment vari
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/prod?retryWrites=true&w=majority
 
 # React .env (public, only for API URL)
-REACT_APP_API_URL=https://api.yourdomain.com
+VITE_API_URL=https://api.yourdomain.com
 ```
 
 ## Summary
