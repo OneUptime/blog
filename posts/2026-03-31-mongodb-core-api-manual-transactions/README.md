@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Transaction, Core API, Manual Control, Node.js
 
-Description: Learn how to use MongoDB's Core API for full manual transaction control, including custom retry logic, savepoints, and fine-grained error handling in Node.js.
+Description: Learn how to use MongoDB's Core API for full manual transaction control, including custom retry logic, conditional commits, and fine-grained error handling in Node.js.
 
 ---
 
@@ -35,7 +35,7 @@ try {
     { session, returnDocument: 'after' }
   )
 
-  if (!reserved.value) {
+  if (!reserved) {
     await session.abortTransaction()
     console.log('Item out of stock')
     return
@@ -136,8 +136,8 @@ if (fraud) {
     { status: 'blocked', reason: 'fraud', userId: 'u-001' },
     { session }
   )
-  // Abort: do not charge or fulfill
-  await session.abortTransaction()
+  // Commit the blocked order record, but do not charge or fulfill
+  await session.commitTransaction()
   console.log('Order blocked due to fraud signal')
   return
 }
