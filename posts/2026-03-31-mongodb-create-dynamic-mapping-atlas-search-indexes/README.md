@@ -120,7 +120,7 @@ Dynamic indexing has trade-offs:
 - Fields you never search still consume storage and memory
 - No control over which analyzer is used for strings
 
-To check index size and field coverage:
+To check how many documents the search index covers:
 
 ```javascript
 db.articles.aggregate([
@@ -131,7 +131,7 @@ db.articles.aggregate([
 ]);
 ```
 
-Use Atlas's Search Index Analyzer tool in the UI to review which fields were indexed.
+Use the Atlas UI to review index size and which fields were indexed.
 
 ## Summary
 
