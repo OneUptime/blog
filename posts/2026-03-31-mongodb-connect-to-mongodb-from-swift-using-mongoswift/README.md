@@ -55,10 +55,9 @@ defer { try? client.syncClose() }
 
 ```swift
 var options = MongoClientOptions()
-options.appName      = "MyApp"
-options.maxPoolSize  = 20
-options.minPoolSize  = 5
-options.connectTimeout = .milliseconds(10_000)
+options.appName        = "MyApp"
+options.maxPoolSize    = 20
+options.connectTimeoutMS = 10_000
 
 let client = try MongoClient(
     "mongodb://appuser:secret@localhost:27017/mydb?authSource=admin",
