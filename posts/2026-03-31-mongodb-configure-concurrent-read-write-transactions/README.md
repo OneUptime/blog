@@ -120,13 +120,13 @@ Operations using `readConcern: "linearizable"` hold a read ticket longer than `"
 
 ```javascript
 // Avoid in high-throughput code paths
-db.collection("orders").findOne(
+db.getCollection("orders").findOne(
   { _id: orderId },
   { readConcern: { level: "linearizable" } }  // holds ticket longer
 );
 
 // Prefer
-db.collection("orders").findOne(
+db.getCollection("orders").findOne(
   { _id: orderId },
   { readConcern: { level: "majority" } }  // returns faster
 );
