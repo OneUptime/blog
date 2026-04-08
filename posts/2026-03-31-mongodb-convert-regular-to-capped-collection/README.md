@@ -19,7 +19,7 @@ db.runCommand({
 })
 ```
 
-The `size` parameter is required and sets the maximum byte size of the capped collection. Once full, MongoDB overwrites the oldest documents in insertion order.
+The `size` parameter is required and sets the maximum byte size of the capped collection. Once full, MongoDB automatically removes the oldest documents in insertion order to make room for new ones.
 
 ## Step-by-Step Conversion
 
@@ -47,8 +47,8 @@ A successful response returns `{ "ok": 1 }`.
 ### 3. Verify the Result
 
 ```javascript
-db.events.options()
-// Should show { "capped": true, "size": 52428800 }
+db.getCollectionInfos({ name: "events" })
+// The "options" field should include { "capped": true, "size": 52428800 }
 ```
 
 ## Important Caveats
@@ -61,7 +61,7 @@ db.events.options()
 db.events.createIndex({ timestamp: 1 })
 ```
 
-**The operation takes a global write lock** on older MongoDB versions. On MongoDB 4.2+, it still holds a collection-level lock for the duration. Plan for downtime or use a blue/green strategy.
+**The operation takes a global write lock** on older MongoDB versions. On MongoDB 4.2+, it holds an exclusive database-level lock for the duration. Plan for downtime or use a blue/green strategy.
 
 **No `max` document limit can be set during conversion.** To add a document count ceiling, create a new capped collection and copy data:
 
