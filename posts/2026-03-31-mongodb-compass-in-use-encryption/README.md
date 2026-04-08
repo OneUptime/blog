@@ -21,6 +21,7 @@ Compass supports the following KMS providers for managing data encryption keys:
 - AWS KMS
 - Azure Key Vault
 - Google Cloud KMS
+- KMIP (Key Management Interoperability Protocol)
 - Local master key (for development only)
 
 ## Enabling In-Use Encryption in Compass
