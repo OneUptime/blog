@@ -73,31 +73,21 @@ For applications running on AWS, create an IAM-authenticated user instead of a p
 ```bash
 atlas dbusers create \
   --username "arn:aws:iam::123456789012:role/MyAppRole" \
-  --awsIamType ROLE \
+  --awsIAMType ROLE \
   --role readWrite@orders
 ```
 
-## Using a User Spec File
+## Assigning Multiple Roles and Scopes
 
-For users with multiple roles and scopes, a JSON spec file is cleaner:
-
-```json
-{
-  "username": "etlService",
-  "password": "3tlP@ss!",
-  "databaseName": "admin",
-  "roles": [
-    { "roleName": "read", "databaseName": "raw_data" },
-    { "roleName": "readWrite", "databaseName": "processed_data" }
-  ],
-  "scopes": [
-    { "name": "dataCluster", "type": "CLUSTER" }
-  ]
-}
-```
+For users with multiple roles and scopes, pass multiple `--role` and `--scope` flags:
 
 ```bash
-atlas dbusers create --file user-spec.json
+atlas dbusers create \
+  --username etlService \
+  --password "3tlP@ss!" \
+  --role read@raw_data \
+  --role readWrite@processed_data \
+  --scope dataCluster:CLUSTER
 ```
 
 ## Updating a User's Password
@@ -117,7 +107,7 @@ atlas dbusers create \
   --username tempUser \
   --password "Tmp123!" \
   --role read@logs \
-  --deleteAfterDate "2026-04-30T00:00:00Z"
+  --deleteAfter "2026-04-30T00:00:00Z"
 ```
 
 ## Deleting a User
@@ -146,4 +136,4 @@ atlas dbusers create \
 
 ## Summary
 
-The Atlas CLI makes database user management fully scriptable. Use `atlas dbusers create` with `--role` flags for straightforward cases, JSON spec files for multi-role users, and `--deleteAfterDate` for temporary access. Scope users to specific clusters to enforce least-privilege access control.
+The Atlas CLI makes database user management fully scriptable. Use `atlas dbusers create` with `--role` flags for straightforward cases, multiple `--role` flags for multi-role users, and `--deleteAfter` for temporary access. Scope users to specific clusters to enforce least-privilege access control.
