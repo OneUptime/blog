@@ -16,7 +16,6 @@ The `replication` section in `mongod.conf` turns a standalone `mongod` into a re
 replication:
   replSetName: rs0
   oplogSizeMB: 1024
-  enableMajorityReadConcern: true
 ```
 
 ## Setting the Replica Set Name
@@ -52,16 +51,11 @@ replication:
 
 MongoDB recommends an oplog large enough to hold at least 24 hours of write activity. On high-write deployments, increase this to several gigabytes. The default is 5% of free disk space, capped at 50 GB.
 
-## Enabling Majority Read Concern
+## Majority Read Concern
 
-`enableMajorityReadConcern` allows clients to use `readConcern: majority`, which returns only data acknowledged by a majority of replica set members.
+Starting in MongoDB 5.0, `readConcern: "majority"` is always enabled and the `enableMajorityReadConcern` configuration option was removed. You do not need to set it in `mongod.conf`.
 
-```yaml
-replication:
-  enableMajorityReadConcern: true
-```
-
-This is the default in MongoDB 5.0 and later. Disabling it can improve performance on memory-constrained servers but prevents the use of causal consistency and transactions with majority concern.
+In MongoDB 4.4 and earlier, this option existed under the `replication` section and defaulted to `true`. Disabling it could improve performance on memory-constrained servers but prevented the use of causal consistency and transactions with majority read concern. If you are running MongoDB 5.0 or later, do not include `enableMajorityReadConcern` in your configuration file, as it will produce a startup warning.
 
 ## Enabling Change Stream Pre-Images
 
@@ -92,4 +86,4 @@ rs.printReplicationInfo()
 
 ## Summary
 
-The `replication` section in `mongod.conf` needs only `replSetName` and optionally `oplogSizeMB` to get started. Match the replica set name exactly across all members, size the oplog to accommodate at least 24 hours of peak write volume, and keep `enableMajorityReadConcern` enabled to support transactions and causal consistency. Run `rs.initiate()` once after starting all members with matching configuration.
+The `replication` section in `mongod.conf` needs only `replSetName` and optionally `oplogSizeMB` to get started. Match the replica set name exactly across all members and size the oplog to accommodate at least 24 hours of peak write volume. In MongoDB 5.0 and later, majority read concern is always enabled and requires no configuration. Run `rs.initiate()` once after starting all members with matching configuration.
