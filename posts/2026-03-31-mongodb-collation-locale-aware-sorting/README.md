@@ -79,22 +79,26 @@ Pass the locale code as the `locale` field in the collation document.
 
 ## Swedish Sorting Example
 
-Swedish sorts `a`, `a`, `o` after `z`. Binary sort gets this wrong:
+Swedish sorts `å`, `ä`, `ö` after `z`. Binary sort gets this wrong:
 
 ```javascript
 db.words.insertMany([
   { word: "zoo" },
-  { word: "apa" },
+  { word: "äpple" },
   { word: "alfa" }
 ]);
 
 // Binary sort (wrong for Swedish)
 db.words.find().sort({ word: 1 });
-// Result: apa, alfa, zoo
+// Result: alfa, zoo, äpple
 
-// Swedish collation (correct)
+// English collation (ä sorts near a)
+db.words.find().sort({ word: 1 }).collation({ locale: "en" });
+// Result: alfa, äpple, zoo
+
+// Swedish collation (correct for Swedish - ä sorts after z)
 db.words.find().sort({ word: 1 }).collation({ locale: "sv" });
-// Result: apa, alfa, zoo, ... (a appears after z in Swedish)
+// Result: alfa, zoo, äpple
 ```
 
 ## German Phone Book vs. Dictionary Order
