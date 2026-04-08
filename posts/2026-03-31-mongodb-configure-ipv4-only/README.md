@@ -89,7 +89,7 @@ On systems where `localhost` resolves to `::1` by default, always use the numeri
 For full IPv4-only operation, also disable IPv6 at the OS level:
 
 ```bash
-# Disable IPv6 on Linux (requires reboot)
+# Disable IPv6 on Linux (applied immediately by sysctl -p)
 echo "net.ipv6.conf.all.disable_ipv6 = 1" | sudo tee -a /etc/sysctl.conf
 echo "net.ipv6.conf.default.disable_ipv6 = 1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
