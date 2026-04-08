@@ -73,8 +73,9 @@ Knowing what fraction of total size is indexes helps identify over-indexed colle
 
 ```javascript
 const stats = db.orders.stats();
-const docPct   = ((stats.storageSize / stats.totalSize) * 100).toFixed(1);
-const indexPct = ((stats.totalIndexSize / stats.totalSize) * 100).toFixed(1);
+const totalSize = stats.storageSize + stats.totalIndexSize;
+const docPct   = ((stats.storageSize / totalSize) * 100).toFixed(1);
+const indexPct = ((stats.totalIndexSize / totalSize) * 100).toFixed(1);
 
 print(`Documents: ${docPct}%`);
 print(`Indexes:   ${indexPct}%`);
