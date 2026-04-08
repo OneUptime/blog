@@ -197,7 +197,7 @@ A good index has `totalDocsExamined` close to `nReturned`. A full collection sca
 
 - Index builds on large collections can take significant time.
 - In MongoDB 4.2+, foreground and background builds were unified. Index builds use an optimized protocol that minimizes locking.
-- In a replica set, indexes build on the primary first, then replicate to secondaries in a rolling fashion.
+- In a replica set (MongoDB 4.4+), index builds start on the primary and secondaries simultaneously. Each member votes to commit when its build finishes, and the primary commits once a quorum is reached.
 - Monitor index build progress with `db.currentOp()` in the mongosh shell.
 
 ## Summary
