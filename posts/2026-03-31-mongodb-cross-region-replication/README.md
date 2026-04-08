@@ -60,16 +60,26 @@ Higher priority values in the primary region keep the primary local under normal
 
 ## Use Write Concern for Cross-Region Durability
 
-For writes that must survive a region failure, use a write concern that requires acknowledgment from the DR region:
+For writes that must survive a region failure, use a custom write concern that requires acknowledgment from the DR region. First, configure a custom write concern mode on the replica set using `getLastErrorModes`:
 
 ```javascript
-db.collection("orders").insertOne(
+cfg = rs.conf()
+cfg.settings.getLastErrorModes = {
+  crossRegion: { region: 2 }
+}
+rs.reconfig(cfg)
+```
+
+This defines a write concern mode called `crossRegion` that requires acknowledgment from members spanning at least two distinct `region` tag values. Then use it in your writes:
+
+```javascript
+db.orders.insertOne(
   { orderId: "12345", amount: 99.99 },
-  { writeConcern: { w: "majority", j: true } }
+  { writeConcern: { w: "crossRegion", j: true } }
 )
 ```
 
-With a majority write concern, MongoDB waits for at least two members (including the DR secondary) to confirm the write before returning success.
+Note that a standard `w: "majority"` write concern would not guarantee cross-region durability with this topology, because majority (2 of 3) can be satisfied by the primary and the co-located secondary without the DR region member ever confirming the write.
 
 ## Route Reads to the Nearest Region
 
