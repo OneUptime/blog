@@ -69,7 +69,7 @@ storage:
       cacheSizeGB: 1.5
 ```
 
-A good rule of thumb: set `cacheSizeGB` to about 50-60% of the container memory limit.
+A good rule of thumb: set `cacheSizeGB` using MongoDB's default formula of 50% of (container memory limit - 1 GB), leaving the remainder for the OS page cache, connections, and other processes.
 
 ## Checking Current Memory Usage
 
@@ -90,7 +90,7 @@ Key fields to watch:
 mongostat --host localhost:27017 -u admin -p secret --authenticationDatabase admin
 ```
 
-Watch the `res` column (resident memory in MB) and `faults` (page faults indicating swap).
+Watch the `res` column (resident memory in MB) and `dirty` (percentage of dirty data in the WiredTiger cache).
 
 ## OS-Level Considerations
 
@@ -110,4 +110,4 @@ echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 
 ## Summary
 
-Configuring memory limits for MongoDB involves setting `wiredTigerCacheSizeGB` in your config file, applying OS or container-level memory constraints, and monitoring cache pressure with `serverStatus`. Keeping WiredTiger cache at 50-60% of available memory leaves room for the OS page cache and prevents OOM events in production.
+Configuring memory limits for MongoDB involves setting `wiredTigerCacheSizeGB` in your config file, applying OS or container-level memory constraints, and monitoring cache pressure with `serverStatus`. Using MongoDB's default formula of 50% of (RAM - 1 GB) for the WiredTiger cache leaves room for the OS page cache and prevents OOM events in production.
