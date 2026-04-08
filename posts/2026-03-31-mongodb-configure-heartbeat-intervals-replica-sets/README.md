@@ -31,16 +31,14 @@ With defaults, a primary failure is detected within 10-12 seconds and a new elec
 
 ## Configuring Heartbeat Settings
 
-Heartbeat settings are configured per-member in the replica set configuration:
+Heartbeat settings are configured in the replica set configuration's `settings` subdocument:
 
 ```javascript
 const cfg = rs.conf();
 
-// Set election timeout to 5 seconds for faster failover
-cfg.settings = {
-  heartbeatTimeoutSecs: 5,
-  electionTimeoutMillis: 5000
-};
+// Set heartbeat timeout and election timeout for faster failover
+cfg.settings.heartbeatTimeoutSecs = 5;
+cfg.settings.electionTimeoutMillis = 5000;
 
 rs.reconfig(cfg);
 ```
