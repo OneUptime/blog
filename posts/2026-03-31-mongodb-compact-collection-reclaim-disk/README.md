@@ -10,7 +10,7 @@ Description: Learn how to use the compact command in MongoDB to reclaim fragment
 
 ## Overview
 
-When you delete or update large numbers of documents in MongoDB, the freed storage space is not immediately returned to the operating system. Over time, collections become fragmented. The `compact` command defragments a collection and returns unused space to the WiredTiger storage engine.
+When you delete or update large numbers of documents in MongoDB, the freed storage space is not immediately returned to the operating system. Over time, collections become fragmented. The `compact` command defragments a collection and reclaims unused disk space. Starting in MongoDB 4.4, `compact` returns freed space to the operating system rather than only making it available for reuse within WiredTiger.
 
 ## Running the compact Command
 
@@ -44,15 +44,15 @@ Key fields to look at:
 
 After `compact`, run `stats()` again to confirm the reduction.
 
-## Compact with Force on a Primary
+## Running compact on a Primary
 
-By default, `compact` is not allowed on a primary replica set member. Use `force: true` to override this:
+Starting in MongoDB 4.4, `compact` can run directly on a primary replica set member without any special flags. In earlier versions, you needed to pass `force: true`, but this option was deprecated in 4.4 and removed in 6.0.
 
 ```javascript
-db.runCommand({ compact: "orders", force: true })
+db.runCommand({ compact: "orders" })
 ```
 
-Running `compact` on a primary holds a write lock on the collection, so do this during low-traffic windows.
+Since MongoDB 4.4, `compact` no longer holds a blocking write lock — it yields to allow read and write operations. However, it is still best to run it during low-traffic windows to minimize performance impact.
 
 ## Running compact on a Secondary First
 
@@ -78,7 +78,7 @@ COLLECTIONS=("orders" "events" "logs")
 for coll in "${COLLECTIONS[@]}"; do
   echo "Compacting collection: $coll"
   mongosh "mongodb://localhost:27017/mydb" --eval \
-    "db.runCommand({ compact: '$coll', force: true })"
+    "db.runCommand({ compact: '$coll' })"
 done
 echo "All collections compacted"
 ```
@@ -92,4 +92,4 @@ echo "All collections compacted"
 
 ## Summary
 
-The `compact` command in MongoDB defragments a collection and reclaims disk space that was freed by deletes and updates. Run it on secondaries before primaries to minimize write lock impact. Always check `db.collection.stats()` before and after to confirm the space reclamation was successful.
+The `compact` command in MongoDB defragments a collection and reclaims disk space that was freed by deletes and updates. Since MongoDB 4.4, `compact` no longer blocks reads and writes, but running on secondaries first is still a recommended practice to minimize performance impact. Always check `db.collection.stats()` before and after to confirm the space reclamation was successful.
