@@ -19,7 +19,7 @@ The official MongoDB Kotlin driver provides idiomatic Kotlin support with corout
 dependencies {
     implementation("org.mongodb:mongodb-driver-kotlin-coroutine:5.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-bson:2.0.0")
+    implementation("org.mongodb:bson-kotlinx:5.1.0")
 }
 ```
 
@@ -97,7 +97,6 @@ fun main() = runBlocking {
 
 ```kotlin
 import kotlinx.serialization.Serializable
-import org.bson.types.ObjectId
 
 @Serializable
 data class Product(
