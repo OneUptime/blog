@@ -23,7 +23,7 @@ flowchart LR
 
 ## How Cursors Work
 
-MongoDB returns documents from a cursor in batches. The default initial batch size is 101 documents (or 1 MB, whichever is smaller). Subsequent `getMore` requests fetch additional batches.
+MongoDB returns documents from a cursor in batches. The default initial batch size is 101 documents (or 16 MB, whichever limit is reached first). Subsequent `getMore` requests fetch additional batches.
 
 ```mermaid
 sequenceDiagram
