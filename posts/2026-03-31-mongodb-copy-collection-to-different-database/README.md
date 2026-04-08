@@ -23,27 +23,22 @@ mongodump \
   --out /tmp/dump
 
 # Restore into targetDB (different database name)
+# mongorestore automatically picks up the sibling .metadata.json file
+# to restore indexes and collection options
 mongorestore \
   --uri "mongodb://localhost:27017" \
   --db targetDB \
   --collection myCollection \
   /tmp/dump/sourceDB/myCollection.bson
-
-# Also restore the index metadata
-mongorestore \
-  --uri "mongodb://localhost:27017" \
-  --db targetDB \
-  --collection myCollection \
-  /tmp/dump/sourceDB/myCollection.metadata.json
 ```
 
 For a remote target instance:
 
 ```bash
-mongodump --uri "mongodb://source-host:27017/sourceDB" \
-  --collection myCollection --archive | \
-mongorestore --uri "mongodb://target-host:27017/targetDB" \
-  --collection myCollection --archive
+mongodump --uri "mongodb://source-host:27017" \
+  --db sourceDB --collection myCollection --archive | \
+mongorestore --uri "mongodb://target-host:27017" \
+  --nsFrom="sourceDB.myCollection" --nsTo="targetDB.myCollection" --archive
 ```
 
 Piping dump directly to restore avoids writing to disk.
