@@ -73,7 +73,7 @@ afterAll(async () => {
 // Each test gets a fresh database
 let db;
 beforeEach(async () => {
-  const dbName = `testdb_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const dbName = `testdb_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   db = client.db(dbName);
   // Recreate schema/indexes
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
