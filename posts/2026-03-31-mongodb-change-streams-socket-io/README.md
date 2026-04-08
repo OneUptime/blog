@@ -13,7 +13,7 @@ MongoDB change streams give you a reactive feed of database changes. Pairing the
 ## Installing Dependencies
 
 ```bash
-npm install express socket.io mongoose
+npm install express socket.io mongoose jsonwebtoken
 ```
 
 ## Setting Up the Express and Socket.io Server
@@ -30,8 +30,9 @@ const io = new Server(httpServer, {
   cors: { origin: process.env.CLIENT_URL, methods: ['GET', 'POST'] },
 });
 
-await mongoose.connect(process.env.MONGODB_URI);
-httpServer.listen(3000, () => console.log('Server listening on port 3000'));
+mongoose.connect(process.env.MONGODB_URI).then(() => {
+  httpServer.listen(3000, () => console.log('Server listening on port 3000'));
+});
 ```
 
 ## Defining the Mongoose Model
@@ -104,6 +105,8 @@ mongoose.connection.once('open', watchOrders);
 ## Handling Socket.io Client Rooms
 
 ```javascript
+const jwt = require('jsonwebtoken');
+
 io.use((socket, next) => {
   // Verify JWT on connection
   const token = socket.handshake.auth.token;
