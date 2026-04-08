@@ -17,7 +17,7 @@ For deeply nested threads, store each comment as a separate document with a `par
 ```javascript
 db.comments.insertMany([
   {
-    _id: ObjectId("c1"),
+    _id: ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa"),
     postId: "post-42",
     parentId: null,
     author: "alice",
@@ -26,9 +26,9 @@ db.comments.insertMany([
     createdAt: new Date()
   },
   {
-    _id: ObjectId("c2"),
+    _id: ObjectId("bbbbbbbbbbbbbbbbbbbbbbbb"),
     postId: "post-42",
-    parentId: ObjectId("c1"),
+    parentId: ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa"),
     author: "bob",
     body: "Agreed, especially the third section.",
     likes: 3,
@@ -63,7 +63,7 @@ Retrieve all direct replies to a given comment.
 
 ```javascript
 db.comments.find(
-  { parentId: ObjectId("c1") }
+  { parentId: ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa") }
 ).sort({ createdAt: 1 });
 ```
 
@@ -96,7 +96,7 @@ For comment systems where replies rarely exceed one level, embed replies directl
 
 ```javascript
 db.comments.updateOne(
-  { _id: ObjectId("c1") },
+  { _id: ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa") },
   {
     $push: {
       replies: {
