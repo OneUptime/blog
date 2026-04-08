@@ -105,30 +105,29 @@ Setting `priority: 0` on DC2 members prevents them from ever becoming primary, k
 
 Use a custom write concern that requires acknowledgment from at least one member in each datacenter before considering a write durable.
 
+First, define a custom write concern mode in the replica set configuration using `getLastErrorModes`. The value `{ dc: 2 }` means the write must be acknowledged by members spanning at least 2 unique values of the `dc` tag (i.e., both `dc1` and `dc2`):
+
 ```javascript
-// Add a custom write concern that requires one ack per datacenter
+cfg = rs.conf()
+cfg.settings.getLastErrorModes = {
+  multiDC: { dc: 2 }
+}
+rs.reconfig(cfg)
+```
+
+Optionally, set the default write concern to use this mode for all writes:
+
+```javascript
 db.adminCommand({
   setDefaultRWConcern: 1,
   defaultWriteConcern: {
-    w: { dc1: 1, dc2: 1 },
+    w: "multiDC",
     wtimeout: 5000
   }
 })
 ```
 
-You must define a tag set rule in the replica set config first:
-
-```javascript
-cfg = rs.conf()
-cfg.settings = {
-  getLastErrorModes: {
-    multiDC: { dc1: 1, dc2: 1 }
-  }
-}
-rs.reconfig(cfg)
-```
-
-Now use the named write concern on critical writes:
+Or use the named write concern on critical writes explicitly:
 
 ```javascript
 db.orders.insertOne(
@@ -139,11 +138,11 @@ db.orders.insertOne(
 
 ## Step 5: Configure Election Timeouts for WAN Latency
 
-WAN links add latency. Increase `heartbeatTimeoutSecs` to avoid spurious elections:
+WAN links add latency. Increase `electionTimeoutMillis` and `heartbeatIntervalMillis` to avoid spurious elections:
 
 ```javascript
 cfg = rs.conf()
-cfg.settings.heartbeatTimeoutSecs = 20
+cfg.settings.heartbeatIntervalMillis = 5000
 cfg.settings.electionTimeoutMillis = 15000
 rs.reconfig(cfg)
 ```
