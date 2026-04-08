@@ -34,7 +34,7 @@ If `settings` is `{ theme: "dark", language: "en", timezone: "UTC" }`, the resul
 
 ## Converting the Root Document
 
-To convert the entire document (excluding `_id`) to key-value pairs, use `$$ROOT`:
+To convert the entire document (including `_id`) to key-value pairs, use `$$ROOT`:
 
 ```javascript
 db.products.aggregate([
