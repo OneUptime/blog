@@ -79,7 +79,7 @@ sh.addShard("shard1/shard1a:27018,shard1b:27018,shard1c:27018");
 
 ## mongos Configuration
 
-The `mongos` router is not a `mongod` process and does not use a `sharding` section. It uses a `sharding.configDB` setting in its own `mongos.conf`.
+The `mongos` router is not a `mongod` process and does not use `clusterRole`. Instead, its `sharding` section contains a `configDB` setting that points to the config server replica set.
 
 ```yaml
 sharding:
