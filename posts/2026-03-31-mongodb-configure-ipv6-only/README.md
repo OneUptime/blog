@@ -77,12 +77,16 @@ IPv6 addresses in URIs must be enclosed in brackets:
 ```javascript
 // Node.js
 const client = new MongoClient("mongodb://[::1]:27017");
+```
 
-// Python
+```python
+# Python
 from pymongo import MongoClient
 client = MongoClient("mongodb://[::1]:27017/")
+```
 
-// mongosh
+```bash
+# mongosh
 mongosh "mongodb://[::1]:27017"
 ```
 
