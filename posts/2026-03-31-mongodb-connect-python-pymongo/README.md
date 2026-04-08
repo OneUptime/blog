@@ -16,9 +16,9 @@ PyMongo is the official Python driver for MongoDB. It provides a synchronous API
 
 ```bash
 pip install pymongo
-# For SRV connection strings (Atlas):
-pip install "pymongo[srv]"
 ```
+
+> **Note:** PyMongo 4.x includes `dnspython` as a core dependency, so SRV connection strings (`mongodb+srv://`) work out of the box. No extra install is needed.
 
 ## Basic Connection
 
