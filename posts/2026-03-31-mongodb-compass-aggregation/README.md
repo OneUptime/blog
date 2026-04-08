@@ -122,19 +122,19 @@ By default, Compass shows a preview based on a sample of documents. The count sh
 Once the pipeline is working correctly, export it:
 
 1. Click the **Export to Language** button in the top-right of the Aggregations tab.
-2. Select a target language: JavaScript, Python, Java, C#, Ruby, PHP, or Go.
+2. Select a target language: JavaScript (Node.js), Python, Java, C#, Ruby, Rust, PHP, or Go.
 3. Copy the generated code into your application.
 
-The exported JavaScript pipeline looks like:
+The exported Node.js driver pipeline looks like:
 
 ```javascript
-db.orders.aggregate([
+[
   {
     $match: {
       status: "completed",
       createdAt: {
-        $gte: ISODate("2025-01-01"),
-        $lt: ISODate("2026-01-01")
+        $gte: new Date("2025-01-01"),
+        $lt: new Date("2026-01-01")
       }
     }
   },
@@ -157,7 +157,7 @@ db.orders.aggregate([
       avgOrderValue: { $round: ["$avgOrderValue", 2] }
     }
   }
-]);
+]
 ```
 
 ## Saving Pipelines
