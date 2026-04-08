@@ -20,16 +20,7 @@ This works, but it cannot use a standard index efficiently - MongoDB must perfor
 
 ## The Collation Approach
 
-MongoDB collation lets you specify a `strength` level that controls how characters are compared. Strength 2 ignores case (secondary differences):
-
-```javascript
-db.users.find(
-  { username: "alice" },
-  { collation: { locale: "en", strength: 2 } }
-)
-```
-
-Wait - the collation document goes as a separate option, not inside the projection:
+MongoDB collation lets you specify a `strength` level that controls how characters are compared. Strength 2 ignores case (secondary differences). Use the `.collation()` method on the cursor:
 
 ```javascript
 db.users.find({ username: "alice" }).collation({ locale: "en", strength: 2 })
@@ -42,10 +33,10 @@ This query matches `"alice"`, `"Alice"`, `"ALICE"`, and any other casing.
 ```text
 Strength  What is compared
 1         Base characters only (ignores case AND accents)
-2         Base + case (ignores accents only)
-3         Base + case + accents (full, default)
-4         Base + case + accents + punctuation
-5          Unicode code point (identical match)
+2         Base + accents (ignores case)
+3         Base + accents + case (full, default)
+4         Base + accents + case + punctuation
+5         Unicode code point (identical match)
 ```
 
 For case-insensitive but accent-sensitive matching, use strength 2. For case-insensitive AND accent-insensitive matching, use strength 1.
