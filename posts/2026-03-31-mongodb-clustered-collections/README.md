@@ -58,7 +58,7 @@ db.createCollection("sessionEvents", {
 })
 ```
 
-For TTL to work correctly on a clustered collection, the `_id` field must be a BSON date or a date embedded in a BSON ObjectId.
+For TTL to work correctly on a clustered collection, the `_id` field must be a supported date type such as a BSON `Date`.
 
 ## Inserting Documents
 
