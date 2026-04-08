@@ -19,7 +19,7 @@ The shard key is the field (or compound of fields) that MongoDB uses to distribu
 A good shard key provides:
 - Even data distribution across shards.
 - Targeted (single-shard) queries for most read patterns.
-- Monotonic write distribution (for hashed keys).
+- Even write distribution (for hashed keys).
 
 ```mermaid
 flowchart TD
