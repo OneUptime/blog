@@ -14,7 +14,7 @@ Apache Kafka is a widely used distributed event streaming platform. Connecting M
 
 ## Prerequisites
 
-- An Atlas Stream Processing instance (M10 or higher)
+- An Atlas Stream Processing workspace (SP10 or higher tier)
 - A running Kafka cluster (self-hosted, Confluent Cloud, or MSK)
 - Network connectivity between Atlas and your Kafka brokers
 
@@ -24,17 +24,31 @@ In the Atlas UI, navigate to your stream processing instance, then go to Connect
 
 For self-hosted Kafka, configure the connection via the Atlas CLI:
 
+First, create a JSON configuration file named `kafka-connection.json`:
+
+```json
+{
+  "name": "myKafkaSource",
+  "type": "Kafka",
+  "bootstrapServers": "broker1:9092,broker2:9092",
+  "security": {
+    "protocol": "SASL_SSL"
+  },
+  "authentication": {
+    "mechanism": "PLAIN",
+    "username": "<KAFKA_USERNAME>",
+    "password": "<KAFKA_PASSWORD>"
+  }
+}
+```
+
+Then create the connection using the Atlas CLI:
+
 ```bash
 # Create a Kafka connection for Atlas Stream Processing
 atlas streams connections create \
   --instance myStreamInstance \
-  --type Kafka \
-  --name myKafkaSource \
-  --bootstrapServers "broker1:9092,broker2:9092" \
-  --security.protocol SASL_SSL \
-  --sasl.mechanism PLAIN \
-  --sasl.username "$KAFKA_USERNAME" \
-  --sasl.password "$KAFKA_PASSWORD"
+  --file kafka-connection.json
 ```
 
 ## Reading from a Kafka Topic as $source
@@ -120,7 +134,7 @@ Use `$emit` to write processed stream documents back to a Kafka topic:
 
 ## Handling Kafka Message Schema
 
-Atlas Stream Processing expects messages to be JSON. For Avro or Protobuf schemas, configure a schema registry connection or decode the payload in the pipeline using `$function`.
+Atlas Stream Processing natively supports JSON messages. For Avro-encoded messages, configure a Schema Registry connection in your `$source` stage to enable automatic deserialization. Protobuf is not natively supported at this time.
 
 ```javascript
 // If your Kafka messages use a timestamp field with epoch milliseconds
@@ -140,11 +154,21 @@ Atlas Stream Processing expects messages to be JSON. For Avro or Protobuf schema
 Check pipeline status and throughput via the Atlas UI or CLI:
 
 ```bash
-# List active stream processing pipelines
-atlas streams pipelines list --instance myStreamInstance
+# List stream processing instances
+atlas streams instances list
 
-# View pipeline statistics
-atlas streams pipelines describe myPipelineName --instance myStreamInstance
+# Describe a specific instance
+atlas streams instances describe myStreamInstance
+```
+
+You can also manage individual stream processors from within `mongosh` connected to your stream processing instance:
+
+```javascript
+// List all stream processors
+sp.listStreamProcessors()
+
+// Get stats for a specific processor
+sp.myProcessor.stats()
 ```
 
 ## Summary
