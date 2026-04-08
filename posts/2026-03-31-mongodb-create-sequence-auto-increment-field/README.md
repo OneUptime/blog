@@ -109,10 +109,22 @@ Store the numeric sequence in the counters collection and format the string ID i
 Gaps in the sequence can occur if an insert fails after the counter was already incremented. For most use cases (order numbers, ticket IDs) gaps are acceptable. If gap-free sequences are critical, wrap the counter increment and document insert in a transaction:
 
 ```javascript
+async function getNextSequenceWithSession(db, name, session) {
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: name },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true, session }
+  );
+  return result.seq;
+}
+
 const session = client.startSession();
 await session.withTransaction(async () => {
-  const seq = await getNextSequence(db, "invoiceId");  // pass session
-  await db.collection("invoices").insertOne({ _id: seq, ... }, { session });
+  const seq = await getNextSequenceWithSession(db, "invoiceId", session);
+  await db.collection("invoices").insertOne(
+    { _id: seq, amount: 250, customer: "cust-001" },
+    { session }
+  );
 });
 ```
 
