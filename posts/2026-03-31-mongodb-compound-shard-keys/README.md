@@ -85,17 +85,17 @@ Only the prefix matters: if your key is `{ a: 1, b: 1, c: 1 }`, then `{ a }`, `{
 db.orders.find({ customerId: "C500" }).explain("executionStats")
 ```
 
-Look for `SHARD_MERGE` with `nShards: 1` for a targeted query.
+Look for `SINGLE_SHARD` in the query plan stage for a targeted query. If you see `SHARD_MERGE`, the query hit multiple shards.
 
 ## Compound Key with Hashed Field
 
-If you use a hashed field in a compound key, the hashed field must be the **first** (and only hashed) field:
+A compound shard key can include only **one** hashed field. Starting with MongoDB 4.4, the hashed field can appear at any position in the key:
 
 ```javascript
-// Valid
+// Valid - hashed field first
 { userId: "hashed", ts: 1 }
 
-// NOT valid - hashed must be first
+// Valid (MongoDB 4.4+) - hashed field in non-first position
 { ts: 1, userId: "hashed" }
 
 // NOT valid - only one field can be hashed
