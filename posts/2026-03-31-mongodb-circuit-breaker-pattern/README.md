@@ -112,7 +112,7 @@ module.exports = MongoCircuitBreaker;
 ```javascript
 // services/db.js
 const { MongoClient } = require('mongodb');
-const MongoCircuitBreaker = require('./lib/MongoCircuitBreaker');
+const MongoCircuitBreaker = require('../lib/MongoCircuitBreaker');
 
 const client = new MongoClient(process.env.MONGODB_URI);
 const breaker = new MongoCircuitBreaker({
