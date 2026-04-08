@@ -84,7 +84,7 @@ Document and regularly test your failover runbook. Simulate a primary failure:
 rs.stepDown(60)
 
 // Verify new primary was elected
-rs.isMaster().primary
+db.hello().primary
 ```
 
 Measure how long the failover takes and whether your application reconnects automatically.
