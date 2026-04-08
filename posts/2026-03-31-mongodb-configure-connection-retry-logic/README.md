@@ -10,11 +10,11 @@ Description: Learn how to configure retryable writes and reads in MongoDB and im
 
 ## Overview
 
-MongoDB drivers support retryable writes and reads since version 3.6, which automatically retry certain operations once on transient network errors. For deeper resilience, you can also implement application-level retry loops with exponential backoff.
+MongoDB drivers support retryable writes since version 3.6 and retryable reads since version 4.2, which automatically retry certain operations once on transient network errors. For deeper resilience, you can also implement application-level retry loops with exponential backoff.
 
 ## Enabling Retryable Writes and Reads
 
-Retryable writes are enabled by default in MongoDB drivers 4.0+. You can also set them explicitly in the connection string:
+Retryable writes are enabled by default in MongoDB drivers 4.2+. You can also set them explicitly in the connection string:
 
 ```bash
 mongodb://localhost:27017/mydb?retryWrites=true&retryReads=true
