@@ -101,7 +101,7 @@ try {
 
     if (account.balance < 200) {
       insufficientFunds = true
-      throw new Error('InsufficientFunds') // aborts, but withTransaction also retries
+      throw new Error('InsufficientFunds') // aborts without retry (no TransientTransactionError label)
     }
 
     await db.collection('accounts').updateOne(
