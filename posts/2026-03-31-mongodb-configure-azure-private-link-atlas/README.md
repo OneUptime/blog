@@ -37,18 +37,17 @@ az network private-endpoint create \
   --vnet-name myVNet \
   --subnet mySubnet \
   --private-connection-resource-id "/subscriptions/00000000.../privateLinkServices/pls-atlas-eastus" \
-  --group-ids mongoCluster \
   --connection-name atlasConnection \
   --location eastus
 ```
 
-Get the private endpoint resource ID and NIC private IP for later:
+Get the private endpoint resource ID for later:
 
 ```bash
 az network private-endpoint show \
   --name myAtlasPrivateEndpoint \
   --resource-group myResourceGroup \
-  --query "customDnsConfigs[].ipAddresses" \
+  --query "id" \
   --output tsv
 ```
 
@@ -74,11 +73,11 @@ Atlas hostnames must resolve to private IP addresses inside your VNet. Create a 
 ```bash
 az network private-dns zone create \
   --resource-group myResourceGroup \
-  --name "privatelink.mongo.cosmos.azure.com"
+  --name "privatelink.mongodb.net"
 
 az network private-dns link vnet create \
   --resource-group myResourceGroup \
-  --zone-name "privatelink.mongo.cosmos.azure.com" \
+  --zone-name "privatelink.mongodb.net" \
   --name myDNSLink \
   --virtual-network myVNet \
   --registration-enabled false
@@ -89,7 +88,7 @@ Add a DNS A record pointing the Atlas hostname to the private endpoint IP:
 ```bash
 az network private-dns record-set a add-record \
   --resource-group myResourceGroup \
-  --zone-name "privatelink.mongo.cosmos.azure.com" \
+  --zone-name "privatelink.mongodb.net" \
   --record-set-name "cluster0-pl-0.abcde" \
   --ipv4-address 10.0.1.5
 ```
@@ -101,7 +100,7 @@ Retrieve the private endpoint connection string from Atlas UI:
 ```python
 from pymongo import MongoClient
 
-uri = "mongodb+srv://cluster0-pl-0.abcde.privatelink.mongo.cosmos.azure.com/?authSource=admin"
+uri = "mongodb+srv://cluster0-pl-0.abcde.privatelink.mongodb.net/?authSource=admin"
 client = MongoClient(uri, username="myUser", password="myPassword", tls=True)
 db = client["mydb"]
 print(db.list_collection_names())
