@@ -42,7 +42,6 @@ mongosh "mongodb://user:pass@host:27017/myDB?tls=true&tlsCAFile=/etc/ssl/mongo-c
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
 const client = new MongoClient(
   "mongodb://user:pass@host:27017/myDB?authSource=admin",
@@ -58,17 +57,16 @@ await client.connect();
 console.log("TLS connection established");
 ```
 
-Alternatively, pass certificate content directly via driver options:
+Alternatively, pass all TLS options via the connection string:
 
 ```javascript
 const { MongoClient } = require("mongodb");
-const fs = require("fs");
 
-const client = new MongoClient("mongodb://user:pass@host:27017/myDB", {
-  tls: true,
-  tlsCAFile: "/etc/ssl/ca.pem",
-  tlsCertificateKeyFile: "/etc/ssl/client.pem"
-});
+const client = new MongoClient(
+  "mongodb://user:pass@host:27017/myDB?tls=true&tlsCAFile=/etc/ssl/ca.pem&tlsCertificateKeyFile=/etc/ssl/client.pem&authSource=admin"
+);
+
+await client.connect();
 ```
 
 ## Python with PyMongo
@@ -105,7 +103,6 @@ client = MongoClient(
 
 ```java
 import com.mongodb.MongoClientSettings;
-import com.mongodb.connection.SslSettings;
 import com.mongodb.client.MongoClients;
 
 MongoClientSettings settings = MongoClientSettings.builder()
@@ -146,10 +143,11 @@ cat mongo-server.crt mongo-server.key > mongo-server.pem
 ## Verifying TLS is Active
 
 ```javascript
-db.adminCommand({ connectionStatus: 1 })
+// Check current connection info including TLS status
+db.adminCommand({ getLog: "global" }).log.filter(l => l.includes("SSL"))
 
-// Or check the server's SSL info
-db.runCommand({ sslInfo: 1 })
+// Or check server status for TLS details
+db.serverStatus().transportSecurity
 ```
 
 ## Summary
