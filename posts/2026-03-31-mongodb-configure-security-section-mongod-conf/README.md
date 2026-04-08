@@ -22,7 +22,7 @@ By default, MongoDB runs without authentication. Setting `authorization: enabled
 
 ## Enabling Authentication
 
-After enabling authorization, create an admin user before restarting.
+Before enabling authorization, create an admin user while access control is still off.
 
 ```javascript
 use admin
@@ -70,14 +70,7 @@ security:
 
 ## Configuring SCRAM Authentication Mechanism
 
-MongoDB 4.0 and later support both SCRAM-SHA-1 and SCRAM-SHA-256. Disable SCRAM-SHA-1 to enforce the stronger mechanism.
-
-```yaml
-security:
-  authenticationMechanisms: SCRAM-SHA-256
-```
-
-Set `setParameter` to restrict mechanisms at startup.
+MongoDB 4.0 and later support both SCRAM-SHA-1 and SCRAM-SHA-256. Disable SCRAM-SHA-1 to enforce the stronger mechanism using `setParameter` in `mongod.conf`.
 
 ```yaml
 setParameter:
@@ -86,12 +79,12 @@ setParameter:
 
 ## Enabling Encryption at Rest
 
-For MongoDB Enterprise, enable encrypted storage at rest using the `encryptionAtRest` field.
+For MongoDB Enterprise, enable encrypted storage at rest using the `enableEncryption` field.
 
 ```yaml
 security:
   enableEncryption: true
-  encryptionKeyIdentifier: /etc/mongodb/keyid
+  encryptionKeyFile: /etc/mongodb/encryption-keyfile
 ```
 
 Community Edition requires filesystem-level encryption (such as LUKS) instead.
