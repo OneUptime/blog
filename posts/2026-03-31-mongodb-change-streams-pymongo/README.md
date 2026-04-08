@@ -40,7 +40,7 @@ pipeline = [
     }
 ]
 
-with col.watch(pipeline=pipeline) as stream:
+with col.watch(pipeline=pipeline, full_document="updateLookup") as stream:
     for event in stream:
         order = event["fullDocument"]
         print(f"Order {order['_id']} completed for ${order['amount']}")
