@@ -32,12 +32,7 @@ systemLog:
       verbosity: 1
 ```
 
-MongoDB 4.4+ uses JSON format by default. For older versions that support it, add:
-
-```yaml
-systemLog:
-  logFormat: json
-```
+MongoDB 4.4+ uses JSON format by default. There is no configuration option to switch between log formats — structured JSON is the only format in 4.4 and later. Versions before 4.4 use a plaintext log format and do not support structured JSON logging.
 
 ## Understanding a Structured Log Entry
 
@@ -71,7 +66,7 @@ Key fields:
 Query logs directly from the command line using `jq`:
 
 ```bash
-# Show all slow queries (COMMAND component, duration > 0)
+# Show all slow queries (COMMAND component, duration > 100ms)
 cat /var/log/mongodb/mongod.log | \
   jq -c 'select(.c == "COMMAND" and .attr.durationMillis > 100) | {ts: .t, ns: .attr.ns, ms: .attr.durationMillis}'
 
