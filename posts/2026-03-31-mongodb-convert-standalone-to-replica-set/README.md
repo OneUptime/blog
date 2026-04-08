@@ -122,8 +122,8 @@ rs.status()
 ```
 
 ```javascript
-db.isMaster()
-// ismaster: true, setName: "rs0", hosts: [...]
+db.hello()
+// isWritablePrimary: true, setName: "rs0", hosts: [...]
 ```
 
 ## Summary
