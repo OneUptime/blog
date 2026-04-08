@@ -86,7 +86,23 @@ db.articles.createIndex(
 );
 ```
 
-Note that field-level weights cannot be set with `$**` since all fields are treated equally.
+You can also assign field-level weights with the wildcard text index to boost specific fields:
+
+```javascript
+db.articles.createIndex(
+  { "$**": "text" },
+  {
+    weights: {
+      title: 10,
+      body: 5
+    },
+    default_language: "english",
+    textIndexVersion: 3
+  }
+);
+```
+
+Fields not listed in `weights` receive the default weight of 1.
 
 ## When to Use a Wildcard Text Index
 
