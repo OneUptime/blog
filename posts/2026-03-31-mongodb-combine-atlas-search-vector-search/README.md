@@ -30,9 +30,6 @@ Atlas Search ($search)     Vector Search ($vectorSearch)
 Use `$unionWith` to run a vector search pipeline and merge it with the keyword search results:
 
 ```javascript
-const KEYWORD_WEIGHT = 0.5;
-const VECTOR_WEIGHT = 0.5;
-
 db.products.aggregate([
   // Stage 1: Keyword search
   {
@@ -90,12 +87,30 @@ Group by `_id` and compute the RRF score. RRF score = 1 / (k + rank) where k is 
 
 ```javascript
 // Continued from above pipeline...
+
+// Create a unified score field for ranking within each source
+{
+  $addFields: {
+    searchScore: { $ifNull: ["$keywordScore", "$vectorScore"] }
+  }
+},
+// Assign positional ranks within each source partition
+{
+  $setWindowFields: {
+    partitionBy: "$source",
+    sortBy: { searchScore: -1 },
+    output: {
+      rank: { $denseRank: {} }
+    }
+  }
+},
+// Group by document and compute RRF score using ranks
 {
   $group: {
     _id: "$_id",
     title: { $first: "$title" },
     price: { $first: "$price" },
-    scores: { $push: { source: "$source", score: "$keywordScore", vscore: "$vectorScore" } }
+    ranks: { $push: { source: "$source", rank: "$rank" } }
   }
 },
 {
@@ -103,12 +118,12 @@ Group by `_id` and compute the RRF score. RRF score = 1 / (k + rank) where k is 
     rrfScore: {
       $sum: {
         $map: {
-          input: "$scores",
-          as: "s",
+          input: "$ranks",
+          as: "r",
           in: {
             $divide: [
               1,
-              { $add: [60, { $ifNull: ["$$s.score", { $ifNull: ["$$s.vscore", 0] }] }] }
+              { $add: [60, "$$r.rank"] }
             ]
           }
         }
