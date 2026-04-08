@@ -111,6 +111,7 @@ Remove duplicates by keeping the oldest document in each group:
 ```javascript
 async function deduplicateContacts() {
   const duplicates = await Contact.aggregate([
+    { $sort: { _id: 1 } },
     { $group: { _id: { email: { $toLower: '$email' } }, ids: { $push: '$_id' }, count: { $sum: 1 } } },
     { $match: { count: { $gt: 1 } } },
   ]);
@@ -136,6 +137,7 @@ Use `$group` to deduplicate data within a pipeline without modifying the source 
 ```javascript
 // Get deduplicated list of events per user
 const dedupedEvents = await Event.aggregate([
+  { $sort: { createdAt: 1 } },
   {
     $group: {
       _id: { userId: '$userId', externalId: '$externalId' },
