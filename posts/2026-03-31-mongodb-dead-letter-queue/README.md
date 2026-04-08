@@ -27,7 +27,6 @@ await db.collection('jobs').createIndexes([
 ]);
 
 await db.collection('jobs_dlq').createIndexes([
-  { key: { movedAt: 1 } },
   { key: { 'payload.type': 1 } },
   // Auto-delete DLQ entries after 90 days
   { key: { movedAt: 1 }, expireAfterSeconds: 7776000 }
@@ -36,7 +35,7 @@ await db.collection('jobs_dlq').createIndexes([
 
 ## Moving Jobs to the DLQ
 
-When a job exceeds its maximum retry count, move it atomically to the DLQ collection and remove it from the active queue.
+When a job exceeds its maximum retry count, move it to the DLQ collection and remove it from the active queue. For true atomicity, wrap the insert and delete in a multi-document transaction.
 
 ```javascript
 const MAX_ATTEMPTS = 3;
@@ -45,12 +44,14 @@ async function failJob(db, job, error) {
   const jobs = db.collection('jobs');
   const dlq = db.collection('jobs_dlq');
 
-  if (job.attempts >= MAX_ATTEMPTS) {
+  const nextAttempt = (job.attempts || 0) + 1;
+
+  if (nextAttempt >= MAX_ATTEMPTS) {
     // Move to dead letter queue
     await dlq.insertOne({
       originalId: job._id,
       payload: job.payload,
-      attempts: job.attempts,
+      attempts: nextAttempt,
       errors: job.errors || [],
       lastError: {
         message: error.message,
@@ -63,21 +64,22 @@ async function failJob(db, job, error) {
     });
 
     await jobs.deleteOne({ _id: job._id });
-    console.error(`Job ${job._id} moved to DLQ after ${job.attempts} attempts`);
+    console.error(`Job ${job._id} moved to DLQ after ${nextAttempt} attempts`);
   } else {
     // Reschedule for retry with back-off
-    const retryDelay = Math.pow(2, job.attempts) * 5000;
+    const retryDelay = Math.pow(2, nextAttempt) * 5000;
+    const nextRunAt = new Date(Date.now() + retryDelay);
     await jobs.updateOne(
       { _id: job._id },
       {
-        $set: { status: 'pending', lockedAt: null },
+        $set: { status: 'pending', lockedAt: null, nextRunAt },
         $inc: { attempts: 1 },
         $push: {
-          errors: { message: error.message, at: new Date(), attempt: job.attempts }
+          errors: { message: error.message, at: new Date(), attempt: nextAttempt }
         }
       }
     );
-    console.warn(`Job ${job._id} rescheduled, attempt ${job.attempts + 1} in ${retryDelay}ms`);
+    console.warn(`Job ${job._id} rescheduled, attempt ${nextAttempt + 1} at ${nextRunAt.toISOString()}`);
   }
 }
 ```
@@ -91,7 +93,7 @@ async function runWorker(db) {
   while (true) {
     const job = await jobs.findOneAndUpdate(
       { status: 'pending' },
-      { $set: { status: 'processing', lockedAt: new Date() }, $inc: { attempts: 1 } },
+      { $set: { status: 'processing', lockedAt: new Date() } },
       { sort: { createdAt: 1 }, returnDocument: 'after' }
     );
 
@@ -154,4 +156,4 @@ await replayDead(db, { 'payload.type': 'send_email' });
 
 ## Summary
 
-A MongoDB dead letter queue uses a separate collection to capture jobs that have exhausted their retries. Move failed jobs atomically with `insertOne` on the DLQ followed by `deleteOne` from the active queue. Store the full error history and attempt count for diagnosis. Use aggregation to summarize failure patterns, and replay dead jobs by re-inserting them into the active queue with zeroed attempt counters.
+A MongoDB dead letter queue uses a separate collection to capture jobs that have exhausted their retries. Move failed jobs with `insertOne` on the DLQ followed by `deleteOne` from the active queue, using a multi-document transaction if atomicity is required. Store the full error history and attempt count for diagnosis. Use aggregation to summarize failure patterns, and replay dead jobs by re-inserting them into the active queue with zeroed attempt counters.
