@@ -32,9 +32,14 @@ FTDC is enabled by default. Configure collection interval and max size:
 
 ```javascript
 // Check current FTDC settings
-db.adminCommand({ getDiagnosticData: 1 });
+db.adminCommand({
+  getParameter: 1,
+  diagnosticDataCollectionEnabled: 1,
+  diagnosticDataCollectionPeriodMillis: 1,
+  diagnosticDataCollectionDirectorySizeMB: 1
+});
 
-// Adjust capture interval (default 1 second) and max file size
+// Adjust capture interval (default 1 second) and max directory size
 db.adminCommand({
   setParameter: 1,
   diagnosticDataCollectionEnabled: true,
@@ -77,15 +82,14 @@ This is useful for capturing a snapshot to share with MongoDB Support.
 When opening a MongoDB support case, collect all diagnostic data:
 
 ```bash
-# Create a diagnostic archive using mongodump approach
-mongodump \
-  --uri "mongodb://localhost:27017" \
-  --db admin \
-  --collection "$cmd.sys.inprog" \
-  --out /tmp/diag_$(date +%Y%m%d)
+# Capture a point-in-time snapshot of server status and current operations
+mongosh --eval "printjson(db.adminCommand({serverStatus: 1}))" > /tmp/diag_$(date +%Y%m%d)_serverStatus.json
+mongosh --eval "printjson(db.adminCommand({currentOp: 1}))" > /tmp/diag_$(date +%Y%m%d)_currentOp.json
 
-# Copy diagnostic.data directory
+# Copy diagnostic.data directory and bundle everything
+mkdir -p /tmp/diag_$(date +%Y%m%d)
 cp -r /var/lib/mongodb/diagnostic.data/ /tmp/diag_$(date +%Y%m%d)/
+cp /tmp/diag_$(date +%Y%m%d)_*.json /tmp/diag_$(date +%Y%m%d)/
 tar czf /tmp/mongodb_diag_$(date +%Y%m%d).tar.gz /tmp/diag_$(date +%Y%m%d)/
 ```
 
@@ -97,10 +101,10 @@ Focus on these FTDC metrics during post-incident analysis:
 Metric Path                                          | Meaning
 -----------------------------------------------------|---------------------
 serverStatus.wiredTiger.cache.bytes in cache         | Cache utilization
-serverStatus.wiredTiger.cache.pages evicted          | Cache pressure
+serverStatus.wiredTiger.cache.pages evicted by application threads | Cache pressure
 serverStatus.opcounters.insert/update/delete/query   | Operation rates
 serverStatus.connections.current                     | Connection count
-serverStatus.repl.buffer.sizeBytes                   | Replication buffer
+serverStatus.metrics.repl.buffer.sizeBytes            | Replication buffer
 serverStatus.mem.resident                            | RSS memory
 ```
 
