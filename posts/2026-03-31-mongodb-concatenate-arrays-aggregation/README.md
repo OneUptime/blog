@@ -96,9 +96,7 @@ db.users.aggregate([
   {
     $project: {
       uniqueTags: {
-        $setUnion: {
-          $concatArrays: ["$systemTags", "$userTags"]
-        }
+        $setUnion: ["$systemTags", "$userTags"]
       }
     }
   }
