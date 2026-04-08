@@ -41,7 +41,6 @@ opts := options.Client().
     SetMinPoolSize(10).
     SetMaxConnecting(5).
     SetConnectTimeout(10 * time.Second).
-    SetSocketTimeout(60 * time.Second).
     SetServerSelectionTimeout(5 * time.Second).
     SetMaxConnIdleTime(10 * time.Minute)
 
@@ -113,13 +112,13 @@ import (
 monitor := &event.PoolMonitor{
     Event: func(e *event.PoolEvent) {
         switch e.Type {
-        case event.GetStarted:
+        case event.ConnectionCheckOutStarted:
             // connection checkout started
-        case event.GetSucceeded:
+        case event.ConnectionCheckedOut:
             // connection checked out
-        case event.ConnectionReturned:
+        case event.ConnectionCheckedIn:
             // connection returned to pool
-        case event.PoolClosedEvent:
+        case event.ConnectionPoolClosed:
             // pool closed
         }
     },
