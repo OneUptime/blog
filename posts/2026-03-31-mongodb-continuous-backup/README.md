@@ -68,8 +68,7 @@ def tail_oplog_to_s3(mongo_uri, s3_bucket, prefix):
     while True:
         cursor = oplog.find(
             {'ts': {'$gt': last_ts}},
-            cursor_type=pymongo.CursorType.TAILABLE_AWAIT,
-            oplog_replay=True
+            cursor_type=pymongo.CursorType.TAILABLE_AWAIT
         )
 
         for doc in cursor:
