@@ -37,7 +37,7 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
     "referenceMinuteOfHour": 30,
     "policies": [
       {
-        "id": "hourly",
+        "id": "{policyId}",
         "policyItems": [
           {
             "frequencyType": "hourly",
