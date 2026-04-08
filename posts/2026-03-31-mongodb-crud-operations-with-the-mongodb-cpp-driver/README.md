@@ -26,6 +26,8 @@ using bsoncxx::builder::stream::document;
 using bsoncxx::builder::stream::finalize;
 using bsoncxx::builder::stream::open_array;
 using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::open_document;
+using bsoncxx::builder::stream::close_document;
 
 mongocxx::instance instance{};
 mongocxx::client   client{ mongocxx::uri{ "mongodb://localhost:27017" } };
