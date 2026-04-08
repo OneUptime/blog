@@ -26,6 +26,10 @@ data:
   backup.sh: |
     #!/bin/bash
     set -e
+
+    # Install AWS CLI (not included in the base MongoDB image)
+    apt-get update -qq && apt-get install -y -qq awscli > /dev/null
+
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     BACKUP_DIR="/tmp/backup_${TIMESTAMP}"
 
@@ -75,7 +79,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: mongodb-backup
-              image: bitnami/mongodb:7.0
+              image: mongo:7.0
               command: ["/bin/bash", "/scripts/backup.sh"]
               envFrom:
                 - secretRef:
