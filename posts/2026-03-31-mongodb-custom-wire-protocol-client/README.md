@@ -21,7 +21,7 @@ Building a custom client is useful for:
 Install the BSON library for your language. For Python:
 
 ```bash
-pip install pymongo bson
+pip install pymongo
 ```
 
 ## Step 1: Establish a TCP Connection
@@ -30,7 +30,6 @@ pip install pymongo bson
 import socket
 import struct
 import bson
-from bson.codec_options import CodecOptions
 
 class MongoWireClient:
     def __init__(self, host="localhost", port=27017):
@@ -121,7 +120,7 @@ client = MongoWireClient("localhost", 27017)
 
 # Run hello command
 result = client.run_command("admin", {"hello": 1})
-print(f"Server version: {result.get('topologyVersion')}")
+print(f"Topology version: {result.get('topologyVersion')}")
 print(f"Is primary: {result.get('isWritablePrimary')}")
 
 # Run a find command
