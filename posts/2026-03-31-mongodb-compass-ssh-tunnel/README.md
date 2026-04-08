@@ -22,7 +22,7 @@ MongoDB instances in production environments are often not exposed to the public
 
 1. Open Compass and click New Connection
 2. Switch to the Advanced Connection Options tab
-3. Click the SSH Tunnel section
+3. Click the Proxy / SSH tab
 4. Set SSH Tunnel to Use SSH with Password or Use SSH with Identity File
 
 ### Using an Identity File (Recommended)
