@@ -60,10 +60,10 @@ await mongoose.connect(process.env.MONGODB_URI, {
 Instead of the SRV connection string (which requires DNS lookup), use a direct connection string when possible:
 
 ```text
-SRV (2 DNS lookups):
+SRV (2 extra DNS lookups - SRV + TXT):
   mongodb+srv://cluster.mongodb.net/db
 
-Direct (0 DNS lookups):
+Direct (no SRV/TXT lookups):
   mongodb://host1:27017,host2:27017,host3:27017/db?replicaSet=atlas-xxx
 ```
 
@@ -140,8 +140,6 @@ Private endpoints eliminate public internet routing and reduce connection latenc
 ## 8. Measure Cold Start Impact
 
 ```javascript
-const start = Date.now();
-
 exports.handler = async (event) => {
   const dbStart = Date.now();
   await connectDB();
