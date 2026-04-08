@@ -111,7 +111,7 @@ db.events.aggregate([
 |---------|---------------|-----------|
 | Preserves duplicates | Yes | No |
 | Preserves order | Yes | No guarantee |
-| Returns null on null input | Yes | No (returns empty array) |
+| Returns null on null input | Yes | Yes |
 | Works with 2+ arrays | Yes | Yes |
 
 ## Practical Example: Building Tag Lists
