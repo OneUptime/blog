@@ -95,9 +95,9 @@ db.articles.find({
 
 | Strength | Compares | Ignores |
 |----------|----------|---------|
-| 1 | Base chars only | Case, accents, punctuation |
+| 1 | Base characters only | Case, accents |
 | 2 | Base + accents | Case |
-| 3 | Base + accents + case | Punctuation |
+| 3 (default) | Base + accents + case | Minor variants only |
 
 Most applications use `strength: 2` for email/username lookups.
 
