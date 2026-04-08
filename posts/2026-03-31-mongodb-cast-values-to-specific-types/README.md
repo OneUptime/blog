@@ -153,7 +153,7 @@ db.settings.aggregate([
 ]);
 ```
 
-`$toBool` follows JavaScript-style truthiness: `0`, `""`, `null`, and `false` are false; all other values are true.
+`$toBool` converts numeric zero to `false` and non-zero numbers to `true`. ObjectId and Date values always convert to `true`. Strings are not supported and cause errors; `null` input returns `null`.
 
 ## Safe Casting with $convert
 
