@@ -36,7 +36,7 @@ Each runbook entry should include:
 mongosh --eval "rs.status()"
 
 # Find current primary
-mongosh --eval "rs.isMaster()"
+mongosh --eval "db.hello()"
 ```
 
 **Resolution:**
@@ -45,8 +45,10 @@ mongosh --eval "rs.isMaster()"
 # If election is stalled, step down the current primary to force a new election
 mongosh --eval "rs.stepDown(30)"
 
-# If a secondary is stuck in STARTUP2, resync it
-mongosh --eval "db.adminCommand({ resync: 1 })"
+# If a secondary is stuck in STARTUP2, perform an initial sync:
+# 1. Stop the secondary mongod process
+# 2. Delete its data directory contents
+# 3. Restart mongod — it will automatically perform an initial sync from the primary
 ```
 
 ## Issue 2: Connection Pool Exhausted
@@ -117,11 +119,11 @@ mongosh --eval "db.stats(1024*1024)"
 **Resolution:**
 
 ```bash
-# Run compact on the largest collection (blocks writes, schedule during maintenance)
+# Run compact on the largest collection to reclaim disk space
 mongosh --eval "db.runCommand({ compact: 'orders' })"
 
 # Archive old data before compact
-mongodump --collection=orders --query='{"createdAt": {"$lt": {"$date": "2024-01-01T00:00:00Z"}}}' --out=/backup/archive
+mongodump --db=mydb --collection=orders --query='{"createdAt": {"$lt": {"$date": "2024-01-01T00:00:00Z"}}}' --out=/backup/archive
 ```
 
 ## Escalation Path
