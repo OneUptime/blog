@@ -91,7 +91,9 @@ class PoolMonitor implements ConnectionPoolListener {
 
 MongoClientSettings settings = MongoClientSettings.builder()
     .applyConnectionString(new ConnectionString("mongodb://localhost:27017"))
-    .addCommandListener(new PoolMonitor())
+    .applyToConnectionPoolSettings(builder ->
+        builder.addConnectionPoolListener(new PoolMonitor())
+    )
     .build();
 ```
 
@@ -111,7 +113,6 @@ System.out.println("Available: " + connections.getInteger("available"));
 In Spring Boot, configure via `application.properties`:
 
 ```text
-spring.data.mongodb.uri=mongodb://localhost:27017/mydb
 spring.data.mongodb.uri=mongodb://localhost:27017/mydb?maxPoolSize=20&minPoolSize=2
 ```
 
