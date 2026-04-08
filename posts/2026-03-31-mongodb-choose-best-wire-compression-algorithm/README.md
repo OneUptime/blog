@@ -22,7 +22,7 @@ Choosing the wrong algorithm wastes either CPU cycles or network bandwidth. The 
 ```text
 Algorithm  Compression   CPU Usage   Latency Impact   Min Version
 Snappy     Moderate      Low         Minimal          MongoDB 3.4
-Zlib       High          Medium-High Low-Medium        MongoDB 3.4
+Zlib       High          Medium-High Low-Medium        MongoDB 3.6
 Zstd       Highest       Low-Medium  Minimal          MongoDB 4.2
 ```
 
@@ -64,7 +64,7 @@ net:
     compressors: zstd
 ```
 
-Zstd at default level 3 beats Snappy in compression ratio while being faster than Zlib.
+Zstd at default level 6 beats Snappy in compression ratio while being faster than Zlib.
 
 ## When to Choose Zlib
 
@@ -112,7 +112,7 @@ import pymongo
 import time
 
 algorithms = {
-    "none": "mongodb://host:27017/db?compressors=disabled",
+    "none": "mongodb://host:27017/db",
     "snappy": "mongodb://host:27017/db?compressors=snappy",
     "zstd": "mongodb://host:27017/db?compressors=zstd",
     "zlib": "mongodb://host:27017/db?compressors=zlib",
