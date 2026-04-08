@@ -75,7 +75,8 @@ Where `search-index.json` is:
     "fields": {
       "title": { "type": "string", "analyzer": "lucene.english" },
       "price": { "type": "number" },
-      "category": { "type": "string", "analyzer": "lucene.keyword" }
+      "category": { "type": "string", "analyzer": "lucene.keyword" },
+      "inStock": { "type": "boolean" }
     }
   }
 }
@@ -112,7 +113,6 @@ db.products.aggregate([
 | `boolean` | Exact match filters |
 | `objectId` | ID lookups |
 | `embeddedDocuments` | Nested object fields |
-| `document` | Sub-document field access |
 
 ## Multi-Analyzer Fields
 
