@@ -70,9 +70,10 @@ Your mongod must be configured to require client certificates:
 mongod \
   --tlsMode requireTLS \
   --tlsCertificateKeyFile /etc/ssl/mongodb.pem \
-  --tlsCAFile /etc/ssl/ca.pem \
-  --tlsAllowConnectionsWithoutCertificates false
+  --tlsCAFile /etc/ssl/ca.pem
 ```
+
+When `--tlsCAFile` is specified and `--tlsAllowConnectionsWithoutCertificates` is not set, mongod requires clients to present a valid certificate by default.
 
 ## Connection String with TLS Parameters
 
