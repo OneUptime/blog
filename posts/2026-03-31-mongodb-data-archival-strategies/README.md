@@ -78,7 +78,7 @@ MongoDB Atlas Online Archive automatically tiers data to low-cost object storage
 
 ```bash
 # Example Atlas Admin API call to create an archive policy
-curl -u "user:apikey" \
+curl --digest -u "publicKey:privateKey" \
   -X POST "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/onlineArchives" \
   -H "Content-Type: application/json" \
   -d '{
