@@ -87,7 +87,7 @@ Use a monitoring tool like OneUptime to set up capacity alerts:
 Your capacity plan must account for the scenario where one node fails. In a three-node replica set, the two remaining nodes must handle the full workload. Design so that at 66% capacity (two nodes) you can still serve peak traffic comfortably.
 
 ```text
-per_node_capacity_target = peak_load * 1.5 / num_nodes
+per_node_capacity_target = peak_load * 2 / num_nodes
 ```
 
 ## Summary
