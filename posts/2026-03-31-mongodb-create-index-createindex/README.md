@@ -123,7 +123,7 @@ main().catch(console.error);
 
 ## Background Index Builds
 
-In MongoDB 4.2 and later, all index builds are performed as rolling background operations by default. In earlier versions you could pass `{ background: true }` to avoid blocking the collection.
+In MongoDB 4.2 and later, the `background` option is ignored. Index builds use an optimized process that holds an exclusive lock only at the beginning and end of the build, allowing reads and writes to interleave during the majority of the build. In earlier versions you could pass `{ background: true }` to avoid blocking the collection.
 
 ```javascript
 // MongoDB < 4.2 only - no longer needed in 4.2+
