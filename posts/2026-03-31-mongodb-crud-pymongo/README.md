@@ -57,7 +57,7 @@ products = list(col.find(
 ))
 print(products)
 
-# Sort, skip, limit
+# Sort and limit
 top5 = list(col.find({"inStock": True}).sort("price", DESCENDING).limit(5))
 
 # Find by ObjectId
