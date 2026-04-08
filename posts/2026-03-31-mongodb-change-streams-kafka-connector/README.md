@@ -88,22 +88,21 @@ Only confirmed orders will be published.
 
 ## Resume Token Persistence
 
-The connector automatically persists the Change Stream resume token to a dedicated MongoDB collection (`_mongodb_kafka_source_config` by default). If Kafka Connect restarts, the connector resumes from the last token without missing events.
+The connector automatically persists the Change Stream resume token through Kafka Connect's offset storage mechanism (the `connect-offsets` Kafka topic in distributed mode, or a local file in standalone mode). If Kafka Connect restarts, the connector resumes from the last token without missing events.
 
-To configure a custom resume token collection:
+To customize the offset partition name used for storing the resume token:
 
 ```json
-"offset.partition.name": "shop.orders",
-"topic.namespace.map": "{\"*\":\"mongo-cdc\"}"
+"offset.partition.name": "shop.orders"
 ```
 
 ## Publishing Delete Events
 
-By default `publish.full.document.only` is `true` and deletes are excluded (since they have no full document). To capture deletes:
+By default `publish.full.document.only` is `false`, but when set to `true` (as in the example above) deletes are excluded (since they have no full document). To capture deletes:
 
 ```json
 "publish.full.document.only": "false",
-"change.stream.full.document": "whenAvailable"
+"change.stream.full.document": "default"
 ```
 
 Delete events will have `operationType: "delete"` and a `documentKey` with only the `_id`.
