@@ -77,7 +77,7 @@ To find documents with the wrong type in the shell:
 db.products.find({ price: { $type: "string" } }).limit(10)
 
 // Find documents where price is stored as a number
-db.products.find({ price: { $type: "double" } }).countDocuments()
+db.products.countDocuments({ price: { $type: "double" } })
 ```
 
 To fix the type:
@@ -156,7 +156,7 @@ flowchart LR
 - Compass samples a maximum of 1,000 documents by default.
 - For collections with millions of documents, 1,000 samples may miss rare fields or values.
 - Narrow the sample with a query filter to analyze specific document segments.
-- For programmatic analysis on the full collection, use the `$sample` aggregation stage with a larger size, or use the `mongocryptd` schema analysis tools.
+- For programmatic analysis on the full collection, use the `$sample` aggregation stage with a larger size.
 
 ## Summary
 
