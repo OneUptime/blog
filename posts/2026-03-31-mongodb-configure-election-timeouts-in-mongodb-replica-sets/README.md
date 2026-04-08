@@ -70,7 +70,7 @@ cfg.members[3].priority = 0;
 rs.reconfig(cfg);
 ```
 
-MongoDB requires that the number of voting members is odd. If you add a non-voting member, you do not need to add another to maintain quorum.
+MongoDB allows up to 7 voting members in a replica set and recommends an odd number to avoid tied elections. If you add a non-voting member, it does not affect the quorum calculation.
 
 ## Monitor Election Events in the Log
 
