@@ -91,7 +91,7 @@ To create a new document based on an existing one, hover over the document and c
 
 Hover over a document and click the trash icon. Compass asks for confirmation before deleting.
 
-To delete multiple documents matching a filter, apply the filter first, then use the aggregation pipeline or mongosh - bulk deletes are not available through the Compass Documents UI but the filter helps verify scope.
+To delete multiple documents matching a filter, apply the filter first to verify scope, then use the embedded mongosh shell in Compass to run `db.collection.deleteMany({ filter })` - bulk deletes are not available through the Compass Documents UI.
 
 ## Copying a Document Value
 
