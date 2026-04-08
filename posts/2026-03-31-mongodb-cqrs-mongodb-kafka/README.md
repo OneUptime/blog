@@ -83,7 +83,7 @@ A Kafka consumer updates the read model in MongoDB whenever a change event arriv
 
 ```python
 from kafka import KafkaConsumer
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient
 import json
 
 consumer = KafkaConsumer(
