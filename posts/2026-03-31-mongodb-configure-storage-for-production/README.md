@@ -22,7 +22,7 @@ storage:
   dbPath: /var/lib/mongodb
   wiredTiger:
     engineConfig:
-      cacheSizeGB: 14  # For a 32GB server: leave ~18GB for OS and indexes
+      cacheSizeGB: 18  # For a 32GB server: (32 - 8 OS - 4-6 indexes ≈ 18-20)
 ```
 
 Calculate the appropriate value:
@@ -104,8 +104,21 @@ For high-write workloads, place the journal on a separate disk:
 storage:
   dbPath: /data/mongodb
   journal:
-    enabled: true
     commitIntervalMs: 100  # Default 100ms; reduce for durability, increase for throughput
+```
+
+To place the journal on a separate disk, create a symlink from the journal subdirectory:
+
+```bash
+# Stop mongod first
+sudo systemctl stop mongod
+
+# Move journal to a separate SSD and symlink back
+sudo mv /data/mongodb/journal /data/journal-ssd/
+sudo ln -s /data/journal-ssd/journal /data/mongodb/journal
+sudo chown -R mongod:mongod /data/journal-ssd /data/mongodb/journal
+
+sudo systemctl start mongod
 ```
 
 Placing data and journal on separate SSDs eliminates I/O contention.
@@ -118,8 +131,8 @@ Set the I/O scheduler for MongoDB SSDs:
 # For NVMe SSDs, use none (no queuing needed)
 echo none > /sys/block/nvme0n1/queue/scheduler
 
-# For SATA SSDs, use deadline
-echo deadline > /sys/block/sda/queue/scheduler
+# For SATA SSDs, use mq-deadline (or deadline on older kernels)
+echo mq-deadline > /sys/block/sda/queue/scheduler
 
 # Make persistent via udev rule
 echo 'ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"' \
