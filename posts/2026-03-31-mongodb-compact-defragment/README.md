@@ -52,12 +52,6 @@ A waste ratio above 20-30% is a good indicator that compact could help.
 db.runCommand({ compact: "orders" })
 ```
 
-Or using the helper:
-
-```javascript
-db.orders.compact()
-```
-
 Expected output on success:
 
 ```text
@@ -69,9 +63,9 @@ Expected output on success:
 ## compact() Behavior
 
 - **WiredTiger**: `compact()` rewrites the collection to remove fragmentation and returns space to the OS.
-- The command runs in the foreground on the target node - it holds an exclusive lock on the collection during the operation.
+- The command runs in the foreground on the target node but does not block MongoDB CRUD operations on the database being compacted.
 - On a replica set, it runs on the targeted node only; run it on each member separately.
-- It does NOT release the lock for reads/writes during execution (it is a blocking operation).
+- Starting in MongoDB 6.0.2, a secondary node can replicate while compact is running, and reads are permitted.
 
 ## Running compact on a Replica Set
 
@@ -100,19 +94,19 @@ rs.stepDown(60)   // step down for 60 seconds
 db.runCommand({ compact: "orders" })
 ```
 
-## force Option for Standalone or Arbiter
+## force Option for Primary Nodes
 
-On a standalone instance, compact requires no special options:
+By default, compact is intended to be run on secondary nodes. To run compact directly on the primary in a replica set, use the `force` option:
 
 ```javascript
-db.runCommand({ compact: "orders" })
+db.runCommand({ compact: "orders", force: true })
 ```
 
-On an arbiter (which has no data), compact is not needed.
+On a standalone instance, compact requires no special options. On an arbiter (which has no data), compact is not needed.
 
 ## compactStructuredEncryptionData
 
-For collections with Client-Side Field Level Encryption, use the dedicated command instead:
+For collections with Queryable Encryption, use the dedicated command instead:
 
 ```javascript
 db.runCommand({ compactStructuredEncryptionData: "patients" })
@@ -129,7 +123,7 @@ Good times to run compact:
 
 Do not run compact:
 
-- During peak traffic hours (it blocks reads and writes on the collection).
+- During peak traffic hours (it consumes significant I/O and CPU resources).
 - On collections where data size naturally fluctuates frequently - the benefit will be short-lived.
 
 ## Automating compact with a Script
@@ -213,4 +207,4 @@ This approach requires sufficient disk space for the dump and creates a brief wi
 
 ## Summary
 
-MongoDB's `compact()` command defragments a collection and its indexes, returning unused space to the operating system. It is most useful after large batch deletes or updates that significantly reduced document sizes. The command blocks reads and writes on the collection while running, so run it on replica set secondaries during off-peak hours and step down the primary to compact it last. Check fragmentation beforehand with `db.collection.stats()` and monitor progress via `currentOp()`.
+MongoDB's `compact()` command defragments a collection and its indexes, returning unused space to the operating system. It is most useful after large batch deletes or updates that significantly reduced document sizes. While the command does not block CRUD operations, it consumes significant I/O and CPU resources, so run it on replica set secondaries during off-peak hours and step down the primary to compact it last. Check fragmentation beforehand with `db.collection.stats()` and monitor progress via `currentOp()`.
