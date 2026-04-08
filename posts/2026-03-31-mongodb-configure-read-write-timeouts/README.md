@@ -90,9 +90,8 @@ db.adminCommand({
 Or in `mongod.conf`:
 
 ```text
-operationProfiling:
-  mode: slowOp
-  slowOpThresholdMs: 100
+setParameter:
+  defaultMaxTimeMS: 5000
 ```
 
 ## Write Concern Timeouts
