@@ -82,7 +82,7 @@ db.orders.createIndex({ status: 1, createdAt: -1, amount: 1 })
 A covered query returns results entirely from the index without loading documents. Include all projected fields in the index:
 
 ```javascript
-db.products.createIndex({ category: 1, price: 1, _id: 0 })
+db.products.createIndex({ category: 1, price: 1 })
 
 // This query is covered - no document fetch needed
 db.products.find(
