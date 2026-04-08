@@ -17,14 +17,14 @@ MongoDB drivers maintain a pool of persistent TCP connections to the server. The
 Each mongod process has a default connection limit derived from ulimit:
 
 ```bash
-# Check current connection limit
-mongosh --eval "db.adminCommand({connectionStatus: 1})"
+# Check current connection usage
+mongosh --eval "db.serverStatus().connections"
 
 # Server-side: check maxIncomingConnections
-mongosh --eval "db.adminCommand({getCmdLineOpts: 1})" | grep maxIncomingConnections
+mongosh --eval "db.adminCommand({getParameter: 1, maxIncomingConnections: 1})"
 ```
 
-The default `maxIncomingConnections` is 1,000,000 (effectively unlimited) but actual limits depend on OS `ulimit -n` settings.
+The default `maxIncomingConnections` is 65,536 but actual limits depend on OS `ulimit -n` settings.
 
 ## Node.js Driver Configuration
 
