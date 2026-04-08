@@ -102,7 +102,7 @@ Drivers automatically retry eligible operations once after a primary failure. En
 mongodb://host1:27017,host2:27017,host3:27017/myDB?replicaSet=rs0&retryWrites=true&w=majority
 ```
 
-`retryWrites=true` is the default for SRV connections. Set it explicitly for direct replica set connections.
+`retryWrites=true` is the default for all connection types in MongoDB 4.2+ compatible drivers. Setting it explicitly ensures compatibility with older driver versions.
 
 ## Write Concern for Durability
 
