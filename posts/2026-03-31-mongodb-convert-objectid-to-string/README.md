@@ -12,7 +12,7 @@ Converting ObjectIds to strings is common when building APIs (JSON doesn't have 
 
 ## Convert in mongosh
 
-In the MongoDB shell, call `.toString()` or `.str` on an ObjectId:
+In the MongoDB shell, call `.toString()` or `.toHexString()` on an ObjectId:
 
 ```javascript
 const id = ObjectId("64f1a2b3c4d5e6f7a8b9c0d1")
@@ -22,7 +22,7 @@ id.toString()
 // Returns: "64f1a2b3c4d5e6f7a8b9c0d1"
 
 // Method 2
-id.str
+id.toHexString()
 // Returns: "64f1a2b3c4d5e6f7a8b9c0d1"
 ```
 
