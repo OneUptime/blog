@@ -87,7 +87,7 @@ async function safeFind(collection, filter) {
 
 ## Using retryWrites and retryReads
 
-Enable automatic server-side retry for eligible operations:
+Enable automatic driver-level retry for eligible operations:
 
 ```javascript
 const client = new MongoClient(uri, {
