@@ -54,6 +54,13 @@ openssl req -newkey rsa:2048 -nodes \
   -out /etc/mongodb/server.csr \
   -subj "/CN=mongo1.internal.example.com"
 
+openssl x509 -req -in /etc/mongodb/server.csr \
+  -CA /etc/mongodb/ca.pem \
+  -CAkey /etc/mongodb/ca-key.pem \
+  -CAcreateserial \
+  -out /etc/mongodb/server-cert.pem \
+  -days 365
+
 cat /etc/mongodb/server-cert.pem /etc/mongodb/server-key.pem \
   > /etc/mongodb/server-combined.pem
 ```
