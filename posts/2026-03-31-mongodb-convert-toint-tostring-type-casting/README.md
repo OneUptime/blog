@@ -65,7 +65,7 @@ db.orders.aggregate([
       orderId: { $toString: "$_id" },
       amount: 1,
       amountLabel: {
-        $concat: ["$", { $toString: "$amount" }]
+        $concat: [{ $literal: "$" }, { $toString: "$amount" }]
       }
     }
   }
