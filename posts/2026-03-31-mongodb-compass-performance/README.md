@@ -122,7 +122,7 @@ To verify an index is unused before dropping it, watch its usage counter during 
 
 ## Monitoring Connections
 
-Excessive connections can exhaust the mongod connection pool. In the Performance tab, watch the **Connections** chart. If the count is near the `net.maxIncomingConnections` limit (default 1,000,000 but often limited by the OS), application clients may start failing to connect.
+Excessive connections can exhaust the mongod connection pool. In the Performance tab, watch the **Connections** chart. If the count is near the `net.maxIncomingConnections` limit (default 65536), application clients may start failing to connect.
 
 Common causes of connection spikes:
 
