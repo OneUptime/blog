@@ -14,7 +14,7 @@ MongoDB's main configuration file is `/etc/mongod.conf` on Linux systems. It use
 
 ```mermaid
 flowchart TD
-    A[mongod.conf] --> B[systemStorage]
+    A[mongod.conf] --> B[storage]
     A --> C[net]
     A --> D[security]
     A --> E[replication]
@@ -102,8 +102,7 @@ Controls network interfaces, ports, and TLS.
 net:
   port: 27017
   bindIp: 0.0.0.0          # listen on all interfaces; use specific IPs for security
-  bindIpAll: false
-  maxIncomingConnections: 1000000
+  maxIncomingConnections: 65536   # default is 65536
   compression:
     compressors: snappy,zstd,zlib  # enable wire compression
   tls:
@@ -134,7 +133,6 @@ Required for replica sets.
 replication:
   replSetName: rs0          # replica set name
   oplogSizeMB: 10240        # oplog size in MB, defaults to 5% of free disk
-  enableMajorityReadConcern: true
 ```
 
 ## operationProfiling Section
