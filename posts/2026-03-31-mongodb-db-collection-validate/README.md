@@ -39,15 +39,15 @@ Sample output:
 }
 ```
 
-## Full vs. Background Validation
+## Locking and Performance Considerations
 
-By default, `validate()` runs a full check that locks the collection briefly. You can run a less intrusive background validation:
+The `validate` command obtains an exclusive lock on the collection, blocking all reads and writes until it finishes. On a secondary, it can block all other operations on that node.
 
-```javascript
-db.orders.validate({ background: true })
-```
+To minimize impact on production systems:
 
-Background validation is available in MongoDB 4.4 and later. It does not take a collection-level lock but may miss some inconsistencies caught by a full scan.
+- Run validation on a secondary that is not serving reads
+- Consider using `rs.stepDown()` to step down a primary before validating
+- Isolate a replica set member from client traffic before running validation
 
 ## Checking a Specific Collection Programmatically
 
@@ -56,7 +56,7 @@ You can wrap the validate call in a script to check all collections in a databas
 ```javascript
 const dbName = db.getName();
 db.getCollectionNames().forEach(function(collName) {
-  const result = db.getCollection(collName).validate({ background: true });
+  const result = db.getCollection(collName).validate();
   if (!result.valid) {
     print(`INVALID: ${dbName}.${collName}`);
     printjson(result.errors);
@@ -97,8 +97,8 @@ You can also run the validate command directly on the admin shell:
 db.runCommand({ validate: "orders", full: true })
 ```
 
-Setting `full: true` forces a thorough scan including all data pages, which is more comprehensive than the default.
+Setting `full: true` forces a checkpoint, flushing all in-memory data to disk before verifying the on-disk data. This ensures validation covers data that may not yet have been persisted.
 
 ## Summary
 
-`db.collection.validate()` is a built-in MongoDB tool for verifying collection and index integrity. It can be run in foreground or background mode, and its output highlights corruption, invalid documents, and index inconsistencies. Incorporating periodic validation checks into your database maintenance routine helps catch data integrity issues before they impact your application.
+`db.collection.validate()` is a built-in MongoDB tool for verifying collection and index integrity. Because it takes an exclusive collection lock, plan to run it during maintenance windows or on isolated replica set members. Its output highlights corruption, invalid documents, and index inconsistencies. Incorporating periodic validation checks into your database maintenance routine helps catch data integrity issues before they impact your application.
