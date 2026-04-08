@@ -153,10 +153,12 @@ if (!mongoose.connection.readyState) {
   await mongoose.connect(MONGODB_URI);
 }
 
-export const Note = mongoose.model('Note', new mongoose.Schema({
+const NoteSchema = new mongoose.Schema({
   content: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
-}));
+});
+
+export const Note = mongoose.models.Note || mongoose.model('Note', NoteSchema);
 ```
 
 ```javascript
