@@ -160,6 +160,9 @@ public class ProductRepository
 ## Handling Connection Events
 
 ```csharp
+using MongoDB.Driver;
+using MongoDB.Driver.Core.Events;
+
 var settings = MongoClientSettings.FromConnectionString("mongodb://localhost:27017");
 
 settings.ClusterConfigurator = builder =>
