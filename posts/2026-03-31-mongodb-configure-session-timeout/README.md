@@ -40,14 +40,7 @@ setParameter:
   localLogicalSessionTimeoutMinutes: 60
 ```
 
-Or set it at runtime (does not persist across restarts):
-
-```javascript
-db.adminCommand({
-  setParameter: 1,
-  localLogicalSessionTimeoutMinutes: 60
-})
-```
+Note that `localLogicalSessionTimeoutMinutes` is a startup-only parameter and cannot be changed at runtime via `setParameter`. You must restart `mongod` after modifying `mongod.conf` for the change to take effect.
 
 Setting a longer timeout allows long-running operations (like large batch exports) to keep their session alive without needing explicit refreshes.
 
@@ -59,17 +52,17 @@ For very long-running operations without driver-managed sessions, you can manual
 
 ```javascript
 // Manually refresh a session to prevent expiration
-db.adminCommand({ refreshSessions: [session.id] })
+db.adminCommand({ refreshSessions: [session.getSessionId()] })
 ```
 
 ## Monitoring Active Sessions
 
 ```javascript
-// View all active sessions on the server
-db.adminCommand({ listSessions: 1 })
+// View all active sessions on the server (requires admin privileges)
+db.adminCommand({ listSessions: 1, allUsers: true })
 
-// View sessions for the current user
-db.adminCommand({ listSessions: 1, allUsers: false })
+// View sessions for the current user only
+db.adminCommand({ listSessions: 1 })
 ```
 
 To view sessions from `system.sessions` in the `config` database:
