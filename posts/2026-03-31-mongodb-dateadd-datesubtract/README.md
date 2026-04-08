@@ -117,15 +117,16 @@ Output:
 ```javascript
 [
   { _id: 1, name: "Subscription A", startDate: ISODate("2026-01-31"), endDate: ISODate("2026-04-30") },
-  { _id: 2, name: "Subscription B", startDate: ISODate("2026-03-15"), endDate: ISODate("2026-09-15") }
+  { _id: 2, name: "Subscription B", startDate: ISODate("2026-03-15"), endDate: ISODate("2026-09-15") },
+  { _id: 3, name: "Event",          startDate: ISODate("2026-03-31"), endDate: null }
 ]
 ```
 
-Note: Adding 3 months to `2026-01-31` produces `2026-04-30` (end of April), not April 31 which doesn't exist.
+Note: Adding 3 months to `2026-01-31` produces `2026-04-30` (end of April), not April 31 which doesn't exist. Document 3 has no `durationMonths` field, so `$dateAdd` returns `null`.
 
 ### Example 3 - $dateSubtract: Subtract Hours
 
-Subtract 5 hours from each timestamp (e.g., convert UTC to US/Eastern):
+Subtract 5 hours from each timestamp:
 
 ```javascript
 db.events.aggregate([
@@ -200,7 +201,7 @@ db.events.aggregate([
 
 ### Example 6 - Chaining Date Operations
 
-Add 1 month then subtract 1 day (last day of the month pattern):
+Add 1 month then subtract 1 day to chain `$dateAdd` and `$dateSubtract` together:
 
 ```javascript
 db.subscriptions.aggregate([
