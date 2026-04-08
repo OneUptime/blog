@@ -36,7 +36,6 @@ If the document's version is still 3, the update succeeds and version becomes 4.
 
 ```python
 from pymongo import MongoClient
-from pymongo.errors import OperationFailure
 
 client = MongoClient("mongodb://localhost:27017/")
 db = client.myDatabase
