@@ -85,7 +85,7 @@ If this fails, the error message will point to the specific issue.
 
 ## Tune Migration Settings
 
-If migrations are timing out, increase the migration timeout:
+Adjust throttle and cleanup settings to reduce migration pressure:
 
 ```javascript
 use config
