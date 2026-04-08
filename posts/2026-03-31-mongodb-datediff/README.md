@@ -30,7 +30,7 @@ flowchart LR
     endDate:   <date expression>,
     unit:      <string>,           // "year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond"
     timezone:  <timezone>,         // optional
-    startOfWeek: <string>          // optional: "monday" | "sunday" (for week unit)
+    startOfWeek: <string>          // optional: any day e.g. "monday", "sunday" (for week unit)
   }
 }
 ```
