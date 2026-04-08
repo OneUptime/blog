@@ -32,9 +32,7 @@ Download from the official MongoDB website:
 https://www.mongodb.com/try/download/compass
 ```
 
-Available for Windows, macOS, and Linux. The Community edition is free. There are also two lightweight variants:
-- **Compass Isolated Edition** - no outgoing telemetry
-- **Compass Readonly Edition** - prevents writes, useful for production investigation
+Available for Windows, macOS, and Linux. Compass is free and open source. You can enable read-only mode in the Compass settings to prevent accidental writes when investigating production databases.
 
 ## Connecting to MongoDB
 
@@ -152,7 +150,7 @@ Compass shows the intermediate results after each stage, making it easy to debug
 
 ## Managing Indexes
 
-In the Indexes tab, you can see all existing indexes with their size, usage statistics (hits and accesses), and type.
+In the Indexes tab, you can see all existing indexes with their size, usage count, and type.
 
 Create a new index by clicking "Create Index":
 - Enter field names and select direction (Ascending or Descending).
@@ -185,7 +183,7 @@ The Schema tab samples documents and shows field types and value distributions a
 
 ## Performance Tab
 
-The Performance tab (available when connected to a local instance) shows real-time operation metrics: reads/sec, writes/sec, commands/sec, connections, and memory. It is a graphical equivalent of mongostat.
+The Performance tab (available when the connected user has `serverStatus` privileges) shows real-time operation metrics: reads/sec, writes/sec, commands/sec, connections, and memory. It is a graphical equivalent of mongostat.
 
 ## Importing and Exporting Data
 
@@ -207,7 +205,7 @@ db.adminCommand({ serverStatus: 1 }).connections
 
 ## Best Practices
 
-- Use Compass Readonly Edition when investigating production databases to prevent accidental writes.
+- Enable read-only mode in Compass settings when investigating production databases to prevent accidental writes.
 - Use the Explain Plan before creating indexes - verify the plan changes from COLLSCAN to IXSCAN.
 - Build and test aggregation pipelines in Compass before adding them to application code.
 - Review the Indexes tab regularly and drop indexes with zero usage to reduce write overhead.
@@ -215,4 +213,4 @@ db.adminCommand({ serverStatus: 1 }).connections
 
 ## Summary
 
-MongoDB Compass provides a visual interface for every common MongoDB task: querying, editing documents, building aggregation pipelines, managing indexes, and analyzing query plans. The Explain Plan visualizer is particularly valuable for identifying missing indexes. Use the Schema tab to detect data quality issues, and the built-in mongosh panel for quick ad-hoc commands. For production environments, use the Readonly Edition to prevent accidental modifications.
+MongoDB Compass provides a visual interface for every common MongoDB task: querying, editing documents, building aggregation pipelines, managing indexes, and analyzing query plans. The Explain Plan visualizer is particularly valuable for identifying missing indexes. Use the Schema tab to detect data quality issues, and the built-in mongosh panel for quick ad-hoc commands. For production environments, enable read-only mode to prevent accidental modifications.
