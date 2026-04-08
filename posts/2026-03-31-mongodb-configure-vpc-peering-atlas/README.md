@@ -72,15 +72,17 @@ aws ec2 create-route \
 
 ## Step 5: Update Security Groups
 
-Allow inbound traffic from your application security group to Atlas on port 27017:
+Ensure your application security group allows outbound traffic to the Atlas VPC CIDR on port 27017. If your security group restricts outbound traffic, add a rule:
 
 ```bash
-aws ec2 authorize-security-group-ingress \
-  --group-id sg-youratlasSG \
+aws ec2 authorize-security-group-egress \
+  --group-id sg-yourappSG \
   --protocol tcp \
   --port 27017 \
-  --source-group sg-yourappSG
+  --cidr 192.168.248.0/21
 ```
+
+Atlas manages its own security groups on the MongoDB-controlled VPC. You do not need to modify any security group on the Atlas side — access control is handled through the Atlas IP Access List in the next step.
 
 ## Step 6: Update Atlas IP Access List
 
