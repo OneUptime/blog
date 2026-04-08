@@ -45,7 +45,9 @@ try {
   console.log('Funds transferred successfully')
 
 } catch (err) {
-  await session.abortTransaction()
+  if (session.inTransaction()) {
+    await session.abortTransaction()
+  }
   throw err
 
 } finally {
