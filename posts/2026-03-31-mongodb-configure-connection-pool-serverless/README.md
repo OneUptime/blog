@@ -61,29 +61,35 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 });
 ```
 
-## Solution 3: Use a Connection Proxy (Recommended for Scale)
+## Solution 3: Use a Lightweight Driver Connection (Recommended for Scale)
 
-For high-scale serverless workloads, use a connection proxy like **MongoDB Atlas Data API**, **Mongoose global connection**, or a dedicated proxy service:
+For high-scale serverless workloads, minimize connection overhead by using a dedicated, short-lived client with aggressive pool settings and connection reuse at the module level:
 
 ```javascript
-// Using Atlas Data API (HTTP-based, no persistent connections)
-const response = await fetch(
-  `https://data.mongodb-api.com/app/${process.env.APP_ID}/endpoint/data/v1/action/find`,
-  {
-    method: "POST",
-    headers: {
-      "api-key": process.env.API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      collection: "orders",
-      database: "ecommerce",
-      dataSource: "Cluster0",
-      filter: { status: "active" }
-    })
-  }
-);
-const data = await response.json();
+// serverless-optimized.js
+import { MongoClient } from "mongodb";
+
+let cachedClient = null;
+
+async function getClient() {
+  if (cachedClient) return cachedClient;
+
+  cachedClient = new MongoClient(process.env.MONGODB_URI, {
+    maxPoolSize: 1,            // Minimal pool for serverless
+    minPoolSize: 0,
+    maxIdleTimeMS: 5000,
+    connectTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 5000
+  });
+  await cachedClient.connect();
+  return cachedClient;
+}
+
+export async function findOrders() {
+  const client = await getClient();
+  const db = client.db("ecommerce");
+  return db.collection("orders").find({ status: "active" }).toArray();
+}
 ```
 
 ## Solution 4: Vercel / Next.js Global Connection Cache
@@ -121,8 +127,8 @@ export default clientPromise;
 Track server-side connections to detect spikes from scaling events:
 
 ```bash
-# Atlas CLI: check connection metrics
-atlas metrics processes --granularity PT1M --period PT1H \
+# Atlas CLI: check connection metrics (replace <hostname:port> with your process)
+atlas metrics processes <hostname:port> --granularity PT1M --period PT1H \
   --output json | jq '.measurements[] | select(.name=="CONNECTIONS")'
 ```
 
