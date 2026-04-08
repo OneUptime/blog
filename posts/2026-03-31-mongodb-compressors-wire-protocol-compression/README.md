@@ -67,7 +67,7 @@ MongoClientSettings settings = MongoClientSettings.builder()
     .compressorList(Arrays.asList(
         MongoCompressor.createSnappyCompressor(),
         MongoCompressor.createZlibCompressor().withProperty(
-            MongoCompressor.LEVEL, 6),
+            "level", 6),
         MongoCompressor.createZstdCompressor()
     ))
     .build();
