@@ -67,11 +67,7 @@ db.users.find({ email: { $regex: "^john@example\\.com$" } })
 MongoDB's default collation is binary, which is already case-sensitive. However, if your collection was created with a case-insensitive collation, you can override it per query:
 
 ```javascript
-db.users.find(
-  { name: "Alice" },
-  {},
-  { collation: { locale: "en", strength: 3 } }
-)
+db.users.find({ name: "Alice" }).collation({ locale: "en", strength: 3 })
 ```
 
 `strength: 3` enforces case and accent sensitivity. This is the default binary behavior.
@@ -103,7 +99,13 @@ This approach is index-friendly and avoids runtime transformation.
 
 ## Case-Sensitive Text Search
 
-MongoDB's `$text` full-text search is always case-insensitive for the languages it supports. If you need case-sensitive full-text search, use `$regex` with anchored patterns or a separate system like Elasticsearch.
+MongoDB's `$text` full-text search is case-insensitive by default. Starting with MongoDB 3.2, you can enable case-sensitive text search by setting `$caseSensitive: true` in the `$text` expression:
+
+```javascript
+db.articles.find({ $text: { $search: "MongoDB", $caseSensitive: true } })
+```
+
+If `$caseSensitive` is not sufficient for your needs, consider using `$regex` with anchored patterns or a separate system like Elasticsearch.
 
 ## Index Behavior and Case Sensitivity
 
