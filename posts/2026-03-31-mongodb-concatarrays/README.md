@@ -229,4 +229,4 @@ db.orders.aggregate([
 
 ## Summary
 
-`$concatArrays` merges two or more arrays into a single array. It preserves the order of elements from each input array. Use `$ifNull` to guard against null fields before concatenating, and combine with `$reduce` to flatten arbitrary levels of array nesting.
+`$concatArrays` merges two or more arrays into a single array. It preserves the order of elements from each input array. Use `$ifNull` to guard against null fields before concatenating, and combine with `$reduce` to flatten one level of array nesting.
