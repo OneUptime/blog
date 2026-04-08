@@ -61,7 +61,7 @@ async function getFirstPage(db) {
   const last = items[items.length - 1];
   const nextCursor = encodeCursor({ createdAt: last.createdAt, _id: last._id });
 
-  return { items, nextCursor };
+  return { items, nextCursor: items.length === PAGE_SIZE ? nextCursor : null };
 }
 ```
 
