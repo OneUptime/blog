@@ -69,7 +69,7 @@ If `totalIndexSize()` is too large, consider:
 
 1. **Remove unused indexes** - Drop indexes that `$indexStats` shows are never used.
 2. **Use partial indexes** - Index only documents that match a filter condition.
-3. **Use sparse indexes** - Skip null values to reduce the number of indexed entries.
+3. **Use sparse indexes** - Skip documents that lack the indexed field to reduce the number of indexed entries.
 
 ```javascript
 // Partial index example - only index active orders
