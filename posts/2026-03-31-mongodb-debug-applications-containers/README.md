@@ -73,13 +73,11 @@ db.currentOp({ "active": true, "secs_running": { $gt: 1 } })
 Add verbose logging to the MongoDB Node.js driver to see every event.
 
 ```javascript
-const { MongoClient, Logger } = require("mongodb");
-
-Logger.setLevel("debug");
-Logger.filter("class", ["Connection", "Pool"]);
+const { MongoClient } = require("mongodb");
 
 const client = new MongoClient(process.env.MONGODB_URI, {
   monitorCommands: true,
+  mongodbLogPath: "stderr",
 });
 
 client.on("commandStarted", (event) => {
@@ -105,7 +103,7 @@ const result = await db
 
 console.log("Stage:", result.queryPlanner.winningPlan.stage);
 console.log("Docs examined:", result.executionStats.totalDocsExamined);
-console.log("Docs returned:", result.executionStats.totalDocsReturned);
+console.log("Docs returned:", result.executionStats.nReturned);
 console.log("Index used:", result.queryPlanner.winningPlan.inputStage?.indexName);
 ```
 
