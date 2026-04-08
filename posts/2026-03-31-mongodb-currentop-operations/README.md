@@ -57,7 +57,11 @@ Each entry in the `inprog` array describes one operation:
       "microsecs_running": 15043211,
       "planSummary": "COLLSCAN",
       "numYields": 120,
-      "locks": { "Global": "r", "Database": "r", "Collection": "r" },
+      "locks": {
+        "Global": { "acquireCount": { "r": 1 } },
+        "Database": { "acquireCount": { "r": 1 } },
+        "Collection": { "acquireCount": { "r": 1 } }
+      },
       "waitingForLock": false,
       "client": "192.168.1.100:54321",
       "threadId": "0x7f...",
@@ -74,7 +78,7 @@ Each entry in the `inprog` array describes one operation:
 | Field | Description |
 |---|---|
 | `opid` | Operation ID (used with `db.killOp()`) |
-| `op` | Operation type: `query`, `insert`, `update`, `remove`, `command`, `getmore` |
+| `op` | Operation type: `none`, `query`, `insert`, `update`, `remove`, `command`, `getmore`, `killcursors` |
 | `ns` | Namespace: `database.collection` |
 | `secs_running` | Elapsed seconds since operation started |
 | `planSummary` | Execution plan: `COLLSCAN` (bad) or `IXSCAN` (good) |
