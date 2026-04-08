@@ -26,10 +26,13 @@ Enable the policy with an authorized user email:
 curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   --digest \
   -X PUT \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/backupCompliancePolicy" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/backupCompliancePolicy" \
   -H "Content-Type: application/json" \
+  -H "Accept: application/vnd.atlas.2023-10-01+json" \
   -d '{
     "authorizedEmail": "security-admin@example.com",
+    "authorizedUserFirstName": "Security",
+    "authorizedUserLastName": "Admin",
     "copyProtectionEnabled": true,
     "encryptionAtRestEnabled": true,
     "onDemandPolicyItem": {
@@ -37,9 +40,8 @@ curl -u "PUBLIC_KEY:PRIVATE_KEY" \
       "retentionUnit": "days",
       "retentionValue": 14
     },
-    "pitrEnabled": true,
-    "pitrMonthlyRetentionValue": 1,
-    "pointInTimeRestoreWindowDays": 7,
+    "pitEnabled": true,
+    "restoreWindowDays": 7,
     "scheduledPolicyItems": [
       {
         "frequencyType": "daily",
@@ -70,7 +72,7 @@ Check current compliance policy state:
 ```bash
 curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   --digest \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/backupCompliancePolicy" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/backupCompliancePolicy" \
   | python3 -m json.tool
 ```
 
@@ -114,7 +116,7 @@ Individual cluster policies must meet or exceed the compliance minimums:
 curl -u "PUBLIC_KEY:PRIVATE_KEY" \
   --digest \
   -X PATCH \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters/{clusterName}/backup/schedule" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters/{clusterName}/backup/schedule" \
   -H "Content-Type: application/json" \
   -d '{
     "policies": [{
@@ -145,7 +147,7 @@ Use the Atlas Admin API to check that all clusters comply:
 # Check all clusters in the project for backup compliance
 
 curl -u "PUBLIC_KEY:PRIVATE_KEY" --digest \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{groupId}/clusters" \
+  "https://cloud.mongodb.com/api/atlas/v2/groups/{groupId}/clusters" \
   | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
