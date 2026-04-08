@@ -32,17 +32,11 @@ db.words.find({ word: "cafe" }).collation({ locale: "en", strength: 1 })
 
 Use strength 1 when you want the most permissive matching - useful for search boxes where users may type without accent characters.
 
-### Strength 2 - Base + Case
+### Strength 2 - Base + Accents
 
-Accents are ignored, but case matters. `"a"` and `"A"` differ; `"a"` and `"à"` are equal.
+Case is ignored, but accents matter. `"a"` and `"A"` are equal; `"a"` and `"à"` differ.
 
-```javascript
-db.words.find({ word: "cafe" }).collation({ locale: "en", strength: 2 })
-// Matches: "cafe", "café"
-// Does NOT match: "Cafe", "CAFE"
-```
-
-Wait - strength 2 ignores accents but NOT case. Let me clarify the UCA levels:
+The UCA defines these levels:
 
 ```text
 Level 1 (Primary)    Base letter differences     a vs b
@@ -91,7 +85,7 @@ Every Unicode code point must match exactly. This is equivalent to standard byte
 ```text
 Input    Strength 1  Strength 2  Strength 3
 ------   ----------  ----------  ----------
-cafe     MATCH       MATCH       NO MATCH
+cafe     MATCH       MATCH       MATCH
 Cafe     MATCH       MATCH       NO MATCH
 CAFE     MATCH       MATCH       NO MATCH
 café     MATCH       NO MATCH    NO MATCH
