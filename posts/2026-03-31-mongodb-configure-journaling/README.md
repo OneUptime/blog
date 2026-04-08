@@ -12,12 +12,14 @@ Description: Configure MongoDB journaling to ensure data durability and crash re
 
 MongoDB uses a write-ahead log (WAL) called the journal to ensure data durability. When a write occurs, MongoDB first records the operation in the journal before applying it to data files. If MongoDB crashes, the journal allows recovery to a consistent state on restart.
 
-WiredTiger uses its own journaling system separate from the MMAPv1 journal. By default, journaling is enabled and WiredTiger checkpoints every 60 seconds.
+WiredTiger, the default storage engine since MongoDB 3.2, uses its own journaling system. By default, journaling is enabled and WiredTiger creates checkpoints every 60 seconds or when 2 GB of journal data has been written, whichever occurs first.
 
 ## Checking Journal Status
 
+Check WiredTiger journal statistics:
+
 ```javascript
-db.adminCommand({ serverStatus: 1 }).dur
+db.serverStatus().wiredTiger.log
 ```
 
 Or check the storage engine info:
@@ -51,11 +53,11 @@ storage:
     enabled: false
 ```
 
-**Warning:** Disabling journaling means data written since the last checkpoint may be lost on crash. Never disable journaling on replica set members.
+**Warning:** Disabling journaling means data written since the last checkpoint may be lost on crash. Never disable journaling on replica set members. Starting in MongoDB 6.1, journaling cannot be disabled at all — the `storage.journal.enabled` option was removed and journaling is always on.
 
 ## WiredTiger Journal Settings
 
-WiredTiger uses its own internal log. You can tune the log buffer size:
+WiredTiger uses its own internal log. You can configure the journal compressor:
 
 ```yaml
 storage:
