@@ -59,7 +59,7 @@ function getMonitoringSnapshot() {
     connectionsActive: status.connections.current,
     connectionsAvailable: status.connections.available,
 
-    // Operations per second
+    // Operations (cumulative counters)
     opsInsert: status.opcounters.insert,
     opsQuery: status.opcounters.query,
     opsUpdate: status.opcounters.update,
@@ -70,9 +70,6 @@ function getMonitoringSnapshot() {
     cacheMaxBytes: status.wiredTiger.cache["maximum bytes configured"],
     cacheDirtyBytes: status.wiredTiger.cache["tracked dirty bytes in the cache"],
     cacheReadIntoCacheMiss: status.wiredTiger.cache["pages read into cache"],
-
-    // Replication lag (on secondaries)
-    replLagSecs: status.repl?.lag || 0,
 
     // Memory
     residentMB: status.mem.resident,
@@ -94,14 +91,14 @@ Use `mongostat` to stream live metrics to your monitoring system:
 mongostat \
   --uri="mongodb+srv://monitor:pass@cluster.mongodb.net" \
   --rowcount=0 \
-  --sleep=5 \
-  -o "insert,query,update,delete,conn,netIn,netOut,res,faults,qrw,arw,time"
+  -o "insert,query,update,delete,conn,netIn,netOut,res,faults,qrw,arw,time" \
+  5
 ```
 
 Pipe to a log file for ingestion by Prometheus or Datadog:
 
 ```bash
-mongostat --uri="$MONGO_URI" --rowcount=0 --sleep=60 \
+mongostat --uri="$MONGO_URI" --rowcount=0 60 \
   >> /var/log/mongodb/mongostat.log 2>&1 &
 ```
 
