@@ -124,7 +124,7 @@ db.products.explain("executionStats").aggregate(
 
 ## Sorting Spanish Names Correctly
 
-Spanish requires `ch` and `ll` to sort as single characters in traditional ordering. Use the Spanish locale:
+Use the Spanish locale to sort names according to Spanish language rules, including correct ordering of accented characters like `ñ`:
 
 ```javascript
 db.directory.aggregate(
@@ -132,6 +132,8 @@ db.directory.aggregate(
   { collation: { locale: "es" } }
 )
 ```
+
+With this collation, `ñ` sorts between `n` and `o` as expected in Spanish, rather than being placed after all ASCII characters by byte value.
 
 ## $lookup With Collation
 
