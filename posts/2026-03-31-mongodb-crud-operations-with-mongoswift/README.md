@@ -75,7 +75,7 @@ if let a = found {
 }
 
 // With sort and limit
-let options = FindOptions(limit: 10, sort: ["createdAt": -1])
+let options = FindOptions(limit: 10, sort: ["created_at": -1])
 let recent  = try await collection.find([:], options: options)
 ```
 
