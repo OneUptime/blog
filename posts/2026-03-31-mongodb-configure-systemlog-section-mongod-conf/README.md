@@ -69,7 +69,7 @@ systemLog:
   timeStampFormat: iso8601-utc
 ```
 
-`iso8601-utc` produces timestamps like `2026-03-31T10:00:00.000+0000`, which is easier to parse in log aggregation systems than the default local time format.
+`iso8601-utc` produces timestamps like `2026-03-31T10:00:00.000+00:00`, which is easier to parse in log aggregation systems than the default local time format.
 
 ## Log Rotation
 
