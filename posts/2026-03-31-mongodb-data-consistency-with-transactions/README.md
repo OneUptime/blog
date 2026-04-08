@@ -119,8 +119,8 @@ async function commitWithRetry(session) {
 
 ```text
 Max duration:    60 seconds (default), configurable via transactionLifetimeLimitSeconds
-Max operations:  1000 document writes per transaction (advisory)
-Collections:     Cannot create collections or indexes inside a transaction
+Oplog limit:     Each transaction must fit within a 16 MB oplog entry
+Collections:     Collections can be created inside transactions (MongoDB 4.4+)
 Aggregations:    $out and $merge not allowed inside transactions
 ```
 
