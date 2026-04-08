@@ -62,7 +62,6 @@ collection.find()
 ## Chaining Flow Operations
 
 ```kotlin
-import kotlinx.coroutines.flow.take
 import org.bson.Document
 
 // Sort, skip, limit using driver methods then collect
