@@ -29,7 +29,7 @@ ceph osd tree
 The output includes a `CLASS` column. You can also query a specific OSD:
 
 ```bash
-ceph osd metadata 0 | grep rotational
+ceph osd metadata osd.0 | grep rotational
 ```
 
 A `rotational` value of `1` indicates HDD; `0` indicates SSD or NVMe.
@@ -64,7 +64,7 @@ The syntax is: `create-replicated <rule-name> <root> <failure-domain> <device-cl
 Verify the rules:
 
 ```bash
-ceph osd crush rule list
+ceph osd crush rule ls
 ceph osd crush rule dump ssd-rule
 ```
 
