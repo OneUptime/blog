@@ -31,6 +31,8 @@ db.myCollection.stats().avgObjSize
 
 ## Full Collection Statistics with collStats
 
+> **Note:** The `collStats` command is deprecated as of MongoDB 6.2. For MongoDB 6.2+, consider using the [`$collStats`](https://www.mongodb.com/docs/manual/reference/operator/aggregation/collStats/) aggregation stage instead.
+
 ```javascript
 db.runCommand({ collStats: "myCollection" })
 ```
@@ -135,7 +137,7 @@ const ratio = s.size / s.storageSize;
 print(`Compression ratio: ${ratio.toFixed(2)}x`);
 ```
 
-A ratio of 3-5x is typical for snappy compression on JSON-like data.
+A ratio of 1.5-2.5x is typical for snappy compression on JSON-like data. Higher ratios (3-5x) are possible with zlib or zstd compression, which WiredTiger also supports.
 
 ## Summary
 
