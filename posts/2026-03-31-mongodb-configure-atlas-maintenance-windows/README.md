@@ -63,8 +63,12 @@ If you want to apply a pending update right away outside your window, you can tr
 ```bash
 curl --user "PUBLIC_KEY:PRIVATE_KEY" \
   --digest \
-  --request POST \
-  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{GROUP_ID}/maintenanceWindow/autoDefer"
+  --header "Content-Type: application/json" \
+  --request PATCH \
+  "https://cloud.mongodb.com/api/atlas/v1.0/groups/{GROUP_ID}/maintenanceWindow" \
+  --data '{
+    "startASAP": true
+  }'
 ```
 
 You can also click **Apply Now** in the Atlas UI when a maintenance event is pending.
@@ -74,7 +78,7 @@ You can also click **Apply Now** in the Atlas UI when a maintenance event is pen
 Choose a window during your lowest-traffic period. For global applications, analyze traffic patterns by region and pick the time with the least impact across all regions.
 
 - Set the window at least 24 hours in advance so Atlas can prepare.
-- Use a 4-hour minimum window to allow rolling restarts across replica set members.
+- Atlas maintenance windows do not have a configurable duration. Atlas performs rolling restarts across replica set members automatically once the window starts.
 - Monitor your cluster during and after maintenance using Atlas metrics or a tool like OneUptime to verify normal operation resumes.
 - Set up Atlas alerts for maintenance events so your team receives advance notice.
 
