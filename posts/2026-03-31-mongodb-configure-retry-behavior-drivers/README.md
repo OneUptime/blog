@@ -53,9 +53,9 @@ client = MongoClient(
 ## Java Driver Configuration
 
 ```java
+import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClients;
-import com.mongodb.connection.SocketSettings;
 import java.util.concurrent.TimeUnit;
 
 MongoClientSettings settings = MongoClientSettings.builder()
