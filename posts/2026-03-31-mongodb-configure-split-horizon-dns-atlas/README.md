@@ -28,9 +28,10 @@ If you use AWS PrivateLink, Azure Private Link, or GCP Private Service Connect, 
 aws route53 create-hosted-zone \
   --name "mongodb.net" \
   --caller-reference "atlas-split-dns-$(date +%s)" \
-  --hosted-zone-config "PrivateZone=true" \
   --vpc "VPCRegion=us-east-1,VPCId=vpc-0yourappvpc"
 ```
+
+The `--vpc` flag automatically makes this a private hosted zone. Do not pass `PrivateZone=true` in `--hosted-zone-config` as it is an output-only field.
 
 ### Step 2: Create A Records for Each Shard Host
 
@@ -54,7 +55,46 @@ aws route53 change-resource-record-sets \
 
 Repeat for each shard hostname in your replica set.
 
-### Step 3: Associate the Zone with Additional VPCs
+### Step 3: Create SRV and TXT Records
+
+A private hosted zone for `mongodb.net` intercepts all DNS queries for that domain from within the VPC. If you use `mongodb+srv://` connection strings, you must also create SRV and TXT records so the driver can discover replica set members:
+
+```bash
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z1234567890ABC \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "_mongodb._tcp.cluster0.abcde.mongodb.net",
+          "Type": "SRV",
+          "TTL": 60,
+          "ResourceRecords": [
+            {"Value": "0 0 27017 cluster0-shard-00-00.abcde.mongodb.net"},
+            {"Value": "0 0 27017 cluster0-shard-00-01.abcde.mongodb.net"},
+            {"Value": "0 0 27017 cluster0-shard-00-02.abcde.mongodb.net"}
+          ]
+        }
+      },
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "cluster0.abcde.mongodb.net",
+          "Type": "TXT",
+          "TTL": 60,
+          "ResourceRecords": [
+            {"Value": "\"authSource=admin&replicaSet=atlas-xxxxxx-shard-0\""}
+          ]
+        }
+      }
+    ]
+  }'
+```
+
+Copy the SRV and TXT record values from the public DNS records for your cluster (use `dig SRV _mongodb._tcp.cluster0.abcde.mongodb.net` and `dig TXT cluster0.abcde.mongodb.net` to retrieve them).
+
+### Step 4: Associate the Zone with Additional VPCs (Optional)
 
 ```bash
 aws route53 associate-vpc-with-hosted-zone \
@@ -76,6 +116,22 @@ gcloud dns record-sets create cluster0-shard-00-00.abcde.mongodb.net. \
   --type=A \
   --ttl=60 \
   --rrdatas=10.128.0.10
+```
+
+Repeat for each shard hostname. As with AWS, you must also create SRV and TXT records in the private zone for `mongodb+srv://` connection strings to work:
+
+```bash
+gcloud dns record-sets create _mongodb._tcp.cluster0.abcde.mongodb.net. \
+  --zone=atlas-internal \
+  --type=SRV \
+  --ttl=60 \
+  --rrdatas="0 0 27017 cluster0-shard-00-00.abcde.mongodb.net.","0 0 27017 cluster0-shard-00-01.abcde.mongodb.net.","0 0 27017 cluster0-shard-00-02.abcde.mongodb.net."
+
+gcloud dns record-sets create cluster0.abcde.mongodb.net. \
+  --zone=atlas-internal \
+  --type=TXT \
+  --ttl=60 \
+  --rrdatas='"authSource=admin&replicaSet=atlas-xxxxxx-shard-0"'
 ```
 
 ## Verifying Resolution
