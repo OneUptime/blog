@@ -25,8 +25,12 @@ const client = new MongoClient('mongodb://localhost:27017', {
   minPoolSize: 0
 });
 
-await client.connect();
-module.exports = client;
+async function connect() {
+  await client.connect();
+  return client;
+}
+
+module.exports = { client, connect };
 ```
 
 ## Configuring Pool Size
@@ -90,7 +94,7 @@ start();
 
 ## Verifying Pool Usage
 
-Enable the `serverApi` and check the `currentOp` to see active connections:
+Use the `currentOp` admin command to see active connections:
 
 ```javascript
 const admin = client.db('admin');
