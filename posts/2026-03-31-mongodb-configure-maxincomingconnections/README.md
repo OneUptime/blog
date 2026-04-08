@@ -14,7 +14,7 @@ MongoDB limits the number of simultaneous client connections via the `maxIncomin
 
 ## Default Behavior
 
-By default, MongoDB sets `maxIncomingConnections` to 1,000,000 on Linux (effectively unlimited) but the operating system's open file descriptor limit usually caps it much lower. The practical maximum depends on `ulimit -n`.
+By default, MongoDB sets `maxIncomingConnections` to 65536. The operating system's open file descriptor limit may cap it lower. The practical maximum depends on `ulimit -n`.
 
 Check the current setting.
 
