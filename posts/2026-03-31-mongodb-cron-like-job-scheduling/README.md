@@ -44,11 +44,11 @@ npm install cron-parser
 ```
 
 ```javascript
-const parser = require('cron-parser');
+const { CronExpressionParser } = require('cron-parser');
 
 function getNextRunAt(cronExpression) {
-  const interval = parser.parseExpression(cronExpression);
-  return interval.next().toDate();
+  const interval = CronExpressionParser.parse(cronExpression);
+  return interval.next();
 }
 ```
 
