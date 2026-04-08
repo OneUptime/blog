@@ -34,7 +34,7 @@ find_package(mongocxx REQUIRED)
 find_package(bsoncxx  REQUIRED)
 
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE mongocxx::mongocxx bsoncxx::bsoncxx)
+target_link_libraries(app PRIVATE mongo::mongocxx_shared mongo::bsoncxx_shared)
 ```
 
 ## Initializing the Driver
@@ -63,16 +63,16 @@ int main() {
 
 ```cpp
 #include <mongocxx/options/client.hpp>
-#include <mongocxx/options/ssl.hpp>
+#include <mongocxx/options/tls.hpp>
 
 mongocxx::options::client client_opts;
 
-mongocxx::options::ssl ssl_opts;
-ssl_opts.enabled(true);
-client_opts.ssl_opts(ssl_opts);
+mongocxx::options::tls tls_opts;
+tls_opts.allow_invalid_certificates(false);
+client_opts.tls_opts(tls_opts);
 
 mongocxx::client client{
-    mongocxx::uri{ "mongodb+srv://user:pass@cluster.mongodb.net/mydb" },
+    mongocxx::uri{ "mongodb+srv://user:pass@cluster.mongodb.net/mydb?tls=true" },
     client_opts
 };
 ```
