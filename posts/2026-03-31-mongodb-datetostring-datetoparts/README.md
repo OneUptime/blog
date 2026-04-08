@@ -196,6 +196,7 @@ Output:
 
 ```javascript
 [
+  { _id: null, count: 1 },
   { _id: "2026-01-15", count: 1 },
   { _id: "2026-03-31", count: 1 }
 ]
@@ -229,6 +230,11 @@ Output:
     _id: 2,
     event: "Update",
     parts: { year: 2026, month: 1, day: 15, hour: 8, minute: 30, second: 0, millisecond: 0 }
+  },
+  {
+    _id: 3,
+    event: "Archive",
+    parts: null
   }
 ]
 ```
