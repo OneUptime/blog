@@ -146,7 +146,7 @@ const { Timestamp } = require("mongodb");
 
 // Start from 1 hour ago
 const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-const timestamp = Timestamp.fromNumber(Math.floor(oneHourAgo.getTime() / 1000));
+const timestamp = new Timestamp({ t: Math.floor(oneHourAgo.getTime() / 1000), i: 0 });
 
 const stream = col.watch([], { startAtOperationTime: timestamp });
 ```
