@@ -44,7 +44,7 @@ async fn main() -> mongodb::error::Result<()> {
 ## Connection Options
 
 ```rust
-use mongodb::options::{ClientOptions, Credential, ServerAddress};
+use mongodb::options::{ClientOptions, Credential};
 use std::time::Duration;
 
 let mut options = ClientOptions::parse(
