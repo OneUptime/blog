@@ -42,7 +42,7 @@ const doc = await db.collection("users").findOne(
 const exists = doc !== null;
 ```
 
-## Using estimatedDocumentCount and $exists
+## Using $exists to Check Field Presence
 
 To check whether a field itself is present on at least one document (regardless of value), combine `$exists` with `findOne`:
 
