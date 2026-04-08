@@ -62,11 +62,11 @@ db.orders.aggregate([
 ]);
 ```
 
-This returns `queryExecStats.collScans` and `queryExecStats.indexesUsed` to help you determine whether queries are hitting indexes.
+This returns `queryExecStats.collectionScans.total` and `queryExecStats.collectionScans.nonTailable` to help you determine how often collection scans are occurring.
 
 ## $indexStats - Index Usage Statistics
 
-`$indexStats` returns one document per index on the collection, showing how many times each index has been used since the last server restart.
+`$indexStats` returns one document per index on the collection, showing how many times each index has been used since the last server restart or since the index was created, whichever is more recent.
 
 ```js
 db.orders.aggregate([
@@ -107,12 +107,12 @@ db.orders.dropIndex("status_1_createdAt_-1");
 
 ```js
 function collectionReport(collName) {
-  const db = db.getSiblingDB("myApp");
-  const stats = db[collName].aggregate([
+  const myDb = db.getSiblingDB("myApp");
+  const stats = myDb[collName].aggregate([
     { $collStats: { storageStats: {}, count: {} } }
   ]).toArray()[0];
 
-  const unusedIndexes = db[collName].aggregate([
+  const unusedIndexes = myDb[collName].aggregate([
     { $indexStats: {} },
     { $match: { "accesses.ops": 0 } }
   ]).toArray();
