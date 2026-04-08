@@ -19,7 +19,7 @@ The MongoDB .NET Driver manages a connection pool per server (replica set member
 By default, the driver:
 - Maintains a minimum of 0 idle connections.
 - Allows a maximum of 100 connections per server.
-- Waits up to 30 seconds for a connection to become available.
+- Waits up to 2 minutes for a connection to become available.
 - Keeps idle connections alive with heartbeats.
 
 ## Configuring the Connection Pool
@@ -40,7 +40,7 @@ settings.MinConnectionPoolSize = 10;    // always keep 10 warm connections
 // Timeouts
 settings.WaitQueueTimeout  = TimeSpan.FromSeconds(15); // wait for a connection
 settings.ConnectTimeout    = TimeSpan.FromSeconds(10); // TCP connect timeout
-settings.SocketTimeout     = TimeSpan.FromSeconds(60); // idle socket timeout
+settings.SocketTimeout     = TimeSpan.FromSeconds(60); // socket read/write timeout
 
 // Idle lifetime
 settings.MaxConnectionIdleTime = TimeSpan.FromMinutes(10);
@@ -89,13 +89,13 @@ settings.ClusterConfigurator = builder =>
     builder.Subscribe<ConnectionPoolOpenedEvent>(e =>
         Console.WriteLine($"Pool opened for {e.ServerId.EndPoint}"));
 
-    builder.Subscribe<ConnectionCheckedOutEvent>(e =>
+    builder.Subscribe<ConnectionPoolCheckedOutConnectionEvent>(e =>
         Console.WriteLine($"Connection {e.ConnectionId} checked out"));
 
-    builder.Subscribe<ConnectionCheckedInEvent>(e =>
+    builder.Subscribe<ConnectionPoolCheckedInConnectionEvent>(e =>
         Console.WriteLine($"Connection {e.ConnectionId} returned to pool"));
 
-    builder.Subscribe<ConnectionPoolCheckedOutConnectionFailedEvent>(e =>
+    builder.Subscribe<ConnectionPoolCheckingOutConnectionFailedEvent>(e =>
         Console.WriteLine($"Pool exhausted: {e.Reason}"));
 };
 ```
@@ -119,7 +119,7 @@ For an ASP.NET Core API expecting 100 concurrent requests with 3 DB calls each, 
 // Example: Log slow check-out times
 settings.ClusterConfigurator = builder =>
 {
-    builder.Subscribe<ConnectionPoolCheckedOutConnectionFailedEvent>(e =>
+    builder.Subscribe<ConnectionPoolCheckingOutConnectionFailedEvent>(e =>
     {
         // Log this as an alert - pool is exhausted
         logger.LogWarning(
