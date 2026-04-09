@@ -18,20 +18,19 @@ RGW multisite sync works over HTTP/HTTPS. The secondary zone's sync agent fetche
 
 ## Using the Admin API to Check Sync Performance
 
-Query the sync performance counters via the admin API:
+Query the sync performance counters via the admin socket:
 
 ```bash
-curl -s "http://localhost:7480/admin/performance?pretty=1&categories=rgw,rgw_data_sync" \
-  -H "Authorization: AWS ACCESS_KEY:SIGNATURE"
+ceph daemon /var/run/ceph/ceph-client.rgw.*.asok perf dump
 ```
 
-Or use radosgw-admin:
+Or use `ceph tell` to reach the RGW daemon:
 
 ```bash
-radosgw-admin perf dump
+ceph tell rgw.<instance-id> perf dump
 ```
 
-Look for counters like `rgw_data_sync_fetch` and `rgw_data_sync_fetch_bytes`.
+Look for the `data-sync-from-<zone>` sections in the output, which contain counters like `fetch`, `fetch_bytes`, `poll_latency`, and `fetch_errors`.
 
 ## Monitoring with ceph-mgr Dashboard
 
@@ -85,11 +84,11 @@ scrape_configs:
 Key metrics to track in Grafana:
 
 ```promql
-# RGW replication bytes transferred
-rate(ceph_rgw_bytes_received[5m])
+# RGW bytes received via PUT operations (includes sync writes on secondary zone)
+rate(ceph_rgw_put_b[5m])
 
-# Sync lag in seconds
-ceph_rgw_data_sync_fetch_latency
+# RGW bytes sent via GET operations (includes sync reads on primary zone)
+rate(ceph_rgw_get_b[5m])
 ```
 
 ## Tracking Inter-Zone Bandwidth Costs
@@ -99,12 +98,14 @@ If zones are in different cloud regions, track egress costs. Create a daily band
 ```bash
 #!/bin/bash
 # Run on zone2 - measures bytes fetched from zone1
-METRIC=$(radosgw-admin perf dump | python3 -c "
+METRIC=$(ceph daemon /var/run/ceph/ceph-client.rgw.*.asok perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for k, v in data.items():
-    if 'sync' in k and 'bytes' in k:
-        print(k, v)
+for section, counters in data.items():
+    if 'sync' in section:
+        for name, value in counters.items():
+            if 'bytes' in name:
+                print(section, name, value)
 ")
 echo "$(date): $METRIC" >> /var/log/rgw_sync_bandwidth.log
 ```
@@ -114,8 +115,7 @@ echo "$(date): $METRIC" >> /var/log/rgw_sync_bandwidth.log
 To cap replication bandwidth and prevent it from overwhelming the WAN link:
 
 ```bash
-# Limit sync to 100 Mbps (12.5 MB/s)
-ceph config set client.rgw rgw_sync_lease_period 60
+# Reduce sync parallelism to indirectly limit bandwidth consumption
 ceph config set client.rgw rgw_data_sync_concurrency 5
 ```
 
