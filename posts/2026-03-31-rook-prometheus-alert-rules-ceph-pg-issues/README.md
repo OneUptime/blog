@@ -53,7 +53,7 @@ groups:
       severity: critical
     annotations:
       summary: "{{ $value }} Ceph PGs are undersized"
-      description: "Fewer active OSDs than the pool's min_size setting"
+      description: "Fewer active OSDs than the pool's size (replication factor) setting"
 
   - alert: CephPGsInconsistent
     expr: ceph_pg_inconsistent > 0
@@ -172,7 +172,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg repair 1.0
 
-# Force re-peer a PG
+# Prioritize recovery of a PG
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg force-recovery 1.0
 ```
