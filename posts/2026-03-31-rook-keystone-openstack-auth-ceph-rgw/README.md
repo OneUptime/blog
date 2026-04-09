@@ -44,11 +44,10 @@ ceph config set client.rgw.my-store rgw_keystone_api_version 3
 ceph config set client.rgw.my-store rgw_keystone_admin_token ""
 ceph config set client.rgw.my-store rgw_keystone_admin_user "rgw-service"
 ceph config set client.rgw.my-store rgw_keystone_admin_password "rgw-service-password"
-ceph config set client.rgw.my-store rgw_keystone_admin_tenant "swift-service"
+ceph config set client.rgw.my-store rgw_keystone_admin_project "swift-service"
 ceph config set client.rgw.my-store rgw_keystone_admin_domain "default"
 ceph config set client.rgw.my-store rgw_keystone_accepted_roles "admin,member,_member_"
 ceph config set client.rgw.my-store rgw_keystone_token_cache_size 10000
-ceph config set client.rgw.my-store rgw_keystone_revocation_interval 900
 ```
 
 ## Step 3 - Configure TLS for Keystone Communication
@@ -58,15 +57,8 @@ ceph config set client.rgw.my-store rgw_keystone_revocation_interval 900
 cp keystone-ca.crt /etc/pki/tls/certs/keystone-ca.crt
 update-ca-trust
 
-# Or configure RGW to use a specific CA file
+# Ensure RGW verifies Keystone's SSL certificate
 ceph config set client.rgw.my-store rgw_keystone_verify_ssl true
-ceph config set client.rgw.my-store nss_db_path "/var/ceph/nss"
-
-# Create NSS database with Keystone certificate
-mkdir -p /var/ceph/nss
-certutil -N -d /var/ceph/nss
-certutil -A -d /var/ceph/nss -n keystone-ca \
-  -t "CT,," -i keystone-ca.crt
 ```
 
 ## Step 4 - Configure Rook CephObjectStore for Keystone
