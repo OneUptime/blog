@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, NFS, Storage, Gateway
 
-Description: Configure the Rook-Ceph NFS gateway to expose CephFS or RGW buckets as NFS shares accessible from Kubernetes pods and external clients.
+Description: Configure the Rook-Ceph NFS gateway to expose CephFS as NFS shares accessible from Kubernetes pods and external clients.
 
 ---
 
@@ -22,7 +22,7 @@ flowchart LR
 ## Prerequisites
 
 - A running Rook-Ceph cluster with CephFS deployed
-- Rook operator version 1.9 or later
+- Rook operator version 1.10 or later
 - The `CephFilesystem` resource must exist before creating `CephNFS`
 - The `rook-ceph-nfs` RBAC resources applied (included in Rook's common.yaml)
 
@@ -71,9 +71,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: myfs-metadata
-    namespace: nfs-ns
   server:
     active: 1
     placement:
@@ -104,7 +101,7 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-nfs
 
 ## Step 3 - Create a Service for NFS Access
 
-Expose the NFS-Ganesha pod via a Kubernetes Service so clients can reach it:
+Rook v1.10+ automatically creates a ClusterIP Service for the NFS server. If you need a different service type (for example, LoadBalancer for external access), create a custom Service:
 
 ```yaml
 apiVersion: v1
@@ -121,7 +118,7 @@ spec:
     - name: nfs
       port: 2049
       protocol: TCP
-  type: ClusterIP
+  type: LoadBalancer
 ```
 
 Apply it:
@@ -142,7 +139,7 @@ Use the `CephNFSExport` resource (Rook 1.13+) or the Ceph CLI to create exports.
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph nfs export create cephfs my-nfs /export1 myfs path=/
+  ceph nfs export create cephfs my-nfs /export1 myfs --path=/
 ```
 
 List exports:
@@ -152,9 +149,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph nfs export ls my-nfs
 ```
 
-## Step 5 - Configure NFS Export via ConfigMap (Optional)
+## Step 5 - NFS-Ganesha Export Configuration Reference (Optional)
 
-For declarative management, define the Ganesha export configuration in a ConfigMap:
+The following is a reference for the NFS-Ganesha EXPORT block syntax. In modern Rook (v1.10+), exports are managed through the `ceph nfs export` CLI commands shown in Step 4, and the Ceph NFS module stores the configuration in RADOS automatically. This block shows the underlying Ganesha configuration for reference:
 
 ```yaml
 apiVersion: v1
