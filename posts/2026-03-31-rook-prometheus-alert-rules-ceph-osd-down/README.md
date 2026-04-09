@@ -84,7 +84,7 @@ Escalate when multiple OSDs are down:
 ```yaml
   - alert: CephHighPercentageOSDDown
     expr: |
-      (count(ceph_osd_up == 0) / count(ceph_osd_up)) * 100 > 10
+      (count(ceph_osd_up == 0) / count(ceph_osd_up)) > 0.10
     for: 1m
     labels:
       severity: critical
@@ -112,7 +112,7 @@ Detect OSDs that repeatedly come up and down:
 ```yaml
   - alert: CephOSDNearFull
     expr: |
-      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
+      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) > 0.85
     for: 10m
     labels:
       severity: warning
