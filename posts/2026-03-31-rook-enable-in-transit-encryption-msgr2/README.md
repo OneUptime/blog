@@ -71,11 +71,11 @@ After restart, verify connections are using secure mode:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mon.a config show | grep ms_
+  ceph tell mon.a config show | grep ms_
 
 # Check active connections
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok perf dump | grep msgr
+  ceph tell osd.0 perf dump | grep msgr
 ```
 
 Also inspect the cluster connectivity status:
@@ -89,7 +89,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 Clients connecting to the cluster also need Msgr2 configured. For RBD or CephFS clients in pods, mount the ConfigMap with the correct settings:
 
-```bash
+```ini
 # Client config (for apps using librados)
 [client]
 ms_bind_msgr2 = true
