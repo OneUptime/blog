@@ -75,18 +75,24 @@ By default, Rook creates a Kubernetes Service for the RGW endpoint. Get the serv
 kubectl -n rook-ceph get svc rook-ceph-rgw-my-store
 ```
 
-For external access, change the service type to LoadBalancer or NodePort:
+For external access, you can add service annotations in the CephObjectStore spec to configure a cloud load balancer:
 
 ```yaml
 spec:
   gateway:
     port: 80
     instances: 2
-    externalRgwEndpoints:
-      - ip: 192.168.1.10
     service:
       annotations:
         service.beta.kubernetes.io/aws-load-balancer-type: nlb
+```
+
+Alternatively, patch the RGW service directly to use a NodePort:
+
+```bash
+kubectl -n rook-ceph patch svc rook-ceph-rgw-my-store \
+  --type merge \
+  -p '{"spec":{"type":"NodePort"}}'
 ```
 
 ## Creating Object Store Users
