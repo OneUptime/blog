@@ -29,7 +29,7 @@ ceph config get mgr mgr/telemetry/enabled
 
 ## Enabling the Telemetry Module
 
-Enable the module if not already active:
+Enable the module if not already active (note: since Ceph Octopus, telemetry is an always-on manager module and is enabled by default):
 
 ```bash
 ceph mgr module enable telemetry
@@ -72,6 +72,7 @@ Ceph telemetry uses channels to categorize data:
 | `basic` | Cluster topology, version, and configuration |
 | `crash` | Anonymized crash reports |
 | `device` | Device health predictions (SMART data) |
+| `perf` | Various performance metrics of the cluster |
 | `ident` | Optional: organization name and contact |
 
 Enable or disable individual channels:
@@ -84,7 +85,7 @@ ceph config set mgr mgr/telemetry/channel_device true
 
 ## Configuring the Telemetry Endpoint
 
-By default, telemetry sends to `https://telemetry.ceph.com`. For air-gapped environments, configure a custom proxy:
+By default, telemetry sends to `https://telemetry.ceph.com/report`. For air-gapped environments, configure a custom proxy:
 
 ```bash
 ceph config set mgr mgr/telemetry/proxy https://your-proxy.example.com
