@@ -30,7 +30,7 @@ Rook manages NFS exports through `CephNFS` and Ceph's NFS export API. To create 
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph nfs export create cephfs my-nfs /export1 myfs \
     --path=/exports/tenant1 \
-    --squash=rootsquash
+    --squash=root_squash
 ```
 
 ## Export Configuration via RADOS Object (GANESHA.CONF)
@@ -92,7 +92,7 @@ echo 'Export config written'
 | `no_root_squash` | Root clients keep root privileges |
 | `root_squash` | Map root (uid 0) to anonymous uid |
 | `all_squash` | Map all users to anonymous uid/gid |
-| `no_squash` | No UID/GID mapping |
+| `none` | No UID/GID mapping (equivalent to no_root_squash) |
 
 ## Create Export via ceph nfs CLI
 
