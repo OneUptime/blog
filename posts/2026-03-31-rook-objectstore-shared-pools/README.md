@@ -58,15 +58,15 @@ The `sharedPools` section tells Rook to use existing pools instead of creating n
 When multiple object stores share a pool, Rook uses RADOS namespaces to isolate data. Each store gets its own namespace within the shared pool, preventing data from different stores from mixing:
 
 ```bash
-# Verify namespaces in the shared pool
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rados -p shared-object-data lsnamespaces
+# List all objects and their RADOS namespaces in the shared pool
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rados -p shared-object-data --all ls
 ```
 
-Output:
+The output shows objects prefixed by their RADOS namespace, confirming isolation between stores:
 
 ```text
-my-store
-another-store
+my-store.buckets.data	some-object-key
+another-store.buckets.data	another-object-key
 ```
 
 ## Preserving Data on Delete
