@@ -108,7 +108,8 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      proxy_ssl_verify off;
 spec:
   ingressClassName: nginx
   rules:
@@ -144,11 +145,15 @@ spec:
 To use a custom TLS certificate instead of the auto-generated self-signed one:
 
 ```bash
-# Create a TLS secret
-kubectl -n rook-ceph create secret tls rook-ceph-dashboard-tls \
-  --cert=dashboard.crt \
-  --key=dashboard.key
+# Set the custom certificate via the Ceph CLI
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph dashboard set-ssl-certificate -i /path/to/dashboard.crt
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph dashboard set-ssl-certificate-key -i /path/to/dashboard.key
 ```
+
+Ensure the dashboard has SSL enabled in the CRD:
 
 ```yaml
 spec:
@@ -156,22 +161,18 @@ spec:
     enabled: true
     ssl: true
     port: 8443
-    # Reference your custom certificate
-    securePort: 8443
 ```
 
 ## Dashboard Credentials Management
 
 ```bash
 # Change the admin password
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-password admin --password-hashed $(echo -n 'newpassword' | python3 -c "import bcrypt, sys; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt(12)).decode())")
+echo 'newpassword' | kubectl -n rook-ceph exec -i deploy/rook-ceph-tools -- \
+  ceph dashboard ac-user-set-password admin -i -
 
 # Create a read-only dashboard user
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-create monitoring viewer
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-password monitoring viewer
+echo 'monitoringpassword' | kubectl -n rook-ceph exec -i deploy/rook-ceph-tools -- \
+  ceph dashboard ac-user-create monitoring -i - read-only
 ```
 
 ## Enabling Dashboard Modules
