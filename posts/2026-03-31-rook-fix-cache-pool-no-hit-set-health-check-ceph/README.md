@@ -116,15 +116,17 @@ ceph health detail
 ceph osd pool stats cache-pool
 ```
 
-Check that hit set activity is being recorded:
+Confirm the hit set parameters are applied:
 
 ```bash
-rados -p cache-pool ls | grep -i hit
+ceph osd pool get cache-pool hit_set_type
+ceph osd pool get cache-pool hit_set_count
+ceph osd pool get cache-pool hit_set_period
 ```
 
 ## Note on Cache Tiering Deprecation
 
-Cache tiering has been deprecated in recent Ceph versions in favor of more efficient solutions like CephFS caching or BlueStore's built-in compression. Consider whether cache tiering is still the right approach for your workload.
+Cache tiering has been deprecated as of the Ceph Reef release and has lacked an active maintainer for some time. The Ceph community advises against new cache tiering deployments. Consider alternatives such as placing pools directly on faster device classes using CRUSH rules, or using OS-level caching like dm-cache or bcache.
 
 ## Summary
 
