@@ -27,9 +27,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: myfs-metadata
-    namespace: nfs-ns
   server:
     active: 1
     resources:
