@@ -23,14 +23,11 @@ SMB performance monitoring for Ceph spans three layers:
 # Show all active sessions
 smbstatus
 
-# Show only connections
+# Show connected shares
 smbstatus -S
 
-# Show open files
+# Show locked files
 smbstatus -L
-
-# Show file locks
-smbstatus -B
 ```
 
 Example output:
@@ -75,21 +72,23 @@ ceph tell mds.0 client ls | python3 -m json.tool | grep -E "client_id|hostname"
 
 ## Collecting Samba Metrics with Prometheus
 
-Use `samba-exporter` to expose Samba metrics to Prometheus:
+Use the Go-based `samba_exporter` to expose Samba metrics to Prometheus. Install it from the project's release packages at [imker25/samba_exporter](https://github.com/imker25/samba_exporter):
 
 ```bash
-pip3 install samba-prometheus-exporter
-samba-exporter --port 9922 &
+# Install from .deb or .rpm package (not available via pip)
+# For Debian/Ubuntu:
+sudo dpkg -i samba-exporter_<version>_amd64.deb
+sudo systemctl enable --now samba_exporter
 ```
 
 Key metrics exposed:
 
 ```text
-samba_active_connections_total
-samba_open_files_total
-samba_bytes_read_total
-samba_bytes_written_total
-samba_calls_total{operation="SMBwrite"}
+samba_client_count
+samba_share_count
+samba_locked_file_count
+samba_pid_count
+samba_server_up
 ```
 
 Scrape configuration for Prometheus:
@@ -106,17 +105,17 @@ scrape_configs:
 Create panels for key SMB metrics:
 
 ```text
-# Active connections over time
-samba_active_connections_total
+# Active client count over time
+samba_client_count
 
-# Write throughput in MB/s
-rate(samba_bytes_written_total[5m]) / 1024 / 1024
+# Active shares over time
+samba_share_count
 
-# Read throughput in MB/s
-rate(samba_bytes_read_total[5m]) / 1024 / 1024
+# Locked files over time
+samba_locked_file_count
 
-# Operations per second
-rate(samba_calls_total[1m])
+# Server availability
+samba_server_up
 ```
 
 ## Identifying Slow Operations
@@ -142,7 +141,8 @@ ceph daemon mds.0 perf dump | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 lat = d.get('mds_server', {}).get('req_setattr_latency', {})
-print(f'setattr avg latency: {lat.get(\"avgcount\", 0)}ms')
+avg_seconds = lat.get('avgtime', 0)
+print(f'setattr avg latency: {avg_seconds * 1000:.2f}ms')
 "
 ```
 
