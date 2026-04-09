@@ -14,7 +14,7 @@ Dumping the full cluster configuration is essential for audits, debugging unexpe
 
 ## Dumping the Centralized Config Store
 
-Since Ceph Nautilus, configuration is primarily stored in the monitors' key-value store. Dump all keys:
+Since Ceph Mimic, configuration is primarily stored in the monitors' key-value store. Dump all keys:
 
 ```bash
 ceph config dump
@@ -23,11 +23,11 @@ ceph config dump
 Sample output:
 
 ```text
-WHO         MASK  LEVEL    OPTION                    VALUE
-global             basic    auth_cluster_required     cephx
-global             basic    auth_service_required     cephx
-osd                advanced  osd_recovery_max_active  3
-client.rgw.zone1   advanced  rgw_frontends            beast port=7480
+WHO              MASK  LEVEL     OPTION                    VALUE              RO
+global                  basic    auth_cluster_required     cephx
+global                  basic    auth_service_required     cephx
+osd                     advanced osd_recovery_max_active   3
+client.rgw.zone1        advanced rgw_frontends             beast port=7480
 ```
 
 ## Filtering by Daemon Type
@@ -104,7 +104,7 @@ ceph config get osd.0 osd_recovery_max_active
 ceph tell osd.0 config get osd_recovery_max_active
 ```
 
-If they differ, a `ceph config set` was applied without persisting or was overridden at the daemon level.
+If they differ, a runtime override was applied via `ceph tell ... injectargs` or `ceph daemon ... config set` (both ephemeral and non-persistent), or a local `ceph.conf` file has different values.
 
 ## Summary
 
