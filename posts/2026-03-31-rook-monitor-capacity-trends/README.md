@@ -69,7 +69,7 @@ This gives days until 80% utilization at the current growth rate.
 Daily growth rate in bytes:
 
 ```promql
-rate(ceph_cluster_total_used_bytes[24h]) * 86400
+deriv(ceph_cluster_total_used_bytes[24h]) * 86400
 ```
 
 ## Step 4 - Grafana Dashboard Panels
@@ -131,7 +131,7 @@ groups:
       severity: warning
     annotations:
       summary: "Ceph will reach 80% capacity in less than 30 days"
-      description: "Estimated {{ $value | humanizeDuration }} until 80% full"
+      description: "Estimated {{ $value | printf \"%.0f\" }} days until 80% full"
 
   - alert: CephCapacityGrowthCritical
     expr: |
@@ -154,7 +154,7 @@ ceph df detail --format json | jq -r '
   .pools[] |
   [.name,
    (.stats.stored | . / 1099511627776 | tostring + \" TiB\"),
-   (.stats.percent_used | tostring + \"%\")] |
+   (.stats.percent_used * 100 | tostring + \"%\")] |
   @tsv
 ' | column -t"
 ```
