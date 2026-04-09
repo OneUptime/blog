@@ -80,10 +80,10 @@ Check the daemon status from the Ceph toolbox:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph service dump | grep rbd-mirror
+  ceph -s | grep rbd-mirror
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph orch ls --service-type rbd-mirror
+  ceph orch ps --daemon-type rbd-mirror
 ```
 
 ## Checking Peer Configuration
@@ -113,7 +113,7 @@ Check the overall mirroring health:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mirror status
+  rbd mirror pool status replicapool
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd mirror pool status replicapool --verbose
@@ -122,9 +122,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Prometheus metrics are also available for the rbd-mirror daemon:
 
 ```text
-ceph_rbd_mirror_snapshot_sync_bytes
-ceph_rbd_mirror_snapshot_sync_time
-ceph_rbd_mirror_replay_latency_sum
+ceph_rbd_mirror_snapshot_image_sync_bytes
+ceph_rbd_mirror_snapshot_image_sync_time
+ceph_rbd_mirror_replay_latency
 ```
 
 ## Updating the Mirror Daemon Count
