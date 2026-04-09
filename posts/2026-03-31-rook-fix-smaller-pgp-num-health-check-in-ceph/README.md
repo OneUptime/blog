@@ -32,7 +32,7 @@ Example output:
 Check all pools:
 
 ```bash
-ceph osd dump | grep "^pool" | awk '{print $3, $7, $9}'
+ceph osd dump | grep "^pool" | awk '{print $3, $14, $16}'
 ```
 
 ## Why pgp_num Matters
@@ -89,9 +89,9 @@ Fix all pools where `pgp_num < pg_num`:
 
 ```bash
 ceph osd dump | grep "^pool" | while read -r line; do
-  pool=$(echo "$line" | awk '{print $3}')
-  pg_num=$(echo "$line" | awk '{print $7}')
-  pgp_num=$(echo "$line" | awk '{print $9}')
+  pool=$(echo "$line" | awk '{print $3}' | tr -d "'")
+  pg_num=$(echo "$line" | awk '{print $14}')
+  pgp_num=$(echo "$line" | awk '{print $16}')
   if [ "$pgp_num" -lt "$pg_num" ]; then
     echo "Fixing pool $pool: pg_num=$pg_num pgp_num=$pgp_num"
     ceph osd pool set "$pool" pgp_num "$pg_num"
