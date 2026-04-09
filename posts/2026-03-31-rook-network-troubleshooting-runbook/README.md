@@ -35,9 +35,11 @@ Confirm the public and cluster network CIDRs are correct:
 spec:
   network:
     provider: host
-    selectors:
-      public: "192.168.1.0/24"
-      cluster: "10.0.0.0/24"
+    addressRanges:
+      public:
+        - "192.168.1.0/24"
+      cluster:
+        - "10.0.0.0/24"
 ```
 
 ## Step 3: Test Connectivity Between OSD Nodes
@@ -61,7 +63,7 @@ MTU mismatches cause silent packet drops at larger transfer sizes:
 ip link show eth0 | grep mtu
 
 # Test with large packet
-kubectl -n rook-ceph exec -it rook-ceph-tools -- \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ping -M do -s 8972 <osd-node-ip>
 ```
 
@@ -72,10 +74,10 @@ If the ping fails but small packets succeed, reduce the MTU in the network confi
 Monitor DNS issues can cause monitor discovery failures:
 
 ```bash
-kubectl -n rook-ceph exec -it rook-ceph-tools -- \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   nslookup rook-ceph-mon-a.rook-ceph.svc.cluster.local
 
-kubectl -n rook-ceph exec -it rook-ceph-tools -- \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph mon dump
 ```
 
@@ -99,7 +101,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ```bash
 # Install and run iperf3 between two OSD-hosting nodes
-kubectl -n rook-ceph exec -it rook-ceph-tools -- \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   iperf3 -c <node-ip> -P 4 -t 30
 
 # Expected: minimum 1 Gbps per OSD host for spinning disks
