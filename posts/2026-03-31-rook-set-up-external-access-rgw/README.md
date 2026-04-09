@@ -63,10 +63,10 @@ spec:
   type: NodePort
   selector:
     app: rook-ceph-rgw
-    rgw: my-store
+    rook_object_store: my-store
   ports:
   - port: 80
-    targetPort: 7480
+    targetPort: 8080
     nodePort: 30080
 ```
 
