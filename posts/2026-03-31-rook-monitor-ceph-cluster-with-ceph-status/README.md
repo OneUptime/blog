@@ -87,7 +87,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 
 ## Monitoring I/O Performance
 
-Check current read/write throughput and IOPS:
+Check per-OSD commit and apply latency:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd perf
