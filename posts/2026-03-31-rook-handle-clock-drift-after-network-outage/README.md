@@ -28,10 +28,11 @@ MON_CLOCK_SKEW clock skew detected on mon.b
     mon.b clock skew 0.156s > max 0.05s
 ```
 
-Check clock status across all monitors:
+Check monitor clock skew details:
 
 ```bash
-ceph time-sync-status
+ceph mon stat
+ceph health detail | grep clock
 ```
 
 ## Step 1: Verify NTP Service Status
