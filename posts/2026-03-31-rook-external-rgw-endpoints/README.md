@@ -39,6 +39,7 @@ spec:
     port: 80
     instances: 2
     service:
+      type: LoadBalancer
       annotations:
         service.beta.kubernetes.io/aws-load-balancer-type: nlb
 ```
