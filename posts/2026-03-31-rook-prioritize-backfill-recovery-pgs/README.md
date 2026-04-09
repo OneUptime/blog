@@ -18,8 +18,8 @@ Ceph exposes several configuration options to control backfill and recovery thro
 
 ```bash
 # Check current recovery and backfill settings
-ceph config show osd.0 osd_recovery_op_priority
-ceph config show osd.0 osd_backfill_scan_max
+ceph config get osd.0 osd_recovery_op_priority
+ceph config get osd.0 osd_backfill_scan_max
 ```
 
 The main tunables are:
@@ -47,7 +47,7 @@ Monitor progress with:
 ```bash
 ceph -s
 ceph pg stat
-ceph osd recovery-stats
+ceph progress
 ```
 
 ## Reducing Recovery Impact on Client I/O
