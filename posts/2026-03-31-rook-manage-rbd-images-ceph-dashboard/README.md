@@ -104,11 +104,12 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 The `fast-diff` feature dramatically speeds up `rbd du`:
 
 ```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  rbd feature enable replicapool/my-image fast-diff
-
+# object-map must be enabled before fast-diff (fast-diff depends on object-map)
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   rbd feature enable replicapool/my-image object-map
+
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  rbd feature enable replicapool/my-image fast-diff
 ```
 
 ## Summary
