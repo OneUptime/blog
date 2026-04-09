@@ -45,22 +45,22 @@ rbd journal status replicapool/myimage
 
 ## Understanding Journal Positions
 
-The journal tracks positions for:
-- **commit_position** - last journal entry applied to the image
-- **mirror_position** - last entry replicated to secondary
+The `rbd journal status` output shows registered clients, each with their own position:
+- **Internal client** - tracks the last journal entry applied to the local image
+- **Mirror client** - tracks the last entry replicated to the secondary
 
-The difference between `master_position` (primary's latest) and `mirror_position` (secondary's progress) represents replication lag.
+Each client has a `commit_position`. The lag between the internal client's position and the mirror client's position represents replication lag. You can check lag using `rbd mirror image status`, which reports `entries_behind_primary`.
 
 ```bash
 # Check lag on the secondary
 rbd mirror image status replicapool/myimage --format json | \
-  jq '.description'
+  jq '.entries_behind_primary'
 ```
 
 ## Tuning Journal Replay Performance
 
 ```bash
-# Increase replay threads for faster catch-up
+# Increase max concurrent object sets a client can be behind before unregistering (0 = no limit)
 ceph config set rbd-mirror rbd_journal_max_concurrent_object_sets 32
 
 # Adjust the polling age for lower latency
@@ -81,15 +81,15 @@ sudo journalctl -u ceph-rbd-mirror@rbd-mirror.0 | grep -i "error\|replay"
 # In Rook, check mirror daemon pod logs
 kubectl -n rook-ceph logs -l app=rook-ceph-rbd-mirror --tail=100
 
-# Check for journal overflow (journal too small for write rate)
-rbd journal info replicapool/myimage | grep "overflow"
+# Check journal object count and size to detect if the journal is growing too large
+rbd journal info replicapool/myimage
 ```
 
 If the journal is overflowing, increase journal object size:
 
 ```bash
-# Journal order 24 = 16MB per object
-rbd config image set replicapool/myimage rbd_journal_order 24
+# Journal order 25 = 32MB per object (default is 24 = 16MB)
+rbd config image set replicapool/myimage rbd_journal_order 25
 ```
 
 ## Journal Pruning
@@ -109,4 +109,4 @@ sudo systemctl restart ceph-rbd-mirror@rbd-mirror.0
 
 ## Summary
 
-RBD journal replay is the core mechanism of journal-based mirroring. Writes are first committed to the journal, then the rbd-mirror daemon on the secondary reads and replays these entries. Monitor lag using `entries_behind_master`, tune replay performance with concurrent object set settings, and diagnose issues by checking daemon logs and journal status. Proper journal sizing prevents overflow that can stall replication.
+RBD journal replay is the core mechanism of journal-based mirroring. Writes are first committed to the journal, then the rbd-mirror daemon on the secondary reads and replays these entries. Monitor lag using `entries_behind_primary`, tune replay performance with concurrent object set settings, and diagnose issues by checking daemon logs and journal status. Proper journal sizing prevents overflow that can stall replication.
