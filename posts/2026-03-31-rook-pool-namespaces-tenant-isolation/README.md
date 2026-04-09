@@ -61,20 +61,41 @@ parameters:
   clusterID: rook-ceph
   pool: shared-pool
   imageFeatures: layering
-  # Namespace isolation for tenant A
+  # Name prefix only - does not provide RBD namespace isolation
   volumeNamePrefix: "tenant-a-"
 reclaimPolicy: Delete
 ```
 
-For stricter namespace-level isolation, use the CSI RBD namespace parameter:
+For actual namespace-level isolation, create a `CephBlockPoolRadosNamespace` per tenant and use its namespace-specific `clusterID` in the StorageClass:
 
 ```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPoolRadosNamespace
+metadata:
+  name: tenant-a-ns
+  namespace: rook-ceph
+spec:
+  blockPoolName: shared-pool
+```
+
+Retrieve the namespace-specific `clusterID` from the resource status and use it in the StorageClass:
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ceph-tenant-a
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: rook-ceph
+  # Use the clusterID from: kubectl -n rook-ceph get cephblockpoolradosnamespace tenant-a-ns -o jsonpath='{.status.info.clusterID}'
+  clusterID: <namespace-specific-clusterID>
   pool: shared-pool
   imageFeatures: layering
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner-tenant-a
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node-tenant-a
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
 ```
 
 ## Setting Up Separate Ceph Users Per Tenant
@@ -96,10 +117,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Create Kubernetes secrets with these credentials:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth get-key client.tenant-a | \
   kubectl -n tenant-a create secret generic rbd-secret \
-  --from-literal=key=-
+  --from-file=key=/dev/stdin
 ```
 
 ## Verifying Namespace Isolation
