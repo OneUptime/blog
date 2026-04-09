@@ -123,29 +123,36 @@ Apply:
 kubectl -n rook-ceph apply -f pool.yaml
 ```
 
-Or set cluster-wide via config override:
+Or set cluster-wide via the `rook-config-override` ConfigMap:
 
 ```yaml
-spec:
-  cephConfig:
-    osd:
-      bluestore_compression_mode: aggressive
-      bluestore_compression_algorithm: snappy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-config-override
+  namespace: rook-ceph
+data:
+  config: |
+    [osd]
+    bluestore_compression_mode = aggressive
+    bluestore_compression_algorithm = snappy
 ```
 
 ## Measuring Compression Effectiveness
 
-After enabling compression, check savings:
+After enabling compression, check overall pool usage:
 
 ```bash
-ceph osd pool stats <pool-name>
+ceph df detail
 ```
 
-Look for the `compress_bytes_used` and `compress_under_bytes` fields. Calculate ratio:
+To view BlueStore compression statistics on a specific OSD, use the perf counters:
 
 ```bash
-ceph df detail | grep -A3 <pool-name>
+ceph daemon osd.<id> perf dump bluestore | grep compress
 ```
+
+Look for `bluestore_compressed_original` (original data size) and `bluestore_compressed_allocated` (size after compression) to calculate the compression ratio.
 
 ## Muting the Warning Without Enabling Compression
 
@@ -155,12 +162,12 @@ If your data is incompressible (encrypted, already compressed images):
 ceph health mute BLUESTORE_NO_COMPRESSION
 ```
 
-Or disable the check:
+To persist the mute across Ceph restarts (Ceph Pacific 16.2.1+):
 
 ```bash
-ceph config set global bluestore_warn_on_no_compression false
+ceph health mute BLUESTORE_NO_COMPRESSION --sticky
 ```
 
 ## Summary
 
-`BLUESTORE_NO_COMPRESSION` is an advisory warning that BlueStore compression is not enabled. Enable it globally with `ceph config set osd bluestore_compression_mode aggressive` or per-pool for targeted efficiency gains. Choose `snappy` for speed-sensitive workloads or `zstd` for maximum compression on cold data. In Rook, set compression via CephBlockPool spec or the CephCluster config override. If your data is incompressible, mute the warning.
+`BLUESTORE_NO_COMPRESSION` is an advisory warning that BlueStore compression is not enabled. Enable it globally with `ceph config set osd bluestore_compression_mode aggressive` or per-pool for targeted efficiency gains. Choose `snappy` for speed-sensitive workloads or `zstd` for maximum compression on cold data. In Rook, set compression via the CephBlockPool spec or the `rook-config-override` ConfigMap. If your data is incompressible, mute the warning.
