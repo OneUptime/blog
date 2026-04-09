@@ -55,11 +55,11 @@ Other examples of warnings: clock skew detected, nearfull OSDs, telemetry not co
 Sample error state:
 
 ```text
-HEALTH_ERR 30 pgs degraded; 15 pgs stuck unclean
-[ERR] PG_DEGRADED: 30 pgs degraded
-    pg 2.1f is active+degraded (acting [0,2] want [0,1,2])
-[ERR] PG_STUCK_UNCLEAN: 15 pgs stuck unclean
-    pg 2.20 is stuck unclean for 3600 seconds
+HEALTH_ERR 15 pgs not active; 30 pgs degraded
+[ERR] PG_AVAILABILITY: 15 pgs not active
+    pg 2.20 is stuck inactive for 3600 sec, current state unknown
+[WRN] PG_DEGRADED: 30 pgs degraded
+    pg 2.1f is active+degraded, acting [0,2]
 ```
 
 ## Key Differences
