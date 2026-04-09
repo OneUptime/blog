@@ -26,10 +26,10 @@ Log messages have levels 0-20:
 ceph config dump | grep log
 
 # View for a specific daemon type
-ceph config get osd log_level
+ceph config get osd debug_osd
 
 # View runtime log level via admin socket
-ceph daemon osd.0 log get-level
+ceph daemon osd.0 config get debug_osd
 ```
 
 ## Setting Global Log Levels
@@ -37,7 +37,7 @@ ceph daemon osd.0 log get-level
 ```bash
 # Set global log level (applies to all Ceph daemons)
 ceph config set global log_to_file true
-ceph config set global log_level 1
+ceph config set global debug_ms 1
 
 # Set file log path
 ceph config set global log_file /var/log/ceph/ceph.log
@@ -46,17 +46,17 @@ ceph config set global log_file /var/log/ceph/ceph.log
 ## Setting Per-Component Log Levels
 
 ```bash
-# Increase OSD log level for debugging
-ceph config set osd log_level 5
+# Increase OSD debug level for debugging
+ceph config set osd debug_osd 5
 
-# Set monitor logging
-ceph config set mon log_level 2
+# Set monitor debug level
+ceph config set mon debug_mon 2
 
-# Increase RGW logging
-ceph config set client.rgw log_level 5
+# Increase RGW debug level
+ceph config set client.rgw debug_rgw 5
 
 # Temporarily debug a single OSD
-ceph config set osd.3 log_level 10
+ceph config set osd.3 debug_osd 10
 ```
 
 ## Runtime Log Level Changes (No Restart Required)
@@ -64,14 +64,14 @@ ceph config set osd.3 log_level 10
 Ceph allows changing log levels at runtime via the admin socket:
 
 ```bash
-# Increase log level on a running OSD
-ceph daemon osd.0 log set-level 10
+# Increase debug level on a running OSD
+ceph daemon osd.0 config set debug_osd 10
 
 # Or via the config set command (applied live)
 ceph tell osd.0 injectargs --debug-osd 10
 
 # Restore to normal
-ceph daemon osd.0 log set-level 1
+ceph daemon osd.0 config set debug_osd 1
 ```
 
 ## Subsystem-Specific Debugging
@@ -88,15 +88,15 @@ ceph tell osd.0 injectargs --debug-objecter 10
 # Enable RGW debugging
 ceph tell client.rgw.myrgw injectargs --debug-rgw 10
 
-# Enable OSD PG debugging
-ceph tell osd.0 injectargs --debug-osd 10 --debug-pg 10
+# Enable OSD and messaging layer debugging
+ceph tell osd.0 injectargs --debug-osd 10 --debug-ms 5
 ```
 
 Available debug subsystems include:
 
 ```text
 debug-osd       - OSD operations
-debug-pg        - Placement group operations
+debug-optracker - Operation tracker
 debug-crush     - CRUSH mapping
 debug-mon       - Monitor operations
 debug-ms        - Messaging layer
@@ -114,12 +114,11 @@ debug-paxos     - Monitor consensus
 # Set log file path for all daemons
 ceph config set global log_file /var/log/ceph/ceph-$type.$id.log
 
-# Enable log rotation (default: true)
-ceph config set global log_max_new 0  # Disable rotation
-ceph config set global log_max_recent 1000  # Keep last 1000 lines in memory
+# Set max new entries in in-memory log buffer (default: 1000)
+ceph config set global log_max_new 1000
 
-# Maximum log file size before rotation (in MiB)
-ceph config set global log_max_new 100
+# Set max recent entries in in-memory log buffer (default: 500)
+ceph config set global log_max_recent 500
 ```
 
 ## Ceph Log Output Destinations
@@ -192,9 +191,9 @@ kubectl -n rook-ceph logs -l app=rook-ceph-mon --tail=100
 
 # Increase log level via Rook toolbox
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd log_level 5
+  ceph config set osd debug_osd 5
 ```
 
 ## Summary
 
-Ceph logging is configured per-subsystem and can be changed at runtime without daemon restarts. Use `ceph config set <daemon-type> log_level <0-20>` for global adjustments, or `ceph tell <daemon> injectargs --debug-<subsystem> <level>` for targeted debugging. For deep issue investigation, enable specific subsystem debug flags (e.g., `--debug-osd 10 --debug-pg 10`) while reproducing the problem, then collect the logs and restore normal log levels. In Rook/Kubernetes, access logs via `kubectl logs` and adjust levels via the toolbox pod.
+Ceph logging is configured per-subsystem and can be changed at runtime without daemon restarts. Use `ceph config set <daemon-type> debug_<subsystem> <0-20>` for global adjustments, or `ceph tell <daemon> injectargs --debug-<subsystem> <level>` for targeted debugging. For deep issue investigation, enable specific subsystem debug flags (e.g., `--debug-osd 10 --debug-ms 5`) while reproducing the problem, then collect the logs and restore normal log levels. In Rook/Kubernetes, access logs via `kubectl logs` and adjust levels via the toolbox pod.
