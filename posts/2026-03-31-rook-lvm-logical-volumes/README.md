@@ -91,15 +91,15 @@ spec:
     nodes:
       - name: storage-node-1
         devices:
-          - name: dm-0        # symlink to /dev/ceph-vg/osd-data-0
-          - name: dm-1        # symlink to /dev/ceph-vg/osd-data-1
+          - name: dm-0        # device-mapper device for /dev/ceph-vg/osd-data-0
+          - name: dm-1        # device-mapper device for /dev/ceph-vg/osd-data-1
       - name: storage-node-2
         devices:
           - name: dm-0
           - name: dm-1
 ```
 
-LVM device mapper devices appear as `/dev/dm-N`. To reliably map them, use the full path via the `config` field:
+LVM device mapper devices appear as `/dev/dm-N`. To reliably map them, use the full LV path in the device `name` field:
 
 ```yaml
     nodes:
@@ -130,6 +130,10 @@ Expected output shows `osd.0`, `osd.1`, etc. with `up in` status.
 If you have an SSD and want to place OSD metadata (WAL/DB) on it while data lives on the LV:
 
 ```bash
+# Prepare the SSD as a physical volume
+wipefs -a /dev/nvme0n1
+pvcreate /dev/nvme0n1
+
 # Create a metadata LV on SSD volume group
 vgcreate ssd-vg /dev/nvme0n1
 lvcreate -n osd-meta-0 -L 10G ssd-vg
