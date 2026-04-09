@@ -48,9 +48,9 @@ After issuing the command, the image transitions through these states:
 watch rbd mirror image status replicapool/myimage
 
 # Expected progression:
-# 1. syncing
-# 2. up+syncing (X% complete)
-# 3. up+replaying (sync complete)
+# 1. up+syncing (full image copy in progress)
+# 2. up+starting_replay (transitioning to replay mode)
+# 3. up+replaying (sync complete, replaying incremental changes)
 ```
 
 ## Resync for Pool-Level Recovery
@@ -62,8 +62,8 @@ If multiple images are in error state, resync them all:
 POOL="replicapool"
 
 # Find all images in error state
-rbd mirror image ls -p $POOL --format json | \
-  jq -r '.[] | select(.state == "error") | .name' | \
+rbd mirror pool status $POOL --verbose --format json | \
+  jq -r '.images[] | select(.state | contains("error")) | .name' | \
 while read img; do
   echo "Resyncing $img..."
   rbd mirror image resync $POOL/$img
@@ -80,7 +80,7 @@ rbd mirror image status replicapool/myimage
 
 # Output during sync:
 # state:       up+syncing
-# description: bootstrapping, IMAGE_COPY/COPY_OBJECT 45% complete
+# description: bootstrapping, IMAGE_COPY/COPY_OBJECT 45%
 ```
 
 For large images, resync can take significant time. Monitor I/O on the network link between clusters to ensure data is flowing.
@@ -104,11 +104,11 @@ kubectl -n rook-ceph exec -it $TOOLBOX -- \
 Reduce the need for resyncs by:
 
 ```bash
-# Increase the journal object order to reduce journal overflow
-rbd config image set replicapool/myimage rbd_journal_order 24
+# Increase the journal object order to reduce journal overflow (default is 24)
+rbd config image set replicapool/myimage rbd_journal_order 26
 
-# Set appropriate commit interval to batch writes
-rbd config image set replicapool/myimage rbd_journal_commit_age 5
+# Set a longer commit interval to batch more writes (default is 5 seconds)
+rbd config image set replicapool/myimage rbd_journal_commit_age 10
 ```
 
 ## Summary
