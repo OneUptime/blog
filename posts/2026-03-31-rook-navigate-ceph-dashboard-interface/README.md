@@ -83,10 +83,12 @@ Ensure the dashboard is enabled in your CephCluster:
 apiVersion: ceph.rook.io/v1
 kind: CephCluster
 spec:
+  dashboard:
+    enabled: true
+    ssl: true
+    port: 8443
   mgr:
     modules:
-      - name: dashboard
-        enabled: true
       - name: prometheus
         enabled: true
 ```
