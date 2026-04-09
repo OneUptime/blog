@@ -103,7 +103,7 @@ kubectl -n rook-ceph get secret rook-csi-rbd-provisioner
 kubectl -n rook-ceph get secret rook-csi-rbd-node
 ```
 
-These secrets are created automatically by the Rook operator when a CephBlockPool is ready. If they are missing, the operator may not have successfully reconciled the pool.
+These secrets are created automatically by the Rook operator when the CephCluster is healthy and CSI drivers are initialized. If they are missing, the operator may not have successfully initialized or the CephCluster may not be in a healthy state.
 
 ## Step 5: Check the CSI Provisioner
 
