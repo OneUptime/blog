@@ -10,7 +10,7 @@ Description: Create CephFilesystemSubVolumeGroup CRDs in Rook to organize CephFS
 
 ## Overview
 
-A CephFS SubVolumeGroup is an administrative grouping mechanism for CephFS subvolumes. When Rook provisions CephFS volumes via the CSI driver, each PVC becomes a CephFS subvolume. SubVolumeGroups let you organize these subvolumes into logical groups, apply group-level quotas, and isolate workloads.
+A CephFS SubVolumeGroup is an administrative grouping mechanism for CephFS subvolumes. When Rook provisions CephFS volumes via the CSI driver, each PVC becomes a CephFS subvolume. SubVolumeGroups let you organize these subvolumes into logical groups, apply group-level size quotas, and isolate workloads.
 
 ## Why Use SubVolumeGroups
 
@@ -30,9 +30,7 @@ metadata:
 spec:
   filesystemName: myfs
   name: dev
-  quota:
-    maxBytes: 107374182400
-    maxFiles: 1000000
+  quota: 100Gi
   dataPoolName: myfs-replicated
   pinning:
     distributed: 1
@@ -66,13 +64,11 @@ spec:
 
 ### quota
 
-Set aggregate limits on the group:
+Set a size limit on the group. The value is a Kubernetes resource quantity:
 
 ```yaml
 spec:
-  quota:
-    maxBytes: 107374182400  # 100 GiB
-    maxFiles: 1000000       # 1 million inodes
+  quota: 100Gi
 ```
 
 ### pinning
@@ -107,8 +103,7 @@ metadata:
 spec:
   filesystemName: myfs
   name: production
-  quota:
-    maxBytes: 1099511627776  # 1 TiB
+  quota: 1Ti
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephFilesystemSubVolumeGroup
@@ -118,8 +113,7 @@ metadata:
 spec:
   filesystemName: myfs
   name: staging
-  quota:
-    maxBytes: 107374182400   # 100 GiB
+  quota: 100Gi
 ```
 
 ## Reference SubVolumeGroup in a StorageClass
