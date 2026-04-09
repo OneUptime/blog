@@ -10,7 +10,7 @@ Description: Learn how to configure erasure coded block storage in Rook-Ceph on 
 
 ## Overview
 
-Erasure coding (EC) provides more storage-efficient data protection compared to full replication. A 4+2 EC scheme, for example, can tolerate 2 OSD failures while using 1.5x raw overhead rather than the 3x overhead of triple replication. Using EC for block storage (RBD) in Rook requires Linux kernel 4.11+ on all nodes because EC overwrites require the `RBD_FEATURE_OBJECT_MAP` and `RBD_FEATURE_DEEP_FLATTEN` features that depend on newer kernel modules.
+Erasure coding (EC) provides more storage-efficient data protection compared to full replication. A 4+2 EC scheme, for example, can tolerate 2 OSD failures while using 1.5x raw overhead rather than the 3x overhead of triple replication. Using EC for block storage (RBD) in Rook requires Linux kernel 4.11+ on all nodes because the kernel RBD (krbd) driver gained `data-pool` support in that version, which is necessary for EC RBD's two-pool architecture (a replicated metadata pool paired with an EC data pool).
 
 ## Architecture: Replicated Metadata + EC Data Pool
 
@@ -57,7 +57,7 @@ After creation, verify the erasure code profile:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool ls detail
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd erasure-code-profile get rook-erasure-code-profile
+  ceph osd erasure-code-profile get ec-data-pool_ecprofile
 ```
 
 ## Creating the StorageClass
@@ -75,7 +75,7 @@ parameters:
   pool: replicated-metadata-pool
   dataPool: ec-data-pool
   imageFormat: "2"
-  imageFeatures: layering,object-map,fast-diff,deep-flatten
+  imageFeatures: layering,exclusive-lock,object-map,fast-diff,deep-flatten
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
@@ -126,9 +126,9 @@ Verify the PVC binds and check the RBD image features on the created volume:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd info replicapool/<pvc-image-name>
+  rbd info replicated-metadata-pool/<pvc-image-name>
 ```
 
 ## Summary
 
-Erasure coded block storage in Rook requires splitting RBD images across a replicated metadata pool and an EC data pool. Linux kernel 4.11+ is mandatory because the `object-map` and `deep-flatten` RBD features required for EC overwrites are only supported in newer kernels. Always verify kernel versions across all worker nodes before deploying EC-backed StorageClasses to production workloads.
+Erasure coded block storage in Rook requires splitting RBD images across a replicated metadata pool and an EC data pool. Linux kernel 4.11+ is mandatory because the krbd driver requires that version for `data-pool` support, which enables mapping RBD images that span a replicated metadata pool and an EC data pool. Always verify kernel versions across all worker nodes before deploying EC-backed StorageClasses to production workloads.
