@@ -18,7 +18,7 @@ RBD statistics provide per-image I/O metrics including read/write operations, by
 flowchart LR
     A[RBD Image / PVC] -->|I/O Operations| B[Ceph OSD]
     B -->|stats collected| C[Ceph MGR]
-    C -->|Prometheus metrics| D[rbd_client_io_ops_total\nrbd_client_io_bytes_total]
+    C -->|Prometheus metrics| D[ceph_rbd_write_ops\nceph_rbd_read_ops\nceph_rbd_read_bytes\nceph_rbd_write_bytes]
     D --> E[Prometheus Scrape]
     E --> F[Grafana Dashboard]
 ```
@@ -62,10 +62,10 @@ kubectl get cephblockpool replicapool -n rook-ceph -o yaml | grep enableRBDStats
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # Check if RBD statistics are enabled for the pool
-ceph osd pool get replicapool rbd_stats_pools
+ceph config get mgr mgr/prometheus/rbd_stats_pools
 
 # Enable manually if needed (Rook should handle this automatically)
-ceph osd pool set replicapool rbd_stats_pools "replicapool"
+ceph config set mgr mgr/prometheus/rbd_stats_pools "replicapool"
 
 # Verify the mgr module is collecting RBD stats
 ceph mgr module ls | grep -E "rbd_support|prometheus"
@@ -82,8 +82,8 @@ ceph mgr module enable rbd_support
 # Check the module is active
 ceph mgr module ls | grep rbd_support
 
-# Configure statistics polling interval (default 5 seconds)
-ceph config set mgr mgr/rbd_support/stats_polling_interval 5
+# Configure pool refresh interval (default 300 seconds)
+ceph config set mgr mgr/prometheus/rbd_stats_pools_refresh_interval 300
 ```
 
 ## Step 4: Check Available RBD Metrics
@@ -91,14 +91,17 @@ ceph config set mgr mgr/rbd_support/stats_polling_interval 5
 ```bash
 # Query the Prometheus metrics endpoint for RBD stats
 # From within the cluster or via port-forward
-curl http://<mgr-host>:9283/metrics | grep "^rbd_" | head -30
+curl http://<mgr-host>:9283/metrics | grep "^ceph_rbd_" | head -30
 
 # Key metrics available:
-# rbd_client_io_ops_total - total read/write operations
-# rbd_client_io_bytes_total - total bytes read/written
-# rbd_client_io_errors_total - total I/O errors
-# rbd_client_io_latency_sum - sum of I/O latency values
-# rbd_client_io_latency_count - count of I/O latency samples
+# ceph_rbd_write_ops - total write operations per image
+# ceph_rbd_read_ops - total read operations per image
+# ceph_rbd_write_bytes - total bytes written per image
+# ceph_rbd_read_bytes - total bytes read per image
+# ceph_rbd_write_latency_sum - sum of write latency values
+# ceph_rbd_write_latency_count - count of write latency samples
+# ceph_rbd_read_latency_sum - sum of read latency values
+# ceph_rbd_read_latency_count - count of read latency samples
 ```
 
 ## Step 5: Create Grafana Dashboard for RBD Statistics
@@ -120,12 +123,16 @@ data:
       "title": "Rook Ceph RBD Statistics",
       "panels": [
         {
-          "title": "RBD I/O Operations per Second",
+          "title": "RBD Write Operations per Second",
           "type": "graph",
           "targets": [
             {
-              "expr": "rate(rbd_client_io_ops_total[5m])",
-              "legendFormat": "{{image}} - {{pool}}"
+              "expr": "rate(ceph_rbd_write_ops[5m])",
+              "legendFormat": "{{image}} - {{pool}} - writes"
+            },
+            {
+              "expr": "rate(ceph_rbd_read_ops[5m])",
+              "legendFormat": "{{image}} - {{pool}} - reads"
             }
           ]
         },
@@ -134,18 +141,26 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "rate(rbd_client_io_bytes_total[5m])",
-              "legendFormat": "{{image}} - {{direction}}"
+              "expr": "rate(ceph_rbd_write_bytes[5m])",
+              "legendFormat": "{{image}} - writes"
+            },
+            {
+              "expr": "rate(ceph_rbd_read_bytes[5m])",
+              "legendFormat": "{{image}} - reads"
             }
           ]
         },
         {
-          "title": "RBD Average I/O Latency (ms)",
+          "title": "RBD Average Write Latency (ms)",
           "type": "graph",
           "targets": [
             {
-              "expr": "rate(rbd_client_io_latency_sum[5m]) / rate(rbd_client_io_latency_count[5m]) * 1000",
-              "legendFormat": "{{image}}"
+              "expr": "rate(ceph_rbd_write_latency_sum[5m]) / rate(ceph_rbd_write_latency_count[5m]) * 1000",
+              "legendFormat": "{{image}} - writes"
+            },
+            {
+              "expr": "rate(ceph_rbd_read_latency_sum[5m]) / rate(ceph_rbd_read_latency_count[5m]) * 1000",
+              "legendFormat": "{{image}} - reads"
             }
           ]
         }
@@ -168,22 +183,24 @@ spec:
   groups:
     - name: rbd-stats.rules
       rules:
-        - alert: RBDHighLatency
+        - alert: RBDHighWriteLatency
           expr: |
-            (rate(rbd_client_io_latency_sum[5m]) / rate(rbd_client_io_latency_count[5m])) > 0.1
+            (rate(ceph_rbd_write_latency_sum[5m]) / rate(ceph_rbd_write_latency_count[5m])) > 0.1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "RBD image {{ $labels.image }} has high latency"
-            description: "Average I/O latency for RBD image {{ $labels.image }} in pool {{ $labels.pool }} exceeds 100ms."
-        - alert: RBDHighErrorRate
-          expr: rate(rbd_client_io_errors_total[5m]) > 0
-          for: 2m
+            summary: "RBD image {{ $labels.image }} has high write latency"
+            description: "Average write latency for RBD image {{ $labels.image }} in pool {{ $labels.pool }} exceeds 100ms."
+        - alert: RBDHighReadLatency
+          expr: |
+            (rate(ceph_rbd_read_latency_sum[5m]) / rate(ceph_rbd_read_latency_count[5m])) > 0.1
+          for: 5m
           labels:
-            severity: critical
+            severity: warning
           annotations:
-            summary: "RBD image {{ $labels.image }} has I/O errors"
+            summary: "RBD image {{ $labels.image }} has high read latency"
+            description: "Average read latency for RBD image {{ $labels.image }} in pool {{ $labels.pool }} exceeds 100ms."
 ```
 
 ```bash
@@ -210,7 +227,7 @@ kubectl get pv -o custom-columns='NAME:.metadata.name,IMAGE:.spec.csi.volumeHand
 ```bash
 # Query Prometheus for RBD metrics
 kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
-curl -s 'http://localhost:9090/api/v1/query?query=rbd_client_io_ops_total' \
+curl -s 'http://localhost:9090/api/v1/query?query=ceph_rbd_write_ops' \
   | python3 -m json.tool | grep value
 
 # Check MGR logs for stats collection
@@ -221,9 +238,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ## Troubleshooting
 
 ```bash
-# If stats are not appearing, check the pool setting
+# If stats are not appearing, check the MGR config
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool get replicapool all | grep rbd_stats
+  ceph config get mgr mgr/prometheus/rbd_stats_pools
 
 # Ensure there is active I/O on the images
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
