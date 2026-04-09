@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, BlueStore, OMAP, Placement Group
 
-Description: Learn how to resolve the BLUESTORE_NO_PER_PG_OMAP health warning in Ceph by migrating OSD OMAP storage to per-PG namespaces for improved performance and isolation.
+Description: Learn how to resolve the BLUESTORE_NO_PER_PG_OMAP health warning in Ceph by running a BlueStore repair on affected OSDs to enable per-PG OMAP tracking.
 
 ---
 
 ## Understanding BLUESTORE_NO_PER_PG_OMAP
 
-`BLUESTORE_NO_PER_PG_OMAP` is a follow-on improvement to `BLUESTORE_NO_PER_POOL_OMAP`. While per-pool OMAP separates OMAP by pool, per-PG OMAP goes further by segregating OMAP data by individual Placement Group (PG). This was introduced in Ceph Pacific (16.x) and provides finer-grained OMAP management, enabling more efficient recovery and garbage collection at the PG level.
+`BLUESTORE_NO_PER_PG_OMAP` indicates that one or more OSDs have volumes that were created prior to Ceph Pacific (16.x). In Pacific and later releases, BlueStore tracks OMAP space utilization by Placement Group (PG). Per-PG OMAP allows faster PG removal when PGs migrate between OSDs.
 
 Check current health:
 
@@ -28,7 +28,8 @@ HEALTH_WARN OSDs are not using per-pg omap
 
 ## Prerequisites
 
-Per-PG OMAP requires that per-pool OMAP is already migrated. Check that the per-pool migration is complete first:
+- Your cluster must be running Ceph Pacific (16.x) or later.
+- Ensure that per-pool OMAP migration is complete first. Check for the related warning:
 
 ```bash
 ceph health detail | grep BLUESTORE_NO_PER_POOL_OMAP
@@ -36,112 +37,72 @@ ceph health detail | grep BLUESTORE_NO_PER_POOL_OMAP
 
 If the per-pool warning still appears, complete that migration before working on per-PG OMAP.
 
-## Enabling Per-PG OMAP
+## Fixing Per-PG OMAP via BlueStore Repair
 
-Enable the per-PG OMAP feature flag on the cluster:
-
-```bash
-ceph osd set-require-min-compat-client pacific
-```
-
-Then enable the per-PG OMAP config:
+The fix is to stop each affected OSD, run `ceph-bluestore-tool repair`, and restart it. For example, to fix osd.0:
 
 ```bash
-ceph config set osd bluestore_use_per_pg_omap true
+systemctl stop ceph-osd@0
+ceph-bluestore-tool repair --path /var/lib/ceph/osd/ceph-0
+systemctl start ceph-osd@0
 ```
 
-## Triggering Migration via Deep Scrub
+Repeat for each affected OSD listed in the health warning.
 
-Like per-pool OMAP, per-PG OMAP migration happens during deep scrubs:
+## Migrating All Affected OSDs
+
+To repair multiple OSDs, work through them one at a time:
 
 ```bash
-# Trigger deep scrub on all OSDs
-ceph osd deep-scrub all
+for osd_id in 0 1 2 3 4 5 6 7 8 9 10 11; do
+  echo "Repairing osd.$osd_id..."
+  systemctl stop ceph-osd@$osd_id
+  ceph-bluestore-tool repair --path /var/lib/ceph/osd/ceph-$osd_id
+  systemctl start ceph-osd@$osd_id
+  echo "Waiting for OSD to rejoin cluster..."
+  sleep 10
+done
 ```
 
-Monitor scrub progress:
-
-```bash
-watch "ceph pg stat"
-ceph -w | grep scrub
-```
+**Important:** Each OSD is briefly unavailable during repair. On production clusters, repair one OSD at a time and wait for the cluster to return to a healthy state between repairs to maintain data redundancy.
 
 ## Checking Migration Status
 
-Check which OSDs have completed per-PG OMAP migration:
-
-```bash
-ceph osd metadata | python3 -m json.tool | grep -i "per_pg_omap\|id"
-```
-
-Or check via health detail as migration progresses:
+Monitor progress via health detail:
 
 ```bash
 ceph health detail | grep BLUESTORE_NO_PER_PG_OMAP
 ```
 
-The count of unconverted OSDs decreases as deep scrubs complete.
-
-## Speeding Up Migration
-
-On production clusters, accelerate scrubbing during maintenance windows:
-
-```bash
-# Increase concurrent scrubs temporarily
-ceph config set osd osd_max_scrubs 4
-
-# Allow scrubbing at any time (disable time restrictions)
-ceph config set osd osd_scrub_begin_hour 0
-ceph config set osd osd_scrub_end_hour 24
-
-# Force immediate scrubs
-for pg in $(ceph pg ls | grep active | awk '{print $1}'); do
-  ceph pg deep-scrub $pg
-done
-```
-
-Restore settings after migration:
-
-```bash
-ceph config rm osd osd_max_scrubs
-ceph config rm osd osd_scrub_begin_hour
-ceph config rm osd osd_scrub_end_hour
-```
+The count of unconverted OSDs decreases as repairs complete.
 
 ## Rook Deployments
 
-Configure the per-PG OMAP setting via CephCluster config override:
+In Rook-managed clusters, the repair must be run from within the OSD pod or a debug container. The OSD daemon must be stopped before running repair.
 
-```yaml
-spec:
-  cephConfig:
-    osd:
-      bluestore_use_per_pg_omap: "true"
-```
-
-Apply and trigger scrubs via toolbox:
+Check which OSDs need repair:
 
 ```bash
-kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd deep-scrub all
+kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph health detail
 ```
+
+For containerized environments using cephadm or Rook, you may need to enter the OSD container and run the repair tool directly against the OSD data path. Consult the Rook documentation for your version on how to perform OSD maintenance operations.
 
 ## Benefits of Per-PG OMAP
 
 After migration:
+- PG removal is faster when PGs migrate between OSDs
 - PG splitting and merging is more efficient
-- OSD recovery only processes relevant OMAP data
-- CephFS directory operations perform better at scale
-- RGW bucket index operations are isolated by PG
+- OMAP space utilization tracking is more granular per PG
 
 ## Verifying Completion
 
 ```bash
 ceph health detail
-ceph osd metadata | python3 -m json.tool | grep per_pg_omap
 ```
 
-Once all OSDs complete migration, the health warning disappears.
+Once all OSDs have been repaired, the `BLUESTORE_NO_PER_PG_OMAP` health warning disappears.
 
 ## Summary
 
-`BLUESTORE_NO_PER_PG_OMAP` warns that OSDs are not yet using the per-PG OMAP storage format. First complete any per-pool OMAP migration, then enable `bluestore_use_per_pg_omap` and trigger deep scrubs to migrate. Like per-pool migration, this happens progressively as PGs are scrubbed. Temporarily increase scrub parallelism during maintenance windows to accelerate the process on large clusters.
+`BLUESTORE_NO_PER_PG_OMAP` warns that OSDs created before Ceph Pacific are not using per-PG OMAP tracking. The fix is to stop each affected OSD, run `ceph-bluestore-tool repair`, and restart it. On production clusters, repair one OSD at a time and wait for the cluster to stabilize between repairs to maintain data redundancy.
