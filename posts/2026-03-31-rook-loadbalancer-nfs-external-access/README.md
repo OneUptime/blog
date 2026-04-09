@@ -10,7 +10,7 @@ Description: Learn how to expose Rook NFS-Ganesha servers externally using Kuber
 
 ## Why External NFS Access Requires a LoadBalancer
 
-By default, Rook creates ClusterIP Services for NFS server pods - these are only reachable inside the Kubernetes cluster. If you need to mount NFS exports from external servers, bare-metal nodes, or other clusters, you must expose the NFS service via a LoadBalancer (or NodePort). Unlike HTTP services, NFS requires both TCP port 2049 (NFS) and typically port 111 (rpcbind) to be accessible.
+By default, Rook creates ClusterIP Services for NFS server pods - these are only reachable inside the Kubernetes cluster. If you need to mount NFS exports from external servers, bare-metal nodes, or other clusters, you must expose the NFS service via a LoadBalancer (or NodePort). Rook's CephNFS supports NFSv4.1+ only, so you only need to expose TCP port 2049 (NFS). Port 111 (rpcbind) is not required since NFSv4 does not use the portmapper service.
 
 ## Creating a LoadBalancer Service for NFS
 
@@ -30,15 +30,11 @@ spec:
   selector:
     app: rook-ceph-nfs
     ceph_nfs: my-nfs
-    instance: "0"
+    instance: a
   ports:
     - name: nfs
       port: 2049
       targetPort: 2049
-      protocol: TCP
-    - name: rpcbind
-      port: 111
-      targetPort: 111
       protocol: TCP
 ```
 
@@ -60,7 +56,7 @@ The `EXTERNAL-IP` field should show the assigned IP from your load balancer (Met
 
 ```text
 NAME       TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)
-nfs-lb-0   LoadBalancer   10.96.5.20   192.168.1.200    2049:31000/TCP,111:31001/TCP
+nfs-lb-0   LoadBalancer   10.96.5.20   192.168.1.200    2049:31000/TCP
 ```
 
 ## Mounting from an External Client
@@ -74,17 +70,10 @@ mount -t nfs4 \
   /mnt/ceph-nfs
 ```
 
-Verify connectivity before mounting:
+Verify connectivity before mounting by checking that port 2049 is reachable:
 
 ```bash
-showmount -e 192.168.1.200
-```
-
-Expected output:
-
-```text
-Export list for 192.168.1.200:
-/data (everyone)
+rpcinfo -T tcp 192.168.1.200 nfs
 ```
 
 ## Handling Multiple NFS Servers
@@ -92,7 +81,7 @@ Export list for 192.168.1.200:
 If you run multiple NFS server instances for load distribution, create one LoadBalancer Service per instance:
 
 ```bash
-for i in 0 1 2; do
+for i in a b c; do
   kubectl -n rook-ceph apply -f - <<EOF
 apiVersion: v1
 kind: Service
@@ -126,4 +115,4 @@ nft add rule inet filter input \
 
 ## Summary
 
-Exposing Rook NFS-Ganesha externally requires creating a Kubernetes LoadBalancer Service that targets the specific NFS pod by instance label. Include both port 2049 and port 111 in the Service spec, then mount from external clients using the assigned external IP. Create one LoadBalancer Service per NFS instance to maintain the stateful per-server affinity that NFS requires.
+Exposing Rook NFS-Ganesha externally requires creating a Kubernetes LoadBalancer Service that targets the specific NFS pod by instance label. Since Rook CephNFS supports NFSv4.1+ only, you only need to expose port 2049 in the Service spec. Mount from external clients using the assigned external IP. Create one LoadBalancer Service per NFS instance to maintain the stateful per-server affinity that NFS requires.
