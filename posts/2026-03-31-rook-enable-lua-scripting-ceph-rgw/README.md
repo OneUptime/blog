@@ -27,19 +27,9 @@ kubectl -n rook-ceph exec deploy/rook-ceph-rgw-my-store-a -- \
 # The feature is enabled by default when built with lua5.3 or luajit
 ```
 
-## Step 2 - Enable the Lua Module
+## Step 2 - Upload a Lua Script
 
-```bash
-# Enable the Lua module in the RGW configuration
-ceph config set client.rgw.my-store rgw_lua_global_script ""
-
-# Verify Lua is enabled
-ceph config get client.rgw.my-store rgw_lua_global_script
-
-# For Rook:
-kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- \
-  ceph config set client.rgw.my-store rgw_lua_global_script ""
-```
+Lua scripting is available in RGW without any additional configuration. Scripts are managed via the `radosgw-admin script` CLI commands. No config option needs to be set to enable Lua support — it is available as soon as RGW is running with a Lua-enabled build.
 
 ## Step 3 - Write Your First Lua Script
 
@@ -66,15 +56,16 @@ RGWDebugLog("Lua: method=" .. method ..
 # Upload the script via the Admin API
 radosgw-admin script put --infile=hello_rgw.lua --context=preRequest
 
-# List uploaded scripts
-radosgw-admin script list
-
 # Verify the script content
 radosgw-admin script get --context=preRequest
 
 # Available contexts:
 # preRequest   - runs before the operation is processed
 # postRequest  - runs after the response is prepared
+#
+# Note: Ceph Reef (18.x) and later use lowercase context names
+# (prerequest, postrequest) and add additional contexts:
+# background, getdata, putdata
 ```
 
 For Rook-managed RGW, upload via the RGW Admin REST API:
@@ -101,7 +92,7 @@ curl -X PUT "http://rgw.example.com:7480/admin/script?context=preRequest" \
 Request.HTTP.Method       -- "GET", "PUT", "DELETE", etc.
 Request.HTTP.URI          -- Full request URI
 Request.HTTP.Host         -- Host header
-Request.HTTP.ContentLength -- Content-Length header value
+Request.ContentLength      -- Content-Length value
 
 -- Bucket and object
 Request.Bucket.Name       -- Bucket name
@@ -110,7 +101,7 @@ Request.Object.Size       -- Object size in bytes
 
 -- User and authentication
 Request.User.Id           -- RGW user ID
-Request.User.DisplayName  -- Display name
+Request.User.Tenant       -- User tenant
 
 -- Request metadata
 Request.HTTP.Metadata     -- Iterator over custom x-amz-meta headers
@@ -118,15 +109,18 @@ for k, v in pairs(Request.HTTP.Metadata) do
   RGWDebugLog("Meta: " .. k .. "=" .. v)
 end
 
--- Modify response headers
-Response.HTTP.AddHeader("X-Processed-By", "Lua")
+-- Response fields (available in postRequest context)
+Request.Response.HTTPStatusCode  -- HTTP status code (e.g. 200)
+Request.Response.HTTPStatus      -- HTTP status string
+Request.Response.Message         -- Response message
 ```
 
 ## Step 6 - Test and Troubleshoot
 
 ```bash
 # Enable debug logging to see Lua output
-ceph config set client.rgw.my-store debug_rgw 10
+# RGWDebugLog() writes at priority 20, so set debug_rgw to at least 20
+ceph config set client.rgw.my-store debug_rgw 20
 
 # Make a test request
 aws --endpoint-url http://rgw.example.com:7480 \
