@@ -36,14 +36,13 @@ Create frequent scheduled snapshots to reduce recovery point gaps:
 rbd mirror snapshot schedule add \
   --pool replicapool \
   --image myimage \
-  --interval 15m
+  15m
 
 # Add daily snapshots for longer retention
 rbd mirror snapshot schedule add \
   --pool replicapool \
   --image myimage \
-  --interval 1d \
-  --start-time "02:00:00"
+  1d 02:00:00
 ```
 
 ## Retaining Snapshots for PITR
@@ -66,6 +65,9 @@ When you need to recover to a previous state:
 ```bash
 # On the secondary cluster, list available snapshots
 rbd snap ls replicapool/myimage
+
+# Promote the secondary image to primary (use --force if the primary is unreachable)
+rbd mirror image promote replicapool/myimage
 
 # Roll back to a specific snapshot
 rbd snap rollback replicapool/myimage@pitr-20260331-020000
