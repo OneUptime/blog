@@ -95,16 +95,16 @@ while true; do
   echo "=== $(date) ==="
 
   # Check version distribution
-  kubectl -n "$NAMESPACE" exec -it deploy/rook-ceph-tools -- \
+  kubectl -n "$NAMESPACE" exec deploy/rook-ceph-tools -- \
     ceph versions 2>/dev/null
 
   # Check cluster health
-  HEALTH=$(kubectl -n "$NAMESPACE" exec -it deploy/rook-ceph-tools -- \
+  HEALTH=$(kubectl -n "$NAMESPACE" exec deploy/rook-ceph-tools -- \
     ceph health 2>/dev/null)
   echo "Health: $HEALTH"
 
   # Check if all daemons are upgraded
-  ALL_V18=$(kubectl -n "$NAMESPACE" exec -it deploy/rook-ceph-tools -- \
+  ALL_V18=$(kubectl -n "$NAMESPACE" exec deploy/rook-ceph-tools -- \
     ceph versions --format json 2>/dev/null | \
     python3 -c "
 import sys, json
@@ -152,7 +152,7 @@ If issues arise, rollback by reverting the image:
 # Only roll back if upgrade stalls before any OSD is upgraded
 
 # Check if rollback is safe
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph versions --format json | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
