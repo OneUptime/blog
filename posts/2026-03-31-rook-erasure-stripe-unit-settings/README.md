@@ -74,7 +74,7 @@ ceph osd pool create ec-large-data 64 64 erasure ec-large-stripe
 ceph osd pool application enable ec-large-data rgw
 ```
 
-In Rook, configure via the CephBlockPool and a custom erasure code profile created via the toolbox:
+In Rook, the CephBlockPool CRD supports erasure coding but auto-generates the erasure code profile from the spec. It does not support specifying a custom `stripe_unit` or referencing an externally created profile:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -86,9 +86,9 @@ spec:
   erasureCoded:
     dataChunks: 4
     codingChunks: 2
-  parameters:
-    erasure_code_profile: ec-large-stripe
 ```
+
+To use a custom `stripe_unit` with Rook, create the erasure code profile and pool directly via the Rook toolbox using the Ceph CLI commands shown above, bypassing the CRD.
 
 ## Immutability Constraint
 
