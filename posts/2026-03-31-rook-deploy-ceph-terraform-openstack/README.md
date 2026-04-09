@@ -175,7 +175,7 @@ variable "osd_volume_size_gb" { type = number; default = 500 }
 
 ```bash
 # Set OpenStack credentials
-export OS_AUTH_URL=https://openstack.example.com:5000/v3
+export TF_VAR_os_auth_url=https://openstack.example.com:5000/v3
 export TF_VAR_os_password=<password>
 
 terraform init
