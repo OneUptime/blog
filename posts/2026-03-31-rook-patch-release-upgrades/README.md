@@ -48,7 +48,7 @@ osds: 6 osds: 6 up (since 5d), 6 in (since 5d)
 pgmap: 192 pgs: 192 active+clean; 5.4 GiB data, 16 GiB used, 94 GiB / 110 GiB avail
 ```
 
-Do not proceed with upgrades if the cluster shows `HEALTH_ERR` or has any degraded PGs.
+Do not proceed with upgrades if the cluster shows `HEALTH_WARN` or `HEALTH_ERR` or has any degraded PGs.
 
 ## Check the Target Version
 
@@ -113,7 +113,7 @@ After applying the new operator image, watch the rollout:
 
 ```bash
 kubectl -n rook-ceph rollout status deployment rook-ceph-operator
-kubectl -n rook-ceph rollout status deployment rook-ceph-mgr
+kubectl -n rook-ceph rollout status deployment rook-ceph-mgr-a
 ```
 
 The operator will automatically update the Ceph daemon images. Monitor daemon pod restarts:
