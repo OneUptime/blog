@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Canonical, Charmed Kubernetes, Juju, Storage, Ubuntu
 
-Description: Deploy Rook-Ceph on Canonical Charmed Kubernetes clusters managed with Juju, using snap-based paths and charm integration.
+Description: Deploy Rook-Ceph on Canonical Charmed Kubernetes clusters managed with Juju, using charm integration and Kubernetes storage classes.
 
 ---
 
@@ -22,7 +22,7 @@ Canonical Charmed Kubernetes is deployed and managed using Juju charms. While Ch
 ## Step 1 - Export Kubeconfig
 
 ```bash
-juju run --unit kubernetes-control-plane/0 -- "cat /home/ubuntu/config" > ~/.kube/config
+juju ssh kubernetes-control-plane/leader -- cat config > ~/.kube/config
 kubectl get nodes
 ```
 
@@ -31,17 +31,17 @@ kubectl get nodes
 Check available disks on worker nodes:
 
 ```bash
-juju run --unit kubernetes-worker/0 -- "lsblk -d -o NAME,SIZE,TYPE"
-juju run --unit kubernetes-worker/1 -- "lsblk -d -o NAME,SIZE,TYPE"
-juju run --unit kubernetes-worker/2 -- "lsblk -d -o NAME,SIZE,TYPE"
+juju exec --unit kubernetes-worker/0 -- "lsblk -d -o NAME,SIZE,TYPE"
+juju exec --unit kubernetes-worker/1 -- "lsblk -d -o NAME,SIZE,TYPE"
+juju exec --unit kubernetes-worker/2 -- "lsblk -d -o NAME,SIZE,TYPE"
 ```
 
 Ensure the target disks have no filesystem:
 
 ```bash
-juju run --unit kubernetes-worker/0 -- "wipefs -a /dev/vdb"
-juju run --unit kubernetes-worker/1 -- "wipefs -a /dev/vdb"
-juju run --unit kubernetes-worker/2 -- "wipefs -a /dev/vdb"
+juju exec --unit kubernetes-worker/0 -- "wipefs -a /dev/vdb"
+juju exec --unit kubernetes-worker/1 -- "wipefs -a /dev/vdb"
+juju exec --unit kubernetes-worker/2 -- "wipefs -a /dev/vdb"
 ```
 
 ## Step 3 - Install Rook Operator
@@ -128,15 +128,22 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 EOF
 ```
 
-Use this storage class in Juju charm deployments:
+Create a Juju storage pool backed by the Rook-Ceph storage class:
 
 ```bash
-juju config my-app storage-class=rook-ceph-block
+juju create-storage-pool rook-ceph-pool kubernetes storage-class=rook-ceph-block
+juju deploy my-app --storage data=rook-ceph-pool,10G
 ```
 
 ## Monitoring with Juju
