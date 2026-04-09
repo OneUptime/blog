@@ -13,14 +13,14 @@ Description: Resolve insufficient replica count warnings in Ceph by verifying po
 This warning appears when Ceph cannot maintain the desired number of replicas for one or more placement groups. If a pool is configured with `size: 3` (3 replicas) but only 2 OSDs are available, Ceph cannot achieve the configured redundancy and reports:
 
 ```text
-HEALTH_WARN insufficient standby MDS daemons available
+HEALTH_WARN Degraded data redundancy: 32/96 objects degraded (33.333%), 32 pgs degraded, 32 pgs undersized
 ```
 
-Or more commonly for RBD/RGW pools:
+You may also see messages like:
 
 ```text
-HEALTH_WARN 1 pools have too few pgs
 Degraded data redundancy: x/y objects degraded
+x pgs undersized
 ```
 
 ## Step 1 - Check Current Health Detail
@@ -32,8 +32,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
 Look for messages about pools, replica counts, or degraded PGs:
 
 ```text
-pool 'rbd' has 8 placement groups, should have 64
-1/100 objects degraded (1.00%)
+HEALTH_WARN Degraded data redundancy
+PG_DEGRADED Degraded data redundancy: 1/100 objects degraded (1.00%), 8 pgs degraded
+PG_UNDERSIZED 8 undersized pgs
 ```
 
 ## Step 2 - Check Pool Configuration
@@ -115,11 +116,13 @@ Output:
 
 ```json
 {
+    "rule_id": 0,
     "rule_name": "replicated_rule",
-    "type": "replicated",
+    "type": 1,
     "steps": [
-        {"op": "take", "item_name": "default"},
-        {"op": "chooseleaf_firstn", "num": 0, "type": "host"}
+        {"op": "take", "item": -1, "item_name": "default"},
+        {"op": "chooseleaf_firstn", "num": 0, "type": "host"},
+        {"op": "emit"}
     ]
 }
 ```
