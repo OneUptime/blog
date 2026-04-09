@@ -134,4 +134,4 @@ spec:
 
 ## Summary
 
-Ceph monitor quorum is checked with `ceph mon stat` (summary) and `ceph quorum_status` (full JSON detail including leader election state). A healthy cluster requires an odd number of monitors with a majority in quorum. In Rook, monitor count is configured in the `CephCluster` CRD, and monitor pods run in the `rook-ceph` namespace. Monitor `MON_CLOCK_SKEW` health warnings and ensure NTP synchronization across all monitor nodes.
+Ceph monitor quorum is checked with `ceph mon stat` (summary) and `ceph quorum_status` (full JSON detail including leader election state). A healthy cluster requires an odd number of monitors with a majority in quorum. In Rook, monitor count is configured in the `CephCluster` CRD, and monitor pods run in the `rook-ceph` namespace. Watch for `MON_CLOCK_SKEW` health warnings and ensure NTP synchronization across all monitor nodes.
