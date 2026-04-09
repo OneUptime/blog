@@ -10,7 +10,7 @@ Description: Use the ceph_mon_quorum_status Prometheus metric to track monitor q
 
 ## Overview
 
-Ceph monitors form a quorum using the Paxos algorithm. If quorum is lost (fewer than half the monitors are available), the entire Ceph cluster becomes unavailable. The `ceph_mon_quorum_status` metric tracks whether each monitor is in quorum.
+Ceph monitors form a quorum using the Paxos algorithm. If quorum is lost (a majority of monitors is not available), the entire Ceph cluster becomes unavailable. The `ceph_mon_quorum_status` metric tracks whether each monitor is in quorum.
 
 ## Understanding the Metric
 
@@ -95,8 +95,8 @@ groups:
 Additional monitor metrics to watch:
 
 ```promql
-# Monitor rank (leader has highest priority)
-ceph_mon_num_sessions
+# Monitor metadata (version, hostname)
+ceph_mon_metadata
 
 # Monitor clock skew
 ceph_mon_clock_skew_seconds
@@ -139,9 +139,11 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-mon
 # Check monitor logs
 kubectl -n rook-ceph logs rook-ceph-mon-a-<hash> --tail=100
 
-# Force quorum with remaining monitors (use with extreme care)
+# Recover quorum by extracting and reinserting the monmap (use with extreme care)
+# See Rook disaster recovery docs for the full procedure:
+# https://rook.io/docs/rook/latest/Troubleshooting/disaster-recovery/
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mon force-quorum-update
+  ceph-monstore-tool /tmp/mon-store rebuild
 ```
 
 ## Summary
