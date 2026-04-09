@@ -18,7 +18,7 @@ RBD uses copy-on-write (COW) for snapshots. When you take a snapshot, the origin
 
 ## Step 1 - Quiesce the VM Before Snapshotting
 
-For crash-consistent backups, freeze the VM's filesystem:
+For filesystem-consistent backups, freeze the VM's filesystem before snapshotting:
 
 ```bash
 # For KVM/QEMU VMs, use virsh to freeze guest filesystem
@@ -66,7 +66,7 @@ rbd export-diff \
 
 ```bash
 # Check snapshot info
-rbd snap info vms/myvm-disk@backup-2026-03-31
+rbd info vms/myvm-disk@backup-2026-03-31
 
 # List all snapshots for a VM
 rbd snap ls vms/myvm-disk
@@ -121,10 +121,9 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 # Thaw guest
 virsh qemu-agent-command $VM '{"execute":"guest-fsfreeze-thaw"}'
 
-# Prune snapshots older than 7 days
+# Remove snapshot from 7 days ago
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  rbd snap purge --snap-name "backup-$(date -d '-7 days' +%Y-%m-%d)" \
-  ${POOL}/${IMAGE}
+  rbd snap rm ${POOL}/${IMAGE}@backup-$(date -d '-7 days' +%Y-%m-%d)
 ```
 
 ## Summary
