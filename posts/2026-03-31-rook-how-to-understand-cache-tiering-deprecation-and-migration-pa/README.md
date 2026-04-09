@@ -55,7 +55,7 @@ Tiered object storage     | RGW storage classes (cloud transition)
 The most common cache tiering use case was "use SSD for hot data, HDD for bulk." BlueStore achieves this more reliably by placing its metadata (RocksDB) and WAL (write-ahead log) on SSD while data lives on HDD:
 
 ```yaml
-# Rook CephCluster example: DB on SSD, data on HDD
+# Rook CephCluster example: DB/WAL on NVMe, data on HDD
 spec:
   storage:
     nodes:
@@ -63,11 +63,8 @@ spec:
       devices:
       - name: "sda"  # HDD for data
         config:
-          storeType: bluestore
-      - name: "nvme0n1"  # NVMe for DB/WAL
-        config:
-          storeType: bluestore
-          deviceClass: nvme
+          metadataDevice: "nvme0n1"  # NVMe for DB/WAL
+          deviceClass: hdd
 ```
 
 ### RGW Storage Classes and Lifecycle Policies
@@ -127,8 +124,8 @@ ceph osd tier cache-mode <cache-pool> forward
 # Flush all remaining dirty objects to backing pool
 rados -p <cache-pool> cache-flush-evict-all
 
-# Wait for completion
-ceph -W objecter
+# Watch cluster log for flush completion
+ceph -w
 ```
 
 ### Step 2 - Remove the Cache Tier
