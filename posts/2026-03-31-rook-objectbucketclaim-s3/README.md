@@ -28,17 +28,16 @@ flowchart LR
 ## Prerequisites
 
 - CephObjectStore deployed and running
-- `StoreBucketClass` configured (using the Ceph Object Bucket library)
+- `StorageClass` configured for the Rook Ceph bucket provisioner
 - Object bucket provisioner enabled in Rook operator
 
-## Create a StoreBucketClass (BucketClass)
+## Create a StorageClass for Buckets
 
 ```yaml
-apiVersion: objectbucket.io/v1alpha1
-kind: StoreBucketClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
   name: rook-ceph-bucket
-  namespace: rook-ceph
 provisioner: rook-ceph.ceph.rook.io/bucket
 reclaimPolicy: Delete
 parameters:
@@ -50,8 +49,8 @@ parameters:
 Apply:
 
 ```bash
-kubectl apply -f storebucketclass.yaml
-kubectl get storebucketclass
+kubectl apply -f storageclass-bucket.yaml
+kubectl get storageclass rook-ceph-bucket
 ```
 
 ## Create an ObjectBucketClaim
@@ -64,7 +63,7 @@ metadata:
   namespace: default
 spec:
   generateBucketName: my-app    # generates a unique name like "my-app-xxxxxx"
-  storeBucketClassName: rook-ceph-bucket
+  storageClassName: rook-ceph-bucket
 ```
 
 Or request a specific bucket name:
@@ -77,7 +76,7 @@ metadata:
   namespace: default
 spec:
   bucketName: my-specific-bucket   # exact bucket name
-  storeBucketClassName: rook-ceph-bucket
+  storageClassName: rook-ceph-bucket
 ```
 
 Apply:
@@ -114,7 +113,7 @@ BUCKET_HOST: rook-ceph-rgw-my-store.rook-ceph.svc
 BUCKET_PORT: "80"
 BUCKET_NAME: my-app-xxxxxx
 BUCKET_REGION: us-east-1
-BUCKET_SSL: "false"
+BUCKET_SUBREGION: ""
 ```
 
 ## OBC with Quota
@@ -127,7 +126,7 @@ metadata:
   namespace: default
 spec:
   generateBucketName: limited
-  storeBucketClassName: rook-ceph-bucket
+  storageClassName: rook-ceph-bucket
   additionalConfig:
     maxSize: "5368709120"    # 5 GiB
     maxObjects: "100000"
