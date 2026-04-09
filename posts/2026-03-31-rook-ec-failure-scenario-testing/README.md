@@ -90,6 +90,9 @@ Expected: `HEALTH_WARN 2 osds down, degraded` - reads should still succeed as k=
 ceph osd out osd.2
 ceph osd out osd.3
 ceph osd out osd.4
+ceph osd down osd.2
+ceph osd down osd.3
+ceph osd down osd.4
 ```
 
 With m=2, losing 3 OSDs may leave some PGs with fewer than k=4 shards, causing `pg incomplete`:
@@ -137,7 +140,7 @@ After recovery, run a deep scrub to verify all shard checksums:
 
 ```bash
 ceph osd pool set test-ec-pool nodeep-scrub 0
-for pg in $(ceph pg ls-by-pool test-ec-pool | awk '{print $1}'); do
+for pg in $(ceph pg ls-by-pool test-ec-pool | awk '/^[0-9]/{print $1}'); do
   ceph pg deep-scrub $pg
 done
 
