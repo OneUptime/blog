@@ -48,7 +48,7 @@ kubectl -n rook-ceph exec -it rook-ceph-mon-a-<pod> -- \
 
 # Inject and restart
 kubectl -n rook-ceph exec -it rook-ceph-mon-a-<pod> -- \
-  ceph-mon --inject-monmap /tmp/monmap
+  ceph-mon --inject-monmap /tmp/monmap --mon-data /var/lib/ceph/mon/ceph-a
 kubectl -n rook-ceph delete pod rook-ceph-mon-a-<pod>
 ```
 
@@ -71,7 +71,6 @@ For object store data stored in RGW, use the S3 sync approach:
 
 ```bash
 aws s3 sync s3://backup-bucket s3://new-bucket \
-  --source-region us-east-1 \
   --region us-west-2 \
   --endpoint-url http://new-rgw-endpoint
 ```
