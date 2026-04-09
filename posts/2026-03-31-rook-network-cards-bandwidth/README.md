@@ -25,11 +25,11 @@ Separating these networks prevents recovery traffic from saturating client-facin
 
 ```bash
 # Estimate based on client I/O expectations
-# Example: 100 clients each doing 1 GB/s = 100 GB/s total
-# With 10 OSD nodes: 10 GB/s per node
+# Example: 100 clients each doing 1 Gb/s = 100 Gb/s total
+# With 10 OSD nodes: 10 Gb/s per node
 
 # Rule: public network >= peak client throughput per node
-# For 10 GB/s per node: minimum 10 GbE, recommended 25 GbE
+# For 10 Gb/s per node: minimum 10 GbE, recommended 25 GbE
 ```
 
 ## Step 2 - Calculate Required Cluster Network Bandwidth
@@ -37,7 +37,7 @@ Separating these networks prevents recovery traffic from saturating client-facin
 ```bash
 # Cluster network carries replicated writes
 # For 3x replication: each write generates 2 extra copies
-# If clients write 5 GB/s: cluster network needs 10 GB/s (2 copies x 5 GB/s)
+# If clients write 5 Gb/s: cluster network needs 10 Gb/s (2 copies x 5 Gb/s)
 
 # During recovery: entire OSD data set rebalances
 # 12 x 4 TB HDDs = 48 TB per node recovers at ~200 MB/s per HDD
@@ -85,12 +85,14 @@ metadata:
 spec:
   network:
     provider: host
-    selectors:
-      public: "eth0"
-      cluster: "eth1"
+    addressRanges:
+      public:
+        - "10.0.1.0/24"
+      cluster:
+        - "10.0.2.0/24"
 ```
 
-Or using CIDR notation in Multus:
+Or using Multus with NetworkAttachmentDefinitions:
 
 ```yaml
 spec:
@@ -150,9 +152,9 @@ sysctl -p
 ## Step 7 - Monitor Network Utilization
 
 ```bash
-# Check per-OSD network stats
+# Check per-OSD latency (high latency may indicate network issues)
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd perf | awk '{print $1, $6, $7}'
+  ceph osd perf
 
 # Monitor interface utilization
 sar -n DEV 1 5 | grep -E "eth|bond"
