@@ -44,21 +44,23 @@ echo "Compression ratio: $COMPRESS_RATIO"
 ceph osd pool stats mypool
 ```
 
-Output:
+This command shows real-time I/O activity (throughput and IOPS) rather than compression statistics:
 
 ```text
 pool mypool id 2
   nothing is going on
   client io 12 MB/s wr, 0 op/s rd, 23 op/s wr
-  compress_bytes_used = 1234567890
-  compress_under_bytes = 3702000000
 ```
 
-## Using rados Pool Stats
+For compression-specific stats (`compress_bytes_used` and `compress_under_bytes`), use `ceph df detail` as shown above.
+
+## Using rados df
 
 ```bash
-rados -p mypool stat
+rados df
 ```
+
+This shows per-pool usage statistics including object count and total bytes stored. Look for your pool in the output to see storage consumption after compression.
 
 ## Querying via Prometheus
 
