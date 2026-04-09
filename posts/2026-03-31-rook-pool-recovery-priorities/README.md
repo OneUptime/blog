@@ -41,7 +41,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 The `recovery_op_priority` controls the IOPS priority given to recovery operations relative to client I/O:
 
 ```bash
-# Set recovery op priority (1-63, default: 3)
+# Set recovery op priority (0-63, default: 0 means inherit from global osd_recovery_op_priority)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd pool set replicapool recovery_op_priority 10
 ```
@@ -54,10 +54,10 @@ For cluster-wide recovery rate limits, use OSD config settings:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
-  # Max recovery operations per OSD (default: 3)
+  # Max recovery operations per OSD (default: 0, auto-selects 3 for HDD, 10 for SSD)
   ceph config set osd osd_recovery_max_active 3
 
-  # Max recovery chunk size
+  # Recovery operation priority (1-63, default: 3)
   ceph config set osd osd_recovery_op_priority 3
 
   # Delay before starting recovery (seconds, default: 0)
