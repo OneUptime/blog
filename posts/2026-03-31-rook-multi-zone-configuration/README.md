@@ -58,7 +58,7 @@ kubectl get nodes -L topology.kubernetes.io/zone
 
 ## Configuring the CephCluster with Zone Topology
 
-Set `topology` in the CephCluster spec to enable CRUSH map awareness of zones:
+Rook automatically detects `topology.kubernetes.io/zone` labels on nodes and uses them to build the CRUSH map hierarchy. Use `topologySpreadConstraints` to ensure OSD pods are evenly distributed across zones:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -144,11 +144,11 @@ ID  CLASS  WEIGHT   TYPE NAME
 ...
 ```
 
-Check the CRUSH rule for your pool:
+Check the CRUSH rule for your pool. Note that Rook names the rule by appending the failure domain to the pool name:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd crush rule dump zone-replicated-pool
+  ceph osd crush rule dump zone-replicated-pool_zone
 ```
 
 ## Configuring MONs Across Zones
