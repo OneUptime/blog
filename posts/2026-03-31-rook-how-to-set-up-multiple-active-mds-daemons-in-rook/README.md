@@ -99,9 +99,8 @@ RANK  STATE           MDS     ACTIVITY     DNS    INOS   DIRS   CAPS
 With multiple active MDS, the filesystem is partitioned across ranks dynamically. You can also pin specific directories to specific MDS ranks:
 
 ```bash
-# Pin /data/team-a subtree to rank 0
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs subvolume pin myfs no_fragment_export 0 --path /data/team-a
+# Pin /data/team-a subtree to rank 0 (run from a pod with CephFS mounted)
+setfattr -n ceph.dir.pin -v 0 /mnt/cephfs/data/team-a
 ```
 
 ## MDS Memory Tuning
@@ -118,7 +117,7 @@ metadataServer:
       memory: "8Gi"
 ```
 
-The MDS daemon uses approximately 1.5 bytes of memory per inode in its cache.
+The MDS daemon uses approximately 1 KB of memory per cached inode.
 
 ## Summary
 
