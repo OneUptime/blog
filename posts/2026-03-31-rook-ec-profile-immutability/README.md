@@ -41,7 +41,7 @@ ceph osd erasure-code-profile set existing-profile k=6 m=3
 Output:
 
 ```text
-Error EEXIST: an erasure code profile with name 'existing-profile' already exists
+Error EPERM: will not override erasure code profile existing-profile
 ```
 
 You must delete and recreate the profile - but only if no pool is using it.
