@@ -75,20 +75,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fs dump
 
 ## Tuning Standby Count
 
-Rook automatically provisions standby daemons equal to the activeCount when activeStandby is enabled. For additional resiliency, you can add extra standby daemons by adjusting the label selector or using the standbyCnt field:
+When `activeStandby` is enabled, Rook automatically provisions one standby-replay daemon per active MDS, resulting in a total of `activeCount * 2` MDS pods. There is no separate field in the CephFilesystem CRD to independently control the number of standby daemons.
 
-```yaml
-metadataServer:
-  activeCount: 2
-  activeStandby: true
-  annotations:
-    ceph.io/num-standbys: "1"
+If you need additional standby daemons beyond the default, you can set the Ceph configuration option directly:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mds mds_standby_count_wanted 2
 ```
 
 To check how many standby daemons are available:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mds metadata
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fs status
 ```
 
 ## Scaling Active Count at Runtime
