@@ -10,7 +10,7 @@ Description: Learn how to opt in and out of Ceph telemetry sharing, manage indiv
 
 ## Telemetry Opt-In by Default
 
-Starting with Ceph Pacific (16.x), the telemetry module is enabled by default but data sharing is opt-in. The module runs locally but does not transmit data until you explicitly accept the license.
+Starting with Ceph Octopus (15.x), the telemetry module is enabled by default as an always-on module, but data sharing is opt-in. The module runs locally but does not transmit data until you explicitly accept the license.
 
 Check current telemetry status:
 
@@ -24,10 +24,11 @@ Output example:
 {
     "enabled": true,
     "last_opt_revision": 0,
-    "opt_in_all_collections": false,
     "channel_basic": true,
     "channel_crash": true,
-    "channel_device": false
+    "channel_device": false,
+    "channel_ident": true,
+    "channel_perf": false
 }
 ```
 
@@ -75,6 +76,9 @@ ceph config set mgr mgr/telemetry/channel_device false
 
 # Disable the ident channel (organization info)
 ceph config set mgr mgr/telemetry/channel_ident false
+
+# Disable performance metrics sharing
+ceph config set mgr mgr/telemetry/channel_perf false
 ```
 
 Check channel settings:
@@ -84,18 +88,12 @@ ceph config get mgr mgr/telemetry/channel_basic
 ceph config get mgr mgr/telemetry/channel_crash
 ```
 
-## Configuring Opt-In at the Module Level
+## Telemetry Module Status
 
-If you want to disable the module entirely (not just opt out of sharing):
-
-```bash
-ceph mgr module disable telemetry
-```
-
-Re-enable later:
+Since Ceph Octopus (15.x), telemetry is an always-on manager module and cannot be disabled with `ceph mgr module disable telemetry`. To stop all telemetry data sharing without disabling the module, use:
 
 ```bash
-ceph mgr module enable telemetry
+ceph telemetry off
 ```
 
 ## Verifying No Data Is Sent
