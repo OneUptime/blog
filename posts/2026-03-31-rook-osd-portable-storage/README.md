@@ -100,7 +100,6 @@ spec:
     useAllDevices: false
     deviceFilter: "^nvme[0-9]n[0-9]"   # match all NVMe devices
     config:
-      storeType: bluestore
       osdsPerDevice: "1"
 ```
 
