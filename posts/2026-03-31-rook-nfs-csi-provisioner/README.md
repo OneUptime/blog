@@ -14,7 +14,7 @@ Rook includes support for the NFS CSI driver (`rook-ceph.nfs.csi.ceph.com`), whi
 
 ## Prerequisites
 
-You need a running `CephNFS` cluster and a `CephFilesystem` (or `CephObjectStore`). Verify Rook has deployed the NFS CSI driver sidecar:
+You need a running `CephNFS` cluster and a `CephFilesystem`. Note that RGW/CephObjectStore backends are not supported by the NFS CSI driver. Verify Rook has deployed the NFS CSI driver sidecar:
 
 ```bash
 kubectl -n rook-ceph get daemonset | grep nfs
@@ -34,17 +34,21 @@ metadata:
 provisioner: rook-ceph.nfs.csi.ceph.com
 parameters:
   nfsCluster: my-nfs
-  server: rook-ceph-nfs-my-nfs-0.rook-ceph.svc
-  share: /data
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-nfs-provisioner
+  server: rook-ceph-nfs-my-nfs-a
+  clusterID: rook-ceph
+  fsName: myfs
+  pool: myfs-replicated
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-nfs-node
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
+allowVolumeExpansion: true
 ```
 
-The `server` parameter points at the ClusterIP Service for one of the NFS pods.
+The `server` parameter points at the NFS server instance. The `fsName` and `pool` parameters must reference your `CephFilesystem` and its data pool. The secrets are shared with the CephFS CSI provisioner.
 
 ## Creating a PersistentVolumeClaim
 
@@ -65,7 +69,7 @@ spec:
       storage: 10Gi
 ```
 
-The NFS CSI provisioner creates a subdirectory within the `/data` NFS export and binds it as a PV. Multiple pods can mount this PVC simultaneously with `ReadWriteMany`.
+The NFS CSI provisioner dynamically creates an NFS export and binds it as a PV. Multiple pods can mount this PVC simultaneously with `ReadWriteMany`.
 
 ## Using the PVC in a Deployment
 
@@ -77,7 +81,13 @@ metadata:
   namespace: my-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
