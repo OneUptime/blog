@@ -49,8 +49,9 @@ rbd snap create replicapool/my-volume@snap2
 rbd export-diff replicapool/my-volume@snap2 \
   --from-snap snap1 /tmp/diff.raw
 
-# On destination: apply base then diff
+# On destination: import base, recreate snap1, then apply diff
 rbd import /tmp/base.raw replicapool/my-volume
+rbd snap create replicapool/my-volume@snap1
 rbd import-diff /tmp/diff.raw replicapool/my-volume
 ```
 
