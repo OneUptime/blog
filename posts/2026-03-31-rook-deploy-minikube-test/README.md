@@ -41,7 +41,7 @@ minikube start \
   --driver=virtualbox
 ```
 
-Or with the Docker driver (Linux only, for better performance):
+Or with the Docker driver (available on Linux, macOS, and Windows):
 
 ```bash
 minikube start \
@@ -173,8 +173,7 @@ A healthy Minikube cluster shows `HEALTH_OK` with 1 mon, 1 mgr, and 1+ OSD.
 Deploy the RBD block pool and StorageClass:
 
 ```bash
-kubectl apply -f pool.yaml
-kubectl apply -f storageclass.yaml
+kubectl apply -f csi/rbd/storageclass.yaml
 ```
 
 Test by creating a PVC:
@@ -206,8 +205,8 @@ Delete all Rook resources before destroying Minikube:
 
 ```bash
 kubectl delete -f cluster-minikube.yaml
-kubectl delete -f common.yaml
 kubectl delete -f operator.yaml
+kubectl delete -f common.yaml
 kubectl delete -f crds.yaml
 minikube stop
 minikube delete
