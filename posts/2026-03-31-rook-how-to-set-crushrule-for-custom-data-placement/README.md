@@ -13,7 +13,7 @@ Description: Create and apply custom CRUSH rules in Ceph to control data placeme
 CRUSH (Controlled Replication Under Scalable Hashing) is Ceph's algorithm for determining where to store data. A CRUSH rule defines:
 - Which part of the CRUSH hierarchy to use (e.g., the `default` root)
 - What failure domain to use for replicas (e.g., `host`, `rack`, `datacenter`)
-- How many replicas to place
+- Which device class to target (e.g., `ssd`, `hdd`)
 
 By default, Ceph uses the `replicated_rule` which distributes replicas across different hosts. Custom rules let you target specific device classes (SSD vs HDD), specific racks, or custom failure domains.
 
@@ -43,9 +43,9 @@ Output:
 {
     "rule_id": 0,
     "rule_name": "replicated_rule",
-    "type": "replicated",
+    "type": 1,
     "steps": [
-        {"op": "take", "item_name": "default"},
+        {"op": "take", "item": -1, "item_name": "default"},
         {"op": "chooseleaf_firstn", "num": 0, "type": "host"},
         {"op": "emit"}
     ]
@@ -96,12 +96,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd crush rule crea
 For advanced placement, edit the CRUSH map directly:
 
 ```bash
-# Get the current CRUSH map
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd getcrushmap -o /tmp/crushmap.bin
-kubectl cp rook-ceph/rook-ceph-tools:/tmp/crushmap.bin ./crushmap.bin
+# Get and decompile the current CRUSH map inside the tools pod
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c \
+  "ceph osd getcrushmap -o /tmp/crushmap.bin && crushtool -d /tmp/crushmap.bin -o /tmp/crushmap.txt"
 
-# Decompile to text format
-crushtool -d crushmap.bin -o crushmap.txt
+# Copy the decompiled text file locally for editing
+TOOLS_POD=$(kubectl -n rook-ceph get pod -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
+kubectl cp rook-ceph/$TOOLS_POD:/tmp/crushmap.txt ./crushmap.txt
 ```
 
 Edit `crushmap.txt` to add a new rule:
@@ -121,8 +122,10 @@ rule rack-replicated {
 Recompile and inject:
 
 ```bash
-crushtool -c crushmap.txt -o new-crushmap.bin
-ceph osd setcrushmap -i new-crushmap.bin
+# Copy the edited file back to the pod and recompile/inject
+kubectl cp ./crushmap.txt rook-ceph/$TOOLS_POD:/tmp/crushmap.txt
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c \
+  "crushtool -c /tmp/crushmap.txt -o /tmp/new-crushmap.bin && ceph osd setcrushmap -i /tmp/new-crushmap.bin"
 ```
 
 ## Step 5 - Apply a CRUSH Rule to a Pool
@@ -178,10 +181,10 @@ spec:
 After setting a custom CRUSH rule, verify data is being placed on the correct OSDs:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg dump | grep -E "^[0-9]" | awk '{print $1, $15}' | head -20
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg ls-by-pool <pool-name>
 ```
 
-This shows PG ID and acting OSD list. Verify the OSDs are of the expected device class.
+This shows each PG in the pool along with its UP and ACTING OSD sets. Verify the acting OSDs are of the expected device class.
 
 ## Summary
 
