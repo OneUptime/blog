@@ -78,7 +78,7 @@ Track recovery progress across all OSDs:
 
 ```bash
 ceph osd df tree | sort -k7 -n -r | head -20
-ceph pg dump_pools | awk '{print $1, $15}' | sort -k2 -n -r
+ceph pg dump pools | awk '{print $1, $15}' | sort -k2 -n -r
 ```
 
 Create a recovery dashboard with Prometheus:
@@ -93,8 +93,8 @@ sum(ceph_pg_degraded) by (pool_id)
 For large clusters with multiple pools, prioritize recovery for the most critical pools:
 
 ```bash
-ceph osd pool set critical-pool recovery_priority 20
-ceph osd pool set archival-pool recovery_priority 1
+ceph osd pool set critical-pool recovery_priority 10
+ceph osd pool set archival-pool recovery_priority -5
 ```
 
 ## Rook Large Cluster Tuning
