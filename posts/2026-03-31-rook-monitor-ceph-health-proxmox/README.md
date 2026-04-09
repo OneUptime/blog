@@ -14,10 +14,10 @@ Maintaining a healthy Ceph cluster backing Proxmox VMs requires ongoing monitori
 
 The Proxmox GUI provides a summary Ceph view:
 
-- **Datacenter -> Ceph -> Status**: Health status, OSDs in/up/out, capacity
-- **Datacenter -> Ceph -> OSD**: Per-OSD status with device class and utilization
-- **Datacenter -> Ceph -> Pools**: Pool-level usage and PG status
-- **Node -> Ceph**: Node-specific OSD health
+- **Node -> Ceph**: Health status, OSDs in/up/out, capacity overview
+- **Node -> Ceph -> OSD**: Per-OSD status with device class and utilization
+- **Node -> Ceph -> Pools**: Pool-level usage and PG status
+- **Node -> Ceph -> Monitor**: Monitor daemon status and quorum information
 
 ## CLI Health Commands on Proxmox Nodes
 
@@ -50,7 +50,14 @@ ceph df
 ceph df detail
 
 # Identify pools approaching capacity
-ceph df detail | awk 'NR>2 && $6+0 > 70 {print "WARNING: Pool "$1" is "$6"% full"}'
+ceph df --format json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for pool in data['pools']:
+    pct = pool['stats']['percent_used'] * 100
+    if pct > 70:
+        print(f'WARNING: Pool {pool[\"name\"]} is {pct:.1f}% full')
+"
 ```
 
 ## Automated Health Check Script
@@ -121,7 +128,7 @@ systemctl reload prometheus
 # Enable the Ceph Dashboard manager module
 ceph mgr module enable dashboard
 ceph dashboard create-self-signed-cert
-echo -n "securepassword" | ceph dashboard ac-user-create admin administrator -i -
+echo -n "securepassword" | ceph dashboard ac-user-create admin -i - administrator
 
 # Get the dashboard URL
 ceph mgr services
