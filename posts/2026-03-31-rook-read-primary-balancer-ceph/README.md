@@ -12,7 +12,7 @@ Description: Learn how to enable and operate the read balancer in Ceph to distri
 
 By default in Ceph, all reads for a placement group (PG) are served by the primary OSD. This can create hotspots when many PGs land their primary on the same OSD. The read balancer (also called the primary balancer) redistributes which OSD acts as primary for each PG, spreading read load more evenly across the cluster.
 
-This feature became generally available in Ceph Reef (18.x) and later. It works at the PG level and does not move data - it only changes which OSD is responsible for handling read I/O for each PG.
+This feature became available as an online balancer mode in Ceph Squid (19.x) and later. An offline read balancing tool was introduced earlier in Ceph Reef (18.x) via `osdmaptool`. The online mode works at the PG level and does not move data - it only changes which OSD is responsible for handling read I/O for each PG.
 
 ## Checking Current Primary Distribution
 
@@ -22,7 +22,7 @@ Before enabling the balancer, inspect the current primary OSD distribution:
 ceph osd df
 ```
 
-Look at the `PRI-AFF` column and compare read utilization. You can also check which OSDs hold the most primaries:
+Look at the `PRI-AFF` (primary affinity) column to verify all OSDs have the default affinity of 1. You can also check which OSDs hold the most primaries:
 
 ```bash
 ceph pg dump | awk '/^[0-9]/{print $14}' | sort | uniq -c | sort -rn | head -20
@@ -39,7 +39,7 @@ ceph balancer on
 ceph balancer mode read
 ```
 
-By default, the balancer uses `upmap` mode for write load. Switching to `read` mode enables optimization of primary assignments. You can check status with:
+By default, the balancer uses `upmap` mode for even PG data distribution. Switching to `read` mode enables optimization of primary OSD assignments for read I/O. You can check status with:
 
 ```bash
 ceph balancer status
@@ -93,7 +93,7 @@ Track the read balance score over time using the Ceph dashboard or CLI:
 ceph balancer eval
 ```
 
-A score near 0.0 means perfect balance. The goal is to keep this below 0.1 in production clusters. You can also monitor this via Prometheus using the `ceph_mgr_balancer_score` metric.
+A score near 0.0 means perfect balance. The goal is to keep this below 0.1 in production clusters.
 
 ## Summary
 
