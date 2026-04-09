@@ -49,7 +49,7 @@ Deploy a simple latency monitoring script:
 
 OSD_NODES=(192.168.10.1 192.168.10.2 192.168.10.3)
 LOG="/var/log/ceph-network-health.log"
-THRESHOLD_MS=2  # Alert if P99 latency exceeds 2ms
+THRESHOLD_MS=2  # Alert if average latency exceeds 2ms
 
 for node in "${OSD_NODES[@]}"; do
   RESULT=$(ping -c 20 -q $node 2>/dev/null | tail -1)
@@ -85,7 +85,7 @@ Ceph reports network health through its daemon interfaces:
 ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "msgr|bytes|time"
 
 # View OSD connection map
-ceph daemon osd.0 dump_osd_network_stats 2>/dev/null
+ceph daemon osd.0 dump_osd_network 2>/dev/null
 
 # Check for OSD heartbeat failures (indicates network issues)
 ceph health detail | grep -i "slow heartbeat"
