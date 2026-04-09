@@ -91,7 +91,7 @@ aws s3api put-bucket-lifecycle-configuration \
 }
 ```
 
-### Delete Versioned Object Markers
+### Expire Noncurrent Versions
 
 For versioned buckets, delete old noncurrent versions:
 
