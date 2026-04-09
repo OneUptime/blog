@@ -24,7 +24,7 @@ Unlike RBD mirroring, CephFS mirroring operates at the directory level, not the 
 
 ## Step 1 - Deploy the CephFilesystemMirror Daemon
 
-Create the mirror daemon on both source and target clusters:
+Create the mirror daemon on the source cluster:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -41,7 +41,7 @@ spec:
       memory: "1Gi"
 ```
 
-Apply on both clusters:
+Apply on the source cluster:
 
 ```bash
 kubectl apply -f cephfs-mirror.yaml
@@ -73,7 +73,7 @@ spec:
     snapshotSchedules:
       - path: /
         interval: 24h
-        startTime: "00:00:00-00:00"
+        startTime: "2026-03-31T00:00:00"
 ```
 
 ## Step 3 - Bootstrap Peer Relationship
@@ -82,14 +82,14 @@ Generate the bootstrap token on the secondary cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer bootstrap create myfs
+  ceph fs snapshot mirror peer_bootstrap create myfs client.mirror remote-site
 ```
 
 The output provides a JSON token. On the primary cluster, import it:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer bootstrap import myfs '<token-json>'
+  ceph fs snapshot mirror peer_bootstrap import myfs '<token-json>'
 ```
 
 ## Step 4 - Verify Mirroring Status
@@ -98,25 +98,41 @@ Check the mirror daemon status:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs
+  ceph fs snapshot mirror daemon status
 ```
 
-Expected output:
+Expected output (JSON format):
 
-```text
-myfs:
-    mirroring enabled
-    snap_modified: false
-    last_synced: 2026-03-31 00:00:00
-    last_synced_snap: 12345
-    syncing_snap: none
+```json
+[
+  {
+    "daemon_id": 12345,
+    "filesystems": [
+      {
+        "filesystem_id": 1,
+        "name": "myfs",
+        "directory_count": 1,
+        "peers": [
+          {
+            "uuid": "peer-uuid",
+            "remote": {
+              "client_name": "client.mirror",
+              "cluster_name": "remote-site",
+              "fs_name": "myfs"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
 ```
 
 Check the peer configuration:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer list myfs
+  ceph fs snapshot mirror peer_list myfs
 ```
 
 ## Step 5 - Configure Snapshot Schedules
@@ -125,14 +141,10 @@ Verify that snapshot schedules are active for the mirrored paths:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot schedule list myfs
+  ceph fs snap-schedule status / --fs=myfs
 ```
 
-You should see the configured schedule:
-
-```text
-/ 24h 2026-03-31 00:00:00
-```
+You should see the configured schedule in JSON format showing the path, schedule interval, and start time.
 
 ## Monitoring Mirror Lag
 
@@ -141,9 +153,9 @@ Check replication lag by comparing snapshot timestamps between primary and secon
 ```bash
 # On primary
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs/ | grep last_synced
+  ceph fs snapshot mirror daemon status | python3 -m json.tool
 ```
 
 ## Summary
 
-CephFS mirroring with Rook requires deploying the `CephFilesystemMirror` daemon on both clusters, enabling mirroring in the `CephFilesystem` spec, and bootstrapping a peer relationship. Snapshot schedules control how frequently data is replicated to the secondary site. This setup provides directory-level asynchronous replication suitable for disaster recovery with configurable RPO based on snapshot intervals.
+CephFS mirroring with Rook requires deploying the `CephFilesystemMirror` daemon on the source cluster, enabling mirroring in the `CephFilesystem` spec, and bootstrapping a peer relationship. Snapshot schedules control how frequently data is replicated to the secondary site. This setup provides directory-level asynchronous replication suitable for disaster recovery with configurable RPO based on snapshot intervals.
