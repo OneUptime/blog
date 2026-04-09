@@ -178,7 +178,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd perf
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 dump_slow_requests
+  ceph tell osd.0 dump_slow_requests
 ```
 
 ## Summary
