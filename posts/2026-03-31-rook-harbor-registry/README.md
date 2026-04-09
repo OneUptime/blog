@@ -44,6 +44,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --secret-key=harbor-secret-key
 
 # Create the bucket via S3 API
+AWS_ACCESS_KEY_ID=harbor-access-key \
+AWS_SECRET_ACCESS_KEY=harbor-secret-key \
 aws s3 mb s3://harbor-registry \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
@@ -245,19 +247,18 @@ aws s3 ls --endpoint-url http://<rgw-ip>:80 s3://harbor-registry/ | head -20
 
 ## Step 7 - Configure Trivy Scanner Storage
 
-Trivy's vulnerability database also needs persistent storage. It uses the existing PVCs when configured correctly in the Helm values:
+Trivy's vulnerability database also needs persistent storage. Add the following to the `persistence.persistentVolumeClaim` section in the Harbor Helm values:
 
 ```yaml
-trivy:
-  enabled: true
-  storage:
-    reports:
+persistence:
+  persistentVolumeClaim:
+    trivy:
       storageClass: rook-ceph-block
-      size: 5Gi
-    cache:
-      storageClass: rook-ceph-block
+      accessMode: ReadWriteOnce
       size: 5Gi
 ```
+
+Trivy is enabled by default in recent Harbor chart versions. To explicitly enable it, set `trivy.enabled: true` in the values file.
 
 ## Monitoring Harbor Storage Usage
 
