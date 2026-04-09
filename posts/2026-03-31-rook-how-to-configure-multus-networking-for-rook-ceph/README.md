@@ -29,7 +29,7 @@ kubectl get pods -n kube-system | grep multus
 kubectl get network-attachment-definitions -A
 ```
 
-Rook requires the Multus **thick plugin** (not just the shim). The thick plugin is a separate DaemonSet that runs alongside Multus.
+Rook requires the Multus **thick plugin** (not the thin shim). The thick plugin is a deployment variant of Multus where the binary handles CNI calls directly rather than delegating to a thin shim on the host.
 
 ## Create NetworkAttachmentDefinitions
 
@@ -105,14 +105,19 @@ With this configuration:
 
 ## Validating the Multus Configuration
 
-Rook provides a validation tool for Multus:
+Rook provides a validation tool for Multus that runs inside the operator pod:
 
 ```bash
-# Run the Multus validation job
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/multus-validation.yaml
+# Exec into the Rook operator pod
+kubectl --namespace rook-ceph exec -it deploy/rook-ceph-operator -- bash
 
-# Check results
-kubectl -n rook-ceph logs -l app=rook-ceph-multus-validation
+# View available options
+rook multus validation run --help
+
+# Run the validation (from inside the operator pod)
+rook multus validation run \
+  --public rook-ceph/rook-public-network \
+  --cluster rook-ceph/rook-cluster-network
 ```
 
 ```bash
@@ -134,9 +139,9 @@ global  public_network   192.168.100.0/24
 ```
 
 ```bash
-# Check OSD network binding
+# Check OSD network addresses
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd dump | grep network
+  ceph osd metadata 0 | grep -E "front_addr|back_addr"
 ```
 
 ## Single Network vs Dual Network
