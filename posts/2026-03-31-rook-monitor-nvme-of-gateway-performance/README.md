@@ -25,7 +25,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 
 # Check namespace I/O counters
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof namespace list --nqn nqn.2024-01.io.ceph:mysubsystem
+  ceph nvmeof namespace list --subsystem nqn.2024-01.io.ceph:mysubsystem
 ```
 
 ## Monitor at the OSD Level
@@ -51,15 +51,19 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 Rook exposes Ceph metrics via the Prometheus endpoint. Key metrics to watch:
 
 ```bash
-# Query gateway-related metrics
-curl -s http://rook-ceph-mgr.rook-ceph.svc:9283/metrics | grep nvmeof
+# Query pool-level metrics from the Ceph mgr Prometheus exporter
+curl -s http://rook-ceph-mgr.rook-ceph.svc:9283/metrics | grep ceph_pool
 
-# Key metrics:
-# ceph_nvmeof_gateway_state - gateway health (1=up, 0=down)
+# Key pool metrics (filter by nvmeof pool label):
 # ceph_pool_rd_bytes - read bytes for nvmeof pool
 # ceph_pool_wr_bytes - write bytes for nvmeof pool
 # ceph_pool_rd - read IOPS for nvmeof pool
 # ceph_pool_wr - write IOPS for nvmeof pool
+
+# NVMe-oF gateway metrics are exposed by the gateway's own exporter (port 10008)
+# Query gateway-specific metrics from the NVMe-oF gateway pod:
+# kubectl -n rook-ceph port-forward <nvmeof-gateway-pod> 10008:10008
+# curl -s http://localhost:10008/metrics
 ```
 
 Create a Prometheus alert for gateway downtime:
@@ -69,7 +73,7 @@ groups:
   - name: nvmeof
     rules:
       - alert: NVMeoFGatewayDown
-        expr: ceph_nvmeof_gateway_state == 0
+        expr: ceph_nvmeof_gateway_up == 0
         for: 2m
         labels:
           severity: critical
@@ -86,25 +90,28 @@ On initiator nodes, use nvme-cli to gather I/O statistics:
 # Get SMART/health data and I/O stats
 nvme smart-log /dev/nvme0n1
 
-# Get I/O completion statistics
-nvme get-log /dev/nvme0n1 --log-id=0x02
+# Get SMART log in raw format (requires --log-len)
+nvme get-log /dev/nvme0n1 --log-id=0x02 --log-len=512
 
 # Continuous monitoring with iostat
 iostat -x /dev/nvme0n1 2
 
-# Monitor latency distribution
-nvme latency-stats /dev/nvme0n1
+# Monitor latency distribution (requires bcc-tools)
+biolatency -d nvme0n1 10 1
 ```
 
 ## Grafana Dashboard
 
-Import the Rook-Ceph Grafana dashboard and filter by `nvmeof-pool`:
+Rook ships pre-built Grafana dashboards for Ceph monitoring. You can also import community dashboards from Grafana.com and filter by `nvmeof-pool`:
 
 ```bash
-# Port-forward Grafana
+# Port-forward the Ceph Dashboard (built-in web UI)
 kubectl -n rook-ceph port-forward svc/rook-ceph-mgr-dashboard 8443:8443
 
-# Import dashboard ID 2842 (Ceph - OSD (Single)) and filter by pool
+# For Grafana, port-forward the Grafana service in your monitoring namespace
+# kubectl -n monitoring port-forward svc/grafana 3000:3000
+
+# Import dashboard ID 2842 (Ceph - Cluster) from grafana.com and filter by pool
 ```
 
 Key metrics to graph:
