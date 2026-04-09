@@ -55,7 +55,7 @@ ceph config set mgr mgr/prometheus/server_port 9283
 ceph config set mgr mgr/prometheus/server_addr 0.0.0.0
 ```
 
-To enable per-pool and per-OSD detail metrics:
+To enable per-pool RBD image performance metrics:
 
 ```bash
 ceph config set mgr mgr/prometheus/rbd_stats_pools "*"
