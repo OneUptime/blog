@@ -72,16 +72,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ip link show
 ```
 
-## Configuring Ceph Network MTU
+## Configuring Ceph Heartbeat Tolerance
 
-If you cannot fix the network, reduce Ceph's message size to match the actual MTU. Set the `ms_dispatch_throttle_bytes` and `ms_initial_backoff` to work within your MTU:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global ms_max_backoff 1.0
-```
-
-Or configure Ceph to avoid large heartbeat packets by tuning the heartbeat interval:
+If you cannot fix the network MTU immediately, increase the heartbeat grace period so Ceph tolerates occasional missed heartbeats instead of marking OSDs down:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
