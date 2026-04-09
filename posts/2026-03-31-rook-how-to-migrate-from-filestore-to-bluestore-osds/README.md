@@ -174,8 +174,13 @@ for OSD_ID in $FILESTORE_OSDS; do
   while true; do
     STATUS=$(kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph health --format json | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
     if [ "$STATUS" = "HEALTH_OK" ] || [ "$STATUS" = "HEALTH_WARN" ]; then
-      DEGRADED=$(kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph pg stat --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('num_pg_active_unclean', 0))")
-      if [ "$DEGRADED" = "0" ]; then
+      UNCLEAN=$(kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph pg stat --format json | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+states = d.get('num_pg_by_state', [])
+unclean = sum(s['num'] for s in states if 'active' not in s['name'] or 'clean' not in s['name'])
+print(unclean)")
+      if [ "$UNCLEAN" = "0" ]; then
         echo "Cluster is balanced, proceeding with migration"
         break
       fi
@@ -184,12 +189,12 @@ for OSD_ID in $FILESTORE_OSDS; do
     sleep 30
   done
 
+  # Stop and remove the OSD
+  kubectl -n $NAMESPACE delete deployment rook-ceph-osd-$OSD_ID 2>/dev/null || true
+  kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph osd purge osd.$OSD_ID --yes-i-really-mean-it
+
   echo "Please wipe disk for osd.$OSD_ID and press Enter when done"
   read
-  
-  # Remove OSD
-  kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph osd purge osd.$OSD_ID --yes-i-really-mean-it
-  kubectl -n $NAMESPACE delete deployment rook-ceph-osd-$OSD_ID 2>/dev/null || true
 
   echo "osd.$OSD_ID removed. Rook will recreate as BlueStore."
   sleep 60
