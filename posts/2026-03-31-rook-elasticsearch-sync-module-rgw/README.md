@@ -56,21 +56,20 @@ radosgw-admin period update --commit
 ## Step 3 - Configure Advanced Elasticsearch Options
 
 ```bash
-# Allow all buckets to be indexed
+# Index all custom metadata as string type by default
 radosgw-admin zone modify \
   --rgw-zone=elasticsearch-zone \
-  --tier-config=explicit_custom_meta=false,index_all_tags=true
+  --tier-config=explicit_custom_meta=false
 
-# Restrict indexing to specific buckets
+# Restrict indexing to specific buckets (comma-separated)
 radosgw-admin zone modify \
   --rgw-zone=elasticsearch-zone \
-  --tier-config=index_buckets_list=bucket1:bucket2:bucket3
+  --tier-config=index_buckets_list=bucket1,bucket2,bucket3
 
-# Configure custom metadata fields to index
+# Restrict indexing to specific bucket owners (comma-separated)
 radosgw-admin zone modify \
   --rgw-zone=elasticsearch-zone \
-  --tier-config=explicit_custom_meta=true,\
-custom_meta_list=x-amz-meta-owner:x-amz-meta-project:x-amz-meta-content-type
+  --tier-config=approved_owners_list=owner1,owner2
 ```
 
 ## Step 4 - Deploy the Elasticsearch Zone RGW
@@ -104,7 +103,7 @@ radosgw --rgw-zone=elasticsearch-zone --rgw-zonegroup=default \
 
 ```bash
 # Search for objects by name pattern
-curl -X GET "http://elasticsearch:9200/rgw-primary-*/_search" \
+curl -X GET "http://elasticsearch:9200/rgw-myrealm-*/_search" \
   -H "Content-Type: application/json" \
   -d '{
     "query": {
@@ -120,7 +119,7 @@ curl -X GET "http://elasticsearch:9200/rgw-primary-*/_search" \
   }'
 
 # Search by custom metadata tag
-curl -X GET "http://elasticsearch:9200/rgw-primary-*/_search" \
+curl -X GET "http://elasticsearch:9200/rgw-myrealm-*/_search" \
   -H "Content-Type: application/json" \
   -d '{
     "query": {
