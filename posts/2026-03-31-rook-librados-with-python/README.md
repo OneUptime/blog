@@ -19,8 +19,6 @@ sudo apt install python3-rados
 # RHEL/CentOS
 sudo dnf install python3-rados
 
-# Or via pip (requires librados system library)
-pip3 install rados
 ```
 
 ## Connecting to the Cluster
@@ -33,7 +31,7 @@ cluster = rados.Rados(conffile="/etc/ceph/ceph.conf")
 cluster.connect()
 
 print(f"Cluster ID: {cluster.get_fsid()}")
-print(f"Ceph version: {cluster.version()}")
+print(f"librados version: {cluster.version()}")
 ```
 
 ## Writing and Reading Objects
@@ -89,17 +87,20 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
 Each object has an associated key-value store called omap:
 
 ```python
+import rados
+
 with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
     with cluster.open_ioctx("mypool") as ioctx:
-        # Write omap entries
-        ioctx.set_omap("myobj", {
-            "status": b"active",
-            "created": b"2026-03-31"
-        })
+        # Write omap entries using a write operation
+        with rados.WriteOpCtx() as write_op:
+            ioctx.set_omap(write_op, ("status", "created"), (b"active", b"2026-03-31"))
+            ioctx.operate_write_op(write_op, "myobj")
 
-        # Read omap entries
-        with ioctx.get_omap_vals("myobj", "", "", 100) as omap:
-            for key, val in omap:
+        # Read omap entries using a read operation
+        with rados.ReadOpCtx() as read_op:
+            omap_iter, ret = ioctx.get_omap_vals(read_op, "", "", 100)
+            ioctx.operate_read_op(read_op, "myobj")
+            for key, val in omap_iter:
                 print(f"  {key}: {val.decode()}")
 ```
 
