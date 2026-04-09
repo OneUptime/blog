@@ -84,14 +84,11 @@ The previous standby will transition to `active` and the failed daemon will rest
 
 ## Adjust MDS Failover Behavior
 
-Control how long Ceph waits before triggering automatic failover:
+Control how long Ceph waits before triggering automatic failover by adjusting the MDS beacon grace period (default 15 seconds):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_beacon_grace 15
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mon mds_failure_timeout 30
 ```
 
 Lower values mean faster failover detection but more sensitivity to transient hiccups.
