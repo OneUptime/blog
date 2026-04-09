@@ -21,7 +21,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
 ```
 
-Look for messages like `slow ops` or `REQUEST_SLOW`. Identify which OSDs are involved:
+Look for messages like `slow ops` or the `SLOW_OPS` health check. Identify which OSDs are involved:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd perf
@@ -67,10 +67,11 @@ BlueStore OSDs benefit from adequate memory. Check OSD memory targets:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config show osd.0 | grep memory
 ```
 
-Increase the BlueStore cache size if your nodes have spare RAM:
+Ensure BlueStore cache autotuning is enabled, and increase the memory target if your nodes have spare RAM:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set osd bluestore_cache_autotune true
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set osd osd_memory_target 6442450944
 ```
 
 ## Restarting a Stuck OSD Pod
