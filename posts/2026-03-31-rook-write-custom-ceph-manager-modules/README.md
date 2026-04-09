@@ -26,17 +26,18 @@ Create a directory under the manager module path:
 A complete module template:
 
 ```python
-from mgr_module import MgrModule, CLIReadCommand, CLIWriteCommand
+from mgr_module import MgrModule, CLIReadCommand, CLIWriteCommand, Option
 import threading
 
 class Module(MgrModule):
     MODULE_OPTIONS = [
-        {
-            "name": "poll_interval",
-            "type": "int",
-            "default": 60,
-            "desc": "Seconds between polls"
-        }
+        Option(
+            name="poll_interval",
+            type="int",
+            default=60,
+            desc="Seconds between polls",
+            runtime=True
+        )
     ]
 
     COMMANDS = []  # Use decorators instead
@@ -66,7 +67,7 @@ class Module(MgrModule):
 
     def _collect_data(self):
         # Access cluster state
-        osd_map = self.get_osd_map()
+        osd_map = self.get("osd_map")
         num_osds = len(osd_map["osds"])
         self.log.debug(f"Cluster has {num_osds} OSDs")
 
@@ -81,17 +82,17 @@ Key methods available in all modules:
 
 ```python
 # Cluster maps
-self.get_osd_map()          # Full OSD map
-self.get_mon_map()          # Monitor map
-self.get_fs_map()           # File system map
+self.get("osd_map")         # Full OSD map
+self.get("mon_map")         # Monitor map
+self.get("fs_map")          # File system map
 
 # Configuration
 self.get_module_option("poll_interval")
 self.set_module_option("poll_interval", 30)
 
 # Pool and OSD stats
-self.get_all_perf_counters()
-self.get_pool_stats()
+self.get_perf_counters()
+self.get("pool_stats")
 
 # Execute CLI commands
 ret, out, err = self.mon_command({
@@ -128,12 +129,13 @@ class TestMyModule(unittest.TestCase):
         # Mock the MgrModule parent
         patcher = patch("mgr_module.MgrModule.__init__", return_value=None)
         patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_collect_data(self):
         from mymodule.module import Module
         mod = Module.__new__(Module)
         mod.log = MagicMock()
-        mod.get_osd_map = MagicMock(return_value={"osds": [{}, {}]})
+        mod.get = MagicMock(return_value={"osds": [{}, {}]})
         mod._collect_data()
         mod.log.debug.assert_called_once()
 ```
