@@ -54,7 +54,7 @@ Check crash logs on the Rook pod that crashed:
 kubectl -n rook-ceph logs rook-ceph-osd-3-<hash> --previous
 ```
 
-Check the crash archive:
+List unarchived (pending) crashes:
 
 ```bash
 ceph crash ls-new
