@@ -107,8 +107,8 @@ groups:
   rules:
   - alert: StorageIntegrityViolation
     expr: >
-      ceph_pg_inconsistent > 0 OR
-      ceph_osd_stat_num_objects_inconsistent > 0
+      ceph_pg_inconsistent > 0 or
+      ceph_pg_degraded > 0
     for: 2m
     labels:
       severity: critical
