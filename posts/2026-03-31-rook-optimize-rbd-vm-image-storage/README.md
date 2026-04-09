@@ -107,7 +107,7 @@ parameters:
   clusterID: rook-ceph
   pool: vm-pool
   imageFormat: "2"
-  imageFeatures: layering,fast-diff,object-map
+  imageFeatures: layering,exclusive-lock,object-map,fast-diff
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
