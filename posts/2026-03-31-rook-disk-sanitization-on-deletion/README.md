@@ -38,8 +38,8 @@ The `method` field controls what gets overwritten:
 ```text
 Method     | What is wiped
 -----------|---------------------------------------------
-quick      | Only the Ceph data partitions and superblock
-complete   | The entire block device (all sectors)
+quick      | Ceph metadata via ceph-volume lvm zap
+complete   | The entire block device (all sectors via shred)
 ```
 
 Use `quick` for quick decommissioning when the disks will stay under your control. Use `complete` when returning disks to a vendor or repurposing for other tenants.
@@ -72,10 +72,10 @@ Three-pass random overwrites satisfy most regulatory standards for magnetic medi
 
 ## Monitoring Sanitization Progress
 
-After cluster deletion, Rook launches a cleanup DaemonSet that runs the sanitization jobs. Monitor progress:
+After cluster deletion, Rook launches cleanup Jobs (one per node) that run the sanitization. Monitor progress:
 
 ```bash
-kubectl -n rook-ceph get daemonset -l app=rook-ceph-cleanup
+kubectl -n rook-ceph get job -l app=rook-ceph-cleanup
 kubectl -n rook-ceph get pod -l app=rook-ceph-cleanup
 ```
 
@@ -88,8 +88,9 @@ kubectl -n rook-ceph logs -l app=rook-ceph-cleanup -f
 Expect output like:
 
 ```text
-sanitizing device /dev/sdb using method=complete dataSource=random iterations=3
-dd: '/dev/sdb': writing... pass 1 of 3 complete
+shred: /dev/sdb: pass 1/3 (random)...
+shred: /dev/sdb: pass 2/3 (random)...
+shred: /dev/sdb: pass 3/3 (000000)...
 ```
 
 ## Time Estimates
