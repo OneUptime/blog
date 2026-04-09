@@ -34,7 +34,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- Kubernetes v1.16+ (stable volume expansion)
+- Kubernetes v1.16+ (CSI volume expansion beta and enabled by default; GA since 1.24)
 - Rook CSI driver with `allowVolumeExpansion: true` in the StorageClass
 - The `ExpandPersistentVolumes` feature gate enabled (beta and enabled by default since Kubernetes 1.11, GA since 1.24)
 
@@ -197,10 +197,12 @@ kubectl scale deployment my-app --replicas=0
 kubectl patch pvc expandable-pvc \
   -p '{"spec":{"resources":{"requests":{"storage":"30Gi"}}}}'
 
-# Wait for expansion to complete
-kubectl wait --for=condition=FileSystemResizePending=False pvc/expandable-pvc
+# Wait for controller expansion to complete (RBD image resized)
+# FileSystemResizePending=True means the image was expanded but filesystem
+# resize is pending until a pod mounts the volume
+kubectl wait --for=condition=FileSystemResizePending pvc/expandable-pvc --timeout=120s
 
-# Scale the workload back up - filesystem resize happens on NodeStageVolume
+# Scale the workload back up - filesystem resize happens automatically on mount
 kubectl scale deployment my-app --replicas=1
 ```
 
