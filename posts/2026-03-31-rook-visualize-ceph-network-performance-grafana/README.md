@@ -21,7 +21,7 @@ Rook exposes network-related metrics through the Ceph manager's Prometheus modul
 | `ceph_osd_op_r_out_bytes` | Bytes sent to clients for reads |
 | `ceph_osd_op_w_in_bytes` | Bytes received from clients for writes |
 | `ceph_osd_recovery_bytes` | Bytes moved during recovery |
-| `ceph_mon_client_bytes_sent` | Monitor bytes sent to clients |
+| `ceph_mon_num_sessions` | Number of active monitor client sessions |
 | `ceph_osd_op_latency_sum` | OSD operation latency total |
 
 ## Building a Network Throughput Panel
@@ -65,10 +65,10 @@ Group by `ceph_daemon` label to see which OSD is the latency outlier.
 
 ## Network Error Rate Panel
 
-Track network-related OSD timeouts and errors:
+Monitor OSD read operation rates and network errors. A sudden drop in operation rate can signal connectivity problems:
 
 ```promql
-# OSD operations that timed out
+# OSD read operation rate (drops may indicate network issues)
 rate(ceph_osd_op_r_latency_count{namespace="rook-ceph"}[5m])
 ```
 
