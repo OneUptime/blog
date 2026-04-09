@@ -59,7 +59,7 @@ Ceph reports slow operations when ops exceed the `osd_op_complaint_time` thresho
       severity: warning
     annotations:
       summary: "Ceph is experiencing slow operations"
-      description: "Investigate OSD and network performance. Run 'ceph ops' for details."
+      description: "Investigate OSD and network performance. Run 'ceph health detail' for details."
 ```
 
 ## PG Recovery Performance
@@ -90,7 +90,7 @@ Alert when recovery is taking too long or backing up:
   - alert: CephRGWHighErrorRate
     expr: |
       (rate(ceph_rgw_failed_req[5m]) /
-       rate(ceph_rgw_req[5m])) * 100 > 5
+       rate(ceph_rgw_req[5m])) > 0.05
     for: 5m
     labels:
       severity: warning
