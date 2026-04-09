@@ -23,7 +23,7 @@ Volume replication in Rook uses:
 
 - RBD mirroring enabled on both Ceph clusters (peer relationship established)
 - CSI-Addons operator installed on both Kubernetes clusters
-- StorageClass using `imageFeatures: layering,exclusive-lock,journaling`
+- StorageClass using `imageFeatures: layering,exclusive-lock`
 
 ## Step 1 - Create a StorageClass with Mirroring Features
 
@@ -37,7 +37,7 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
-  imageFeatures: layering,exclusive-lock,journaling
+  imageFeatures: layering,exclusive-lock
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
