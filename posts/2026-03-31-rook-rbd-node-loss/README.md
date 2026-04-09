@@ -59,7 +59,7 @@ kubectl get nodes
 kubectl describe node <failed-node-name> | grep -A10 "Conditions:"
 
 # Check if the node is truly unreachable or just has network issues
-kubectl get node <failed-node-name> -o jsonpath='{.status.conditions[-1].type}'
+kubectl get node <failed-node-name> -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
 
 # Check node taint (Kubernetes adds this when NodeNotReady)
 kubectl describe node <failed-node-name> | grep Taint
@@ -159,7 +159,7 @@ spec:
     spec:
       containers:
         - name: node-problem-detector
-          image: registry.k8s.io/node-problem-detector/node-problem-detector:v0.8.14
+          image: registry.k8s.io/node-problem-detector/node-problem-detector:v0.8.25
           securityContext:
             privileged: true
 ```
