@@ -112,6 +112,13 @@ Scale the Rook operator to 0 to prevent interference:
 kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
 ```
 
+Scale down the failed MON deployments to ensure they do not restart:
+
+```bash
+kubectl -n rook-ceph scale deployment rook-ceph-mon-b --replicas=0
+kubectl -n rook-ceph scale deployment rook-ceph-mon-c --replicas=0
+```
+
 The `ceph-mon --extract-monmap` and `--inject-monmap` commands require the MON daemon to not be running. Patch the MON-a deployment to prevent the daemon from starting so you can manipulate the monmap on disk:
 
 ```bash
@@ -136,20 +143,7 @@ monmaptool --print /tmp/monmap
 ceph-mon --inject-monmap /tmp/monmap --mon-data /var/lib/ceph/mon/ceph-a
 ```
 
-Exit the container, then remove the sleep override to let the MON daemon start with the modified monmap:
-
-```bash
-kubectl -n rook-ceph rollout undo deployment rook-ceph-mon-a
-```
-
-Make sure the failed MON pods are not running:
-
-```bash
-kubectl -n rook-ceph scale deployment rook-ceph-mon-b --replicas=0
-kubectl -n rook-ceph scale deployment rook-ceph-mon-c --replicas=0
-```
-
-Update the `rook-ceph-mon-endpoints` ConfigMap to only reference the surviving MON:
+Exit the container. Before restarting MON-a, update the `rook-ceph-mon-endpoints` ConfigMap to only reference the surviving MON:
 
 ```bash
 kubectl -n rook-ceph get configmap rook-ceph-mon-endpoints -o yaml
@@ -159,6 +153,12 @@ Edit it to keep only MON-a's entry in the `data` field, removing references to M
 
 ```bash
 kubectl -n rook-ceph edit configmap rook-ceph-mon-endpoints
+```
+
+Now remove the sleep override to let the MON daemon start with the modified monmap:
+
+```bash
+kubectl -n rook-ceph rollout undo deployment rook-ceph-mon-a
 ```
 
 After MON-a starts and forms quorum with itself, verify:
