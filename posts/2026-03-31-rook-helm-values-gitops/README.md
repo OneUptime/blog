@@ -70,10 +70,6 @@ resources:
     cpu: 2000m
     memory: 1Gi
 
-monitoring:
-  enabled: true
-  metricsPort: 9283
-
 nodeSelector:
   role: storage-operator
 
@@ -93,14 +89,17 @@ metadata:
   name: rook-ceph-operator
   namespace: argocd
 spec:
-  source:
-    repoURL: https://charts.rook.io/release
+  sources:
+  - repoURL: https://charts.rook.io/release
     chart: rook-ceph
     targetRevision: v1.14.0
     helm:
       valueFiles:
-      - https://raw.githubusercontent.com/myorg/rook-helm-gitops/main/environments/base-values.yaml
-      - https://raw.githubusercontent.com/myorg/rook-helm-gitops/main/environments/production-values.yaml
+      - $values/environments/base-values.yaml
+      - $values/environments/production-values.yaml
+  - repoURL: https://github.com/myorg/rook-helm-gitops.git
+    targetRevision: main
+    ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: rook-ceph
