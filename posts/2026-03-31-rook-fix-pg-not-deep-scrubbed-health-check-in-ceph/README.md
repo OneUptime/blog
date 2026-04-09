@@ -27,10 +27,10 @@ Example output:
     pg 3.1 not deep-scrubbed since 2026-03-14
 ```
 
-List overdue PGs:
+List PGs sorted by oldest deep scrub first:
 
 ```bash
-ceph pg dump | awk '$23 < (systime() - 604800) {print $1, "last_deep:", $23}'
+ceph pg dump --format=json | jq -r '.pg_map.pg_stats[] | "\(.pgid) \(.last_deep_scrub_stamp)"' | sort -k2 | head -20
 ```
 
 ## Why Deep Scrubs Get Skipped
@@ -81,13 +81,15 @@ ceph pg deep-scrub 3.4
 Deep scrub all PGs in a pool:
 
 ```bash
-ceph osd pool deep-scrub <pool-name>
+for pg in $(ceph pg ls-by-pool <pool-name> --format=json | jq -r '.[].pgid'); do
+  ceph pg deep-scrub "$pg"
+done
 ```
 
 Deep scrub all PGs on a specific OSD:
 
 ```bash
-ceph tell osd.2 deep_scrub
+ceph osd deep-scrub osd.2
 ```
 
 ### Step 4 - Schedule Deep Scrubs During Off-Peak Hours
@@ -99,11 +101,10 @@ ceph config set osd osd_deep_scrub_interval 604800
 ceph config set osd osd_scrub_load_threshold 0.5
 ```
 
-Reduce I/O impact of deep scrubs:
+Reduce I/O impact of scrubs by adding a sleep between scrub operations:
 
 ```bash
 ceph config set osd osd_scrub_sleep 0.1
-ceph config set osd osd_deep_scrub_randomize_ratio 0.5
 ```
 
 ## Monitoring Deep Scrub Progress
@@ -116,7 +117,7 @@ watch "ceph -s | grep scrub"
 Check last deep scrub times:
 
 ```bash
-ceph pg dump | awk 'NR>1 && NF>0 {print $1, $23}' | sort -k2 -n | head -20
+ceph pg dump --format=json | jq -r '.pg_map.pg_stats[] | "\(.pgid) \(.last_deep_scrub_stamp)"' | sort -k2 | head -20
 ```
 
 ## Impact on Cluster I/O
