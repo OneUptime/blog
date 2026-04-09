@@ -17,12 +17,11 @@ The reclaim policy on a Kubernetes StorageClass determines what happens to the u
 ```mermaid
 flowchart TD
     A[PVC Deleted] --> B{Reclaim Policy?}
-    B -->|Delete| C[PV enters Released state]
-    C --> D[Rook CSI deletes RBD image]
-    D --> E[PV deleted - data gone permanently]
-    B -->|Retain| F[PV enters Released state]
-    F --> G[RBD image preserved in Ceph]
-    G --> H[Admin manually decides: delete or reuse]
+    B -->|Delete| C[Rook CSI deletes RBD image]
+    C --> D[PV deleted automatically - data gone permanently]
+    B -->|Retain| E[PV enters Released state]
+    E --> F[RBD image preserved in Ceph]
+    F --> G[Admin manually decides: delete or reuse]
 ```
 
 ## Step 1: Create a StorageClass with Delete Policy
@@ -141,20 +140,17 @@ kubectl apply -f rebind-pvc.yaml
 If you no longer need the data after a PVC deletion:
 
 ```bash
-# Get the RBD image name from the PV
-kubectl get pv <pv-name> -o jsonpath='{.spec.csi.volumeHandle}'
-# Output: 0001-0009-<cluster-id>-0000000000000001-<image-id>
+# Get the RBD image name directly from the PV's CSI volume attributes
+RBD_IMAGE=$(kubectl get pv <pv-name> -o jsonpath='{.spec.csi.volumeAttributes.imageName}')
+# Output: csi-vol-<uuid>
 
-# Extract the image name (last part of the volume handle)
-RBD_IMAGE=$(kubectl get pv <pv-name> -o jsonpath='{.spec.csi.volumeHandle}' | awk -F'-' '{print $NF}')
-
-# List the image in the pool
+# Verify the image exists in the pool
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd ls replicapool | grep $RBD_IMAGE
+  rbd ls replicapool | grep "$RBD_IMAGE"
 
 # Delete the image
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd rm replicapool/csi-vol-${RBD_IMAGE}
+  rbd rm replicapool/$RBD_IMAGE
 
 # Delete the Kubernetes PV resource
 kubectl delete pv <pv-name>
@@ -171,8 +167,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: critical-database-pvc
   finalizers:
-    # This finalizer prevents the PVC from being deleted until explicitly removed
-    - kubernetes.io/pvc-protection
+    # Custom finalizer - must be manually removed before the PVC can be deleted
+    - example.com/prevent-accidental-deletion
 spec:
   accessModes:
     - ReadWriteOnce
@@ -185,7 +181,7 @@ spec:
 To delete a finalized PVC:
 
 ```bash
-# First remove the finalizer
+# First remove the custom finalizer
 kubectl patch pvc critical-database-pvc \
   -p '{"metadata":{"finalizers":[]}}'
 
