@@ -58,7 +58,7 @@ Confirm the filesystem is in failed state and all MDS daemons have stopped:
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- ceph fs dump
 ```
 
-## Step 4 - Run cephfs-data-scan
+## Step 3 - Run cephfs-data-scan
 
 Use `cephfs-data-scan` to reconstruct missing metadata from the data pool:
 
@@ -73,16 +73,7 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   cephfs-data-scan scan_inodes --filesystem myfs
 ```
 
-## Step 5 - Remove Damage Records After Repair
-
-After repair, remove specific damage records that have been resolved:
-
-```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph tell mds.myfs:0 damage rm 0
-```
-
-## Step 6 - Bring the Filesystem Back Online
+## Step 4 - Bring the Filesystem Back Online
 
 Restore the filesystem to normal operation:
 
@@ -100,7 +91,16 @@ Verify the MDS comes up cleanly:
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- ceph fs status
 ```
 
-## Step 7 - Validate Recovered Data
+## Step 5 - Remove Damage Records After Repair
+
+After repair, remove specific damage records that have been resolved:
+
+```bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
+  ceph tell mds.myfs:0 damage rm 0
+```
+
+## Step 6 - Validate Recovered Data
 
 After recovery, run a scrub to confirm no remaining inconsistencies:
 
