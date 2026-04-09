@@ -71,7 +71,7 @@ echo "Minimum TBW required: ${TOTAL_WRITES_TB} TB"
 
 **Write-Intensive NVMe (best):**
 - TBW: 10+ PB for 3 DWPD rating
-- Models: Intel P5800X, Samsung PM9A3, Micron 9300
+- Models: Intel P5800X, Samsung PM9A3 (3 DWPD), Micron 9300 MAX
 - Best for NVMe OSD clusters or heavy mixed workloads
 
 ## Step 4 - Performance Requirements
@@ -85,11 +85,11 @@ echo "Minimum TBW required: ${TOTAL_WRITES_TB} TB"
 # Benchmark a candidate SSD
 fio --name=randwrite --ioengine=libaio --iodepth=32 \
   --rw=randwrite --bs=4k --direct=1 \
-  --size=10g --filename=/dev/nvme0n1 --runtime=60
+  --size=10g --filename=/dev/nvme0n1 --runtime=60 --time_based
 
 fio --name=seqwrite --ioengine=libaio --iodepth=8 \
   --rw=write --bs=128k --direct=1 \
-  --size=10g --filename=/dev/nvme0n1 --runtime=60
+  --size=10g --filename=/dev/nvme0n1 --runtime=60 --time_based
 ```
 
 ## Step 5 - Check Drive Health Over Time
@@ -117,16 +117,15 @@ gdisk /dev/nvme0n1 <<EOF
 n
 1
 
-
 +768G
 8300
 n
 2
 
-
 +12G
 8300
 w
+Y
 EOF
 ```
 
@@ -145,7 +144,7 @@ moderate_load:  # 6-12 HDDs per SSD
 
 heavy_load:  # NVMe OSD cluster or 12+ HDDs per SSD
   type: "Write-intensive NVMe"
-  example: "Micron 9300 Pro or Intel P5800X"
+  example: "Micron 9300 MAX or Intel P5800X"
   min_tbw: "10 PB+"
 ```
 
