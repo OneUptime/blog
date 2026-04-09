@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Resource Management, Kubernetes, Performance
 
-Description: Learn how to configure CPU and memory resource requests and limits for Rook-Ceph components (MON, MGR, OSD, MDS, RGW) in the CephCluster CRD.
+Description: Learn how to configure CPU and memory resource requests and limits for Rook-Ceph components (MON, MGR, OSD, MDS, RGW) in the CephCluster, CephFilesystem, and CephObjectStore CRDs.
 
 ---
 
@@ -19,7 +19,7 @@ Proper resource configuration ensures Ceph daemons are scheduled predictably, pr
 
 ## Resource Configuration Structure
 
-Resources are configured in the `CephCluster` spec under the `resources` key, organized by daemon type:
+Core daemon resources (MON, MGR, OSD) are configured in the `CephCluster` spec under the `resources` key:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -50,20 +50,6 @@ spec:
       limits:
         cpu: "2"
         memory: "8Gi"
-    mds:
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
-      limits:
-        cpu: "2"
-        memory: "4Gi"
-    rgw:
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
-      limits:
-        cpu: "2"
-        memory: "2Gi"
     mgr-sidecar:
       requests:
         cpu: "100m"
@@ -73,11 +59,13 @@ spec:
         memory: "100Mi"
 ```
 
+MDS and RGW resources are configured in their own CRDs (`CephFilesystem` and `CephObjectStore` respectively), not in the `CephCluster` resource.
+
 ## Per-Component Guidelines
 
 ### MON (Monitor) Resources
 
-Monitors run a LevelDB/RocksDB store for cluster state. Memory requirements depend on PG count:
+Monitors run a RocksDB store for cluster state. Memory requirements depend on PG count:
 
 ```yaml
 mon:
@@ -137,28 +125,50 @@ If using the Prometheus module or many dashboard users, increase memory limits.
 
 ### MDS (CephFS Metadata Server) Resources
 
-MDS caches filesystem metadata. More cache = better CephFS performance:
+MDS resources are configured in the `CephFilesystem` CRD under `spec.metadataServer.resources`, not in the `CephCluster` CRD:
 
 ```yaml
-mds:
-  requests:
-    cpu: "500m"
-    memory: "1Gi"
-  limits:
-    cpu: "2"
-    memory: "4Gi"   # Larger clusters benefit from more cache
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystem
+metadata:
+  name: myfs
+  namespace: rook-ceph
+spec:
+  metadataServer:
+    activeCount: 1
+    activeStandby: true
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"   # Larger clusters benefit from more cache
 ```
+
+MDS caches filesystem metadata. More cache = better CephFS performance.
 
 ### RGW (Object Storage Gateway) Resources
 
+RGW resources are configured in the `CephObjectStore` CRD under `spec.gateway.resources`, not in the `CephCluster` CRD:
+
 ```yaml
-rgw:
-  requests:
-    cpu: "500m"
-    memory: "512Mi"
-  limits:
-    cpu: "2"
-    memory: "2Gi"   # Scale up for high request rates
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: my-store
+  namespace: rook-ceph
+spec:
+  gateway:
+    port: 80
+    instances: 2
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"   # Scale up for high request rates
 ```
 
 ## Development vs Production Presets
@@ -245,4 +255,4 @@ kubectl -n rook-ceph get pods -w
 
 ## Summary
 
-Resource requests and limits for Rook-Ceph components are configured under `spec.resources` in the `CephCluster` CRD, organized by daemon type (mon, mgr, osd, mds, rgw). Set requests to ensure proper scheduling and limits to protect the node from memory exhaustion. OSD memory limits should be at least 25% higher than the Ceph `osd_memory_target` setting. Monitor actual resource usage with `kubectl top pods` and adjust based on observed consumption rather than fixed formulas.
+Resource requests and limits for core Rook-Ceph components (mon, mgr, osd) are configured under `spec.resources` in the `CephCluster` CRD. MDS resources are configured in the `CephFilesystem` CRD under `spec.metadataServer.resources`, and RGW resources in the `CephObjectStore` CRD under `spec.gateway.resources`. Set requests to ensure proper scheduling and limits to protect the node from memory exhaustion. OSD memory limits should be at least 25% higher than the Ceph `osd_memory_target` setting. Monitor actual resource usage with `kubectl top pods` and adjust based on observed consumption rather than fixed formulas.
