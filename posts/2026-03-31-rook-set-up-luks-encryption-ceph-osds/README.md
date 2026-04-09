@@ -14,7 +14,7 @@ Linux Unified Key Setup (LUKS) is the standard disk encryption format on Linux. 
 
 ## Prerequisites
 
-- Rook 1.5+ (LUKS2 support)
+- Rook 1.4+ (OSD encryption support)
 - Linux kernel 4.12+ with dm-crypt modules loaded
 - Sufficient CPU for encryption (AES-NI recommended)
 
@@ -59,45 +59,70 @@ cryptsetup luksDump /dev/sdb
 ```
 
 Expected output includes:
-```yaml
-Version:       2
-Cipher:        aes-xts-plain64
-Cipher key:    512 bits
-Hash spec:     sha256
+```
+LUKS header information
+Version:        2
+Epoch:          3
+Metadata area:  16384 [bytes]
+Keyslots area:  16744448 [bytes]
+...
+Data segments:
+  0: crypt
+        cipher: aes-xts-plain64
+        sector: 512 [bytes]
+
+Keyslots:
+  0: luks2
+        Key:        512 bits
+        PBKDF:      argon2id
 ```
 
 ## Inspecting Rook's LUKS Key Management
 
-Rook creates a Kubernetes Secret per OSD with the LUKS passphrase:
+For host-based OSDs (as configured above), Rook stores encryption keys in the Ceph mon key-value store:
 
 ```bash
-kubectl -n rook-ceph get secrets -l "pvc-name"
+ceph config-key get dm-crypt/osd/<osd-uuid>/luks
+```
+
+To find OSD UUIDs:
+
+```bash
+ceph osd dump | grep uuid
+```
+
+For PVC-based OSDs, Rook creates a Kubernetes Secret per OSD with the LUKS passphrase:
+
+```bash
+kubectl -n rook-ceph get secrets -l "pvc_name"
 ```
 
 Get a specific key:
 
 ```bash
-kubectl -n rook-ceph get secret rook-ceph-osd-encryption-key-<osd-id> \
+kubectl -n rook-ceph get secret rook-ceph-osd-encryption-key-<pvc-name> \
   -o jsonpath='{.data.dmcrypt-key}' | base64 -d
 ```
 
 ## Opening a LUKS Device Manually (for Recovery)
 
-If you need to manually access an encrypted OSD device for recovery:
+If you need to manually access an encrypted OSD device for recovery, first retrieve the encryption key. For host-based OSDs:
 
 ```bash
-LUKS_KEY=$(kubectl -n rook-ceph get secret rook-ceph-osd-encryption-key-osd-0 \
-  -o jsonpath='{.data.dmcrypt-key}' | base64 -d)
+LUKS_KEY=$(ceph config-key get dm-crypt/osd/<osd-uuid>/luks)
 
 echo "$LUKS_KEY" | cryptsetup luksOpen /dev/sdb ceph-recovery --key-file=-
-mount /dev/mapper/ceph-recovery /mnt/recovery
+
+# BlueStore OSDs use a raw block device, not a filesystem.
+# Use ceph-bluestore-tool to inspect the decrypted device:
+ceph-bluestore-tool show-label --dev /dev/mapper/ceph-recovery
 ```
 
 ## LUKS2 vs LUKS1
 
-Rook uses LUKS2 by default (Rook 1.9+). LUKS2 provides:
+Rook uses LUKS2 by default when the Ceph container image includes cryptsetup 2.1+. LUKS2 provides:
 - Argon2id key derivation (more resistant to brute force)
-- Larger header (16MB) for metadata
+- Larger header (16 MiB) for metadata
 - Online reencryption support
 
 ## Rotating LUKS Keys
