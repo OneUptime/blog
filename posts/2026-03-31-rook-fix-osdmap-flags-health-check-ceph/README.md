@@ -31,13 +31,7 @@ HEALTH_WARN noout flag(s) set
 ceph osd dump | grep flags
 ```
 
-Or more directly:
-
-```bash
-ceph osd stat
-```
-
-The flags field shows all active flags:
+The flags line near the top of the output shows all active flags:
 
 ```text
 flags noout,norebalance
@@ -67,8 +61,7 @@ ceph osd unset noout
 ceph osd unset norebalance
 ceph osd unset nobackfill
 
-# Or unset multiple at once
-ceph osd unset noout
+# Unset other flags as needed
 ceph osd unset norecover
 ```
 
