@@ -130,9 +130,11 @@ kubectl logs -n production -f nfs-to-cephfs-migrator
 ## Step 5: Verify Data Integrity
 
 ```bash
-# Compare file counts between source and destination
+# Compare file lists between source and destination (strip base path for meaningful diff)
 kubectl exec -n production nfs-to-cephfs-migrator -- \
-  diff <(find /nfs-source -type f | sort) <(find /cephfs-dest -type f | sort)
+  sh -c 'find /nfs-source -type f | sed "s|^/nfs-source||" | sort > /tmp/src.txt && \
+         find /cephfs-dest -type f | sed "s|^/cephfs-dest||" | sort > /tmp/dst.txt && \
+         diff /tmp/src.txt /tmp/dst.txt'
 
 # Compare checksums for critical files
 kubectl exec -n production nfs-to-cephfs-migrator -- \
