@@ -21,7 +21,7 @@ These credentials are time-limited. When they expire, the client must re-authent
 
 ## Viewing Current Authentication State
 
-Check what keys exist and their rotation timestamps:
+Check what keys and capabilities exist:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph auth list
@@ -55,12 +55,10 @@ metadata:
 data:
   config: |
     [global]
-    # Session ticket lifetime in seconds (default: 43200 = 12 hours)
-    auth_mon_ticket_ttl = 43200
+    # Monitor ticket lifetime in seconds (default: 259200 = 72 hours)
+    auth_mon_ticket_ttl = 259200
     # Service ticket lifetime in seconds (default: 3600 = 1 hour)
     auth_service_ticket_ttl = 3600
-    # How often clients rotate session keys (default: 3600)
-    auth_client_required = cephx
 ```
 
 ## Rotating Keys Manually
@@ -68,10 +66,7 @@ data:
 For emergency key rotation (e.g., after a breach):
 
 ```bash
-# Rotate the key for a specific client
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth import
-# Or delete and recreate
+# Delete and recreate with a new key
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth del client.compromised
 
@@ -87,7 +82,7 @@ After rotating a key, update the Kubernetes Secret:
 
 ```bash
 # Get the new key value
-NEW_KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+NEW_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth print-key client.myapp)
 
 # Update the secret
@@ -111,11 +106,11 @@ kubectl -n rook-ceph logs -l app=rook-ceph-mon --tail=100 | \
   grep -i "auth\|ticket\|expire\|EACCES"
 ```
 
-Set up a Ceph health alert for authentication failures:
+You can also check the cluster health status for auth-related warnings:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mon mon_auth_expired_session_cleanup_interval 3600
+  ceph health detail
 ```
 
 ## Summary
