@@ -37,43 +37,42 @@ rook-ceph-mon-c-xxx   0/2     Error       3          2h    node-3
 
 In this example, `mon-a` on `node-1` is the surviving monitor.
 
-## Initiating restore-quorum
+## Prerequisites: Install the kubectl-rook-ceph Plugin
 
-Rook exposes the restore-quorum operation through the CephCluster CR. Edit the cluster resource to specify which monitor should be used as the quorum basis:
+The restore-quorum operation is provided by the `kubectl-rook-ceph` plugin. Install it with krew:
 
 ```bash
-kubectl -n rook-ceph edit cephcluster rook-ceph
+kubectl krew install rook-ceph
 ```
 
-Add the following annotation to trigger the restore-quorum operation:
+Or download the binary directly from the [kubectl-rook-ceph releases page](https://github.com/rook/kubectl-rook-ceph/releases).
 
-```yaml
-metadata:
-  annotations:
-    ceph.rook.io/restore-mon-quorum: "a"
+## Initiating restore-quorum
+
+Run the restore-quorum command, specifying the ID of the surviving monitor:
+
+```bash
+kubectl rook-ceph mons restore-quorum a
 ```
 
-The value `"a"` corresponds to the monitor ID of the surviving monitor. Save and exit. The Rook operator will detect this annotation and begin the restore process.
+The value `a` corresponds to the monitor ID of the surviving monitor. The plugin will prompt you to confirm by typing `yes-really-restore` before proceeding.
 
 ## Monitoring the Restore Process
 
-Watch the operator logs to follow progress:
+The plugin will output progress as it works. It performs the following steps:
 
-```bash
-kubectl -n rook-ceph logs -l app=rook-ceph-operator -f
-```
+1. Validates the specified monitor is operational
+2. Scales down the Rook operator to prevent interference
+3. Scales down all other (failed) monitor deployments
+4. Extracts the monmap from the surviving monitor's data store
+5. Removes failed monitors from the monmap
+6. Injects the updated monmap back into the surviving monitor
+7. Updates the `rook-ceph-mon-endpoints` ConfigMap
+8. Restarts the surviving monitor with the corrected monmap
+9. Deletes resources (deployments, services, PVCs) for the failed monitors
+10. Scales the Rook operator back up
 
-You should see log lines indicating the restore-quorum operation is proceeding. The operator will:
-1. Scale down all other monitor deployments
-2. Patch the monitor map to contain only the surviving monitor
-3. Restart the surviving monitor with the new map
-4. Gradually bring additional monitors back online
-
-Check the operator events:
-
-```bash
-kubectl -n rook-ceph get events --sort-by='.lastTimestamp' | tail -20
-```
+After step 9, the plugin will prompt you to type `continue` to proceed with scaling the operator back up.
 
 ## Verifying Recovery
 
@@ -106,11 +105,7 @@ After restoring quorum with a single monitor, allow Rook to rebuild the full set
 kubectl -n rook-ceph get pods -l app=rook-ceph-mon -w
 ```
 
-Rook will create new mon deployments on available nodes. This process takes several minutes. Once three monitors are healthy and in quorum, remove the restore annotation:
-
-```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph ceph.rook.io/restore-mon-quorum-
-```
+Rook will create new mon deployments on available nodes. This process takes several minutes. Once three monitors are healthy and in quorum, the cluster is fully recovered.
 
 ## Post-Recovery Checks
 
@@ -125,4 +120,4 @@ Any PGs that were degraded due to the quorum loss should begin recovering automa
 
 ## Summary
 
-The `restore-quorum` operation in Rook is triggered by annotating the CephCluster CR with the name of the surviving monitor. The Rook operator handles the low-level monitor map manipulation needed to re-establish quorum from a single node. After using this procedure, allow Rook to rebuild the full three-monitor ensemble before removing the annotation and resuming normal operations.
+The `restore-quorum` command in the `kubectl-rook-ceph` plugin automates the low-level monitor map manipulation needed to re-establish quorum from a single surviving monitor. After using this procedure, the Rook operator automatically rebuilds the full three-monitor ensemble.
