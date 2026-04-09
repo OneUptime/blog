@@ -32,7 +32,7 @@ Convert the binary map to human-readable text using `crushtool`:
 crushtool -d /tmp/crushmap.bin -o /tmp/crushmap.txt
 ```
 
-Open the text file with any editor. It contains three main sections:
+Open the text file with any editor. It contains four main sections:
 - `# begin crush map` - tunables
 - `# devices` - OSD list
 - `# buckets` - bucket hierarchy
@@ -60,7 +60,7 @@ root default {
 }
 ```
 
-Each item in a bucket has a negative ID for internal reference. Weights represent relative capacity.
+Each bucket has a negative ID for internal reference, while OSDs have non-negative IDs. Weights represent relative capacity.
 
 ## Editing the CRUSH Map
 
