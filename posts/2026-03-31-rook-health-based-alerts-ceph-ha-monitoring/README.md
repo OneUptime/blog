@@ -18,7 +18,6 @@ Ensure monitoring is enabled in the `CephCluster` resource:
 spec:
   monitoring:
     enabled: true
-    rulesNamespaceOverride: rook-ceph
 ```
 
 Verify the metrics endpoint is reachable:
@@ -77,7 +76,7 @@ spec:
       annotations:
         summary: "Ceph monitor quorum is at risk"
 
-    - alert: CephPGUnavailable
+    - alert: CephPGDegraded
       expr: ceph_pg_degraded > 0
       for: 5m
       labels:
@@ -98,20 +97,20 @@ Add storage capacity alerts to prevent OSDs from filling up:
 
 ```yaml
 - alert: CephOSDNearFull
-  expr: ceph_osd_utilization > 75
+  expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 75
   for: 10m
   labels:
     severity: warning
   annotations:
-    summary: "OSD {{ $labels.ceph_daemon }} utilization is {{ $value }}%"
+    summary: "OSD {{ $labels.ceph_daemon }} utilization is {{ $value | humanize }}%"
 
 - alert: CephOSDFull
-  expr: ceph_osd_utilization > 85
+  expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
   for: 5m
   labels:
     severity: critical
   annotations:
-    summary: "OSD {{ $labels.ceph_daemon }} is nearly full at {{ $value }}%"
+    summary: "OSD {{ $labels.ceph_daemon }} is nearly full at {{ $value | humanize }}%"
 ```
 
 ## Verify Alerts in Grafana
