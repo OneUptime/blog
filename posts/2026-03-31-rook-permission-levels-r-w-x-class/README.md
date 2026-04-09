@@ -14,7 +14,7 @@ Ceph OSD capabilities support five distinct permission levels. Understanding wha
 
 | Permission | Meaning |
 |---|---|
-| `r` | Read - can read objects and pool metadata |
+| `r` | Read - can read objects |
 | `w` | Write - can write and delete objects |
 | `x` | Execute - can call object class methods |
 | `class-read` | Can call read-only class methods |
@@ -22,7 +22,7 @@ Ceph OSD capabilities support five distinct permission levels. Understanding wha
 
 ## The r Permission
 
-`allow r` grants read access to objects in a pool. A client with only read access can fetch objects but cannot create, modify, or delete them:
+`allow r` grants read access to objects in a pool. A client with only read permission can fetch objects but cannot create, modify, or delete them:
 
 ```bash
 ceph auth get-or-create client.reader \
