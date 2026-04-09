@@ -33,11 +33,11 @@ Check the autoscaler's recommendation:
 ceph osd pool autoscale-status
 ```
 
-Look at the `NEW_PG_NUM` column to see what the autoscaler recommends:
+Look at the `NEW PG_NUM` column to see what the autoscaler recommends:
 
 ```text
-POOL    SIZE     TARGET_SIZE  RATE  RAW_CAPACITY   RATIO  TARGET_SIZE_RATIO  BIAS  PG_NUM  NEW_PG_NUM
-volumes 1.2 TiB  -            3.0   6.0 TiB        0.2    -                  1.0   64      256
+POOL    SIZE     TARGET SIZE  RATE  RAW CAPACITY   RATIO  TARGET RATIO  EFFECTIVE RATIO  BIAS  PG_NUM  NEW PG_NUM  AUTOSCALE  BULK
+volumes 1.2 TiB              3.0   6.0 TiB        0.2                                   1.0   64      256         warn       False
 ```
 
 ## Fix Steps
@@ -70,7 +70,7 @@ Wait for PG splitting to complete:
 watch ceph -s
 ```
 
-Then update `pgp_num`:
+> **Note:** In Ceph Nautilus (14.x) and later, `pgp_num` is automatically adjusted to match `pg_num`, so the following step is only needed for older releases.
 
 ```bash
 ceph osd pool set volumes pgp_num 256
@@ -103,4 +103,4 @@ PG variance should be close to 1.0 across OSDs.
 
 ## Summary
 
-`POOL_TOO_FEW_PGS` indicates a specific pool has insufficient PGs for the data it currently holds. The easiest fix is enabling the PG autoscaler, which handles PG count management automatically. For manual control, use the autoscaler's `NEW_PG_NUM` recommendation to set the target PG count, and optionally configure `target_size_bytes` or `target_size_ratio` to allow proactive scaling.
+`POOL_TOO_FEW_PGS` indicates a specific pool has insufficient PGs for the data it currently holds. The easiest fix is enabling the PG autoscaler, which handles PG count management automatically. For manual control, use the autoscaler's `NEW PG_NUM` recommendation to set the target PG count, and optionally configure `target_size_bytes` or `target_size_ratio` to allow proactive scaling.
