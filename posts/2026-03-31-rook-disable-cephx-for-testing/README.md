@@ -29,9 +29,9 @@ Disabling authentication requires changing three configuration settings and rest
 spec:
   cephConfig:
     global:
-      auth_cluster_required: none
-      auth_service_required: none
-      auth_client_required: none
+      auth_cluster_required: "none"
+      auth_service_required: "none"
+      auth_client_required: "none"
 ```
 
 Apply and wait for the operator to reconcile:
@@ -71,7 +71,7 @@ After restart, any client should connect without authentication:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph --auth-supported=none -n client.undefined status
+  ceph -n client.undefined --keyring /dev/null status
 ```
 
 ## Security Risks of Disabled CephX
