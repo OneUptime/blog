@@ -135,14 +135,25 @@ All targets should show `UP` state.
 
 ## Step 5 - Authenticate Metrics Endpoint (Optional)
 
-To secure the metrics endpoint with basic authentication, configure MGR via the toolbox:
+The Ceph MGR Prometheus module does not support built-in basic authentication. To secure the metrics endpoint, place a reverse proxy such as nginx with basic auth in front of it. Create an nginx sidecar or proxy service:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph dashboard set-prometheus-credentials --username metrics --password securepass
+# Generate a password file for nginx basic auth
+htpasswd -cb /etc/nginx/htpasswd metrics securepass
 ```
 
-Add authentication to the Prometheus scrape config:
+```nginx
+server {
+    listen 9284;
+    location /metrics {
+        auth_basic "Ceph Metrics";
+        auth_basic_user_file /etc/nginx/htpasswd;
+        proxy_pass http://localhost:9283/metrics;
+    }
+}
+```
+
+Then configure the Prometheus scrape job to authenticate against the proxy:
 
 ```yaml
 scrape_configs:
