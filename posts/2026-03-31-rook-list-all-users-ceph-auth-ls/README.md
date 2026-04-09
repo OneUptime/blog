@@ -105,7 +105,7 @@ ceph auth ls --format json | jq -r '.auth_dump[] | select(.caps.osd != null) | .
 Rook creates several internal users for its CSI drivers and services. Identify them:
 
 ```bash
-ceph auth ls --format json | jq -r '.auth_dump[].entity' | grep rook
+ceph auth ls --format json | jq -r '.auth_dump[].entity' | grep -E "rook|csi"
 ```
 
 Common Rook-created users:
