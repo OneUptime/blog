@@ -47,8 +47,8 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 osd = data.get('osd', {})
-print('op_r:', osd.get('op_r', {}).get('val', 'N/A'), '(read ops)')
-print('op_w:', osd.get('op_w', {}).get('val', 'N/A'), '(write ops)')
+print('op_r:', osd.get('op_r', 'N/A'), '(read ops)')
+print('op_w:', osd.get('op_w', 'N/A'), '(write ops)')
 print('op_r_latency:', osd.get('op_r_latency', {}).get('avgcount', 'N/A'), 'avg count')
 print('op_w_latency:', osd.get('op_w_latency', {}).get('avgcount', 'N/A'), 'avg count')
 "
@@ -63,8 +63,8 @@ data = json.load(sys.stdin)
 rgw = data.get('rgw', {})
 keys = ['get', 'put', 'delete', 'get_b', 'put_b', 'qlen', 'qactive']
 for k in keys:
-    v = rgw.get(k, {})
-    print(f'{k}: {v.get(\"val\", v)}')
+    v = rgw.get(k, 'N/A')
+    print(f'{k}: {v}')
 "
 ```
 
@@ -89,7 +89,7 @@ DAEMON="osd.0"
 
 get_ops() {
     ceph daemon $DAEMON perf dump | python3 -c \
-    "import sys,json; d=json.load(sys.stdin); print(d.get('osd',{}).get('op_w',{}).get('val',0))"
+    "import sys,json; d=json.load(sys.stdin); print(d.get('osd',{}).get('op_w',0))"
 }
 
 START=$(get_ops)
