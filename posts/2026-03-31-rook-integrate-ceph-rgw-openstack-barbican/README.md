@@ -32,14 +32,14 @@ When a client uploads an object with SSE, RGW requests the encryption key from B
 # Enable SSE and configure Barbican as the KMS backend
 ceph config set client.rgw rgw_crypt_require_ssl false  # Only for testing
 ceph config set client.rgw rgw_crypt_s3_kms_backend barbican
-ceph config set client.rgw rgw_crypt_barbican_url "http://barbican-host:9311"
+ceph config set client.rgw rgw_barbican_url "http://barbican-host:9311"
 
 # Configure Keystone credentials for Barbican access
 ceph config set client.rgw rgw_keystone_url "http://keystone-host:5000"
-ceph config set client.rgw rgw_keystone_admin_user rgw-service
-ceph config set client.rgw rgw_keystone_admin_password rgw-password
-ceph config set client.rgw rgw_keystone_admin_domain Default
-ceph config set client.rgw rgw_keystone_admin_project service
+ceph config set client.rgw rgw_keystone_barbican_user rgw-service
+ceph config set client.rgw rgw_keystone_barbican_password rgw-password
+ceph config set client.rgw rgw_keystone_barbican_domain Default
+ceph config set client.rgw rgw_keystone_barbican_project service
 ```
 
 ## Creating a Secret in Barbican
@@ -50,15 +50,16 @@ Create an AES-256 encryption key in Barbican:
 # Get a Keystone token
 TOKEN=$(openstack token issue -f value -c id)
 
-# Create a symmetric key in Barbican
-openstack secret store \
+# Generate a symmetric key in Barbican
+openstack secret order create key \
   --name rgw-encryption-key \
-  --secret-type symmetric \
   --algorithm AES \
   --bit-length 256 \
   --mode CBC
 
-# Output includes the key URI (UUID)
+# Retrieve the secret reference from the completed order
+# openstack secret order get <order-href>
+# The Secret href contains the UUID used as the key ID
 # e.g.: http://barbican-host:9311/v1/secrets/SOME-UUID
 ```
 
@@ -109,12 +110,12 @@ aws --endpoint-url http://rgw-host:80 s3api head-object \
 Rotate the encryption key in Barbican and re-upload objects:
 
 ```bash
-# Create new key version in Barbican
-openstack secret store \
+# Create a new key in Barbican
+openstack secret order create key \
   --name rgw-encryption-key-v2 \
-  --secret-type symmetric \
   --algorithm AES \
-  --bit-length 256
+  --bit-length 256 \
+  --mode CBC
 
 # Re-encrypt existing objects with the new key
 aws --endpoint-url http://rgw-host:80 s3 cp \
