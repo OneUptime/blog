@@ -21,9 +21,8 @@ ceph health detail
 Example output:
 
 ```text
-HEALTH_WARN mons b,c are on the same network segment
-[WRN] MON_NETSPLIT: Detected potential network split between mon groups
-    mon.a (10.0.1.10) and mon.b (10.0.2.10) have no connectivity
+HEALTH_WARN network partition detected between monitor groups
+[WRN] MON_NETSPLIT: mon.a and mon.b may not be able to communicate
 ```
 
 ## Diagnosing Network Connectivity
