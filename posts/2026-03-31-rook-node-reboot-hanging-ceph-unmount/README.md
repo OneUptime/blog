@@ -109,7 +109,7 @@ id  pool        namespace  image                  snap  device
 ssh stuck-node "sudo rbd device unmap /dev/rbd0"
 
 # If unmap fails, force unmap
-ssh stuck-node "sudo rbd device unmap --force /dev/rbd0"
+ssh stuck-node "sudo rbd device unmap -o force /dev/rbd0"
 ```
 
 ## Kernel Module Cleanup
