@@ -15,14 +15,14 @@ A split-brain in Ceph RGW multisite occurs when both zones simultaneously accept
 ## Detecting Split-Brain
 
 ```bash
-# Check if both zones claim to be master
+# Check which zone is master on each site
 # On zone A
-radosgw-admin zone get --rgw-zone=us-east | grep '"is_master"'
+radosgw-admin zonegroup get | grep '"master_zone"'
 
 # On zone B
-radosgw-admin zone get --rgw-zone=us-west | grep '"is_master"'
+radosgw-admin zonegroup get | grep '"master_zone"'
 
-# If both return "is_master": true, you have a split-brain
+# If the master_zone ID differs between sites, you have a split-brain
 ```
 
 ## Understanding the Impact
@@ -30,8 +30,8 @@ radosgw-admin zone get --rgw-zone=us-west | grep '"is_master"'
 During split-brain, the same object key may be written in both zones with different content. RGW uses timestamps and version IDs to determine which version wins during sync.
 
 ```bash
-# Check for conflicting objects
-radosgw-admin log list --log-type=data
+# Check for conflicting data log entries
+radosgw-admin datalog list
 
 # View pending sync operations on each zone
 radosgw-admin data sync status --source-zone=us-east
@@ -48,11 +48,11 @@ The recommended approach is to designate one zone as authoritative and resync th
 systemctl stop ceph-radosgw@rgw.us-west
 
 # Step 2: Identify conflicts - objects written to both zones
-radosgw-admin object stat --bucket=mybucket --object=contested-object \
-    --rgw-zone=us-east
+# Run on zone A (us-east)
+radosgw-admin object stat --bucket=mybucket --object=contested-object
 
-radosgw-admin object stat --bucket=mybucket --object=contested-object \
-    --rgw-zone=us-west
+# Run on zone B (us-west)
+radosgw-admin object stat --bucket=mybucket --object=contested-object
 ```
 
 ## Resolving Metadata Conflicts
@@ -61,11 +61,12 @@ radosgw-admin object stat --bucket=mybucket --object=contested-object \
 # List metadata that differs between zones
 radosgw-admin metadata list bucket
 
-# Sync metadata from authoritative zone to secondary
-radosgw-admin metadata sync run --source-zone=us-east
+# Re-initialize metadata sync from the master zone on the secondary
+radosgw-admin metadata sync init
 
-# Force re-sync a specific bucket from authoritative zone
-radosgw-admin bucket sync run --bucket=mybucket --source-zone=us-east
+# Force re-sync a specific bucket by disabling and re-enabling sync
+radosgw-admin bucket sync disable --bucket=mybucket
+radosgw-admin bucket sync enable --bucket=mybucket
 ```
 
 ## Data Reconciliation
@@ -85,7 +86,7 @@ diff /tmp/us-east-objects.txt /tmp/us-west-objects.txt | grep "^>" > /tmp/split-
 
 # Manually copy unique objects from secondary to a safe location
 while read line; do
-    OBJ=$(echo $line | awk '{print $4}')
+    OBJ=$(echo $line | awk '{print $5}')
     aws s3 cp s3://mybucket/$OBJ s3://recovery-bucket/$OBJ \
         --endpoint-url http://us-west-rgw.example.com
 done < /tmp/split-brain-objects.txt
@@ -94,13 +95,17 @@ done < /tmp/split-brain-objects.txt
 ## Preventing Future Split-Brain
 
 ```bash
-# Use a witness or arbiter zone to prevent dual-master promotion
-# Set a minimum number of zones required to accept writes
-radosgw-admin zone modify --rgw-zone=us-east --tier-config=write-quorum=2
+# Ensure all zones sync from each other
+radosgw-admin zone modify --rgw-zone=us-east --sync-from-all
+radosgw-admin zone modify --rgw-zone=us-west --sync-from-all
+radosgw-admin period update --commit
 
-# Configure a shorter sync period to reduce split-brain window
-ceph config set client.rgw sync_from_all true
-ceph config set client.rgw rgw_zone_sync_period_hours 1
+# After resolution, confirm the correct zone is master and commit
+radosgw-admin zone modify --rgw-zone=us-east --master --default
+radosgw-admin period update --commit
+
+# Monitor sync status regularly to detect divergence early
+radosgw-admin sync status
 ```
 
 ## Post-Resolution Verification
