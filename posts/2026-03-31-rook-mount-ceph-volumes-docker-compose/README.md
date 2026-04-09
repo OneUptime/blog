@@ -15,11 +15,13 @@ Docker Compose orchestrates multi-container applications defined in a YAML file.
 Pre-mount Ceph volumes on the host, then reference them as bind mounts in Compose:
 
 ```bash
-# On the host - mount CephFS or RBD
-mkdir -p /mnt/ceph/postgres-data
+# On the host - mount CephFS
 ceph-fuse /mnt/ceph \
   --name client.admin \
   --conf /etc/ceph/ceph.conf
+
+# Create subdirectories inside CephFS after mounting
+mkdir -p /mnt/ceph/postgres-data /mnt/ceph/redis-data
 ```
 
 Reference in `docker-compose.yml`:
@@ -62,8 +64,8 @@ volumes:
     driver: local
     driver_opts:
       type: ceph
-      device: :/
-      o: "name=admin,secretfile=/etc/ceph/admin.secret,addr=192.168.1.10,noatime"
+      device: "192.168.1.10:/"
+      o: "name=admin,secretfile=/etc/ceph/admin.secret,noatime"
 ```
 
 ## Approach 3: Pre-Create Named Volumes
@@ -146,7 +148,7 @@ Use a systemd service to mount Ceph before Docker Compose starts:
 [Unit]
 Description=Mount CephFS for Docker Compose
 Before=docker.service
-After=network.target
+After=network-online.target
 
 [Service]
 Type=oneshot
