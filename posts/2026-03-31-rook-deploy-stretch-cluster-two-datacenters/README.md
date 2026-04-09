@@ -22,7 +22,7 @@ Before deploying a stretch cluster:
 1. Two Kubernetes worker node groups in separate datacenters with low-latency replication (RTT < 10ms recommended)
 2. One additional node in a third site or cloud for the arbiter monitor
 3. Nodes labeled with their datacenter/zone topology
-4. Rook operator version 1.10 or later
+4. Rook operator version 1.7 or later (stretch cluster support became stable in v1.7)
 
 ## Labeling Nodes
 
@@ -55,7 +55,7 @@ spec:
     allowMultiplePerNode: false
     stretchCluster:
       failureDomainLabel: topology.kubernetes.io/zone
-      subFailureDomain: kubernetes.io/hostname
+      subFailureDomain: host
       zones:
         - name: datacenter-a
           arbiter: false
@@ -100,13 +100,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 ```
 
 ```bash
-ceph osd crush rule create-replicated stretch-rule default datacenter host
+ceph osd crush rule create-replicated stretch-rule default zone
 ceph osd pool create stretch-pool 32 replicated stretch-rule
 ceph osd pool set stretch-pool size 4
 ceph osd pool set stretch-pool min_size 2
 ```
 
-With `size: 4`, two replicas go to each datacenter. With `min_size: 2`, the cluster remains writable if one full datacenter fails.
+With `size: 4`, two replicas go to each datacenter. When stretch mode is active and one datacenter fails, Ceph automatically reduces `min_size` to 1 on the surviving site, allowing writes to continue until the failed site recovers.
 
 ## Verifying Stretch Cluster Health
 
