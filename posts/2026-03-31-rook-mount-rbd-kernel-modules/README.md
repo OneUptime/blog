@@ -15,7 +15,7 @@ Ceph RBD images can be mounted using two methods:
 - **krbd (kernel RBD)** - Uses the `rbd` kernel module, exposes `/dev/rbdX` devices, lower overhead
 - **rbd-nbd** - Userspace NBD driver, more feature-compatible with newer RBD features
 
-In Rook-Ceph, the CSI driver typically uses `rbd-nbd` for broader feature support (encryption, write log cache). However, `krbd` is available when you need direct kernel-level block device access.
+In Rook-Ceph, the CSI driver defaults to `krbd` for mounting RBD volumes. However, `rbd-nbd` can be used as an alternative when features like encryption or write log cache are needed.
 
 ## Step 1 - Load the Kernel Module
 
@@ -92,13 +92,13 @@ mount /dev/rbd0 /mnt/rbd-data
 You can also map RBD images directly through the kernel sysfs interface without the `rbd` CLI:
 
 ```bash
-echo "192.168.1.10 6789 name=admin,secret=<key> replicapool - myimage" \
+echo "192.168.1.10:6789 name=admin,secret=<key> replicapool myimage" \
   | sudo tee /sys/bus/rbd/add
 ```
 
 ## Step 6 - Configure Rook CSI to Use krbd
 
-To configure the Rook CSI driver to prefer `krbd` over `rbd-nbd`, set the mounter option in the StorageClass:
+To explicitly configure the Rook CSI driver to use `krbd`, set the mounter option in the StorageClass:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -110,12 +110,12 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFeatures: layering
-  mounter: kernel
+  mounter: rbd
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 ```
 
-Note: When using `mounter: kernel`, only features supported by the installed kernel version are available. Features like `exclusive-lock` require kernel 4.9+.
+Note: When using `mounter: rbd` (krbd), only features supported by the installed kernel version are available. Features like `exclusive-lock` require kernel 4.9+.
 
 ## Step 7 - Unmap and Clean Up
 
@@ -128,4 +128,4 @@ rbd unmap /dev/rbd0
 
 ## Summary
 
-Mounting RBD images with the Linux kernel module (`krbd`) provides a lightweight way to expose Ceph block devices on compute nodes. Load the `rbd` kernel module, extract Ceph credentials from Rook secrets, and use `rbd map` to create `/dev/rbdX` devices. In Rook-Ceph, specify `mounter: kernel` in the StorageClass to have the CSI driver use `krbd` instead of the default `rbd-nbd`.
+Mounting RBD images with the Linux kernel module (`krbd`) provides a lightweight way to expose Ceph block devices on compute nodes. Load the `rbd` kernel module, extract Ceph credentials from Rook secrets, and use `rbd map` to create `/dev/rbdX` devices. In Rook-Ceph, the CSI driver uses `krbd` by default; you can explicitly set `mounter: rbd` in the StorageClass to ensure this behavior.
