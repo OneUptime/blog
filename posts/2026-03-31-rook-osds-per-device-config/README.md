@@ -10,7 +10,7 @@ Description: Use the osdsPerDevice field in Rook to provision multiple OSDs from
 
 ## Why Run Multiple OSDs Per Device
 
-Ceph OSD processes are single-threaded for their core I/O path. A single NVMe drive capable of 500K IOPS will saturate one OSD process long before exhausting the physical device. Running two or four OSDs per device lets you parallelize workloads and get closer to the device's real throughput ceiling.
+While Ceph OSD processes are multi-threaded (an SSD-backed OSD runs up to 16 op worker threads by default), a single OSD may not fully utilize all the IOPS of a high-performance NVMe device due to internal lock contention and per-PG serialization. A single NVMe drive capable of 500K IOPS can saturate one OSD process long before exhausting the physical device. Running two or four OSDs per device distributes placement groups across independent processes, improving parallelism and getting closer to the device's real throughput ceiling.
 
 This technique is most useful for:
 - Large NVMe drives (4 TB or more)
@@ -42,7 +42,7 @@ spec:
             # inherits global osdsPerDevice: "2"
 ```
 
-Values are strings in the Rook CRD. Ceph will partition each device and assign a separate OSD process to each partition.
+Values are strings in the Rook CRD. When `osdsPerDevice` is greater than 1, Rook uses LVM mode to create logical volumes on each device and assigns a separate OSD process to each logical volume.
 
 ## Choosing the Right Number
 
@@ -69,13 +69,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd tree
 
 For a node with one NVMe and `osdsPerDevice: 4` you should see four separate OSD entries under that host.
 
-Check device partitioning directly:
+Check the LVM layout directly from an OSD pod (note: `ceph-volume` is not available in the toolbox pod):
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph-volume lvm list
+kubectl -n rook-ceph exec -it <osd-pod-name> -- ceph-volume lvm list
 ```
 
-Each partition appears as a separate logical volume with its own OSD ID.
+Each OSD appears as a separate logical volume with its own OSD ID.
 
 ## Combining with metadataDevice
 
@@ -87,7 +87,7 @@ config:
   metadataDevice: "sda"  # SSD for DB/WAL of all 4 NVMe OSDs
 ```
 
-Each of the four OSD partitions gets its own DB and WAL partition on the metadata device. Size the metadata device to accommodate all partitions (roughly 20-30 GiB per OSD).
+Each of the four OSDs gets its own DB logical volume on the metadata device (WAL is co-located with DB by default). Size the metadata device to accommodate all logical volumes (roughly 20-30 GiB per OSD).
 
 ## Impact on CRUSH Map
 
