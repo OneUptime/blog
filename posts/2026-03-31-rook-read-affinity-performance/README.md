@@ -16,16 +16,16 @@ By default, Ceph always reads from the primary OSD for a placement group, regard
 flowchart LR
     subgraph ZoneA["Zone A (Client Location)"]
         Pod["Client Pod"]
-        OSD_A["Primary OSD\n(zone-a)"]
+        OSD_A["Replica OSD\n(zone-a)"]
     end
     subgraph ZoneB["Zone B"]
-        OSD_B["Replica OSD\n(zone-b)"]
+        OSD_B["Primary OSD\n(zone-b)"]
     end
     subgraph ZoneC["Zone C"]
         OSD_C["Replica OSD\n(zone-c)"]
     end
-    Pod -->|"Read affinity: prefer zone-a"| OSD_A
-    Pod -.->|"Without read affinity: may read here"| OSD_B
+    Pod -->|"Read affinity: prefer local replica"| OSD_A
+    Pod -.->|"Without read affinity: reads from primary"| OSD_B
 ```
 
 ## Types of Read Affinity in Rook-Ceph
@@ -114,7 +114,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client rbd_localize_parent_reads true
 ```
 
-For general read balancing across all RBD reads (available since Ceph Pacific/16.2), set the read-from-replica policy:
+For general read balancing across all RBD reads (available since Ceph Octopus/15.2), set the read-from-replica policy. This setting supersedes the snap and parent read options above:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -146,7 +146,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## CephFS Read Affinity
 
-For CephFS, configure MDS read directives to serve reads from the nearest MDS. Set the CephFS client option in the CSI driver config via the StorageClass:
+For CephFS, configure topology-aware provisioning so volumes are placed near consuming pods. CephFS data reads go directly to OSDs (not through MDS), so read affinity is configured via the `readAffinity` section in the CephCluster CR (`spec.csi.readAffinity.enabled: true`). Below is a topology-aware CephFS StorageClass:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -169,7 +169,7 @@ parameters:
 
 ## Verifying Read Locality
 
-Check which OSD is serving reads for a specific PG:
+Check the OSD mapping (up set and acting set) for a specific PG:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
