@@ -32,8 +32,11 @@ Create a Vault policy for RGW:
 path "transit/keys/rgw-s3-key" {
   capabilities = ["read"]
 }
-path "transit/+/rgw-s3-key" {
-  capabilities = ["create", "read", "update"]
+path "transit/datakey/plaintext/rgw-s3-key" {
+  capabilities = ["create", "update"]
+}
+path "transit/decrypt/rgw-s3-key" {
+  capabilities = ["create", "update"]
 }
 ```
 
@@ -83,7 +86,7 @@ spec:
       rgw_crypt_vault_auth: "token"
       rgw_crypt_vault_token_file: "/etc/ceph/vault-token"
       rgw_crypt_vault_secret_engine: "transit"
-      rgw_crypt_vault_prefix: "transit"
+      rgw_crypt_vault_prefix: "/v1/transit"
 ```
 
 Mount the Vault token into the RGW pods using the `rgwConfigFromSecret` feature:
@@ -91,9 +94,9 @@ Mount the Vault token into the RGW pods using the `rgwConfigFromSecret` feature:
 ```yaml
 gateway:
   rgwConfigFromSecret:
-    - secretName: vault-kms-secret
-      dataField: token
-      configField: rgw_crypt_vault_token
+    rgw_crypt_vault_token_file:
+      name: vault-kms-secret
+      key: token
 ```
 
 ## Uploading Encrypted Objects
