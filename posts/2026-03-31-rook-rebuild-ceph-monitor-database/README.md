@@ -53,42 +53,54 @@ On the designated new monitor node:
 mkdir -p /tmp/mon-recovery/
 ```
 
-## Step 4: Rebuild the Monitor Store from OSD Data
+## Step 4: Extract OSD Data into the Recovery Store
 
-Use `ceph-monstore-tool` to extract cluster state from OSD data:
-
-```bash
-ceph-monstore-tool /tmp/mon-recovery store-copy
-```
-
-If OSDs are on separate nodes, collect their info first:
+Use `ceph-objectstore-tool` on each OSD to extract cluster maps into the recovery store:
 
 ```bash
-# On each OSD node, export OSD data
+# On the local node, extract data from each OSD
 for osd_dir in /var/lib/ceph/osd/ceph-*/; do
-  osd_id=$(basename $osd_dir | cut -d- -f2)
-  echo "Found OSD $osd_id at $osd_dir"
+  ceph-objectstore-tool --data-path $osd_dir --no-mon-config \
+    --op update-mon-db --mon-store-path /tmp/mon-recovery
 done
 ```
 
-## Step 5: Rebuild Using ceph-objectstore-tool
+If OSDs are on separate nodes, collect and merge their data:
 
-For BlueStore OSDs, extract the OSD superblock:
+```bash
+ms=/tmp/mon-recovery
+for host in $osd_hosts; do
+  rsync -avz $ms/. user@$host:$ms.remote
+  rm -rf $ms
+  ssh user@$host <<EOF
+    for osd in /var/lib/ceph/osd/ceph-*; do
+      ceph-objectstore-tool --data-path \$osd --no-mon-config \
+        --op update-mon-db --mon-store-path $ms.remote
+    done
+EOF
+  rsync -avz user@$host:$ms.remote/. $ms
+done
+```
+
+## Step 5: Rebuild the Monitor Store
+
+Optionally, inspect an OSD superblock to verify data is accessible:
 
 ```bash
 ceph-objectstore-tool \
   --data-path /var/lib/ceph/osd/ceph-0 \
   --no-mon-config \
-  --op info
+  --op dump-super
 ```
 
-Extract and merge OSD information into a new monitor store:
+Rebuild the monitor store from the collected OSD data:
 
 ```bash
 ceph-monstore-tool /tmp/mon-recovery \
   rebuild \
   -- \
-  --osd-ids 0,1,2,3,4,5,6,7,8
+  --keyring /etc/ceph/ceph.client.admin.keyring \
+  --mon-ids $(hostname)
 ```
 
 ## Step 6: Initialize the New Monitor
@@ -96,8 +108,8 @@ ceph-monstore-tool /tmp/mon-recovery \
 Use the rebuilt store to initialize a monitor:
 
 ```bash
-# Copy rebuilt store to monitor data path
-cp -r /tmp/mon-recovery /var/lib/ceph/mon/ceph-$(hostname)/
+# Copy rebuilt store.db to monitor data path
+cp -r /tmp/mon-recovery/store.db /var/lib/ceph/mon/ceph-$(hostname)/store.db
 
 # Set ownership
 chown -R ceph:ceph /var/lib/ceph/mon/ceph-$(hostname)/
