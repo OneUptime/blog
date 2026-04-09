@@ -40,14 +40,11 @@ kubectl get obc -n my-app
 kubectl describe obc app-bucket -n my-app
 ```
 
-Look for the `Status` and `Conditions` sections:
+Look for the `Status` section:
 
 ```yaml
 Status:
   Phase: Bound
-Conditions:
-  Type    Status   Message
-  Ready   True     Bucket provisioned successfully
 ```
 
 ## Checking the Associated ObjectBucket
