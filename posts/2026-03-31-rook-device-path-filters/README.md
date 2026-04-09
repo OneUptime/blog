@@ -83,6 +83,10 @@ devicePathFilter: "/dev/disk/by-path/.*sas.*"
 devicePathFilter: "/dev/disk/by-id/wwn-0x5000c500.*"
 ```
 
+## Filter Precedence
+
+On a given node, Rook applies filters in the following priority order: explicit `devices` > `deviceFilter` > `devicePathFilter`. If both `deviceFilter` and `devicePathFilter` are specified on the same node, `devicePathFilter` is ignored. Use one or the other per node.
+
 ## Per-Node Filters
 
 Apply different filters on different nodes:
@@ -157,13 +161,16 @@ kubectl -n rook-ceph logs -l app=rook-ceph-osd-prepare --tail=50 | \
 
 ## Escaping Special Regex Characters
 
-Device paths contain characters with special regex meaning. Escape them:
+Device paths contain characters with special regex meaning. Escape them with a backslash:
 
 ```yaml
-# Match exact NVMe path (dot in nvme0n1 must be escaped for strict match)
+# Use anchors for strict matching (^ = start, $ = end)
 deviceFilter: "^nvme[1-9]n1$"
 
-# Match by-id path with dots escaped
+# Escape literal dots in model names or firmware versions
+devicePathFilter: "/dev/disk/by-id/ata-Samsung_SSD_870_EVO_1\\.0TB_.*"
+
+# Unescaped dot matches any character, which may over-match
 devicePathFilter: "/dev/disk/by-id/ata-Samsung_SSD_870_EVO_.*"
 ```
 
