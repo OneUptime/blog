@@ -67,13 +67,13 @@ flags sortbitwise
 
 ## Checking for Side Effects
 
-After setting sortbitwise, Ceph may need to reorder objects in some PGs. Monitor for any PG state changes:
+Setting `sortbitwise` changes the sort algorithm used for object enumeration but does not trigger any data movement or PG reordering. The change takes effect immediately for future operations like scrubbing and listing. Monitor the cluster briefly to confirm the health warning clears:
 
 ```bash
 ceph -w
 ```
 
-Object reordering happens automatically and should complete quickly on modern clusters.
+The warning should clear within a few seconds as monitors pick up the updated OSD map.
 
 ## This Flag on Modern Clusters
 
