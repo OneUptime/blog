@@ -22,15 +22,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     "beast port=80 num_threads=512 request_timeout_ms=120000"
 ```
 
-Enable keepalive and set idle timeout:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_max_idle_connection_num 1024
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_idle_connection_timeout 120
-```
+The Beast frontend supports HTTP/1.1 keep-alive by default and will reuse connections until the client closes them or the `request_timeout_ms` idle timeout expires. No additional keepalive configuration is required beyond the frontend settings above.
 
 ## RADOS Connection Handles
 
@@ -39,9 +31,6 @@ Each RGW worker thread uses RADOS handles to communicate with the OSD layer. Poo
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_num_rados_handles 32
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_rados_pool_autoscale_bias 1.0
 ```
 
 ## Client-Side Connection Pooling
@@ -96,7 +85,6 @@ data:
       timeout connect 5s
       timeout client  300s
       timeout server  300s
-      option http-server-close
       option forwardfor
 
     frontend rgw-frontend
@@ -116,7 +104,7 @@ Check active RADOS connections:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell osd.* injectargs --debug-rados 10
+  ceph tell osd.* config set debug_rados 10
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph status
