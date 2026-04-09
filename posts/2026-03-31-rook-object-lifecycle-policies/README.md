@@ -10,7 +10,7 @@ Description: Configure S3 lifecycle policies on Rook-Ceph object store buckets t
 
 ## How Lifecycle Policies Work in Rook-Ceph RGW
 
-Ceph RGW implements the S3 Lifecycle API, allowing you to define rules that automatically expire objects, remove old object versions, and clean up incomplete multipart uploads on a schedule. The RGW lifecycle processor runs periodically (configurable via `rgw_lc_max_wp_worker`) to apply these policies.
+Ceph RGW implements the S3 Lifecycle API, allowing you to define rules that automatically expire objects, remove old object versions, and clean up incomplete multipart uploads on a schedule. The RGW lifecycle processor runs on a daily cycle by default (configurable via `rgw_lc_debug_interval` for testing) to apply these policies.
 
 ```mermaid
 flowchart TD
