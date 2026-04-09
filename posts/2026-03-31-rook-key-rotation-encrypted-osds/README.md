@@ -10,105 +10,115 @@ Description: Configure automatic and manual encryption key rotation for LUKS-enc
 
 ## Overview
 
-Encryption key rotation is a security best practice that periodically replaces encryption keys to limit the impact of potential key compromise. For Rook-Ceph encrypted OSDs, key rotation involves generating a new LUKS passphrase and updating the KMS without interrupting OSD operation.
+Encryption key rotation is a security best practice that periodically replaces encryption keys to limit the impact of potential key compromise. For Rook-Ceph encrypted OSDs, key rotation involves generating a new LUKS passphrase and updating the KMS without interrupting OSD operation. Rook manages this automatically via per-OSD CronJobs when key rotation is enabled in the CephCluster spec.
+
+> **Note:** Key rotation is currently supported only for PVC-backed encrypted OSDs, and only when the Key Encryption Keys (KEKs) are stored in a Kubernetes Secret or Vault KMS.
 
 ## How Key Rotation Works in Rook
 
-Rook supports key rotation for encrypted OSDs through the `CephCluster` annotation mechanism. When rotation is triggered:
+Rook supports key rotation for encrypted OSDs through the `spec.security.keyRotation` section of the CephCluster CRD. When enabled, Rook creates a Kubernetes CronJob for each encrypted OSD. On each scheduled run, the CronJob performs a dual-slot LUKS key rotation:
 
-1. Rook generates a new encryption key
-2. The new key is stored in the configured KMS
-3. The LUKS key slot on the OSD device is updated
-4. The old key is removed from the KMS
-5. The OSD continues operating without interruption
+1. The current key (K1) is obtained from the KMS
+2. K1 is copied to a second LUKS key slot as a backup
+3. A new key (K2) is generated and added to the first LUKS key slot
+4. K2 is updated in the KMS
+5. K1 is removed from the second LUKS key slot
+6. The OSD continues operating without interruption
 
-## Trigger Key Rotation via Annotation
+This dual-slot approach ensures that the encrypted device can always be unlocked even if the rotation process is interrupted partway through.
 
-Annotate the CephCluster resource to initiate key rotation:
+## Enable Key Rotation in the CephCluster Spec
 
-```bash
-kubectl annotate cephcluster rook-ceph \
-  rook.io/force-osd-encryption-key-rotation="true" \
-  -n rook-ceph --overwrite
+Enable key rotation by adding the `keyRotation` section to the `security` block of your CephCluster resource:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+spec:
+  security:
+    keyRotation:
+      enabled: true
+      schedule: "@weekly"  # cron format, default is @weekly
 ```
 
-Monitor the rotation progress:
+Apply the change:
 
 ```bash
-kubectl describe cephcluster rook-ceph -n rook-ceph | grep -A10 "Key Rotation"
-kubectl get events -n rook-ceph | grep -i "key rotation\|encrypt"
+kubectl apply -f cluster.yaml
 ```
 
-## Verify Key Rotation Completed
-
-Check the OSD logs for successful key update:
+You can also patch an existing cluster:
 
 ```bash
-kubectl logs -n rook-ceph -l app=rook-ceph-osd -c osd | grep -i "key rotation\|luks"
+kubectl patch cephcluster rook-ceph -n rook-ceph --type merge \
+  -p '{"spec":{"security":{"keyRotation":{"enabled":true,"schedule":"@weekly"}}}}'
 ```
 
-From the toolbox, verify the OSD is still healthy after rotation:
+Rook will automatically create a CronJob for each encrypted PVC-backed OSD, named `rook-ceph-osd-key-rotation-<OSD_ID>`.
+
+## Verify Key Rotation Is Active
+
+List the key rotation CronJobs created by Rook:
+
+```bash
+kubectl get cronjobs -n rook-ceph -l app=rook-ceph-osd
+```
+
+Check the most recent job runs:
+
+```bash
+kubectl get jobs -n rook-ceph | grep key-rotation
+```
+
+From the toolbox, verify the OSDs are still healthy after rotation:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph health
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph osd stat
 ```
 
-## Configure Scheduled Key Rotation with a CronJob
+## Customize the Rotation Schedule
 
-For automated periodic rotation, create a Kubernetes CronJob:
+The `schedule` field accepts standard cron expressions. Some examples:
 
 ```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: osd-key-rotation
-  namespace: rook-ceph
-spec:
-  schedule: "0 2 1 * *"  # 2 AM on the 1st of each month
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: rook-ceph-operator
-          containers:
-          - name: key-rotator
-            image: bitnami/kubectl:latest
-            command:
-            - kubectl
-            - annotate
-            - cephcluster
-            - rook-ceph
-            - rook.io/force-osd-encryption-key-rotation=true
-            - --overwrite
-            - -n
-            - rook-ceph
-          restartPolicy: OnFailure
+# Weekly (default)
+schedule: "@weekly"
+
+# Monthly on the 1st at 2 AM
+schedule: "0 2 1 * *"
+
+# Daily at midnight
+schedule: "@daily"
 ```
 
-## Monitor Key Rotation in Prometheus
+After updating the schedule in the CephCluster spec, Rook will reconcile and update the existing CronJobs to match the new schedule.
 
-Track key rotation events via Ceph metrics:
+## Monitor Key Rotation
+
+Check CronJob status to ensure rotations are completing on schedule:
 
 ```bash
-kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
-curl -s 'http://localhost:9090/api/v1/query?query=ceph_health_status' | jq .
+kubectl get cronjobs -n rook-ceph | grep key-rotation
 ```
 
-Create an alert if key rotation fails to complete within an expected time:
+Inspect a failed job for troubleshooting:
 
-```yaml
-- alert: CephOSDKeyRotationFailed
-  expr: |
-    kube_cephcluster_annotations{annotation_rook_io_force_osd_encryption_key_rotation="true"}
-    and time() - kube_cephcluster_created > 3600
-  for: 1h
-  labels:
-    severity: warning
-  annotations:
-    summary: "OSD encryption key rotation may be stalled"
+```bash
+kubectl get jobs -n rook-ceph | grep key-rotation
+kubectl logs -n rook-ceph job/<job-name>
+```
+
+Verify overall cluster health via the toolbox:
+
+```bash
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph health detail
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph osd stat
 ```
 
 ## Summary
 
-Key rotation for Rook-Ceph encrypted OSDs is triggered via a CephCluster annotation and executes without OSD downtime. For compliance environments requiring periodic rotation, a Kubernetes CronJob automates the process on a schedule. Monitoring via Prometheus alerts ensures rotation failures are caught promptly before they become compliance gaps.
+Key rotation for Rook-Ceph encrypted OSDs is configured in the CephCluster spec under `spec.security.keyRotation` and executes without OSD downtime. Rook automatically creates per-OSD CronJobs that perform a safe dual-slot LUKS key rotation on the configured schedule. Monitoring CronJob status and cluster health ensures rotation failures are caught promptly before they become compliance gaps.
