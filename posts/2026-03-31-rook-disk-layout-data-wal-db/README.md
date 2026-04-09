@@ -62,16 +62,16 @@ spec:
 ```bash
 # Per OSD on an HDD:
 # WAL: 512 MB to 2 GB (usually 1 GB is plenty)
-# DB: 64 GB to 4% of OSD data size (whichever is larger)
+# DB: roughly 8 GB per TB of HDD capacity (minimum 32 GB)
+#     Ceph upstream recommends up to 4%, but ~1% is sufficient for most workloads
 
 # For 12 TB HDD:
-# DB = max(64 GB, 12 TB * 0.04) = max(64 GB, 491 GB)
-# Practical DB size: 64-100 GB per HDD OSD
+# DB = 12 * 8 GB = 96 GB per OSD (see sizing table below)
 
-# For 12 HDDs sharing one NVMe (1 TB):
+# For 12 HDDs sharing one NVMe (2 TB):
 # WAL per OSD: 1 GB x 12 = 12 GB
-# DB per OSD: 64 GB x 12 = 768 GB
-# Total NVMe needed: 780 GB -> 1 TB NVMe handles 12 HDDs
+# DB per OSD: 96 GB x 12 = 1152 GB
+# Total NVMe needed: ~1164 GB -> 2 TB NVMe handles 12 HDDs
 ```
 
 ## Step 2 - Configure Rook with Explicit Partitions
@@ -91,7 +91,7 @@ spec:
         config:
           osdsPerDevice: "1"
           walSizeMB: "1024"
-          dbSizeMB: "65536"
+          databaseSizeMB: "98304"
 ```
 
 ## Step 3 - Verify OSD Placement
@@ -106,10 +106,10 @@ Output example:
 ```json
 {
   "osd_objectstore": "bluestore",
-  "bluestore_bdev_devices": "sda",
+  "bluestore_bdev_dev_node": "/dev/sda",
   "bluestore_bdev_type": "hdd",
   "bluefs_dedicated_db": "1",
-  "bluefs_db_dev": "nvme0n1p2"
+  "bluefs_db_dev_node": "/dev/nvme0n1p2"
 }
 ```
 
@@ -117,7 +117,7 @@ Output example:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 bluestore bluefs stats
+  ceph tell osd.0 bluefs stats
 ```
 
 Key metrics to watch:
@@ -130,7 +130,7 @@ When DB fills up, data spills to the HDD which hurts performance:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 perf dump | grep bluefs
+  ceph tell osd.0 perf dump | grep bluefs
 ```
 
 Look for `db_used_bytes` approaching `db_total_bytes`.
