@@ -8,7 +8,7 @@ Description: Use Ceph health check muting to suppress known non-urgent warnings 
 
 ---
 
-Ceph generates health warnings when it detects conditions that deviate from ideal cluster state. During maintenance windows or when a known issue is being resolved, these warnings can create noise. Ceph 16.x+ provides a health check muting system to suppress specific warnings temporarily.
+Ceph generates health warnings when it detects conditions that deviate from ideal cluster state. During maintenance windows or when a known issue is being resolved, these warnings can create noise. Ceph 15.x+ (Octopus and later) provides a health check muting system to suppress specific warnings temporarily.
 
 ## Why Mute Health Checks
 
@@ -96,8 +96,7 @@ OSD_DOWN             - One or more OSDs are down
 OSD_NEARFULL         - An OSD is approaching full
 POOL_NO_REDUNDANCY   - A pool has insufficient replicas
 MON_CLOCK_SKEW       - Monitor clock is out of sync
-noscrub              - Scrubbing is disabled
-nodeep-scrub         - Deep scrubbing is disabled
+OSDMAP_FLAGS         - OSD map flags like noscrub or nodeep-scrub are set
 PG_DEGRADED          - Placement groups are under-replicated
 ```
 
