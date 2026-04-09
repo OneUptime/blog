@@ -105,15 +105,21 @@ ceph config set global mon_max_pg_per_osd 300
 
 ### Option 5 - Add More OSDs
 
-Adding OSDs distributes PGs across more nodes, reducing the per-OSD count:
+Adding OSDs distributes PGs across more devices, reducing the per-OSD count. First add new disks or nodes, then update the CephCluster resource to include the new storage:
 
 ```bash
-kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator
+kubectl -n rook-ceph edit cephcluster rook-ceph
+```
+
+After saving the updated spec, the Rook operator will detect the change and create new OSD pods. Monitor progress:
+
+```bash
+kubectl -n rook-ceph get pods -l app=rook-ceph-osd -w
 ```
 
 ## Memory Impact
 
-Each PG consumes roughly 10 MB of OSD memory. With 300 PGs per OSD and 20 OSDs, that is 3 GB of memory just for PG overhead. Calculate your OSD memory requirements:
+Each PG consumes roughly 10 MB of OSD memory. With 300 PGs per OSD, that is 3 GB of memory per OSD just for PG overhead. Calculate your OSD memory requirements:
 
 ```bash
 ceph tell osd.* heap stats
