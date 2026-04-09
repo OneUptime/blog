@@ -112,11 +112,7 @@ chmod 755 /var/lib/rook
 If the cluster appears stuck due to a transient error, trigger a reconciliation:
 
 ```bash
-# Add an annotation to trigger reconciliation
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/do-not-reconcile- --overwrite
-
-# Or restart the operator
+# Restart the operator to trigger reconciliation
 kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator
 ```
 
@@ -132,8 +128,10 @@ kubectl -n rook-ceph delete cephcluster rook-ceph
 # On each node:
 rm -rf /var/lib/rook
 
-# Wipe OSD devices
-wipefs --all /dev/sdb
+# Wipe OSD devices (on each node)
+DISK="/dev/sdb"
+sgdisk --zap-all $DISK
+dd if=/dev/zero of=$DISK bs=1M count=100 oflag=direct,dsync
 
 # Reapply the CephCluster manifest
 kubectl apply -f cluster.yaml
