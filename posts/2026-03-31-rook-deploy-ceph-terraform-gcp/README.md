@@ -104,6 +104,10 @@ resource "google_container_node_pool" "ceph_storage_nodes" {
     disk_size_gb = 100
     disk_type    = "pd-ssd"
 
+    local_nvme_ssd_block_config {
+      local_ssd_count = var.osds_per_node
+    }
+
     labels = {
       role = "ceph-storage"
     }
@@ -121,26 +125,9 @@ resource "google_container_node_pool" "ceph_storage_nodes" {
 }
 ```
 
-## Persistent Disk Provisioning for OSDs
+## Local NVMe SSD Storage for OSDs
 
-```hcl
-resource "google_compute_disk" "ceph_osd_disks" {
-  count = var.osd_node_count * var.osds_per_node
-
-  name  = "ceph-osd-${count.index}"
-  type  = "pd-ssd"
-  zone  = "${var.region}-a"
-  size  = var.osd_disk_size_gb
-}
-
-resource "google_compute_attached_disk" "osd_attachments" {
-  count = var.osd_node_count * var.osds_per_node
-
-  disk     = google_compute_disk.ceph_osd_disks[count.index].id
-  instance = google_compute_instance.storage_nodes[floor(count.index / var.osds_per_node)].name
-  zone     = "${var.region}-a"
-}
-```
+On GKE, OSD storage is provisioned as local NVMe SSDs directly in the node pool configuration (via `local_nvme_ssd_block_config` in the storage node pool above). Each local NVMe SSD provides 375 GB of raw block storage. Rook-Ceph automatically discovers these devices and uses them for OSD provisioning without needing separate disk resources.
 
 ## Rook-Ceph Helm Deployment
 
@@ -191,7 +178,6 @@ variable "region" { type = string; default = "us-central1" }
 variable "cluster_name" { type = string; default = "rook-ceph-gcp" }
 variable "osd_node_count" { type = number; default = 3 }
 variable "osds_per_node" { type = number; default = 2 }
-variable "osd_disk_size_gb" { type = number; default = 500 }
 
 # outputs.tf
 output "kubeconfig_command" {
