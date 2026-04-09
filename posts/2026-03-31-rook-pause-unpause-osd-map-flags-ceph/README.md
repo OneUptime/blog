@@ -26,10 +26,10 @@ All clients receive the new OSD map epoch and freeze their I/O. Confirm:
 
 ```bash
 ceph osd dump | grep flags
-# flags pause
+# flags pauserd,pausewr
 
 ceph status
-# HEALTH_WARN: paused flag(s) set
+# HEALTH_WARN pauserd,pausewr flag(s) set
 ```
 
 ## Unsetting pause (unpause)
@@ -84,11 +84,11 @@ ceph osd unset pause
 While paused, you can check that clients are truly blocked:
 
 ```bash
-ceph osd stat
-# Should show 0 in-progress ops
+# Check cluster I/O rates - io section should show no client reads/writes
+ceph status
 
-# Check client sessions
-ceph tell osd.* status | grep "in_progress"
+# Check for in-flight operations on OSDs
+ceph tell osd.* dump_ops_in_flight
 ```
 
 ## Using pause in Scripts
@@ -104,4 +104,4 @@ echo "Cluster resumed."
 
 ## Summary
 
-The `pause` and `unpause` operations provide an immediate, cluster-wide I/O freeze that is useful for emergency interventions and atomic configuration changes. Because it directly impacts application availability, it should be used only when the situation requires a complete I/O halt, and it should be unpause immediately once the required operation is complete.
+The `pause` and `unpause` operations provide an immediate, cluster-wide I/O freeze that is useful for emergency interventions and atomic configuration changes. Because it directly impacts application availability, it should be used only when the situation requires a complete I/O halt, and it should be unpaused immediately once the required operation is complete.
