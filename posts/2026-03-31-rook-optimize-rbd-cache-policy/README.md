@@ -67,9 +67,18 @@ rbd cache max dirty age = 2.0
 rbd cache writethrough until flush = false
 ```
 
-## Configuring in Rook StorageClass
+## Configuring in a Rook / Kubernetes Environment
 
-Set RBD cache parameters in the StorageClass for Kubernetes workloads:
+In Rook-managed Kubernetes clusters, RBD cache parameters are configured at the Ceph cluster level, not in the StorageClass or CSI ConfigMap. Use the `ceph config set` commands shown earlier from the Rook toolbox pod:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client rbd_cache_size 67108864
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client rbd_cache_max_dirty 50331648
+```
+
+A standard Rook RBD StorageClass for provisioning volumes looks like this:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -92,27 +101,6 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
-Pass librbd options via the CSI configmap:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ceph-csi-config
-  namespace: rook-ceph
-data:
-  config.json: |
-    [
-      {
-        "clusterID": "rook-ceph",
-        "monitors": ["mon1:6789","mon2:6789","mon3:6789"],
-        "rbd": {
-          "radosNamespace": ""
-        }
-      }
-    ]
-```
-
 ## Disabling Cache for Latency-Sensitive Workloads
 
 Some workloads (databases with their own buffer pools) benefit from bypassing RBD cache entirely:
@@ -121,7 +109,7 @@ Some workloads (databases with their own buffer pools) benefit from bypassing RB
 ceph config set client rbd_cache false
 ```
 
-Or disable per-image using image features:
+Or disable per-image using a configuration override:
 
 ```bash
 rbd config image set <pool>/<image> rbd_cache false
