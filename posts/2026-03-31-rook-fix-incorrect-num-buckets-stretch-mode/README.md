@@ -87,24 +87,26 @@ Move an OSD to the correct bucket if misplaced:
 ceph osd crush move osd.5 datacenter=datacenter-A host=node-a1
 ```
 
-### Step 4 - Re-enable Stretch Mode
+### Step 4 - Verify Stretch Mode Configuration
 
-If stretch mode was partially configured, disable and re-enable it cleanly:
-
-```bash
-ceph mon disable_stretch_mode
-```
-
-Then re-enable with correct parameters:
+Stretch mode is irreversible once enabled and cannot be disabled. If stretch mode has not yet been enabled and you are setting it up for the first time, ensure the CRUSH map is correct first, then enable it with the correct parameters:
 
 ```bash
-ceph mon enable_stretch_mode tiebreaker-mon datacenter
+ceph mon enable_stretch_mode <tiebreaker-mon> <stretch_crush_rule> datacenter
 ```
+
+For example:
+
+```bash
+ceph mon enable_stretch_mode mon.e stretch_rule datacenter
+```
+
+If stretch mode is already enabled, fixing the CRUSH map (Steps 1–3) should resolve the warning without needing to re-enable it.
 
 ### Step 5 - Verify Stretch Mode Status
 
 ```bash
-ceph mon stat | grep stretch
+ceph mon dump | grep stretch
 ceph osd dump | grep -E "stretch|tiebreaker"
 ```
 
