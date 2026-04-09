@@ -43,11 +43,12 @@ Via API:
 ```bash
 GRAFANA_URL="http://admin:admin@localhost:3000"
 
-curl -s "https://grafana.com/api/dashboards/5336/revisions/latest/download" | \
-  curl -X POST \
-    -H "Content-Type: application/json" \
-    -d @- \
-    "${GRAFANA_URL}/api/dashboards/import"
+DASHBOARD_JSON=$(curl -s "https://grafana.com/api/dashboards/5336/revisions/latest/download")
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"dashboard\": ${DASHBOARD_JSON}, \"overwrite\": true, \"inputs\": [], \"folderId\": 0}" \
+  "${GRAFANA_URL}/api/dashboards/import"
 ```
 
 ## Step 2: Configure OSD Selection Variable
@@ -93,11 +94,11 @@ Extend the dashboard with a topology view:
 // Table panel showing OSD tree
 Query:
   topk(100, ceph_osd_apply_latency_ms) * on(ceph_daemon)
-  group_left(host, device_class) ceph_osd_metadata
+  group_left(hostname, device_class) ceph_osd_metadata
 
 Columns:
   - ceph_daemon: "OSD"
-  - host: "Host"
+  - hostname: "Host"
   - device_class: "Class"
   - Value: "Apply Latency (ms)"
 ```
