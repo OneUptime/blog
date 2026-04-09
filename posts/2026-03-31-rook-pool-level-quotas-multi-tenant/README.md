@@ -59,7 +59,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## What Happens When a Quota is Reached
 
-When a pool reaches its quota, further write operations return a `EDQUOT` (disk quota exceeded) error. Applications receive a "no space left on device" error. The pool enters a read-only state for that pool's capacity, but other pools are unaffected.
+When a pool reaches its quota, further write operations are blocked and return a `EDQUOT` (disk quota exceeded) error. Reads and deletes continue to work normally. Other pools are unaffected.
 
 Check quota exhaustion in cluster health:
 
@@ -92,9 +92,22 @@ spec:
         - tenant-a-pool
         - max_bytes
         - "1099511627776"
-        env:
-        - name: ROOK_CEPH_USERNAME
-          value: client.admin
+        volumeMounts:
+        - name: ceph-config
+          mountPath: /etc/ceph/ceph.conf
+          subPath: ceph.conf
+          readOnly: true
+        - name: ceph-admin-keyring
+          mountPath: /etc/ceph/keyring
+          subPath: keyring
+          readOnly: true
+      volumes:
+      - name: ceph-config
+        configMap:
+          name: rook-ceph-config
+      - name: ceph-admin-keyring
+        secret:
+          secretName: rook-ceph-admin-keyring
       restartPolicy: OnFailure
 ```
 
@@ -112,7 +125,7 @@ Set an alert when a tenant pool reaches 80% of its quota:
 ```yaml
 - alert: CephPoolQuotaNearLimit
   expr: |
-    ceph_pool_bytes_used / ceph_pool_quota_bytes > 0.8
+    (ceph_pool_bytes_used / ceph_pool_quota_bytes > 0.8) and ceph_pool_quota_bytes > 0
   for: 10m
   labels:
     severity: warning
