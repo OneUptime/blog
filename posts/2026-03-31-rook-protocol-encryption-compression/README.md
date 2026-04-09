@@ -12,12 +12,11 @@ Ceph Messenger v2 (msgr2) introduced support for protocol-level encryption and c
 
 ## Protocol Security Modes
 
-Ceph msgr2 supports three security modes:
+Ceph msgr2 supports two security modes:
 
 | Mode | Description |
 |---|---|
-| `none` | No protection (legacy compatibility) |
-| `crc` | CRC32 integrity checking only, no encryption |
+| `crc` | CRC32C integrity checking only, no encryption |
 | `secure` | AES-128-GCM encryption with integrity |
 
 ## Check Current Encryption Mode
@@ -79,32 +78,34 @@ data:
 
 ## Enable Protocol Compression
 
-Msgr2 supports optional message compression to reduce network bandwidth:
+Msgr2 supports optional on-wire compression for OSD-to-OSD communication to reduce network bandwidth:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
-  # Enable compression for cluster traffic
-  ceph config set global ms_compress_on_wire true
+  # Enable compression for OSD-to-OSD traffic
+  ceph config set osd ms_osd_compress_mode force
 
-  # Set compression algorithm (lz4, snappy, zlib, zstd)
-  ceph config set global ms_osd_compress_mode force
-  ceph config set global ms_osd_compress_min_size 512
+  # Set compression algorithm (snappy, zlib, zstd)
+  ceph config set osd ms_osd_compression_algorithm snappy
+
+  # Set minimum message size eligible for compression (default 1024)
+  ceph config set osd ms_osd_compress_min_size 1024
+
+  # Allow compression when encryption (secure mode) is also enabled
+  ceph config set osd ms_compress_secure true
 "
 ```
 
 ## Verify Connection Security at Runtime
 
-Using the admin socket to check active connection modes:
+Use `ceph tell` to query connection details from the tools pod:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 dump_connections | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for conn in data.get('connections', []):
-    print(f\"Peer: {conn.get('peer')}, Mode: {conn.get('policy', {}).get('features', 'unknown')}\")
-"
+  ceph tell osd.0 messenger dump
 ```
+
+This returns a JSON structure under the `messenger` key showing all active connections, including the negotiated protocol mode (`con_mode`) and crypto details for each peer.
 
 ## Check Msgr2 Binding Status
 
