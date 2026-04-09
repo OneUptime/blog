@@ -100,15 +100,15 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 For RBD, delete old snapshots:
 
 ```bash
-rbd snap ls <pool>/<image>
-rbd snap purge <pool>/<image>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd snap ls <pool>/<image>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd snap purge <pool>/<image>
 ```
 
 For RGW:
 
 ```bash
-radosgw-admin bucket stats --bucket=<bucket>
-radosgw-admin bucket rm --bucket=<bucket> --purge-objects
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin bucket stats --bucket=<bucket>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin bucket rm --bucket=<bucket> --purge-objects
 ```
 
 ## Step 6 - Add OSDs to Increase Capacity
