@@ -54,7 +54,7 @@ config:
   databaseSizeMB: "20480"    # 20 GiB per OSD on the metadata device
 ```
 
-Ceph's default formula allocates roughly 4% of the data device size for the DB. For a 4 TB HDD that is 160 GiB, which is generous. Setting an explicit value caps the partition and lets multiple HDDs share one SSD more efficiently.
+Ceph documentation recommends allocating between 1% and 4% of the data device size for the DB, depending on workload — closer to 1-2% for RBD and up to 4% for RGW. Without an explicit `databaseSizeMB`, ceph-volume divides the available space on the metadata device equally among the OSDs sharing it. Setting an explicit value caps the partition size per OSD and lets multiple HDDs share one SSD more predictably.
 
 ## Sizing the Metadata Device
 
@@ -69,7 +69,7 @@ Recommended: 30-50 GiB SSD capacity per set of 3 HDDs for headroom
 
 ## Applying at the StorageClassDeviceSet Level
 
-For PVC-based clusters, specify a separate `metadataPVCTemplate` inside the device set:
+For PVC-based clusters, add a volume claim template named `metadata` inside the device set:
 
 ```yaml
 spec:
