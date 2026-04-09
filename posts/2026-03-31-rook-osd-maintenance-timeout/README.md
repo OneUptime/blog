@@ -28,10 +28,9 @@ spec:
   disruptionManagement:
     managePodBudgets: true
     osdMaintenanceTimeout: 30
-    pgHealthCheckTimeout: 0
 ```
 
-The value is in minutes. The default is 30 minutes, which means Ceph waits half an hour before marking a down OSD as out and starting backfill.
+The value is in minutes. The default is 30 minutes, which means the Rook operator holds the `noout` flag on the affected failure domain for half an hour during a node drain before allowing Ceph to mark the OSD as out.
 
 ## Choosing the Right Timeout
 
@@ -50,9 +49,9 @@ Setting `osdMaintenanceTimeout: 0` tells Ceph to begin rebalancing immediately w
 
 ## How This Interacts with Ceph Internals
 
-Rook's `osdMaintenanceTimeout` maps to the Ceph `mon_osd_down_out_interval` configuration parameter. When an OSD is down, Ceph monitors track the time. After the interval elapses, the monitor marks the OSD `out`, triggering PG remapping and backfill.
+Rook's `osdMaintenanceTimeout` does not directly set a Ceph configuration parameter. Instead, when a node is drained, the Rook operator sets the `noout` flag on the affected CRUSH failure domain and holds it for the duration of the timeout. While `noout` is active, Ceph will not mark the affected OSDs as `out`, preventing rebalancing. Once the timeout elapses and Rook removes the `noout` flag, Ceph's native `mon_osd_down_out_interval` (default 600 seconds) governs when the OSD transitions from `down` to `out` and triggers PG remapping and backfill.
 
-You can verify the current value set in the cluster:
+You can verify the current `mon_osd_down_out_interval` value set in the cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
