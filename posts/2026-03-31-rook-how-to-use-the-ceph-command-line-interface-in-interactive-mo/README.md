@@ -51,7 +51,6 @@ ceph> quit
 ceph> status
 ceph> health
 ceph> health detail
-ceph> -s
 ```
 
 ### OSD Operations
@@ -121,18 +120,11 @@ health detail
 EOF
 ```
 
-Or use process substitution:
+Or pipe a list of commands:
 
 ```bash
-# Create a monitoring snapshot
-{
-  echo "=== Cluster Status ==="
-  echo "status"
-  echo "=== OSD Status ==="
-  echo "osd stat"
-  echo "=== PG Status ==="
-  echo "pg stat"
-} | ceph
+# Run multiple commands in one session
+printf 'status\nosd stat\npg stat\n' | ceph
 ```
 
 ## Running in Rook/Kubernetes
@@ -158,7 +150,7 @@ ceph> quit
 
 ## Watching Real-Time Events
 
-Use the `--watch` flag (or `-W`) with `ceph -w` outside interactive mode, or use `log last` inside:
+Use the `--watch` flag (or `-w`) with `ceph -w` outside interactive mode, or use `log last` inside:
 
 ```text
 ceph> log last 20
