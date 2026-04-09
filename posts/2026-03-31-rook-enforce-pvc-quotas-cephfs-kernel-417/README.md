@@ -76,11 +76,11 @@ Once the PVC is bound, verify the quota was set on the corresponding CephFS subv
 ```bash
 # Find the subvolume path
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs subvolume getpath myfs <subvolume-name> csi
+  ceph fs subvolume getpath myfs <subvolume-name> --group_name=csi
 
 # Check the quota attribute on that path
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs subvolume info myfs <subvolume-name> csi | grep bytes_quota
+  ceph fs subvolume info myfs <subvolume-name> --group_name=csi | grep bytes_quota
 ```
 
 You should see:
@@ -97,7 +97,7 @@ Mount the PVC and attempt to write beyond the limit:
 
 ```bash
 kubectl run quota-test --image=busybox --restart=Never \
-  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"quota-test-pvc"}}],"containers":[{"name":"t","image":"busybox","command":["dd","if=/dev/zero","of=/data/test","bs=1M","count=6000"],"volumeMounts":[{"mountPath":"/data","name":"data"}]}]}}'
+  --overrides='{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"quota-test-pvc"}}],"containers":[{"name":"quota-test","image":"busybox","command":["dd","if=/dev/zero","of=/data/test","bs=1M","count=6000"],"volumeMounts":[{"mountPath":"/data","name":"data"}]}]}}'
 
 kubectl logs quota-test
 ```
@@ -116,7 +116,7 @@ Verify the quota update:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs subvolume info myfs <subvolume-name> csi | grep bytes_quota
+  ceph fs subvolume info myfs <subvolume-name> --group_name=csi | grep bytes_quota
 ```
 
 ## Summary
