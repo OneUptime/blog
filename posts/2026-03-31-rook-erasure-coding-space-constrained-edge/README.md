@@ -48,12 +48,10 @@ metadata:
   name: ec-edge-pool
   namespace: rook-ceph
 spec:
+  failureDomain: host
   erasureCoded:
     dataChunks: 2
     codingChunks: 1
-  parameters:
-    pg_num: "32"
-    crush_rule: edge-ec-profile
 ```
 
 ## Using EC Pool with RGW Object Storage
@@ -81,21 +79,21 @@ spec:
 
 ## EC Pool Limitations
 
-Erasure-coded pools do not support:
-- RBD block devices (use a replicated cache pool with EC data pool instead)
-- Partial overwrites without a cache pool
-- Some RADOS operations that require full object access
+Erasure-coded pools have some constraints:
+- RBD metadata (headers, omap data) must be stored in a separate replicated pool
+- Some RADOS operations that require full object access are not supported
 
-For RBD with EC, use a tiered approach:
+Since Ceph Luminous (12.2.x), EC pools support RBD directly via `allow_ec_overwrites` (requires BlueStore OSDs):
 
 ```bash
-# Create a replicated cache pool
-ceph osd pool create ec-cache 16 replicated
+# Enable overwrites on the EC pool
+ceph osd pool set ec-edge-data allow_ec_overwrites true
 
-# Set cache tier
-ceph osd tier add ec-edge-data ec-cache
-ceph osd tier cache-mode ec-cache writeback
-ceph osd tier set-overlay ec-edge-data ec-cache
+# Create a replicated pool for RBD metadata
+ceph osd pool create ec-edge-meta 16 replicated
+
+# Create an RBD image using the EC pool for data
+rbd create --size 10G --data-pool ec-edge-data ec-edge-meta/my-image
 ```
 
 ## Monitoring Space Efficiency
@@ -113,4 +111,4 @@ ceph df | awk '/ec-edge-pool/{print "Stored:", $3, "Raw:", $4, "Overhead:", $4/$
 
 ## Summary
 
-Erasure coding with a k=2, m=1 profile is the optimal configuration for space-constrained edge deployments using 3 nodes. It reduces raw storage overhead from 3x to 1.5x while tolerating one OSD failure. Combining EC data pools with RGW for object storage and using tiered cache pools for RBD allows edge sites to maximize every GB of available disk capacity.
+Erasure coding with a k=2, m=1 profile is the optimal configuration for space-constrained edge deployments using 3 nodes. It reduces raw storage overhead from 3x to 1.5x while tolerating one OSD failure. Combining EC data pools with RGW for object storage and using `allow_ec_overwrites` with a replicated metadata pool for RBD allows edge sites to maximize every GB of available disk capacity.
