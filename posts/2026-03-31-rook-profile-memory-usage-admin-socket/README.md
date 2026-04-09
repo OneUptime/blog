@@ -30,7 +30,7 @@ Ceph uses named memory pools for major subsystems:
 ceph daemon osd.0 dump_mempools | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-pools = data.get('mempool', {})
+pools = data.get('mempool', {}).get('by_pool', {})
 total_bytes = 0
 for pool_name, stats in sorted(pools.items()):
     bytes_used = stats.get('bytes', 0)
@@ -74,7 +74,7 @@ ceph daemon osd.0 heap dump
 # Get heap stats
 ceph daemon osd.0 heap stats
 
-# Trigger garbage collection
+# Release free memory back to the OS
 ceph daemon osd.0 heap release
 ```
 
