@@ -89,9 +89,10 @@ systemctl restart ceph-mon@<hostname>
 journalctl -u ceph-mon@<hostname> -n 100
 ```
 
-If the monitor cannot rejoin because its data is stale:
+If the monitor cannot rejoin because its data is stale, first extract the current monmap from a healthy monitor, then reinitialize:
 
 ```bash
+ceph mon getmap -o /tmp/monmap
 ceph-mon --mkfs -i <mon-id> --monmap /tmp/monmap --keyring /etc/ceph/ceph.mon.keyring
 systemctl restart ceph-mon@<mon-id>
 ```
@@ -122,4 +123,4 @@ Prevent silent failures by configuring a Prometheus alert:
 
 ## Summary
 
-`MON_DOWN` means one or more Ceph monitors have left the quorum. In Rook environments, inspect pod status and PVC health to identify the root cause. Restart or reprovisioned affected pods and verify quorum with `ceph quorum_status`. On bare metal, restart the daemon or reinitialize the monitor data. Always alert on monitor loss to respond before quorum is permanently lost.
+`MON_DOWN` means one or more Ceph monitors have left the quorum. In Rook environments, inspect pod status and PVC health to identify the root cause. Restart or reprovision affected pods and verify quorum with `ceph quorum_status`. On bare metal, restart the daemon or reinitialize the monitor data. Always alert on monitor loss to respond before quorum is permanently lost.
