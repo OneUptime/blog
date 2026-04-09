@@ -180,7 +180,7 @@ After scrubbing, inconsistent PGs indicate data corruption:
 ceph health detail | grep inconsistent
 
 # List inconsistent objects in a PG
-ceph pg <pgid> list_missing
+rados list-inconsistent-obj <pgid>
 
 # Trigger repair
 ceph pg repair <pgid>
@@ -202,7 +202,7 @@ ceph crash info <crash-id>
 ceph crash archive <crash-id>
 
 # View crash logs directly
-ls /var/lib/ceph/osd/<osd-dir>/crash/
+ls /var/lib/ceph/crash/
 ```
 
 ## OSD Troubleshooting in Rook/Kubernetes
