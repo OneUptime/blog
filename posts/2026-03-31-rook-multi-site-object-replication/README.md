@@ -14,7 +14,7 @@ Ceph RadosGW (RGW) supports multi-site replication through a hierarchy of realms
 
 ```mermaid
 flowchart TB
-    subgraph Realm["Realm: global"]
+    subgraph Realm["Realm: us-realm"]
         subgraph ZG["Zonegroup: us"]
             Z1["Zone: us-east (Master)"]
             Z2["Zone: us-west (Secondary)"]
@@ -108,34 +108,29 @@ spec:
 kubectl apply -f objectstore-master.yaml
 ```
 
-## Step 5 - Export the Realm Token
+## Step 5 - Export Realm Credentials
 
-Pull the realm token so the secondary cluster can join:
+On the master cluster, create a system user for realm sync operations and retrieve its credentials:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin realm pull --url=http://us-east-store-rgw.rook-ceph.svc:80 \
-  --access-key=<master-access-key> \
-  --secret=<master-secret-key>
+  radosgw-admin user create \
+    --uid=realm-sync \
+    --display-name="Realm Sync User" \
+    --system
+
+# Retrieve the access-key and secret-key from the output
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin user info --uid=realm-sync
 ```
 
-Alternatively, retrieve the realm token via the Rook CRD status:
+Store the credentials as a Secret on the secondary cluster:
 
 ```bash
-kubectl -n rook-ceph get cephobjectrealm us-realm -o jsonpath='{.status.info.token}'
-```
-
-Store this token as a Secret on the secondary cluster:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: us-realm-token
-  namespace: rook-ceph
-data:
-  token: <base64-encoded-token>
-  endpoint: aHR0cDovL3VzLWVhc3Qtc3RvcmUtcmd3LnJvb2stY2VwaC5zdmM6ODA=
+kubectl create secret generic realm-us-realm \
+  --from-literal=access-key="<access-key-from-system-user>" \
+  --from-literal=secret-key="<secret-key-from-system-user>" \
+  -n rook-ceph
 ```
 
 ## Step 6 - Join the Secondary Cluster to the Realm
@@ -151,8 +146,8 @@ metadata:
 spec:
   pull:
     endpoint: http://<master-rgw-endpoint>:80
-    secret:
-      name: us-realm-token
+    secretNames:
+      - realm-us-realm
 ```
 
 Create the secondary zone:
@@ -216,26 +211,32 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Configuring Sync Policy (Optional)
 
-Rook supports fine-grained sync policies to control which buckets or prefixes are replicated. Define a sync policy to replicate only specific buckets:
+Ceph supports fine-grained sync policies to control which buckets are replicated. Configure sync policies using `radosgw-admin` on the master cluster:
 
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephObjectZone
-metadata:
-  name: us-east
-  namespace: rook-ceph
-spec:
-  zoneGroup: us
-  metadataPool:
-    replicated:
-      size: 3
-  dataPool:
-    replicated:
-      size: 3
-  syncPolicy:
-    bucketPolicyScope: user
+```bash
+# Create a sync group for selective replication
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin sync group create \
+    --group-id=selective-sync \
+    --status=enabled
+
+# Add a specific bucket to the sync group
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin sync group flow create \
+    --group-id=selective-sync \
+    --flow-id=us-flow \
+    --flow-type=symmetrical \
+    --zones=us-east,us-west
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin sync group pipe create \
+    --group-id=selective-sync \
+    --pipe-id=us-pipe \
+    --source-zones=us-east \
+    --dest-zones=us-west \
+    --bucket=my-replicated-bucket
 ```
 
 ## Summary
 
-Rook-Ceph multi-site object replication requires creating a realm, zonegroup, and zones using Rook CRDs. The master zone exports a realm token, which the secondary cluster uses to join the same realm. Once zones are linked, Ceph's RGW sync mechanism replicates objects between zones asynchronously. This configuration provides geo-redundant S3-compatible storage with automatic failover capability.
+Rook-Ceph multi-site object replication requires creating a realm, zonegroup, and zones using Rook CRDs. The master zone exports a realm token, which the secondary cluster uses to join the same realm. Once zones are linked, Ceph's RGW sync mechanism replicates objects between zones asynchronously. This configuration provides geo-redundant S3-compatible storage across multiple clusters. Note that failover requires manual intervention or external tooling such as DNS-based routing to redirect clients to the secondary zone.
