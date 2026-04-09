@@ -77,13 +77,17 @@ kubectl -n rook-ceph get secret rook-csi-rbd-provisioner
 kubectl -n rook-ceph get secret rook-csi-rbd-node
 ```
 
-If missing, recreate them by reapplying the Rook operator manifests or running:
+If missing, restart the Rook operator to recreate them automatically:
+
+```bash
+kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator
+```
+
+You can also verify the underlying Ceph auth entity exists:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth get-or-create client.csi-rbd-provisioner \
-  mon 'profile rbd' \
-  osd 'profile rbd'
+  ceph auth get client.csi-rbd-provisioner
 ```
 
 ## Step 5 - Check Ceph Cluster Health
@@ -109,11 +113,11 @@ Verify the CSI driver is registered in Kubernetes:
 kubectl get csidrivers | grep rook
 ```
 
-Expected output:
+Expected output should include both Rook CSI drivers:
 
 ```text
-rook-ceph.cephfs.csi.ceph.com   2026-03-30T12:00:00Z
-rook-ceph.rbd.csi.ceph.com      2026-03-30T12:00:00Z
+rook-ceph.cephfs.csi.ceph.com    true             false            false             <unset>         false               Persistent   10d
+rook-ceph.rbd.csi.ceph.com       true             false            false             <unset>         false               Persistent   10d
 ```
 
 If missing, restart the Rook operator:
