@@ -25,7 +25,7 @@ Start by finding PGs in degraded or backfilling states:
 ceph -s
 
 # List all PGs with their states
-ceph pg dump pgs | awk '{print $1, $15}' | grep -E "degraded|backfill|recovering"
+ceph pg dump pgs_brief | awk '{print $1, $2}' | grep -E "degraded|backfill|recovering"
 
 # Find specific degraded PGs
 ceph health detail | grep "pg"
@@ -90,8 +90,8 @@ Track the progress of forced operations:
 # Watch cluster recovery in real time
 watch -n 3 ceph -s
 
-# Show recovery queue details
-ceph osd recovery-stats
+# Show recovery and PG statistics
+ceph pg stat
 
 # Check specific PG progress
 ceph pg 3.4a query | python3 -m json.tool | grep -E "state|objects_degraded"
@@ -104,7 +104,7 @@ For clusters with many degraded PGs, use a script to force-recover all at once:
 ```bash
 #!/bin/bash
 # Force recovery on all degraded PGs
-degraded_pgs=$(ceph pg dump pgs 2>/dev/null | awk '$15 ~ /degraded/ {print $1}')
+degraded_pgs=$(ceph pg dump pgs_brief 2>/dev/null | awk '$2 ~ /degraded/ {print $1}')
 if [ -n "$degraded_pgs" ]; then
   ceph pg force-recovery $degraded_pgs
   echo "Forced recovery on: $degraded_pgs"
