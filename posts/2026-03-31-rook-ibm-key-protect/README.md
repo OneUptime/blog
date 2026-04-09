@@ -17,7 +17,7 @@ IBM Key Protect is a cloud-based key management service that provides FIPS 140-2
 - An IBM Cloud account with Key Protect service provisioned
 - A Root Key created in Key Protect
 - The IBM Cloud API key with Key Protect Manager role
-- Rook-Ceph 1.10 or later
+- Rook-Ceph 1.9 or later (IBM Key Protect support was added in v1.8.3 as a backport and v1.9.0 on the mainline)
 
 ## Step 1 - Create an IBM Key Protect Instance
 
@@ -27,7 +27,7 @@ From IBM Cloud CLI:
 ibmcloud resource service-instance-create rook-kms kms tiered-pricing us-south
 ibmcloud resource service-key-create rook-kms-credentials Manager \
   --instance-name rook-kms
-ibmcloud resource service-key rook-kms-credentials --output json | jq .credentials
+ibmcloud resource service-key rook-kms-credentials --output json | jq '.[0].credentials'
 ```
 
 Note the `apikey` and `resource_instance_id` from the output.
@@ -46,14 +46,9 @@ Note the root key ID (UUID format).
 ## Step 3 - Store IBM Key Protect Credentials as Kubernetes Secrets
 
 ```bash
-kubectl create secret generic ibm-kp-credentials \
-  --from-literal=IBM_KP_SERVICE_INSTANCE_ID="<resource_instance_id>" \
-  --from-literal=IBM_KP_SECRET_NAME="ibm-kp-credentials" \
-  -n rook-ceph
-
-kubectl create secret generic ibm-kp-api-key \
+kubectl create secret generic ceph-csi-kp-credentials \
+  --from-literal=IBM_KP_SERVICE_API_KEY="<your-ibm-cloud-api-key>" \
   --from-literal=IBM_KP_CUSTOMER_ROOT_KEY="<root-key-id>" \
-  --from-literal=IBM_KP_BASE64_CONFIG="<base64-encoded-api-key>" \
   -n rook-ceph
 ```
 
@@ -71,9 +66,9 @@ data:
       "ibm-kp-kms": {
         "encryptionKMSType": "ibmkeyprotect",
         "IBM_KP_SERVICE_INSTANCE_ID": "<resource_instance_id>",
-        "IBM_KP_CUSTOMER_ROOT_KEY": "<root-key-id>",
+        "IBM_KP_SECRET_NAME": "ceph-csi-kp-credentials",
         "IBM_KP_BASE_URL": "https://us-south.kms.cloud.ibm.com",
-        "IBM_KP_TOKEN_URL": "https://iam.cloud.ibm.com/identity/token",
+        "IBM_KP_TOKEN_URL": "https://iam.cloud.ibm.com/oidc/token",
         "IBM_KP_REGION": "us-south"
       }
     }
