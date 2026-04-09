@@ -127,7 +127,6 @@ spec:
   disruptionManagement:
     managePodBudgets: true
     osdMaintenanceTimeout: 30
-    pgHealthCheckTimeout: 0
   placement:
     mon:
       podAntiAffinity:
