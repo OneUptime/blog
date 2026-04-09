@@ -84,7 +84,7 @@ ceph mgr module enable devicehealth
 If the module crash corrupted the MGR state:
 
 ```bash
-kubectl -n rook-ceph rollout restart deploy/rook-ceph-mgr
+kubectl -n rook-ceph rollout restart deploy/rook-ceph-mgr-a
 ```
 
 ### Step 4 - Fail Over to Standby MGR
@@ -107,7 +107,7 @@ ceph crash info <crash-id> | python3 -m json.tool | grep -A 30 "backtrace"
 
 Common causes:
 - Network timeouts during module operations
-- Database (RocksDB) access errors
+- Mon store or RADOS access errors
 - Invalid pool or OSD state during module iteration
 - Memory pressure causing Python GC issues
 
