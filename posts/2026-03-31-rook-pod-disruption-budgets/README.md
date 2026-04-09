@@ -35,18 +35,18 @@ The monitor PDB requires at least 2 of 3 monitors to remain available, allowing 
 
 ## Enabling Managed PDB Blocking
 
-Rook includes a more intelligent OSD disruption mode controlled by the `managedDisruptionBudgets` flag in the operator configuration ConfigMap:
+Rook includes a more intelligent OSD disruption mode controlled by the `managePodBudgets` flag in the CephCluster custom resource:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
 metadata:
-  name: rook-ceph-operator-config
+  name: rook-ceph
   namespace: rook-ceph
-data:
-  ROOK_ENABLE_DISCOVERY_DAEMON: "false"
-  CSI_ENABLE_RBD_SNAPSHOTTER: "true"
-  ROOK_OSD_DISRUPTION_MANAGEMENT: "true"
+spec:
+  disruptionManagement:
+    managePodBudgets: true
+    osdMaintenanceTimeout: 30
 ```
 
 When OSD disruption management is enabled, Rook dynamically adjusts OSD PDBs based on current cluster health. If backfilling is in progress, it blocks further disruptions until replication returns to the desired count.
