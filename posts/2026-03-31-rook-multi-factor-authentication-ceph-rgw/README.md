@@ -95,8 +95,11 @@ If a token falls out of sync due to clock drift:
 radosgw-admin mfa resync \
   --uid myuser \
   --totp-serial 1234567890 \
+  --totp-pin 246810 \
   --totp-pin 123456
 ```
+
+The `resync` command requires two consecutive TOTP pins: the previous pin and the current pin. This allows RGW to calculate the time offset and correct for clock drift.
 
 ## Summary
 
