@@ -48,10 +48,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 ```
 
 ```bash
-ceph osd crush rule create-replicated stretch-replicated default datacenter host
+ceph osd crush rule create-replicated stretch-replicated default datacenter
 ```
 
-This rule starts at the `default` root, chooses two distinct `datacenter` buckets, then chooses one `host` within each datacenter.
+This rule starts at the `default` root and distributes replicas across distinct `datacenter` buckets, selecting leaf OSDs within each.
 
 ## Pool Configuration for Stretch
 
@@ -96,7 +96,7 @@ ceph osd pool get stretch-block-pool crush_rule
 ceph osd crush rule dump stretch-replicated
 ```
 
-The rule dump should show `step chooseleaf indep 2 type datacenter` confirming two-datacenter placement.
+The rule dump should show `step chooseleaf firstn 0 type datacenter` confirming datacenter-level replica separation.
 
 ## Testing Datacenter Failure
 
