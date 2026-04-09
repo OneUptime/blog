@@ -64,7 +64,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
 Ceph limits how many PGs can be scrubbing simultaneously to reduce impact on I/O:
 
 ```bash
-# Maximum concurrent scrubs per OSD (default: 1)
+# Maximum concurrent scrubs per OSD (default: 3)
 ceph config set osd osd_max_scrubs 1
 
 # Only scrub during low-load periods
