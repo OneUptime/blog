@@ -36,7 +36,7 @@ Grant the required SCCs to Rook service accounts:
 
 ```bash
 oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:rook-ceph:rook-ceph-default
+  system:serviceaccount:rook-ceph:rook-ceph-system
 
 oc adm policy add-scc-to-user privileged \
   system:serviceaccount:rook-ceph:rook-csi-rbd-plugin-sa
@@ -74,7 +74,7 @@ Or add the `hostaccess` SCC:
 
 ```bash
 oc adm policy add-scc-to-user hostaccess \
-  system:serviceaccount:rook-ceph:rook-ceph-default
+  system:serviceaccount:rook-ceph:rook-ceph-system
 ```
 
 ## Issue 3 - OSD Pods Cannot Mount Devices
@@ -94,7 +94,7 @@ oc adm policy add-scc-to-user privileged \
   system:serviceaccount:rook-ceph:rook-ceph-osd
 ```
 
-Also ensure the `allowPrivilegedContainer: true` in the operator's deployment.
+Also ensure the `ROOK_HOSTPATH_REQUIRES_PRIVILEGED` environment variable is set to `"true"` in the operator deployment, which causes OSD pods to run with a privileged security context.
 
 ## Issue 4 - Namespace Network Policy Blocking CSI
 
@@ -132,10 +132,10 @@ spec:
 Pods using CephFS PVCs fail to start with:
 
 ```text
-mount.nfs: Connection refused
+mount error: ceph filesystem not supported by the system
 ```
 
-Or kernel module loading errors.
+Or kernel module loading errors like `modprobe: FATAL: Module ceph not found`.
 
 ### Fix - Enable FUSE Mounts
 
@@ -149,8 +149,7 @@ metadata:
   namespace: rook-ceph
 data:
   ROOK_CSI_ENABLE_CEPHFS: "true"
-  CSI_CEPHFS_PLUGIN_UPDATE_STRATEGY: "RollingUpdate"
-  CSI_CEPHFS_KERNELMOUNT_OPTIONS: "ms_mode=crc"
+  CSI_FORCE_CEPHFS_KERNEL_CLIENT: "false"
 ```
 
 ## Issue 6 - Monitoring Integration with OCP Prometheus
