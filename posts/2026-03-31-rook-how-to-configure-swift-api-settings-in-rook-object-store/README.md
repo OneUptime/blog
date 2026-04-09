@@ -10,11 +10,11 @@ Description: Configure OpenStack Swift API settings in Rook CephObjectStore to e
 
 ## Overview
 
-Ceph's RADOS Gateway (RGW) supports both the S3 and OpenStack Swift APIs. Rook exposes Swift configuration through the `CephObjectStore` CRD's gateway spec. This allows applications built for OpenStack Swift to access Ceph object storage without any changes.
+Ceph's RADOS Gateway (RGW) supports both the S3 and OpenStack Swift APIs. Rook exposes Swift configuration through the `CephObjectStore` CRD's `protocols` spec. This allows applications built for OpenStack Swift to access Ceph object storage without any changes.
 
 ## Enable Swift API in CephObjectStore
 
-Configure the Swift API in the `gateway` section of your `CephObjectStore`:
+Configure the Swift API in the `protocols` section of your `CephObjectStore`:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -37,7 +37,7 @@ spec:
   protocols:
     swift:
       accountInUrl: true
-      urlPrefix: /swift
+      urlPrefix: swift
       versioningEnabled: true
 ```
 
@@ -67,12 +67,12 @@ protocols:
 
 ### urlPrefix
 
-Sets the path prefix for Swift API endpoints. Default is `/swift`:
+Sets the path prefix for Swift API endpoints. Default is `swift`:
 
 ```yaml
 protocols:
   swift:
-    urlPrefix: /swift
+    urlPrefix: swift
 ```
 
 ### versioningEnabled
@@ -117,7 +117,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Use the `python-swiftclient` to test the connection:
 
 ```bash
-swift -A http://<rgw-endpoint>/swift/auth/v1 \
+swift -A http://<rgw-endpoint>/auth/1.0 \
   -U swift-user:swift \
   -K <swift-key> \
   list
@@ -126,12 +126,12 @@ swift -A http://<rgw-endpoint>/swift/auth/v1 \
 Create a container and upload an object:
 
 ```bash
-swift -A http://<rgw-endpoint>/swift/auth/v1 \
+swift -A http://<rgw-endpoint>/auth/1.0 \
   -U swift-user:swift \
   -K <swift-key> \
   post my-container
 
-swift -A http://<rgw-endpoint>/swift/auth/v1 \
+swift -A http://<rgw-endpoint>/auth/1.0 \
   -U swift-user:swift \
   -K <swift-key> \
   upload my-container /local/path/to/file.txt
@@ -149,7 +149,7 @@ spec:
   protocols:
     swift:
       accountInUrl: true
-      urlPrefix: /swift
+      urlPrefix: swift
 ```
 
 Then configure Keystone endpoints in the Ceph configuration via `CephCluster` spec.
