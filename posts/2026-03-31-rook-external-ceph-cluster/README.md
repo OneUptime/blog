@@ -119,6 +119,8 @@ metadata:
 spec:
   external:
     enable: true
+  crashCollector:
+    disable: true
   dataDirHostPath: /var/lib/rook
   cephVersion:
     image: quay.io/ceph/ceph:v19.2.0
