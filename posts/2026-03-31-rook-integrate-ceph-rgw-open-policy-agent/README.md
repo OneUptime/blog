@@ -49,21 +49,19 @@ default allow = false
 # Allow read access to public buckets
 allow if {
     input.method in {"GET", "HEAD"}
-    input.bucket == "public-data"
+    input.bucket_info.bucket.name == "public-data"
 }
 
-# Allow write access to users with write role
+# Allow full access to bucket owners
 allow if {
-    input.user.roles[_] == "storage-writer"
-    input.method in {"PUT", "POST", "DELETE"}
+    input.bucket_info.owner == input.user_info.user_id
 }
 
-# Deny access outside business hours
+# Allow access to finance-data only during business hours
 allow if {
     time.clock(time.now_ns())[0] >= 8
     time.clock(time.now_ns())[0] < 18
-    input.user.department == "finance"
-    input.bucket == "finance-data"
+    input.bucket_info.bucket.name == "finance-data"
 }
 ```
 
@@ -81,8 +79,11 @@ curl -X POST http://localhost:8181/v1/data/rgw/authz/allow \
   -d '{
     "input": {
       "method": "GET",
-      "bucket": "public-data",
-      "user": {"roles": ["reader"]}
+      "bucket_info": {
+        "bucket": {"name": "public-data", "bucket_id": "public-data"},
+        "owner": "admin"
+      },
+      "user_info": {"user_id": "reader", "display_name": "Reader User"}
     }
   }'
 ```
@@ -91,8 +92,8 @@ curl -X POST http://localhost:8181/v1/data/rgw/authz/allow \
 
 ```bash
 # Enable OPA integration in RGW
-ceph config set client.rgw rgw_opa_url "http://opa-host:8181"
-ceph config set client.rgw rgw_opa_package "rgw/authz/allow"
+ceph config set client.rgw rgw_use_opa_authz true
+ceph config set client.rgw rgw_opa_url "http://opa-host:8181/v1/data/rgw/authz/allow"
 ceph config set client.rgw rgw_opa_verify_ssl false  # Set true with HTTPS
 
 # Restart RGW after configuration changes
@@ -118,20 +119,22 @@ import future.keywords.if
 
 default allow = false
 
-# Allow access if user has tag matching bucket classification
+# Allow access if user clearance meets bucket classification
 allow if {
-    bucket_classification := data.classifications[input.bucket]
-    input.user.clearance_level >= bucket_classification
+    bucket_classification := data.classifications[input.bucket_info.bucket.name]
+    user_clearance := data.user_clearances[input.user_info.user_id]
+    user_clearance >= bucket_classification
 }
 ```
 
-Load data alongside the policy:
+Load classification and user clearance data alongside the policy:
 
 ```bash
 opa run --server \
   --addr 0.0.0.0:8181 \
   rgw_policy.rego \
-  classifications.json
+  classifications.json \
+  user_clearances.json
 ```
 
 ## Summary
