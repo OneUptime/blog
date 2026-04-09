@@ -21,9 +21,9 @@ The simplest way to check pool performance is directly via the Ceph tools pod:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool stats
 
-# Show per-pool throughput and IOPS
+# Show detailed per-pool storage usage
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool stats detail
+  ceph df detail
 ```
 
 For continuous monitoring, watch the stats:
@@ -41,7 +41,6 @@ Rook ships with a Prometheus metrics endpoint on the MGR. Enable monitoring in t
 spec:
   monitoring:
     enabled: true
-    rulesNamespaceOverride: rook-ceph
 ```
 
 Verify the metrics endpoint:
@@ -57,10 +56,10 @@ Important metrics to track:
 
 | Metric | Description |
 |---|---|
-| `ceph_pool_rd` | Read operations per second |
-| `ceph_pool_wr` | Write operations per second |
-| `ceph_pool_rd_bytes` | Read throughput bytes/sec |
-| `ceph_pool_wr_bytes` | Write throughput bytes/sec |
+| `ceph_pool_rd` | Total read operations (counter) |
+| `ceph_pool_wr` | Total write operations (counter) |
+| `ceph_pool_rd_bytes` | Total bytes read (counter) |
+| `ceph_pool_wr_bytes` | Total bytes written (counter) |
 | `ceph_pool_bytes_used` | Space used by the pool |
 | `ceph_pool_max_avail` | Available space in pool |
 | `ceph_pool_objects` | Number of objects in pool |
@@ -92,10 +91,10 @@ Rook provides prebuilt Grafana dashboards for pool monitoring:
 ```bash
 # Clone the Rook repository for dashboard JSON
 git clone https://github.com/rook/rook.git
-ls rook/deploy/examples/monitoring/
+ls rook/deploy/examples/monitoring/grafana/
 ```
 
-Import the `pool-detail.json` dashboard into your Grafana instance. Key panels include per-pool IOPS, latency, throughput, and capacity utilization.
+Import the `Ceph Pools Dashboard.json` dashboard into your Grafana instance. Key panels include per-pool IOPS, latency, throughput, and capacity utilization.
 
 ## Setting Up Pool-Level Alerts
 
