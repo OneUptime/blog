@@ -21,49 +21,56 @@ A placement target maps a storage class name to a set of RADOS pools. The zone c
 radosgw-admin zone get --rgw-zone=us-east | jq '.placement_pools'
 ```
 
-## Creating a New Placement Target
-
-```bash
-# Add a new placement target for cold storage
-radosgw-admin zone placement add \
-  --rgw-zone=us-east \
-  --placement-id=cold-storage \
-  --storage-class=COLD \
-  --data-pool=cold-data-pool \
-  --index-pool=cold-index-pool \
-  --data-extra-pool=cold-extra-pool
-
-# Commit the changes
-radosgw-admin period update --commit
-```
-
 ## Creating the Underlying RADOS Pools
+
+Create the pools before configuring placement targets:
 
 ```bash
 # Create the cold storage pools
 ceph osd pool create cold-data-pool erasure
 ceph osd pool create cold-index-pool replicated
 ceph osd pool create cold-extra-pool replicated
-
-# Initialize pools for RGW
-radosgw-admin pool init --placement-id=cold-storage
 ```
 
 ## Configuring Zone Group Placement
 
-The zone group must also list the placement target:
+The zone group must list the placement target and storage class:
 
 ```bash
 radosgw-admin zonegroup placement add \
   --rgw-zonegroup=us \
   --placement-id=cold-storage
 
-# Modify zone group to include storage class
-radosgw-admin zonegroup placement modify \
+# Add the storage class to the zone group placement
+radosgw-admin zonegroup placement add \
   --rgw-zonegroup=us \
   --placement-id=cold-storage \
   --storage-class=COLD
 
+radosgw-admin period update --commit
+```
+
+## Creating the Zone Placement Target
+
+Add the placement target to the zone with its base pools, then add the storage class with its data pool:
+
+```bash
+# Add the base placement target with index and extra pools
+radosgw-admin zone placement add \
+  --rgw-zone=us-east \
+  --placement-id=cold-storage \
+  --data-pool=cold-data-pool \
+  --index-pool=cold-index-pool \
+  --data-extra-pool=cold-extra-pool
+
+# Add the COLD storage class with its data pool
+radosgw-admin zone placement add \
+  --rgw-zone=us-east \
+  --placement-id=cold-storage \
+  --storage-class=COLD \
+  --data-pool=cold-data-pool
+
+# Commit the changes
 radosgw-admin period update --commit
 ```
 
@@ -98,7 +105,7 @@ s3.upload_file(
 
 ## Rook: Configuring Placement in CephObjectZone
 
-In Rook, configure additional data pools for placement:
+In Rook, use `sharedPools` with `poolPlacements` to configure storage classes that route to different pools. First create the erasure-coded pool as a separate CephBlockPool, then reference it by name:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -114,10 +121,13 @@ spec:
   dataPool:
     replicated:
       size: 3
-  additionalDataPool:
-    erasureCoded:
-      dataChunks: 4
-      codingChunks: 2
+  sharedPools:
+    poolPlacements:
+      - name: cold-storage
+        dataPoolName: cold-data-pool
+        storageClasses:
+          - name: COLD
+            dataPoolName: cold-ec-pool
 ```
 
 ## Verifying Placement Configuration
