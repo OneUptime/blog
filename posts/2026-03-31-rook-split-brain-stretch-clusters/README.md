@@ -56,15 +56,53 @@ Fix any firewall rules, routing issues, or physical connectivity problems before
 
 ## Step 2 - Force Quorum on One Side (Last Resort)
 
-If network restoration is not immediately possible and you must restore I/O on one side, you can force a monitor to run with fewer monitors. This should only be done on the site you are certain has the most recent data:
+If network restoration is not immediately possible and you must restore I/O on one side, you can recover quorum by modifying the monmap to include only the surviving monitors. This should only be done on the site you are certain has the most recent data.
+
+First, scale down the Rook operator to prevent interference:
 
 ```bash
-# On the surviving site's monitor node (as a last resort)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mon.<name> mon_command '{"prefix": "mon force_quorum_update"}'
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
 ```
 
-This is a destructive operation that overrides quorum requirements. Use it only when all network restoration options are exhausted.
+Identify and access a surviving monitor pod directly (not the tools pod, since admin commands require the monitor's local environment):
+
+```bash
+# List monitor pods and their zones
+kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o wide
+
+# Exec into a surviving monitor pod
+kubectl -n rook-ceph exec -it <surviving-mon-pod> -- /bin/bash
+```
+
+Extract the monmap, remove unreachable monitors, and inject the modified monmap:
+
+```bash
+# Extract the current monmap
+ceph-mon -i <mon-id> --extract-monmap /tmp/monmap
+
+# View the monmap to identify all monitors
+monmaptool --print /tmp/monmap
+
+# Remove each unreachable monitor (repeat for each)
+monmaptool /tmp/monmap --rm <unreachable-mon-name>
+
+# Inject the modified monmap
+ceph-mon -i <mon-id> --inject-monmap /tmp/monmap
+```
+
+Exit the pod, restart it, and scale the operator back up:
+
+```bash
+kubectl -n rook-ceph delete pod <surviving-mon-pod>
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=1
+```
+
+This is a destructive operation. If run incorrectly, it can permanently destroy the cluster. Use it only when all network restoration options are exhausted. After quorum is restored, if the cluster remains in degraded stretch mode, you can force recovery:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd force_recovery_stretch_mode --yes-i-really-mean-it
+```
 
 ## Step 3 - Verify Data Integrity After Recovery
 
@@ -98,13 +136,13 @@ Best practices to minimize split-brain risk:
 spec:
   mon:
     count: 5
+    allowMultiplePerNode: false
     stretchCluster:
       failureDomainLabel: topology.kubernetes.io/zone
+      subFailureDomain: host
       zones:
       - name: zone-a
-        arbiter: false
       - name: zone-b
-        arbiter: false
       - name: zone-c
         arbiter: true
 ```
