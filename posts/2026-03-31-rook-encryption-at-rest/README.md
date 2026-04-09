@@ -42,7 +42,8 @@ spec:
   storage:
     useAllNodes: false
     useAllDevices: false
-    encryptedDevice: true
+    config:
+      encryptedDevice: "true"
     nodes:
       - name: storage-node-1
         devices:
@@ -55,7 +56,7 @@ spec:
           - name: sdb
 ```
 
-The `encryptedDevice: true` flag tells Rook to use dm-crypt/LUKS when initializing new OSD devices. Existing OSDs are not retroactively encrypted.
+The `encryptedDevice: "true"` config option tells Rook to use dm-crypt/LUKS when initializing new OSD devices. Existing OSDs are not retroactively encrypted.
 
 Verify OSD encryption is active:
 
@@ -95,9 +96,9 @@ parameters:
   imageFormat: "2"
   imageFeatures: layering
   encrypted: "true"
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-encrypted-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-encrypted-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
@@ -131,7 +132,7 @@ data:
         "vaultBackendPath": "secret/",
         "vaultCAFromSecret": "vault-ca-cert",
         "vaultClientCertFromSecret": "vault-client-cert",
-        "vaultClientCertKeyFromSecret": "vault-client-cert"
+        "vaultClientCertKeyFromSecret": "vault-client-cert-key"
       }
     }
 ```
@@ -188,7 +189,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd info replicapool/$IMAGE_NAME
 ```
 
-The image features should include `encryption` in the output.
+The output confirms the RBD image was provisioned. Note that LUKS encryption is applied by the CSI driver at the node level and is transparent to Ceph, so it will not appear as an RBD image feature. To verify LUKS encryption is active, check on the node where the PVC is mounted using `lsblk --fs` — encrypted volumes show a `crypto_LUKS` device wrapping the mapped RBD device.
 
 ## Enabling Ceph Manager Messenger Encryption
 
@@ -205,4 +206,4 @@ spec:
 
 ## Summary
 
-Rook-Ceph supports encryption at rest at two layers. OSD-level encryption with `encryptedDevice: true` encrypts entire disks using dm-crypt/LUKS at OSD provisioning time. PVC-level encryption with `encrypted: "true"` in the StorageClass encrypts individual RBD images using keys from Kubernetes Secrets or a KMS like HashiCorp Vault. For production, KMS-based key management ensures keys are rotatable, auditable, and not stored in etcd. Combine both layers for defense-in-depth encryption.
+Rook-Ceph supports encryption at rest at two layers. OSD-level encryption with `encryptedDevice: "true"` in the storage config encrypts entire disks using dm-crypt/LUKS at OSD provisioning time. PVC-level encryption with `encrypted: "true"` in the StorageClass encrypts individual RBD images using keys from Kubernetes Secrets or a KMS like HashiCorp Vault. For production, KMS-based key management ensures keys are rotatable, auditable, and not stored in etcd. Combine both layers for defense-in-depth encryption.
