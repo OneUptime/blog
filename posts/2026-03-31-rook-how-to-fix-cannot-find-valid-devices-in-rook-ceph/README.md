@@ -83,8 +83,8 @@ sudo sync
 For LVM metadata:
 
 ```bash
-sudo pvremove /dev/sdb
 sudo vgremove <vg-name>
+sudo pvremove /dev/sdb
 sudo wipefs -a /dev/sdb
 ```
 
@@ -135,7 +135,7 @@ If devices show existing OSD data, they need to be zapped:
 sudo ceph-volume lvm zap /dev/sdb --destroy
 ```
 
-Or using Rook's cleanup job approach - delete the `CephCluster` with `cleanupPolicy: deleteDataDirOnHosts: "yes"` and redeploy.
+Or using Rook's cleanup job approach - delete the `CephCluster` with `cleanupPolicy: confirmation: yes-really-destroy-data` and redeploy.
 
 ## Step 6 - Check deviceFilter Regex
 
