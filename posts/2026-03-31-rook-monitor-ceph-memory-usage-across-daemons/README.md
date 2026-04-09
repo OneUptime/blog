@@ -21,15 +21,14 @@ Ceph daemons - particularly BlueStore OSDs - can consume significant memory. Eac
 Key Prometheus metrics for Ceph memory:
 
 ```bash
-# OSD memory usage per daemon
-ceph_osd_stat_bytes_used
-
-# BlueStore cache size (alloc)
-ceph_bluefs_bytes{component="db"}
-ceph_bluefs_bytes{component="slow"}
-
-# Process memory (via process exporter or cAdvisor)
+# Per-daemon memory usage (via cAdvisor)
 container_memory_working_set_bytes{namespace="rook-ceph", container=~"osd|mon|mgr"}
+
+# Memory limit per container (for calculating usage percentage)
+container_spec_memory_limit_bytes{namespace="rook-ceph", container=~"osd|mon|mgr"}
+
+# BlueStore cache memory per OSD (requires MGR Prometheus perf counters enabled)
+ceph_bluestore_cache_bytes
 ```
 
 ## Check Memory via kubectl top
@@ -56,8 +55,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
   # Check memory usage per daemon via admin socket
   ceph tell osd.* heap stats
 
-  # MGR memory
-  ceph tell mgr heap stats
+  # MGR memory (replace 'a' with your active MGR name from 'ceph mgr stat')
+  ceph tell mgr.a heap stats
 
   # MON memory
   ceph tell mon.* heap stats
