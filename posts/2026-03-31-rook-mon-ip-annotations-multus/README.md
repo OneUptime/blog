@@ -4,17 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Monitor, Multus, Annotation
 
-Description: Learn how to use Rook's mon IP annotations to specify which Multus network interface addresses Ceph monitors should advertise for cluster communication.
+Description: Learn how Rook handles monitor networking with Multus, including how monitors communicate over storage networks and how to configure and verify the setup.
 
 ---
 
-When using Multus with Rook-Ceph, monitors must advertise their Multus network IP addresses (not the primary Kubernetes pod network IPs) so that other Ceph daemons and clients can reach them via the storage network. Rook provides annotations to specify which IP each monitor should use for its public address.
+When using Multus with Rook-Ceph, the Multus network attachment definition (NAD) is attached to monitor pods, allowing them to communicate with other Ceph daemons over the dedicated storage network. However, monitors have a specific networking behavior with Multus: they continue to use Kubernetes Service ClusterIPs for their advertised endpoints while using the Multus interface for outbound cluster communication.
 
 ## The Problem with Multi-Network Pods
 
-When a pod has multiple network interfaces (primary Kubernetes network + Multus secondary network), Ceph needs to know which IP to advertise in the monitor map. By default, Ceph might bind to the primary Kubernetes pod network IP, which defeats the purpose of the dedicated storage network.
+When a pod has multiple network interfaces (primary Kubernetes network + Multus secondary network), it is important to understand which IP each daemon advertises. With Rook's Multus support, daemons that rely on Kubernetes Service IPs — including monitors, managers, and Rados Gateways — do not listen on the Multus NAD interface. Instead, they listen on the default pod network and are accessed via Service ClusterIPs. The Multus NAD is attached to the pod so the daemon can communicate with other daemons (like OSDs) over the storage network.
 
-The Ceph monitor map stores the actual IP:port where each monitor listens. If monitors advertise pod network IPs, OSDs and clients connecting from outside the cluster will fail to reach them.
+This is documented in the Rook network providers documentation:
+
+> "Daemons leveraging Kubernetes service IPs (Monitors, Managers, Rados Gateways) are not listening on the NAD specified in the selectors. Instead the daemon listens on the default network, however the NAD is attached to the container, allowing the daemon to communicate with the rest of the cluster."
 
 Check what IPs your monitors are currently using:
 
@@ -23,14 +25,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump
 ```
 
 ```text
-0: [v2:10.244.0.15:3300/0,v1:10.244.0.15:6789/0] mon.a
+0: [v2:10.96.0.15:3300/0,v1:10.96.0.15:6789/0] mon.a
 ```
 
-If you see `10.244.x.x` (typical pod network IPs) instead of your storage network IPs, monitors are not using the Multus interface.
+With Multus, you will see Kubernetes Service ClusterIPs (e.g., `10.96.x.x`) in the monitor map. This is expected — monitors are reached via Service IPs while they use the Multus interface for outbound communication to OSDs and other daemons.
 
-## Setting Mon IP Annotations
+## Configuring Multus in the CephCluster Spec
 
-Rook reads the `rook.io/mon-endpoint` annotation on monitor pods to determine the IP address to register in the monitor map. Set this annotation in the CephCluster spec:
+To enable Multus networking in Rook, configure the network section of the CephCluster spec with the Multus network attachment definitions:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -46,16 +48,25 @@ spec:
       cluster: rook-ceph/rook-cluster-network
   mon:
     count: 3
-    annotations:
-      mon:
-        rook.io/mon-ip: "192.168.100.10"
 ```
 
-However, this annotation approach sets the same IP for all monitors. For per-monitor IP control, use the ConfigMap approach.
+The `public` selector specifies the NAD for client-facing traffic, and the `cluster` selector specifies the NAD for internal Ceph replication traffic. Rook attaches these network interfaces to all Ceph daemon pods, including monitors.
 
-## Per-Monitor IP Configuration via ConfigMap
+If you need monitors to bind to specific non-default IPs (with host networking, not Multus), you can use the `network.rook.io/mon-ip` annotation on Kubernetes nodes:
 
-Rook allows specifying per-monitor IPs through a ConfigMap that the operator reads during mon creation:
+```bash
+kubectl annotate node node-1 network.rook.io/mon-ip=192.168.100.10
+```
+
+This node annotation works with `provider: host` and tells the monitor running on that node which IP to bind to.
+
+## Understanding the Mon Endpoints ConfigMap
+
+Rook maintains a ConfigMap called `rook-ceph-mon-endpoints` that tracks monitor endpoint information. This ConfigMap is managed by the Rook operator and should not be manually edited under normal circumstances:
+
+```bash
+kubectl -n rook-ceph get configmap rook-ceph-mon-endpoints -o yaml
+```
 
 ```yaml
 apiVersion: v1
@@ -64,66 +75,68 @@ metadata:
   name: rook-ceph-mon-endpoints
   namespace: rook-ceph
 data:
-  data: "a=192.168.100.10:6789,b=192.168.100.11:6789,c=192.168.100.12:6789"
-  mapping: '{"node":{"a":{"Name":"node-1","Hostname":"node-1","Address":"192.168.100.10"},"b":{"Name":"node-2","Hostname":"node-2","Address":"192.168.100.11"},"c":{"Name":"node-3","Hostname":"node-3","Address":"192.168.100.12"}}}'
+  data: "a=10.96.0.10:6789,b=10.96.0.11:6789,c=10.96.0.12:6789"
+  mapping: '{"node":{"a":{"Name":"node-1","Hostname":"node-1","Address":"10.0.0.1"},"b":{"Name":"node-2","Hostname":"node-2","Address":"10.0.0.2"},"c":{"Name":"node-3","Hostname":"node-3","Address":"10.0.0.3"}}}'
+  maxMonId: "2"
 ```
 
-This ConfigMap pre-configures which storage network IP each monitor will use.
+The `data` field contains the monitor endpoints (Service ClusterIPs with Multus, or node IPs with host networking), and the `mapping` field maps each monitor to its node. The `Address` in the mapping refers to the node address, not the Multus IP. Do not manually edit this ConfigMap — the Rook operator manages it and manual changes may be overwritten or cause inconsistencies.
 
-## Using Pod Annotations Directly
+## Checking Multus Interfaces on Monitor Pods
 
-You can also annotate individual monitor pods after they start, to force them to use specific IPs:
+To verify that the Multus network interface is properly attached to a monitor pod:
 
 ```bash
 # Get the mon pod name
 MON_POD=$(kubectl -n rook-ceph get pod -l app=rook-ceph-mon,ceph_daemon_id=a -o name)
+
+# Check that the Multus interface (typically net1) is present
+kubectl -n rook-ceph exec $MON_POD -- ip addr show net1
 
 # Get the Multus-assigned IP
 MULTUS_IP=$(kubectl -n rook-ceph exec $MON_POD -- ip addr show net1 | \
   grep "inet " | awk '{print $2}' | cut -d'/' -f1)
 
 echo "Mon-a Multus IP: $MULTUS_IP"
-
-# Annotate the pod (Rook reads this)
-kubectl -n rook-ceph annotate pod $(basename $MON_POD) \
-  network.operator.openshift.io/interfaces-data="${MULTUS_IP}"
 ```
+
+The Multus IP is used by the monitor for outbound communication to other Ceph daemons, even though the monitor's advertised endpoint in the mon map uses the Kubernetes Service ClusterIP.
 
 ## Verifying Monitor Addresses
 
-After configuring mon IP annotations, verify that the monitor map uses storage network IPs:
+After configuring Multus, verify the monitor map to see the endpoints monitors are advertising:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump
 ```
 
-Expected output with Multus storage network IPs:
+Expected output with Multus configured:
 
 ```text
 epoch 12
 fsid xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 min_mon_release 17 (quincy)
-0: [v2:192.168.100.10:3300/0,v1:192.168.100.10:6789/0] mon.a
-1: [v2:192.168.100.11:3300/0,v1:192.168.100.11:6789/0] mon.b
-2: [v2:192.168.100.12:3300/0,v1:192.168.100.12:6789/0] mon.c
+0: [v2:10.96.0.10:3300/0,v1:10.96.0.10:6789/0] mon.a
+1: [v2:10.96.0.11:3300/0,v1:10.96.0.11:6789/0] mon.b
+2: [v2:10.96.0.12:3300/0,v1:10.96.0.12:6789/0] mon.c
 ```
 
-The IPs `192.168.100.x` are from the Multus storage network, not the Kubernetes pod network.
+These are Kubernetes Service ClusterIPs. All pods within the Kubernetes cluster can reach monitors via these IPs. The Multus storage network is used for daemon-to-daemon communication (e.g., monitor to OSD).
 
-## Handling Mon Address Changes
+## Handling Mon Pod Restarts
 
-If a monitor starts with a pod network IP and you later update the annotation to use the Multus IP, the mon map must be updated. This requires restarting the monitor:
+If a monitor pod needs to be restarted (for example, after a configuration change), you can delete the pod and the Rook operator will recreate it:
 
 ```bash
-# Delete the mon pod - Rook will recreate it with the correct IP
+# Delete the mon pod - Rook will recreate it
 kubectl -n rook-ceph delete pod $(kubectl -n rook-ceph get pod \
   -l app=rook-ceph-mon,ceph_daemon_id=a -o name | head -1 | xargs basename)
 
-# Watch the new pod start with the correct IP
+# Watch the new pod start
 kubectl -n rook-ceph get pod -l app=rook-ceph-mon -w
 ```
 
-After restart, verify the mon map is updated:
+After restart, verify the mon map is intact:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump | grep "mon.a"
@@ -131,7 +144,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump | grep "mo
 
 ## Configuring Ceph Client Access
 
-When monitors use Multus storage network IPs, Ceph clients (including the CSI driver and the toolbox) must be able to reach those IPs. Ensure the Rook toolbox pod also has the Multus network attached:
+With Multus configured cluster-wide, Rook automatically attaches the Multus network to all Ceph-related pods including the toolbox and CSI driver:
 
 ```yaml
 spec:
@@ -141,8 +154,8 @@ spec:
       public: rook-ceph/rook-public-network
 ```
 
-With `provider: multus` set cluster-wide, Rook automatically attaches the Multus network to all Ceph-related pods including the toolbox.
+Ceph clients connect to monitors via their Kubernetes Service ClusterIPs, so they do not need the Multus network specifically to reach monitors. However, the Multus network is needed for direct communication with OSDs, which is why the toolbox and CSI driver also get the Multus interface attached.
 
 ## Summary
 
-Setting mon IP annotations with Multus in Rook ensures Ceph monitors advertise their storage network IP addresses (from Multus secondary interfaces) rather than Kubernetes pod network IPs. Configure per-monitor IPs using the `rook-ceph-mon-endpoints` ConfigMap or per-pod annotations. After updating monitor IPs, restart mon pods to update the monitor map and verify the correct IPs using `ceph mon dump`. Ensure all Ceph-related pods (including toolbox and CSI driver) have the Multus storage network attached so they can reach monitors via the storage network.
+When using Multus with Rook, monitors continue to use Kubernetes Service ClusterIPs for their advertised endpoints while the Multus network interface is attached for outbound communication with other Ceph daemons like OSDs. The `rook-ceph-mon-endpoints` ConfigMap tracks monitor endpoints and is managed by the Rook operator. To verify the setup, use `ceph mon dump` to check monitor addresses and `ip addr show net1` to confirm Multus interfaces are attached to monitor pods. If you need monitors to bind to specific network IPs instead of Service ClusterIPs, consider using host networking with the `network.rook.io/mon-ip` node annotation.
