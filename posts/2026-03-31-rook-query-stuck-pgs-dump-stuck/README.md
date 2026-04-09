@@ -12,11 +12,11 @@ Description: Learn how to use ceph pg dump_stuck to identify Placement Groups th
 
 `ceph pg dump_stuck` is a focused diagnostic command that lists only Placement Groups that have been in a problematic state longer than a configurable threshold. Unlike `ceph pg dump` which outputs all PGs, `dump_stuck` filters to only the problematic ones, making troubleshooting much faster in large clusters.
 
-A PG is considered "stuck" when it remains in a non-clean state beyond the `osd_op_complaint_time` threshold (default: 30 seconds) without making progress.
+A PG is considered "stuck" when it remains in a non-clean state beyond a configurable time threshold without making progress. The threshold is controlled by the `mon_pg_stuck_threshold` configuration option and defaults to 300 seconds when not overridden on the command line.
 
 ## Running dump_stuck
 
-From the Rook toolbox, run without arguments to see all stuck PGs:
+From the Rook toolbox, run without arguments to see stuck unclean PGs (the default type):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -43,6 +43,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 # Stuck undersized PGs (fewer replicas than size setting)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg dump_stuck undersized
+
+# Stuck degraded PGs (fewer copies than pool size)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph pg dump_stuck degraded
 ```
 
 ## Adjusting the Stuck Threshold
@@ -61,15 +65,16 @@ This shows PGs stuck for more than 60 seconds.
 A typical `dump_stuck` output row:
 
 ```text
-13.2a     active+undersized+degraded  [3,7,1]    3   2
+13.2a     active+undersized+degraded  [3,7,1]    3   [3,7]   3
 ```
 
 Columns:
 - `13.2a` - PG ID (pool 13, PG number 0x2a)
 - `active+undersized+degraded` - current state
-- `[3,7,1]` - acting set (current OSD IDs)
+- `[3,7,1]` - up set (desired OSD IDs)
 - `3` - up primary OSD ID
-- `2` - acting primary OSD ID
+- `[3,7]` - acting set (current OSD IDs serving I/O)
+- `3` - acting primary OSD ID
 
 ## Investigating a Specific Stuck PG
 
@@ -113,4 +118,4 @@ kubectl -n rook-ceph delete pod rook-ceph-osd-<id>-<suffix>
 
 ## Summary
 
-`ceph pg dump_stuck` is the go-to command for identifying Placement Groups that are not making progress. Filter by state (inactive, unclean, stale, undersized) to focus troubleshooting. Use the `-t` flag to adjust the stuck threshold. Follow up with `ceph pg <pgid> query` on individual PGs to get root cause details before taking remediation action.
+`ceph pg dump_stuck` is the go-to command for identifying Placement Groups that are not making progress. Filter by state (inactive, unclean, stale, undersized, degraded) to focus troubleshooting. Use the `-t` flag to adjust the stuck threshold. Follow up with `ceph pg <pgid> query` on individual PGs to get root cause details before taking remediation action.
