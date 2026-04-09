@@ -20,7 +20,6 @@ Rook exposes Ceph metrics via the MGR Prometheus module. Enable it in the CephCl
 spec:
   monitoring:
     enabled: true
-    rulesNamespaceOverride: rook-ceph
 ```
 
 Verify metrics are accessible:
@@ -73,7 +72,7 @@ spec:
 Use PromQL to join service mesh and Ceph metrics:
 
 ```promql
-# RGW request rate correlated with application error rate
+# RGW request rate joined with pool write rate
 sum(rate(istio_requests_total{destination_service="rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local"}[5m]))
   * on() group_left
 sum(rate(ceph_pool_wr[5m]))
@@ -93,7 +92,7 @@ histogram_quantile(0.99,
 With Jaeger and Istio, you can trace requests from application to RGW:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-for-storage
@@ -130,7 +129,7 @@ Import both the Rook Ceph dashboard and the Istio service dashboard side by side
 |---|---|---|
 | `istio_request_duration` to RGW | `ceph_pool_wr_bytes` | Storage write latency |
 | `istio_requests_total` errors | `ceph_health_status` | Cluster health impact |
-| `istio_tcp_connections_opened` | `ceph_mds_sessions_total` | CephFS client load |
+| `istio_tcp_connections_opened_total` | `ceph_mds_sessions_sessions_open` | CephFS client load |
 
 ## Summary
 
