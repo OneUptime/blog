@@ -24,7 +24,7 @@ A typical RBD DR setup consists of:
 
 - Rook operator with CSI Addons enabled on both clusters
 - RBD mirroring enabled on both Ceph clusters
-- `imageFeatures` must include `journaling` and `exclusive-lock` for mirrored images
+- `imageFeatures` must include `exclusive-lock` for mirrored images (journal-based mirroring additionally requires `journaling`; snapshot-based mirroring does not)
 
 ## Enable RBD Mirroring on the Pool
 
@@ -97,6 +97,7 @@ spec:
   volumeReplicationClass: rook-volumereplicationclass
   replicationState: primary
   dataSource:
+    apiGroup: ""
     kind: PersistentVolumeClaim
     name: my-pvc
 ```
@@ -118,10 +119,17 @@ Look for the status conditions showing replication health:
 ```text
 status:
   state: Primary
+  message: volume is marked primary
   conditions:
-    - type: VolumeSynchronized
+    - type: Completed
       status: "True"
+      reason: Promoted
+    - type: Degraded
+      status: "False"
       reason: Healthy
+    - type: Resyncing
+      status: "False"
+      reason: NotResyncing
 ```
 
 ## Failover to Secondary Site
