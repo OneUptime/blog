@@ -52,7 +52,7 @@ sudo journalctl -u ceph-rbd-mirror@rbd-mirror.0 -f
 The daemon reads configuration from `/etc/ceph/ceph.conf`. Key options:
 
 ```ini
-[rbd-mirror]
+[client.rbd-mirror]
 rbd_mirror_journal_poll_age = 5
 rbd_mirror_sync_point_update_age = 30
 rbd_mirror_concurrent_image_syncs = 5
@@ -87,8 +87,8 @@ sudo systemctl enable ceph-rbd-mirror@rbd-mirror.1
 After starting the daemon, confirm it is registered with the cluster:
 
 ```bash
-# List all rbd-mirror daemons
-ceph service ls | grep rbd-mirror
+# List all rbd-mirror daemons in cluster status
+ceph -s | grep rbd-mirror
 
 # Check daemon health in the mirror pool status
 rbd mirror pool status replicapool
