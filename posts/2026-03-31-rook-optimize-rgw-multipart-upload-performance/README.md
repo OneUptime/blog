@@ -23,23 +23,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 The S3 protocol minimum is 5 MB, but using 10-100 MB parts reduces RADOS overhead significantly.
 
-## Maximum Concurrent Multipart Uploads
-
-Limit the maximum number of in-flight multipart uploads to prevent resource exhaustion:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_multipart_max_concurrent_uploads 1000
-```
-
-## Manifest and Part Flush
-
-Enable synchronous manifest flush to ensure all parts are committed before the complete operation returns:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_multipart_sync_on_manifest true
-```
+## Chunk Size for Parts
 
 Set the chunk size for writing individual parts:
 
@@ -108,8 +92,9 @@ aws s3api put-bucket-lifecycle-configuration \
 List incomplete uploads:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket list --bucket=my-bucket --list-type=multiparts
+aws s3api list-multipart-uploads \
+  --bucket my-bucket \
+  --endpoint-url http://<rgw-endpoint>
 ```
 
 ## Summary
