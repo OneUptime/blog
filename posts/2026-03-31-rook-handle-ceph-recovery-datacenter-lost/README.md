@@ -44,19 +44,18 @@ ceph osd dump | grep stretch
 ceph mon set_location mon-tiebreaker datacenter=arbiter
 ```
 
-After datacenter B fails:
+After datacenter B fails, the cluster automatically enters degraded stretch mode if the tiebreaker monitor is reachable:
 
 ```bash
-# Force cluster to operate with datacenter A only
-ceph osd set-require-min-compat-client luminous
-ceph mon enable_stretch_mode mon-a mon-b mon-arbiter datacenter datacenter=A
-```
-
-Check cluster health with one datacenter:
-
-```bash
+# Cluster enters degraded stretch mode automatically
+# Verify cluster status - expect HEALTH_WARN with stretch mode degraded
 ceph -s
-ceph osd tree | grep CRUSH
+
+# Confirm monitors still have quorum
+ceph mon stat
+
+# Check OSD status for the surviving datacenter
+ceph osd tree
 ```
 
 ## Multi-Site RGW Failover
@@ -72,8 +71,9 @@ radosgw-admin sync status
 Fail over to the secondary zone:
 
 ```bash
-# On secondary site, promote to master
-radosgw-admin zone modify --rgw-zone secondary --master
+# On secondary site, promote zone and zonegroup to master
+radosgw-admin zone modify --rgw-zone=secondary --master
+radosgw-admin zonegroup modify --rgw-zonegroup=default --master
 radosgw-admin period update --commit
 ```
 
@@ -104,7 +104,7 @@ When the lost datacenter comes back online:
 ```bash
 # For stretch cluster, re-integrate lost site
 ceph osd crush add-bucket datacenter-b datacenter
-ceph osd crush move node-a root=default datacenter=datacenter-b
+ceph osd crush move node-b1 root=default datacenter=datacenter-b
 
 # Verify CRUSH map
 ceph osd crush tree
