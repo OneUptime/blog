@@ -20,15 +20,17 @@ Orphaned objects exist in the data pool (`default.rgw.buckets.data`) but have no
 
 ## Generating an Orphan List
 
-The `orphans find` command scans the data pool and cross-references the bucket index to find unreferenced objects:
+> **Note:** The `radosgw-admin orphans` subcommands (`find`, `finish`, `list-jobs`) are deprecated. For new deployments, use the `rgw-orphan-list` tool instead.
+
+The `orphans find` command scans the data pool and cross-references the bucket index to find unreferenced objects. Orphan object names are printed to stdout, so redirect the output to capture them:
 
 ```bash
 radosgw-admin orphans find \
   --pool default.rgw.buckets.data \
-  --job-id orphan-job-1
+  --job-id orphan-job-1 > orphan-results.txt
 ```
 
-This is a read-only scan. Results are written to RADOS objects in the `default.rgw.log` pool.
+This is a read-only scan. Intermediate scan data is stored as RADOS objects in the `default.rgw.log` pool.
 
 ## Checking Job Status
 
@@ -36,19 +38,12 @@ This is a read-only scan. Results are written to RADOS objects in the `default.r
 radosgw-admin orphans list-jobs
 ```
 
-## Reading Orphan Results
+## Cleaning Up a Completed Job
 
-After the job completes, export the list:
+After you have captured the orphan list, clean up the intermediate RADOS objects stored in the log pool:
 
 ```bash
 radosgw-admin orphans finish --job-id orphan-job-1
-```
-
-The results are written to files in the current directory named `orphan.find.job_id.*`. Inspect them:
-
-```bash
-ls orphan.find.orphan-job-1.*
-# These contain RADOS object names that are orphaned
 ```
 
 ## Alternative: radosgw-admin bucket check
@@ -56,15 +51,15 @@ ls orphan.find.orphan-job-1.*
 For a per-bucket approach, check index consistency:
 
 ```bash
-radosgw-admin bucket check --bucket mybucket
+radosgw-admin bucket check --check-objects --bucket mybucket
 ```
 
-This reports objects in the index with no data object, and vice versa.
+This cross-references the bucket index against actual RADOS objects and reports objects in the index with no data object, and vice versa.
 
 Fix index inconsistencies:
 
 ```bash
-radosgw-admin bucket check --bucket mybucket --fix
+radosgw-admin bucket check --check-objects --bucket mybucket --fix
 ```
 
 ## Cleaning Up Incomplete Multipart Uploads
@@ -94,7 +89,7 @@ aws s3api put-bucket-lifecycle-configuration \
     "Rules": [{
       "ID": "abort-incomplete-mpu",
       "Status": "Enabled",
-      "Filter": {},
+      "Filter": {"Prefix": ""},
       "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}
     }]
   }' \
