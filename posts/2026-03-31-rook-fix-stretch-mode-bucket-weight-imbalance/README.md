@@ -1,16 +1,16 @@
-# How to Fix STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE Health Check in Ceph
+# How to Fix UNEVEN_WEIGHTS_STRETCH_MODE Health Check in Ceph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, Stretch Mode, CRUSH, Health Check
 
-Description: Learn how to resolve STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE in Ceph, a warning that the two data site buckets in stretch mode have unequal CRUSH weights.
+Description: Learn how to resolve UNEVEN_WEIGHTS_STRETCH_MODE in Ceph, a warning that the two data site buckets in stretch mode have unequal CRUSH weights.
 
 ---
 
-## What Is STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE?
+## What Is UNEVEN_WEIGHTS_STRETCH_MODE?
 
-`STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE` is a Ceph health warning that fires when the two data site CRUSH buckets in a stretch mode cluster have significantly different total weights. In stretch mode, Ceph expects both datacenters to have equal storage capacity so that data is evenly distributed between sites.
+`UNEVEN_WEIGHTS_STRETCH_MODE` is a Ceph health warning that fires when the two data site CRUSH buckets in a stretch mode cluster have significantly different total weights. In stretch mode, Ceph expects both datacenters to have equal storage capacity so that data is evenly distributed between sites.
 
 When the weights are unbalanced, one site stores more data than the other, which can lead to:
 - Uneven disk utilization
@@ -26,7 +26,7 @@ ceph health detail
 Example output:
 
 ```text
-[WRN] STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE: Stretch mode buckets have weight imbalance
+[WRN] UNEVEN_WEIGHTS_STRETCH_MODE: Stretch mode buckets have uneven weights
     datacenter-A weight: 18.000, datacenter-B weight: 12.000
 ```
 
@@ -91,7 +91,7 @@ ceph osd crush reweight osd.10 2.0
 ceph osd crush reweight osd.11 2.0
 ```
 
-### Step 4 - Verify Balance
+### Verify Balance
 
 After adjustments, verify the site weights are equal:
 
@@ -120,4 +120,4 @@ ceph -s
 
 ## Summary
 
-`STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE` warns that the two stretch mode data sites have unequal CRUSH weights, causing uneven data distribution. The best fix is adding matching capacity to the lighter site. As a temporary measure, you can reweight OSDs in the heavier site to match, though this wastes storage capacity. Stretch mode works best when both sites have identical hardware configurations.
+`UNEVEN_WEIGHTS_STRETCH_MODE` warns that the two stretch mode data sites have unequal CRUSH weights, causing uneven data distribution. The best fix is adding matching capacity to the lighter site. As a temporary measure, you can reweight OSDs in the heavier site to match, though this wastes storage capacity. Stretch mode works best when both sites have identical hardware configurations.
