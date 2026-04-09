@@ -21,10 +21,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
 A typical `health detail` output looks like this:
 
 ```text
-HEALTH_WARN 2 osds down; 1 host (3 osds) down; Degraded data redundancy: 45/270 objects degraded (16.667%), 2 pgs degraded
-    OSD_DOWN 2 osds down
+HEALTH_WARN 3 osds down; 1 host (3 osds) down; Degraded data redundancy: 45/270 objects degraded (16.667%), 2 pgs degraded
+    OSD_DOWN 3 osds down
         osd.3 (root=default, host=node2) is down
         osd.4 (root=default, host=node2) is down
+        osd.5 (root=default, host=node2) is down
     OSD_HOST_DOWN 1 host (3 osds) down
         host node2 (root=default) has 3 osds
             osd.3 osd.4 osd.5
@@ -57,7 +58,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail | gre
 | Code | Meaning |
 |------|---------|
 | `PG_DEGRADED` | PGs have fewer than desired replicas |
-| `PG_INACTIVE` | PGs are not processing I/O |
+| `PG_AVAILABILITY` | PGs are not active and unable to serve I/O |
 | `PG_DAMAGED` | Data corruption detected |
 | `PG_NOT_SCRUBBED` | PGs have not been scrubbed recently |
 | `PG_NOT_DEEP_SCRUBBED` | PGs have not been deep-scrubbed |
@@ -116,7 +117,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail --for
 # check-ceph-health.sh - Parse health detail for monitoring
 
 NAMESPACE="rook-ceph"
-OUTPUT=$(kubectl -n $NAMESPACE exec -it deploy/rook-ceph-tools -- ceph health detail --format json 2>/dev/null)
+OUTPUT=$(kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph health detail --format json 2>/dev/null)
 
 STATUS=$(echo $OUTPUT | python3 -c "import sys, json; d=json.load(sys.stdin); print(d['status'])")
 echo "Cluster Status: $STATUS"
@@ -140,8 +141,8 @@ If a warning is expected and you want to suppress it temporarily:
 # Mute a specific health check for 1 hour
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health mute OSDMAP_FLAGS 1h
 
-# Check muted items
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health mute --format json-pretty
+# Check muted items (listed in the "mutes" array of health detail output)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail --format json-pretty
 
 # Unmute when done
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health unmute OSDMAP_FLAGS
