@@ -59,7 +59,7 @@ rancher:
 Apply the configuration:
 
 ```bash
-ros config merge /var/lib/rancher/conf/cloud-config.d/rook-modules.yml
+sudo ros config merge -i /var/lib/rancher/conf/cloud-config.d/rook-modules.yml
 ```
 
 ## Step 3 - Configure dataDirHostPath
@@ -87,23 +87,19 @@ rancher:
       restart: no
 ```
 
-## Step 4 - Install lvm2 via System Docker
+## Step 4 - Install lvm2 via Console Switch
 
-RancherOS installs packages via system-docker containers rather than a package manager:
+RancherOS does not include a traditional package manager. Switch to the Ubuntu console to gain access to `apt-get`. Use `ros console enable` to make the switch persistent across reboots:
 
 ```bash
-# Enter the system-docker environment
-sudo system-docker run --rm --privileged -v /:/host ubuntu:20.04 \
-  apt-get install -y lvm2
-
-# Or using a dedicated console
-ros console switch ubuntu
+sudo ros console enable ubuntu
 ```
 
-After switching the console, you gain access to `apt-get`:
+After the console switch completes (the system will reboot), install the required packages:
 
 ```bash
-apt-get install -y lvm2 util-linux
+sudo apt-get update
+sudo apt-get install -y lvm2 util-linux
 ```
 
 ## Step 5 - Prepare OSD Disks
@@ -192,4 +188,4 @@ RancherOS has reached end-of-life. Rancher recommends migrating to RKE2 (Rancher
 
 ## Summary
 
-RancherOS nodes for Rook-Ceph require loading `rbd` and `ceph` kernel modules via `modprobe` and persisting them in the cloud-config. Use `ros console switch ubuntu` to access a package manager for installing `lvm2`. Set `dataDirHostPath: /var/lib/rook` and wipe OSD disks before deployment. Given that RancherOS is end-of-life, consider migrating to RKE2 on a supported OS for new deployments.
+RancherOS nodes for Rook-Ceph require loading `rbd` and `ceph` kernel modules via `modprobe` and persisting them in the cloud-config. Use `ros console enable ubuntu` to switch to an Ubuntu console with access to a package manager for installing `lvm2`. Set `dataDirHostPath: /var/lib/rook` and wipe OSD disks before deployment. Given that RancherOS is end-of-life, consider migrating to RKE2 on a supported OS for new deployments.
