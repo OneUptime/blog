@@ -15,24 +15,24 @@ Ceph NVMe-oF supports high availability (HA) through gateway groups. Multiple ga
 ## Understanding NVMe-oF HA Architecture
 
 In an HA configuration:
-- Multiple gateway pods form a gateway group
-- Each namespace is owned by one gateway but accessible via all gateways
-- On failure, the surviving gateway takes ownership
-- Initiators use ANA (Asymmetric Namespace Access) to prefer the owning gateway
+- Multiple gateway pods form a gateway group (defined by the `group` field)
+- Each namespace is owned by one gateway (ANA optimized) while other gateways report it as inaccessible
+- On failure, a surviving gateway takes ownership and becomes the optimized path
+- Initiators use ANA (Asymmetric Namespace Access) to route I/O to the owning gateway
 
 ## Deploy a Multi-Gateway Configuration
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMeoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-ha-gw
   namespace: rook-ceph
 spec:
-  server:
-    active: 2           # 2 active gateways
-  pool:
-    name: nvmeof-pool
+  image: quay.io/ceph/nvmeof:1.5
+  pool: nvmeof-pool
+  group: ha-group
+  instances: 2           # 2 active gateways
 ```
 
 Verify two gateway pods are running:
@@ -45,16 +45,12 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
 ## Configure the HA Group
 
 ```bash
-# List current gateways
+# Show gateway information
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway list
-
-# Set redundancy level for the HA group
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway set_redundancy_count \
-  --gateway-name nvmeof-ha-gw \
-  --redundancy-count 2
+  ceph nvmeof gateway info
 ```
+
+Note: The HA group membership is configured declaratively via the `group` and `instances` fields in the CephNVMeOFGateway resource. All gateway instances sharing the same `group` name form an HA group automatically.
 
 ## Create Subsystem with HA Listeners
 
@@ -65,19 +61,19 @@ NQN="nqn.2024-01.io.ceph:ha-subsystem"
 
 # Create subsystem
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof subsystem create --nqn $NQN
+  ceph nvmeof subsystem add nqn=$NQN
 
 # Add listener on gateway 1
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway add_listener \
-  --nqn $NQN --host-name nvmeof-ha-gw-0 \
-  --traddr 10.0.1.10 --trsvcid 4420 --trtype TCP
+  ceph nvmeof listener add \
+  nqn=$NQN host_name=nvmeof-ha-gw-0 \
+  traddr=10.0.1.10 trsvcid=4420
 
 # Add listener on gateway 2
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway add_listener \
-  --nqn $NQN --host-name nvmeof-ha-gw-1 \
-  --traddr 10.0.1.11 --trsvcid 4420 --trtype TCP
+  ceph nvmeof listener add \
+  nqn=$NQN host_name=nvmeof-ha-gw-1 \
+  traddr=10.0.1.11 trsvcid=4420
 ```
 
 ## Verify ANA Groups
@@ -85,9 +81,9 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 ```bash
 # Check ANA group assignments after namespace creation
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof namespace list --nqn $NQN
+  ceph nvmeof namespace list nqn=$NQN
 
-# Each namespace should show optimized/non-optimized paths
+# Each namespace should show its ANA group assignment and owning gateway
 ```
 
 ## Test Failover
@@ -97,15 +93,15 @@ Simulate a gateway failure and verify continuity:
 ```bash
 # On the initiator node
 nvme list
-nvme show-ana /dev/nvme0
+nvme ana-log /dev/nvme0
 
 # Kill one gateway pod
 kubectl -n rook-ceph delete pod rook-ceph-nvmeof-ha-gw-0-xxxxx
 
 # On initiator - verify path switches to second gateway
-nvme show-ana /dev/nvme0  # Should show path changed
+nvme ana-log /dev/nvme0  # Should show ANA state changed
 ```
 
 ## Summary
 
-NVMe-oF HA groups in Ceph provide automatic failover by deploying multiple gateway instances that share subsystem listeners. ANA (Asymmetric Namespace Access) allows initiators to prefer the optimal path while automatically failing over to surviving gateways. The CephNVMeoFGateway resource `active` count controls the number of HA group members.
+NVMe-oF HA groups in Ceph provide automatic failover by deploying multiple gateway instances that share subsystem listeners. ANA (Asymmetric Namespace Access) allows initiators to use the optimized path while automatically failing over to surviving gateways when the active gateway fails. The CephNVMeOFGateway resource `instances` field controls the number of HA group members, and the `group` field defines the HA group.
