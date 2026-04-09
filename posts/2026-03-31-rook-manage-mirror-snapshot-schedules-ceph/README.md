@@ -55,33 +55,23 @@ Ceph does not have a direct update command. To change an interval, remove the ol
 
 ```bash
 # Remove the old 1-hour schedule
-rbd mirror snapshot schedule remove \
-  --pool replicapool \
-  --interval 1h
+rbd mirror snapshot schedule remove --pool replicapool 1h
 
 # Add a new 30-minute schedule
-rbd mirror snapshot schedule add \
-  --pool replicapool \
-  --interval 30m \
-  --start-time "00:00:00"
+rbd mirror snapshot schedule add --pool replicapool 30m 00:00:00
 ```
 
 ## Removing Schedules
 
 ```bash
 # Remove a specific interval at global level
-rbd mirror snapshot schedule remove --interval 24h
+rbd mirror snapshot schedule remove 24h
 
 # Remove pool-level schedule
-rbd mirror snapshot schedule remove \
-  --pool replicapool \
-  --interval 1h
+rbd mirror snapshot schedule remove --pool replicapool 1h
 
 # Remove image-level schedule
-rbd mirror snapshot schedule remove \
-  --pool replicapool \
-  --image myimage \
-  --interval 15m
+rbd mirror snapshot schedule remove --pool replicapool --image myimage 15m
 ```
 
 ## Troubleshooting Missed Schedules
