@@ -57,7 +57,7 @@ ceph auth get-or-create client.cinder-hdd \
 ```ini
 [DEFAULT]
 enabled_backends = ceph-ssd, ceph-hdd
-default_volume_type = standard
+default_volume_type = standard-hdd
 
 [ceph-ssd]
 volume_driver = cinder.volume.drivers.rbd.RBDDriver
@@ -85,9 +85,6 @@ systemctl restart openstack-cinder-volume
 # Create volume types tied to each backend
 openstack volume type create --property volume_backend_name=ceph-ssd premium-ssd
 openstack volume type create --property volume_backend_name=ceph-hdd standard-hdd
-
-# Set the default
-openstack volume type set --property volume_backend_name=ceph-hdd standard-hdd
 ```
 
 ## Step 5: Create and Test Tiered Volumes
