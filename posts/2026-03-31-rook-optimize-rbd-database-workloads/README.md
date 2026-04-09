@@ -27,8 +27,7 @@ spec:
     size: 3
     requireSafeReplicaSize: true
   deviceClass: nvme
-  parameters:
-    compression_mode: none
+  compressionMode: none
 ```
 
 Disable compression for databases - it adds latency without benefit since database files contain mixed content:
@@ -60,9 +59,9 @@ allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-## RBD Object Size Alignment
+## RBD Object Size Tuning
 
-Set RBD object size to match the database page size. For PostgreSQL (8 KB pages):
+Reduce the RBD object size from the default 4 MB to limit write amplification for small random I/O. Smaller objects mean each RADOS write touches less data, at the cost of more objects in the cluster. For PostgreSQL (8 KB pages):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -96,9 +95,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd feature disable db-pool/mysql-data journaling
 ```
 
-## QoS IOPS Reservation
+## QoS IOPS Limiting
 
-Use Ceph's QoS to guarantee minimum IOPS for database volumes:
+Use Ceph's QoS to cap maximum IOPS per database volume, preventing any single image from monopolizing cluster I/O:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -113,7 +112,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Simulate database random I/O with fio:
 
 ```bash
-fio --name=db-test --ioengine=libaio --rw=randrw \
+fio --name=db-test --ioengine=libaio --direct=1 --rw=randrw \
     --bs=16k --size=10g --iodepth=64 --numjobs=4 \
     --rwmixread=70 --group_reporting \
     --filename=/dev/rbd0
@@ -123,4 +122,4 @@ Aim for sub-millisecond average latency on NVMe OSDs.
 
 ## Summary
 
-RBD for databases requires NVMe-backed pools, object size alignment to the database page size, exclusive lock for write integrity, and QoS IOPS limits to prevent noisy neighbor interference. Disabling compression and journaling eliminates unnecessary overhead for databases that handle their own durability mechanisms.
+RBD for databases requires NVMe-backed pools, reduced object size to limit write amplification, exclusive lock for write integrity, and QoS IOPS limits to prevent noisy neighbor interference. Disabling compression and journaling eliminates unnecessary overhead for databases that handle their own durability mechanisms.
