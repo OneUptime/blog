@@ -174,7 +174,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config get osd osd_
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set osd osd_deep_scrub_interval 604800
 ```
 
-Enable checksums on new pools to detect corruption early:
+Ensure scrubbing is not disabled on your pools:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool set rbd nodeep-scrub false
