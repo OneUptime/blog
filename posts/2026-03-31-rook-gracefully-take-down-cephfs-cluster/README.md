@@ -36,7 +36,7 @@ Evict all connected clients to prevent new writes:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.* client evict --id all
+  ceph tell mds.* client evict id=*
 ```
 
 ## Step 3 - Flush the MDS Journal
