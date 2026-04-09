@@ -17,9 +17,9 @@ In Ceph stretch mode, a subcluster failure refers to the complete loss of one of
 When site A loses connectivity, the surviving site B plus the arbiter monitor form a quorum of three (two site-B monitors plus the arbiter). The cluster automatically:
 
 1. Marks site A's OSDs as down
-2. Sets the `HEALTH_WARN` flag with `1 site is down`
-3. Reduces `min_size` on pools temporarily to allow reads from site B
-4. Halts writes to PGs that have all copies on site A
+2. Raises `HEALTH_WARN` with degraded and undersized PG warnings
+3. Enters degraded stretch mode, reducing `min_size` on pools to allow continued reads and writes from site B
+4. Marks affected PGs as `active+undersized+degraded` until the site recovers
 
 Check the current cluster state after a site failure:
 
@@ -31,7 +31,7 @@ ceph pg stat
 
 ## Preventing Premature OSD Rebalancing
 
-By default, Ceph will start backfilling after OSDs are marked down. In stretch mode, you usually want to wait for the failed site to recover rather than reshuffling data:
+Stretch mode automatically prevents rebalancing when it enters degraded stretch mode. However, as an extra precaution, you can set the `noout` and `norebalance` flags to ensure no unexpected data movement occurs while waiting for the failed site to recover:
 
 ```bash
 ceph osd set noout
