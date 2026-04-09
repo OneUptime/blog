@@ -26,7 +26,7 @@ The first step is to enable the `enable_multiple` flag on the Ceph cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs flag set enable_multiple true
+  ceph fs flag set enable_multiple true --yes-i-really-mean-it
 ```
 
 Once enabled, you can create additional filesystems alongside your primary one.
@@ -104,8 +104,6 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  - discard
 ```
 
 ## Summary
