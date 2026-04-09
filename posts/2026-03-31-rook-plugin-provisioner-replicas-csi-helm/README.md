@@ -47,18 +47,16 @@ csi:
 
 ## Provisioner Leader Election
 
-When running multiple provisioner replicas, leader election ensures only one replica actively processes requests at a time. The Helm chart enables this automatically when `provisionerReplicas` is greater than 1.
+When running multiple provisioner replicas, leader election ensures only one replica actively processes requests at a time. Leader election is always enabled in the provisioner deployment, regardless of replica count.
 
-To explicitly control leader election timeout:
+To explicitly control leader election timeouts, use the dedicated Helm values:
 
 ```yaml
 csi:
   provisionerReplicas: 2
-  # CSI provisioner leader election settings via extraArgs
-  rbdProvisionerExtraArgs:
-    - "--leader-election-lease-duration=137s"
-    - "--leader-election-renew-deadline=107s"
-    - "--leader-election-retry-period=26s"
+  csiLeaderElectionLeaseDuration: "137s"
+  csiLeaderElectionRenewDeadline: "107s"
+  csiLeaderElectionRetryPeriod: "26s"
 ```
 
 ## Node Affinity for Provisioners
