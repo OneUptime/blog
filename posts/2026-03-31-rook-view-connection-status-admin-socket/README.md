@@ -15,11 +15,11 @@ Ceph daemons communicate over TCP/IP using an internal messenger protocol. The a
 ## Viewing Connections on an OSD
 
 ```bash
-# Show active connections and messenger state
-ceph daemon osd.0 connections
+# Show OSD status including network address info
+ceph daemon osd.0 status
 
 # View messenger statistics
-ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A5 '"ms"'
+ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A5 'AsyncMessenger'
 ```
 
 ## Dumping Messenger Statistics
@@ -31,10 +31,10 @@ import sys, json
 data = json.load(sys.stdin)
 ms = data.get('AsyncMessenger::Worker-0', {})
 if ms:
-    print('send_bytes:', ms.get('send_bytes', {}).get('val', 0))
-    print('recv_bytes:', ms.get('recv_bytes', {}).get('val', 0))
-    print('send_messages:', ms.get('send_messages', {}).get('val', 0))
-    print('recv_messages:', ms.get('recv_messages', {}).get('val', 0))
+    print('msgr_send_bytes:', ms.get('msgr_send_bytes', 0))
+    print('msgr_recv_bytes:', ms.get('msgr_recv_bytes', 0))
+    print('msgr_send_messages:', ms.get('msgr_send_messages', 0))
+    print('msgr_recv_messages:', ms.get('msgr_recv_messages', 0))
 "
 ```
 
@@ -44,14 +44,14 @@ if ms:
 # View MON connection sessions
 ceph daemon mon.$(hostname) sessions
 
-# Show active subscriptions
-ceph daemon mon.$(hostname) dump_watchers
+# Show monitor status and quorum info
+ceph daemon mon.$(hostname) mon_status
 ```
 
 ## Checking OSD Peer Connections
 
 ```bash
-# List connected peers for an OSD
+# List active RADOS watch/notify subscriptions on this OSD
 ceph daemon osd.0 dump_watchers
 
 # View operation tracking for connected clients
@@ -75,12 +75,14 @@ ceph daemon osd.0 config get public_network
 ```bash
 #!/bin/bash
 # check-osd-connections.sh - verify all OSD connections are healthy
+# Uses 'ceph tell' which works remotely via the MON (unlike 'ceph daemon' which is local-only)
 
 ERRORS=0
 for osd in $(ceph osd ls); do
-    STATUS=$(ceph daemon osd.$osd version 2>&1)
-    if echo "$STATUS" | grep -q "version"; then
-        echo "OSD $osd: CONNECTED ($(echo $STATUS | awk '{print $3}'))"
+    STATUS=$(ceph tell osd.$osd version 2>&1)
+    if echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null; then
+        VERSION=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+        echo "OSD $osd: CONNECTED ($VERSION)"
     else
         echo "OSD $osd: ERROR - $STATUS"
         ((ERRORS++))
@@ -102,9 +104,8 @@ for i in 0 1 2; do
 import sys, json
 data = json.load(sys.stdin)
 ms = data.get(f'AsyncMessenger::Worker-$i', {})
-for k in ['connection_ready', 'connection_rejected', 'send_messages', 'recv_messages']:
-    v = ms.get(k, {})
-    print(f'  {k}: {v.get(\"val\", 0)}')
+for k in ['msgr_created_connections', 'msgr_active_connections', 'msgr_send_messages', 'msgr_recv_messages']:
+    print(f'  {k}: {ms.get(k, 0)}')
 " 2>/dev/null
 done
 ```
@@ -121,4 +122,4 @@ ceph daemon osd.0 perf dump | python3 -m json.tool | grep -i "error\|reset\|lost
 
 ## Summary
 
-The Ceph admin socket provides visibility into daemon network connections through the `connections`, `sessions`, and messenger perf counters. Use these to diagnose network partitions, identify flapping connections, and verify that all cluster members are communicating correctly. Combined with external network tools, admin socket connection inspection gives a complete picture of cluster network health.
+The Ceph admin socket provides visibility into daemon network connections through the `status`, `sessions`, and messenger perf counters. Use these to diagnose network partitions, identify flapping connections, and verify that all cluster members are communicating correctly. Combined with external network tools, admin socket connection inspection gives a complete picture of cluster network health.
