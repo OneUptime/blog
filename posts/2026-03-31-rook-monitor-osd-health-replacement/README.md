@@ -35,7 +35,7 @@ Output includes `commit_latency_ms` and `apply_latency_ms` per OSD. Establish ba
 
 ## Step 3: Enable SMART Monitoring via Node Exporter
 
-Deploy the node-exporter with SMART monitoring enabled:
+SMART monitoring in node-exporter uses the textfile collector. A script such as `smartmon.sh` from the [node-exporter-textfile-collector-scripts](https://github.com/prometheus-community/node-exporter-textfile-collector-scripts) project runs via cron on each node to collect SMART data and write `.prom` files to a textfile directory. Deploy the node-exporter configured to read those files:
 
 ```yaml
 apiVersion: apps/v1
@@ -48,21 +48,29 @@ spec:
       containers:
       - name: node-exporter
         args:
-        - --collector.smartmon
+        - --collector.textfile.directory=/var/lib/node-exporter/textfile
         - --path.rootfs=/host
+        securityContext:
+          privileged: true
         volumeMounts:
+        - name: textfile
+          mountPath: /var/lib/node-exporter/textfile
+          readOnly: true
         - name: dev
           mountPath: /dev
       volumes:
+      - name: textfile
+        hostPath:
+          path: /var/lib/node-exporter/textfile
       - name: dev
         hostPath:
           path: /dev
 ```
 
-Key SMART metrics to monitor:
-- `smartmon_reallocated_sector_count` - sectors moved due to read errors
-- `smartmon_uncorrectable_error_count` - permanent errors
-- `smartmon_wear_leveling_count` - SSD wear indicator
+Key SMART metrics to monitor (exposed by the smartmon script via labels on `smartmon_attr_raw_value`):
+- `smartmon_attr_raw_value{attr_name="Reallocated_Sector_Ct"}` - sectors moved due to read errors
+- `smartmon_attr_raw_value{attr_name="Offline_Uncorrectable"}` - permanent errors
+- `smartmon_attr_raw_value{attr_name="Wear_Leveling_Count"}` - SSD wear indicator
 
 ## Step 4: Prometheus Alerts for OSD Health
 
@@ -87,7 +95,7 @@ groups:
       summary: "OSD {{ $labels.ceph_daemon }} commit latency > 100ms"
 
   - alert: CephOSDNearFull
-    expr: ceph_osd_utilization > 85
+    expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
     for: 5m
     labels:
       severity: warning
@@ -108,7 +116,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 echo "Over-utilized OSDs:"
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd df | awk 'NR>1 && $7 > 80 {print "OSD", $1, "utilization:", $7, "%"}'
+  ceph osd df --format json | jq -r '.nodes[] | select(.utilization > 80) | "OSD \(.id) utilization: \(.utilization)%"'
 ```
 
 ## Summary
