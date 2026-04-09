@@ -90,11 +90,13 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd out 0
 # Wait for recovery
 kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph -w
 
-# Delete the OSD deployment and configmap
+# Purge the OSD from the cluster
+kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd purge 0 --yes-i-really-mean-it
+
+# Delete the OSD deployment
 kubectl -n rook-ceph delete deployment rook-ceph-osd-0
 
-# Mark the disk as clean in Rook by removing the OSD from the CephCluster
-# or by wiping the disk so Rook will reprovision it as BlueStore
+# Wipe the disk so Rook will reprovision it as BlueStore
 ```
 
 After deletion, Rook detects the unconfigured disk and provisions a new BlueStore OSD automatically.
@@ -123,7 +125,7 @@ for osd in 0 1 2 3; do
   echo "Migrating osd.$osd..."
   ceph osd out $osd
   # Wait for clean state
-  while ceph status | grep -qv "active+clean"; do sleep 30; done
+  while ! ceph status | grep -q "active+clean"; do sleep 30; done
   # Then perform migration steps for osd.$osd
 done
 ```
