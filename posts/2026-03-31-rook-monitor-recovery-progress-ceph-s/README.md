@@ -77,8 +77,8 @@ ceph pg stat
 Show stuck PGs that are not making progress:
 
 ```bash
-ceph pg dump_stuck recovering
 ceph pg dump_stuck unclean
+ceph pg dump_stuck degraded
 ```
 
 ## Estimating Recovery Completion Time
@@ -108,7 +108,7 @@ Get recovery stats per OSD:
 
 ```bash
 ceph osd pool stats
-ceph tell osd.* bench
+ceph osd perf
 ```
 
 Monitor recovery through the Ceph manager dashboard or Prometheus:
