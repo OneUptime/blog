@@ -68,7 +68,10 @@ mount /dev/nbd0 /mnt/rbd-debug
 ls -la /mnt/rbd-debug
 df -h /mnt/rbd-debug
 
-# Run fsck on the block device
+# Unmount before running filesystem checks
+umount /mnt/rbd-debug
+
+# Run fsck on the unmounted block device
 fsck.ext4 /dev/nbd0
 
 # Or check XFS
@@ -83,7 +86,7 @@ rbd-nbd map rbd/myimage \
   --conf /tmp/ceph.conf \
   --keyring /tmp/keyring \
   --log-file /tmp/rbd-nbd-debug.log \
-  -- --debug-rbd 20 --debug-ms 1
+  --debug-rbd 20 --debug-ms 1
 ```
 
 ## Test Read/Write Performance
@@ -101,8 +104,8 @@ dd if=/dev/zero of=/dev/nbd0 bs=4M count=100 oflag=direct
 # Graceful unmap
 rbd-nbd unmap /dev/nbd0
 
-# Force unmap if busy
-rbd-nbd unmap --force /dev/nbd0
+# Force unmap if busy (kill the rbd-nbd daemon for the device)
+rbd-nbd detach /dev/nbd0
 
 # Verify no mappings remain
 rbd-nbd list-mapped
