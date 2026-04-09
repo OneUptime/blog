@@ -33,7 +33,7 @@ spec:
   failureDomain: host    # "host" prevents data loss on single node failure
   replicated:
     size: 3              # 3 copies of each data object
-    requireSafeReplicaSize: true  # Refuse writes if < 3 OSDs available
+    requireSafeReplicaSize: true  # Enforce safe min_size; refuse writes if < 2 replicas available
 ```
 
 For rack-level resilience:
@@ -48,12 +48,12 @@ spec:
 Label nodes with rack topology:
 
 ```bash
-kubectl label node node1 topology.kubernetes.io/zone=rack-a
-kubectl label node node2 topology.kubernetes.io/zone=rack-a
-kubectl label node node3 topology.kubernetes.io/zone=rack-b
-kubectl label node node4 topology.kubernetes.io/zone=rack-b
-kubectl label node node5 topology.kubernetes.io/zone=rack-c
-kubectl label node node6 topology.kubernetes.io/zone=rack-c
+kubectl label node node1 topology.rook.io/rack=rack-a
+kubectl label node node2 topology.rook.io/rack=rack-a
+kubectl label node node3 topology.rook.io/rack=rack-b
+kubectl label node node4 topology.rook.io/rack=rack-b
+kubectl label node node5 topology.rook.io/rack=rack-c
+kubectl label node node6 topology.rook.io/rack=rack-c
 ```
 
 ## Monitor HA Configuration
@@ -88,10 +88,7 @@ spec:
 ```yaml
 spec:
   network:
-    provider: host
-    selectors:
-      public: "bond0"    # Bonded NICs for public client traffic
-      cluster: "bond1"   # Bonded NICs for internal OSD replication
+    provider: host    # Pods share the host network; bonded NICs configured at the OS level
 ```
 
 Configure network bonding on each node:
@@ -134,7 +131,7 @@ metadata:
   name: rook-ceph-mon-pdb
   namespace: rook-ceph
 spec:
-  minAvailable: 2
+  minAvailable: 3
   selector:
     matchLabels:
       app: rook-ceph-mon
