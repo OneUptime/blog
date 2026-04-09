@@ -16,7 +16,7 @@ Rook-Ceph relies on many Custom Resource Definitions (CRDs) including `CephClust
 
 The Rook operator Helm chart provides two approaches to CRD management:
 
-**Helm-managed CRDs (using `crds/` directory)**: CRDs are included in the chart and managed by Helm. Upgrading the chart updates the CRDs automatically.
+**Helm-managed CRDs (using `crds/` directory)**: CRDs are included in the chart and installed by Helm on initial install. Note that Helm does not update or delete CRDs from the `crds/` directory on upgrade or uninstall, so CRDs must still be updated manually before upgrading the operator.
 
 **Separate CRD installation**: Install CRDs independently before the operator, then deploy the operator without CRDs.
 
@@ -26,7 +26,7 @@ For production clusters where CRD changes need explicit review, install CRDs ind
 
 ```bash
 # Check out the Rook release version matching your chart
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/charts/rook-ceph/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/examples/crds.yaml
 ```
 
 Or extract CRDs from the Helm chart:
@@ -76,7 +76,7 @@ When upgrading Rook, CRDs must be updated before the operator:
 
 ```bash
 # Step 1: Update CRDs
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/charts/rook-ceph/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/crds.yaml
 
 # Step 2: Upgrade operator
 helm upgrade rook-ceph rook-release/rook-ceph \
@@ -87,7 +87,7 @@ helm upgrade rook-ceph rook-release/rook-ceph \
 
 ## Avoiding CRD Deletion During Helm Uninstall
 
-CRDs created by Helm are deleted on `helm uninstall`, which destroys all custom resources. Protect against this by annotating CRDs:
+CRDs in Helm's `crds/` directory are not deleted on `helm uninstall` by default. However, if CRDs are managed as regular Helm templates instead, they will be removed on uninstall, which destroys all custom resources. As a defensive measure, annotate CRDs to prevent accidental deletion:
 
 ```bash
 for crd in $(kubectl get crd -o name | grep ceph.rook.io); do
