@@ -20,14 +20,14 @@ Integrating Ceph RGW with OpenStack Keystone allows OpenStack users to authentic
 
 ## Configuring RGW for Keystone
 
-Set the Keystone configuration in ceph.conf:
+Set the Keystone configuration via the centralized config store:
 
 ```bash
 # Configure Keystone integration
 ceph config set client.rgw rgw_keystone_url "http://keystone-host:5000"
 ceph config set client.rgw rgw_keystone_api_version 3
 ceph config set client.rgw rgw_keystone_admin_domain Default
-ceph config set client.rgw rgw_keystone_admin_project admin
+ceph config set client.rgw rgw_keystone_admin_project service
 ceph config set client.rgw rgw_keystone_admin_user rgw-service
 ceph config set client.rgw rgw_keystone_admin_password rgw-password
 
@@ -88,9 +88,8 @@ openstack ec2 credentials create --user alice --project myproject
 # secret: EC2_SECRET_KEY
 
 # Use these credentials with the S3 API
-aws --endpoint-url http://rgw-host:80 s3 ls \
-  --access-key EC2_ACCESS_KEY \
-  --secret-key EC2_SECRET_KEY
+AWS_ACCESS_KEY_ID=EC2_ACCESS_KEY AWS_SECRET_ACCESS_KEY=EC2_SECRET_KEY \
+  aws --endpoint-url http://rgw-host:80 s3 ls
 ```
 
 ## Configuring HTTPS for Keystone Verification
