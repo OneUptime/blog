@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RBD, Caching, Performance
 
-Description: Set up RBD persistent write log cache in Rook to accelerate read-heavy workloads by caching frequently accessed block data on local NVMe or PMEM storage.
+Description: Set up RBD persistent write-back cache in Rook to accelerate workloads by caching recently written block data on local NVMe or PMEM storage, reducing write latency and serving subsequent reads from the local cache.
 
 ---
 
 ## What is the RBD Persistent Cache
 
-The RBD persistent write log (PWL) cache stores recently written and read data on a local fast storage device (NVMe SSD or Intel Optane PMEM). Unlike the in-process librbd cache, the persistent cache survives application restarts and provides consistent acceleration across pod restarts.
+The RBD persistent write-back cache stores recently written data on a local fast storage device (NVMe SSD or Intel Optane PMEM). Unlike the in-process librbd cache, the persistent cache survives application restarts and provides consistent acceleration across pod restarts. The cache supports two modes: `rwl` (Replica Write Log) for PMEM devices and `ssd` for NVMe/SSD storage.
 
-For read-heavy workloads, the persistent cache acts as a local read buffer, serving repeated reads from the local SSD rather than going over the network to Ceph OSDs.
+The persistent cache primarily accelerates writes by absorbing them locally before flushing to Ceph OSDs. Subsequent reads of recently written data can also be served from the local cache, benefiting workloads with temporal locality where data is read shortly after being written.
 
 ## Prerequisites
 
@@ -32,6 +32,10 @@ Enable the persistent cache for a specific image:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd config image set replicapool/my-vol \
+    rbd_plugins pwl_cache
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  rbd config image set replicapool/my-vol \
     rbd_persistent_cache_mode ssd
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -48,6 +52,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Apply persistent cache settings globally for all images:
 
 ```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client rbd_plugins pwl_cache
+
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client rbd_persistent_cache_mode ssd
 
@@ -89,7 +96,7 @@ spec:
               mountPath: /host
       containers:
         - name: pause
-          image: gcr.io/google_containers/pause:3.1
+          image: registry.k8s.io/pause:3.9
       volumes:
         - name: host-root
           hostPath:
@@ -110,12 +117,12 @@ Monitor cache statistics:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd perf image stats replicapool/my-vol
+  rbd perf image iostat replicapool/my-vol
 ```
 
 ## Cache Invalidation and Cleanup
 
-The persistent cache is invalidated automatically when the RBD image is closed cleanly. To manually clean cache files:
+The persistent cache files remain on disk across restarts to provide continued acceleration. On a clean close, dirty data is flushed to the Ceph OSDs but the cache file is preserved for reuse. To explicitly invalidate and remove cache files:
 
 ```bash
 rm -f /var/cache/ceph/rbd/<image-uuid>
@@ -125,4 +132,4 @@ Always ensure the image is unmapped before removing cache files to avoid corrupt
 
 ## Summary
 
-RBD persistent cache accelerates read-heavy Kubernetes workloads by absorbing repeated reads from local NVMe storage instead of traversing the network to Ceph OSDs. Configuration is per-image or global, with the cache directory prepared on each node. For workloads with high read-to-write ratios and temporal locality, the persistent cache can reduce average read latency by an order of magnitude.
+RBD persistent write-back cache accelerates Kubernetes workloads by absorbing writes on local NVMe storage before flushing to Ceph OSDs, and serving subsequent reads of recently written data from the local cache. Configuration is per-image or global, with the cache directory prepared on each node. For workloads with temporal locality where recently written data is read back frequently, the persistent cache can significantly reduce latency.
