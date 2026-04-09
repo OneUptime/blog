@@ -102,10 +102,9 @@ RocksDB can accumulate tombstone entries and compaction overhead. Compact to rec
 # Trigger compaction via the OSD daemon
 ceph tell osd.2 compact
 
-# Or use ceph-objectstore-tool (OSD must be stopped)
+# Or use ceph-kvstore-tool (OSD must be stopped)
 systemctl stop ceph-osd@2
-ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-2 \
-  --op compact
+ceph-kvstore-tool bluestore-kv /var/lib/ceph/osd/ceph-2 compact
 systemctl start ceph-osd@2
 ```
 
