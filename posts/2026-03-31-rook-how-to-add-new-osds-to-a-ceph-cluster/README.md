@@ -48,8 +48,8 @@ Output shows each device with its availability status.
 # Add OSD on a specific device
 ceph orch daemon add osd <hostname>:/dev/sdd
 
-# Or let cephadm add all available devices on a host
-ceph orch apply osd <hostname> --all-available-devices
+# Or let cephadm add all available devices across the cluster
+ceph orch apply osd --all-available-devices
 ```
 
 ### Step 4 - Apply OSD Spec (Recommended)
@@ -144,14 +144,14 @@ By default, rebalancing uses all available bandwidth. You can throttle it to red
 
 ```bash
 # Limit recovery operations (default is 3)
-ceph osd set-option osd_recovery_max_active 1
+ceph config set osd osd_recovery_max_active 1
 
 # Limit backfill operations
-ceph osd set-option osd_max_backfills 1
+ceph config set osd osd_max_backfills 1
 
 # Restore defaults after rebalancing is complete
-ceph osd set-option osd_recovery_max_active 3
-ceph osd set-option osd_max_backfills 1
+ceph config set osd osd_recovery_max_active 3
+ceph config set osd osd_max_backfills 1
 ```
 
 ## Adjusting OSD CRUSH Weight
