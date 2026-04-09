@@ -52,15 +52,15 @@ Limits backfill operations to prevent them from overwhelming OSDs:
 ceph config set osd osd_max_backfills 1
 ```
 
-## Recovery Bandwidth Throttling
+## Recovery Chunk Size Throttling
 
-Limit the network bandwidth used for recovery:
+Limit the size of data chunks pushed during recovery:
 
 ```bash
 ceph config set osd osd_recovery_max_chunk 8388608
 ```
 
-This caps each recovery chunk to 8 MB, reducing burst network usage.
+This caps each recovery chunk to 8 MB (the default), reducing burst I/O from large recovery operations.
 
 ## Practical Throttling Configuration
 
@@ -91,7 +91,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephConfig:
-    osd:
+    "osd.*":
       osd_recovery_sleep_hdd: "0.5"
       osd_recovery_sleep_ssd: "0.05"
       osd_recovery_max_active: "2"
