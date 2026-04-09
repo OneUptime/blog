@@ -21,7 +21,7 @@ ceph pg stat
 Or get a detailed breakdown:
 
 ```bash
-ceph pg dump --format json-pretty | jq '.pg_map.pg_stats[] | {pgid: .pgid, state: .state}'
+ceph pg dump --format json-pretty | jq '.pg_stats[] | {pgid: .pgid, state: .state}'
 ```
 
 ## Common PG States Explained
@@ -52,7 +52,7 @@ Ceph is actively copying data to restore missing replicas. This is a transient s
 Similar to recovering, but happens when a new OSD is added and PGs are being rebalanced. Backfill is lower priority than normal I/O.
 
 ```bash
-ceph pg dump_stuck backfilling
+ceph pg dump pgs_brief | grep backfill
 ```
 
 ### peering
@@ -128,7 +128,13 @@ ceph osd pool set <pool-name> min_size 1
 # WARNING: Only use this as a last resort - data loss risk is increased
 ```
 
-To force a PG to recover:
+To prioritize recovery of a specific PG:
+
+```bash
+ceph pg force-recovery <pgid>
+```
+
+To repair a PG with inconsistencies found by scrubbing:
 
 ```bash
 ceph pg repair <pgid>
