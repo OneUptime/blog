@@ -112,7 +112,7 @@ kubectl -n rook-ceph rollout restart deploy/rook-ceph-osd-1
 Temporarily suppress the warning (not recommended long-term):
 
 ```bash
-ceph config set mon mon_osd_min_in_ratio 0.5
+ceph health mute TOO_FEW_OSDS
 ```
 
 ## Minimum OSD Recommendations
