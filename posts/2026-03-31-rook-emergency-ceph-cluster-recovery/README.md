@@ -28,7 +28,7 @@ Determine:
 
 ## Scenario 1 - MON Quorum Loss
 
-If fewer than half the MONs are running, the cluster is read-only:
+If a majority of MONs are not running, the cluster loses quorum and becomes unavailable:
 
 ```bash
 # Check which MONs are up
@@ -39,14 +39,14 @@ systemctl restart ceph-mon@mon-hostname-1
 systemctl restart ceph-mon@mon-hostname-2
 
 # If a MON's data is corrupt, rebuild from another MON
-ceph-monstore-tool /var/lib/ceph/mon/ceph-mon1 rebuild
+ceph-monstore-tool /var/lib/ceph/mon/ceph-mon1 rebuild -- --keyring /etc/ceph/ceph.client.admin.keyring
 ```
 
 If all MON data is lost, recover using `monmaptool` and a backup:
 
 ```bash
 monmaptool --print /tmp/monmap.bak
-ceph-mon --mkfs -i mon1 --monmap /tmp/monmap.bak
+ceph-mon --mkfs -i mon1 --monmap /tmp/monmap.bak --keyring /tmp/ceph.mon.keyring
 ```
 
 ## Scenario 2 - Majority of OSDs Down
