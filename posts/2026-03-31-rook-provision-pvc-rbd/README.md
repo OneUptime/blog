@@ -176,7 +176,7 @@ Look up the RBD image in the Ceph pool:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  rbd info replicapool/csi-vol-$(kubectl get pvc my-app-data -o jsonpath='{.spec.volumeName}' | cut -d- -f2-)
+  rbd info replicapool/$(kubectl get pv $(kubectl get pvc my-app-data -o jsonpath='{.spec.volumeName}') -o jsonpath='{.spec.csi.volumeAttributes.imageName}')
 ```
 
 ## Pre-Provisioned (Static) PV
