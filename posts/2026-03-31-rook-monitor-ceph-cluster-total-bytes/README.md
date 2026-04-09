@@ -71,7 +71,7 @@ groups:
   rules:
   - alert: CephClusterNearFull
     expr: |
-      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 75
+      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.75
     for: 10m
     labels:
       severity: warning
@@ -81,7 +81,7 @@ groups:
 
   - alert: CephClusterCriticalCapacity
     expr: |
-      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 85
+      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.85
     for: 5m
     labels:
       severity: critical
@@ -95,7 +95,7 @@ Use Prometheus to predict capacity exhaustion:
 
 ```promql
 # Daily growth rate in bytes
-increase(ceph_cluster_total_used_bytes[24h])
+delta(ceph_cluster_total_used_bytes[24h])
 
 # Days until cluster is full (at current growth rate)
 (ceph_cluster_total_bytes - ceph_cluster_total_used_bytes) /
