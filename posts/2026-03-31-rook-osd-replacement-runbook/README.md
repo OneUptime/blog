@@ -52,10 +52,10 @@ kubectl -n rook-ceph get deployments | grep osd
 kubectl -n rook-ceph delete deployment rook-ceph-osd-5
 ```
 
-Also delete the `ConfigMap` that tracks the OSD:
+Also delete the `ConfigMap` that tracks the OSD status for its node:
 
 ```bash
-kubectl -n rook-ceph delete configmap rook-ceph-osd-5-status
+kubectl -n rook-ceph delete configmap rook-ceph-osd-worker-node-1-status
 ```
 
 ## Step 5: Wipe and Replace the Physical Disk
@@ -65,7 +65,7 @@ After the old disk is physically removed and the new disk inserted:
 ```bash
 # SSH to the node and wipe the new disk
 sudo sgdisk --zap-all /dev/sdf
-sudo dd if=/dev/zero of=/dev/sdf bs=4096 count=100
+sudo dd if=/dev/zero of=/dev/sdf bs=1M count=100 oflag=direct,dsync
 ```
 
 ## Step 6: Allow Rook to Discover and Provision
