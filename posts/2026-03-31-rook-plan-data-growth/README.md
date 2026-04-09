@@ -42,7 +42,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph df detail --format json | jq -r '.pools[] | {
     name: .name,
     used_gb: (.stats.stored / 1073741824),
-    growth_pct: .stats.percent_used
+    used_pct: .stats.percent_used
   }'
 ```
 
