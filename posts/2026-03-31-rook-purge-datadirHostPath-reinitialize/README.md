@@ -21,7 +21,7 @@ The `dataDirHostPath` contains:
     client.admin.keyring  # Admin keyring
   mon-a/                  # Monitor a data
     data/
-      store.db/           # LevelDB database with monitor state
+      store.db/           # RocksDB database with monitor state
   mon-b/                  # Monitor b data
   mon-c/                  # Monitor c data
   log/                    # Daemon logs
@@ -89,7 +89,6 @@ spec:
     spec:
       tolerations:
       - operator: Exists
-      hostPID: true
       volumes:
       - name: host-path
         hostPath:
