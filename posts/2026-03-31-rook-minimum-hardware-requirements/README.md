@@ -34,7 +34,7 @@ Monitors can run on OSD nodes in smaller clusters.
 Per OSD disk:
 
 ```yaml
-CPU: 0.5-1 core per OSD (HDD), 2 cores per OSD (NVMe)
+CPU: 0.5-1 core per OSD (HDD), 4+ cores per OSD (NVMe)
 RAM: 4 GB per OSD (minimum), 5-8 GB per OSD (recommended)
 ```
 
