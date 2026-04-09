@@ -17,8 +17,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df
 ```
 
 - 70% usage: begin planning expansion
-- 75% usage: `HEALTH_WARN` - start expansion immediately
-- 85% usage: `HEALTH_ERR` - near-full, cluster may stop accepting writes
+- 85% usage: `HEALTH_WARN` (nearfull) - start expansion immediately
+- 95% usage: `HEALTH_ERR` (full) - cluster stops accepting writes
 
 ## Method 1: Add Disks to Existing Nodes
 
@@ -43,7 +43,7 @@ spec:
 
 ```bash
 kubectl -n rook-ceph apply -f ceph-cluster.yaml
-watch kubectl -n rook-ceph get pods | grep osd
+watch "kubectl -n rook-ceph get pods | grep osd"
 ```
 
 ## Method 2: Add New Storage Nodes
