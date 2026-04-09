@@ -63,18 +63,6 @@ tolerations:
     operator: Equal
     value: "true"
     effect: NoSchedule
-
-# Affinity for additional scheduling control
-affinity:
-  nodeAffinity:
-    preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        preference:
-          matchExpressions:
-            - key: node-type
-              operator: In
-              values:
-                - storage
 ```
 
 Apply via Helm:
