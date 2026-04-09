@@ -84,25 +84,26 @@ class roles::ceph_osd {
 
 ## Configuring ceph.conf
 
-The `ceph` class manages `/etc/ceph/ceph.conf`:
+The `ceph` class manages `/etc/ceph/ceph.conf` via individual parameters:
 
 ```puppet
 class { 'ceph':
-  fsid           => 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-  mon_host       => '192.168.1.10',
-  conf => {
-    'global' => {
-      'osd_pool_default_size'     => '3',
-      'osd_pool_default_min_size' => '2',
-      'osd_journal_size'          => '1024',
-      'public_network'            => '192.168.1.0/24',
-      'cluster_network'           => '192.168.2.0/24',
-    },
-    'osd' => {
-      'osd_journal_size' => '1024',
-      'filestore_xattr_use_omap' => true,
-    },
-  },
+  fsid                       => 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  mon_host                   => '192.168.1.10',
+  osd_pool_default_size      => '3',
+  osd_pool_default_min_size  => '2',
+  osd_journal_size           => '1024',
+  public_network             => '192.168.1.0/24',
+  cluster_network            => '192.168.2.0/24',
+}
+```
+
+For additional settings not exposed as class parameters, use the `ceph_config` resource type:
+
+```puppet
+ceph_config {
+  'osd/osd_journal_size':
+    value => '1024';
 }
 ```
 
@@ -126,7 +127,7 @@ ceph::pool { 'mypool':
   pg_num    => 128,
   pgp_num   => 128,
   size      => 3,
-  tag       => 'rbd',
+  application => 'rbd',
 }
 ```
 
