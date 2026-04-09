@@ -102,7 +102,7 @@ spec:
   replicated:
     size: 3
   quotas:
-    maxBytes: 107374182400   # 100 GiB
+    maxSize: "100Gi"
     maxObjects: 1000000
 ```
 
@@ -126,7 +126,7 @@ When a write operation would cause a pool to exceed its quota, Ceph returns an e
 rbd: error: error writing to image block device: No space left on device
 ```
 
-For RGW (object storage), S3 clients receive an HTTP 403 or 507 error:
+For RGW (object storage), S3 clients receive an HTTP 403 error:
 
 ```text
 <Error>
