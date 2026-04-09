@@ -70,12 +70,16 @@ In Grafana:
 4. Select your Prometheus data source
 5. Click Import
 
-Or via the Grafana API:
+Or via the Grafana API (two-step process — fetch the dashboard JSON from grafana.com, then import it):
 
 ```bash
+# Fetch the dashboard JSON from grafana.com
+DASHBOARD_JSON=$(curl -s http://localhost:3000/api/gnet/dashboards/2842 | jq .json)
+
+# Import the dashboard
 curl -X POST \
   -H "Content-Type: application/json" \
-  -d '{"dashboard": {"id": 2842}, "overwrite": true, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}]}' \
+  -d "{\"dashboard\": ${DASHBOARD_JSON}, \"overwrite\": true, \"inputs\": [{\"name\": \"DS_PROMETHEUS\", \"type\": \"datasource\", \"pluginId\": \"prometheus\", \"value\": \"Prometheus\"}]}" \
   http://admin:admin@localhost:3000/api/dashboards/import
 ```
 
