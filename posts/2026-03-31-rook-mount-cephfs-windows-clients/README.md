@@ -17,11 +17,13 @@ CephFS can be mounted on Windows using the Ceph Dokan driver, which implements a
 Install the required components on the Windows client:
 
 ```powershell
-# Install WinFSP (filesystem driver framework)
-winget install WinFsp.WinFsp
+# Install Dokany (user-mode filesystem driver required by ceph-dokan)
+# Minimum version: Dokany 2.0.5
+# Download from https://github.com/dokan-dev/dokany/releases
+winget install dokan-dev.Dokany
 
-# Verify WinFSP is installed
-Get-Command -Module WinFsp -ErrorAction SilentlyContinue
+# Verify Dokany is installed
+dokanctl /v
 
 # Install Ceph Windows package (includes ceph-dokan)
 # Download from https://download.ceph.com/windows/
@@ -107,12 +109,17 @@ Get-PSDrive Z
 Adjust ceph-dokan options for better performance:
 
 ```powershell
+# Adjust operation timeout (in seconds) and enable debug logging
 ceph-dokan -c C:\ProgramData\ceph\ceph.conf `
   --id windows-cephfs `
   -l Z: `
-  --thread-count 8 `
-  --enable-dir-cache `
-  --cache-timeout 30
+  --operation-timeout 60 `
+  --debug
+
+# For client-side caching tuning, add settings to ceph.conf:
+# [client]
+#   client cache size = 1073741824
+#   client cache mid = 0.75
 ```
 
 ## Unmounting CephFS
@@ -128,4 +135,4 @@ dokanctl /u Z:
 
 ## Summary
 
-CephFS on Windows uses the ceph-dokan driver built on WinFSP to expose a CephFS mount as a Windows drive letter. After installing WinFSP and the Ceph Windows package, configure a client keyring with appropriate permissions, run ceph-dokan to mount the filesystem, and optionally wrap it in a Windows service for persistent mounting. Windows applications interact with the mounted drive using standard file system APIs without any modifications.
+CephFS on Windows uses the ceph-dokan driver built on Dokany to expose a CephFS mount as a Windows drive letter. After installing WinFSP and the Ceph Windows package, configure a client keyring with appropriate permissions, run ceph-dokan to mount the filesystem, and optionally wrap it in a Windows service for persistent mounting. Windows applications interact with the mounted drive using standard file system APIs without any modifications.
