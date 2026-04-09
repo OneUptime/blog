@@ -107,17 +107,16 @@ kubectl apply -f deployment.yaml
 
 ```bash
 POD=$(kubectl get pod -n my-app -l app=s3-writer -o jsonpath='{.items[0].metadata.name}')
-ENDPOINT="http://${BUCKET_HOST}:${BUCKET_PORT}"
 
 kubectl exec -n my-app $POD -- \
-  aws s3 ls s3://$BUCKET_NAME \
-  --endpoint-url $ENDPOINT \
-  --no-verify-ssl
+  sh -c 'aws s3 ls s3://$BUCKET_NAME \
+  --endpoint-url http://$BUCKET_HOST:$BUCKET_PORT \
+  --no-verify-ssl'
 
 # Upload a test file
 kubectl exec -n my-app $POD -- \
-  aws s3 cp /etc/hostname s3://$BUCKET_NAME/test.txt \
-  --endpoint-url $ENDPOINT
+  sh -c 'aws s3 cp /etc/hostname s3://$BUCKET_NAME/test.txt \
+  --endpoint-url http://$BUCKET_HOST:$BUCKET_PORT'
 ```
 
 ## Step 6: Clean Up
