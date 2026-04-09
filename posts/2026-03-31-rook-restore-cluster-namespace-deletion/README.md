@@ -29,10 +29,10 @@ If Ceph OSD and mon processes are still running on the nodes (even without Kuber
 
 When the namespace is deleted:
 - All Kubernetes objects in `rook-ceph` are deleted (Deployments, Pods, Services, ConfigMaps, Secrets)
-- CRDs themselves may survive if they are cluster-scoped
+- CRDs (CustomResourceDefinitions) are cluster-scoped and will survive
 - Data at `dataDirHostPath` (default `/var/lib/rook`) survives on each node
 - OSD data on dedicated disk partitions survives
-- StorageClasses (cluster-scoped) may survive
+- StorageClasses are cluster-scoped and will survive
 
 Check what survived:
 
@@ -73,7 +73,7 @@ Or with Helm:
 ```bash
 helm install rook-ceph rook-release/rook-ceph \
   --namespace rook-ceph \
-  --version 1.14.0
+  --version v1.14.0
 ```
 
 Wait for the operator to become ready:
@@ -133,17 +133,11 @@ kubectl get pv | grep rook
 kubectl get pvc -A | grep -v Bound
 ```
 
-## Prevention with RBAC
+## Prevention
 
-Protect the namespace from accidental deletion using ResourceQuota policies and limit who has `delete namespace` permissions:
+Prevent accidental namespace deletion by restricting RBAC — ensure only specific administrators have the `delete` verb on `namespaces` resources. Avoid granting broad `cluster-admin` access to users or service accounts that do not need it.
 
-```bash
-kubectl create clusterrolebinding protect-rook-namespace \
-  --clusterrole=cluster-admin \
-  --serviceaccount=rook-ceph:rook-ceph-operator
-```
-
-Use admission webhooks or OPA policies to require confirmation before deleting the `rook-ceph` namespace.
+For stronger protection, use admission webhooks or OPA/Gatekeeper policies to block deletion of critical namespaces like `rook-ceph`.
 
 ## Summary
 
