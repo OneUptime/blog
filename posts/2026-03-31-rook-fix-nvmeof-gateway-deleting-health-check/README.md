@@ -23,22 +23,21 @@ ceph health detail
 Example output:
 
 ```text
-[WRN] NVMEOF_GATEWAY_DELETING: 1 NVMe-oF gateway(s) are being deleted
-    gateway 'nvmeof-gw-b' in group 'group0' has been deleting for 350 sec
+[WRN] NVMEOF_GATEWAY_DELETING: 1 gateway(s) are in deleting state; namespaces are automatically balanced across remaining gateways, this should take a few minutes.
+    NVMeoF Gateway 'nvmeof-gw-b' is in deleting state.
 ```
 
 Check gateway status:
 
 ```bash
-ceph nvmeof gw show
-ceph nvmeof gw list
+ceph nvmeof gw info
 ```
 
 Check Kubernetes resources:
 
 ```bash
-kubectl -n rook-ceph get cephnvmeof
-kubectl -n rook-ceph get pods -l app=ceph-nvmeof
+kubectl -n rook-ceph get cephnvmeofgateway
+kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
 ```
 
 ## Common Causes
@@ -98,10 +97,10 @@ ceph auth del client.nvmeof.b
 
 ### Step 5 - Force Remove from Ceph MGR
 
-If the gateway is stuck in Ceph's internal state:
+If the gateway is stuck in Ceph's internal state, remove it using the monitor command (replace `<pool>` with your RADOS pool name):
 
 ```bash
-ceph nvmeof gw delete group0 nvmeof-gw-b --force
+ceph nvme-gw delete nvmeof-gw-b <pool> group0
 ```
 
 ### Step 6 - Restart the Rook Operator
@@ -118,12 +117,11 @@ Before removing an NVMe-oF gateway, always:
 
 1. Migrate NVMe-oF clients to other gateways
 2. Verify no active connections remain
-3. Remove the gateway from the CephNVMEoF CR
+3. Remove the gateway from the CephNVMeOFGateway CR
 
 ```yaml
 spec:
-  gateway:
-    instances: 1  # reduce from 2 to 1
+  instances: 1  # reduce from 2 to 1
 ```
 
 ## Summary
