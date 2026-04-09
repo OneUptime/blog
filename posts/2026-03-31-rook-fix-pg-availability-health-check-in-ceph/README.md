@@ -77,12 +77,12 @@ ceph pg repair <pg-id>
 ceph pg scrub <pg-id>
 ```
 
-### Step 4 - Allow Degraded Reads (Temporary)
+### Step 4 - Allow Degraded I/O (Temporary)
 
-If you need read access during recovery, enable `allow_degraded`:
+If you need read/write access while PGs are degraded, temporarily reduce `min_size` to allow I/O with fewer available replicas:
 
 ```bash
-ceph osd pool set <pool-name> nodelete false
+ceph osd pool set <pool-name> min_size 1
 ```
 
 ### Step 5 - Adjust min_size if Necessary
