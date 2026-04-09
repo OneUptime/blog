@@ -58,10 +58,10 @@ Rook mounts `/var/lib/rook` into pods as a hostPath volume. SELinux blocks this 
 
 ```bash
 mkdir -p /var/lib/rook
-chcon -Rt svirt_sandbox_file_t /var/lib/rook
+chcon -Rt container_file_t /var/lib/rook
 
 # Make persistent with semanage
-semanage fcontext -a -t svirt_sandbox_file_t "/var/lib/rook(/.*)?"
+semanage fcontext -a -t container_file_t "/var/lib/rook(/.*)?"
 restorecon -Rv /var/lib/rook
 ```
 
