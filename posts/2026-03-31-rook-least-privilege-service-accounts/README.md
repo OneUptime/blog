@@ -17,7 +17,7 @@ Rook-Ceph operators and daemons require access to the Kubernetes API to manage c
 Start by reviewing what the Rook operator service account currently has:
 
 ```bash
-kubectl get clusterrolebinding -n rook-ceph | grep rook
+kubectl get clusterrolebinding | grep rook
 kubectl describe clusterrole rook-ceph-global
 ```
 
@@ -108,7 +108,7 @@ Both should return `no`.
 
 ## Use Pod Security Admission
 
-Complement RBAC with Pod Security Standards to prevent privilege escalation:
+Complement RBAC with Pod Security Standards to prevent privilege escalation. Note that Rook-Ceph daemons (especially OSDs and CSI drivers) require elevated privileges to access raw block devices and host paths, so the `restricted` profile will break Rook-Ceph. Use the `baseline` profile instead, and set `restricted` as a warning to identify pods that could be further hardened:
 
 ```yaml
 apiVersion: v1
@@ -116,7 +116,7 @@ kind: Namespace
 metadata:
   name: rook-ceph
   labels:
-    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/warn: restricted
 ```
 
