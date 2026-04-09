@@ -93,7 +93,7 @@ ceph config get osd bluestore_cache_size
 
 ## Eliminate Idle Capacity with Tiering Awareness
 
-Use Prometheus to identify over-provisioned pools:
+Use the Ceph CLI to identify over-provisioned pools:
 
 ```bash
 # Pools using less than 20% of their max_bytes
@@ -101,7 +101,7 @@ ceph df detail --format json | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 for pool in d['pools']:
-    quota = pool['stats'].get('max_bytes', 0)
+    quota = pool['stats'].get('quota_bytes', 0)
     used = pool['stats']['bytes_used']
     if quota > 0 and used / quota < 0.2:
         print(f\"{pool['name']}: {used/(1024**3):.1f}GB used of {quota/(1024**3):.0f}GB quota\")
