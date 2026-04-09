@@ -1,16 +1,16 @@
-# How to Fix BLUESTORE_SLOW_OP_ALERT Health Check in Ceph
+# How to Fix BLUESTORE_SLOW_OPS Health Check in Ceph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, BlueStore, Storage, Health Check
 
-Description: Learn how to diagnose and fix the BLUESTORE_SLOW_OP_ALERT health warning in Ceph, caused by slow disk I/O operations in the BlueStore backend.
+Description: Learn how to diagnose and fix the BLUESTORE_SLOW_OPS health warning in Ceph, caused by slow disk I/O operations in the BlueStore backend.
 
 ---
 
-## What Is BLUESTORE_SLOW_OP_ALERT?
+## What Is BLUESTORE_SLOW_OPS?
 
-The `BLUESTORE_SLOW_OP_ALERT` health warning appears when Ceph's BlueStore storage backend detects that one or more OSD operations are taking longer than expected to complete. BlueStore is the default storage backend for OSDs in modern Ceph clusters, and it tracks operation latency internally. When operations consistently exceed the threshold (default 2 seconds), Ceph raises this alert.
+The `BLUESTORE_SLOW_OPS` health warning appears when Ceph's BlueStore storage backend detects that one or more OSD operations are taking longer than expected to complete. BlueStore is the default storage backend for OSDs in modern Ceph clusters, and it tracks operation latency internally. When the number of slow ops within the last `bluestore_slow_ops_warn_lifetime` seconds (default 86400, i.e. 24 hours) meets or exceeds `bluestore_slow_ops_warn_threshold` (default 1), Ceph raises this alert. The underlying slow op detection threshold is controlled by `osd_op_complaint_time` (default 30 seconds).
 
 This warning is a signal that your OSD disks are under pressure, experiencing hardware problems, or misconfigured in a way that causes I/O bottlenecks.
 
@@ -25,8 +25,8 @@ ceph health detail
 Look for lines like:
 
 ```text
-HEALTH_WARN 1 BlueStore operations are slow
-[WRN] BLUESTORE_SLOW_OP_ALERT: 1 slow ops, oldest one blocked for 7 sec, osd.3 has slow ops
+HEALTH_WARN OSD(s) experiencing slow operations in BlueStore
+[WRN] BLUESTORE_SLOW_OPS: 1 OSD(s) experiencing slow operations in BlueStore
 ```
 
 Then check the specific OSD logs:
@@ -52,8 +52,8 @@ If `%util` is near 100% for a device, the disk is the bottleneck. Consider addin
 You can adjust the alert threshold if your workload legitimately involves longer operations. However, raising thresholds should be a last resort - investigate the root cause first.
 
 ```bash
-ceph config set osd bluestore_slow_ops_warn_lifetime 10
-ceph config set osd bluestore_slow_ops_warn_count 10
+ceph config set osd bluestore_slow_ops_warn_lifetime 300
+ceph config set osd bluestore_slow_ops_warn_threshold 10
 ```
 
 ### 3. WAL and DB Device Misconfiguration
@@ -109,7 +109,7 @@ groups:
 - name: ceph-bluestore
   rules:
   - alert: CephBluestoreSlowOps
-    expr: ceph_health_status == 1
+    expr: ceph_health_detail{name="BLUESTORE_SLOW_OPS"} == 1
     for: 5m
     labels:
       severity: warning
@@ -119,4 +119,4 @@ groups:
 
 ## Summary
 
-`BLUESTORE_SLOW_OP_ALERT` indicates disk I/O bottlenecks in your Ceph cluster's BlueStore backend. The fix involves identifying saturated disks via `iostat`, ensuring WAL/DB devices are on fast NVMe storage, throttling background recovery operations, and tuning kernel I/O schedulers. Always investigate the root hardware cause before adjusting alert thresholds.
+`BLUESTORE_SLOW_OPS` indicates disk I/O bottlenecks in your Ceph cluster's BlueStore backend. The fix involves identifying saturated disks via `iostat`, ensuring WAL/DB devices are on fast NVMe storage, throttling background recovery operations, and tuning kernel I/O schedulers. Always investigate the root hardware cause before adjusting alert thresholds.
