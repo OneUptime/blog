@@ -30,24 +30,28 @@ ceph version
 
 ## Migration Strategy
 
-The safest migration path avoids moving data - instead, you adopt the existing cluster into Rook's management rather than creating a new cluster and migrating data.
+There are two main approaches:
 
-For a full data migration (new cluster), use RGW multi-site and RBD mirroring as covered in datacenter migration guides.
+1. **External cluster mode** - Connect Rook to the existing cluster for Kubernetes CSI access without containerizing daemons. This is the quickest path to Kubernetes-native storage.
+2. **New Rook-managed cluster with incremental migration** - Deploy a new Rook-managed Ceph cluster on the same or new nodes, then migrate data and decommission old daemons incrementally.
 
-## Adopting an Existing Cluster with Rook (Import)
+For cross-datacenter data migration, use RGW multi-site and RBD mirroring as covered in datacenter migration guides.
 
-Rook supports importing an existing Ceph cluster:
+## Deploying a New Rook-Managed Cluster on Existing Nodes
+
+Rook does not directly adopt or import an existing Ceph cluster's daemons. Instead, you deploy a new Rook-managed Ceph cluster on the same nodes, then incrementally migrate data and decommission the old cluster.
 
 ### Step 1 - Deploy Rook Operator
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/common.yaml
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/operator.yaml
 ```
 
-### Step 2 - Create CephCluster with DataDirHostPath
+### Step 2 - Create CephCluster Resource
 
-Point Rook to the existing Ceph data directory:
+Create a new Rook-managed cluster. Use a separate `dataDirHostPath` from the existing Ceph installation to avoid conflicts (Rook defaults to `/var/lib/rook`):
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -58,12 +62,10 @@ metadata:
 spec:
   cephVersion:
     image: quay.io/ceph/ceph:v18.2.0
-  dataDirHostPath: /var/lib/ceph
+  dataDirHostPath: /var/lib/rook
   mon:
     count: 3
     allowMultiplePerNode: false
-  external:
-    enable: false
   storage:
     useAllNodes: true
     useAllDevices: false
@@ -71,25 +73,21 @@ spec:
     - name: sdb
 ```
 
-### Step 3 - Match Existing Keyring
-
-Copy existing keyrings to the expected location:
-
-```bash
-# On each node, ensure keyring is in place
-cp /etc/ceph/ceph.client.admin.keyring /var/lib/rook/rook-ceph/
-```
+Ensure the devices listed under `storage` are not already in use by the existing Ceph cluster. Use separate disks for the new Rook-managed OSDs.
 
 ## Alternative: External Cluster Mode
 
 Connect Rook to manage a pre-existing cluster without touching its daemons:
 
 ```bash
-# Generate external cluster config
+# Generate external cluster config (run on a Ceph node with admin access)
 python3 create-external-cluster-resources.py \
   --rbd-data-pool-name=mypool \
   --namespace=rook-ceph-external \
-  --format=bash | bash
+  --format=bash
+
+# Copy the output export statements and paste them into your shell, then run:
+. import-external-cluster.sh
 ```
 
 This provides CSI storage classes backed by the existing cluster without containerizing the Ceph daemons.
@@ -126,4 +124,4 @@ kubectl get pv
 
 ## Summary
 
-Migrating from VM-based to container-based Ceph can be done incrementally by importing the existing cluster into Rook using the shared data directory, or by using Rook's external cluster mode to gain Kubernetes storage class benefits without immediately containerizing daemons. The incremental daemon migration approach minimizes risk by containerizing one component at a time.
+Migrating from VM-based to container-based Ceph can be done by using Rook's external cluster mode to gain Kubernetes storage class benefits without immediately containerizing daemons, or by deploying a new Rook-managed cluster alongside the existing one and incrementally migrating services. The incremental daemon migration approach minimizes risk by containerizing one component at a time.
