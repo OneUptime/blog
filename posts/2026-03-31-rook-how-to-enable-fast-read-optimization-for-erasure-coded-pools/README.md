@@ -84,7 +84,7 @@ For EC pools serving latency-sensitive applications where you want to minimize P
 ceph osd perf --format json | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for osd in data.get('osd_perf_infos', []):
+for osd in data.get('osdstats', {}).get('osd_perf_infos', []):
     print(f\"OSD {osd['id']}: apply_latency={osd['perf_stats']['apply_latency_ms']}ms\")
 "
 ```
@@ -99,7 +99,7 @@ ceph osd perf
 ceph -w
 
 # Use rados bench for controlled testing
-rados bench -p fast-ec-pool 60 rand -t 32 -b 4M --no-cleanup
+rados bench -p fast-ec-pool 60 rand -t 32 --no-cleanup
 ```
 
 Compare with fast_read disabled:
@@ -107,10 +107,10 @@ Compare with fast_read disabled:
 ```bash
 # Disable, benchmark, re-enable
 ceph osd pool set fast-ec-pool fast_read false
-rados bench -p fast-ec-pool 60 rand -t 32 -b 4M --no-cleanup
+rados bench -p fast-ec-pool 60 rand -t 32 --no-cleanup
 
 ceph osd pool set fast-ec-pool fast_read true
-rados bench -p fast-ec-pool 60 rand -t 32 -b 4M --no-cleanup
+rados bench -p fast-ec-pool 60 rand -t 32 --no-cleanup
 ```
 
 ## Impact on Cluster Load
