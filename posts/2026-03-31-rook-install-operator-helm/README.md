@@ -31,7 +31,7 @@ graph TD
 
 Before installing the Rook operator, ensure the following conditions are met:
 
-- Kubernetes 1.22 or later
+- Kubernetes 1.25 or later
 - Helm 3.x installed on your local machine
 - `kubectl` configured and pointing at your target cluster
 - Cluster admin permissions (the operator needs cluster-wide RBAC)
@@ -40,7 +40,7 @@ Before installing the Rook operator, ensure the following conditions are met:
 Verify your Kubernetes version and Helm installation:
 
 ```bash
-kubectl version --short
+kubectl version
 helm version --short
 ```
 
@@ -144,9 +144,11 @@ cephbucketnotifications.ceph.rook.io
 cephbuckettopics.ceph.rook.io
 cephclients.ceph.rook.io
 cephclusters.ceph.rook.io
+cephcosidrivers.ceph.rook.io
 cephfilesystemmirrors.ceph.rook.io
 cephfilesystems.ceph.rook.io
 cephfilesystemsubvolumegroups.ceph.rook.io
+cephnfs.ceph.rook.io
 cephobjectrealms.ceph.rook.io
 cephobjectstores.ceph.rook.io
 cephobjectstoreusers.ceph.rook.io
