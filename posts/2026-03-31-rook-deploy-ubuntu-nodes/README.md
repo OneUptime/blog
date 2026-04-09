@@ -35,10 +35,10 @@ apt-get install -y lvm2 util-linux xfsprogs e2fsprogs
 apt-get install -y linux-modules-extra-$(uname -r)
 ```
 
-On Ubuntu 22.04+ with HWE kernels:
+On Ubuntu 22.04+ with HWE kernels, the same command works because `uname -r` already includes the `-generic` suffix:
 
 ```bash
-apt-get install -y linux-modules-extra-$(uname -r)-generic
+apt-get install -y linux-modules-extra-$(uname -r)
 ```
 
 ## Step 2 - Load Kernel Modules
@@ -192,7 +192,7 @@ On Ubuntu 20.04 with AppArmor enabled, you may see mount failures in CSI pods. C
 dmesg | grep DENIED | grep ceph
 ```
 
-If needed, set the `apparmor.security.beta.kubernetes.io/pod: runtime/default` annotation on CSI pods, or create an AppArmor profile that allows `rbd map` and `mount` syscalls.
+If needed, set the `container.apparmor.security.beta.kubernetes.io/<container_name>: runtime/default` annotation on CSI pod containers, or create an AppArmor profile that allows `rbd map` and `mount` syscalls.
 
 ## Summary
 
