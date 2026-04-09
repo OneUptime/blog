@@ -21,9 +21,9 @@ ceph health detail
 Example output:
 
 ```text
-HEALTH_WARN bluestore spurious read errors
-[WRN] BLUESTORE_SPURIOUS_READ_ERRORS: osd.9 has spurious read errors
-    osd.9: 47 spurious read errors detected in the last 24h
+HEALTH_WARN 1 OSD(s) have spurious read errors
+[WRN] BLUESTORE_SPURIOUS_READ_ERRORS: 1 OSD(s) have spurious read errors
+    osd.9 reads with retries: 47
 ```
 
 ## Gathering Hardware Evidence
@@ -32,7 +32,7 @@ Check SMART data on the affected OSD disk:
 
 ```bash
 # Identify the disk device for the OSD
-ceph osd metadata 9 | python3 -m json.tool | grep -E '"devname"|"dev"'
+ceph osd metadata 9 | python3 -m json.tool | grep -E '"bluestore_bdev_dev_node"|"bluestore_bdev_devices"'
 
 # Run SMART diagnostics
 smartctl -a /dev/sdX
@@ -55,31 +55,37 @@ journalctl -k | grep sdX | tail -50
 Get the full error count from BlueStore:
 
 ```bash
-ceph daemon osd.9 perf dump | python3 -m json.tool | grep -i "read_error\|spurious"
+ceph daemon osd.9 perf dump | python3 -m json.tool | grep -i "reads_with_retries\|read_eio"
 ```
 
 In Rook:
 
 ```bash
-kubectl -n rook-ceph exec -it <osd-9-pod> -- \
-  ceph daemon osd.9 perf dump | python3 -m json.tool | grep read_error
+kubectl -n rook-ceph exec <osd-9-pod> -- \
+  ceph daemon osd.9 perf dump | python3 -m json.tool | grep reads_with_retries
 ```
 
-## Resetting the Error Counter
+## Clearing the Health Warning
 
-If SMART checks are clean and you believe the errors were transient (firmware glitch, cable issue that has been fixed):
+If SMART checks are clean and you believe the errors were transient (firmware glitch, cable issue that has been fixed), restart the OSD to clear the in-memory counter:
 
 ```bash
-ceph tell osd.9 reset spurious_read_errors
+systemctl restart ceph-osd@9
 ```
 
-Verify the count resets:
+Alternatively, disable the warning if you want to suppress it without restarting:
+
+```bash
+ceph config set osd bluestore_warn_on_spurious_read_errors false
+```
+
+Verify the warning clears:
 
 ```bash
 ceph health detail
 ```
 
-If errors accumulate again, the hardware issue is real and ongoing.
+If errors accumulate again after restart, the hardware issue is real and ongoing.
 
 ## Replacing a Flaky Disk
 
@@ -109,16 +115,19 @@ ceph-volume lvm create --bluestore --data /dev/sdX
 Replace a flaky OSD disk in Rook using the OSD removal procedure:
 
 ```bash
-# Scale down the OSD deployment
-kubectl -n rook-ceph scale deployment rook-ceph-osd-9 --replicas=0
-
-# Mark out via toolbox
+# Step 1: Mark out via toolbox
 kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd out 9
 
-# Wait for recovery, then purge
+# Step 2: Wait for data migration to complete (all PGs active+clean)
+kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph -w
+
+# Step 3: Scale down the OSD deployment
+kubectl -n rook-ceph scale deployment rook-ceph-osd-9 --replicas=0
+
+# Step 4: Purge the OSD from the cluster
 kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd purge 9 --yes-i-really-mean-it
 
-# After physical disk replacement, delete the deployment
+# Step 5: After physical disk replacement, delete the deployment
 kubectl -n rook-ceph delete deployment rook-ceph-osd-9
 
 # Rook will detect the new disk and provision a fresh OSD
@@ -130,7 +139,7 @@ Use node_exporter and Prometheus to monitor SMART data:
 
 ```yaml
 - alert: DiskSMARTErrors
-  expr: node_smartmon_attr_raw_value{attr="5"} > 0  # Reallocated sectors
+  expr: smartmon_attr_raw_value{name="reallocated_sector_ct"} > 0
   for: 5m
   labels:
     severity: warning
@@ -140,4 +149,4 @@ Use node_exporter and Prometheus to monitor SMART data:
 
 ## Summary
 
-`BLUESTORE_SPURIOUS_READ_ERRORS` warns that an OSD disk is producing intermittent read errors, indicating potential hardware degradation. Investigate with SMART diagnostics and kernel logs. If the errors are truly transient (cable issue resolved), reset the counter. If errors persist or SMART shows problems, replace the disk using the proper OSD removal and reprovisioning procedure before a full disk failure causes data loss.
+`BLUESTORE_SPURIOUS_READ_ERRORS` warns that an OSD disk is producing intermittent read errors, indicating potential hardware degradation. Investigate with SMART diagnostics and kernel logs. If the errors are truly transient (cable issue resolved), restart the OSD to clear the counter. If errors persist or SMART shows problems, replace the disk using the proper OSD removal and reprovisioning procedure before a full disk failure causes data loss.
