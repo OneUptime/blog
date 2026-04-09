@@ -193,22 +193,31 @@ The `%USE` column should be relatively balanced across all OSDs. An imbalance gr
 If rebalancing impacts application performance, throttle it:
 
 ```bash
-# Slow down recovery (lower = slower, 0 = pause)
+# Reduce concurrent backfills and recovery operations per OSD
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd set-recovery-ratio 0.2
-
-# Resume normal recovery speed
+  ceph config set osd osd_max_backfills 1
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd set-recovery-ratio 1
-```
+  ceph config set osd osd_recovery_max_active 1
 
-You can also set the number of concurrent recovery operations:
-
-```bash
+# Pause recovery entirely if needed
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph config set global osd_recovery_max_active 3
+  ceph osd set norecovery
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph osd set nobackfill
+
+# Resume recovery
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph osd unset norecovery
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph osd unset nobackfill
+
+# Restore default backfill/recovery settings
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph config rm osd osd_max_backfills
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph config rm osd osd_recovery_max_active
 ```
 
 ## Summary
 
-Expanding a Rook-Ceph cluster by adding OSDs requires three steps: preparing the new disks (wiping signatures), updating the CephCluster CR to include the new devices, and monitoring the automatic rebalancing. With `useAllDevices: true` or a matching `deviceFilter`, Rook discovers new clean disks automatically after an operator restart. After new OSD pods start, Ceph rebalances data automatically - monitor with `ceph status` and `ceph progress` until all PGs return to `active+clean`. Throttle recovery if it impacts production workload performance.
+Expanding a Rook-Ceph cluster by adding OSDs requires three steps: preparing the new disks (wiping signatures), updating the CephCluster CR to include the new devices, and monitoring the automatic rebalancing. With `useAllDevices: true` or a matching `deviceFilter`, Rook discovers new clean disks automatically after an operator restart. After new OSD pods start, Ceph rebalances data automatically - monitor with `ceph status` and `ceph progress` until all PGs return to `active+clean`. Throttle recovery with `osd_max_backfills` and `osd_recovery_max_active` settings, or pause it entirely with `norecovery`/`nobackfill` flags, if it impacts production workload performance.
