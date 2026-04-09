@@ -42,7 +42,7 @@ class Module(MgrModule):
 ```
 
 Key points:
-- The class must be named `Module` and inherit from `MgrModule`
+- The class must inherit from `MgrModule`. The manager discovers it automatically by scanning for `MgrModule` subclasses
 - `COMMANDS` defines CLI commands the module registers
 - `handle_command` processes incoming commands
 
@@ -78,9 +78,14 @@ ceph hello --who Alice
 Modules can also run a continuous background loop:
 
 ```python
-import time
+from threading import Event
+from mgr_module import MgrModule
 
 class Module(MgrModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.event = Event()
+
     def serve(self):
         self.log.info("Hello module background service started")
         while not self.event.wait(timeout=60):
@@ -106,4 +111,4 @@ Logs appear in the manager's log file at `/var/log/ceph/ceph-mgr.*.log`.
 
 ## Summary
 
-A Ceph Manager Hello World module requires only a `module.py` file with a `Module` class that inherits from `MgrModule`. Commands are declared in the `COMMANDS` list and handled by `handle_command`. This minimal structure is the foundation for all custom manager modules, from simple CLI tools to background monitoring daemons.
+A Ceph Manager Hello World module requires only a `module.py` file with a class that inherits from `MgrModule`. Commands are declared in the `COMMANDS` list and handled by `handle_command`. This minimal structure is the foundation for all custom manager modules, from simple CLI tools to background monitoring daemons.
