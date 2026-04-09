@@ -42,10 +42,10 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
 
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd feature disable iscsipool/lun-01 \
-  deep-flatten fast-diff object-map exclusive-lock
+  deep-flatten fast-diff object-map
 ```
 
-Note: iSCSI gateway requires disabling certain RBD features for compatibility.
+Note: iSCSI gateway requires disabling certain RBD features for compatibility. The `exclusive-lock` feature must remain enabled as it is required by the iSCSI gateway for proper operation.
 
 ## Step 3 - Configure the iSCSI Gateway
 
@@ -60,14 +60,13 @@ Use the interactive `gwcli` tool to configure:
 ```text
 /> cd /iscsi-targets
 /iscsi-targets> create iqn.2026-03.com.example:ceph-lun-01
-/iscsi-targets/iqn.2026-03.com.example:ceph-lun-01> cd portals
-/portals> create 192.168.1.20
-/portals> cd /disks
-/disks> attach rbd/iscsipool/lun-01
-/disks/iscsipool-lun-01> cd /iscsi-targets/iqn.2026-03.com.example:ceph-lun-01
-/> cd hosts
+/iscsi-targets> cd iqn.2026-03.com.example:ceph-lun-01/gateways
+/gateways> create gw1 192.168.1.20
+/gateways> cd /disks
+/disks> attach iscsipool/lun-01
+/disks> cd /iscsi-targets/iqn.2026-03.com.example:ceph-lun-01/hosts
 /hosts> create iqn.2026-03.com.client:host-01
-/hosts/iqn.2026-03.com.client:host-01> disk add iscsipool-lun-01
+/hosts/iqn.2026-03.com.client:host-01> disk add iscsipool/lun-01
 ```
 
 ## Step 4 - Use the Configuration File Approach
@@ -85,10 +84,11 @@ api_port = 5000
 trusted_ip_list = 192.168.1.20,192.168.1.21
 ```
 
-Apply with:
+Apply by restarting the iSCSI gateway services:
 
 ```bash
-gwcli --config /etc/ceph/iscsi-gateway.cfg
+systemctl restart rbd-target-api
+systemctl restart rbd-target-gw
 ```
 
 ## Step 5 - Connect an iSCSI Initiator (Linux)
@@ -112,7 +112,7 @@ lsblk | grep sd
 Check gateway health:
 
 ```bash
-gwcli status
+gwcli ls
 journalctl -u tcmu-runner --follow
 ```
 
