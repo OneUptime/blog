@@ -14,7 +14,7 @@ When using encrypted RBD volumes in Rook CSI, snapshots and restores have specif
 
 ## Constraint 1 - Snapshots Inherit Encryption
 
-Snapshots of encrypted RBD volumes are themselves encrypted with the same key as the source volume. You cannot create an unencrypted snapshot from an encrypted volume. When restoring, the new PVC must also reference an encrypted StorageClass:
+Snapshots of encrypted RBD volumes can only be restored to encrypted PVCs using the same KMS configuration. You cannot create an unencrypted snapshot from an encrypted volume, and restoring requires that the new PVC reference an encrypted StorageClass with the same KMS backend so the encryption passphrase can be retrieved:
 
 ```yaml
 # Snapshot source must be encrypted
@@ -54,15 +54,15 @@ spec:
       storage: 10Gi
 ```
 
-## Constraint 3 - VolumeSnapshotClass Must Support Encryption
+## Constraint 3 - VolumeSnapshotClass Must Be Properly Configured
 
-The VolumeSnapshotClass used for encrypted volumes must include the KMS secrets reference:
+The VolumeSnapshotClass used for snapshots (encrypted or not) must include the Ceph authentication secrets. These are standard parameters required for all RBD snapshot operations, not encryption-specific, but they must be present for encrypted snapshot workflows to succeed:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: csi-rbdplugin-snapclass-encrypted
+  name: csi-rbdplugin-snapclass
 driver: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
