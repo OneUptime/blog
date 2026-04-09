@@ -82,7 +82,7 @@ ceph osd crush move osd.X datacenter=datacenter-C host=node-c1
 If the datacenter was renamed, update the monitor to point to the correct bucket:
 
 ```bash
-ceph mon set-crush-location mon.b datacenter=datacenter-B
+ceph mon set_location b datacenter=datacenter-B
 ```
 
 ### Step 4 - Option C - Remove the Monitor from Stretch Mode
@@ -90,7 +90,7 @@ ceph mon set-crush-location mon.b datacenter=datacenter-B
 If the monitor should be the tiebreaker:
 
 ```bash
-ceph mon set-crush-location mon.b datacenter=tiebreaker
+ceph mon set_location b datacenter=tiebreaker
 ```
 
 ### Step 5 - Verify Stretch Mode Configuration
