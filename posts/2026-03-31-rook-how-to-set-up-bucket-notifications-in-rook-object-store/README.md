@@ -96,9 +96,9 @@ apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
   name: my-bucket-with-notifications
-  namespace: default
+  namespace: rook-ceph
   labels:
-    notifications.ceph.rook.io/my-notification: "rook-ceph"
+    bucket-notification-my-notification: my-notification
 spec:
   generateBucketName: my-bucket
   storageClassName: rook-ceph-bucket
