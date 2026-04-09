@@ -39,7 +39,6 @@ spec:
         app: dhcp-cni-daemon
     spec:
       hostPID: true
-      hostIPC: true
       hostNetwork: true
       tolerations:
       - operator: Exists
@@ -60,9 +59,7 @@ spec:
       containers:
       - name: dhcp
         image: ghcr.io/k8snetworkplumbingwg/cni-plugins:latest
-        args:
-        - dhcp
-        - daemon
+        command: ["/usr/bin/dhcp", "daemon"]
         volumeMounts:
         - name: cni-socket
           mountPath: /run/cni
