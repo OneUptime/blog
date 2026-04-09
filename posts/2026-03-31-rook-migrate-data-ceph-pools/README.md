@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, Storage, Migration, Pool
 
-Description: Learn how to migrate data between Ceph pools in Rook-Ceph using rbd migration, rados cppool, and Kubernetes volume cloning techniques.
+Description: Learn how to migrate data between Ceph pools in Rook-Ceph using rbd migration, rados export/import, and Kubernetes volume cloning techniques.
 
 ---
 
@@ -14,7 +14,7 @@ Moving data between Ceph pools is necessary when changing replication factors, s
 
 ```mermaid
 flowchart LR
-    A[Source Pool] -->|rbd migration / rados cppool / rsync| B[Target Pool]
+    A[Source Pool] -->|rbd migration / rados export-import / rsync| B[Target Pool]
     B --> C[Update StorageClass / PVC]
     C --> D[Verify Data Integrity]
     D --> E[Remove Source Pool]
@@ -83,21 +83,21 @@ Execute the migration (copies all data):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd migration execute replicapool/csi-vol-abc123
+  rbd migration execute replicapool-new/csi-vol-abc123
 ```
 
 Monitor progress:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd status replicapool/csi-vol-abc123
+  rbd status replicapool-new/csi-vol-abc123
 ```
 
 Commit the migration to finalize:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd migration commit replicapool/csi-vol-abc123
+  rbd migration commit replicapool-new/csi-vol-abc123
 ```
 
 ## Migrating CephFS Data
@@ -143,14 +143,19 @@ Then rsync data into the new directory so it lands in the new pool.
 
 ## Migrating RADOS Object Data Between Pools
 
-For RADOS objects, use `rados cppool`:
+For RADOS objects, use `rados export` and `rados import`:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rados cppool source-pool destination-pool
+  rados export --pool source-pool /tmp/pool-export
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  rados import /tmp/pool-export destination-pool
 ```
 
-This copies all RADOS objects from the source pool to the destination pool. For large pools this can take a significant amount of time.
+This exports all RADOS objects from the source pool to a file, then imports them into the destination pool. For large pools this can take a significant amount of time.
+
+> **Note:** The older `rados cppool` command still exists but has been removed from official Ceph documentation. It does not preserve `user_version` metadata, does not handle selfmanaged snapshots, and does not work with erasure-coded destination pools. Use `rados export`/`rados import` instead.
 
 ## Updating Kubernetes StorageClass After Migration
 
@@ -203,4 +208,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 
 ## Summary
 
-Migrating data between Ceph pools in Rook depends on the storage type. RBD images support live migration with `rbd migration prepare/execute/commit`. CephFS data can be migrated by adding a new data pool and moving directory layouts. RADOS objects can be bulk-copied with `rados cppool`. After migration, update your StorageClass to point to the new pool for new provisioning, and verify data integrity before decommissioning the source pool.
+Migrating data between Ceph pools in Rook depends on the storage type. RBD images support live migration with `rbd migration prepare/execute/commit`. CephFS data can be migrated by adding a new data pool and moving directory layouts. RADOS objects can be bulk-copied with `rados export`/`rados import`. After migration, update your StorageClass to point to the new pool for new provisioning, and verify data integrity before decommissioning the source pool.
