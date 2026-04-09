@@ -90,19 +90,15 @@ ceph df detail | grep -A 5 "mypool"
 ```
 
 Look at:
-- `USED` - actual bytes after compression
-- `RAW USED` - physical bytes stored (including replicas)
-
-Or use per-pool stats:
-
-```bash
-ceph osd pool stats mypool
-```
+- `STORED` - logical data stored (reflects compression savings)
+- `USED` - raw bytes on disk (includes replication factor)
+- `USED COMPR` - size of compressed data on disk
+- `UNDER COMPR` - original size of data before compression
 
 Write test data and compare:
 
 ```bash
-# Write 1GB of compressible data (e.g., /dev/zero)
+# Write compressible test data for 30 seconds
 rados -p mypool bench 30 write --no-cleanup
 
 # Check pool usage
