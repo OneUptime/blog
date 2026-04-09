@@ -26,7 +26,7 @@ Key concepts:
 - **Realm** - top-level namespace spanning all sites
 - **Zone Group** - geographic grouping (e.g., US-East)
 - **Zone** - a single Ceph cluster with RGW instances
-- **Master zone** - receives writes; non-master zones receive via sync
+- **Master zone** - handles authoritative metadata operations (e.g., bucket and user creation); all zones accept writes which are replicated via sync
 
 ## Defining RTO and RPO
 
