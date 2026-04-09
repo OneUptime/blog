@@ -49,10 +49,14 @@ ceph config set client.rgw rgw_keystone_revocation_interval 900
 ```bash
 # Configure tempauth users
 ceph config set client.rgw rgw_swift_auth_entry auth
-# Users configured via:
+# Create the user and a Swift subuser with a Swift key:
 radosgw-admin user create --uid=testuser \
   --display-name="Test User" \
   --email=test@example.com
+radosgw-admin subuser create --uid=testuser \
+  --subuser=testuser:swift --access=full
+radosgw-admin key create --subuser=testuser:swift \
+  --key-type=swift --gen-secret
 ```
 
 ## Tenant Configuration
@@ -92,10 +96,10 @@ swift post mycontainer --write-acl "myorg:alice"  # Write access
 Configure ACL settings in RGW:
 
 ```bash
-# Allow cross-tenant ACLs
+# Include Swift account name in the URL path
 ceph config set client.rgw rgw_swift_account_in_url true
 
-# Set default ACL behavior
+# Enforce Content-Length header in Swift API responses
 ceph config set client.rgw rgw_swift_enforce_content_length true
 ```
 
@@ -143,7 +147,7 @@ Swift uses Static Large Objects (SLO) or Dynamic Large Objects (DLO) for files l
 swift upload --segment-size=104857600 --segment-container=mycontainer-segments \
   mycontainer largefile.bin
 
-# Configure max segment size in RGW
+# Configure internal RADOS I/O chunk size (not Swift segment size)
 ceph config set client.rgw rgw_max_chunk_size 524288  # 512 KiB
 ```
 
@@ -176,13 +180,15 @@ pip install python-swiftclient
 swift --auth-version 3 \
   --os-auth-url http://keystone.example.com:5000/v3 \
   --os-project-name myorg \
+  --os-project-domain-name default \
   --os-username alice \
+  --os-user-domain-name default \
   --os-password mypassword \
   list
 
 # Or with tempauth
 swift --auth http://rgw.example.com:7480/auth/v1 \
-  --user testuser:testaccount \
+  --user testuser:swift \
   --key mypassword \
   list
 ```
