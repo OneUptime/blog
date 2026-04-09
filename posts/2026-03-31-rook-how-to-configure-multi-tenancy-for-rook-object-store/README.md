@@ -63,24 +63,25 @@ When accessing buckets from tenanted users, the bucket name is prefixed with the
 aws s3 mb s3://my-data-bucket \
   --endpoint-url $RGW_ENDPOINT
 
-# The actual bucket name in RGW is: team-alpha%3Amy-data-bucket
+# The actual bucket name in RGW is scoped as: team-alpha:my-data-bucket
 ```
 
 To access a tenanted bucket:
 
 ```bash
-aws s3 ls s3://team-alpha%3Amy-data-bucket \
+aws s3 ls s3://team-alpha:my-data-bucket \
   --endpoint-url $RGW_ENDPOINT
 ```
 
 ## Set Quotas Per Tenant
 
-Apply storage quotas at the tenant level:
+Apply storage quotas to a user within a tenant:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin quota set \
   --tenant=team-alpha \
+  --uid=developer1 \
   --quota-scope=user \
   --max-size=107374182400 \
   --max-objects=1000000
@@ -88,6 +89,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin quota enable \
   --tenant=team-alpha \
+  --uid=developer1 \
   --quota-scope=user
 ```
 
