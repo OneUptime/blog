@@ -144,12 +144,14 @@ ceph health
 Tune timeouts to be more tolerant of transient network issues:
 
 ```bash
-# Increase OSD down detection time
+# Prevent automatic mark-out when an entire rack goes down
+# (default is rack; set to host to auto-mark-out at host level)
 ceph config set mon mon_osd_downout_subtree_limit rack
 
 # Tune OSD heartbeat timeouts (more tolerant of high-latency links)
-ceph config set osd osd_heartbeat_grace 20
-ceph config set osd osd_heartbeat_interval 6
+# Defaults are grace=20, interval=6; increase for flaky networks
+ceph config set osd osd_heartbeat_grace 40
+ceph config set osd osd_heartbeat_interval 10
 ```
 
 ## Rook/Kubernetes Network Partition Recovery
@@ -170,4 +172,4 @@ kubectl delete pod -n rook-ceph -l app=rook-ceph-osd
 
 ## Summary
 
-Ceph handles network partitions by marking unreachable OSDs down and, after a timeout, as out. Setting `noout` before known network maintenance prevents premature data rebalancing. After partitions resolve, OSDs automatically re-peer and recover data consistency. MON quorum loss is the most critical scenario - losing the majority of MONs makes the cluster read-only. Design MON placement across fault domains (racks, AZs) to prevent quorum loss from any single network partition.
+Ceph handles network partitions by marking unreachable OSDs down and, after a timeout, as out. Setting `noout` before known network maintenance prevents premature data rebalancing. After partitions resolve, OSDs automatically re-peer and recover data consistency. MON quorum loss is the most critical scenario - losing the majority of MONs prevents administrative operations, new client authentication, and OSD map updates, making the cluster effectively unavailable. Design MON placement across fault domains (racks, AZs) to prevent quorum loss from any single network partition.
