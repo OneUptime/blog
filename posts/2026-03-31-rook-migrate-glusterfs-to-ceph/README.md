@@ -10,7 +10,7 @@ Description: A guide for migrating distributed file storage from GlusterFS to Ce
 
 ## Overview
 
-GlusterFS has been a popular distributed file system for Kubernetes (via Heketi and gluster-kubernetes), but its development has slowed and it lacks many features that CephFS provides - snapshots, quotas, tiering, and active-active MDS. This guide covers a practical migration from GlusterFS to Rook-Ceph while minimizing application downtime.
+GlusterFS has been a popular distributed file system for Kubernetes (via Heketi and gluster-kubernetes), but its development has slowed and CephFS provides stronger Kubernetes-native integration for features like snapshots and quotas, as well as capabilities GlusterFS lacks such as storage tiering and active-active MDS. This guide covers a practical migration from GlusterFS to Rook-Ceph while minimizing application downtime.
 
 ## Assessing Your GlusterFS Setup
 
@@ -99,6 +99,8 @@ spec:
       # Initial sync (allows continued writes to GlusterFS)
       rsync -avz --delete /gluster-src/ /ceph-dst/
       echo "Initial sync done: $(du -sh /ceph-dst)"
+      # Keep pod running for the final sync in Step 5
+      sleep infinity
     volumeMounts:
     - name: gluster-src
       mountPath: /gluster-src
@@ -146,9 +148,9 @@ gluster volume delete myvol
 | Feature | GlusterFS | CephFS |
 |---------|----------|--------|
 | Snapshots | Yes (CLI only) | Yes (Kubernetes native) |
-| Quotas | Project quotas | Per-directory quotas |
+| Quotas | Directory quotas | Per-directory quotas |
 | Kubernetes integration | Heketi (deprecated) | CSI driver (active) |
-| Multi-protocol | NFS, SMB | NFS via Ganesha |
+| Multi-protocol | NFS, SMB | Native (kernel/FUSE), NFS via Ganesha |
 | Active development | Slowing | Active |
 
 ## Summary
