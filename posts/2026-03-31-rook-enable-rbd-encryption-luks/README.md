@@ -16,10 +16,10 @@ Encryption is configured per StorageClass and uses Kubernetes secrets to manage 
 
 ## Step 1 - Create an Encryption Key Secret
 
-Generate an encryption key and store it as a Kubernetes secret:
+Generate an encryption passphrase and store it as a Kubernetes secret:
 
 ```bash
-kubectl create secret generic rbd-encryption-key \
+kubectl create secret generic rbd-encryption-secret \
   --from-literal=encryptionPassphrase="$(openssl rand -base64 32)" \
   -n rook-ceph
 ```
@@ -27,7 +27,23 @@ kubectl create secret generic rbd-encryption-key \
 Verify the secret was created:
 
 ```bash
-kubectl get secret rbd-encryption-key -n rook-ceph -o jsonpath='{.data.encryptionPassphrase}' | base64 -d
+kubectl get secret rbd-encryption-secret -n rook-ceph -o jsonpath='{.data.encryptionPassphrase}' | base64 -d
+```
+
+Then configure the CSI driver to use this secret for encryption key management by creating a KMS configuration ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: csi-kms-connection-details
+  namespace: rook-ceph
+data:
+  kubernetes-secret-encryption: |
+    {
+      "encryptionKMSType": "metadata",
+      "secretName": "rbd-encryption-secret"
+    }
 ```
 
 ## Step 2 - Create an Encrypted StorageClass
@@ -46,13 +62,11 @@ parameters:
   imageFormat: "2"
   imageFeatures: layering,exclusive-lock,object-map,fast-diff,deep-flatten
   encrypted: "true"
-  encryptionKMSID: ""
+  encryptionKMSID: kubernetes-secret-encryption
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-annotations: |
-    encryptionPassphrase=rbd-encryption-key
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
@@ -70,7 +84,7 @@ metadata:
 data:
   vault-kv-connection-details: |
     {
-      "KMSTypeName": "vault",
+      "encryptionKMSType": "vault",
       "vaultAddress": "https://vault.example.com",
       "vaultAuthPath": "/v1/auth/kubernetes/login",
       "vaultRole": "ceph-csi-role",
