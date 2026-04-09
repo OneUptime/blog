@@ -57,9 +57,7 @@ radosgw-admin quota disable \
 Verify the quota is disabled:
 
 ```bash
-radosgw-admin quota get \
-  --uid alice \
-  --quota-scope user
+radosgw-admin user info --uid alice | jq '.user_quota'
 ```
 
 Output shows `"enabled": false` while retaining the limit values:
@@ -67,27 +65,47 @@ Output shows `"enabled": false` while retaining the limit values:
 ```json
 {
   "enabled": false,
+  "check_on_raw": false,
   "max_size": 10737418240,
+  "max_size_kb": 10485760,
   "max_objects": 1000000
 }
 ```
 
 ## Enabling a Bucket Quota
 
+For a specific bucket:
+
 ```bash
 radosgw-admin quota enable \
-  --uid alice \
-  --bucket mybucket \
-  --quota-scope bucket
+  --quota-scope bucket \
+  --bucket mybucket
+```
+
+For all buckets owned by a user:
+
+```bash
+radosgw-admin quota enable \
+  --quota-scope bucket \
+  --uid alice
 ```
 
 ## Disabling a Bucket Quota
 
+For a specific bucket:
+
 ```bash
 radosgw-admin quota disable \
-  --uid alice \
-  --bucket mybucket \
-  --quota-scope bucket
+  --quota-scope bucket \
+  --bucket mybucket
+```
+
+For all buckets owned by a user:
+
+```bash
+radosgw-admin quota disable \
+  --quota-scope bucket \
+  --uid alice
 ```
 
 ## Bulk Enabling Quotas for All Users
@@ -113,7 +131,7 @@ done
 USERS=$(radosgw-admin user list | jq -r '.[]')
 
 for UID in $USERS; do
-  STATUS=$(radosgw-admin quota get --uid "$UID" --quota-scope user 2>/dev/null | jq -r '.enabled')
+  STATUS=$(radosgw-admin user info --uid "$UID" 2>/dev/null | jq -r '.user_quota.enabled')
   echo "$UID: quota enabled=$STATUS"
 done
 ```
