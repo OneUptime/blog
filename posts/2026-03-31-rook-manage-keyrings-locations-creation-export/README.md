@@ -94,7 +94,6 @@ Sample output:
 
 ```text
 rook-ceph-admin-keyring           Opaque   1      120d
-rook-ceph-mon                     Opaque   4      120d
 rook-ceph-osd-0-keyring           Opaque   1      120d
 rook-ceph-crash-collector-keyring Opaque   1      120d
 ```
