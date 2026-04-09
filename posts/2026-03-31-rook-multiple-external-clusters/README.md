@@ -34,9 +34,9 @@ flowchart TD
 - Two independent external Ceph clusters with admin access
 - Network connectivity from Kubernetes nodes to both Ceph monitor endpoints
 
-## Step 1: Configure the Rook Operator for Multiple Namespaces
+## Step 1: Verify the Rook Operator Watches Multiple Namespaces
 
-By default, the Rook operator watches a single namespace. Update it to watch all namespaces:
+By default, the Rook operator watches all namespaces (`ROOK_CURRENT_NAMESPACE_ONLY` defaults to `"false"`). If your deployment has overridden this to `"true"`, update it back:
 
 ```yaml
 # rook-operator-config.yaml
@@ -55,6 +55,15 @@ kubectl apply -f rook-operator-config.yaml
 kubectl rollout restart deployment/rook-ceph-operator -n rook-ceph
 ```
 
+Create the required RBAC resources for each external cluster namespace. Rook provides a template in `common-external.yaml` that creates the necessary ServiceAccounts, Roles, and RoleBindings for the operator to manage external clusters in separate namespaces:
+
+```bash
+# For each namespace, apply the external RBAC resources
+# Adjust the namespace in common-external.yaml before applying
+kubectl apply -f common-external.yaml -n rook-ceph-primary
+kubectl apply -f common-external.yaml -n rook-ceph-secondary
+```
+
 ## Step 2: Set Up the Primary External Cluster Namespace
 
 ```bash
@@ -71,8 +80,20 @@ metadata:
   name: rook-ceph-mon
   namespace: rook-ceph-primary
 stringData:
-  mon_host: "10.0.1.10:6789,10.0.1.11:6789,10.0.1.12:6789"
+  cluster-name: rook-ceph-primary
   fsid: "aaa11111-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  admin-secret: "AQCprimary_admin_key=="
+  mon-secret: "AQCprimary_mon_key=="
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-ceph-mon-endpoints
+  namespace: rook-ceph-primary
+data:
+  data: "a=10.0.1.10:6789,b=10.0.1.11:6789,c=10.0.1.12:6789"
+  mapping: "{}"
+  maxMonId: "0"
 ---
 apiVersion: v1
 kind: Secret
@@ -137,8 +158,20 @@ metadata:
   name: rook-ceph-mon
   namespace: rook-ceph-secondary
 stringData:
-  mon_host: "10.0.2.10:6789,10.0.2.11:6789,10.0.2.12:6789"
+  cluster-name: rook-ceph-secondary
   fsid: "bbb22222-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  admin-secret: "AQCsecondary_admin_key=="
+  mon-secret: "AQCsecondary_mon_key=="
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-ceph-mon-endpoints
+  namespace: rook-ceph-secondary
+data:
+  data: "a=10.0.2.10:6789,b=10.0.2.11:6789,c=10.0.2.12:6789"
+  mapping: "{}"
+  maxMonId: "0"
 ---
 apiVersion: v1
 kind: Secret
@@ -201,7 +234,7 @@ metadata:
   name: rook-ceph-csi-config
   namespace: rook-ceph
 data:
-  config.json: |
+  csi-cluster-config-json: |
     [
       {
         "clusterID": "aaa11111-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
