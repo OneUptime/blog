@@ -51,12 +51,12 @@ my-realm    Ready
 
 ## Realm Pull Secret
 
-After creating the realm, Rook generates a pull secret for secondary clusters to join:
+After creating the realm, Rook generates a system user and a Kubernetes secret containing the credentials for secondary clusters to join:
 
 ```bash
 # Get the pull secret (used on secondary cluster to join the realm)
-kubectl get secret realm-my-realm -n rook-ceph -o jsonpath='{.data.endpoint}' | base64 -d
-kubectl get secret realm-my-realm -n rook-ceph -o jsonpath='{.data.token}' | base64 -d
+kubectl get secret my-realm-keys -n rook-ceph -o jsonpath='{.data.access-key}' | base64 -d
+kubectl get secret my-realm-keys -n rook-ceph -o jsonpath='{.data.secret-key}' | base64 -d
 ```
 
 ## CephObjectZoneGroup CRD
@@ -151,7 +151,21 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin realm default --rgw-realm=my-realm
 ```
 
-Or via Rook CRD on the secondary (referencing the pull secret):
+Or via Rook CRD on the secondary. First, create the pull secret on the secondary cluster with the credentials from the primary:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-realm-keys
+  namespace: rook-ceph
+type: kubernetes.io/rook
+data:
+  access-key: <base64-encoded-access-key>
+  secret-key: <base64-encoded-secret-key>
+```
+
+Then create the CephObjectRealm referencing the primary endpoint:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -162,8 +176,6 @@ metadata:
 spec:
   pull:
     endpoint: http://primary-rgw-endpoint
-    secretNames:
-      - realm-my-realm
 ```
 
 ## Deleting Realm and Zone Group
