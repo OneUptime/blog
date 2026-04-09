@@ -104,6 +104,25 @@ spec:
           ceph osd unset noscrub
           ceph osd unset nodeep-scrub
           echo "Scrubbing re-enabled"
+        volumeMounts:
+        - name: ceph-config
+          mountPath: /etc/ceph/ceph.conf
+          subPath: ceph.conf
+          readOnly: true
+        - name: ceph-admin-keyring
+          mountPath: /etc/ceph/keyring
+          subPath: keyring
+          readOnly: true
+      volumes:
+      - name: ceph-config
+        configMap:
+          name: rook-ceph-config
+      - name: ceph-admin-keyring
+        secret:
+          secretName: rook-ceph-admin-keyring
+          items:
+          - key: keyring
+            path: keyring
       restartPolicy: Never
 ```
 
@@ -122,6 +141,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 # Re-enable
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set my-pool noscrub 0
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd pool set my-pool nodeep-scrub 0
 ```
 
 ## Verifying Scrubs Have Stopped
