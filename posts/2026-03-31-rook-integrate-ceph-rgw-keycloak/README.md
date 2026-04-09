@@ -10,6 +10,23 @@ Description: Integrate Ceph RGW with Keycloak as an OpenID Connect provider to e
 
 Ceph RGW supports AssumeRoleWithWebIdentity, which allows users authenticated by an external OpenID Connect (OIDC) provider like Keycloak to obtain temporary S3 credentials. This enables SSO-based access to object storage.
 
+## Prerequisites
+
+Before configuring OIDC, enable STS support in your RGW by setting the following in your Ceph config:
+
+```ini
+rgw_s3_auth_use_sts = true
+rgw_sts_key = <16-hex-character-key>
+```
+
+Generate the STS key with:
+
+```bash
+openssl rand -hex 8
+```
+
+The key must be exactly 16 hex characters. If it is shorter or longer, STS requests will fail.
+
 ## Architecture Overview
 
 The flow works as follows:
@@ -34,17 +51,28 @@ http://keycloak.example.com/auth/realms/myrealm/.well-known/openid-configuration
 
 ## Step 2 - Register the OIDC Provider in RGW
 
+First, create an RGW user with OIDC provider management capabilities:
+
 ```bash
-radosgw-admin oidc-provider create \
-  --provider-url http://keycloak.example.com/auth/realms/myrealm \
-  --client-id rgw-client \
-  --thumbprint AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD
+radosgw-admin user create --uid="oidc-admin" --display-name="OIDC Admin"
+radosgw-admin caps add --uid="oidc-admin" --caps="oidc-provider=*"
 ```
+
+Configure the AWS CLI with this user's credentials, then register the OIDC provider:
+
+```bash
+aws --endpoint http://your-rgw-host:7480 iam create-open-id-connect-provider \
+  --url http://keycloak.example.com/auth/realms/myrealm \
+  --client-id-list rgw-client \
+  --thumbprint-list AABBCCDDEEFF00112233445566778899AABBCCDD
+```
+
+The thumbprint is the SHA-1 fingerprint of the Keycloak server's TLS certificate, as a 40-character hex string without colons.
 
 List registered providers:
 
 ```bash
-radosgw-admin oidc-provider list
+aws --endpoint http://your-rgw-host:7480 iam list-open-id-connect-providers
 ```
 
 ## Step 3 - Create an RGW Role with Keycloak Trust
