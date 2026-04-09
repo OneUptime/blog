@@ -28,15 +28,14 @@ Configure compression at the zone placement level so it applies to all objects:
 radosgw-admin zone placement modify \
   --rgw-zone=us-east \
   --placement-id=default-placement \
-  --compression-type=zstd
+  --compression=zstd
 
 # Commit the change
 radosgw-admin period update --commit
 
 # Verify the configuration
-radosgw-admin zone placement get \
-  --rgw-zone=us-east \
-  --placement-id=default-placement | jq '.compression_type'
+radosgw-admin zone placement list \
+  --rgw-zone=us-east | jq '.[] | select(.key=="default-placement") | .val.storage_classes.STANDARD.compression_type'
 ```
 
 ## Enabling Compression on a Specific Placement
@@ -48,13 +47,13 @@ If you have multiple placements, configure compression per target:
 radosgw-admin zone placement modify \
   --rgw-zone=us-east \
   --placement-id=fast-storage \
-  --compression-type=snappy
+  --compression=snappy
 
 # Enable zstd on "cold" placement for archival
 radosgw-admin zone placement modify \
   --rgw-zone=us-east \
   --placement-id=cold-storage \
-  --compression-type=zstd
+  --compression=zstd
 
 radosgw-admin period update --commit
 ```
@@ -66,7 +65,7 @@ radosgw-admin period update --commit
 radosgw-admin zone placement modify \
   --rgw-zone=us-east \
   --placement-id=default-placement \
-  --compression-type=""
+  --compression=""
 
 radosgw-admin period update --commit
 ```
@@ -126,7 +125,7 @@ kubectl -n rook-ceph exec -it $TOOLBOX -- \
   radosgw-admin zone placement modify \
     --rgw-zone=us-east \
     --placement-id=default-placement \
-    --compression-type=zstd
+    --compression=zstd
 
 kubectl -n rook-ceph exec -it $TOOLBOX -- \
   radosgw-admin period update --commit
