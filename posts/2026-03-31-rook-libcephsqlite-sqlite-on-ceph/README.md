@@ -14,16 +14,16 @@ libcephsqlite is a SQLite Virtual File System (VFS) that stores SQLite database 
 
 SQLite's VFS interface allows custom storage backends. libcephsqlite implements this interface using RADOS:
 
-- The database file is stored as a RADOS object
-- WAL (Write-Ahead Log) and lock files are also RADOS objects
-- Distributed locking uses RADOS watch/notify for coordination
+- The database file is striped across multiple RADOS objects using a custom SimpleRADOSStriper
+- The rollback journal is also striped across RADOS objects
+- Distributed locking uses RADOS exclusive locks on the first stripe object of the database
 
 ## Installation
 
 ```bash
 # Install on systems with Ceph packages
-sudo apt install libcephsqlite  # Ubuntu/Debian
-sudo dnf install libcephsqlite  # RHEL/CentOS
+sudo apt install libsqlite3-mod-ceph  # Ubuntu/Debian
+sudo dnf install libcephsqlite         # RHEL/CentOS
 ```
 
 ## Using libcephsqlite from the Command Line
@@ -31,9 +31,8 @@ sudo dnf install libcephsqlite  # RHEL/CentOS
 Load the VFS and open a database stored on Ceph:
 
 ```bash
-sqlite3 ':memory:' \
-  ".load /usr/lib/x86_64-linux-gnu/libcephsqlite.so" \
-  ".open ceph:///mypool:mydb.sqlite" \
+sqlite3 -cmd '.load libcephsqlite.so' \
+  -cmd '.open file:///mypool:/mydb.sqlite?vfs=ceph' \
   "CREATE TABLE events (id INTEGER PRIMARY KEY, name TEXT, ts DATETIME);" \
   "INSERT INTO events VALUES (1, 'startup', datetime('now'));" \
   "SELECT * FROM events;"
@@ -50,7 +49,7 @@ ctypes.CDLL("libcephsqlite.so")
 
 # Connect using the ceph VFS
 conn = sqlite3.connect(
-    "ceph:///mypool:mydb.sqlite",
+    "file:///mypool:/mydb.sqlite?vfs=ceph",
     uri=True,
     check_same_thread=False
 )
@@ -80,15 +79,15 @@ conn.close()
 
 The connection URI follows this format:
 
-```yaml
-ceph://[user@cluster]/pool:object-name
+```
+file:///pool:namespace/dbname?vfs=ceph
 ```
 
 Examples:
 
-```yaml
-ceph:///mypool:app.db
-ceph://admin@ceph/analytics:events.sqlite
+```
+file:///mypool:/app.db?vfs=ceph
+file:///analytics:mynamespace/events.sqlite?vfs=ceph
 ```
 
 ## Configuring the Ceph Connection
@@ -102,7 +101,7 @@ export CEPH_CONF=/etc/ceph/ceph.conf
 Or set it programmatically in C:
 
 ```c
-#include <cephsqlite.h>
+#include <libcephsqlite.h>
 sqlite3_cephsqlite_init(db, NULL, NULL);
 ```
 
@@ -118,4 +117,4 @@ It is not suitable for high-write-throughput workloads, as RADOS locking overhea
 
 ## Summary
 
-libcephsqlite implements a SQLite VFS backed by RADOS, enabling SQLite databases to be stored directly on Ceph and accessed concurrently from multiple hosts. The `ceph://pool:object` URI format connects applications to RADOS-backed databases, making it an excellent choice for distributed configuration stores and shared lookup tables in Ceph-centric infrastructure.
+libcephsqlite implements a SQLite VFS backed by RADOS, enabling SQLite databases to be stored directly on Ceph and accessed concurrently from multiple hosts. The `file:///pool:namespace/dbname?vfs=ceph` URI format connects applications to RADOS-backed databases, making it an excellent choice for distributed configuration stores and shared lookup tables in Ceph-centric infrastructure.
