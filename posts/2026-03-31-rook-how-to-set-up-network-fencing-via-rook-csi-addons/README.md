@@ -30,18 +30,10 @@ When a node fails or becomes unreachable:
 
 ## Enable CSI-Addons in Rook
 
-Ensure the CSI-Addons sidecar is enabled in the Rook configuration:
+Ensure the CSI-Addons sidecar is enabled by setting `CSI_ENABLE_CSIADDONS` in the Rook operator ConfigMap:
 
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
-metadata:
-  name: rook-ceph
-  namespace: rook-ceph
-spec:
-  csi:
-    csiAddons:
-      enabled: true
+```bash
+kubectl patch cm rook-ceph-operator-config -nrook-ceph -p $'data:\n "CSI_ENABLE_CSIADDONS": "true"'
 ```
 
 ## Install the CSI-Addons Operator
@@ -86,15 +78,12 @@ kubectl apply -f networkfence.yaml
 kubectl get networkfence fence-node-192-168-1-50 -n rook-ceph -o yaml
 ```
 
-Check the status conditions:
+Check the status fields:
 
 ```text
 status:
-  conditions:
-    - type: Fenced
-      status: "True"
-      reason: FencingSucceeded
-      message: "Network fence applied successfully"
+  result: Succeeded
+  message: "fencing operation successful"
 ```
 
 ## Verify Fencing at the Ceph Layer
