@@ -91,7 +91,7 @@ kubectl -n rook-ceph top pods -l app=rook-ceph-osd
 Increase OSD memory target:
 
 ```bash
-ceph config set osd osd_memory_target 4294967296
+ceph config set osd osd_memory_target 8589934592
 ```
 
 ### 5. CPU Throttling
