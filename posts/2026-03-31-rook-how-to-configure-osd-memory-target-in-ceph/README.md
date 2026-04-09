@@ -51,7 +51,7 @@ ceph config set osd osd_memory_target 4294967296
 ceph config set osd osd_memory_target 2147483648
 
 # Set 8 GiB (performance-optimized nodes)
-ceph config set osd osd_memory_target 8589934656
+ceph config set osd osd_memory_target 8589934592
 ```
 
 Changes take effect without restarting OSDs - BlueStore adjusts caches dynamically.
@@ -77,11 +77,11 @@ Ceph can automatically scale OSD memory usage based on system available memory:
 # Enable automatic memory target management
 ceph config set osd osd_memory_target_autotune true
 
-# Set the fraction of system memory OSDs should collectively use
-ceph config set osd osd_memory_target_autotune_scale 0.7
+# Set the fraction of system memory for autotune (cephadm deployments)
+ceph config set mgr mgr/cephadm/autotune_memory_target_ratio 0.7
 ```
 
-With autotune enabled, OSDs collectively target 70% of available system memory, adjusting dynamically as the OS's memory pressure changes.
+With autotune enabled, each OSD dynamically adjusts its memory usage based on system memory availability. In cephadm-managed clusters, the `autotune_memory_target_ratio` (default 0.7) controls what fraction of total system memory is allocated across OSDs.
 
 ## BlueStore Cache Components
 
