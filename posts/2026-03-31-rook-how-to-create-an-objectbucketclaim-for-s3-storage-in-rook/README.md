@@ -14,7 +14,7 @@ An ObjectBucketClaim (OBC) is a Kubernetes custom resource provided by Rook that
 
 When an OBC is created, Rook automatically:
 - Creates the bucket in Ceph RGW
-- Creates a Secret with S3 credentials (access key, secret key, endpoint)
+- Creates a Secret with S3 credentials (access key and secret key)
 - Creates a ConfigMap with bucket connection details
 
 ## Prerequisites
@@ -140,7 +140,7 @@ spec:
 Test S3 access from within the pod:
 
 ```bash
-kubectl -n my-app exec -it deploy/s3-app -- aws s3 ls --endpoint-url http://$BUCKET_HOST:$BUCKET_PORT
+kubectl -n my-app exec -it deploy/s3-app -- sh -c 'aws s3 ls --endpoint-url http://$BUCKET_HOST:$BUCKET_PORT'
 ```
 
 ## Creating an OBC with Quota Limits
@@ -163,7 +163,7 @@ spec:
 
 ## Creating an OBC with a Fixed Bucket Name
 
-To use a fixed bucket name instead of a generated one:
+To use a fixed bucket name instead of a generated one, set `bucketName` in the spec. Note that Rook recommends using `generateBucketName` for new buckets since bucket names must be unique across the entire object store:
 
 ```yaml
 apiVersion: objectbucket.io/v1alpha1
