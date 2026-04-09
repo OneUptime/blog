@@ -25,8 +25,8 @@ pvecm nodes
 # Live migrate VM 100 to pve2
 qm migrate 100 pve2 --online
 
-# Migrate with bandwidth limit (in MB/s)
-qm migrate 100 pve2 --online --bwlimit 500
+# Migrate with bandwidth limit (in KiB/s)
+qm migrate 100 pve2 --online --bwlimit 512000
 
 # Watch migration progress
 watch -n 1 "qm status 100"
@@ -43,7 +43,7 @@ qm config 100 | grep -E "scsi|virtio|ide|sata"
 # All disks should reference Ceph storage (e.g., ceph-vms:vm-100-disk-0)
 
 # Check for local resources that block live migration
-qm config 100 | grep -E "local|USB|cdrom"
+qm config 100 | grep -E "local|usb|cdrom"
 # Local ISOs, USB passthrough prevent live migration
 ```
 
@@ -97,8 +97,8 @@ echo "All VMs migrated from ${SOURCE} to ${TARGET}."
 ## Migrating LXC Containers
 
 ```bash
-# Live migrate a container
-pct migrate 200 pve2 --online --restart
+# Migrate a running container (stops, migrates, restarts on target)
+pct migrate 200 pve2 --restart
 
 # Offline migrate a container
 pct stop 200
@@ -113,7 +113,7 @@ pct start 200
 iftop -i eth0 -n
 
 # Monitor Ceph cluster I/O during migration
-ceph iostat 2
+ceph iostat -p 2
 
 # Check migration bandwidth in Proxmox task log
 journalctl -u pvedaemon | grep -i "migrat" | tail -20
@@ -128,7 +128,7 @@ pvesh get /nodes/pve1/tasks --output-format json | \
 import sys, json
 tasks = json.load(sys.stdin)
 for t in tasks[:10]:
-    if 'migration' in t.get('type','').lower():
+    if 'migrat' in t.get('type','').lower():
         print(f\"{t['upid']}: {t.get('status','unknown')}\")
 "
 
