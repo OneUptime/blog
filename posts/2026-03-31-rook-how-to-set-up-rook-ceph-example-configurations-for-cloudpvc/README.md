@@ -25,7 +25,7 @@ kubectl get storageclass
 # - Block volume mode (volumeMode: Block)
 ```
 
-```yaml
+```bash
 # Verify a StorageClass supports block mode
 kubectl get storageclass gp2 -o yaml | grep volumeBindingMode
 ```
@@ -152,7 +152,7 @@ storage:
 portable: true
 - OSD pods can be scheduled on any node that can claim the PVC
 - The PVC moves with the OSD pod when rescheduled
-- Required when using WaitForFirstConsumer StorageClasses
+- Recommended for cloud environments where nodes may be replaced
 - Better for cloud environments with autoscaling node groups
 
 portable: false
