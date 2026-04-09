@@ -59,7 +59,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd out 3
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd in 3
 ```
 
-**Mark Down** - Force-stop a running OSD:
+**Mark Down** - Mark an OSD as down in the cluster map (does not stop the daemon; if the OSD process is still running, it will re-mark itself as up):
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd down 3
