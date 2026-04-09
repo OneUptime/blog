@@ -139,7 +139,7 @@ Integrate with kube-prometheus-stack if deployed:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/service-monitor.yaml
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/prometheus-ceph-v15-rules.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/localrules.yaml
 ```
 
 ## Summary
