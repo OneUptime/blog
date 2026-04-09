@@ -79,7 +79,7 @@ In Rook, OSDs on failed nodes are automatically recreated when the node comes ba
 kubectl -n rook-ceph get pods -l app=rook-ceph-osd
 ```
 
-For permanent OSD failures, remove and reprovisoin:
+For permanent OSD failures, remove and reprovision:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
