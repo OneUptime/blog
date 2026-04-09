@@ -132,18 +132,14 @@ sudo systemctl enable ceph-mon@mon1
 ## Adding an OSD
 
 ```bash
-# Create OSD and get its ID
-OSD_ID=$(sudo ceph osd create)
+# Prepare the disk (automatically allocates OSD ID)
+sudo ceph-volume lvm prepare --bluestore --data /dev/sdb
 
-# Prepare the disk
-sudo ceph-volume lvm prepare \
-  --bluestore --data /dev/sdb --osd-id $OSD_ID
-
-# Activate the OSD
-sudo ceph-volume lvm activate $OSD_ID
+# Activate all prepared OSDs
+sudo ceph-volume lvm activate --all
 
 # Verify OSD is up
-ceph osd stat
+sudo ceph osd stat
 ```
 
 ## Summary
