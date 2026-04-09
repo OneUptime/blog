@@ -30,11 +30,11 @@ ceph osd pool set-quota mypool max_bytes 107374182400
 # Set a 1 TiB quota
 ceph osd pool set-quota mypool max_bytes 1099511627776
 
-# Using human-readable sizes (Ceph Octopus+)
+# Using human-readable sizes (Ceph Nautilus+)
 ceph osd pool set-quota mypool max_bytes 100G
 ```
 
-When the pool reaches the byte quota, write operations return an `EDQUOT` (quota exceeded) error. Existing data and read operations are unaffected.
+When the pool reaches the byte quota, the pool is marked full and write operations return `-ENOSPC`. Existing data and read operations are unaffected.
 
 ## Setting Object Count Quotas
 
@@ -124,7 +124,7 @@ Ceph generates health warnings when pools approach their quotas:
 ceph health detail | grep quota
 
 # Example warning:
-# POOL_NEAR_FULL Pool 'mypool' has 85% of quota
+# HEALTH_WARN pool 'mypool' has 85 objects (max 100)
 ```
 
 Configure alerts in Prometheus/Alertmanager for proactive monitoring:
@@ -151,7 +151,7 @@ Pool quota      | ceph osd pool set-quota                    | Single pool
 Namespace quota | RADOS namespace (limited support)          | Namespace within pool
 CephFS quota    | setfattr -n ceph.quota.max_bytes            | Directory subtree
 RGW user quota  | radosgw-admin user modify --max-size       | User's total storage
-RGW bucket quota| radosgw-admin bucket limit check           | Single bucket
+RGW bucket quota| radosgw-admin quota set --quota-scope=bucket| Single bucket
 ```
 
 ## Setting RGW User and Bucket Quotas
@@ -160,8 +160,7 @@ For object storage, set quotas at the user or bucket level:
 
 ```bash
 # Set user quota (max 50 GiB, max 10000 objects)
-radosgw-admin user modify --uid=myuser \
-  --quota-scope=user \
+radosgw-admin quota set --quota-scope=user --uid=myuser \
   --max-size=53687091200 \
   --max-objects=10000
 
@@ -174,4 +173,4 @@ radosgw-admin quota get --quota-scope=user --uid=myuser
 
 ## Summary
 
-Ceph pool quotas limit storage usage per pool via `ceph osd pool set-quota`, supporting both byte (`max_bytes`) and object count (`max_objects`) limits. When a quota is reached, writes return `EDQUOT` while reads continue normally. In Rook, quotas can be declared in pool specs. For multi-tenant environments, consider layering pool quotas with RGW user/bucket quotas and CephFS directory quotas for granular control. Monitor quota usage proactively with Prometheus alerts.
+Ceph pool quotas limit storage usage per pool via `ceph osd pool set-quota`, supporting both byte (`max_bytes`) and object count (`max_objects`) limits. When a quota is reached, the pool is marked full and writes return `-ENOSPC` while reads continue normally. In Rook, quotas can be declared in pool specs. For multi-tenant environments, consider layering pool quotas with RGW user/bucket quotas and CephFS directory quotas for granular control. Monitor quota usage proactively with Prometheus alerts.
