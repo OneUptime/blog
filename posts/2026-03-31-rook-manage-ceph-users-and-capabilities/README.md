@@ -50,7 +50,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Capability Syntax
 
-Capabilities use a simple allow/deny syntax:
+Capabilities use a simple allow-based syntax:
 
 ```text
 mon 'allow r'                    - read-only monitor access
@@ -85,8 +85,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 In Rook, store CephX keys as Kubernetes Secrets for application use:
 
 ```bash
-KEYRING=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth get client.myapp -o /dev/stdout 2>/dev/null)
+KEYRING=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph auth get client.myapp 2>/dev/null)
 
 kubectl create secret generic ceph-myapp-keyring \
   --from-literal=keyring="$KEYRING" \
