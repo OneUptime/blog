@@ -86,15 +86,16 @@ On bare metal, move one of the colocated monitors to a different host:
 
 ```bash
 # Remove the monitor to be moved
-ceph mon remove b
+ceph mon rm b
 
-# On the new host, initialize and add the monitor
-sudo -u ceph ceph-mon --mkfs -i b --monmap /tmp/monmap --keyring /etc/ceph/ceph.mon.keyring
+# Retrieve the current monmap and monitor keyring from an existing monitor
+ceph mon getmap -o /tmp/monmap
+ceph auth get mon. -o /tmp/ceph.mon.keyring
+
+# Copy both files to the new host, then on the new host initialize and start the monitor
+sudo -u ceph ceph-mon --mkfs -i b --monmap /tmp/monmap --keyring /tmp/ceph.mon.keyring
 sudo systemctl enable ceph-mon@b
 sudo systemctl start ceph-mon@b
-
-# Add it back to the cluster
-ceph mon add b <new-host-ip>:6789
 ```
 
 ## Ensuring Sufficient Nodes
