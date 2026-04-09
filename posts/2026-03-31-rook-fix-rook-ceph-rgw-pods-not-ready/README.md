@@ -55,7 +55,7 @@ kubectl apply -f objectstore.yaml
 
 ## Common Cause 2: Readiness Probe Failure
 
-RGW uses an HTTP readiness probe. Check if RGW is actually responding:
+RGW uses an exec-based readiness probe that internally checks the HTTP endpoint. Check if RGW is actually responding:
 
 ```bash
 # Port-forward and test the endpoint
@@ -145,11 +145,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
   # Create a test user
   radosgw-admin user create --uid=testuser --display-name='Test User'
 
-  # List buckets
-  aws s3 ls --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80 \
-    --no-sign-request
+  # Test the RGW endpoint with curl
+  curl -s -o /dev/null -w '%{http_code}' http://rook-ceph-rgw-my-store.rook-ceph.svc:80/
 "
 ```
+
+A response of `200` or `403` confirms RGW is running and accepting requests.
 
 ## Summary
 
