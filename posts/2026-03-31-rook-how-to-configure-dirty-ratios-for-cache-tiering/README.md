@@ -108,7 +108,7 @@ Write -> Cache (dirty) -> Background flush -> Backing pool
 Read  -> Cache (if present) or backing pool -> promote
 ```
 
-### Readproxy/Writeproxy Modes
+### Readproxy/Proxy Modes
 
 These modes do not buffer writes in the cache:
 
@@ -160,8 +160,7 @@ To manually trigger a flush (e.g., before removing cache tier):
 # Switch to forward mode (no new promotions)
 ceph osd tier cache-mode fast-cache forward
 
-# Wait for dirty objects to flush
-ceph -W objecter
+# Flush and evict all objects from cache
 rados -p fast-cache cache-flush-evict-all
 
 # Remove overlay and tier
