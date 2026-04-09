@@ -24,7 +24,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Signs of stuck recovery:
 - Status shows `up:replay` or `up:reconnect` for more than a few minutes
 - Clients are unable to mount or getting I/O errors
-- `ceph health detail` shows `MDS_REPLAY_LAGGED` or `FS_DEGRADED`
+- `ceph health detail` shows `FS_WITH_FAILED_MDS` or `FS_DEGRADED`
 
 ## Step 1 - Check MDS Logs
 
@@ -47,11 +47,11 @@ If clients are blocking recovery by not reconnecting:
 ```bash
 # List clients stuck in reconnect state
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session ls
+  ceph tell mds.myfs.a session ls
 
 # Evict a specific stuck client
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session evict <client-id>
+  ceph tell mds.myfs.a client evict id=<client-id>
 ```
 
 Reduce the reconnect timeout to force faster client eviction:
@@ -93,11 +93,19 @@ If journal corruption is preventing recovery:
 ```bash
 # Check for journal damage
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mds dump | grep damage
+  ceph tell mds.myfs:0 damage ls
+
+# Stop the MDS before running journal tools - mark the filesystem as failed
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph fs fail myfs
 
 # As a last resort, reset the journal (DATA LOSS RISK)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   cephfs-journal-tool --rank=myfs:0 journal reset
+
+# Bring the filesystem back online after journal reset
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph fs set myfs joinable true
 ```
 
 Warning: journal reset may cause loss of recently written metadata.
