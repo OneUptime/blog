@@ -56,7 +56,7 @@ rbd mirror pool peer bootstrap import \
 Verify the peer was added successfully:
 
 ```bash
-rbd mirror pool peer ls replicapool
+rbd mirror pool info replicapool
 ```
 
 ## Adding a Peer Manually Without Bootstrap
@@ -66,7 +66,6 @@ If you prefer manual configuration, you can add a peer by specifying the monitor
 ```bash
 rbd mirror pool peer add replicapool \
   client.rbd-mirror@primary-cluster \
-  --remote-cluster primary-cluster \
   --remote-mon-host "10.0.0.1:6789,10.0.0.2:6789"
 ```
 
@@ -75,9 +74,12 @@ rbd mirror pool peer add replicapool \
 To remove a peer, first get the peer UUID:
 
 ```bash
-rbd mirror pool peer ls replicapool
-# Output: UUID  CLIENT              NAME             MON_HOST
-#         abc123  client.rbd-mirror  primary-cluster  10.0.0.1:6789
+rbd mirror pool info replicapool
+# Output includes:
+#   Peers:
+#     UUID: abc123
+#     Name: primary-cluster
+#     Client: client.rbd-mirror
 ```
 
 Then remove using the UUID:
