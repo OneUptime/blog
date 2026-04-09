@@ -12,17 +12,16 @@ When Ceph is deployed as part of Proxmox VE (using the built-in Ceph integration
 
 ## Accessing the Ceph Management UI
 
-The Ceph section in Proxmox is visible at the datacenter and node level:
+The Ceph section in Proxmox is visible at the node level:
 
-- **Datacenter -> Ceph** - cluster-wide view of health, pools, and OSDs
-- **Node -> Ceph** - node-specific OSD management and service status
+- **Node -> Ceph** - OSD management, pool configuration, monitor status, and cluster health
 
 Navigate to `https://proxmox-node:8006` and log in as `root`.
 
 ## Checking Cluster Health
 
 In the Proxmox GUI:
-1. Click on **Datacenter** in the left panel
+1. Click on a **Node** in the left panel
 2. Click **Ceph** -> **Status**
 3. The status page shows:
    - Overall health (HEALTH_OK / HEALTH_WARN / HEALTH_ERR)
@@ -41,7 +40,7 @@ ceph osd stat
 
 ## Managing Pools via GUI
 
-Navigate to **Datacenter -> Ceph -> Pools**:
+Navigate to **Node -> Ceph -> Pools**:
 
 - **Create a pool**: Click "Create", enter name, size (replication), PG count
 - **Edit pool**: Select a pool and modify parameters
@@ -104,7 +103,7 @@ ceph mgr services | grep dashboard
 # Enable if not already running
 ceph mgr module enable dashboard
 ceph dashboard create-self-signed-cert
-echo -n "admin123" | ceph dashboard ac-user-create admin administrator -i -
+echo -n "admin123" | ceph dashboard ac-user-create admin -i - administrator
 ```
 
 Then access `https://ceph-mgr-host:8443/` for advanced management like RGW config, MDS management, and detailed performance metrics.
