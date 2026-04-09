@@ -41,29 +41,72 @@ spec:
         app: rook-ceph-tools
     spec:
       dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: rook-ceph-default
       containers:
         - name: rook-ceph-tools
-          image: quay.io/ceph/ceph:v18
-          command: ["/bin/bash"]
-          args: ["-m", "-c", "/usr/local/bin/toolbox.sh"]
+          image: quay.io/ceph/ceph:v19
+          command:
+            - /bin/bash
+            - -c
+            - |
+              CEPH_CONFIG="/etc/ceph/ceph.conf"
+              MON_CONFIG="/etc/rook/mon-endpoints"
+              KEYRING_FILE="/etc/ceph/keyring"
+
+              write_endpoints() {
+                endpoints=$(cat ${MON_CONFIG})
+                mon_endpoints=$(echo "${endpoints}" | sed 's/[a-z0-9_-]\+=//g')
+                cat <<EOF > ${CEPH_CONFIG}
+              [global]
+              mon_host = ${mon_endpoints}
+
+              [client.admin]
+              keyring = ${KEYRING_FILE}
+              EOF
+              }
+
+              ceph_secret=${ROOK_CEPH_SECRET}
+              if [[ "$ceph_secret" == "" ]]; then
+                ceph_secret=$(cat /var/lib/rook-ceph-mon/secret.keyring)
+              fi
+
+              cat <<EOF > ${KEYRING_FILE}
+              [${ROOK_CEPH_USERNAME}]
+              key = ${ceph_secret}
+              EOF
+
+              write_endpoints
+              while true; do sleep 10; done
           imagePullPolicy: IfNotPresent
+          tty: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 2016
+            runAsGroup: 2016
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: ROOK_CEPH_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: rook-ceph-mon
                   key: ceph-username
-            - name: ROOK_CEPH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-secret
           volumeMounts:
             - mountPath: /etc/ceph
               name: ceph-config
             - name: mon-endpoint-volume
               mountPath: /etc/rook
+            - name: ceph-admin-secret
+              mountPath: /var/lib/rook-ceph-mon
+              readOnly: true
       volumes:
+        - name: ceph-admin-secret
+          secret:
+            secretName: rook-ceph-mon
+            optional: false
+            items:
+              - key: ceph-secret
+                path: secret.keyring
         - name: mon-endpoint-volume
           configMap:
             name: rook-ceph-mon-endpoints
