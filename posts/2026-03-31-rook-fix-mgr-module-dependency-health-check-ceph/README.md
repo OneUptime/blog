@@ -21,9 +21,9 @@ ceph health detail
 Example output:
 
 ```text
-HEALTH_WARN mgr module dependency not met
-[WRN] MGR_MODULE_DEPENDENCY: Module balancer has failed dependency on module stats
-    Module 'balancer' depends on 'stats' which is not enabled
+HEALTH_WARN 1 mgr modules have failed dependencies
+[WRN] MGR_MODULE_DEPENDENCY: 1 mgr modules have failed dependencies
+    module 'dashboard' has failed dependency: No module named 'cherrypy'
 ```
 
 ## Listing Module Status
@@ -42,33 +42,33 @@ ceph mgr module ls | python3 -m json.tool | grep -A5 enabled_modules
 
 ## Identifying the Dependency Chain
 
-Some modules have explicit dependencies. Check the module's requirements:
+Some modules have dependencies that prevent them from loading. Check the `can_run` status of all modules:
 
 ```bash
-ceph mgr metadata | python3 -m json.tool
+ceph mgr module ls --format=json-pretty
 ```
 
-Common dependency relationships:
-- `balancer` depends on `stats` being enabled
-- `pg_autoscaler` may depend on `prometheus` for feedback
-- `dashboard` depends on `restful` and `telemetry`
+Disabled modules include `can_run` and `error_string` fields showing whether dependencies are met. Common dependency issues:
+- `dashboard` requires Python packages such as `cherrypy`, `routes`, and `PyOpenSSL`
+- `diskprediction_local` requires `numpy`, `scipy`, and `scikit-learn`
+- `restful` requires `pecan` and `PyOpenSSL`
 
 ## Enabling Missing Dependencies
 
 Enable the missing dependency module:
 
 ```bash
-# Example: enable the stats module that balancer needs
-ceph mgr module enable stats
-
-# Enable restful for dashboard dependency
+# Example: enable the restful module
 ceph mgr module enable restful
+
+# Enable the dashboard module
+ceph mgr module enable dashboard
 ```
 
 Verify after enabling:
 
 ```bash
-ceph mgr module ls | grep -E "stats|restful"
+ceph mgr module ls | grep -E "restful|dashboard"
 ```
 
 ## Fixing Python Library Dependencies
@@ -90,10 +90,10 @@ kubectl -n rook-ceph patch cephcluster rook-ceph --type=merge \
 
 ## Disabling the Dependent Module
 
-If the dependency cannot be satisfied (e.g., the required module is deprecated), disable the dependent module:
+If the dependency cannot be satisfied (e.g., a required Python package is unavailable), disable the dependent module:
 
 ```bash
-ceph mgr module disable balancer
+ceph mgr module disable dashboard
 ```
 
 Verify cluster health improves:
@@ -107,12 +107,12 @@ ceph health detail
 If multiple modules have a dependency chain, enable them in order:
 
 ```bash
-# Enable base modules first
-ceph mgr module enable stats
+# Enable modules without dependencies first
+ceph mgr module enable restful
 ceph mgr module enable iostat
 
-# Then enable dependent modules
-ceph mgr module enable balancer
+# Then enable modules that depend on them
+ceph mgr module enable dashboard
 ceph mgr module enable pg_autoscaler
 ```
 
@@ -121,12 +121,12 @@ ceph mgr module enable pg_autoscaler
 After enabling dependencies, check for remaining errors:
 
 ```bash
-ceph mgr module ls
-ceph tell mgr* mgr_status
+ceph mgr module ls --format=json-pretty
+ceph health detail
 ```
 
-Any module that failed to load will appear with a failed status.
+Any module that failed to load will show `can_run: false` with an error string in the module listing.
 
 ## Summary
 
-`MGR_MODULE_DEPENDENCY` fires when a MGR module's required dependencies are not met. Identify the failing module and its dependencies using `ceph mgr module ls`, then enable missing dependency modules in the correct order. If a Python library is missing, ensure you are using the official Ceph container image. If the required module is deprecated, disable the dependent module to clear the health warning.
+`MGR_MODULE_DEPENDENCY` fires when a MGR module's required dependencies are not met. Identify the failing module and its dependencies using `ceph mgr module ls --format=json-pretty`, then install missing Python packages or enable missing dependency modules in the correct order. If a Python library is missing, ensure you are using the official Ceph container image. If the dependency cannot be satisfied, disable the dependent module to clear the health warning.
