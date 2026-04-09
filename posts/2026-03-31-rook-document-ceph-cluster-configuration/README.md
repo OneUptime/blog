@@ -74,8 +74,8 @@ Document each pool systematically:
 ```markdown
 ## Pool Inventory
 
-| Pool Name | Type | Size | Device Class | Compression | PGs | Used For |
-|-----------|------|------|--------------|-------------|-----|----------|
+| Pool Name | Type | Device Class | Compression | PGs | Used For |
+|-----------|------|--------------|-------------|-----|----------|
 | hot-nvme-pool | Replicated 3x | NVMe | none | auto | Production databases |
 | warm-ssd-pool | Replicated 3x | SSD | passive | auto | Analytics, logs |
 | cold-archive | EC 6+2 | HDD | aggressive | 256 | Compliance archive |
@@ -140,8 +140,44 @@ spec:
               command: ["/bin/bash", "-c"]
               args:
                 - |
+                  # Generate ceph.conf from Rook-managed secrets
+                  MON_ENDPOINTS=$(cat /etc/rook/mon-endpoints)
+                  cat > /etc/ceph/ceph.conf <<EOF
+                  [global]
+                  mon_host = ${MON_ENDPOINTS}
+                  [client.admin]
+                  keyring = /etc/ceph/keyring
+                  EOF
+                  cp /var/lib/rook-ceph-mon/keyring /etc/ceph/keyring
+                  chmod 600 /etc/ceph/keyring
+
                   ceph config dump > /snapshots/config-$(date +%Y%m%d).txt
                   ceph osd pool ls detail >> /snapshots/config-$(date +%Y%m%d).txt
+              volumeMounts:
+                - name: ceph-config
+                  mountPath: /etc/ceph
+                - name: mon-endpoint-volume
+                  mountPath: /etc/rook
+                - name: ceph-admin-secret
+                  mountPath: /var/lib/rook-ceph-mon
+                  readOnly: true
+                - name: snapshots
+                  mountPath: /snapshots
+          volumes:
+            - name: ceph-config
+              emptyDir: {}
+            - name: mon-endpoint-volume
+              configMap:
+                name: rook-ceph-mon-endpoints
+                items:
+                  - key: data
+                    path: mon-endpoints
+            - name: ceph-admin-secret
+              secret:
+                secretName: rook-ceph-mon
+            - name: snapshots
+              persistentVolumeClaim:
+                claimName: ceph-config-snapshots
           restartPolicy: OnFailure
 ```
 
