@@ -14,15 +14,16 @@ Description: Use libcephsqlite to store SQLite databases directly in Ceph RADOS,
 
 - SQLite databases stored as RADOS objects (no filesystem mount needed)
 - Replication and durability from Ceph (no separate backup for the SQLite file)
-- Concurrent access coordination using RADOS locking primitives
+- Serialized access coordination using RADOS exclusive locking
 - Standard SQLite API - no application code changes required beyond the VFS registration
 
 ## Prerequisites
 
 ```bash
-# libcephsqlite is included with Ceph (Quincy+)
+# libcephsqlite is included with Ceph (Pacific 16.2.x+)
 # Verify the library is installed
-ls /usr/lib/x86_64-linux-gnu/libcephsqlite.so
+ls /usr/lib/x86_64-linux-gnu/libcephsqlite.so  # Debian/Ubuntu x86_64
+ls /usr/lib64/libcephsqlite.so                  # RHEL/CentOS x86_64
 
 # Or install it
 apt install libcephsqlite  # Debian/Ubuntu
@@ -32,15 +33,9 @@ dnf install libcephsqlite  # RHEL/CentOS
 ## Loading libcephsqlite in SQLite
 
 ```bash
-# From the SQLite CLI
-sqlite3
-
-# Load the extension
-.load /usr/lib/x86_64-linux-gnu/libcephsqlite
-
-# Open a database in Ceph
-# Format: file:<pool>/<object-name>?vfs=ceph
-.open file:mypool/myapp.db?vfs=ceph
+# Open SQLite with the extension loaded and database opened via -cmd flags
+# Format: file:///<pool>:[namespace]/<dbname>?vfs=ceph
+sqlite3 -cmd '.load libcephsqlite.so' -cmd '.open file:///mypool:/myapp.db?vfs=ceph'
 
 # Use it like any SQLite database
 CREATE TABLE events (id INTEGER PRIMARY KEY, ts TEXT, message TEXT);
@@ -58,7 +53,8 @@ import ctypes
 libcephsqlite = ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libcephsqlite.so")
 
 # Connect using the ceph VFS
-conn = sqlite3.connect("file:mypool/myapp.db?vfs=ceph", uri=True)
+# Format: file:///<pool>:[namespace]/<dbname>?vfs=ceph
+conn = sqlite3.connect("file:///mypool:/myapp.db?vfs=ceph", uri=True)
 
 conn.execute("""
     CREATE TABLE IF NOT EXISTS metrics (
@@ -89,10 +85,13 @@ The SQLite database is stored as RADOS objects in the pool:
 # List objects in the pool
 rados -p mypool ls | grep myapp
 
-# You should see objects like:
-# myapp.db
-# myapp.db-wal  (if WAL mode is enabled)
-# myapp.db-shm  (shared memory file)
+# Objects are striped, so you will see names like:
+# myapp.db.0000000000000000  (first stripe)
+# myapp.db.0000000000000001  (second stripe, if data exceeds one stripe)
+# myapp.db-journal.0000000000000000  (journal file, if using rollback journal mode)
+
+# To export a database from RADOS:
+rados -p mypool --striper get myapp.db myapp-local.db
 ```
 
 ## Ceph Configuration for libcephsqlite
@@ -100,12 +99,13 @@ rados -p mypool ls | grep myapp
 By default, libcephsqlite reads `/etc/ceph/ceph.conf`. You can override this:
 
 ```bash
-# Set via environment variable
+# Set via environment variables
 export CEPH_CONF=/path/to/custom/ceph.conf
-export CEPH_KEYRING=/path/to/keyring
+export CEPH_KEYRING=/path/to/ceph.keyring
+export CEPH_ARGS='--id myclientid'
 
-# Or use a URI parameter
-sqlite3 "file:mypool/myapp.db?vfs=ceph&ceph_config=/etc/ceph/ceph.conf"
+# Then use SQLite normally
+sqlite3 -cmd '.load libcephsqlite.so' -cmd '.open file:///mypool:/myapp.db?vfs=ceph'
 ```
 
 ## Summary
