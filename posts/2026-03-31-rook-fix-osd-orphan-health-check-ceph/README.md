@@ -39,10 +39,10 @@ ceph osd crush tree --show-shadow | grep osd
 
 The difference between these two lists identifies orphaned OSDs.
 
-Alternatively, check for orphans directly:
+Alternatively, check for orphans directly — orphaned OSDs appear under the `stray` section in the OSD tree:
 
 ```bash
-ceph osd tree | grep "osd\." | grep -v "up\|down"
+ceph osd tree | grep stray
 ```
 
 ## Option 1: Add the OSD Back to CRUSH
