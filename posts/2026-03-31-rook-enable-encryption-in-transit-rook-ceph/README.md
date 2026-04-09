@@ -14,10 +14,11 @@ Ceph cluster traffic (MON, OSD, MGR communications) travels over the internal ne
 
 ## Ceph msgr2 Encryption Modes
 
-Ceph v15+ uses the msgr2 protocol which supports three encryption modes:
-- `crc`: CRC checksumming only (default, no encryption)
+Ceph v15+ uses the msgr2 protocol which supports two connection modes:
+- `crc`: CRC checksumming only (no encryption)
 - `secure`: Full AES-GCM encryption of all traffic
-- `prefer-secure`: Use secure if available, fall back to crc
+
+The `ms_cluster_mode`, `ms_service_mode`, and `ms_client_mode` config keys accept a space-separated list of modes in order of preference. The default is `crc secure` (prefer crc, accept secure). Setting the value to `secure` enforces encryption for all connections.
 
 ## Enabling Cluster-Wide msgr2 Secure Mode
 
@@ -70,17 +71,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph status
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell osd.0 connections
+  ceph tell osd.0 messenger dump client
 ```
 
-Look for `secure` in the connection details output.
-
-Monitor active sessions:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 sessions | head -20
-```
+In the JSON output, look for `"AES-128-GCM"` in the `protocol.v2.crypto.rx` field for each connection, which confirms encryption is active. A value of `"crc"` indicates the connection is not encrypted.
 
 ## Dashboard TLS
 
@@ -113,20 +107,22 @@ spec:
 
 ## Monitoring Encryption Status
 
-Create a Prometheus alert if any Ceph connection falls back to unencrypted mode:
+Create a Prometheus alert to detect Ceph cluster health errors, which may include encryption-related issues such as connection mode mismatches:
 
 ```yaml
 groups:
   - name: ceph-security
     rules:
-      - alert: CephInsecureConnection
+      - alert: CephHealthError
         expr: ceph_health_status == 2
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Ceph cluster health degraded - check encryption status"
+          summary: "Ceph cluster health is in HEALTH_ERR state - investigate with ceph health detail"
 ```
+
+Note: The `ceph_health_status` metric tracks overall cluster health (0=OK, 1=WARN, 2=ERR), not encryption status specifically. To verify encryption on active connections, use `ceph tell osd.<id> messenger dump client` and inspect the `protocol.v2.crypto.rx` field.
 
 ## Performance Impact
 
