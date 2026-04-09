@@ -44,14 +44,12 @@ apt-get install -y ceph-common
 dnf install -y ceph-common
 ```
 
-## Create a Keyring File
+## Create a Secret File
 
 ```bash
-cat > /etc/ceph/ceph.client.admin.keyring <<EOF
-[client.admin]
-    key = AQC...base64key...==
-EOF
-chmod 600 /etc/ceph/ceph.client.admin.keyring
+# Create a file containing just the secret key (required by secretfile= mount option)
+echo "AQC...base64key...==" > /etc/ceph/admin.secret
+chmod 600 /etc/ceph/admin.secret
 ```
 
 ## Mount with the Kernel Driver
@@ -60,7 +58,7 @@ chmod 600 /etc/ceph/ceph.client.admin.keyring
 # Mount using monitor IPs and the admin keyring
 mount -t ceph 192.168.1.10:6789,192.168.1.11:6789,192.168.1.12:6789:/ \
   /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring
+  -o name=admin,secretfile=/etc/ceph/admin.secret
 ```
 
 ## Mount with Secret Inline
@@ -84,15 +82,15 @@ rw                - Read-write (default)
 ro                - Read-only
 noatime           - Do not update atime on reads (performance)
 nodiratime        - Do not update directory atime
-rbytes            - Report accurate file sizes (vs. approximate)
-ms_mode=secure    - Enable encrypted transport (Ceph Nautilus+)
+rbytes            - Report recursive byte sum as directory size via st_size
+ms_mode=secure    - Enable encrypted transport (kernel 5.11+, Ceph Nautilus+)
 ```
 
 ## Example with Performance Options
 
 ```bash
 mount -t ceph 192.168.1.10:6789:/ /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring,noatime,nodiratime
+  -o name=admin,secretfile=/etc/ceph/admin.secret,noatime,nodiratime
 ```
 
 ## Summary
