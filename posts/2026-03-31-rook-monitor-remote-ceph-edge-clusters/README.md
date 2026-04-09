@@ -119,14 +119,16 @@ Then filter all panels by `site=~"$site"`.
 For sites where Prometheus cannot be scraped directly, use remote write:
 
 ```yaml
+global:
+  external_labels:
+    site: edge-1
+
 remote_write:
 - url: http://core-prometheus.example.com:9090/api/v1/write
   write_relabel_configs:
   - source_labels: [__name__]
     regex: 'ceph_.*'
     action: keep
-  external_labels:
-    site: edge-1
 ```
 
 ## Checking Health Across Sites
