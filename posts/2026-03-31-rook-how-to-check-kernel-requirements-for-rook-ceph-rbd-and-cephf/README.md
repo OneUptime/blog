@@ -12,7 +12,7 @@ Description: Learn how to verify that Linux kernel modules required for Rook-Cep
 
 Rook-Ceph uses kernel-space modules to mount storage on nodes:
 - **rbd**: Required for RBD (RADOS Block Device) volumes - used for ReadWriteOnce block storage
-- **ceph** / **cephfs**: Required for CephFS volumes - used for ReadWriteMany shared filesystem
+- **ceph** (and **libceph** loaded as a dependency): Required for CephFS volumes - used for ReadWriteMany shared filesystem
 
 If these modules are missing or unavailable, CSI driver pods will fail to mount volumes, and pods requiring storage will remain in Pending state.
 
@@ -62,7 +62,7 @@ chroot /host modprobe --dry-run rbd
 # Check all nodes for RBD module
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   echo -n "Node $node: "
-  kubectl debug node/$node --image=registry.k8s.io/pause:3.9 -q -- sh -c \
+  kubectl debug node/$node --image=busybox -q -- sh -c \
     "chroot /host sh -c 'lsmod | grep -c rbd || echo 0'" 2>/dev/null
 done
 ```
@@ -75,9 +75,8 @@ If modules are available but not loaded:
 # Load the RBD module
 sudo modprobe rbd
 
-# Load CephFS modules
+# Load CephFS module (also loads libceph as a dependency)
 sudo modprobe ceph
-sudo modprobe cephfs
 
 # Verify they are loaded
 lsmod | grep rbd
@@ -116,8 +115,8 @@ sudo dnf install kernel-modules-extra
 Modern RBD features require specific kernel support:
 
 ```bash
-# Check supported RBD features
-cat /sys/bus/platform/drivers/rbd/*/supported_features 2>/dev/null || \
+# Check supported RBD features (kernel 4.11+)
+cat /sys/bus/rbd/supported_features 2>/dev/null || \
   dmesg | grep rbd | grep features
 ```
 
@@ -128,17 +127,17 @@ parameters:
   # Avoid: object-map, fast-diff, deep-flatten (require newer kernels)
 ```
 
-## Running Rook's Preflight Checks
+## Using the Rook Toolbox
 
-Rook provides a validation tool for pre-deployment checks:
+After deploying Rook, you can use the Rook toolbox to verify cluster health:
 
 ```bash
-# Install the Rook node checker
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/node-checker.yaml
+# Deploy the Rook toolbox
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
 
-# Check results
-kubectl -n rook-ceph get pods -l app=rook-node-checker
-kubectl -n rook-ceph logs -l app=rook-node-checker
+# Check cluster status from the toolbox
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd tree
 ```
 
 ## Diagnosing Module Load Failures
@@ -160,4 +159,4 @@ Common error: `failed to load kernel module rbd` indicates the module binary is 
 
 ## Summary
 
-Rook-Ceph requires the `rbd` kernel module for block storage and `ceph`/`cephfs` modules for shared filesystem storage. Verify module availability across all nodes before deployment using `modprobe --dry-run rbd` or kubectl debug sessions. Load modules persistently via `/etc/modules-load.d/`. On older kernels, restrict RBD image features to `layering` only. Always check CSI node plugin logs when volumes fail to mount to distinguish module issues from authentication or network problems.
+Rook-Ceph requires the `rbd` kernel module for block storage and the `ceph` module (with `libceph` as a dependency) for shared filesystem storage. Verify module availability across all nodes before deployment using `modprobe --dry-run rbd` or kubectl debug sessions. Load modules persistently via `/etc/modules-load.d/`. On older kernels, restrict RBD image features to `layering` only. Always check CSI node plugin logs when volumes fail to mount to distinguish module issues from authentication or network problems.
