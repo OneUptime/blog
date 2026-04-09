@@ -19,8 +19,8 @@ In RBD mirroring, each image has a primary and non-primary (secondary) designati
 
 ```bash
 # Check current primary status
-rbd mirror image info replicapool/myimage
-# Shows: mirroring state: enabled, primary: true/false
+rbd info replicapool/myimage
+# Shows: mirroring state: enabled, mirroring primary: true/false
 ```
 
 ## Planned Failover (Graceful Demotion + Promotion)
@@ -34,7 +34,7 @@ On the primary cluster:
 rbd mirror image demote replicapool/myimage
 
 # Verify state changes to non-primary
-rbd mirror image info replicapool/myimage
+rbd info replicapool/myimage
 ```
 
 Wait for replication to complete on the secondary:
@@ -42,7 +42,7 @@ Wait for replication to complete on the secondary:
 ```bash
 # On the secondary cluster, wait for replaying to catch up
 rbd mirror image status replicapool/myimage
-# Wait until description shows: "replaying, master_position=mirror_position"
+# Wait until status description shows: entries_behind_primary=0
 ```
 
 Then promote on the secondary:
@@ -52,7 +52,7 @@ Then promote on the secondary:
 rbd mirror image promote replicapool/myimage
 
 # Verify the secondary is now primary
-rbd mirror image info replicapool/myimage
+rbd info replicapool/myimage
 ```
 
 ## Forced Promotion (Unplanned Failover)
