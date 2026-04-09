@@ -23,15 +23,14 @@ ceph health detail
 Example output:
 
 ```text
-[WRN] NVMEOF_SINGLE_GATEWAY: NVMe-oF gateway has only one instance
-    gateway group 'group0' has only 1 gateway; high availability requires 2 or more
+[WRN] NVMEOF_SINGLE_GATEWAY: 1 group(s) have only 1 nvmeof gateway; HA is not possible with single gateway.
+    NVMeoF Gateway Group 'group0' has 1 gateway.
 ```
 
 Check NVMe-oF gateway status:
 
 ```bash
-ceph nvmeof gw show
-ceph nvmeof gw list
+ceph nvme-gw show <pool> <group>
 ```
 
 ## Understanding NVMe-oF Gateway HA
@@ -43,32 +42,29 @@ Ceph NVMe-oF uses active-active or active-passive gateway pairs. Each gateway ex
 ### Step 1 - Check Current Gateway Configuration
 
 ```bash
-ceph nvmeof gw show
-kubectl -n rook-ceph get pods -l app=ceph-nvmeof
+ceph nvme-gw show <pool> <group>
+kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
 ```
 
 ### Step 2 - Add a Second NVMe-oF Gateway
 
-In Rook, scale the NVMe-oF gateway by updating the `CephNVMEoF` CR:
+In Rook, scale the NVMe-oF gateway by updating the `CephNVMeOFGateway` CR:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEoF
+kind: CephNVMeOFGateway
 metadata:
   name: my-nvmeof
   namespace: rook-ceph
 spec:
-  serviceAccountName: rook-ceph-operator
-  gateway:
-    svcPort: 5500
-    instances: 2
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
-      limits:
-        cpu: "1"
-        memory: "1Gi"
+  instances: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
 ```
 
 Apply the configuration:
@@ -80,26 +76,33 @@ kubectl apply -f nvmeof.yaml
 ### Step 3 - Verify Two Gateways Are Running
 
 ```bash
-kubectl -n rook-ceph get pods -l app=ceph-nvmeof
-ceph nvmeof gw list
+kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
+ceph nvme-gw show <pool> <group>
 ```
 
 Expected output should show 2 gateways in the same group.
 
 ### Step 4 - Configure NVMe-oF Client for Multi-Path
 
-After adding a second gateway, configure NVMe-oF initiators for multipath to take advantage of HA:
+After adding a second gateway, enable native NVMe multipath on the client and connect to both gateways.
+
+Enable the kernel's native NVMe multipath:
+
+```bash
+echo 'options nvme_core multipath=Y' > /etc/modprobe.d/nvme.conf
+```
+
+Reboot (or reload the `nvme_core` module) for the parameter to take effect, then verify:
+
+```bash
+cat /sys/module/nvme_core/parameters/multipath
+```
+
+Connect to both gateways:
 
 ```bash
 nvme connect-all --transport=tcp --traddr=<gw1-ip> --trsvcid=4420
 nvme connect-all --transport=tcp --traddr=<gw2-ip> --trsvcid=4420
-```
-
-Enable multipath:
-
-```bash
-nvme list
-cat /etc/nvme/hostnqn
 ```
 
 ## Verifying HA Functionality
@@ -114,4 +117,4 @@ NVMe-oF clients should reconnect to the surviving gateway without I/O errors.
 
 ## Summary
 
-`NVMEOF_SINGLE_GATEWAY` warns that your Ceph NVMe-oF deployment has no redundancy. Fix it by configuring at least 2 gateway instances in your `CephNVMEoF` CR. With 2 or more gateways, NVMe-oF initiators can fail over automatically when a gateway becomes unavailable, ensuring continuous block storage access.
+`NVMEOF_SINGLE_GATEWAY` warns that your Ceph NVMe-oF deployment has no redundancy. Fix it by configuring at least 2 gateway instances in your `CephNVMeOFGateway` CR. With 2 or more gateways, NVMe-oF initiators can fail over automatically when a gateway becomes unavailable, ensuring continuous block storage access.
