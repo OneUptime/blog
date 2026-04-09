@@ -52,7 +52,7 @@ avg(ceph_osd_apply_latency_ms)
 max(ceph_osd_apply_latency_ms)
 
 # Rate of change (detecting latency spikes)
-rate(ceph_osd_apply_latency_ms[5m])
+deriv(ceph_osd_apply_latency_ms[5m])
 ```
 
 ## Creating Alert Rules
