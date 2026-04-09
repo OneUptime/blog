@@ -92,9 +92,9 @@ After setting the memory limit, configure the MDS cache size accordingly:
 # Access the Rook toolbox
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
-# Set MDS cache memory limit (85% of the memory limit = 6.8GB for 8GB limit)
+# Set MDS cache memory limit (85% of the memory limit = ~6.8GiB for 8Gi limit)
 # Value is in bytes
-ceph config set mds mds_cache_memory_limit 6442450944
+ceph config set mds mds_cache_memory_limit 7301444403
 
 # Verify the setting
 ceph config get mds mds_cache_memory_limit
@@ -116,8 +116,8 @@ metadata:
 data:
   config: |
     [mds]
-    # Cache size: 85% of 8GB limit = ~6.8GB in bytes
-    mds_cache_memory_limit = 6442450944
+    # Cache size: 85% of 8Gi limit = ~6.8GiB in bytes
+    mds_cache_memory_limit = 7301444403
     # Reduce log verbosity in production
     debug_mds = 1/5
     # MDS tick interval
