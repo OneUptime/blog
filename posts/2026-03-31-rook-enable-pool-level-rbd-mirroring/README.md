@@ -117,14 +117,16 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd ls replicapool | xargs -I{} rbd info replicapool/{} | grep -A1 "features"
 ```
 
-## Step 6 - Disable Mirroring for Specific Images
+## Step 6 - Exclude Specific Images from Pool-Level Mirroring
 
-In pool mode, you can exclude specific images from mirroring:
+In pool mode, `rbd mirror image disable` is not supported — mirroring is managed collectively for all journaling-enabled images. To exclude a specific image from mirroring, remove its `journaling` feature:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image disable replicapool/exclude-me
+  rbd feature disable replicapool/exclude-me journaling
 ```
+
+If you need fine-grained control over which images are mirrored, use image-level mirroring mode instead of pool mode.
 
 ## Step 7 - Monitor Pool Mirroring Health
 
