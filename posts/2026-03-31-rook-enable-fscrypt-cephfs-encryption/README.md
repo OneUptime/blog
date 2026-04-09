@@ -14,17 +14,20 @@ fscrypt is a Linux kernel feature that provides per-directory encryption for fil
 
 ## Prerequisites
 
-- Linux kernel 5.15+ (for stable CephFS fscrypt support)
-- CephFS with `mds_max_mdsmap_epochs` configured
+- Linux kernel 6.6+ (CephFS fscrypt support was added in kernel 6.6)
 - `fscrypt` userspace tool installed
-- CephFS formatted with encryption support
+- CephFS mounted via the kernel client (not ceph-fuse)
 
 Install the fscrypt tool:
 
 ```bash
-apt-get install fscrypt
-# or
-yum install fscrypt
+# Debian/Ubuntu
+apt-get install libpam-fscrypt
+
+# From source (recommended for other distros)
+git clone https://github.com/google/fscrypt
+cd fscrypt
+make && make install
 ```
 
 ## Enabling fscrypt on a CephFS Mount
@@ -79,8 +82,8 @@ fscrypt status /mnt/cephfs/tenant-a
 ```
 
 Expected output:
-```json
-"/mnt/cephfs/tenant-a": encrypted with fscrypt
+```
+"/mnt/cephfs/tenant-a" is encrypted with fscrypt.
 Policy:   abc123...
 Unlocked: Yes
 ```
@@ -100,9 +103,9 @@ fscrypt unlock /mnt/cephfs/tenant-a \
   --key=/etc/ceph/tenant-a.key
 ```
 
-## CephFS Encryption Policy via Client Config
+## CephFS Encryption with ceph-fuse
 
-For Rook-managed CephFS, mount options can be configured in the CSI driver config to apply fscrypt automatically to PVC-backed directories.
+For ceph-fuse or libcephfs-based mounts, the standard `fscrypt` tool does not work directly. Use the Ceph-maintained fork at `github.com/ceph/fscrypt` (branch `wip-ceph-fuse`) which adds support for userspace CephFS clients.
 
 ## Summary
 
