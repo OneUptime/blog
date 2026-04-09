@@ -46,7 +46,7 @@ kubectl -n rook-ceph describe pod csi-rbdplugin-<id> | grep -A5 "Events:"
 If you see `ImagePullBackOff`, you may need to update the image registry or pull the images manually and push to a private registry. Check the operator config:
 
 ```bash
-kubectl -n rook-ceph get configmap rook-ceph-operator-config -o yaml | grep -i "csi_image\|CSI_IMAGE"
+kubectl -n rook-ceph get configmap rook-ceph-operator-config -o yaml | grep -i "ROOK_CSI_.*IMAGE"
 ```
 
 ## Common Cause 2: Missing RBAC Resources
@@ -55,12 +55,12 @@ CSI pods require specific ClusterRoles and ServiceAccounts:
 
 ```bash
 # Verify required resources exist
-kubectl get clusterrole rook-ceph-csi-nodeplugin
-kubectl get clusterrole rook-ceph-csi-provisioner-role
+kubectl get clusterrole rbd-csi-nodeplugin
+kubectl get clusterrole rbd-external-provisioner-runner
 kubectl get serviceaccount rook-csi-rbd-plugin-sa -n rook-ceph
 
 # If missing, reapply RBAC
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/operator.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/examples/common.yaml
 ```
 
 ## Common Cause 3: Kubelet Socket Path Mismatch
@@ -84,7 +84,7 @@ metadata:
   name: rook-ceph-operator-config
   namespace: rook-ceph
 data:
-  CSI_KUBELET_DIR_PATH: "/var/lib/kubelet"
+  ROOK_CSI_KUBELET_DIR_PATH: "/var/lib/kubelet"
 ```
 
 ## Common Cause 4: Node Driver Registration Failure
@@ -95,8 +95,8 @@ If CSI node pods start but the driver is not registered with kubelet:
 # Check node plugin logs
 kubectl -n rook-ceph logs csi-rbdplugin-<id> -c driver-registrar
 
-# Check if the socket exists on the node
-ls /var/lib/kubelet/plugins_registry/rook-ceph.rbd.csi.ceph.com
+# Check if the registration socket exists on the node
+ls /var/lib/kubelet/plugins_registry/rook-ceph.rbd.csi.ceph.com-reg.sock
 ```
 
 ## Common Cause 5: Node Resource Constraints or Taints
