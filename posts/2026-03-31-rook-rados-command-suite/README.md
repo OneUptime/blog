@@ -31,8 +31,8 @@ rados lspools
 # List objects in a specific pool
 rados -p replicapool ls
 
-# List objects with details
-rados -p replicapool ls --long
+# List objects in all namespaces
+rados -p replicapool ls --all
 ```
 
 ## Reading and Writing Objects
@@ -109,10 +109,10 @@ rados -p replicapool watch myobject
 
 ```bash
 # Copy an object to another pool
-rados -p sourcepool copy myobject --dest-pool destpool
+rados -p sourcepool --target-pool destpool cp myobject myobject
 
-# Move (copy and delete) an object
-rados -p sourcepool cppool myobject destpool
+# Copy all objects from one pool to another
+rados cppool sourcepool destpool
 ```
 
 ## Checking Object Statistics

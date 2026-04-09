@@ -14,7 +14,7 @@ When a CephFS filesystem needs to be brought down immediately - such as when MDS
 
 ## Difference Between down and fail
 
-The `ceph fs set down true` command initiates an orderly shutdown with journal flushing. The `ceph fs fail` command is an emergency mechanism that immediately marks the filesystem as failed, stopping all MDS daemons without waiting for in-progress operations to complete.
+The `ceph fs set <fs_name> down true` command initiates an orderly shutdown with journal flushing. The `ceph fs fail` command is an emergency mechanism that immediately marks the filesystem as failed, stopping all MDS daemons without waiting for in-progress operations to complete.
 
 Use `ceph fs fail` when:
 - MDS daemons are stuck in a loop and unresponsive
@@ -30,7 +30,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fs status cephfs
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
 ```
 
-Look for MDS daemons in `reconnecting`, `rejoin`, or `damaged` states.
+Look for MDS daemons in `up:reconnect`, `up:rejoin`, or `down:damaged` states.
 
 ## Step 2 - Execute ceph fs fail
 

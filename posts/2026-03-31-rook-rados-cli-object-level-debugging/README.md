@@ -84,18 +84,18 @@ rados -p mypool --pgid 1.0 ls | wc -l
 ## Monitor Object Write/Read in Real Time
 
 ```bash
-# Watch object operations happening in a pool
+# Watch for RADOS notifications on an object
 rados -p mypool watch my-object &
 
-# Write an update to trigger the watch
-rados -p mypool put my-object /tmp/update.txt
+# Send a notification to trigger the watch
+rados -p mypool notify my-object ""
 ```
 
 ## Verify Object Existence Across Replicas
 
 ```bash
 # Check that an object is on all expected OSDs
-OBJ_PG=$(ceph osd map mypool my-object 2>&1 | grep "pg " | awk '{print $5}')
+OBJ_PG=$(ceph osd map mypool my-object 2>&1 | grep "pg " | awk '{print $10}')
 echo "Object is in PG: $OBJ_PG"
 
 # List acting OSDs for this PG

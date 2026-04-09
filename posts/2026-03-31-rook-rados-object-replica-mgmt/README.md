@@ -18,7 +18,7 @@ Three key parameters govern replication behavior:
 |---|---|---|
 | `size` | Number of replicas per object | 3 |
 | `min_size` | Minimum replicas needed to accept I/O | 2 |
-| `requireSafeReplicaSize` | Block I/O if `size` < min_size | true |
+| `requireSafeReplicaSize` | Prevent creating pools with `size: 1` (single replica, guaranteed data loss) | true |
 
 ## Configure Replicas in CephBlockPool CRD
 
