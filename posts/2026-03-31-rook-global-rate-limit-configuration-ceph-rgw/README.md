@@ -14,9 +14,9 @@ While per-user and per-bucket rate limits provide fine-grained control, Ceph RGW
 
 Global rate limits act as catch-all defaults. When a user or bucket has no specific rate limit configured, the global limit applies. When a specific limit is set, it overrides the global default.
 
-## Setting Global Rate Limits
+## Setting Global Quotas
 
-Global rate limits are configured at the zone level:
+Global quotas are configured at the zone level:
 
 ```bash
 radosgw-admin global quota set \
@@ -44,16 +44,9 @@ radosgw-admin global quota enable \
   --quota-scope bucket
 ```
 
-## Setting Global Rate Limits via Config
+## Setting Global Rate Limits
 
-For rate limiting (ops and bytes), set global defaults via Ceph config:
-
-```bash
-ceph config set client.rgw rgw_max_listing_results 1000
-ceph config set client.rgw rgw_max_concurrent_requests 1024
-```
-
-Or via the global ratelimit command (Quincy and later):
+For rate limiting (ops and bytes per minute), set global defaults via the global ratelimit command (Quincy and later):
 
 ```bash
 radosgw-admin global ratelimit set \
@@ -106,27 +99,23 @@ radosgw-admin global ratelimit disable \
 
 ## Priority of Rate Limits
 
-The priority order for rate limit resolution:
+Per-user and per-bucket rate limits override the global defaults for their respective scopes. When both a user-level and bucket-level rate limit are active, both are enforced simultaneously — a request is rejected if either limit is exceeded.
 
-1. Per-bucket rate limit (highest priority)
-2. Per-user rate limit
-3. Global rate limit (default)
-
-This means per-bucket and per-user settings always take precedence over the global default. If neither is set, the global limit applies.
+If no per-user or per-bucket rate limit is set for a given scope, the global rate limit applies as the default.
 
 ## Rook: Applying Global Config
 
 In Rook, apply global rate limit changes via the toolbox:
 
 ```bash
-kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin global ratelimit set \
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- bash -c \
+  'radosgw-admin global ratelimit set \
   --ratelimit-scope user \
   --max-read-ops 5000 \
   --max-write-ops 2000 && \
-  radosgw-admin global ratelimit enable --ratelimit-scope user
+  radosgw-admin global ratelimit enable --ratelimit-scope user'
 ```
 
 ## Summary
 
-Global rate limits in Ceph RGW provide cluster-wide defaults that apply to all users and buckets without individual configuration. They act as a safety net below per-user and per-bucket limits in the priority hierarchy. Use global limits as the baseline for your cluster and override them with per-user or per-bucket settings for special cases.
+Global rate limits in Ceph RGW provide cluster-wide defaults that apply to all users and buckets without individual configuration. They act as a safety net that is overridden when per-user or per-bucket limits are configured. Use global limits as the baseline for your cluster and override them with per-user or per-bucket settings for special cases.
