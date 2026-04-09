@@ -26,7 +26,7 @@ spec:
 
 The directory at `dataDirHostPath` contains:
 - Ceph configuration files (`ceph.conf`, keyrings)
-- Monitor data and keystone files
+- Monitor data and keyring files
 - OSD bootstrap keyrings
 - Rook operator state files
 
@@ -67,12 +67,12 @@ Rook will create the directory if it does not exist, but the parent directory mu
 ```bash
 # Verify the parent path is writable on all nodes
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
-  kubectl debug node/$node -- chroot /host test -w /var/lib && echo "$node: writable" || echo "$node: NOT writable"
+  kubectl debug node/$node --image=busybox -- chroot /host test -w /var/lib && echo "$node: writable" || echo "$node: NOT writable"
 done
 
 # Manually create if needed (before deploying Rook)
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
-  kubectl debug node/$node -- chroot /host mkdir -p /var/lib/rook
+  kubectl debug node/$node --image=busybox -- chroot /host mkdir -p /var/lib/rook
 done
 ```
 
@@ -147,7 +147,7 @@ On systems with SELinux enforcing (RHEL, OpenShift), the hostPath directory may 
 # Apply the correct SELinux context
 chcon -Rt svirt_sandbox_file_t /var/lib/rook
 
-# Or set in the CephCluster with preparePlacement tolerations for nodes
+# Or use a MachineConfig on OpenShift to apply the context across all nodes
 ```
 
 ## Summary
