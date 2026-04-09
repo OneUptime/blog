@@ -81,12 +81,9 @@ juju integrate ceph-nfs:ceph-client ceph-mon:client
 Juju charms expose configuration options:
 
 ```bash
-# Set replication size
-juju config ceph-mon osd-pool-default-size=3
-
 # Configure public and cluster networks
-juju config ceph-osd public-address=192.168.1.0/24
-juju config ceph-mon cluster-network=192.168.2.0/24
+juju config ceph-mon ceph-public-network=192.168.1.0/24
+juju config ceph-mon ceph-cluster-network=192.168.2.0/24
 ```
 
 View all available config options:
@@ -143,7 +140,7 @@ juju run ceph-mon/0 get-health
 
 # Create a pool
 juju run ceph-mon/0 create-pool \
-  name=mypool pg-num=128 app-name=rbd
+  name=mypool replicas=3 app-name=rbd
 ```
 
 ## Summary
