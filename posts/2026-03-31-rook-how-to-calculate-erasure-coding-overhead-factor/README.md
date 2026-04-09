@@ -84,11 +84,11 @@ Check actual storage efficiency of an existing EC pool:
 # View pool stats including raw usage
 ceph df detail
 
-# For a specific pool, compare stored vs raw used
-ceph osd pool stats myecpool
+# Per-pool breakdown showing stored vs raw used
+rados df
 ```
 
-Expected output shows `kb_used` (raw bytes) vs `stored` (logical bytes) - the ratio reflects overhead.
+Expected output shows `STORED` (logical bytes) vs `USED` (raw bytes on disk) per pool - the ratio reflects overhead.
 
 ## Accounting for Additional Overhead
 
