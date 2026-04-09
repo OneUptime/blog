@@ -71,9 +71,9 @@ kubectl logs -n rook-ceph -f \
 ```bash
 # Set log level for a specific daemon subsystem
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
-  # Increase OSD log level (1-20, higher = more verbose)
+  # Increase OSD log level (0-20, higher = more verbose)
   ceph tell osd.0 config set debug_osd 10
-  ceph tell osd.0 config set debug_filestore 10
+  ceph tell osd.0 config set debug_bluestore 10
 
   # Increase monitor log level
   ceph tell mon.a config set debug_mon 10
@@ -101,7 +101,7 @@ data:
     debug_ms = 0
     debug_osd = 0
     debug_mon = 1
-    log_to_stderr = false
+    log_to_stderr = true
     log_to_file = false
 ```
 
