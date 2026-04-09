@@ -79,17 +79,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 If you have old RBD images or snapshots you can delete:
 
 ```bash
-rbd ls <pool-name>
-rbd snap ls <pool-name>/<image-name>
-rbd snap purge <pool-name>/<image-name>
-rbd rm <pool-name>/<old-image>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd ls <pool-name>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd snap ls <pool-name>/<image-name>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd snap purge <pool-name>/<image-name>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rbd rm <pool-name>/<old-image>
 ```
 
 For RGW object storage, list and delete large buckets:
 
 ```bash
-radosgw-admin bucket stats
-radosgw-admin bucket rm --bucket=<bucket-name> --purge-objects
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin bucket stats
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin bucket rm --bucket=<bucket-name> --purge-objects
 ```
 
 ## Step 5 - Add More OSDs
