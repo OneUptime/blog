@@ -10,35 +10,35 @@ Description: Learn how to configure Ceph RADOS Gateway to authenticate users aga
 
 ## Overview
 
-Ceph RGW supports LDAP as an authentication backend, allowing organizations to use their existing directory services (Active Directory, OpenLDAP) to control S3 access. In LDAP mode, RGW validates bearer tokens by checking credentials against the LDAP server rather than its local user database.
+Ceph RGW supports LDAP as an authentication backend, allowing organizations to use their existing directory services (Active Directory, OpenLDAP) to control S3 access. In LDAP mode, RGW validates S3 access tokens by checking credentials against the LDAP server rather than its local user database.
 
 ## Step 1 - Prerequisites
 
 Ensure you have:
 - A running LDAP server (OpenLDAP or Active Directory)
-- Ceph RGW version 10.0.1 or later
+- Ceph Jewel (10.2.0) or later
 - A service account in LDAP for RGW to use for bind operations
 
 ```bash
-# Verify RGW LDAP support
+# Verify RGW version
 radosgw --version
-# Check if built with LDAP support
-radosgw -v 2>&1 | grep -i ldap
 ```
 
 ## Step 2 - Configure LDAP Settings in ceph.conf
 
-```bash
+```ini
 # /etc/ceph/ceph.conf additions for the RGW instance
 [client.rgw.mystore]
 rgw_ldap_uri = ldap://ldap.example.com:389
 rgw_ldap_binddn = cn=rgw-service,ou=serviceaccounts,dc=example,dc=com
-rgw_ldap_bindpw = mysecretpassword
+rgw_ldap_secret = /etc/ceph/ldap_secret
 rgw_ldap_searchdn = ou=users,dc=example,dc=com
 rgw_ldap_dnattr = uid
 rgw_ldap_searchfilter = (objectClass=inetOrgPerson)
 rgw_s3_auth_use_ldap = true
 ```
+
+The file `/etc/ceph/ldap_secret` should contain the LDAP bind password in plaintext.
 
 For Rook-managed RGW, patch the Ceph config override:
 
@@ -47,6 +47,8 @@ kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.m
   rgw_ldap_uri "ldap://ldap.example.com:389"
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.my-store \
   rgw_ldap_binddn "cn=rgw-service,ou=serviceaccounts,dc=example,dc=com"
+kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.my-store \
+  rgw_ldap_secret "/etc/ceph/ldap_secret"
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.my-store \
   rgw_ldap_searchdn "ou=users,dc=example,dc=com"
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.my-store \
@@ -57,17 +59,18 @@ kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph config set client.rgw.m
 
 ## Step 3 - Create the LDAP Bind Password Secret
 
-Store the LDAP bind password securely in a Kubernetes secret:
+Store the LDAP bind password in a file and make it available to the RGW pod:
 
 ```bash
+# Create a Kubernetes secret containing the bind password
 kubectl -n rook-ceph create secret generic rgw-ldap-secret \
-  --from-literal=bindpw=mysecretpassword
-
-# Reference it in your CephObjectStore spec
+  --from-literal=ldap-secret=mysecretpassword
 ```
 
+The secret must be mounted as a file at the path specified by `rgw_ldap_secret` (e.g., `/etc/ceph/ldap_secret`) in the RGW pod.
+
 ```yaml
-# CephObjectStore with LDAP secret reference
+# CephObjectStore definition
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStore
 metadata:
@@ -77,7 +80,6 @@ spec:
   gateway:
     port: 80
     instances: 1
-    externalRgwEndpoints: []
   # Use config overrides for LDAP settings
 ```
 
@@ -97,25 +99,26 @@ kubectl -n rook-ceph create configmap ldap-ca-cert \
 
 ## Step 5 - Test LDAP Authentication
 
-RGW's LDAP backend uses S3 bearer token authentication. Generate a token:
+RGW's LDAP backend uses the `radosgw-token` utility to encode LDAP credentials into an S3 access token. The token is then used as the S3 access key with standard S3 v2/v4 signature authentication.
 
-```python
-import base64
-import json
-
-# Encode LDAP credentials as a bearer token
-token_data = {"credentials": {"uid": "jsmith", "password": "userpass"}}
-token_b64 = base64.b64encode(json.dumps(token_data).encode()).decode()
-
-# Use the token in an S3 request
-# AWS SDK: set aws_access_key_id to the LDAP username
-#          and use the base64 token as a bearer token header
-```
+Generate a token:
 
 ```bash
-# Test with curl
-curl -H "Authorization: Bearer ${TOKEN_B64}" \
-  http://rgw.example.com:7480/?list_buckets
+# Set LDAP credentials as environment variables
+export RGW_ACCESS_KEY_ID="jsmith"
+export RGW_SECRET_ACCESS_KEY="userpass"
+
+# Generate the LDAP token
+radosgw-token --encode --ttype=ldap
+```
+
+Use the generated token as the `AWS_ACCESS_KEY_ID` and set `AWS_SECRET_ACCESS_KEY` to an empty string:
+
+```bash
+# Test with the AWS CLI
+export AWS_ACCESS_KEY_ID="<token from radosgw-token>"
+export AWS_SECRET_ACCESS_KEY=""
+aws --endpoint-url http://rgw.example.com:7480 s3 ls
 ```
 
 ## Step 6 - Troubleshoot LDAP Issues
