@@ -75,10 +75,10 @@ MinIO bucket policies are S3-compatible JSON:
 
 ```bash
 # Export MinIO bucket policy
-mc policy export minio-src/my-bucket > /tmp/bucket-policy.json
+mc anonymous get-json minio-src/my-bucket > /tmp/bucket-policy.json
 
 # Apply to Ceph RGW
-mc policy set-json /tmp/bucket-policy.json ceph-dst/my-bucket
+mc anonymous set-json /tmp/bucket-policy.json ceph-dst/my-bucket
 ```
 
 ## Step 5: Verify Migration with rclone
@@ -87,8 +87,8 @@ For a checksum-verified migration, use rclone:
 
 ```bash
 rclone check \
-  :s3,access_key_id=MINIO_ACCESS,secret_access_key=MINIO_SECRET,endpoint=http://minio.minio.svc:9000:my-bucket \
-  :s3,access_key_id=CEPH_MIGRATE_KEY,secret_access_key=CEPH_MIGRATE_SECRET,endpoint=http://rook-ceph-rgw-my-store.rook-ceph.svc:80:my-bucket
+  ":s3,access_key_id=MINIO_ACCESS,secret_access_key=MINIO_SECRET,endpoint='http://minio.minio.svc:9000':my-bucket" \
+  ":s3,access_key_id=CEPH_MIGRATE_KEY,secret_access_key=CEPH_MIGRATE_SECRET,endpoint='http://rook-ceph-rgw-my-store.rook-ceph.svc:80':my-bucket"
 ```
 
 ## Step 6: Migrate MinIO Users to Ceph RGW
