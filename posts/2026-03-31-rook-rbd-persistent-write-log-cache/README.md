@@ -39,6 +39,7 @@ metadata:
 data:
   config: |
     [client]
+    rbd_plugins = pwl_cache
     rbd_persistent_cache_mode = ssd
     rbd_persistent_cache_path = /mnt/nvme/rbd-pwl-cache
     rbd_persistent_cache_size = 21474836480
@@ -71,25 +72,25 @@ initContainers:
     mountPath: /mnt/nvme
 ```
 
-## Step 4 - Enable PWL on a Specific Image
+## Step 4 - Enable Exclusive Lock on a Specific Image
 
-Enable the write log cache feature on an RBD image:
+The persistent write log cache requires the `exclusive-lock` feature on the RBD image. Enable it if not already set:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd feature enable replicapool/myimage write-cache
+  rbd feature enable replicapool/myimage exclusive-lock
 ```
 
 ## Step 5 - Verify Cache Activity
 
-Check cache statistics for an active image:
+Check persistent cache status for an active image:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd perf image iostat replicapool --format json
+  rbd status replicapool/myimage
 ```
 
-Look for `write_ops` being served from the cache before flushing to the cluster.
+Look for the `Persistent cache state` section, which shows allocated bytes, cached bytes, dirty bytes, and hit/miss statistics.
 
 ## Step 6 - Flush the Cache Manually
 
@@ -97,7 +98,7 @@ To force all dirty data to be written to Ceph before an operation like a snapsho
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd cache flush replicapool/myimage
+  rbd persistent-cache flush replicapool/myimage
 ```
 
 ## Step 7 - StorageClass Configuration
@@ -123,4 +124,4 @@ parameters:
 
 ## Summary
 
-RBD Persistent Write Log cache in Rook-Ceph reduces write latency by buffering writes to local PMEM or NVMe before flushing to the Ceph cluster. Configure it via the Rook config override ConfigMap, prepare cache directories on each node, and enable the `write-cache` feature on images that benefit most. Use `rbd cache flush` before creating snapshots to ensure consistency.
+RBD Persistent Write Log cache in Rook-Ceph reduces write latency by buffering writes to local PMEM or NVMe before flushing to the Ceph cluster. Configure it via the Rook config override ConfigMap with the `pwl_cache` plugin, prepare cache directories on each node, and ensure `exclusive-lock` is enabled on images that benefit most. Use `rbd persistent-cache flush` before creating snapshots to ensure consistency.
