@@ -34,7 +34,7 @@ rbd mirror pool status replicapool --verbose
 ```bash
 # Step 3: Wait for replication to catch up
 watch rbd mirror pool status replicapool
-# Wait until all images show entries_behind_master=0
+# Wait until all images show entries_behind_primary=0
 
 # Step 4: Promote all images
 rbd mirror pool promote replicapool
@@ -75,7 +75,7 @@ rbd mirror pool demote replicapool
 ```bash
 # Step 3: Wait for mirror sync from current primary
 watch rbd mirror pool status replicapool
-# Wait for all images to show entries_behind_master=0
+# Wait for all images to show entries_behind_primary=0
 
 # Step 4: Promote the original primary
 rbd mirror pool promote replicapool
@@ -89,22 +89,26 @@ kubectl scale deployment myapp --replicas=3
 In a Rook environment, manage failover using the toolbox:
 
 ```bash
-TOOLBOX=$(kubectl -n rook-ceph get pod -l app=rook-ceph-tools \
+PRIMARY_TOOLBOX=$(kubectl -n rook-ceph get pod -l app=rook-ceph-tools \
   -o jsonpath='{.items[0].metadata.name}')
 
 # Demote on primary cluster
-kubectl -n rook-ceph exec -it $TOOLBOX -- \
+kubectl -n rook-ceph exec -it $PRIMARY_TOOLBOX -- \
   rbd mirror pool demote replicapool
 
-# Promote on secondary cluster (using secondary cluster's toolbox)
-kubectl --context secondary-cluster -n rook-ceph exec -it $TOOLBOX -- \
+# Get the toolbox pod name on the secondary cluster
+SECONDARY_TOOLBOX=$(kubectl --context secondary-cluster -n rook-ceph get pod \
+  -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
+
+# Promote on secondary cluster
+kubectl --context secondary-cluster -n rook-ceph exec -it $SECONDARY_TOOLBOX -- \
   rbd mirror pool promote replicapool
 ```
 
 ## Verifying After Failover
 
 ```bash
-# Check all images are in replaying state on new primary
+# Check all images show as primary on the promoted cluster
 rbd mirror pool status replicapool --verbose
 
 # Confirm application is functioning
