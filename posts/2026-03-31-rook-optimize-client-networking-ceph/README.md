@@ -61,8 +61,9 @@ If your network supports it, enable jumbo frames (MTU 9000) for significantly hi
 # On the client interface
 ip link set eth1 mtu 9000
 
-# Make persistent in /etc/sysconfig/network-scripts/ifcfg-eth1
-echo "MTU=9000" >> /etc/sysconfig/network-scripts/ifcfg-eth1
+# Make persistent using NetworkManager (RHEL 8+, Ubuntu 18.04+)
+nmcli connection modify eth1 ethernet.mtu 9000
+nmcli connection up eth1
 ```
 
 Ensure all switches, routers, and OSD nodes also support MTU 9000.
@@ -85,7 +86,7 @@ systemctl enable --now irqbalance
 
 ## Use RDMA if Available
 
-For latency-sensitive workloads, Ceph supports RDMA (RoCE or InfiniBand) via the Async+RDMA messenger:
+For latency-sensitive workloads, Ceph supports RDMA (RoCE or InfiniBand) via the Async+RDMA messenger. Note that this transport is **experimental** and not production-supported by major vendors such as Red Hat. Ensure your Ceph build was compiled with RDMA support (`HAVE_RDMA`) before enabling it:
 
 ```ini
 [client]
