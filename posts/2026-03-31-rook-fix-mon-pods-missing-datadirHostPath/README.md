@@ -43,7 +43,7 @@ Verify the directory exists on the node where the MON pod is scheduled:
 ```bash
 NODE=$(kubectl -n rook-ceph get pod rook-ceph-mon-a-<suffix> -o jsonpath='{.spec.nodeName}')
 echo "MON is on node: $NODE"
-kubectl debug node/$NODE --image=busybox -- ls -la /var/lib/rook/
+kubectl debug node/$NODE --image=busybox -- ls -la /host/var/lib/rook/
 ```
 
 ## Creating the Missing Directory
@@ -77,7 +77,6 @@ spec:
       labels:
         name: rook-dir-setup
     spec:
-      hostPID: true
       initContainers:
       - name: create-dir
         image: busybox
@@ -87,7 +86,7 @@ spec:
           mountPath: /host
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.1
+        image: registry.k8s.io/pause:3.10
       volumes:
       - name: host
         hostPath:
