@@ -58,9 +58,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_override_bucket_index_max_shards 64
 ```
 
-## Ordered vs Unordered Listing
+## Efficient Pagination
 
-S3 ListObjects returns keys in lexicographic order, which requires merging results from all shards. For applications that do not need ordering, use ListObjectsV2 with delimiter-based pagination rather than scanning the entire bucket.
+S3 ListObjects returns keys in lexicographic order, which requires merging results from all shards. Use ListObjectsV2 with continuation tokens to paginate through large buckets efficiently instead of scanning the entire index in one request.
 
 ```bash
 # Paginate efficiently using continuation tokens
@@ -70,13 +70,13 @@ aws s3api list-objects-v2 \
   --endpoint-url http://<rgw-endpoint>
 ```
 
-## Listing Cache
+## Bucket Index AIO Tuning
 
-Enable RGW's listing cache to avoid repeated full bucket index scans:
+The `rgw_bucket_index_max_aio` option controls the maximum number of concurrent asynchronous I/O requests when reading bucket index shards. The default value is 128. On systems where RADOS is under heavy load, you can lower this to reduce pressure, or verify it is set appropriately for your cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_bucket_index_max_aio 8
+  ceph config get client.rgw rgw_bucket_index_max_aio
 ```
 
 ## Bucket Index Maintenance
@@ -87,10 +87,10 @@ Remove stale entries from the bucket index to improve listing speed:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin bucket check --bucket=my-bucket --fix
 
-# Check for orphaned objects
+# Check objects against the bucket index
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket check-object-index \
-    --bucket=my-bucket
+  radosgw-admin bucket check \
+    --check-objects --bucket=my-bucket
 ```
 
 Run periodic index sync:
