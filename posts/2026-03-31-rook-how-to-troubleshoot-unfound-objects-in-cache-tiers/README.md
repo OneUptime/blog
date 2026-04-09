@@ -28,18 +28,18 @@ ceph pg dump_stuck
 # List PGs with unfound objects
 ceph pg dump | grep unfound
 
-# Get details for a specific PG
-ceph pg <pgid> query | jq '.recovery_state.unfound'
+# List unfound objects for a specific PG
+ceph pg <pgid> list_missing
 
 # Count unfound objects
-ceph pg <pgid> query | jq '.recovery_state.num_unfound'
+ceph pg <pgid> list_missing | jq '.num_unfound'
 ```
 
 Example output:
 
 ```text
 pg 1.4a:
-  num_unfound: 3
+  num_unfound: 2
   unfound_objects:
     - object: 1:abc123:rbd_data.pool1:1234
     - object: 1:def456:rbd_data.pool1:5678
@@ -95,8 +95,8 @@ rados -p <cache-pool> cache-flush-evict-all
 The PG log shows the history of object operations and can reveal why an object is unfound:
 
 ```bash
-# View PG log (may be long)
-ceph pg <pgid> log 2>/dev/null | grep <object-name>
+# Search PG query output for a specific object (may be long)
+ceph pg <pgid> query 2>/dev/null | grep <object-name>
 
 # Query PG status
 ceph pg <pgid> query | jq '.pg_log.log[-10:]'
@@ -107,7 +107,7 @@ ceph pg <pgid> query | jq '.pg_log.log[-10:]'
 If the cache OSD died mid-flush, the backing pool may have a partial write:
 
 ```bash
-# Check OSD journal for the cache OSD (if recently recovered)
+# Flush the OSD daemon log to disk for inspection (if recently recovered)
 ceph daemon osd.X log flush
 
 # Look for incomplete writes in OSD logs
@@ -152,8 +152,8 @@ If unfound objects are blocking cache tier removal:
 # Switch to forward mode first
 ceph osd tier cache-mode <cache-pool> forward
 
-# Wait for flushes to complete
-ceph -W objecter
+# Watch cluster events until flushes complete
+ceph -w
 
 # Force flush any remaining objects
 rados -p <cache-pool> cache-flush-evict-all
