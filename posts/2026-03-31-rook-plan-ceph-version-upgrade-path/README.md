@@ -10,7 +10,7 @@ Description: A structured approach to planning your Ceph upgrade path in Rook, i
 
 ## Overview
 
-Ceph does not support skipping major releases during upgrades. If you are running Pacific (16.x) and want to reach Squid (19.x), you must pass through Quincy (17.x) and Reef (18.x) in sequence. Planning this path prevents data unavailability and operator errors.
+Ceph supports upgrading from up to two major releases back (N-2 to N), but not further. If you are running Pacific (16.x) and want to reach Squid (19.x), you need at least one intermediate upgrade step since Pacific is three releases behind Squid. Planning this path prevents data unavailability and operator errors.
 
 ## Determine Your Upgrade Sequence
 
@@ -21,8 +21,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph version
 ```
 
 Required upgrade sequences:
-- Pacific (16.x) -> Quincy (17.x) -> Reef (18.x) -> Squid (19.x)
-- Quincy (17.x) -> Reef (18.x) -> Squid (19.x)
+- Pacific (16.x) -> Reef (18.x) -> Squid (19.x) - shortest path, two hops
+- Quincy (17.x) -> Squid (19.x) - direct upgrade supported
 - Reef (18.x) -> Squid (19.x) - direct upgrade supported
 
 ## Pre-Upgrade Health Checklist
@@ -40,7 +40,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd stat
 echo "=== PG Status ==="
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph pg stat
 
-echo "=== Slow Ops ==="
+echo "=== Blocked OSDs ==="
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd blocked-by
 ```
 
@@ -99,4 +99,4 @@ kubectl get cephcluster rook-ceph -n rook-ceph -o jsonpath='{.spec.cephVersion.i
 
 ## Summary
 
-Planning a Ceph upgrade path requires identifying the correct hop sequence (no skipping major versions), ensuring cluster health before each step, upgrading Rook operator before Ceph daemons, and validating in staging first. Document each step and set appropriate maintenance windows based on cluster size.
+Planning a Ceph upgrade path requires identifying the correct hop sequence (upgrades supported from up to two prior major versions), ensuring cluster health before each step, upgrading Rook operator before Ceph daemons, and validating in staging first. Document each step and set appropriate maintenance windows based on cluster size.
