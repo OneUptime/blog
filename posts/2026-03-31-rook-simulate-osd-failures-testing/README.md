@@ -44,7 +44,7 @@ echo "Simulating OSD $OSD_ID failure (pod: $OSD_POD)"
 START_TIME=$(date +%s)
 
 # Kill the OSD pod
-kubectl -n "$NAMESPACE" delete pod "$OSD_POD" --grace-period=0
+kubectl -n "$NAMESPACE" delete pod "$OSD_POD" --grace-period=0 --force
 
 # Watch recovery
 echo "Monitoring recovery..."
@@ -66,7 +66,7 @@ done
 
 ## Method 2: Mark OSD Down and Out
 
-For a more realistic failure that prevents the OSD from restarting:
+To trigger data rebalancing without deleting the pod (note: the running OSD daemon will re-mark itself up via heartbeats, so set the `noup` flag first if you need it to stay down):
 
 ```bash
 #!/bin/bash
@@ -80,10 +80,13 @@ ceph_cmd() {
 
 echo "=== Forcing OSD $OSD_ID failure ==="
 
-# Step 1: Mark down
+# Step 1: Prevent OSD from marking itself back up
+ceph_cmd osd set-group noup "osd.$OSD_ID"
+
+# Step 2: Mark down
 ceph_cmd osd down "osd.$OSD_ID"
 
-# Step 2: Mark out to trigger rebalancing
+# Step 3: Mark out to trigger rebalancing
 ceph_cmd osd out "osd.$OSD_ID"
 
 echo "OSD $OSD_ID marked down and out"
@@ -125,7 +128,7 @@ def get_pg_stats():
         "kubectl", "-n", NAMESPACE, "exec", "deploy/rook-ceph-tools",
         "--", "ceph", "pg", "stat", "--format", "json"
     ], capture_output=True, text=True)
-    return json.loads(result.stdout)
+    return json.loads(result.stdout)["pg_summary"]
 
 
 def measure_recovery(osd_id: int):
@@ -143,9 +146,9 @@ def measure_recovery(osd_id: int):
 
     while True:
         stats = get_pg_stats()
-        degraded = stats.get("num_pg_degraded", 0)
+        degraded = stats.get("degraded_objects", 0)
         elapsed = time.time() - start
-        print(f"[{elapsed:.0f}s] Degraded PGs: {degraded}")
+        print(f"[{elapsed:.0f}s] Degraded objects: {degraded}")
 
         if degraded == 0:
             print(f"\nRecovery complete in {elapsed:.1f} seconds")
