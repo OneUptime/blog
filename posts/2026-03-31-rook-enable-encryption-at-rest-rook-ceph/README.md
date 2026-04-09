@@ -49,10 +49,10 @@ Check that OSDs are running with encryption enabled:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd metadata 0 | grep encryption
+  ceph osd metadata 0 | grep -i encrypt
 ```
 
-Look for `bluefs_encryption_enabled: 1` and `osd_objectstore_type: bluestore`.
+Look for encryption-related fields in the output confirming that dmcrypt is active. You can also verify BlueStore is in use with `ceph osd metadata 0 | grep osd_objectstore`.
 
 Check the OSD pod logs for encryption initialization:
 
