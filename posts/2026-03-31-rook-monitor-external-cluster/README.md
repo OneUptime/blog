@@ -163,10 +163,10 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
 Rook provides pre-built Grafana dashboards compatible with external clusters:
 
 ```bash
-# Download the Rook dashboards
-curl -sL https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/monitoring/grafana/ceph-cluster.json \
+# Download the Rook dashboards (note: filenames contain spaces)
+curl -sL 'https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/monitoring/grafana/Ceph%20Cluster%20Dashboard.json' \
   -o ceph-cluster-dashboard.json
-curl -sL https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/monitoring/grafana/ceph-pools.json \
+curl -sL 'https://raw.githubusercontent.com/rook/rook/v1.14.0/deploy/examples/monitoring/grafana/Ceph%20Pools%20Dashboard.json' \
   -o ceph-pools-dashboard.json
 
 # Create a ConfigMap for each dashboard
