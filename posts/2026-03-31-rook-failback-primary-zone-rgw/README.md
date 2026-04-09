@@ -43,8 +43,9 @@ The primary needs to sync all writes that occurred during the failover period:
 radosgw-admin period pull --url=http://us-west-rgw.example.com \
     --access-key=<sync-access-key> --secret=<sync-secret-key>
 
-# Start sync on primary (it will pull data from secondary)
-radosgw-admin sync run
+# Restart RGW on primary so it picks up the new period and begins syncing
+systemctl restart ceph-radosgw@rgw.us-east
+# Or in Rook, the operator handles restarts when the CephObjectStore is updated
 
 # Monitor sync progress
 watch -n 10 'radosgw-admin sync status'
@@ -71,15 +72,17 @@ Once sync is complete and the primary is fully caught up:
 # On primary zone host - promote back to master
 radosgw-admin zone modify --rgw-zone=us-east --master
 radosgw-admin period update --commit
+
+# Restart RGW on primary to apply the new period
+systemctl restart ceph-radosgw@rgw.us-east
 ```
 
 ## Step 5 - Demote Secondary to Non-Master
 
 ```bash
-# On secondary zone host - remove master flag
-radosgw-admin zone modify --rgw-zone=us-west
-# Remove --master flag (do not include it)
-radosgw-admin period update --commit
+# On secondary zone host - pull the updated period from the new master (primary)
+radosgw-admin period pull --url=http://us-east-rgw.example.com \
+    --access-key=<sync-access-key> --secret=<sync-secret-key>
 
 # Restart RGW on secondary to pick up new config
 systemctl restart ceph-radosgw@rgw.us-west
