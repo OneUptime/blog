@@ -34,10 +34,10 @@ List enabled modules and check for errors:
 ceph mgr module ls
 ```
 
-Get the error message for a specific module:
+Get detailed module status including error messages:
 
 ```bash
-ceph mgr module info pg_autoscaler
+ceph mgr module ls
 ```
 
 Check MGR logs for the full traceback:
@@ -140,7 +140,7 @@ Add Prometheus alerting for module errors:
 
 ```yaml
 - alert: CephMgrModuleError
-  expr: ceph_health_status > 0
+  expr: ceph_health_detail{name="MGR_MODULE_ERROR"} == 1
   for: 5m
   labels:
     severity: warning
