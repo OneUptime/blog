@@ -80,12 +80,16 @@ If you need to pause scrubbing across all pools simultaneously, use the cluster-
 
 ```bash
 # Pause all scrubs cluster-wide
-ceph osd set noscrub
-ceph osd set nodeep-scrub
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd set noscrub
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd set nodeep-scrub
 
 # Resume cluster-wide scrubs
-ceph osd unset noscrub
-ceph osd unset nodeep-scrub
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd unset noscrub
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd unset nodeep-scrub
 ```
 
 ## Monitor Active Scrubs
@@ -106,7 +110,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Ceph Health Warnings When Scrubs Are Disabled
 
-If `noscrub` or `nodeep-scrub` remain set too long, Ceph generates health warnings:
+When cluster-level flags are set (`ceph osd set noscrub`), Ceph immediately generates a health warning:
 
 ```text
 HEALTH_WARN
@@ -114,7 +118,9 @@ HEALTH_WARN
     nodeep-scrub flag(s) set
 ```
 
-This serves as a reminder to re-enable scrubbing after your maintenance is complete.
+For per-pool flags, Ceph does not generate an immediate warning. However, if scrubs have not run within the configured thresholds, Ceph will eventually raise `PG_NOT_SCRUBBED` or `PG_NOT_DEEP_SCRUBBED` warnings.
+
+In both cases, these warnings serve as a reminder to re-enable scrubbing after your maintenance is complete.
 
 ## Summary
 
