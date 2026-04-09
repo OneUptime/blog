@@ -100,7 +100,7 @@ If prefixes are too uniform, consider adding random suffixes or using a differen
 If the distribution is acceptable and the warning is spurious:
 
 ```bash
-ceph config set osd osd_pg_stat_report_interval 20
+ceph config set global mon_pg_warn_max_object_skew 20
 ```
 
 ## Monitoring Object Distribution
