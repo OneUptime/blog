@@ -120,7 +120,7 @@ spec:
             topologyKey: kubernetes.io/hostname
 ```
 
-Ensure no two OSDs with the same device class share the same node (soft constraint):
+Ensure no two OSDs share the same node (soft constraint):
 
 ```yaml
 spec:
@@ -145,12 +145,16 @@ If your storage nodes have taints (for example, dedicated nodes with `NoSchedule
 
 ### Example: Storage-Dedicated Nodes
 
-Taint the storage nodes to prevent general workloads:
+Taint and label the storage nodes to prevent general workloads and enable node affinity targeting:
 
 ```bash
 kubectl taint node node1 dedicated=storage:NoSchedule
 kubectl taint node node2 dedicated=storage:NoSchedule
 kubectl taint node node3 dedicated=storage:NoSchedule
+
+kubectl label node node1 dedicated=storage
+kubectl label node node2 dedicated=storage
+kubectl label node node3 dedicated=storage
 ```
 
 Add matching tolerations to all Ceph daemons:
