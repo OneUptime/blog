@@ -17,7 +17,7 @@ The Rook Multus validation tool verifies:
 2. Pods can be created with the NADs attached
 3. Pods receive IP addresses from the specified network
 4. Cross-node connectivity works (pods on different nodes can reach each other)
-5. Network throughput meets minimum requirements for Ceph
+5. Network stability (detecting flaky connections, IP conflicts, and routing issues)
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ The manifest creates a Job that runs the validation logic.
 
 ## Customizing the Validation Tool
 
-The validation tool accepts configuration via environment variables:
+The validation tool accepts configuration via CLI flags passed as container args:
 
 ```yaml
 apiVersion: batch/v1
@@ -65,18 +65,21 @@ spec:
       containers:
       - name: validation
         image: rook/ceph:v1.14.0
-        command:
-        - rook
+        command: ["rook"]
+        args:
         - multus
         - validation
         - run
+        - "--public-network=rook-ceph/rook-public-network"
+        - "--cluster-network=rook-ceph/rook-cluster-network"
+        - "--daemons-per-node=16"
         env:
-        - name: PUBLIC_NETWORK
-          value: "rook-ceph/rook-public-network"
-        - name: CLUSTER_NETWORK
-          value: "rook-ceph/rook-cluster-network"
-        - name: NODE_COUNT
-          value: "3"
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: ROOK_LOG_LEVEL
+          value: "INFO"
 ```
 
 Apply the customized validation:
@@ -148,7 +151,13 @@ ssh node-3 "ip link show"
 
 ## Cleaning Up After Validation
 
-After the validation Job completes (success or failure), clean up resources:
+After the validation Job completes (success or failure), clean up resources using the built-in cleanup command:
+
+```bash
+rook multus validation cleanup --namespace rook-ceph
+```
+
+Alternatively, clean up manually:
 
 ```bash
 kubectl -n rook-ceph delete job rook-ceph-multus-validation
@@ -165,7 +174,7 @@ rook multus validation run \
   --namespace rook-ceph \
   --public-network rook-ceph/rook-public-network \
   --cluster-network rook-ceph/rook-cluster-network \
-  --node-count 3
+  --daemons-per-node 16
 ```
 
 ## Running Validation After Changes
