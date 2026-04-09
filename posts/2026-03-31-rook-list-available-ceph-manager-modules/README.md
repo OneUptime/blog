@@ -18,7 +18,7 @@ Get the complete list of all manager modules and their states:
 ceph mgr module ls
 ```
 
-For a more readable format, pipe through Python's JSON tool:
+For a more readable format, use the built-in JSON pretty-print option:
 
 ```bash
 ceph mgr module ls --format json-pretty
