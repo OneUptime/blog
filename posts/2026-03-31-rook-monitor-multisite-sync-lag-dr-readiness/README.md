@@ -123,12 +123,12 @@ PROBE_ID=$(date +%s)
 echo "$PROBE_ID" | aws s3 cp - s3://$PROBE_BUCKET/probe-$PROBE_ID.txt \
     --endpoint-url $PRIMARY --quiet
 
-# Check for previous probe on secondary
-OLDEST_PROBE=$(aws s3 ls s3://$PROBE_BUCKET/ --endpoint-url $SECONDARY \
-    2>/dev/null | sort | head -1 | awk '{print $4}')
+# Check for newest probe on secondary (most recently synced)
+NEWEST_PROBE=$(aws s3 ls s3://$PROBE_BUCKET/ --endpoint-url $SECONDARY \
+    2>/dev/null | sort | tail -1 | awk '{print $4}')
 
-if [ -n "$OLDEST_PROBE" ]; then
-    PROBE_TIMESTAMP=$(echo $OLDEST_PROBE | grep -oP '\d+')
+if [ -n "$NEWEST_PROBE" ]; then
+    PROBE_TIMESTAMP=$(echo $NEWEST_PROBE | grep -oP '\d+')
     LAG=$((PROBE_ID - PROBE_TIMESTAMP))
     echo "Sync lag: ${LAG}s (RPO target: ${RPO_THRESHOLD_SECONDS}s)"
     if [ $LAG -gt $RPO_THRESHOLD_SECONDS ]; then
