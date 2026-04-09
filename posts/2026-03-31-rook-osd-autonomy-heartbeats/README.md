@@ -19,7 +19,7 @@ This autonomy is what makes Ceph scale to thousands of OSDs.
 Every OSD maintains heartbeat connections to all other OSDs that share placement groups with it. Heartbeats serve two purposes:
 
 1. **Detecting failures**: If an OSD stops responding to heartbeats, peers report it to monitors as `down`.
-2. **Latency measurement**: Heartbeat response times inform load balancing decisions.
+2. **Peer status monitoring**: Heartbeats carry status information and confirm network connectivity between OSDs that share placement groups.
 
 ```bash
 kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
