@@ -75,12 +75,12 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   rbd mirror pool peer bootstrap create \
   --site-name cluster1 replicated-pool > /tmp/cluster1-token.txt
 
-# On cluster 2, import the token
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+# On cluster 2, import the token (pipe via stdin using '-')
+kubectl -n rook-ceph exec -i deploy/rook-ceph-tools -- \
   rbd mirror pool peer bootstrap import \
   --site-name cluster2 \
   --direction rx-tx \
-  replicated-pool /tmp/cluster1-token.txt
+  replicated-pool - < /tmp/cluster1-token.txt
 ```
 
 ## Expose Ceph Services via ServiceExport
