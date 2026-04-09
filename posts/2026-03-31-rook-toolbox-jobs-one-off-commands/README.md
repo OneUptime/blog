@@ -28,37 +28,49 @@ spec:
       initContainers:
         - name: config-init
           image: rook/ceph:v1.13.0
-          command:
-            - sh
-            - -c
-            - cp -r /var/lib/rook/rook-ceph/. /etc/ceph/
-          volumeMounts:
-            - name: rook-config
-              mountPath: /etc/ceph
-      containers:
-        - name: toolbox
-          image: quay.io/ceph/ceph:v18.2.0
-          command:
-            - ceph
-            - status
+          command: ["/usr/local/bin/toolbox.sh"]
+          args: ["--skip-watch"]
+          imagePullPolicy: IfNotPresent
           env:
             - name: ROOK_CEPH_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: rook-ceph-mon
                   key: ceph-username
-            - name: ROOK_CEPH_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: ceph-secret
           volumeMounts:
-            - name: rook-config
-              mountPath: /etc/ceph
+            - mountPath: /etc/ceph
+              name: ceph-config
+            - mountPath: /etc/rook
+              name: mon-endpoint-volume
+            - mountPath: /var/lib/rook-ceph-mon
+              name: ceph-admin-secret
+      containers:
+        - name: toolbox
+          image: quay.io/ceph/ceph:v18.2.0
+          command:
+            - ceph
+            - status
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+              readOnly: true
       volumes:
-        - name: rook-config
+        - name: ceph-admin-secret
+          secret:
+            secretName: rook-ceph-mon
+            optional: false
+            items:
+              - key: ceph-secret
+                path: secret.keyring
+        - name: mon-endpoint-volume
+          configMap:
+            name: rook-ceph-mon-endpoints
+            items:
+              - key: data
+                path: mon-endpoints
+        - name: ceph-config
           emptyDir: {}
-      restartPolicy: OnFailure
+      restartPolicy: Never
 ```
 
 ## Using the Rook Toolbox Job Template
@@ -74,6 +86,25 @@ metadata:
 spec:
   template:
     spec:
+      initContainers:
+        - name: config-init
+          image: rook/ceph:v1.13.0
+          command: ["/usr/local/bin/toolbox.sh"]
+          args: ["--skip-watch"]
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROOK_CEPH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-mon
+                  key: ceph-username
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+            - mountPath: /etc/rook
+              name: mon-endpoint-volume
+            - mountPath: /var/lib/rook-ceph-mon
+              name: ceph-admin-secret
       containers:
         - name: toolbox
           image: rook/ceph:v1.13.0
@@ -84,14 +115,27 @@ spec:
               ceph status
               ceph osd tree
               ceph df
-          env:
-            - name: ROOK_ADMIN_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: rook-ceph-mon
-                  key: admin-secret
-      serviceAccountName: rook-ceph-default
-      restartPolicy: OnFailure
+          volumeMounts:
+            - mountPath: /etc/ceph
+              name: ceph-config
+              readOnly: true
+      volumes:
+        - name: ceph-admin-secret
+          secret:
+            secretName: rook-ceph-mon
+            optional: false
+            items:
+              - key: ceph-secret
+                path: secret.keyring
+        - name: mon-endpoint-volume
+          configMap:
+            name: rook-ceph-mon-endpoints
+            items:
+              - key: data
+                path: mon-endpoints
+        - name: ceph-config
+          emptyDir: {}
+      restartPolicy: Never
 ```
 
 ## Running Multiple Commands
@@ -135,6 +179,25 @@ spec:
     spec:
       template:
         spec:
+          initContainers:
+            - name: config-init
+              image: rook/ceph:v1.13.0
+              command: ["/usr/local/bin/toolbox.sh"]
+              args: ["--skip-watch"]
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: ROOK_CEPH_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: rook-ceph-mon
+                      key: ceph-username
+              volumeMounts:
+                - mountPath: /etc/ceph
+                  name: ceph-config
+                - mountPath: /etc/rook
+                  name: mon-endpoint-volume
+                - mountPath: /var/lib/rook-ceph-mon
+                  name: ceph-admin-secret
           containers:
             - name: toolbox
               image: rook/ceph:v1.13.0
@@ -142,6 +205,26 @@ spec:
                 - ceph
                 - health
                 - detail
+              volumeMounts:
+                - mountPath: /etc/ceph
+                  name: ceph-config
+                  readOnly: true
+          volumes:
+            - name: ceph-admin-secret
+              secret:
+                secretName: rook-ceph-mon
+                optional: false
+                items:
+                  - key: ceph-secret
+                    path: secret.keyring
+            - name: mon-endpoint-volume
+              configMap:
+                name: rook-ceph-mon-endpoints
+                items:
+                  - key: data
+                    path: mon-endpoints
+            - name: ceph-config
+              emptyDir: {}
           restartPolicy: OnFailure
 ```
 
