@@ -1,66 +1,77 @@
-# How to Add Custom Headers with Lua in Ceph RGW
+# How to Add Custom Object Metadata and Log Requests with Lua in Ceph RGW
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RGW, Lua, Header
 
-Description: Learn how to add, modify, and remove HTTP response headers in Ceph RGW using Lua postRequest scripts for CORS, security, and observability.
+Description: Learn how to add custom object metadata, validate request origins, and log request details in Ceph RGW using Lua scripts for observability and operational control.
 
 ---
 
 ## Overview
 
-Ceph RGW Lua scripts running in the postRequest context can add and modify HTTP response headers before they are sent to the client. This enables adding security headers (HSTS, CSP), custom CORS headers, cache control directives, observability metadata, and routing information without modifying RGW source code.
+Ceph RGW Lua scripts run at two stages: before the request is handled (preRequest) and after the response is ready (postRequest). In the preRequest context, scripts can attach custom object metadata via `Request.HTTP.Metadata`, which becomes `x-amz-meta-*` headers on stored objects. In the postRequest context, scripts can inspect response details and log them with `RGWDebugLog()`. This enables custom metadata tagging, request validation, origin enforcement, and observability logging without modifying RGW source code.
 
-## Step 1 - Basic Header Addition
+## Step 1 - Basic Metadata Addition
 
 ```lua
--- add_basic_headers.lua (postRequest context)
--- Add standard security and server identification headers
+-- add_basic_metadata.lua (preRequest context)
+-- Add custom object metadata for identification and tracing
 
--- Server identification
-Response.HTTP.AddHeader("X-Storage-System", "Ceph-RGW")
-Response.HTTP.AddHeader("X-Cluster-Region", "us-east-1")
-
--- Add a request trace ID
-local bucket = Request.Bucket.Name or "global"
+-- Only tag objects during uploads
 local method = Request.HTTP.Method
+if method ~= "PUT" and method ~= "POST" then return end
+
+-- Tag uploads with storage system info
+Request.HTTP.Metadata["storage-system"] = "Ceph-RGW"
+Request.HTTP.Metadata["cluster-region"] = "us-east-1"
+
+-- Add a request trace ID as object metadata
+local bucket = Request.Bucket.Name or "global"
 local timestamp = tostring(os.time())
-Response.HTTP.AddHeader("X-Request-ID",
-  method .. "-" .. bucket .. "-" .. timestamp)
+Request.HTTP.Metadata["request-id"] =
+  method .. "-" .. bucket .. "-" .. timestamp
+
+RGWDebugLog("Metadata tagged for " .. method .. " on " .. bucket)
 ```
 
-## Step 2 - Add Security Headers
+## Step 2 - Security Request Auditing
 
 ```lua
--- security_headers.lua (postRequest context)
--- Add standard web security headers for browser clients
+-- security_audit.lua (postRequest context)
+-- Log security-relevant request details for auditing
 
--- Strict Transport Security (1 year)
-Response.HTTP.AddHeader("Strict-Transport-Security",
-  "max-age=31536000; includeSubDomains")
+local method = Request.HTTP.Method or "?"
+local bucket = Request.Bucket.Name or "none"
+local object = Request.Object.Name or "none"
+local user = Request.User.Id or "anonymous"
+local status = Request.Response.HTTPStatusCode
 
--- Prevent MIME sniffing
-Response.HTTP.AddHeader("X-Content-Type-Options", "nosniff")
+-- Log all non-GET operations for security audit trail
+if method ~= "GET" and method ~= "HEAD" then
+  RGWDebugLog("SECURITY_AUDIT: user=" .. user
+    .. " method=" .. method
+    .. " bucket=" .. bucket
+    .. " object=" .. object
+    .. " status=" .. tostring(status))
+end
 
--- Clickjacking protection
-Response.HTTP.AddHeader("X-Frame-Options", "DENY")
-
--- Content Security Policy for the S3 Console
-Response.HTTP.AddHeader("Content-Security-Policy",
-  "default-src 'self'; img-src 'self' data:")
-
--- Referrer policy
-Response.HTTP.AddHeader("Referrer-Policy", "strict-origin-when-cross-origin")
-
-RGWDebugLog("Security headers added for " .. (Request.HTTP.Method or "?"))
+-- Flag and log failed requests (4xx/5xx)
+if status >= 400 then
+  RGWDebugLog("SECURITY_ALERT: failed request"
+    .. " user=" .. user
+    .. " method=" .. method
+    .. " bucket=" .. bucket
+    .. " status=" .. tostring(status)
+    .. " message=" .. (Request.Response.Message or ""))
+end
 ```
 
-## Step 3 - Dynamic CORS Headers
+## Step 3 - Origin Validation
 
 ```lua
--- dynamic_cors.lua (postRequest context)
--- Add CORS headers based on the request origin
+-- origin_validation.lua (preRequest context)
+-- Validate request origins and block unauthorized sources
 
 local ALLOWED_ORIGINS = {
   ["https://app.example.com"] = true,
@@ -70,71 +81,67 @@ local ALLOWED_ORIGINS = {
 
 local origin = Request.HTTP.Header["Origin"] or ""
 
-if ALLOWED_ORIGINS[origin] then
-  Response.HTTP.AddHeader("Access-Control-Allow-Origin", origin)
-  Response.HTTP.AddHeader("Access-Control-Allow-Credentials", "true")
-  Response.HTTP.AddHeader("Access-Control-Allow-Methods",
-    "GET, PUT, POST, DELETE, HEAD, OPTIONS")
-  Response.HTTP.AddHeader("Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token")
-  Response.HTTP.AddHeader("Access-Control-Max-Age", "7200")
-  Response.HTTP.AddHeader("Vary", "Origin")
-  RGWDebugLog("CORS headers added for origin: " .. origin)
-elseif origin ~= "" then
-  RGWDebugLog("CORS: Rejected unknown origin: " .. origin)
+if origin ~= "" and not ALLOWED_ORIGINS[origin] then
+  RGWDebugLog("ORIGIN_BLOCKED: rejected origin=" .. origin
+    .. " user=" .. (Request.User.Id or "anonymous")
+    .. " bucket=" .. (Request.Bucket.Name or "none"))
+  Request.Response.HTTPStatusCode = 403
+  Request.Response.Message = "Origin not allowed: " .. origin
+  return RGW_ABORT_REQUEST
+end
+
+if origin ~= "" then
+  RGWDebugLog("ORIGIN_ALLOWED: origin=" .. origin
+    .. " user=" .. (Request.User.Id or "anonymous"))
 end
 ```
 
-## Step 4 - Cache Control Headers
+## Step 4 - Metadata Tagging by Bucket Type
 
 ```lua
--- cache_control.lua (postRequest context)
--- Set cache control based on bucket and object type
+-- metadata_tagging.lua (preRequest context)
+-- Tag uploaded objects with metadata based on bucket type
 
 local bucket = Request.Bucket.Name or ""
-local object = Request.Object.Name or ""
 local method = Request.HTTP.Method
 
--- Only add cache headers for GET requests
-if method ~= "GET" then return end
+-- Only tag objects during uploads
+if method ~= "PUT" and method ~= "POST" then return end
 
--- Determine cache policy based on bucket type
-local cache_ttl = 0
+-- Determine cache tier based on bucket naming convention
+local cache_tier = "default"
 
 if string.find(bucket, "static-", 1, true) then
-  -- Static assets - cache for 1 year
-  cache_ttl = 31536000
+  -- Static assets - long-lived
+  cache_tier = "immutable"
 elseif string.find(bucket, "media-", 1, true) then
-  -- Media files - cache for 1 week
-  cache_ttl = 604800
+  -- Media files - medium retention
+  cache_tier = "media"
 elseif string.find(bucket, "api-", 1, true) then
-  -- API responses - no caching
-  cache_ttl = 0
+  -- API data - short-lived
+  cache_tier = "volatile"
 end
 
-if cache_ttl > 0 then
-  Response.HTTP.AddHeader("Cache-Control",
-    "public, max-age=" .. tostring(cache_ttl))
-  Response.HTTP.AddHeader("CDN-Cache-Control",
-    "public, max-age=" .. tostring(cache_ttl))
-else
-  Response.HTTP.AddHeader("Cache-Control",
-    "no-store, no-cache, must-revalidate")
-end
+Request.HTTP.Metadata["cache-tier"] = cache_tier
+Request.HTTP.Metadata["tagged-by"] = "lua-metadata-tagger"
+Request.HTTP.Metadata["tagged-at"] = tostring(os.time())
+
+RGWDebugLog("Tagged object in " .. bucket .. " with cache-tier=" .. cache_tier)
 ```
 
-## Step 5 - Observability and Tracing Headers
+## Step 5 - Observability and Tracing Logging
 
 ```lua
--- tracing_headers.lua (postRequest context)
--- Add distributed tracing headers for observability pipelines
+-- tracing_log.lua (postRequest context)
+-- Log distributed tracing information for observability pipelines
 
 local method = Request.HTTP.Method
 local bucket = Request.Bucket.Name or ""
 local object = Request.Object.Name or ""
 local user = Request.User.Id or "anonymous"
+local status = Request.Response.HTTPStatusCode
 
--- Propagate or generate a trace ID
+-- Read or generate a trace ID from the incoming request
 local trace_id = Request.HTTP.Header["X-Trace-ID"]
 if not trace_id or trace_id == "" then
   -- Generate a simple trace ID from timestamp + user hash
@@ -143,38 +150,48 @@ if not trace_id or trace_id == "" then
     #user * 31 + #bucket * 17)
 end
 
-Response.HTTP.AddHeader("X-Trace-ID", trace_id)
-Response.HTTP.AddHeader("X-RGW-User", user)
-Response.HTTP.AddHeader("X-RGW-Operation", method)
-Response.HTTP.AddHeader("X-RGW-Bucket", bucket)
+-- Emit structured log line for observability pipeline ingestion
+local log_line = "TRACE"
+  .. " trace_id=" .. trace_id
+  .. " user=" .. user
+  .. " method=" .. method
+  .. " bucket=" .. bucket
+  .. " status=" .. tostring(status)
 
 if object ~= "" then
-  Response.HTTP.AddHeader("X-RGW-Object", object)
+  log_line = log_line .. " object=" .. object
 end
+
+RGWDebugLog(log_line)
 ```
 
 ## Step 6 - Deploy and Validate
 
 ```bash
-# Upload the postRequest script
+# Upload the preRequest script (for metadata tagging and origin validation)
 radosgw-admin script put \
-  --infile=security_headers.lua \
+  --infile=metadata_tagging.lua \
+  --context=preRequest
+
+# Upload the postRequest script (for auditing and tracing)
+radosgw-admin script put \
+  --infile=tracing_log.lua \
   --context=postRequest
 
-# Test that headers appear in responses
-curl -v http://rgw.example.com:7480/mybucket/ \
-  -H "Authorization: AWS ${ACCESS_KEY}:${SIGNATURE}" \
-  2>&1 | grep -E "X-|Strict-|Access-Control|Cache-Control"
+# Upload a test object and verify metadata was added
+echo "test" | aws s3 cp - s3://static-assets/test.txt \
+  --endpoint-url http://rgw.example.com:7480
 
-# Expected output includes the custom headers
-# < X-Storage-System: Ceph-RGW
-# < Strict-Transport-Security: max-age=31536000; includeSubDomains
-# < X-Content-Type-Options: nosniff
+# Check that custom metadata appears on the object
+aws s3api head-object \
+  --bucket static-assets --key test.txt \
+  --endpoint-url http://rgw.example.com:7480
+# Expected output includes x-amz-meta-cache-tier, x-amz-meta-tagged-by, etc.
 
-# Check logs for any script errors
-kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=20 | grep -i "lua\|header"
+# Check logs for Lua debug output
+kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=20 | grep -i "lua\|TRACE\|SECURITY"
 ```
 
 ## Summary
 
-Lua postRequest scripts in Ceph RGW provide full control over HTTP response headers, enabling security hardening (HSTS, CSP, X-Frame-Options), dynamic CORS with per-origin allowlists, cache control policies keyed by bucket type, and distributed tracing header injection. These scripts require no RGW recompilation and can be updated live using `radosgw-admin script put`, making them ideal for operational policies that change frequently.
+Lua scripts in Ceph RGW provide flexible request-time hooks for operational control. In the preRequest context, scripts can attach custom object metadata via `Request.HTTP.Metadata` (appearing as `x-amz-meta-*` headers on stored objects), validate request origins and block unauthorized access with `RGW_ABORT_REQUEST`. In the postRequest context, scripts can inspect response status and log structured audit and tracing data via `RGWDebugLog()`. These scripts require no RGW recompilation and can be updated live using `radosgw-admin script put`, making them ideal for operational policies that change frequently. Note that Lua scripts cannot add or modify HTTP response headers directly — for response headers like HSTS, CORS, or Cache-Control, use a reverse proxy (e.g., nginx or HAProxy) in front of RGW.
