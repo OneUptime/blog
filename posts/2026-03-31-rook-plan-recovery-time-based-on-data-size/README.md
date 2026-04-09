@@ -99,7 +99,8 @@ During planned maintenance with no client traffic, maximize recovery speed:
 
 ```bash
 ceph config set osd osd_recovery_max_active 10
-ceph config set osd osd_recovery_sleep 0
+ceph config set osd osd_recovery_sleep_hdd 0
+ceph config set osd osd_recovery_sleep_ssd 0
 ceph config set osd osd_max_backfills 4
 ceph config set osd osd_recovery_op_priority 63
 ```
