@@ -28,11 +28,11 @@ spec:
     instances: 2
   healthCheck:
     bucket:
-      enabled: true
+      disabled: false
       interval: 60s
 ```
 
-The Rook operator automatically creates a ServiceMonitor for RGW when metrics are enabled.
+RGW metrics are exposed through the Ceph MGR Prometheus module, which is enabled cluster-wide via `monitoring.enabled: true` in your CephCluster CR. You will also need to deploy ServiceMonitors (available as example manifests in the Rook repository) so that Prometheus can scrape the metrics endpoint.
 
 ## Key RGW Metrics
 
@@ -56,9 +56,9 @@ rate(ceph_rgw_get_b{namespace="rook-ceph"}[5m])
 rate(ceph_rgw_put_b{namespace="rook-ceph"}[5m])
 ```
 
-## Request Rate Panel
+## Throughput Panel
 
-Create a Time series panel showing GET vs. PUT rates:
+Create a Time series panel showing GET vs. PUT byte throughput:
 
 ```promql
 # GET throughput (downloads)
@@ -94,10 +94,10 @@ Set a threshold at 1% and color the panel red when exceeded.
 ) * 1000
 ```
 
-## Active Connections Panel
+## Request Queue Length Panel
 
 ```promql
-# Active RGW connections
+# RGW request queue length
 ceph_rgw_qlen{namespace="rook-ceph"}
 ```
 
