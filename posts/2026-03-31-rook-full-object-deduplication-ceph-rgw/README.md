@@ -8,56 +8,52 @@ Description: Configure full object deduplication in Ceph RGW to reduce storage c
 
 ---
 
-Ceph RGW supports full object deduplication (dedup), which detects when two or more uploaded objects have identical content and stores the data only once, sharing the underlying RADOS object. This reduces storage usage without any application changes.
+Ceph RGW supports full object deduplication (dedup), which detects when two or more stored objects share identical tail data and removes the duplicates so that the data is stored only once. This reduces storage usage without any application changes.
 
 ## How Deduplication Works in Ceph RGW
 
-RGW dedup computes a fingerprint (hash) of object content at upload time. If an existing object has the same fingerprint, the new object's data reference points to the existing RADOS data object rather than duplicating it. Only metadata and index entries are created anew.
+RGW dedup is an offline batch process run by an administrator. It scans bucket indices to build a dedup table, identifies duplicate tail objects (the data portions of S3 objects) across buckets, computes strong hashes to confirm matches, and then removes the redundant copies. Only metadata and index entries remain distinct per object.
 
-## Enabling Object Deduplication
+## Configuring Deduplication
 
-Dedup is configured at the zone placement level and requires the fingerprint feature:
+The minimum object size for dedup consideration can be configured (default is 64 KB):
 
 ```bash
-# Enable fingerprint computation for new objects
-ceph config set client.rgw rgw_dedup_chunk_algo sha256
-ceph config set client.rgw rgw_dedup_index_type HMAC_SHA256
-
-# Enable dedup at the zone placement
-radosgw-admin zone placement modify \
-  --rgw-zone default \
-  --placement-id default-placement \
-  --data-extra-pool default.rgw.buckets.data.dedup
+# Set the minimum RGW object size eligible for dedup
+ceph config set client.rgw rgw_dedup_min_obj_size_for_dedup 65536
 ```
 
-## Running Dedup on Existing Objects
+## Estimating Dedup Savings
 
-For existing objects, use the `radosgw-admin dedup` tooling:
-
-```bash
-# Start a dedup scan across all objects in the data pool
-radosgw-admin dedup \
-  --pool default.rgw.buckets.data \
-  --num-shards 16 \
-  --chunk-pool default.rgw.buckets.data.dedup
-```
-
-Check progress:
+Before running dedup, estimate how much space can be saved:
 
 ```bash
-radosgw-admin dedup status
-```
-
-## Checking Dedup Savings
-
-After running dedup, check how much space was saved:
-
-```bash
-radosgw-admin dedup estimate \
-  --pool default.rgw.buckets.data
+radosgw-admin dedup estimate
 ```
 
 The output shows estimated unique data vs total data, giving a dedup ratio.
+
+## Running Dedup
+
+To execute dedup and remove duplicate tail objects:
+
+```bash
+radosgw-admin dedup exec --yes-i-really-mean-it
+```
+
+Check statistics from the last dedup run:
+
+```bash
+radosgw-admin dedup stats
+```
+
+You can also pause, resume, or abort a running dedup operation:
+
+```bash
+radosgw-admin dedup pause
+radosgw-admin dedup resume
+radosgw-admin dedup abort
+```
 
 ## Verifying Deduplication with RADOS
 
