@@ -17,7 +17,7 @@ flowchart LR
     Targets["Kubernetes Pods\n(metrics endpoints)"] -->|"scrape"| Prometheus["Prometheus Pod"]
     Prometheus -->|"write TSDB"| PVC["Rook-Ceph RBD PVC\n(ReadWriteOnce)"]
     Grafana["Grafana"] -->|"query"| Prometheus
-    Prometheus -->|"remote write"| Thanos["Thanos / Cortex\n(optional)"]
+    Prometheus -->|"sidecar / remote write"| Thanos["Thanos / Cortex\n(optional)"]
     Thanos -->|"store blocks"| RGW["Rook-Ceph RGW\n(S3 object store)"]
 ```
 
@@ -184,8 +184,7 @@ Enable Thanos sidecar in the kube-prometheus-stack values:
 prometheus:
   prometheusSpec:
     thanos:
-      baseImage: quay.io/thanos/thanos
-      version: v0.36.0
+      image: quay.io/thanos/thanos:v0.36.0
       objectStorageConfig:
         name: thanos-objstore-config
         key: objstore.yml
