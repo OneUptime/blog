@@ -35,11 +35,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ip link show eth0
 ```
 
-Check the CNI-configured MTU:
+Check the CNI-configured MTU (example for Flannel):
 
 ```bash
-kubectl -n kube-system get configmap kube-proxy -o yaml | grep mtu
-cat /etc/cni/net.d/*.conf | grep mtu
+kubectl -n kube-flannel get configmap kube-flannel-cfg -o yaml | grep -i mtu
+```
+
+Or inspect the CNI config on a node:
+
+```bash
+kubectl debug node/worker-1 -it --image=busybox -- \
+  chroot /host cat /etc/cni/net.d/*.conflist | grep -i mtu
 ```
 
 ## Step 2: Test for MTU Problems
@@ -65,7 +71,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Step 3: Fix CNI MTU Configuration
 
-For Calico CNI, set the MTU in the FelixConfiguration:
+For Calico CNI, set the MTU in the FelixConfiguration (use the field matching your tunnel type):
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -73,7 +79,8 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  mtu: 1450
+  vxlanMTU: 1450
+  ipipMTU: 1450
 ```
 
 For Flannel, update the ConfigMap:
@@ -98,7 +105,7 @@ data:
 For Cilium:
 
 ```bash
-helm upgrade cilium cilium/cilium --set tunnel=vxlan --set mtu=1450
+helm upgrade cilium cilium/cilium --set routingMode=tunnel --set tunnelProtocol=vxlan --set MTU=1450
 ```
 
 ## Step 4: Configure Rook-Ceph Network MTU
