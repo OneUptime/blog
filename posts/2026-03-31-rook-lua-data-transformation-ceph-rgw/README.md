@@ -15,7 +15,7 @@ Ceph RGW Lua scripts can transform request and response attributes at the gatewa
 ## Step 1 - Normalize Object Key Formats
 
 ```lua
--- normalize_keys.lua (preRequest context)
+-- normalize_keys.lua (prerequest context)
 -- Normalize object keys to lowercase with hyphens instead of spaces
 
 local method = Request.HTTP.Method or ""
@@ -33,10 +33,10 @@ if (method == "PUT" or method == "GET") and object ~= "" then
     RGWDebugLog(string.format(
       "TRANSFORM: Key normalized from '%s' to '%s'",
       object, normalized))
-    -- Note: modifying the object key directly requires RGW API support
-    -- This logs the transformation for audit purposes
-    Response.HTTP.AddHeader("X-Original-Key", object)
-    Response.HTTP.AddHeader("X-Normalized-Key", normalized)
+    -- Note: modifying the object key directly is not supported
+    -- Store the original and normalized names as object metadata for audit
+    Request.HTTP.Metadata["original-key"] = object
+    Request.HTTP.Metadata["normalized-key"] = normalized
   end
 end
 ```
@@ -44,7 +44,7 @@ end
 ## Step 2 - Enrich Uploads with Computed Metadata
 
 ```lua
--- enrich_metadata.lua (preRequest context)
+-- enrich_metadata.lua (prerequest context)
 -- Add computed metadata to incoming PUT requests
 
 local method = Request.HTTP.Method or ""
@@ -55,31 +55,27 @@ if method == "PUT" and object ~= "" then
   local user = Request.User.Id or "anonymous"
   local timestamp = tostring(os.time())
 
-  -- These metadata values are added to the object as system metadata
-  -- by injecting them into the request before RGW processes it
-  -- Note: Lua can add response headers; true metadata injection
-  -- requires the RGW Lua API to support request header modification
-
   RGWDebugLog(string.format(
     "ENRICH: bucket=%s object=%s user=%s ts=%s",
     bucket, object, user, timestamp))
 
-  -- Add headers that become part of the response for audit
-  Response.HTTP.AddHeader("X-Upload-User", user)
-  Response.HTTP.AddHeader("X-Upload-Timestamp", timestamp)
-  Response.HTTP.AddHeader("X-Upload-Bucket", bucket)
+  -- Inject computed metadata into the request so it is stored with the object
+  -- These become x-amz-meta- headers on the stored object
+  Request.HTTP.Metadata["upload-user"] = user
+  Request.HTTP.Metadata["upload-timestamp"] = timestamp
+  Request.HTTP.Metadata["upload-bucket"] = bucket
 end
 ```
 
 ## Step 3 - Content-Type Enforcement and Correction
 
 ```lua
--- content_type_policy.lua (preRequest context)
+-- content_type_policy.lua (prerequest context)
 -- Enforce content-type policies for specific bucket prefixes
 
 local method = Request.HTTP.Method or ""
 local object = Request.Object.Name or ""
-local content_type = Request.HTTP.Header["Content-Type"] or ""
+local content_type = Request.HTTP.ContentType or ""
 
 if method == "PUT" and object ~= "" then
   -- Derive expected content type from file extension
@@ -106,8 +102,11 @@ if method == "PUT" and object ~= "" then
       if content_type == "" then
         RGWDebugLog("CONTENT_TYPE: Missing for " .. ext ..
                     " object, expected " .. expected_ct)
-        -- Log for monitoring; abort to enforce:
-        -- abort(400, "MissingContentType", "Content-Type header is required.")
+        -- Log for monitoring; to enforce, uncomment the following:
+        -- Request.Response.HTTPStatusCode = 400
+        -- Request.Response.HTTPStatus = "MissingContentType"
+        -- Request.Response.Message = "Content-Type header is required."
+        -- return RGW_ABORT_REQUEST
       elseif content_type ~= expected_ct and
              not string.find(content_type, expected_ct, 1, true) then
         RGWDebugLog(string.format(
@@ -122,26 +121,31 @@ end
 ## Step 4 - Response Metadata Transformation
 
 ```lua
--- transform_response.lua (postRequest context)
--- Normalize and enrich response metadata for S3 clients
+-- transform_response.lua (postrequest context)
+-- Audit response metadata for S3 clients
 
--- Sanitize the ETag header to ensure it has double quotes
--- (some S3 clients require quoted ETags)
-local etag = Response.HTTP.Header["ETag"] or ""
-if etag ~= "" and not string.find(etag, '"', 1, true) then
-  etag = '"' .. etag .. '"'
-  Response.HTTP.AddHeader("ETag", etag)
-  RGWDebugLog("TRANSFORM: ETag normalized to " .. etag)
+local object = Request.Object.Name or ""
+local status = Request.Response.HTTPStatusCode or 0
+
+-- Log response status for monitoring
+RGWDebugLog(string.format(
+  "TRANSFORM: object=%s status=%d", object, status))
+
+-- Flag failed uploads for alerting
+if status >= 400 then
+  RGWDebugLog(string.format(
+    "TRANSFORM: Request failed for '%s' with status %d: %s",
+    object, status, Request.Response.Message or ""))
 end
 
--- Add missing Content-Disposition for specific file types
-local object = Request.Object.Name or ""
+-- Log downloadable file types for access auditing
 local ext = string.match(object, "%.(%w+)$")
 if ext then
   local download_exts = {exe=true, zip=true, tar=true, gz=true, pdf=true}
   if download_exts[string.lower(ext)] then
-    Response.HTTP.AddHeader("Content-Disposition",
-      'attachment; filename="' .. object .. '"')
+    RGWDebugLog(string.format(
+      "TRANSFORM: Downloadable file accessed: %s (type: %s)",
+      object, ext))
   end
 end
 ```
@@ -149,7 +153,7 @@ end
 ## Step 5 - Metadata Schema Validation
 
 ```lua
--- metadata_schema.lua (preRequest context)
+-- metadata_schema.lua (prerequest context)
 -- Validate required metadata fields on upload
 
 local method = Request.HTTP.Method or ""
@@ -176,8 +180,10 @@ if method == "PUT" and SCHEMA_BUCKETS[bucket] then
   if #missing > 0 then
     local missing_str = table.concat(missing, ", ")
     RGWDebugLog("SCHEMA: Missing required metadata: " .. missing_str)
-    abort(400, "MissingRequiredMetadata",
-          "Required metadata fields are missing: " .. missing_str)
+    Request.Response.HTTPStatusCode = 400
+    Request.Response.HTTPStatus = "MissingRequiredMetadata"
+    Request.Response.Message = "Required metadata fields are missing: " .. missing_str
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -188,7 +194,7 @@ end
 # Deploy the metadata schema validation
 radosgw-admin script put \
   --infile=metadata_schema.lua \
-  --context=preRequest
+  --context=prerequest
 
 # Test: upload without required metadata (should fail)
 aws --endpoint-url http://rgw.example.com:7480 \
@@ -207,4 +213,4 @@ kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=30 \
 
 ## Summary
 
-Lua data transformation scripts in Ceph RGW act as a transparent middleware layer for the S3 API, enabling key normalization, metadata schema enforcement, content-type validation, and response header enrichment. These transformations run at request time without modifying stored data, making them suitable for enforcing data governance policies, ensuring client compatibility, and maintaining metadata standards across large-scale object storage deployments.
+Lua data transformation scripts in Ceph RGW act as a transparent middleware layer for the S3 API, enabling key normalization, metadata enrichment, content-type validation, metadata schema enforcement, and response auditing. These transformations run at request time using the `Request` object API, making them suitable for enforcing data governance policies, enriching stored objects with computed metadata, and maintaining metadata standards across large-scale object storage deployments.
