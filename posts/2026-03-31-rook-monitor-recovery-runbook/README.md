@@ -59,29 +59,46 @@ kubectl -n rook-ceph delete pvc rook-ceph-mon-b  # if using PVCs
 
 ## Step 4: Force Quorum Recovery (Emergency)
 
-If only one monitor remains and quorum is lost, use the inject monmap approach:
+If only one monitor remains and quorum is lost, use the inject monmap approach. First, stop the monitor daemon by scaling down the operator and patching the monitor deployment:
+
+```bash
+# Scale down the operator to prevent interference
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
+
+# Patch the surviving monitor to run sleep instead of the daemon
+kubectl -n rook-ceph patch deployment rook-ceph-mon-a --type='json' \
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command", "value":["sleep", "infinity"]}]'
+
+# Wait for the patched pod to restart
+kubectl -n rook-ceph wait --for=condition=ready pod -l ceph_daemon_id=a --timeout=60s
+```
+
+Then extract, modify, and inject the monmap:
 
 ```bash
 # Get the monmap from the surviving monitor
-kubectl -n rook-ceph exec -it rook-ceph-mon-a-<pod> -- ceph-mon --extract-monmap /tmp/monmap
+kubectl -n rook-ceph exec -it deploy/rook-ceph-mon-a -- ceph-mon -i a --extract-monmap /tmp/monmap --mon-data /var/lib/ceph/mon/ceph-a
 
 # Remove the failed monitor from the map
-kubectl -n rook-ceph exec -it rook-ceph-mon-a-<pod> -- monmaptool /tmp/monmap --rm b
+kubectl -n rook-ceph exec -it deploy/rook-ceph-mon-a -- monmaptool /tmp/monmap --rm b
 
 # Inject the modified monmap
-kubectl -n rook-ceph exec -it rook-ceph-mon-a-<pod> -- ceph-mon --inject-monmap /tmp/monmap
+kubectl -n rook-ceph exec -it deploy/rook-ceph-mon-a -- ceph-mon -i a --inject-monmap /tmp/monmap --mon-data /var/lib/ceph/mon/ceph-a
 ```
 
 ## Step 5: Let Rook Redeploy the Monitor
 
-After removing the failed monitor, trigger reconciliation:
+After removing the failed monitor, restore the monitor deployment and restart the operator to trigger reconciliation:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/do-not-reconcile- --overwrite
+# If you patched the monitor in Step 4, restore it by removing the sleep override
+kubectl -n rook-ceph rollout undo deployment/rook-ceph-mon-a
+
+# Scale the operator back up
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=1
 ```
 
-The Rook operator will schedule a new monitor pod on an available node.
+The Rook operator will detect the missing monitor and schedule a new monitor pod on an available node.
 
 ## Step 6: Verify Recovery
 
