@@ -18,7 +18,7 @@ This guide covers creating a StorageClass for Rook-managed CephFS, including the
 
 Before creating the StorageClass, ensure you have:
 - A running Rook-Ceph cluster
-- A CephFilesystem CRD deployed (e.g., `myfs`)
+- A CephFilesystem resource deployed (e.g., `myfs`)
 - The Rook CSI driver deployed in the `rook-ceph` namespace
 
 Verify the CephFilesystem exists:
@@ -49,8 +49,6 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  - discard
 ```
 
 Apply the StorageClass:
