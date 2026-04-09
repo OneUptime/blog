@@ -78,7 +78,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph tell mds.cephfs:0 cache status
 ```
 
-The output shows memory usage broken down by inode type (directory, file, symlink) and the total cache usage versus the configured limit.
+The output shows mempool statistics for the MDS cache, including memory usage by category and the total cache usage versus the configured limit.
 
 ## View Historical Operations
 
