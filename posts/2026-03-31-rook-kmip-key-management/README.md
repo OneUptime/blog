@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Encryption, KMIP, Security
 
-Description: Configure Rook-Ceph to use a KMIP-compliant key management server for OSD and CSI volume encryption in enterprise environments.
+Description: Configure Rook-Ceph to use a KMIP-compliant key management server for CSI volume encryption in enterprise environments.
 
 ---
 
@@ -18,24 +18,29 @@ KMIP (Key Management Interoperability Protocol) is an OASIS standard protocol fo
 - Client TLS certificates issued by the KMS server's CA
 - Rook-Ceph 1.12 or later
 
-## Step 1 - Obtain Client Certificates from the KMIP Server
+## Step 1 - Create the KMIP Credentials Secret
 
-The KMIP server must issue client certificates for Rook to authenticate. Store them as Kubernetes Secrets:
+The KMIP server must issue client certificates for Rook to authenticate. Store the CA certificate, client certificate, and client key in a single Kubernetes Secret:
 
-```bash
-# CA certificate from the KMIP server
-kubectl create secret generic kmip-ca-cert \
-  --from-file=cert=/path/to/kmip-ca.crt \
-  -n rook-ceph
-
-# Client certificate and key issued by the KMIP CA
-kubectl create secret generic kmip-client-cert \
-  --from-file=cert=/path/to/client.crt \
-  -n rook-ceph
-
-kubectl create secret generic kmip-client-key \
-  --from-file=key=/path/to/client.key \
-  -n rook-ceph
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ceph-csi-kmip-credentials
+  namespace: rook-ceph
+stringData:
+  CA_CERT: |
+    -----BEGIN CERTIFICATE-----
+    <your KMIP CA certificate>
+    -----END CERTIFICATE-----
+  CLIENT_CERT: |
+    -----BEGIN CERTIFICATE-----
+    <your client certificate>
+    -----END CERTIFICATE-----
+  CLIENT_KEY: |
+    -----BEGIN RSA PRIVATE KEY-----
+    <your client private key>
+    -----END RSA PRIVATE KEY-----
 ```
 
 ## Step 2 - Configure the KMS ConfigMap
@@ -50,12 +55,12 @@ data:
   config.json: |-
     {
       "kmip-kms": {
-        "encryptionKMSType": "kmip",
+        "KMS_PROVIDER": "kmip",
         "KMIP_ENDPOINT": "kmip-server.example.com:5696",
-        "KMIP_CA_CERT": "kmip-ca-cert",
-        "KMIP_CLIENT_CERT": "kmip-client-cert",
-        "KMIP_CLIENT_KEY": "kmip-client-key",
-        "KMIP_TLS_SERVER_NAME": "kmip-server.example.com"
+        "KMIP_SECRET_NAME": "ceph-csi-kmip-credentials",
+        "TLS_SERVER_NAME": "kmip-server.example.com",
+        "READ_TIMEOUT": 10,
+        "WRITE_TIMEOUT": 10
       }
     }
 ```
