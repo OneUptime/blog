@@ -64,7 +64,7 @@ smartctl -a /dev/sdb
 List affected PGs:
 
 ```bash
-ceph pg dump_stuck | grep -E "inconsistent|repair"
+ceph health detail | grep -E "inconsistent|repair"
 ```
 
 Identify which objects are corrupted:
@@ -105,8 +105,6 @@ Once the cluster rebalances, remove the OSD permanently:
 
 ```bash
 ceph osd purge 5 --yes-i-really-mean-it
-ceph auth del osd.5
-ceph osd crush remove osd.5
 ```
 
 ## Preventing Future Mismatches
@@ -117,10 +115,10 @@ Enable ECC memory if not already present. Configure BlueStore write safety:
 ceph config set osd bluestore_sync_submit_transaction true
 ```
 
-Enable fsync after every write (performance trade-off):
+Schedule regular deep scrubs to detect silent corruption early:
 
 ```bash
-ceph config set osd bluestore_rocksdb_options "sync_log_period_micros=0"
+ceph config set global osd_deep_scrub_interval 604800
 ```
 
 ## Summary
