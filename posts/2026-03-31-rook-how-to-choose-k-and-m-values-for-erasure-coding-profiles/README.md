@@ -166,7 +166,7 @@ ceph osd erasure-code-profile get ec-4-2
 ceph osd pool create test-ec-pool 64 64 erasure ec-4-2
 rados bench -p test-ec-pool 30 write -t 4 -b 4M --no-cleanup
 rados bench -p test-ec-pool 30 seq -t 4
-rados bench -p test-ec-pool 30 cleanup
+rados -p test-ec-pool cleanup
 ```
 
 ## Summary
