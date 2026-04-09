@@ -35,9 +35,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: myfs-data0
-    namespace: nfs-ns
   server:
     active: 1
     placement:
@@ -125,7 +122,7 @@ NFS_IP=$(kubectl -n rook-ceph get svc rook-ceph-nfs-my-nfs-a \
 Mount the export on a Linux host:
 
 ```bash
-sudo mount -t nfs $NFS_IP:/exports/data /mnt/cephnfs
+sudo mount -t nfs -o nfsvers=4.1 $NFS_IP:/exports/data /mnt/cephnfs
 ```
 
 From a Kubernetes pod using a NFS PersistentVolume:
