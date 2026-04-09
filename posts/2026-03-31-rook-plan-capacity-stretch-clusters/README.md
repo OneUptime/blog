@@ -14,7 +14,7 @@ Capacity planning for Rook-Ceph stretch clusters is more complex than single-sit
 
 ## Understanding Stretch Replication Overhead
 
-A standard stretch cluster uses a replication factor of 4 (2 copies per site). This means for every 1 TB of usable storage, you need 4 TB of raw disk across both sites. Combined with Ceph's default target utilization of 80%, the formula is:
+A standard stretch cluster uses a replication factor of 4 (2 copies per site). This means for every 1 TB of usable storage, you need 4 TB of raw disk across both sites. Combined with a recommended target utilization of 80% (Ceph's default nearfull ratio is 85%, but planning for 80% leaves headroom for rebalancing and recovery), the formula is:
 
 ```text
 usable_capacity = (total_raw / replication_factor) * target_utilization
@@ -41,7 +41,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 
 ## Minimum OSD Count Per Zone
 
-For a production stretch cluster, Rook recommends at least 3 nodes per zone with at least 1 OSD per node, giving you 3 OSDs per zone minimum. With the stretch rule requiring copies in both zones, losing one zone means 50% of your OSDs are unavailable. Your surviving site must be able to hold all the data that was replicated across both zones.
+For a production stretch cluster, it is recommended to have at least 3 nodes per zone with at least 1 OSD per node, giving you 3 OSDs per zone minimum. With the stretch rule requiring copies in both zones, losing one zone means 50% of your OSDs are unavailable. Your surviving site must be able to hold all the data that was replicated across both zones.
 
 This means each zone needs enough raw capacity to store 100% of your usable data:
 
@@ -61,8 +61,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df
 # Per-OSD usage
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd df tree
 
-# Per-pool usage
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool stats
+# Per-pool capacity usage
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- rados df
 ```
 
 ## Planning for OSD Rebalancing
@@ -70,10 +70,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool stats
 When adding new OSDs or nodes to a stretch cluster, CRUSH will rebalance data across the cluster. Large rebalancing events consume significant network bandwidth between sites. Plan OSD additions in phases, and consider setting a rebalancing backfill limit to avoid overwhelming the cross-site link:
 
 ```bash
-# Limit backfill operations during expansion
+# Ensure backfill is limited to 1 concurrent operation per OSD (this is the default)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_max_backfills 1
 
+# Throttle recovery to 1 active operation per OSD (default is 3 for HDDs, 10 for SSDs)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_recovery_max_active 1
 ```
@@ -85,11 +86,11 @@ Configure Ceph to warn at appropriate thresholds for stretch clusters. Because e
 ```bash
 # Warn at 70% full (lower than default 85%)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global mon_cap_warn_space_ratio 0.30
+  ceph config set global mon_osd_nearfull_ratio 0.70
 
-# Set near-full ratio
+# Stop backfill at 80% (lower than default 90%)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global mon_osd_nearfull_ratio 0.75
+  ceph config set global mon_osd_backfillfull_ratio 0.80
 ```
 
 ## Summary
