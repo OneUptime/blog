@@ -129,12 +129,11 @@ Find all OSDs with potential mismatches:
 ceph health detail | grep BLUESTORE_DISK_SIZE
 ```
 
-Or check all OSDs manually:
+Or check the recorded block device size for each OSD via metadata:
 
 ```bash
 for osd in $(ceph osd ls); do
-  echo "Checking osd.$osd"
-  ceph daemon osd.$osd config get bluestore_block_size 2>/dev/null || true
+  echo "osd.$osd: $(ceph osd metadata $osd | grep bluestore_bdev_size)"
 done
 ```
 
