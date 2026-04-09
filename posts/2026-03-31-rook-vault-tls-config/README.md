@@ -129,12 +129,12 @@ For development or testing with self-signed certificates:
   "vault-dev-kms": {
     "encryptionKMSType": "vault",
     "vaultAddress": "https://vault.dev.local:8200",
-    "vaultSkipVerify": "true"
+    "vaultCAVerify": "false"
   }
 }
 ```
 
-Never use `vaultSkipVerify: true` in production environments.
+Never use `vaultCAVerify: "false"` in production environments.
 
 ## Summary
 
