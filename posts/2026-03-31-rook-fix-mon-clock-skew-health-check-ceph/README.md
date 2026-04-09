@@ -38,7 +38,7 @@ chronyc tracking
 timedatectl status
 ```
 
-Look for the `System clock offset` or `NTP synchronized` field. If the offset is large or NTP is not synchronized, the clock needs correction.
+Look for the `System time` (in chronyc) or `NTP synchronized` (in timedatectl) field. If the offset is large or NTP is not synchronized, the clock needs correction.
 
 ## Installing and Configuring chrony
 
