@@ -44,11 +44,11 @@ The output structure is:
 | `OSD_DOWN` | WRN | One or more OSDs are not running |
 | `OSD_NEARFULL` | WRN | An OSD is above the nearfull threshold |
 | `OSD_FULL` | ERR | An OSD has reached the full threshold |
-| `PG_DEGRADED` | WRN/ERR | Placement groups have fewer replicas than desired |
-| `PG_UNAVAIL` | ERR | Some placement groups cannot be accessed |
+| `PG_DEGRADED` | WRN | Placement groups have fewer replicas than desired |
+| `PG_AVAILABILITY` | WRN | Some placement groups cannot serve reads or writes |
 | `MON_CLOCK_SKEW` | WRN | Monitor clock drift is too high |
 | `TELEMETRY_CHANGED` | WRN | Telemetry settings need re-consent |
-| `AUTH_BAD_CAPS` | WRN | Auth entities have malformed capabilities |
+| `AUTH_BAD_CAPS` | ERR | Auth entities have malformed capabilities |
 
 ## Reading JSON Output
 
