@@ -27,7 +27,7 @@ python3 ceph-external-cluster-details-exporter.py \
   --rbd-data-pool-name ocs-storagecluster-cephblockpool \
   --rgw-endpoint 192.168.1.20:80 \
   --monitoring-endpoint 192.168.1.10 \
-  --output-json-file external-cluster-details.json
+  > external-cluster-details.json
 ```
 
 ## Step 2 - Install the ODF Operator
@@ -55,7 +55,7 @@ Import the connection details from step 1:
 
 ```bash
 oc create secret generic rook-ceph-external-cluster-details \
-  --from-file=external-cluster-config=external-cluster-details.json \
+  --from-file=external_cluster_details=external-cluster-details.json \
   -n openshift-storage
 ```
 
