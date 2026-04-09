@@ -46,7 +46,7 @@ Create an SMB cluster configuration using the Ceph SMB module API:
 
 ```bash
 ceph smb cluster create smb1 user \
-  --placement="host:samba-node1"
+  --placement="samba-node1"
 ```
 
 For an Active Directory-joined SMB cluster:
@@ -55,7 +55,7 @@ For an Active Directory-joined SMB cluster:
 ceph smb cluster create smb-ad active-directory \
   --domain-realm=EXAMPLE.COM \
   --domain-join-user-pass=administrator%ADPassword123 \
-  --placement="host:samba-node1,samba-node2"
+  --placement="samba-node1 samba-node2"
 ```
 
 ## Creating an SMB Share
@@ -63,9 +63,7 @@ ceph smb cluster create smb-ad active-directory \
 After the cluster is running, create a share that maps to the CephFS subvolume:
 
 ```bash
-ceph smb share create smb1 share1 \
-  --cephfs-volume=cephfs \
-  --cephfs-path=/volumes/smb-group/share1
+ceph smb share create smb1 share1 cephfs /volumes/smb-group/share1
 ```
 
 List configured shares:
