@@ -22,7 +22,7 @@ When a read hits cached data, it is served from local disk instead of traversing
 
 The persistent read-only cache works with the `ceph-immutable-object-cache` daemon, which runs on each node that mounts RBD images. The daemon intercepts read requests for parent image objects and serves them from a local cache directory.
 
-The cache requires the `exclusive-lock` and `object-map` RBD features to be enabled.
+The cache works with cloned RBD images that use the `layering` feature. The parent image must be protected as a snapshot before cloning.
 
 ## Step 2 - Configure the Cache Daemon
 
@@ -30,9 +30,10 @@ Create the cache configuration in `/etc/ceph/ceph.conf` on each node:
 
 ```text
 [client]
-rbd_persistent_cache_mode = rwl
-rbd_persistent_cache_path = /mnt/nvme/rbd-cache
-rbd_persistent_cache_size = 10737418240
+rbd parent cache enabled = true
+rbd plugins = parent_cache
+immutable_object_cache_path = /mnt/nvme/rbd-cache
+immutable_object_cache_max_size = 10737418240
 ```
 
 For Rook-managed nodes, inject this via a ConfigMap:
@@ -46,9 +47,10 @@ metadata:
 data:
   config: |
     [client]
-    rbd_persistent_cache_mode = rwl
-    rbd_persistent_cache_path = /mnt/nvme/rbd-cache
-    rbd_persistent_cache_size = 10737418240
+    rbd parent cache enabled = true
+    rbd plugins = parent_cache
+    immutable_object_cache_path = /mnt/nvme/rbd-cache
+    immutable_object_cache_max_size = 10737418240
 ```
 
 ## Step 3 - Deploy the Cache Daemon as a DaemonSet
@@ -86,7 +88,7 @@ spec:
           type: DirectoryOrCreate
       - name: ceph-config
         configMap:
-          name: rook-config-override
+          name: rook-ceph-config
 ```
 
 ## Step 4 - Verify Cache Is Active
@@ -110,7 +112,7 @@ Adjust cache size based on available NVMe space and working set size:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph config set client rbd_persistent_cache_size 21474836480
+  ceph config set client immutable_object_cache_max_size 21474836480
 ```
 
 ## Summary
