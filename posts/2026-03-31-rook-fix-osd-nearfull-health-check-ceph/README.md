@@ -111,7 +111,7 @@ ceph osd pool set <pool-name> compression_algorithm snappy
 Verify compression savings:
 
 ```bash
-ceph osd pool stats <pool-name>
+ceph df detail
 ```
 
 ## Option 4: Adjust Pool Replication
