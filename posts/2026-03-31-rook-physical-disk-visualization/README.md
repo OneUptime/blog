@@ -63,8 +63,8 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph device ls
 Sample output:
 
 ```text
-DEVICE                           HOST:DEV         DAEMONS  WEAR  LIFE  EXPEC
-SAMSUNG_MZNLN256HAJQ_S2EFINX123  node1:sdb        osd.0    10%   10y   2032
+DEVICE                           HOST:DEV         DAEMONS  LIFE EXPECTANCY
+SAMSUNG_MZNLN256HAJQ_S2EFINX123  node1:sdb        osd.0
 WDC_WD10EZEX_WD-WMC1U5678901     node2:sdc        osd.1
 ```
 
