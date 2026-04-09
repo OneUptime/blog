@@ -100,8 +100,8 @@ rbd export replicapool/myvolume /tmp/myvolume.img
 # Import from a file
 rbd import /tmp/myvolume.img replicapool/myvolume-restored
 
-# Export only changes since a snapshot (differential)
-rbd export-diff replicapool/myvolume@snap1 /tmp/diff.img
+# Export only changes since a snapshot (incremental diff)
+rbd export-diff --from-snap snap1 replicapool/myvolume /tmp/diff.img
 ```
 
 ## Watching Live I/O Statistics
