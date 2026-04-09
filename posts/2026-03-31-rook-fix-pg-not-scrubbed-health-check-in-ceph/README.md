@@ -31,7 +31,7 @@ Example output:
 List all PGs that need scrubbing:
 
 ```bash
-ceph pg dump | awk '$22 < (systime() - 604800) {print $1, $22}'
+ceph pg dump -f json | jq -r '.pg_map.pg_stats[] | select(.last_scrub_stamp < (now - 604800 | todate)) | [.pgid, .last_scrub_stamp] | @tsv'
 ```
 
 ## Why PGs Might Not Get Scrubbed
@@ -87,7 +87,7 @@ ceph osd pool scrub <pool-name>
 Scrub all PGs on a specific OSD:
 
 ```bash
-ceph tell osd.2 scrub
+ceph osd scrub 2
 ```
 
 ### Step 4 - Tune Scrub Aggressiveness
@@ -107,7 +107,7 @@ ceph config set osd osd_scrub_chunk_max 25
 Check the last scrub time for all PGs:
 
 ```bash
-ceph pg dump | grep -v "^pg" | awk '{print $1, $22}' | sort -k2 -n | head -20
+ceph pg dump -f json | jq -r '.pg_map.pg_stats[] | [.pgid, .last_scrub_stamp] | @tsv' | sort -k2 | head -20
 ```
 
 ## Summary
