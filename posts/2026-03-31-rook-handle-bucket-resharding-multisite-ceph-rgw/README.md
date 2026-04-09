@@ -34,7 +34,7 @@ print('Object count:', stats['usage']['rgw.main']['num_objects'])
 To reshard a bucket manually:
 
 ```bash
-# Check current index status
+# Perform immediate inline resharding (blocks bucket I/O)
 radosgw-admin bucket reshard \
   --bucket=my-large-bucket \
   --num-shards=128 \
@@ -77,16 +77,11 @@ After resharding, the bucket instance metadata changes. Secondary zones need to 
 radosgw-admin bucket sync status --bucket=my-large-bucket
 ```
 
-If sync is stuck after resharding, reinitialize the bucket sync:
+If sync is stuck after resharding, reinitialize the bucket sync by disabling and re-enabling it:
 
 ```bash
-radosgw-admin bucket sync init \
-  --bucket=my-large-bucket \
-  --source-zone=zone1
-
-radosgw-admin bucket sync run \
-  --bucket=my-large-bucket \
-  --source-zone=zone1
+radosgw-admin bucket sync disable --bucket=my-large-bucket
+radosgw-admin bucket sync enable --bucket=my-large-bucket
 ```
 
 ## Enabling Automatic Resharding
@@ -106,14 +101,14 @@ These settings trigger resharding when any shard exceeds 100,000 objects, checki
 To prevent sync issues during resharding in multisite:
 
 ```bash
-# Pause sync on secondary zones before resharding
-radosgw-admin data sync pause --source-zone=zone1
+# Disable bucket sync before resharding
+radosgw-admin bucket sync disable --bucket=my-large-bucket
 
-# Perform resharding on master
+# Perform resharding on master zone
 radosgw-admin bucket reshard --bucket=my-large-bucket --num-shards=128
 
-# Resume sync after resharding is complete
-radosgw-admin data sync resume --source-zone=zone1
+# Re-enable bucket sync after resharding is complete
+radosgw-admin bucket sync enable --bucket=my-large-bucket
 ```
 
 ## Summary
