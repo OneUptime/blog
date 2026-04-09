@@ -23,9 +23,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: my-fs-metadata
-    namespace: nfs-ns
   server:
     active: 1
     logLevel: NIV_INFO
@@ -60,7 +57,7 @@ Click "Create" in the NFS Exports section:
 - **CephFS Path**: the directory to export (e.g., `/exports/team-a`)
 - **Pseudo path**: NFS export path (e.g., `/team-a-data`)
 - **Access type**: RW (read-write) or RO (read-only)
-- **Squash**: none, root_squash, all_squash
+- **Squash**: no_root_squash, root_squash, all_squash
 
 CLI equivalent using `ceph nfs`:
 
