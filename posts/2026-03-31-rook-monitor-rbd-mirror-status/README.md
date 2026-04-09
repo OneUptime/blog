@@ -74,33 +74,33 @@ List status for all mirrored images:
 
 ```bash
 # Show all image mirror statuses
-rbd mirror image ls replicapool --format json | \
-  jq '.[] | {name: .name, state: .state}'
+rbd mirror pool status replicapool --verbose --format json | \
+  jq '.images[] | {name: .name, state: .state}'
 ```
 
 Identify any images not in `up+replaying` state:
 
 ```bash
-rbd mirror pool status replicapool --format json | \
+rbd mirror pool status replicapool --verbose --format json | \
   jq '.images[] | select(.state != "up+replaying")'
 ```
 
 ## Prometheus Metrics
 
-The `rbd-mirror` daemon exposes Prometheus metrics. Configure scraping:
+The Ceph MGR Prometheus module exposes `rbd-mirror` metrics. Configure scraping:
 
 ```yaml
 # Prometheus scrape config
 scrape_configs:
   - job_name: rbd-mirror
     static_configs:
-      - targets: ['rbd-mirror-host:9092']
+      - targets: ['ceph-mgr-host:9283']
 ```
 
 Key metrics to monitor:
-- `ceph_rbd_mirror_snapshot_snapshots` - snapshot count
-- `ceph_rbd_mirror_snapshot_sync_bytes` - bytes synced
-- `ceph_rbd_mirror_snapshot_sync_time_seconds` - sync duration
+- `ceph_rbd_mirror_snapshot_image_snapshots` - snapshot count
+- `ceph_rbd_mirror_snapshot_image_sync_bytes` - bytes synced
+- `ceph_rbd_mirror_snapshot_image_sync_time` - sync duration
 
 ## Rook: Monitoring via Dashboard and Toolbox
 
