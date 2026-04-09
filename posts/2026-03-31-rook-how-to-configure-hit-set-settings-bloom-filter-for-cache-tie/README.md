@@ -16,11 +16,12 @@ Each hit set records object accesses over a time window. When an object appears 
 
 ## Hit Set Types
 
-Ceph supports two hit set types:
+Ceph supports three hit set types:
 
 ```text
-bloom    - Bloom filter (probabilistic, space-efficient, may have false positives)
-explicit_hash - Exact hash set (more accurate, more memory)
+bloom            - Bloom filter (probabilistic, space-efficient, may have false positives)
+explicit_hash    - Exact hash set (more accurate, more memory)
+explicit_object  - Exact object set (tracks full object names, most memory)
 ```
 
 The Bloom filter is recommended for production because it uses far less memory while providing good accuracy for promotion decisions.
@@ -74,7 +75,7 @@ ceph osd pool set mycache hit_set_period 3600
 The target false positive rate for the Bloom filter (0.0 to 1.0):
 
 ```bash
-# 10% false positive rate (default)
+# 10% false positive rate
 ceph osd pool set mycache hit_set_fpp 0.10
 
 # Stricter: 1% false positive rate (uses more memory)
@@ -95,7 +96,7 @@ ceph osd pool set fast-cache hit_set_count 6
 ceph osd pool set fast-cache hit_set_period 3600
 ceph osd pool set fast-cache hit_set_fpp 0.05
 
-# Set promotion threshold (object must appear in N hit sets to be promoted)
+# Set promotion threshold (check last N hit sets; promote if found in any)
 ceph osd pool set fast-cache min_read_recency_for_promote 2
 ceph osd pool set fast-cache min_write_recency_for_promote 2
 ```
@@ -105,11 +106,11 @@ ceph osd pool set fast-cache min_write_recency_for_promote 2
 The promotion logic uses hit sets as follows:
 
 ```text
-1. Object X is accessed
-2. Ceph checks: did object X appear in the last N hit sets?
-3. If yes (appeared in >= min_read_recency_for_promote hit sets):
+1. Object X is accessed (read)
+2. Ceph checks the last min_read_recency_for_promote hit sets
+3. If object X is found in any of those hit sets:
    - Promote object X to cache tier
-4. If no:
+4. If not found:
    - Serve from backing tier, record access in current hit set
 ```
 
@@ -138,8 +139,9 @@ total_hit_set_memory = memory_per_hit_set * hit_set_count
 For 1 million objects with FPP=0.05 and count=4:
 
 ```text
-memory = (1,000,000 * 1.44 * log2(20)) / 8 * 4
-       = ~2.6 MB per hit set * 4 = ~10.4 MB
+memory = (1,000,000 * 1.44 * log2(20)) / 8
+       = (1,000,000 * 1.44 * 4.32) / 8
+       = ~0.78 MB per hit set * 4 = ~3.1 MB
 ```
 
 Bloom filters are very space-efficient for this use case.
