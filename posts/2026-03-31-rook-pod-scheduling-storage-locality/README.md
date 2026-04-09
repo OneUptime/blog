@@ -29,10 +29,10 @@ parameters:
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
   - matchLabelExpressions:
-      - key: topology.rook.io/chassis
+      - key: topology.rook.io/rack
         values:
-          - chassis-a
-          - chassis-b
+          - rack1
+          - rack2
 ```
 
 ## Label Nodes with Topology Information
@@ -59,9 +59,9 @@ data:
   CSI_TOPOLOGY_DOMAIN_LABELS: "topology.rook.io/rack"
 ```
 
-## Use Pod Affinity for Storage-Local Scheduling
+## Use Node Affinity for Storage-Local Scheduling
 
-When using pre-provisioned PVs, use pod affinity to prefer nodes near storage:
+When using pre-provisioned PVs, use node affinity to prefer nodes near storage:
 
 ```yaml
 apiVersion: apps/v1
