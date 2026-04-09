@@ -57,7 +57,7 @@ metadata:
 spec:
   monitoring:
     enabled: true
-    # Interval for health check metrics
+    # Interval for the Prometheus module to scrape targets
     interval: 10s
 ```
 
@@ -139,13 +139,13 @@ Download the dashboards:
 
 ```bash
 # Ceph Cluster Overview
-curl -s https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/ceph-cluster.json -o ceph-cluster.json
+curl -s "https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/Ceph%20Cluster%20Dashboard.json" -o ceph-cluster.json
 
 # OSD Performance
-curl -s https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/ceph-osd.json -o ceph-osd.json
+curl -s "https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/Ceph%20OSD%20Single%20Dashboard.json" -o ceph-osd.json
 
 # Pool Details
-curl -s https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/ceph-pools.json -o ceph-pools.json
+curl -s "https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/grafana/Ceph%20Pools%20Dashboard.json" -o ceph-pools.json
 ```
 
 Import them as ConfigMaps so Grafana auto-loads them (with Grafana sidecar enabled):
