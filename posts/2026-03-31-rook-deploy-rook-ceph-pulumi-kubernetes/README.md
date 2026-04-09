@@ -13,9 +13,9 @@ Pulumi offers a programmatic alternative to Terraform for infrastructure as code
 ## Project Setup
 
 ```bash
-# Create a new Pulumi project
+# Create a project directory and initialize a Pulumi project
+mkdir rook-ceph-deployment && cd rook-ceph-deployment
 pulumi new typescript --name rook-ceph-deployment
-cd rook-ceph-deployment
 
 # Install required packages
 npm install @pulumi/kubernetes
@@ -59,7 +59,7 @@ const rookOperator = new k8s.helm.v3.Release("rook-operator", {
 }, { dependsOn: rookNamespace });
 ```
 
-## Deploying the CephCluster CRD
+## Deploying the CephCluster Custom Resource
 
 ```typescript
 // Deploy CephCluster custom resource
@@ -127,7 +127,13 @@ const blockStorageClass = new k8s.storage.v1.StorageClass("rook-block-sc", {
     clusterID: namespace,
     pool: "replicapool",
     imageFormat: "2",
-    imageFeatures: "layering"
+    imageFeatures: "layering",
+    "csi.storage.k8s.io/provisioner-secret-name": "rook-csi-rbd-provisioner",
+    "csi.storage.k8s.io/provisioner-secret-namespace": namespace,
+    "csi.storage.k8s.io/controller-expand-secret-name": "rook-csi-rbd-provisioner",
+    "csi.storage.k8s.io/controller-expand-secret-namespace": namespace,
+    "csi.storage.k8s.io/node-stage-secret-name": "rook-csi-rbd-node",
+    "csi.storage.k8s.io/node-stage-secret-namespace": namespace
   }
 }, { dependsOn: blockPool });
 ```
