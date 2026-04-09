@@ -10,7 +10,7 @@ Description: Tune Ceph for high-performance random write workloads by configurin
 
 ## Random Write Workload Challenges
 
-Random write workloads - typical of OLTP databases, virtual machine disks, and message queues - are the most demanding for Ceph. Each small random write must be journaled, replicated, and acknowledged by all OSDs in the pool before completing. Write amplification from BlueStore, RocksDB, and replication means a single 4k client write can generate 30-50k of actual disk I/O.
+Random write workloads - typical of OLTP databases, virtual machine disks, and message queues - are the most demanding for Ceph. Each small random write must be journaled, replicated, and acknowledged by all replicas in the placement group before completing. Write amplification from BlueStore, RocksDB, and replication means a single 4k client write can generate 30-50k of actual disk I/O.
 
 ## Hardware Foundation for Random Writes
 
@@ -29,7 +29,7 @@ echo none > /sys/block/nvme0n1/queue/scheduler
 The WAL absorbs burst writes - sizing and placing it correctly is critical:
 
 ```yaml
-# Rook CephCluster - separate WAL/DB per OSD
+# Rook CephCluster - separate WAL/DB on NVMe, data on SSD
 apiVersion: ceph.rook.io/v1
 kind: CephCluster
 metadata:
@@ -39,11 +39,10 @@ spec:
   storage:
     nodes:
     - name: node1
+      config:
+        metadataDevice: "nvme0n1"   # WAL/DB on fast NVMe
       devices:
-      - name: nvme0n1
-        config:
-          osdsPerDevice: "1"
-      - name: nvme1n1
+      - name: sda                   # data device
         config:
           osdsPerDevice: "1"
 ```
@@ -70,9 +69,8 @@ ceph config set client rbd_readahead_max_bytes 0
 ## Tuning BlueStore for Small Writes
 
 ```bash
-# Reduce minimum allocation size to match workload block size
+# Set minimum allocation size to match workload block size (takes effect on new OSDs only)
 ceph config set osd bluestore_min_alloc_size_ssd 4096    # 4 KB for SSD
-ceph config set osd bluestore_min_alloc_size_hdd 4096
 
 # Increase deferred write size to batch small writes
 ceph config set osd bluestore_deferred_batch_ops 16
@@ -88,7 +86,7 @@ ceph config set osd bluestore_rocksdb_options \
 Configure the RBD client for write-heavy workloads:
 
 ```bash
-# Increase write queue depth
+# Configure RBD write-back cache
 ceph config set client rbd_cache_size 67108864      # 64 MB cache
 ceph config set client rbd_cache_max_dirty 50331648 # 48 MB max dirty
 ceph config set client rbd_cache_target_dirty 33554432
