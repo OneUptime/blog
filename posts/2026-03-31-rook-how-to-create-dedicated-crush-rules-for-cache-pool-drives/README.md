@@ -102,7 +102,7 @@ Confirm the cache pool PGs are landing on SSD OSDs:
 
 ```bash
 # Check which OSDs hold PGs for the cache pool
-ceph pg dump | grep ssd-cache-pool | awk '{print $14}' | tr ',' '\n' | sort -u
+ceph pg ls-by-pool ssd-cache-pool
 
 # Cross-reference with SSD OSD list
 ceph osd tree | grep ssd
