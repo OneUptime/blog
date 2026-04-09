@@ -40,7 +40,7 @@ Verify attachment from inside the nodes:
 ```bash
 kubectl get nodes -o wide
 # SSH into a node or use kubectl debug
-kubectl debug node/lke-node-1 -it --image=alpine -- lsblk
+kubectl debug node/lke-node-1 -it --image=busybox -- chroot /host lsblk
 ```
 
 The volume typically appears as `/dev/sdc` or `/dev/disk/by-id/scsi-...`.
@@ -76,7 +76,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v18.2.2
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -137,6 +137,12 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
