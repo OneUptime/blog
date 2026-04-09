@@ -12,39 +12,39 @@ Description: Learn how to use VolumeGroupSnapshot to atomically snapshot multipl
 
 Volume Group Snapshots are a Kubernetes feature that allows multiple PersistentVolumeClaims to be snapshotted atomically at the same point in time. This is critical for stateful applications where consistency across multiple volumes is required - for example, a database with separate volumes for data and transaction logs.
 
-Rook CSI supports VolumeGroupSnapshot for RBD volumes starting with Rook 1.13 and the `groupsnapshot.storage.k8s.io` API.
+Rook documents VolumeGroupSnapshot support for CephFS volumes through the `groupsnapshot.storage.k8s.io` API.
 
 ## Prerequisites
 
-- Kubernetes 1.27 or later (VolumeGroupSnapshot is alpha/beta)
+- Kubernetes 1.31 or later
 - The VolumeGroupSnapshot CRDs installed:
 
 ```bash
 kubectl get crd | grep groupsnapshot
 ```
 
-- Rook 1.13 or later
-- The `external-snapshotter` deployed with group snapshot support
+- A recent Rook release running Ceph Squid (v19.0.0) or later with a Ceph CSI version that supports CephFS VolumeGroupSnapshots
+- The snapshot controller and `external-snapshotter` deployed with group snapshot support. With `external-snapshotter` v8.2 and later, enable `--feature-gates=CSIVolumeGroupSnapshot=true`
 
 Install the group snapshot CRDs:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/groupsnapshot.storage.k8s.io_volumegroupsnapshots.yaml
 ```
 
 ## Create a VolumeGroupSnapshotClass
 
 ```yaml
-apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+apiVersion: groupsnapshot.storage.k8s.io/v1beta1
 kind: VolumeGroupSnapshotClass
 metadata:
-  name: csi-rbdplugin-groupsnapclass
-driver: rook-ceph.rbd.csi.ceph.com
+  name: csi-cephfsplugin-groupsnapclass
+driver: rook-ceph.cephfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/group-snapshotter-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/group-snapshotter-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/group-snapshotter-secret-namespace: rook-ceph
 deletionPolicy: Delete
 ```
@@ -65,12 +65,12 @@ kubectl label pvc db-logs app=mydb-snapshot-group
 ## Create the VolumeGroupSnapshot
 
 ```yaml
-apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+apiVersion: groupsnapshot.storage.k8s.io/v1beta1
 kind: VolumeGroupSnapshot
 metadata:
   name: mydb-group-snapshot
 spec:
-  volumeGroupSnapshotClassName: csi-rbdplugin-groupsnapclass
+  volumeGroupSnapshotClassName: csi-cephfsplugin-groupsnapclass
   source:
     selector:
       matchLabels:
@@ -86,9 +86,10 @@ kubectl get volumegroupsnapshot mydb-group-snapshot
 
 ```bash
 kubectl describe volumegroupsnapshot mydb-group-snapshot
+kubectl get volumesnapshot -o=jsonpath='{range .items[?(@.metadata.ownerReferences[0].name=="mydb-group-snapshot")]}{.metadata.name}{"\n"}{end}'
 ```
 
-The status will list the individual `VolumeSnapshot` objects created for each PVC in the group. Each snapshot shares the same point-in-time capture.
+When the `VolumeGroupSnapshot` is `ReadyToUse`, the second command lists the individual `VolumeSnapshot` objects created for each PVC in the group. Each snapshot shares the same point-in-time capture.
 
 ## Restore from a Group Snapshot
 
@@ -96,7 +97,7 @@ To restore each volume in the group, create individual PVCs referencing each sna
 
 ```bash
 # List individual snapshots created by the group snapshot
-kubectl get volumesnapshot -l groupsnapshot.storage.k8s.io/volume-group-snapshot-name=mydb-group-snapshot
+kubectl get volumesnapshot -o=jsonpath='{range .items[?(@.metadata.ownerReferences[0].name=="mydb-group-snapshot")]}{.metadata.name}{"\n"}{end}'
 ```
 
 Then create restore PVCs for each:
@@ -107,7 +108,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: db-data-restored
 spec:
-  storageClassName: rook-ceph-block
+  storageClassName: rook-cephfs
   dataSource:
     name: <individual-snapshot-name>
     kind: VolumeSnapshot
@@ -121,4 +122,4 @@ spec:
 
 ## Summary
 
-Volume Group Snapshots with Rook CSI provide crash-consistent backups across multiple RBD volumes simultaneously. By labeling PVCs and creating a `VolumeGroupSnapshot` object, teams can ensure all related volumes are captured at the same instant, which is essential for multi-volume stateful applications like databases.
+Volume Group Snapshots with Rook CSI provide crash-consistent backups across multiple CephFS volumes simultaneously. By labeling PVCs and creating a `VolumeGroupSnapshot` object, teams can ensure all related volumes are captured at the same instant, which is essential for multi-volume stateful applications like databases.
