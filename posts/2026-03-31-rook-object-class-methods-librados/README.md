@@ -30,7 +30,8 @@ ioctx.write_full("test-doc", b"hello world this is a test document with several 
 
 # Call the count_words class method
 # Arguments: (object_name, class_name, method_name, input_bytes)
-result_bytes = ioctx.execute("test-doc", "myclass", "count_words", b"")
+# execute() returns a tuple of (ret, output_bytes)
+ret, result_bytes = ioctx.execute("test-doc", "myclass", "count_words", b"")
 
 # Decode the result (the class returned an encoded integer)
 # librados returns raw bytes; decode per your class's encoding
@@ -61,7 +62,7 @@ def encode_string(s: str) -> bytes:
 
 # Call append_with_prefix method
 input_data = encode_string("My log entry message")
-ioctx.execute("logfile", "myclass", "append_with_prefix", input_data)
+ret, _ = ioctx.execute("logfile", "myclass", "append_with_prefix", input_data)
 
 ioctx.close()
 cluster.shutdown()
@@ -73,6 +74,7 @@ cluster.shutdown()
 // call_class.cc
 #include <rados/librados.hpp>
 #include <iostream>
+#include <cstring>
 
 int main() {
     librados::Rados cluster;
@@ -102,10 +104,9 @@ int main() {
         return 1;
     }
 
-    // Decode the result
-    int word_count = 0;
-    auto iter = out_bl.cbegin();
-    ceph::decode(word_count, iter);
+    // Decode the result (little-endian int32, matching the class's encoding)
+    int32_t word_count = 0;
+    std::memcpy(&word_count, out_bl.c_str(), sizeof(word_count));
     std::cout << "Word count: " << word_count << std::endl;
 
     ioctx.close();
@@ -116,34 +117,42 @@ int main() {
 
 ```bash
 # Compile and run
-g++ -o call_class call_class.cc -lrados -I/usr/include/rados
+g++ -std=c++11 -o call_class call_class.cc -lrados
 ./call_class
 ```
 
 ## Using exec in Object Operations (Batch with Other Ops)
 
-You can combine an object class call with other RADOS operations in a single compound operation:
+You can combine an object class call with other RADOS operations in a single compound operation. The modern Python `rados` module exposes `WriteOpCtx` and `ReadOpCtx` context managers, which handle creation and cleanup automatically. Call `write()` or `write_full()` for the data, and `execute()` for the class method -- both are queued on the operation and sent atomically:
 
 ```python
-# Combine write + exec in one atomic operation using ObjectWriteOperation
-# (Python rados module exposes this via operate())
-
 import rados
 
 cluster = rados.Rados(conffile="/etc/ceph/ceph.conf")
 cluster.connect()
 ioctx = cluster.open_ioctx("mypool")
 
-# Write object then call exec in a compound op
-op = ioctx.create_write_op()
-ioctx.set_alloc_hint(op, 0, 0, 0)
-
-# Execute the write operation
-ioctx.operate_write_op(op, "my-object")
-ioctx.release_write_op(op)
+# Combine write + exec in one atomic compound operation
+with rados.WriteOpCtx() as op:
+    # Queue a full-object write
+    op.write_full(b"hello world document for processing")
+    # Queue an object class exec in the same operation
+    op.execute("myclass", "count_words", b"")
+    # Submit both as a single atomic operation
+    ioctx.operate_write_op(op, "my-object")
 
 ioctx.close()
 cluster.shutdown()
+```
+
+The older `create_write_op` / `release_write_op` style also works, but requires manual cleanup:
+
+```python
+op = ioctx.create_write_op()
+op.write_full(b"hello world document for processing")
+op.execute("myclass", "count_words", b"")
+ioctx.operate_write_op(op, "my-object")
+ioctx.release_write_op(op)
 ```
 
 ## Summary
