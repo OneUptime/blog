@@ -27,8 +27,9 @@ ceph osd df
 Example output:
 
 ```text
-[WRN] PG_BACKFILL_FULL: Backfill is blocked because the cluster is near full
-    insufficient space on 3 OSDs for backfill
+[WRN] PG_BACKFILL_FULL: Low space hindering backfill (add storage if this doesn't resolve itself): 3 pgs backfill_toofull
+    pg 10.46c is active+remapped+backfill_toofull, acting [77,607,96]
+    pg 10.8ad is active+remapped+backfill_toofull, acting [577,152,77]
 ```
 
 Check which OSDs are near full:
@@ -64,13 +65,12 @@ Adjust OSD weights to encourage rebalancing away from full OSDs:
 
 ```bash
 ceph osd reweight osd.5 0.8
-ceph osd reweight-by-utilization
 ```
 
-The `reweight-by-utilization` command automatically adjusts weights based on disk usage:
+The `reweight-by-utilization` command automatically adjusts weights based on disk usage. The numeric argument is the overload threshold — OSDs with utilization above this percentage of the average will be reweighted down. The default is 120 (20% above average). Lower it to be more aggressive:
 
 ```bash
-ceph osd reweight-by-utilization 120
+ceph osd reweight-by-utilization 110
 ```
 
 ### Step 2 - Raise the Backfillfull Ratio Temporarily
@@ -104,7 +104,7 @@ spec:
       - name: "sdb"
 ```
 
-After new OSDs are added, resume backfill:
+After new OSDs are added, backfill resumes automatically once OSDs drop below the `backfillfull_ratio`. If you had previously set the `nobackfill` flag manually, unset it:
 
 ```bash
 ceph osd unset nobackfill
