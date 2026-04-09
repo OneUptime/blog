@@ -25,10 +25,10 @@ Configure monitoring parameters:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global device_health_scrape_frequency 86400
+  ceph config set mgr mgr/devicehealth/scrape_frequency 86400
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global device_health_minimum_life_expectancy 14
+  ceph config set mgr mgr/devicehealth/warn_threshold 14
 ```
 
 ## Step 1: Check Device Health Metrics
@@ -40,7 +40,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph device ls
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph device info <device-id>
+  ceph device get-health-metrics <device-id>
 ```
 
 Check predicted failure dates:
@@ -52,18 +52,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Step 2: Identify Disks Predicted to Fail
 
-List OSDs on at-risk devices:
+List all devices and check which ones have a short life expectancy:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph device ls-lights
+  ceph device ls
 ```
 
-Get the OSD IDs on a specific device:
+Get detailed health information for a specific device:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph device get-daemon-types <device-id>
+  ceph device info <device-id>
 ```
 
 ## Step 3: Mark OSD Out Before Replacement
@@ -101,7 +101,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth del osd.<id>
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd crush rm osd.<id>
+  ceph osd crush remove osd.<id>
 ```
 
 ## Step 5: Replace the Physical Disk and Reprovision
