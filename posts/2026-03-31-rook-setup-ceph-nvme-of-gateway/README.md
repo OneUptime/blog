@@ -10,7 +10,7 @@ Description: Deploy and configure a Ceph NVMe-oF gateway using Rook to expose Ce
 
 ## Overview
 
-NVMe over Fabrics (NVMe-oF) extends the NVMe protocol over network transports like TCP and RDMA, providing lower latency than iSCSI. Ceph supports NVMe-oF through the `nvmeof` gateway component, which Rook manages as a `CephNVMeoFGateway` resource.
+NVMe over Fabrics (NVMe-oF) extends the NVMe protocol over network transports like TCP and RDMA, providing lower latency than iSCSI. Ceph supports NVMe-oF through the `nvmeof` gateway component, which Rook manages as a `CephNVMeOFGateway` resource.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ modprobe nvme-tcp
 lsmod | grep nvme
 ```
 
-Check Ceph and Rook version support (requires Rook v1.13+ and Ceph Reef+):
+Check Ceph and Rook version support (requires Rook v1.19+ and Ceph Tentacle v20+):
 
 ```bash
 kubectl -n rook-ceph get deployment rook-ceph-operator \
@@ -34,20 +34,15 @@ kubectl -n rook-ceph get deployment rook-ceph-operator \
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMeoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gw
   namespace: rook-ceph
 spec:
-  server:
-    active: 2
-  pool:
-    name: nvmeof-pool
-  storageClass:
-    parameters:
-      pool: nvmeof-pool
-      imageFormat: "2"
-      imageFeatures: layering
+  image: quay.io/ceph/nvmeof:1.5
+  pool: nvmeof-pool
+  group: nvmeof-group
+  instances: 2
 ```
 
 Create the backing pool first:
@@ -66,40 +61,40 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
 kubectl -n rook-ceph logs deploy/rook-ceph-nvmeof-nvmeof-gw
 
-# Check gateway status via ceph CLI
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway info
+# Check gateway status via the NVMe-oF CLI (exec into the gateway pod)
+kubectl -n rook-ceph exec deploy/rook-ceph-nvmeof-nvmeof-gw -- \
+  cephnvmf gw info
 ```
 
 ## Create a Subsystem and Namespace
 
 ```bash
 # Create a subsystem (NQN - NVMe Qualified Name)
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof subsystem create \
-  --nqn nqn.2024-01.io.ceph:mysubsystem
+kubectl -n rook-ceph exec deploy/rook-ceph-nvmeof-nvmeof-gw -- \
+  cephnvmf subsystem add \
+  --subsystem nqn.2024-01.io.ceph:mysubsystem
 
 # Create a namespace (RBD image exposed as NVMe namespace)
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof namespace create \
-  --nqn nqn.2024-01.io.ceph:mysubsystem \
+kubectl -n rook-ceph exec deploy/rook-ceph-nvmeof-nvmeof-gw -- \
+  cephnvmf namespace add \
+  --subsystem nqn.2024-01.io.ceph:mysubsystem \
   --rbd-pool nvmeof-pool \
   --rbd-image nvme-disk-1 \
-  --size 100G
+  --size 100G \
+  --rbd-create-image
 ```
 
 ## Add a Gateway Listener
 
 ```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway add_listener \
-  --nqn nqn.2024-01.io.ceph:mysubsystem \
+kubectl -n rook-ceph exec deploy/rook-ceph-nvmeof-nvmeof-gw -- \
+  cephnvmf listener add \
+  --subsystem nqn.2024-01.io.ceph:mysubsystem \
   --host-name nvmeof-gw-0 \
   --traddr 10.0.1.10 \
-  --trsvcid 4420 \
-  --trtype TCP
+  --trsvcid 4420
 ```
 
 ## Summary
 
-Setting up a Ceph NVMe-oF gateway with Rook involves creating a CephNVMeoFGateway resource, deploying a backing RBD pool, configuring NVMe subsystems and namespaces, and adding TCP listeners. NVMe-oF provides lower latency than iSCSI while maintaining the familiar Ceph RBD data plane, making it ideal for latency-sensitive applications.
+Setting up a Ceph NVMe-oF gateway with Rook involves creating a CephNVMeOFGateway resource, deploying a backing RBD pool, configuring NVMe subsystems and namespaces, and adding TCP listeners. NVMe-oF provides lower latency than iSCSI while maintaining the familiar Ceph RBD data plane, making it ideal for latency-sensitive applications.
