@@ -26,7 +26,7 @@ Check current MDS performance at a glance:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph fs status myfs
 
-# Detailed MDS performance counters
+# MDS daemon status (active/standby)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph mds stat
 ```
@@ -40,22 +40,23 @@ MDS_NAME=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Dump all performance counters
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.$MDS_NAME perf dump
+  ceph tell mds.$MDS_NAME perf dump
 ```
 
 ## Cache Performance Metrics
 
-Check cache hit rates and current usage:
+Check cache counters and current usage:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a cache status
+  ceph tell mds.myfs.a perf dump mds_mem
 ```
 
 Key fields to watch:
-- `cache_lru_size` - number of items in the LRU cache
-- `cache_size` - current memory usage
-- `cap_hits` and `cap_misses` - capability cache hits vs misses
+- `ino` - number of inodes in cache
+- `cap` - number of capabilities in cache
+- `dn` - number of dentries in cache
+- `rss` - resident memory usage of the MDS daemon
 
 ## Prometheus Metrics for MDS
 
@@ -71,18 +72,18 @@ Key MDS Prometheus metrics:
 
 | Metric | Description |
 |---|---|
-| `ceph_mds_server_handle_dentry_link` | dentry link operations/sec |
 | `ceph_mds_server_handle_client_request` | client requests/sec |
-| `ceph_mds_server_handle_slave_request` | slave requests/sec |
-| `ceph_mds_mem_cache_ino` | inodes in MDS cache |
-| `ceph_mds_mem_cache_cap` | capabilities in cache |
+| `ceph_mds_server_handle_peer_request` | peer (replicated) requests/sec |
+| `ceph_mds_mem_ino` | inodes in MDS cache |
+| `ceph_mds_mem_cap` | capabilities in cache |
+| `ceph_mds_mem_dn` | dentries in MDS cache |
 
 ## Sample Prometheus Queries
 
-Track average metadata request latency:
+Track average metadata lookup latency:
 
 ```promql
-rate(ceph_mds_request_sum[5m]) / rate(ceph_mds_request_count[5m])
+rate(ceph_mds_server_req_lookup_latency_sum[5m]) / rate(ceph_mds_server_req_lookup_latency_count[5m])
 ```
 
 Monitor client request rate:
@@ -96,12 +97,12 @@ Alert on high metadata latency:
 ```yaml
 - alert: CephMDSHighLatency
   expr: |
-    (rate(ceph_mds_request_sum[5m]) / rate(ceph_mds_request_count[5m])) > 0.1
+    (rate(ceph_mds_server_req_lookup_latency_sum[5m]) / rate(ceph_mds_server_req_lookup_latency_count[5m])) > 0.1
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "MDS metadata latency exceeds 100ms"
+    summary: "MDS lookup latency exceeds 100ms"
 ```
 
 ## Monitoring via the Ceph Dashboard
@@ -116,7 +117,7 @@ The Ceph dashboard provides MDS performance graphs under the "Filesystems" secti
 ```bash
 # Check which operations are most frequent
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a perf dump | python3 -c \
+  ceph tell mds.myfs.a perf dump | python3 -c \
   "import json,sys; d=json.load(sys.stdin); [print(k,v) for k,v in d.get('mds_server',{}).items() if 'latency' in k.lower()]"
 ```
 
