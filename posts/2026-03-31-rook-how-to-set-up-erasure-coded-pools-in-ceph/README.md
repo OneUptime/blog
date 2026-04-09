@@ -71,7 +71,7 @@ ceph osd pool application enable my-ec-pool rbd
 After creation, tune additional parameters for your workload:
 
 ```bash
-# Set the minimum number of replicas required for I/O
+# Set the minimum number of shards required for I/O
 ceph osd pool set my-ec-pool min_size 3
 
 # Allow fast reads (attempts to read from all shards simultaneously)
@@ -130,10 +130,10 @@ Erasure coded pools do not support all Ceph features. Key limitations include:
 
 - No OMAP support - operations like RGW bucket indexing require a replicated pool for metadata
 - Partial writes require a full stripe read-modify-write cycle, increasing latency
-- RBD images on EC pools have limited feature support and generally require a replicated data pool
+- RBD images on EC pools have limited feature support and require a separate replicated pool for metadata
 
 ```bash
-# Check if omap is in use (should be avoided on EC pools)
+# Check if EC overwrites are enabled (required for RBD and CephFS data pools)
 ceph osd pool get my-ec-pool allow_ec_overwrites
 
 # Enable EC overwrites if needed for CephFS data pools
