@@ -88,7 +88,7 @@ echo "Starting maintenance window - muting health checks for $WINDOW"
 
 $TOOLBOX ceph health mute OSD_DOWN $WINDOW
 $TOOLBOX ceph health mute PG_DEGRADED $WINDOW
-$TOOLBOX ceph health mute noscrub $WINDOW
+$TOOLBOX ceph health mute OSDMAP_FLAGS $WINDOW
 
 echo "Health checks muted until:"
 $TOOLBOX ceph health detail --format json | python3 -c "
