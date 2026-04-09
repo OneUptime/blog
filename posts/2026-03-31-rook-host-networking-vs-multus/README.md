@@ -60,7 +60,8 @@ spec:
     "master": "eth1",
     "mode": "bridge",
     "ipam": {
-      "type": "static"
+      "type": "whereabouts",
+      "range": "192.168.200.0/24"
     }
   }'
 ```
@@ -102,7 +103,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 | Isolation | None | High |
 | Config complexity | Simple | Moderate |
 | Multi-tenant | Not recommended | Yes |
-| Dedicated storage NICs | Not possible | Yes |
+| Dedicated storage NICs | Via Ceph config | Yes |
 
 ## Verification
 
