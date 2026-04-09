@@ -21,7 +21,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: rook-ceph-block-encrypted
-provisioner: rbd.csi.ceph.com
+provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: replicapool
@@ -37,44 +37,42 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
-The `encryptionKMSID` references a KMS configuration defined in the Rook operator's ConfigMap.
+The `encryptionKMSID` references a KMS configuration defined in the ceph-csi encryption KMS ConfigMap.
 
-## Configuring the KMS in the Rook Operator
+## Configuring the KMS ConfigMap
 
-Edit the Rook operator ConfigMap to define the KMS backend:
+Create the ceph-csi encryption KMS ConfigMap to define the KMS backend:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: rook-ceph-operator-config
+  name: ceph-csi-encryption-kms-config
   namespace: rook-ceph
 data:
-  CSI_ENCRYPTION_KMS_CONFIG: |
+  config.json: |
     {
       "secrets-metadata-kms": {
-        "KMS_PROVIDER": "secrets-metadata",
-        "SECRETS_METADATA_KMS_SECRET_NAME": "",
-        "SECRETS_METADATA_KMS_SECRET_NAMESPACE": ""
+        "encryptionKMSType": "metadata"
       }
     }
 ```
 
-The `secrets-metadata` provider stores the per-volume encryption key in a Kubernetes Secret in the same namespace as the PVC.
+The `metadata` KMS type stores the per-volume encryption key in a Kubernetes Secret in the same namespace as the PVC.
 
 ## Using HashiCorp Vault as KMS
 
 For production, use Vault for centralized key management:
 
 ```yaml
-CSI_ENCRYPTION_KMS_CONFIG: |
+config.json: |
   {
     "vault-kms": {
-      "KMS_PROVIDER": "vault",
-      "VAULT_ADDR": "https://vault.example.com:8200",
-      "VAULT_BACKEND_PATH": "secret/",
-      "VAULT_ROLE": "rook-csi",
-      "VAULT_AUTH_METHOD": "kubernetes"
+      "encryptionKMSType": "vault",
+      "vaultAddress": "https://vault.example.com:8200",
+      "vaultBackendPath": "secret/",
+      "vaultRole": "rook-csi",
+      "vaultAuthPath": "/v1/auth/kubernetes/login"
     }
   }
 ```
@@ -122,4 +120,4 @@ UUID:          a1b2c3d4-...
 
 ## Summary
 
-RBD LUKS encryption in Rook CSI is enabled by setting `encrypted: "true"` and an `encryptionKMSID` in the StorageClass, and configuring the KMS backend in the Rook operator ConfigMap. Use the `secrets-metadata` KMS for simple deployments with per-PVC Kubernetes Secrets, or Vault for centralized enterprise key management. Each encrypted PVC gets a unique LUKS key, ensuring that compromise of one volume's key does not expose others.
+RBD LUKS encryption in Rook CSI is enabled by setting `encrypted: "true"` and an `encryptionKMSID` in the StorageClass, and configuring the KMS backend in the `ceph-csi-encryption-kms-config` ConfigMap. Use the `metadata` KMS type for simple deployments with per-PVC Kubernetes Secrets, or Vault for centralized enterprise key management. Each encrypted PVC gets a unique LUKS key, ensuring that compromise of one volume's key does not expose others.
