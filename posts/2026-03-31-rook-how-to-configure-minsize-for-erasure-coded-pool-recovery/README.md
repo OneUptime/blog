@@ -52,7 +52,7 @@ The relationship between min_size and data safety:
 EC Profile | size | k | m | min_size | Meaning
 4+2        | 6    | 4 | 2 | 6        | All chunks required (no fault tolerance during writes)
 4+2        | 6    | 4 | 2 | 5        | Can lose 1 OSD while writing (1 parity available)
-4+2        | 6    | 4 | 2 | 4        | Can lose 2 OSDs while writing (0 parity, recoverable)
+4+2        | 6    | 4 | 2 | 4        | Can lose 2 OSDs while writing (no fault tolerance margin)
 4+2        | 6    | 4 | 2 | 3        | UNSAFE: cannot reconstruct if another OSD fails
 ```
 
@@ -61,16 +61,13 @@ Setting `min_size` below `k` means that if another OSD fails while writing, data
 ## Recommended min_size Values
 
 ```bash
-# For a 4+2 EC pool - recommended: 5
-ceph osd pool set my-ec-pool size 6
+# For a 4+2 EC pool (size=6, set by profile) - recommended min_size: 5
 ceph osd pool set my-ec-pool min_size 5
 
-# For a 6+3 EC pool - recommended: 7
-ceph osd pool set my-ec-pool size 9
+# For a 6+3 EC pool (size=9, set by profile) - recommended min_size: 7
 ceph osd pool set my-ec-pool min_size 7
 
-# For a 8+2 EC pool - recommended: 9
-ceph osd pool set my-ec-pool size 10
+# For a 8+2 EC pool (size=10, set by profile) - recommended min_size: 9
 ceph osd pool set my-ec-pool min_size 9
 ```
 
@@ -82,8 +79,8 @@ When an OSD fails, Ceph behavior depends on min_size:
 Scenario: 4+2 pool, osd.3 fails
 
 With min_size=5:
-  - Acting set has 5 OSDs (4 data + 1 parity)
-  - Writes continue (still above min_size=5)
+  - Acting set has 5 OSDs (5 of the 6 data+parity shards)
+  - Writes continue (acting set meets min_size=5)
   - Recovery proceeds in background
 
 With min_size=6 (same as size):
@@ -123,8 +120,8 @@ In rare cases where a cluster is stuck and you need to force recovery (last reso
 # Lower min_size temporarily (use with caution)
 ceph osd pool set my-ec-pool min_size 3
 
-# Force PGs to become active
-ceph pg repair <pgid>
+# Wait for PGs to become active (they should activate automatically)
+ceph pg dump | grep "active+degraded"
 
 # Restore after recovery
 ceph osd pool set my-ec-pool min_size 5
