@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, MDS, CephFS, Autoscaling
 
-Description: Learn how to use the Ceph Manager MDS Autoscaler module to automatically adjust the number of active MDS daemons based on file system workload.
+Description: Learn how to use the Ceph Manager MDS Autoscaler module to automatically manage MDS daemon deployment through the orchestrator based on file system configuration.
 
 ---
 
-The MDS Autoscaler module in Ceph Manager automatically adjusts the `max_mds` setting for CephFS file systems based on actual workload. This eliminates the need for manual tuning and ensures the file system scales MDS daemons up under load and releases them when demand decreases.
+The MDS Autoscaler module in Ceph Manager automatically adjusts the number of MDS daemon processes deployed by the orchestrator (e.g., cephadm) to match the `max_mds` and `standby_count_wanted` settings for CephFS file systems. This eliminates the need to manually adjust MDS service placement when you change file system configuration.
 
 ## Enabling the MDS Autoscaler
 
@@ -26,13 +26,12 @@ ceph mgr module ls | grep mds_autoscaler
 
 ## How It Works
 
-The autoscaler monitors MDS workload metrics including:
+The autoscaler monitors the CephFS file system map (FSMap) for changes to:
 
-- CPU utilization of active MDS daemons
-- Number of clients connected per MDS
-- Memory pressure on MDS daemons
+- `max_mds` — the configured number of active MDS ranks
+- `standby_count_wanted` — the configured number of desired standby daemons
 
-When load exceeds a threshold, it increments `max_mds` to bring additional standby daemons into service.
+When these settings change, the module calculates the total number of MDS daemons needed (`max_mds + standby_count_wanted`) and updates the orchestrator's MDS service placement specification so the correct number of daemon processes are deployed. The module does not make autonomous scaling decisions based on workload metrics — it automates MDS daemon deployment in response to administrator-configured settings.
 
 ## Checking Current MDS Configuration
 
@@ -53,40 +52,40 @@ STANDBY
 mds.b(103)  sf: 0 (laggy: no)
 ```
 
-## Setting Autoscaler Bounds
+## Configuring MDS Counts
 
-Configure minimum and maximum MDS counts on the file system:
+Configure the number of active MDS ranks and desired standbys on the file system:
 
 ```bash
-ceph fs set cephfs min_mds 1
 ceph fs set cephfs max_mds 4
+ceph fs set cephfs standby_count_wanted 2
 ```
 
-The autoscaler respects these bounds when making scaling decisions.
+The autoscaler reads these values and ensures the orchestrator deploys the correct total number of MDS daemons (active ranks plus standbys).
 
 ## Viewing Autoscaler Activity
 
-Check the manager logs for autoscaler decisions:
+Check the manager daemon logs for autoscaler activity:
 
 ```bash
-ceph log last 20 | grep mds_autoscaler
+ceph tell mgr. log recent | grep mds_autoscaler
 ```
 
-Or watch the MDS rank count change over time:
+Or watch the MDS rank count and daemon deployment over time:
 
 ```bash
 watch -n 5 "ceph fs status cephfs"
 ```
 
-## Manual Override
+## Changing Active MDS Ranks
 
-To temporarily pin the number of active MDS ranks regardless of the autoscaler:
+To change the number of active MDS ranks, update `max_mds`:
 
 ```bash
 ceph fs set cephfs max_mds 2
 ```
 
-The autoscaler will not scale above this value.
+The autoscaler will detect this change and adjust the orchestrator's MDS service placement to match the new total daemon count.
 
 ## Rook Integration
 
@@ -104,8 +103,8 @@ spec:
     activeStandby: true
 ```
 
-The `activeCount` field controls the number of active MDS daemons. The autoscaler can still increase this dynamically beyond the initial value.
+The `activeCount` field controls the number of active MDS daemons. Note that in Rook-managed clusters, the Rook operator enforces `activeCount` as the `max_mds` value during its reconciliation loop, so changes to `max_mds` made outside of Rook will be overridden.
 
 ## Summary
 
-The Ceph Manager MDS Autoscaler module removes the burden of manually tuning `max_mds` by automatically scaling active MDS daemons based on real-time workload metrics. Set the minimum and maximum bounds using `ceph fs set`, and the autoscaler handles dynamic adjustment within those constraints, ensuring CephFS performance adapts to changing workloads.
+The Ceph Manager MDS Autoscaler module removes the burden of manually adjusting MDS daemon deployment when you change `max_mds` or `standby_count_wanted`. The module monitors these file system settings and automatically updates the orchestrator's placement specification to ensure the correct number of MDS daemons are running. Configure your desired active ranks and standby counts using `ceph fs set`, and the autoscaler handles the deployment logistics.
