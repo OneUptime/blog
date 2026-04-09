@@ -90,8 +90,8 @@ Add an overlay panel comparing all pools:
 
 ```promql
 # All pool utilization %
-sum by(name) (ceph_pool_bytes_used) /
-sum by(name) (ceph_pool_bytes_used + ceph_pool_max_avail) * 100
+(ceph_pool_bytes_used / (ceph_pool_bytes_used + ceph_pool_max_avail)) * 100
+* on(pool_id) group_left(name) ceph_pool_metadata
 ```
 
 Panel type: Bar chart, sorted by utilization descending.
@@ -120,7 +120,8 @@ Create a PrometheusRule linked to the dashboard:
 - alert: CephPoolHighUsage
   expr: |
     (ceph_pool_bytes_used /
-     (ceph_pool_bytes_used + ceph_pool_max_avail)) > 0.80
+     (ceph_pool_bytes_used + ceph_pool_max_avail))
+    * on(pool_id) group_left(name) ceph_pool_metadata > 0.80
   labels:
     severity: warning
   annotations:
