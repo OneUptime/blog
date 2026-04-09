@@ -33,13 +33,13 @@ Create an NFS export that exposes a CephFS path:
 ```bash
 ceph nfs export create cephfs \
   --cluster-id my-nfs \
-  --pseudo /data \
+  --pseudo-path /data \
   --fsname my-fs \
   --path /
 ```
 
 - `--cluster-id` is the name of the `CephNFS` resource
-- `--pseudo` is the NFS mount path clients will use
+- `--pseudo-path` is the NFS mount path clients will use
 - `--fsname` is the name of the `CephFilesystem`
 - `--path` is the directory within CephFS to export
 
@@ -48,7 +48,7 @@ ceph nfs export create cephfs \
 ```bash
 ceph nfs export create rgw \
   --cluster-id my-nfs \
-  --pseudo /s3 \
+  --pseudo-path /s3 \
   --bucket my-bucket
 ```
 
@@ -72,16 +72,19 @@ Output example:
 {
   "export_id": 1,
   "path": "/",
+  "cluster_id": "my-nfs",
   "pseudo": "/data",
   "access_type": "RW",
-  "squash": "none",
+  "squash": "no_root_squash",
+  "security_label": true,
   "protocols": [4],
   "transports": ["TCP"],
   "fsal": {
     "name": "CEPH",
     "user_id": "nfs.my-nfs.1",
     "fs_name": "my-fs"
-  }
+  },
+  "clients": []
 }
 ```
 
@@ -96,7 +99,7 @@ ceph nfs export apply my-nfs -i - <<'EOF'
   "path": "/",
   "pseudo": "/data",
   "access_type": "RO",
-  "squash": "root",
+  "squash": "root_squash",
   "protocols": [4],
   "fsal": {
     "name": "CEPH",
@@ -113,10 +116,10 @@ This changes the export to read-only with root squash enabled.
 Remove an export by its pseudo path:
 
 ```bash
-ceph nfs export delete my-nfs /data
+ceph nfs export rm my-nfs /data
 ```
 
-The RADOS config object is updated immediately and Ganesha is notified via DBus to unexport the path.
+The RADOS config object is updated immediately and Ganesha is notified via RADOS watch/notify to reload its configuration.
 
 ## Summary
 
