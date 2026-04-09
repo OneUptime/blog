@@ -64,12 +64,9 @@ velero install \
   --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
   --bucket $BUCKET_NAME \
   --secret-file /tmp/velero-credentials \
-  --use-volume-snapshots true \
+  --use-volume-snapshots=true \
   --features=EnableCSI \
-  --backup-location-config \
-    region=us-east-1,\
-    s3ForcePathStyle=true,\
-    s3Url=http://$BUCKET_HOST
+  --backup-location-config region=us-east-1,s3ForcePathStyle=true,s3Url=http://$BUCKET_HOST
 ```
 
 ## Step 4 - Create VolumeSnapshotClass for Velero
