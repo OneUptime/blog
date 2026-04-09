@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, FreeBSD, Unix, Installation, Storage, Port, BSD
 
-Description: Install Ceph on FreeBSD using the Ports collection or pkg binary packages for a BSD-based storage cluster.
+Description: Install Ceph on FreeBSD by building from source for a BSD-based storage cluster.
 
 ---
 
 ## Overview
 
-FreeBSD supports Ceph through its Ports collection and pkg binary packages. While Linux is the primary Ceph platform, FreeBSD provides a working Ceph installation for organizations already using FreeBSD infrastructure. Note that Ceph on FreeBSD has some limitations compared to Linux, particularly around kernel client features. This guide covers installation using pkg.
+FreeBSD supports Ceph, though the Ceph port was removed from the FreeBSD ports tree in 2023. Ceph must now be built from source on FreeBSD. While Linux is the primary Ceph platform, FreeBSD provides a working Ceph installation for organizations already using FreeBSD infrastructure. Note that Ceph on FreeBSD has some limitations compared to Linux, particularly around kernel client features. This guide covers building from source and manual cluster deployment.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Before proceeding, understand these FreeBSD-specific limitations:
 
 These limitations make FreeBSD better suited for Ceph RGW (object storage) servers than full cluster roles.
 
-## Step 1 - Update Ports and Install pkg
+## Step 1 - Update pkg and Install Dependencies
 
 ```bash
 # Update pkg repository
@@ -41,36 +41,50 @@ pkg update
 pkg install -y python3 leveldb snappy lz4 gperftools rdkafka lua54
 ```
 
-## Step 2 - Install Ceph via pkg
+## Step 2 - Install Ceph from Source
+
+The Ceph port (`net/ceph14`) was removed from the FreeBSD ports tree in 2023, so binary packages are no longer available via pkg. Ceph must be built from source on FreeBSD.
 
 ```bash
-# Install Ceph
-pkg install -y ceph
+# Install build dependencies
+pkg install -y cmake git ninja gcc bash
 
-# Check installed version
-ceph --version
+# Clone the Ceph source
+git clone https://github.com/ceph/ceph.git
+cd ceph
+git checkout v18.2.0  # or the latest stable release tag
+git submodule update --init --recursive
+
+# Build Ceph (see README.FreeBSD in the source tree for details)
+./do_freebsd.sh
 ```
 
-Or build from ports for customization:
+Refer to the `README.FreeBSD` file in the Ceph source tree for the most up-to-date build instructions, as FreeBSD build steps may change between releases.
+
+After building, verify the installation:
 
 ```bash
-# Install portsnap and fetch ports
-portsnap fetch extract
-
-# Build Ceph from ports
-cd /usr/ports/net/ceph
-make config
-make install clean
+ceph --version
 ```
 
 ## Step 3 - Configure Ceph on FreeBSD
 
 Create the Ceph configuration file:
 
+First, generate a UUID for the cluster and create the config directory:
+
+```bash
+uuidgen
+# Copy the output UUID for use in ceph.conf below
+
+mkdir -p /usr/local/etc/ceph
+ln -s /usr/local/etc/ceph /etc/ceph
+```
+
 ```ini
 # /usr/local/etc/ceph/ceph.conf
 [global]
-fsid = $(uuidgen)
+fsid = <paste-your-generated-uuid-here>
 mon initial members = freebsd-node1
 mon host = 192.168.1.10
 auth cluster required = cephx
@@ -78,10 +92,6 @@ auth service required = cephx
 auth client required = cephx
 osd pool default size = 3
 osd pool default min size = 2
-
-[osd]
-osd journal size = 1024
-osd data = /var/lib/ceph/osd/ceph-$id
 ```
 
 ## Step 4 - Bootstrap the Monitor
@@ -99,13 +109,24 @@ ceph-authtool \
 
 # Create admin keyring
 ceph-authtool \
-  --create-keyring /etc/ceph/ceph.client.admin.keyring \
+  --create-keyring /usr/local/etc/ceph/ceph.client.admin.keyring \
   --gen-key \
   -n client.admin \
   --cap mon 'allow *' \
   --cap osd 'allow *' \
   --cap mds 'allow *' \
   --cap mgr 'allow *'
+
+# Import admin key into monitor keyring
+ceph-authtool /tmp/ceph.mon.keyring \
+  --import-keyring /usr/local/etc/ceph/ceph.client.admin.keyring
+
+# Create the monitor map
+FSID=$(grep fsid /usr/local/etc/ceph/ceph.conf | awk '{print $3}')
+monmaptool --create \
+  --add freebsd-node1 192.168.1.10 \
+  --fsid $FSID \
+  /tmp/monmap
 
 # Initialize monitor
 ceph-mon --cluster ceph \
@@ -139,14 +160,15 @@ ceph auth add osd.$OSD_ID osd 'allow *' mon 'allow profile osd' \
 ## Step 6 - Enable rc.d Services
 
 ```bash
-# Enable Ceph services in rc.conf
-echo 'ceph_mon_enable="YES"' >> /etc/rc.conf
-echo 'ceph_osd_enable="YES"' >> /etc/rc.conf
-echo 'ceph_mds_enable="NO"' >> /etc/rc.conf
+# Enable Ceph service in rc.conf
+echo 'ceph_enable="YES"' >> /etc/rc.conf
+
+# Create bsdrc marker for OSD (required on FreeBSD)
+touch /var/lib/ceph/osd/ceph-$OSD_ID/bsdrc
 
 # Start services
-service ceph-mon start
-service ceph-osd start
+service ceph start mon.freebsd-node1
+service ceph start osd.$OSD_ID
 ```
 
 ## Step 7 - Verify
@@ -158,4 +180,4 @@ ceph osd tree
 
 ## Summary
 
-Ceph on FreeBSD works primarily for RGW object storage servers and cluster management roles rather than full block/file storage clients due to the absence of kernel RBD and CephFS drivers. Installation uses pkg binary packages or the Ports collection with manual cluster configuration since cephadm is not supported. FreeBSD's ZFS can complement Ceph by providing the underlying storage for OSD directories.
+Ceph on FreeBSD works primarily for RGW object storage servers and cluster management roles rather than full block/file storage clients due to the absence of kernel RBD and CephFS drivers. Since the Ceph port was removed from FreeBSD's ports tree, installation requires building from source with manual cluster configuration, as cephadm is also not supported. FreeBSD's ZFS can complement Ceph by providing the underlying storage for OSD directories.
