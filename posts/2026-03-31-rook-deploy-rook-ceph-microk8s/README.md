@@ -110,6 +110,12 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 EOF
@@ -120,7 +126,7 @@ EOF
 If CSI pods fail to mount volumes, verify the snap path is accessible:
 
 ```bash
-microk8s kubectl -n rook-ceph logs ds/rook-ceph-csi-rbdplugin -c csi-rbdplugin | grep -i "kubelet"
+microk8s kubectl -n rook-ceph logs ds/csi-rbdplugin -c csi-rbdplugin | grep -i "kubelet"
 ```
 
 Check the correct snap path:
