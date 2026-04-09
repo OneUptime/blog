@@ -32,7 +32,7 @@ Check I/O wait and latency at the OS level:
 
 ```bash
 # Find the device for the OSD
-ceph osd metadata 2 | python3 -m json.tool | grep devname
+ceph osd metadata 2 | python3 -m json.tool | grep bluestore_bdev_dev_node
 
 # Monitor I/O stats
 iostat -xz 1 10 /dev/sdX
@@ -55,7 +55,7 @@ ceph daemon osd.2 perf dump | python3 -m json.tool | grep -E "lat|stall|read"
 Key metrics to examine:
 - `bluestore_read_lat` - average read latency
 - `bluestore_state_aio_wait_lat` - time waiting for async I/O
-- `bluestore_txc_submit_lat` - transaction submission latency
+- `bluestore_submit_lat` - transaction submission latency
 
 ## Common Causes and Fixes
 
@@ -90,7 +90,7 @@ Make persistent with udev:
 ```bash
 cat > /etc/udev/rules.d/60-ceph-scheduler.rules << 'EOF'
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="mq-deadline"
-ACTION=="add|change", KERNEL=="nvme[0-9]", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
 EOF
 ```
 
@@ -126,8 +126,8 @@ blockdev --setra 512 /dev/sdX   # 512 = 256KB (units are 512-byte sectors)
 If the hardware is slow but acceptable for your workload:
 
 ```bash
-# Increase the stall threshold (seconds)
-ceph config set osd bluestore_slow_ops_warn_lifetime 120  # 2 minutes
+# Increase the stall warning lifetime window (seconds)
+ceph config set osd bdev_stalled_read_warn_lifetime 120  # 2 minutes
 ```
 
 ## Monitoring Disk Latency
@@ -136,7 +136,7 @@ Set up continuous monitoring:
 
 ```yaml
 - alert: CephOSDBlockDeviceSlowReads
-  expr: ceph_daemon_health_metrics{type="BLOCK_DEVICE_STALLED_READ_ALERT"} > 0
+  expr: ceph_health_detail{name="BLOCK_DEVICE_STALLED_READ_ALERT"} > 0
   for: 5m
   labels:
     severity: warning
