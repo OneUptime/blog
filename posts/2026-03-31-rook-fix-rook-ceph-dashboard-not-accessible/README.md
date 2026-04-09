@@ -23,11 +23,10 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
+  dashboard:
+    enabled: true
   mgr:
     count: 1
-    modules:
-      - name: dashboard
-        enabled: true
 ```
 
 Apply the update if it was disabled:
@@ -52,8 +51,8 @@ Rook creates a Service for the dashboard:
 ```bash
 kubectl -n rook-ceph get service | grep dashboard
 
-# Expected output:
-# rook-ceph-mgr-dashboard   ClusterIP   10.96.x.x   <none>   7000/TCP,8443/TCP
+# Expected output (SSL enabled by default):
+# rook-ceph-mgr-dashboard   ClusterIP   10.96.x.x   <none>   8443/TCP
 ```
 
 If the service does not exist:
@@ -67,14 +66,11 @@ kubectl -n rook-ceph describe cephcluster rook-ceph | grep -i dashboard
 For immediate access without changing the Service type:
 
 ```bash
-# HTTP dashboard (port 7000)
-kubectl -n rook-ceph port-forward svc/rook-ceph-mgr-dashboard 7000:7000 &
-
-# HTTPS dashboard (port 8443)
+# HTTPS dashboard (port 8443, default)
 kubectl -n rook-ceph port-forward svc/rook-ceph-mgr-dashboard 8443:8443 &
 
 # Open in browser
-open http://localhost:7000
+open https://localhost:8443
 ```
 
 ## Step 5: Retrieve Dashboard Credentials
@@ -126,8 +122,11 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 spec:
+  tls:
+    - hosts:
+        - ceph-dashboard.example.com
+      secretName: ceph-dashboard-tls
   rules:
     - host: ceph-dashboard.example.com
       http:
