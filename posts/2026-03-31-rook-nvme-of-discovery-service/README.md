@@ -35,15 +35,17 @@ If using a custom discovery port, configure it in the gateway:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMeoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gw
   namespace: rook-ceph
 spec:
-  server:
-    active: 2
-  discovery:
-    port: 8009
+  image: quay.io/ceph/nvmeof:latest
+  instances: 2
+  pool: nvmeof
+  group: group-a
+  ports:
+    discoveryPort: 8009
 ```
 
 ## Add Subsystems to Discovery Log
@@ -53,8 +55,8 @@ When creating subsystems, they are automatically added to the discovery log:
 ```bash
 # Create subsystem - appears in discovery automatically
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof subsystem create \
-  --nqn nqn.2024-01.io.ceph:subsystem-1
+  ceph nvmeof subsystem add \
+  --subsystem nqn.2024-01.io.ceph:subsystem-1
 
 # Verify discovery log entry
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
@@ -68,21 +70,19 @@ Set up persistent NVMe-oF discovery on initiator nodes using systemd:
 ```bash
 # Create discovery configuration
 cat > /etc/nvme/discovery.conf << 'EOF'
---transport=tcp
---traddr=10.0.1.10
---trsvcid=8009
+--transport=tcp --traddr=10.0.1.10 --trsvcid=8009
 EOF
 
-# Enable persistent discovery controller
-nvme connect-all --config /etc/nvme/discovery.conf
+# Enable persistent discovery controller (reads /etc/nvme/discovery.conf automatically)
+nvme connect-all
 ```
 
 Enable automatic reconnect with udev rules:
 
 ```bash
 cat > /etc/udev/rules.d/70-nvmf-autoconnect.rules << 'EOF'
-ACTION=="add", SUBSYSTEM=="nvme-subsystem", \
-  ATTR{model}=="Linux*", RUN+="/sbin/nvme connect-all"
+ACTION=="change", SUBSYSTEM=="nvme", ENV{NVME_AEN}=="0x70f002", \
+  RUN+="/bin/systemctl --no-block restart nvmf-connect@--transport=tcp\x20--traddr=10.0.1.10\x20--trsvcid=8009.service"
 EOF
 
 udevadm control --reload-rules
@@ -98,7 +98,7 @@ echo "Discovering NVMe-oF subsystems from $GATEWAY_IP..."
 nvme discover -t tcp -a $GATEWAY_IP -s 8009 -o normal
 
 echo ""
-echo "Currently connected subsystems:"
+echo "Currently connected devices:"
 nvme list
 ```
 
