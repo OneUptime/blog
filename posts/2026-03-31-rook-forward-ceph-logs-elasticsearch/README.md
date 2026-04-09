@@ -51,8 +51,9 @@ data:
         Port            9200
         HTTP_User       elastic
         HTTP_Passwd     ${ELASTIC_PASSWORD}
-        Index           ceph-logs
-        Type            _doc
+        Logstash_Format On
+        Logstash_Prefix ceph-logs
+        Suppress_Type_Name On
         Retry_Limit     5
         Replace_Dots    On
         Trace_Error     On
@@ -128,7 +129,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/ceph-logs" \
 Find slow request warnings:
 
 ```bash
-curl -s "http://elasticsearch:9200/ceph-logs/_search" \
+curl -s "http://elasticsearch:9200/ceph-logs-*/_search" \
   -H 'Content-Type: application/json' \
   -d '{"query": {"match": {"log": "slow request"}}}'
 ```
