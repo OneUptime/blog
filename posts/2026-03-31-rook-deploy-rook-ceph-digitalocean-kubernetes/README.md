@@ -28,7 +28,7 @@ doctl compute droplet list --tag-name "k8s:my-cluster" --format ID,Name
 
 # Create and attach a volume to each node
 for DROPLET_ID in 1234 5678 9012; do
-  VOL_ID=$(doctl compute volume create ceph-osd \
+  VOL_ID=$(doctl compute volume create ceph-osd-${DROPLET_ID} \
     --region nyc1 \
     --size 100 \
     --format ID --no-header)
@@ -38,7 +38,7 @@ for DROPLET_ID in 1234 5678 9012; do
 done
 ```
 
-Verify the volume appears on the node (typically as `/dev/sda` or `/dev/vdb`):
+Verify the volume appears on the node (typically as `/dev/sda`):
 
 ```bash
 kubectl debug node/node-name -it --image=busybox -- lsblk
@@ -78,7 +78,7 @@ spec:
   storage:
     useAllNodes: true
     useAllDevices: false
-    deviceFilter: "^vdb$"
+    deviceFilter: "^sd[a-z]$"
 ```
 
 ```bash
@@ -89,6 +89,11 @@ kubectl apply -f cluster-doks.yaml
 
 ```bash
 kubectl -n rook-ceph get pods -w
+
+# Deploy the Rook toolbox to run Ceph commands
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.16/deploy/examples/toolbox.yaml
+
+kubectl -n rook-ceph wait deploy/rook-ceph-tools --for condition=available --timeout=120s
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 ```
 
@@ -127,6 +132,13 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
