@@ -21,14 +21,14 @@ ceph health detail
 Sample output:
 
 ```text
-HEALTH_WARN 1 telemetry channel has changed
-[WRN] TELEMETRY_CHANGED: telemetry channel has changed
-    new fields: perf_memory, osd_latency_histograms
+HEALTH_WARN Telemetry requires re-opt-in
+[WRN] TELEMETRY_CHANGED: Telemetry requires re-opt-in
+    telemetry module includes new collections; please re-opt-in to new collections with `ceph telemetry on`
 ```
 
 ## Why This Happens
 
-When Ceph upgrades or the telemetry module adds new reporting fields, it resets the user's consent. This is a privacy-protecting mechanism - Ceph will not send data about new fields without explicit approval. Until you review and accept the changes, the cluster remains in `HEALTH_WARN`.
+When Ceph undergoes a major version upgrade or the telemetry module introduces new collections, it requires renewed consent. This is a privacy-protecting mechanism - Ceph will not send data about new collections without explicit approval. Until you review and accept the changes, the cluster remains in `HEALTH_WARN`.
 
 ## How to Inspect the Changes
 
@@ -44,7 +44,7 @@ Then preview the telemetry diff:
 ceph telemetry diff
 ```
 
-This shows new or changed data fields compared to what you last consented to.
+This shows telemetry collections available in the module that you have not yet opted into.
 
 ## Fixing the Warning - Option 1: Accept Telemetry
 
@@ -91,8 +91,12 @@ Sample output:
 ```json
 {
   "enabled": true,
-  "license_name": "sharing-1-0",
-  "last_opt_revision": 3
+  "last_opt_revision": 3,
+  "last_upload": "2026-03-30T12:00:00",
+  "channel_basic": true,
+  "channel_crash": true,
+  "channel_device": true,
+  "channel_perf": false
 }
 ```
 
