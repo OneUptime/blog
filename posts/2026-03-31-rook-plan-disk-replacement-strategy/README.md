@@ -108,18 +108,14 @@ watch -n 30 'ceph -s | grep misplaced'
 # 3. Verify cluster is healthy
 ceph health
 
-# 4. Stop the OSD daemon
-ceph osd stop osd.3
-# On the node: systemctl stop ceph-osd@3
+# 4. Stop the OSD daemon on the node
+systemctl stop ceph-osd@3
 
-# 5. Mark OSD down
+# 5. Mark OSD down (speeds up detection vs waiting for heartbeat timeout)
 ceph osd down osd.3
 
-# 6. Purge the OSD from cluster
+# 6. Purge the OSD from cluster (removes from CRUSH map, auth, and OSD map)
 ceph osd purge osd.3 --yes-i-really-mean-it
-
-# 7. Remove from CRUSH map (if not auto-removed)
-ceph osd crush remove osd.3
 ```
 
 ## Replacing the Physical Drive
@@ -156,11 +152,11 @@ kubectl logs -n rook-ceph -l app=rook-ceph-operator -f | grep -i "new osd"
 Reserve 10-15% spare drive slots in each node for hot spares:
 
 ```bash
-# Check per-OSD fill levels
-ceph osd df | awk '{print $1, $8"%"}' | sort -k2 -n
+# Check per-OSD fill levels (column number for %USE may vary by Ceph version)
+ceph osd df | awk 'NR>1 && $1 ~ /^[0-9]+/ {print $1, $11"%"}' | sort -t'%' -k2 -n
 
 # Calculate cluster-wide utilization
-ceph df | awk '/TOTAL:/ {printf "Used: %.1f%% (%s of %s)\n", ($3/$2)*100, $3, $2}'
+ceph df | awk '/TOTAL/ {print "Used:", $6"%", "(" $5, "of", $2 ")"}'
 ```
 
 ## Summary
