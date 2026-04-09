@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CSI, Storage
 
-Description: Enable and use dynamic volume expansion with the Rook-Ceph CSI driver to resize PersistentVolumeClaims online without pod restarts.
+Description: Enable and use dynamic volume expansion with the Rook-Ceph CSI driver to resize PersistentVolumeClaims online. CephFS volumes expand without pod restarts; RBD volumes require a pod restart for filesystem resize.
 
 ---
 
 ## What Is Dynamic Volume Expansion
 
-Dynamic volume expansion lets you resize a PersistentVolumeClaim (PVC) that is already bound and in use, without stopping the application. Rook's Ceph CSI driver supports online expansion for both RBD (block) and CephFS (filesystem) volumes.
+Dynamic volume expansion lets you resize a PersistentVolumeClaim (PVC) that is already bound and in use, without stopping the application. Rook's Ceph CSI driver supports expansion for both RBD (block) and CephFS (filesystem) volumes. CephFS expansions are fully online, while RBD expansions require a pod restart for the filesystem resize step.
 
-The Kubernetes `VolumeExpansion` feature gate must be enabled (it is on by default since Kubernetes 1.24), and the StorageClass must declare `allowVolumeExpansion: true`.
+The Kubernetes volume expansion feature gates (`ExpandPersistentVolumes`, `ExpandCSIVolumes`, `ExpandInUsePersistentVolumes`) must be enabled. These are GA and enabled unconditionally since Kubernetes 1.23, and the gates were removed entirely by Kubernetes 1.26. The StorageClass must also declare `allowVolumeExpansion: true`.
 
 ## Enabling Volume Expansion in the StorageClass
 
@@ -80,7 +80,7 @@ kubectl describe pvc my-pvc
 
 Look for the `Resizing` condition followed by `FileSystemResizePending` (for block volumes) or the final `Bound` status with the new size.
 
-For CephFS volumes the resize is fully online. For RBD block volumes, the file system inside the volume is expanded when the pod is next restarted (or immediately if the node-level resize is triggered automatically).
+For CephFS volumes the resize is fully online. For RBD block volumes, the block device is expanded first, and the PVC enters the `FileSystemResizePending` condition. The file system inside the volume is expanded when the pod is restarted, which triggers the CSI `NodeExpandVolume` call.
 
 ## Verifying the Expanded Size
 
@@ -115,7 +115,7 @@ kubectl -n rook-ceph logs -l app=csi-rbdplugin -c csi-rbdplugin
 Common causes:
 - The pod using the PVC was not restarted after the block-level resize.
 - The node plugin does not have permission to resize the file system.
-- The StorageClass did not have `allowVolumeExpansion: true` at the time of provisioning.
+- The StorageClass does not currently have `allowVolumeExpansion: true`.
 
 ## Summary
 
