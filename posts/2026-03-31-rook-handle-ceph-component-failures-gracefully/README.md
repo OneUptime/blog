@@ -30,11 +30,11 @@ If a pod crashes but the underlying disk is healthy, restart the OSD deployment:
 kubectl -n rook-ceph rollout restart deploy/rook-ceph-osd-0
 ```
 
-To prevent premature rebalancing during short outages, increase `mon_osd_down_out_interval` (in seconds):
+To prevent premature rebalancing during short outages, increase `mon_osd_down_out_interval` beyond its default of 600 seconds (in seconds):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd mon_osd_down_out_interval 600
+  ceph config set mon mon_osd_down_out_interval 1800
 ```
 
 ## Handling Monitor Failures
