@@ -25,17 +25,16 @@ Example output:
     gateway 'nvmeof-gw-b' in group 'group0' is down
 ```
 
-Check gateway status in detail:
+Check gateway status in detail from within a gateway pod:
 
 ```bash
-ceph nvmeof gw show
-ceph nvmeof gw info group0
+kubectl -n rook-ceph exec -it <nvmeof-gateway-pod> -- ceph-nvmeof gw info
 ```
 
 Check Kubernetes pod status:
 
 ```bash
-kubectl -n rook-ceph get pods -l app=ceph-nvmeof
+kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof
 kubectl -n rook-ceph describe pod ceph-nvmeof-b-<hash>
 ```
 
@@ -78,7 +77,7 @@ kubectl -n rook-ceph delete pod ceph-nvmeof-b-<hash>
 Kubernetes will recreate it automatically. Monitor the restart:
 
 ```bash
-kubectl -n rook-ceph get pods -l app=ceph-nvmeof -w
+kubectl -n rook-ceph get pods -l app=rook-ceph-nvmeof -w
 ```
 
 ### Step 2 - Check Resource Limits
@@ -93,7 +92,7 @@ Update the NVMEoF CR to increase memory limits:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEoF
+kind: CephNVMeOFGateway
 spec:
   gateway:
     resources:
