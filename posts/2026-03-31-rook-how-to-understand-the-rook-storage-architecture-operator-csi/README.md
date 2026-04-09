@@ -33,7 +33,7 @@ Rook-Ceph consists of three distinct functional layers:
 +--------+--------------------+-------+
 |                                     |
 |         Ceph Daemons                |
-|  MON  MGR  OSD  MDS  RGW  Rook-MGR |
+|  MON  MGR  OSD  MDS  RGW           |
 +-------------------------------------+
 ```
 
@@ -58,7 +58,7 @@ cephblockpools          cephblockpool         ceph.rook.io/v1   true
 cephclusters            cephcluster           ceph.rook.io/v1   true
 cephfilesystems         cephfilesystem        ceph.rook.io/v1   true
 cephobjectstores        cephobjectstore       ceph.rook.io/v1   true
-cephosds                                      ceph.rook.io/v1   true
+cephnfs                 cephnfs               ceph.rook.io/v1   true
 ```
 
 ## Layer 2: CSI Drivers
@@ -136,7 +136,7 @@ Rook Operator -> Ceph daemons:
   - Reads/writes Ceph RADOS configuration objects
 
 CSI drivers -> Ceph cluster:
-  - RBD driver uses Ceph RBD API (librados)
+  - RBD driver uses Ceph RBD API (librbd)
   - CephFS driver uses Ceph libcephfs
   - Authentication via Ceph keyrings (Kubernetes Secrets)
 
