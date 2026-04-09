@@ -73,7 +73,7 @@ Why is there no change management process?
 
 List specific, assigned, time-bounded actions:
 
-```json
+```text
 [DONE]   Rolled back disk controller firmware to 3.1.8 on all nodes.
 [TODO]   Create firmware update SOP that requires Ceph maintenance window. (Owner: Alice, Due: 2026-04-15)
 [TODO]   Add firmware version to Ceph pre-update checklist. (Owner: Bob, Due: 2026-04-01)
