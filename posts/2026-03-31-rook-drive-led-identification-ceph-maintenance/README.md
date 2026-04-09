@@ -38,7 +38,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Or get the block device from the OSD pod:
 
 ```bash
-kubectl -n rook-ceph get pod -l osd=<osd-id> -o wide
+kubectl -n rook-ceph get pod -l ceph-osd-id=<osd-id> -o wide
 kubectl -n rook-ceph exec -it rook-ceph-osd-<id>-<hash> -- \
   ls -la /var/lib/ceph/osd/ceph-*/block
 ```
@@ -54,14 +54,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Enable locate LED
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph device light on <device-id> locate
+  ceph device light on <device-id> ident
 ```
 
 Turn off after identification:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph device light off <device-id> locate
+  ceph device light off <device-id> ident
 ```
 
 ## Step 3: Use ledctl Directly on the Host
@@ -112,12 +112,12 @@ Create a script that turns on LEDs before maintenance and off after:
 ```bash
 #!/bin/bash
 OSD_ID=$1
-DEVICE=$(ceph osd metadata $OSD_ID | jq -r '.devices')
+DEVICE=$(ceph osd metadata $OSD_ID | jq -r '.device_ids')
 echo "Identifying device: $DEVICE on node..."
-ceph device light on $DEVICE locate
+ceph device light on $DEVICE ident
 echo "Press Enter when disk is replaced..."
 read
-ceph device light off $DEVICE locate
+ceph device light off $DEVICE ident
 echo "LED off. Verify OSD recovery."
 ```
 
