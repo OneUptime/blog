@@ -100,7 +100,7 @@ curl -s http://prometheus:9090/api/v1/rules | python3 -m json.tool | grep '"name
 
 ### On-Call Setup
 
-```json
+```text
 [ ] Alert routing configured to notify on-call rotation
 [ ] PagerDuty or equivalent configured for HEALTH_ERR alerts
 [ ] Escalation path defined for data loss scenarios
