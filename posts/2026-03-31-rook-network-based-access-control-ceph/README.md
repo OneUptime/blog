@@ -44,9 +44,11 @@ metadata:
 spec:
   network:
     provider: host
-    selectors:
-      public: "192.168.10.0/24"
-      cluster: "10.10.0.0/24"
+    addressRanges:
+      public:
+        - "192.168.10.0/24"
+      cluster:
+        - "10.10.0.0/24"
 ```
 
 The cluster network carries OSD replication traffic and should be completely isolated from external access. The public network carries client-to-daemon traffic.
@@ -70,7 +72,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: myapp-namespace
-        - podSelector:
+          podSelector:
             matchLabels:
               ceph-access: "true"
       ports:
