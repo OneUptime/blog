@@ -16,8 +16,8 @@ When Prometheus runs in a separate namespace from Rook-Ceph, it requires specifi
 
 Prometheus uses the Kubernetes API to discover scrape targets via ServiceMonitor resources. It needs permission to:
 - List and watch Services, Pods, and Endpoints in `rook-ceph`
-- Read Secrets referenced by ServiceMonitors (for TLS/auth)
-- Watch PrometheusRule objects for alerting rules
+- Access monitoring CRDs (ServiceMonitor, PodMonitor, PrometheusRule) for target and rule discovery
+- Read node metrics and non-resource URLs for scraping
 
 ## Create a ServiceAccount for Prometheus (if not using kube-prometheus-stack)
 
