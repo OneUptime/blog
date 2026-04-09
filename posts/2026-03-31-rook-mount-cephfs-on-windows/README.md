@@ -15,20 +15,20 @@ Ceph provides a native Windows client that allows Windows machines to mount Ceph
 ## Prerequisites
 
 - Windows 10/11 or Windows Server 2019/2022
-- Dokan library installed (WinFsp or Dokan Project driver)
+- Dokany library installed (version 2.0.5 or later)
 - Ceph Windows client binaries
 - Network access to Ceph monitor addresses
 - A valid CephX keyring
 
-## Install WinFsp
+## Install Dokany
 
-Download and install WinFsp, the Windows filesystem driver framework required by ceph-dokan:
+Download and install Dokany, the Windows userspace filesystem driver required by ceph-dokan:
 
 ```text
-https://github.com/billziss-gh/winfsp/releases
+https://github.com/dokan-dev/dokany/releases
 ```
 
-Run the installer and accept defaults. WinFsp provides the kernel driver component.
+Run the installer and accept defaults. Dokany provides the kernel driver component that allows ceph-dokan to present CephFS as a native Windows filesystem.
 
 ## Download the Ceph Windows Client
 
@@ -83,7 +83,7 @@ This mounts the default CephFS filesystem as drive `X:`. The `-l` flag specifies
 ## Mount a Specific Filesystem or Subdirectory
 
 ```text
-ceph-dokan.exe -c C:\ProgramData\ceph\ceph.conf -l x --filesystem cephfs --mountpoint /myapp
+ceph-dokan.exe -c C:\ProgramData\ceph\ceph.conf -l x --client_fs cephfs --root-path /myapp
 ```
 
 ## Verify the Mount
@@ -99,10 +99,10 @@ dir X:\
 
 ## Unmount
 
-To unmount, use the `net use` command or the Dokan control utility:
+To unmount, press Ctrl+C in the ceph-dokan terminal window, or use the ceph-dokan unmap command:
 
 ```text
-net use X: /delete
+ceph-dokan.exe unmap -l x
 ```
 
 ## Configure as a Windows Service
@@ -114,11 +114,11 @@ For persistent mounting, register `ceph-dokan` as a Windows service using NSSM o
 Enable debug logging to diagnose connection issues:
 
 ```text
-ceph-dokan.exe -c C:\ProgramData\ceph\ceph.conf -l x -d 10
+ceph-dokan.exe -c C:\ProgramData\ceph\ceph.conf -l x --debug --dokan-stderr
 ```
 
-Check Windows Event Viewer for WinFsp driver errors under `Applications and Services Logs > WinFsp`.
+Check Windows Event Viewer for Dokany driver errors under `Applications and Services Logs > Dokan`.
 
 ## Summary
 
-Mounting CephFS on Windows using `ceph-dokan` and the WinFsp driver allows Windows clients to access Rook-Ceph shared storage natively as a mapped drive. This extends the reach of your CephFS deployment to mixed Windows and Linux environments, enabling cross-platform file sharing with a consistent storage backend.
+Mounting CephFS on Windows using `ceph-dokan` and the Dokany driver allows Windows clients to access Rook-Ceph shared storage natively as a mapped drive. This extends the reach of your CephFS deployment to mixed Windows and Linux environments, enabling cross-platform file sharing with a consistent storage backend.
