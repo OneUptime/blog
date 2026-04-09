@@ -21,7 +21,7 @@ ceph daemon <daemon> config set <key> <value>
 # Examples
 ceph daemon osd.0 config set osd_max_backfills 2
 ceph daemon osd.0 config set debug_osd 10
-ceph daemon rgw.myzone config set debug_rgw 20
+ceph daemon client.rgw.myzone config set debug_rgw 20
 ```
 
 ## Common Use Cases
@@ -59,10 +59,10 @@ ceph daemon osd.0 config set osd_max_backfills 4
 
 ```bash
 # Increase thread pool for high request rate
-ceph daemon rgw.myzone config set rgw_thread_pool_size 512
+ceph daemon client.rgw.myzone config set rgw_thread_pool_size 512
 
 # Verify the change
-ceph daemon rgw.myzone config get rgw_thread_pool_size
+ceph daemon client.rgw.myzone config get rgw_thread_pool_size
 ```
 
 ## Important Caveats
