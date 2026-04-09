@@ -18,7 +18,7 @@ Ceph RGW supports OpenStack Keystone as an identity backend. When Keystone auth 
 
 ## Prerequisites
 
-You need a running Keystone endpoint reachable from the Rook cluster. Note your Keystone admin URL, credentials, and token format (v2 or v3).
+You need a running Keystone endpoint reachable from the Rook cluster. Note your Keystone admin URL and credentials. Modern Ceph RGW only supports Keystone v3.
 
 ## Creating the Keystone Credentials Secret
 
@@ -33,13 +33,11 @@ metadata:
 type: Opaque
 stringData:
   keystone_url: "https://keystone.example.com:5000"
-  keystone_admin_token: "your-admin-token"
   keystone_admin_user: "admin"
   keystone_admin_password: "adminpassword"
   keystone_admin_tenant: "admin"
   keystone_accepted_roles: "Member,admin"
   keystone_token_cache_size: "1000"
-  keystone_revocation_interval: "1200"
 ```
 
 ## Configuring RGW for Keystone via Ceph Config
@@ -50,7 +48,6 @@ Apply Keystone settings to the RGW configuration using the Rook toolbox:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 ceph config set client.rgw rgw_keystone_url https://keystone.example.com:5000
-ceph config set client.rgw rgw_keystone_api_version 3
 ceph config set client.rgw rgw_keystone_admin_user admin
 ceph config set client.rgw rgw_keystone_admin_password adminpassword
 ceph config set client.rgw rgw_keystone_admin_tenant admin
@@ -82,7 +79,6 @@ spec:
     instances: 2
     rgwConfig:
       rgw_keystone_url: "https://keystone.example.com:5000"
-      rgw_keystone_api_version: "3"
       rgw_keystone_admin_user: "admin"
       rgw_keystone_accepted_roles: "Member,admin"
       rgw_s3_auth_use_keystone: "true"
