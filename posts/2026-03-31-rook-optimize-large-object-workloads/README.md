@@ -18,8 +18,8 @@ Configure object size and stripe width when creating RBD images:
 
 ```bash
 # For large sequential workloads, use larger RADOS objects
-# Default is 4 MB; for large files, use 64 MB
-rbd create large-data-pool/backup-volume --size 1T --object-size 67108864
+# Default is 4 MB; for large files, use 32 MB (RBD maximum)
+rbd create large-data-pool/backup-volume --size 1T --object-size 33554432
 
 # Check stripe configuration
 rbd info large-data-pool/backup-volume
@@ -39,8 +39,8 @@ setfattr -n ceph.dir.layout.object_size -v 67108864 /mnt/cephfs/large-files
 For large objects via S3-compatible RGW, tune multipart parameters:
 
 ```bash
-# Increase multipart part size limit
-ceph config set client.rgw rgw_multipart_part_size 67108864  # 64 MB parts
+# Increase RGW chunk size for large object writes
+ceph config set client.rgw rgw_max_chunk_size 67108864  # 64 MB chunks
 
 # Increase RGW op thread for parallel part uploads
 ceph config set client.rgw rgw_thread_pool_size 256
@@ -48,7 +48,7 @@ ceph config set client.rgw rgw_num_rados_handles 16
 
 # Buffer large writes
 ceph config set client.rgw rgw_put_obj_min_window_size 16777216
-ceph config set client.rgw rgw_put_obj_window_size 134217728  # 128 MB window
+ceph config set client.rgw rgw_put_obj_max_window_size 134217728  # 128 MB window
 ```
 
 Example multipart upload with AWS SDK:
