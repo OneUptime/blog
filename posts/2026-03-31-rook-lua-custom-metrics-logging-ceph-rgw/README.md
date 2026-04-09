@@ -40,7 +40,6 @@ log_structured({
   object = Request.Object.Name or "",
   user = Request.User.Id or "anonymous",
   host = Request.HTTP.Host or "",
-  content_type = Request.HTTP.Header["Content-Type"] or "",
   timestamp = tostring(os.time()),
 })
 ```
@@ -76,7 +75,7 @@ RGWDebugLog(string.format(
 
 -- Emit data volume metric for uploads
 if method == "PUT" then
-  local size = Request.HTTP.ContentLength or 0
+  local size = Request.ContentLength or 0
   RGWDebugLog(string.format(
     "METRIC s3_bytes_uploaded{user=%q,bucket=%q} %d",
     user, bucket, size))
@@ -87,32 +86,27 @@ end
 
 ```lua
 -- latency_tracking.lua (preRequest context)
--- Add a timestamp header to measure processing time
+-- Record request start time for latency measurement
 
--- Record request start time in a response header
--- The actual latency calculation happens in postRequest
-local start_time = tostring(os.clock() * 1000)  -- milliseconds
-
--- Store in a request attribute for use in postRequest
--- Note: use the X-RGW header pattern for internal tracking
-Response.HTTP.AddHeader("X-Request-Start-Ms", start_time)
+-- Store start time in request metadata for access in postRequest
+-- os.time() provides second-level precision (Lua standard library)
+Request.HTTP.Metadata["lua-start-time"] = tostring(os.time())
 ```
 
 ```lua
 -- latency_emit.lua (postRequest context)
 -- Calculate and emit request latency
 
-local start_ms_str = Request.HTTP.Header["X-Request-Start-Ms"] or "0"
-local start_ms = tonumber(start_ms_str) or 0
-local end_ms = os.clock() * 1000
-local latency_ms = math.max(0, end_ms - start_ms)
+local start_s = tonumber(Request.HTTP.Metadata["lua-start-time"] or "0")
+local end_s = os.time()
+local latency_s = math.max(0, end_s - start_s)
 
 local bucket = Request.Bucket.Name or ""
 local method = Request.HTTP.Method or ""
 
 RGWDebugLog(string.format(
-  "METRIC s3_request_duration_ms{method=%q,bucket=%q} %.2f",
-  method, bucket, latency_ms))
+  "METRIC s3_request_duration_s{method=%q,bucket=%q} %d",
+  method, bucket, latency_s))
 ```
 
 ## Step 4 - Access Pattern Analytics
@@ -141,7 +135,7 @@ if method == "POST" and string.find(Request.HTTP.URI or "", "uploads", 1, true) 
 end
 
 -- Log large object access
-local content_length = Request.HTTP.ContentLength or 0
+local content_length = Request.ContentLength or 0
 if content_length > 1073741824 then  -- > 1 GiB
   RGWDebugLog(string.format(
     "ANALYTICS large_object_access method=%q user=%q size_bytes=%d",
@@ -153,12 +147,13 @@ end
 
 ```bash
 # Parse the structured Lua log output and forward to StatsD
+# RGWDebugLog lines are prefixed with "Lua INFO:" so extract the METRIC portion
 kubectl -n rook-ceph logs -l app=rook-ceph-rgw -f \
-  | grep "^METRIC" \
-  | while read -r line; do
-      METRIC=$(echo "$line" | awk '{print $2}' | sed 's/{.*}//' | tr '.' '_')
-      VALUE=$(echo "$line" | awk '{print $NF}')
-      echo "${METRIC}:${VALUE}|c" | nc -u -w0 statsd.monitoring.svc 8125
+  | grep "METRIC" \
+  | sed -n 's/.*METRIC //p' \
+  | while read -r metric value; do
+      NAME=$(echo "$metric" | sed 's/{.*}//' | tr '.' '_')
+      echo "${NAME}:${value}|c" | nc -u -w0 statsd.monitoring.svc 8125
     done &
 ```
 
@@ -171,7 +166,7 @@ kubectl -n rook-ceph logs -l app=rook-ceph-rgw -f \
 [FILTER]
     Name    grep
     Match   ceph.rgw.*
-    Regex   log ^METRIC
+    Regex   log METRIC
 
 [FILTER]
     Name    parser
