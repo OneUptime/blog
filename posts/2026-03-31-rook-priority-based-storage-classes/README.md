@@ -75,6 +75,10 @@ parameters:
   pool: nvme-pool
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 ---
@@ -89,6 +93,12 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: ssd-pool
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ---
@@ -103,6 +113,12 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: hdd-pool
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
@@ -110,13 +126,13 @@ allowVolumeExpansion: true
 ## Apply QoS at the Ceph Level
 
 ```bash
-# Set IOPS limits on a pool (requires MClock scheduler)
-ceph osd pool set nvme-pool rbd_qos_iops_limit 50000
-ceph osd pool set ssd-pool rbd_qos_iops_limit 10000
-ceph osd pool set hdd-pool rbd_qos_iops_limit 2000
+# Set per-pool RBD QoS IOPS limits (applies to each image in the pool)
+rbd config pool set nvme-pool rbd_qos_iops_limit 50000
+rbd config pool set ssd-pool rbd_qos_iops_limit 10000
+rbd config pool set hdd-pool rbd_qos_iops_limit 2000
 
 # Bandwidth limits
-ceph osd pool set hdd-pool rbd_qos_bps_limit 524288000  # 500 MB/s
+rbd config pool set hdd-pool rbd_qos_bps_limit 524288000  # 500 MB/s
 ```
 
 ## Usage in Application PVCs
