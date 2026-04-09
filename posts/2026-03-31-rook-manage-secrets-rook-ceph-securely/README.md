@@ -79,8 +79,6 @@ spec:
         KMS_PROVIDER: vault
         VAULT_ADDR: https://vault.example.com
         VAULT_BACKEND_PATH: rook/ceph
-        VAULT_AUTH_METHOD: kubernetes
-        VAULT_AUTH_KUBERNETES_ROLE: rook-ceph
       tokenSecretName: rook-vault-token
 ```
 
@@ -113,18 +111,21 @@ Decryption only happens in-cluster by the Sealed Secrets controller.
 Rotate Ceph client keys periodically:
 
 ```bash
+# Delete the existing key to force rotation
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph auth del client.csi-rbd-provisioner
+
 # Create a new key for CSI user
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth get-or-create client.csi-rbd-provisioner \
-    mon "allow r, allow command endpoint" \
-    osd "allow rwx pool=replicapool" \
-    mgr "allow rw" \
-    -o /tmp/new-csi-key
+NEW_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph auth get-or-create-key client.csi-rbd-provisioner \
+    mon 'profile rbd' \
+    osd 'allow rwx pool=replicapool' \
+    mgr 'allow rw')
 
 # Update the Kubernetes secret
 kubectl -n rook-ceph create secret generic rook-csi-rbd-provisioner \
-  --from-file=userID=/tmp/userid \
-  --from-file=userKey=/tmp/new-csi-key \
+  --from-literal=userID=csi-rbd-provisioner \
+  --from-literal=userKey="$NEW_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
