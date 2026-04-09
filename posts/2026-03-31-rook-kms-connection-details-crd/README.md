@@ -38,11 +38,10 @@ spec:
       connectionDetails:
         KMS_PROVIDER: vault
         VAULT_ADDR: https://vault.example.com:8200
+        VAULT_SECRET_ENGINE: kv
         VAULT_BACKEND_PATH: secret/
-        VAULT_BACKEND_KEY: luksKey
         VAULT_AUTH_METHOD: kubernetes
         VAULT_AUTH_KUBERNETES_ROLE: rook-ceph-kms
-        VAULT_TLS_SERVER_NAME: vault.example.com
         VAULT_CACERT: vault-ca-cert
         VAULT_CLIENT_CERT: vault-client-cert
         VAULT_CLIENT_KEY: vault-client-key
@@ -57,9 +56,8 @@ spec:
       connectionDetails:
         KMS_PROVIDER: ibmkeyprotect
         IBM_KP_SERVICE_INSTANCE_ID: <instance-id>
-        IBM_KP_BASE_URL: https://us-south.kms.cloud.ibm.com
-        IBM_KP_TOKEN_URL: https://iam.cloud.ibm.com/identity/token
-        IBM_KP_REGION: us-south
+        IBM_BASE_URL: https://us-south.kms.cloud.ibm.com
+        IBM_TOKEN_URL: https://iam.cloud.ibm.com/identity/token
       tokenSecretName: ibm-kp-credentials
 ```
 
@@ -72,25 +70,25 @@ spec:
       connectionDetails:
         KMS_PROVIDER: azure-kv
         AZURE_VAULT_URL: https://myvault.vault.azure.net/
-        AZURE_VAULT_KEY_NAME: rook-root-key
-        AZURE_CLIENT_ID: azure-credentials
-        AZURE_CLIENT_SECRET: azure-credentials
-        AZURE_TENANT_ID: azure-credentials
+        AZURE_CLIENT_ID: <service-principal-id>
+        AZURE_TENANT_ID: <tenant-id>
+        AZURE_CERT_SECRET_NAME: azure-cert-secret
 ```
 
-## Secrets Metadata Connection Details
+## KMIP Connection Details
 
-For development or simple deployments using Kubernetes Secrets:
+For KMIP-compliant key management servers:
 
 ```yaml
 spec:
   security:
     kms:
       connectionDetails:
-        KMS_PROVIDER: secrets-metadata
+        KMS_PROVIDER: kmip
+        KMIP_ENDPOINT: kmip-server.example.com:5696
+        TLS_SERVER_NAME: kmip-server.example.com
+      tokenSecretName: kmip-credentials
 ```
-
-No `tokenSecretName` is needed for the secrets-metadata provider.
 
 ## Apply and Verify the Configuration
 
@@ -98,7 +96,7 @@ After updating the CephCluster CRD, verify the operator picks up the changes:
 
 ```bash
 kubectl apply -f cephcluster.yaml
-kubectl get cephcluster rook-ceph -n rook-ceph -o jsonpath='{.status.state}'
+kubectl get cephcluster rook-ceph -n rook-ceph -o jsonpath='{.status.phase}'
 ```
 
 Watch the operator logs for KMS validation:
@@ -109,14 +107,13 @@ kubectl logs -n rook-ceph -l app=rook-ceph-operator --follow | grep -i kms
 
 ## Validate Connection Details Before Applying
 
-Use the Rook toolbox to test KMS connectivity before applying to production:
+Check the operator logs for KMS-related errors after applying the configuration:
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph config-key get dm-crypt/osd/0/luks/key
+kubectl logs -n rook-ceph -l app=rook-ceph-operator --tail=100 | grep -i kms
 ```
 
-If the key retrieval fails, recheck the `connectionDetails` fields and the token secret content.
+If errors appear, recheck the `connectionDetails` fields and the token secret content.
 
 ## Required vs Optional Fields
 
@@ -126,11 +123,11 @@ Required fields (all providers):
 
 Optional/provider-specific fields:
   VAULT_*      - Only for Vault provider
-  IBM_KP_*     - Only for IBM Key Protect
+  IBM_KP_*, IBM_BASE_URL, IBM_TOKEN_URL - Only for IBM Key Protect
   AZURE_*      - Only for Azure Key Vault
   KMIP_*       - Only for KMIP-compliant servers
 ```
 
 ## Summary
 
-The `security.kms` section of the CephCluster CRD is the single place where OSD-level KMS integration is configured. Each KMS provider has specific connection detail fields that map to environment variables consumed by the Ceph MGR. Correctly populating these fields along with the `tokenSecretName` for credential lookup enables automatic key management for all encrypted OSDs in the cluster.
+The `security.kms` section of the CephCluster CRD is the single place where OSD-level KMS integration is configured. Each KMS provider has specific connection detail fields that are passed as environment variables to the OSD encryption init container, which fetches the Key Encryption Key before the OSD starts. Correctly populating these fields along with the `tokenSecretName` for credential lookup enables automatic key management for all encrypted OSDs in the cluster.
