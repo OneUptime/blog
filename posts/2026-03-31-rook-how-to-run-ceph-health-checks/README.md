@@ -78,7 +78,7 @@ Verify all OSDs are up and in:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd stat
 ```
 
-Get per-OSD status with device class and utilization:
+Get per-OSD status with host and utilization:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd status
