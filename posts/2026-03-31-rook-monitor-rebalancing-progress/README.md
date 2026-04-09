@@ -72,7 +72,7 @@ import json, sys
 status = json.load(sys.stdin)
 pgmap = status.get('pgmap', {})
 print(f\"Degraded objects: {pgmap.get('degraded_objects', 0)}\")
-print(f\"Misplaced objects: {pgmap.get('misplace_objects', 0)}\")
+print(f\"Misplaced objects: {pgmap.get('misplaced_objects', 0)}\")
 print(f\"Recovery rate: {pgmap.get('recovering_bytes_per_sec', 0) / 1e6:.1f} MB/s\")
 "
 ```
@@ -91,14 +91,18 @@ REMAINING_BYTES=$(echo "$STATUS" | python3 -c "
 import json,sys
 s = json.load(sys.stdin)
 pg = s.get('pgmap', {})
-print(pg.get('misplace_bytes', 0) + pg.get('degraded_bytes', 0))
+misplaced = pg.get('misplaced_objects', 0)
+degraded = pg.get('degraded_objects', 0)
+total_objects = max(pg.get('num_objects', 1), 1)
+data_bytes = pg.get('data_bytes', 0)
+print(int((misplaced + degraded) / total_objects * data_bytes))
 " 2>/dev/null || echo 0)
 
 RATE_BPS=$(echo "$STATUS" | python3 -c "
 import json,sys
 s = json.load(sys.stdin)
 pg = s.get('pgmap', {})
-print(pg.get('recovering_bytes_per_sec', 0))
+print(int(pg.get('recovering_bytes_per_sec', 0)))
 " 2>/dev/null || echo 1)
 
 if [ "$RATE_BPS" -gt 0 ] 2>/dev/null; then
@@ -154,7 +158,7 @@ rate(ceph_osd_recovery_bytes[5m])
 ceph_pg_degraded
 
 # OSD fill levels during rebalancing
-ceph_osd_utilization
+ceph_osd_stat_bytes_used / ceph_osd_stat_bytes
 ```
 
 Sample Grafana alert rule:
