@@ -57,10 +57,8 @@ metadata:
   name: rook-ceph-operator-config
   namespace: rook-ceph
 data:
-  # Enable network fencing support
-  CSI_ENABLE_NETWORKFENCE: "true"
-  # Enable CSI addons
-  CSI_ADDONS_ENABLE: "true"
+  # Enable CSI addons (includes network fencing support)
+  CSI_ENABLE_CSIADDONS: "true"
 ```
 
 ```bash
@@ -77,9 +75,9 @@ After enabling CSI addons, each node should have a `CSIAddonsNode` resource:
 kubectl get csiaddonsnode -A
 
 # Example output:
-# NAMESPACE   NAME            AGE   NETWORKFENCE
-# rook-ceph   k8s-node-01     10m   Supported
-# rook-ceph   k8s-node-02     10m   Supported
+# NAMESPACE   NAME            AGE
+# rook-ceph   k8s-node-01     10m
+# rook-ceph   k8s-node-02     10m
 ```
 
 ## Step 4: Create a NetworkFence to Block a Failed Node
@@ -126,9 +124,9 @@ ceph osd blocklist ls
 # 192.168.1.101:0/0 2026-03-31T15:00:00.000000+0000
 ```
 
-## Step 6: Automate Fencing with a NetworkFencePolicy
+## Step 6: Create a NetworkFenceClass for Reusable Configuration
 
-For automated fencing based on node conditions, use the NetworkFencePolicy:
+For reusable fencing configuration, create a `NetworkFenceClass`:
 
 ```yaml
 # network-fence-policy.yaml
@@ -137,7 +135,7 @@ kind: NetworkFenceClass
 metadata:
   name: rbd-network-fence
 spec:
-  driver: rook-ceph.rbd.csi.ceph.com
+  provisioner: rook-ceph.rbd.csi.ceph.com
   parameters:
     secret-name: rook-csi-rbd-provisioner
     secret-namespace: rook-ceph
