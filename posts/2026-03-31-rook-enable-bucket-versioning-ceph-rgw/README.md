@@ -55,7 +55,7 @@ aws s3 cp file.txt s3://my-versioned-bucket/file.txt \
 # List all versions
 aws s3api list-object-versions \
   --bucket my-versioned-bucket \
-  --key file.txt \
+  --prefix file.txt \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
