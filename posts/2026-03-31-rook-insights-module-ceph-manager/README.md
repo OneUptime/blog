@@ -28,22 +28,23 @@ Generate a formatted insights report showing recent cluster health history:
 ceph insights
 ```
 
-Example output includes timestamped health check summaries:
+Example output includes current health and a history of health checks:
 
 ```json
 {
   "version": 1,
   "health": {
-    "2026-03-31 09:00:00": {
+    "current": {
       "status": "HEALTH_OK",
       "checks": {}
     },
-    "2026-03-31 08:00:00": {
-      "status": "HEALTH_WARN",
+    "history": {
       "checks": {
         "OSD_DOWN": {
           "severity": "HEALTH_WARN",
-          "summary": {"message": "1 osds down"}
+          "summary": [
+            {"message": "1 osds down"}
+          ]
         }
       }
     }
@@ -51,40 +52,30 @@ Example output includes timestamped health check summaries:
 }
 ```
 
-## Filtering by Time Range
+## Report Time Window
 
-Limit the report to a specific time window:
-
-```bash
-ceph insights --since "2026-03-31 06:00:00"
-```
+The insights report covers the last 24 hours of health data. This window is hardcoded and cannot be adjusted via command-line flags.
 
 ## Clearing Historical Data
 
-Remove accumulated insights history:
+Remove accumulated insights history by specifying the number of hours of history to retain:
 
 ```bash
-ceph insights prune-health
+ceph insights prune-health 0
 ```
 
-This is useful after major cluster changes to start a fresh baseline.
+Passing `0` clears all health data. This is useful after major cluster changes to start a fresh baseline.
 
-## Configuring the Collection Interval
+## Data Collection and Retention
 
-The insights module stores health data hourly by default. Each data point represents a one-hour bucket of cluster health. Configure how much history to retain:
-
-```bash
-ceph config set mgr mgr/insights/max_health_period 604800
-```
-
-This sets the maximum retention to 7 days (604800 seconds).
+The insights module stores health data in hourly buckets. Each data point represents a one-hour slot of cluster health. The retention period is 30 hours, after which older data is automatically pruned.
 
 ## Use Case: Post-Incident Review
 
 When an OSD failure occurs, use insights to check what health warnings preceded it:
 
 ```bash
-ceph insights --since "2026-03-31 00:00:00" | python3 -m json.tool | grep -A5 "HEALTH_WARN"
+ceph insights | python3 -m json.tool | grep -A5 "HEALTH_WARN"
 ```
 
 This surfaces any early warning signs such as slow requests, clock skew, or PG degradation that occurred before the failure.
@@ -94,13 +85,13 @@ This surfaces any early warning signs such as slow requests, clock skew, or PG d
 Pair insights with crash reports for a complete incident timeline:
 
 ```bash
-# Get the time of a crash
+# List recent crash reports
 ceph crash ls
 
-# Review cluster health at that time using insights
-ceph insights --since "2026-03-31 08:00:00"
+# Review cluster health around the time of the crash
+ceph insights
 ```
 
 ## Summary
 
-The Ceph Manager Insights module captures periodic health snapshots of your cluster, building a historical record useful for trend analysis and incident post-mortems. Enabling it requires a single command, and the `ceph insights` command retrieves a time-ranged view of cluster health changes, helping operators understand the sequence of events leading to any cluster issue.
+The Ceph Manager Insights module captures periodic health snapshots of your cluster, building a historical record useful for trend analysis and incident post-mortems. Enabling it requires a single command, and the `ceph insights` command retrieves a report covering the last 24 hours of cluster health changes, helping operators understand the sequence of events leading to any cluster issue.
