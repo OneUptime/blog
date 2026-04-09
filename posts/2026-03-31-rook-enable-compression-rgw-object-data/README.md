@@ -32,17 +32,9 @@ ceph osd pool set default.rgw.buckets.data compression_algorithm zstd
 
 This transparently compresses all RGW object data without RGW configuration changes.
 
-## Method 2: RGW-Level Compression Plugin
+## Method 1b: Pool-Level Compression via Rook CephObjectStore
 
-RGW supports a compression plugin that compresses data at the RGW tier, allowing more control.
-
-### Configure the Compression Plugin
-
-```bash
-ceph config set client.rgw rgw_compression_type zlib
-```
-
-Or for Rook via CephObjectStore:
+For Rook-managed clusters, configure BlueStore pool-level compression via the CephObjectStore CR:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -59,18 +51,33 @@ spec:
     failureDomain: host
     replicated:
       size: 3
-    compressionMode: aggressive
     parameters:
+      compression_mode: aggressive
       compression_algorithm: zstd
 ```
+
+This sets BlueStore compression on the underlying data pool, the same as Method 1 but configured declaratively through Rook.
+
+## Method 2: RGW-Level Compression Plugin
+
+RGW supports a compression plugin that compresses data at the RGW daemon tier before writing to the pool. This is configured per zone placement target:
+
+```bash
+radosgw-admin zone placement modify \
+  --rgw-zone default \
+  --placement-id default-placement \
+  --compression zstd
+```
+
+It is typical to enable either pool-level or RGW-level compression, not both. RGW-level compression is preferable when RGW nodes have more available CPU than OSD nodes.
 
 ## Configuring Compression per Storage Class
 
 For fine-grained control, use RGW storage classes:
 
 ```bash
-radosgw-admin zonegroup placement modify \
-  --rgw-zonegroup default \
+radosgw-admin zone placement modify \
+  --rgw-zone default \
   --placement-id default-placement \
   --storage-class STANDARD \
   --compression zstd
@@ -105,7 +112,7 @@ aws s3api head-object --bucket mybucket --key test.json \
 ceph df detail | grep "rgw.buckets"
 ```
 
-Compare `COMPRESS_UNDER_BYTES` vs `COMPRESS_BYTES_USED` for the RGW data pool.
+Compare `UNDER COMPR` vs `USED COMPR` columns for the RGW data pool.
 
 Using radosgw-admin:
 
@@ -119,4 +126,4 @@ If clients upload already-compressed content (zip, gz), disable compression for 
 
 ## Summary
 
-Enable RGW object compression either at the pool level via `ceph osd pool set` with BlueStore compression settings, or at the RGW tier using `rgw_compression_type` or per-storage-class configuration. Pool-level compression with zstd in `aggressive` mode is the simplest approach and works transparently for all RGW object data. Monitor savings with `ceph df detail` on the RGW data pool.
+Enable RGW object compression either at the pool level via `ceph osd pool set` with BlueStore compression settings, or at the RGW tier using `radosgw-admin zone placement modify` with per-storage-class configuration. Pool-level compression with zstd in `aggressive` mode is the simplest approach and works transparently for all RGW object data. Monitor savings with `ceph df detail` on the RGW data pool.
