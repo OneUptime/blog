@@ -38,7 +38,7 @@ ceph mon stat
 ceph quorum_status
 ```
 
-If only one monitor starts but quorum requires 3, start remaining monitors:
+If only one monitor starts but quorum requires a majority (2 out of 3), start remaining monitors:
 
 ```bash
 # On monitor nodes 2 and 3
@@ -103,7 +103,7 @@ Trigger deep scrub to verify data integrity after power loss:
 
 ```bash
 ceph osd pool ls | xargs -I{} ceph osd pool unset {} nodeep-scrub
-ceph osd pool ls | xargs -I{} ceph osd pool deep-scrub {}
+for osd in $(ceph osd ls); do ceph osd deep-scrub osd."$osd"; done
 ```
 
 Watch for scrub errors:
