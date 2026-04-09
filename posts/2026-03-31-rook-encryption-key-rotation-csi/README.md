@@ -82,8 +82,8 @@ kubectl describe encryptionkeyrotationjob rotate-key-my-pvc -n my-app
 When the `EncryptionKeyRotationJob` runs:
 
 1. The CSI-Addons sidecar contacts the KMS (Vault, Kubernetes Secret) to generate or retrieve a new encryption key
-2. The LUKS volume header on the RBD image is updated with the new key via `cryptsetup luksChangeKey`
-3. The old key is deactivated in the KMS
+2. The new key is added to a free LUKS key slot on the RBD image via `cryptsetup luksAddKey`, then the old key slot is removed via `cryptsetup luksKillSlot`
+3. The KMS is updated with the new key reference
 4. The operation is performed online while the volume is mounted, without interrupting the workload
 
 This is possible because LUKS supports multiple key slots, allowing key replacement without re-encrypting the entire volume data.
