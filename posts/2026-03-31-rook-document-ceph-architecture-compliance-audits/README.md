@@ -16,15 +16,15 @@ Generate a current snapshot of your Ceph cluster structure:
 
 ```bash
 # Export cluster status
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph status --format json > cluster-status.json
 
 # Export OSD tree
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph osd tree --format json > osd-tree.json
 
 # Export pool configuration
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph osd dump --format json > osd-dump.json
 ```
 
@@ -89,18 +89,18 @@ OUTPUT_DIR="./audit-evidence-$(date +%Y%m%d)"
 mkdir -p "$OUTPUT_DIR"
 
 # Encryption status
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph health detail > "$OUTPUT_DIR/health-detail.txt"
 
 # Configuration values
 for key in ms_cluster_mode ms_service_mode rgw_enable_ops_log; do
-  val=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  val=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
     ceph config dump | grep "$key")
   echo "$key: $val" >> "$OUTPUT_DIR/security-config.txt"
 done
 
 # User and access listing
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   radosgw-admin user list > "$OUTPUT_DIR/rgw-users.txt"
 
 echo "Audit evidence collected in $OUTPUT_DIR"
@@ -139,12 +139,12 @@ REPORT="compliance-report-$DATE.md"
 echo "# Ceph Compliance Report - $DATE" > "$REPORT"
 echo "" >> "$REPORT"
 echo "## Cluster Health" >> "$REPORT"
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph health >> "$REPORT"
 
 echo "" >> "$REPORT"
 echo "## Encryption Status" >> "$REPORT"
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph config dump | grep -E "ms_.*mode|encrypt" >> "$REPORT"
 
 echo "Report generated: $REPORT"
