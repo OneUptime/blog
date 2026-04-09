@@ -52,7 +52,7 @@ Check for permission errors (usually RBAC misconfiguration):
 kubectl -n rook-ceph logs deployment/rook-ceph-operator --tail=200 | grep -i "forbidden\|unauthorized\|permission"
 ```
 
-If you see `forbidden: User "system:serviceaccount:rook-ceph:rook-ceph-operator" cannot ...`, re-apply the RBAC resources:
+If you see `forbidden: User "system:serviceaccount:rook-ceph:rook-ceph-system" cannot ...`, re-apply the RBAC resources:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.16/deploy/examples/common.yaml
@@ -97,13 +97,13 @@ kubectl -n rook-ceph describe cephblockpool replicapool
 
 ## Step 4 - Force Reconciliation
 
-If the operator is running but a resource is stuck, force reconciliation by adding an annotation:
+If the operator is running but a resource is stuck, force reconciliation by toggling the do-not-reconcile label:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/do-not-reconcile=true --overwrite
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/do-not-reconcile-
+kubectl -n rook-ceph label cephcluster rook-ceph \
+  ceph.rook.io/do-not-reconcile=true --overwrite
+kubectl -n rook-ceph label cephcluster rook-ceph \
+  ceph.rook.io/do-not-reconcile-
 ```
 
 Alternatively, restart the operator pod to reset the reconciliation queue:
@@ -136,26 +136,26 @@ kubectl -n rook-ceph patch cephcluster rook-ceph \
 
 Use this only when you intentionally want to remove the resource and the operator cannot do it automatically.
 
-## Step 6 - Diagnose Leader Election Issues
+## Step 6 - Diagnose Operator Pod Scheduling Issues
 
-The Rook operator uses a leader election lease. If it fails to acquire the lease (for example after a crash), it will not start reconciling.
+The Rook operator deployment uses `replicas: 1` with `strategy: Recreate`, so only one operator pod runs at a time. If the old pod is stuck terminating (for example due to node failures or stuck volume unmounts), the replacement pod cannot be scheduled.
 
-Check the lease object:
+Check if a pod is stuck in `Terminating`:
 
 ```bash
-kubectl -n rook-ceph get lease rook-ceph-operator -o yaml
+kubectl -n rook-ceph get pods -l app=rook-ceph-operator
 ```
 
-If the lease is held by a crashed pod, delete it to force re-election:
+If a pod is stuck terminating, force-delete it:
 
 ```bash
-kubectl -n rook-ceph delete lease rook-ceph-operator
+kubectl -n rook-ceph delete pod -l app=rook-ceph-operator --force --grace-period=0
 ```
 
-Then restart the operator:
+Then verify the new pod starts:
 
 ```bash
-kubectl -n rook-ceph rollout restart deployment/rook-ceph-operator
+kubectl -n rook-ceph rollout status deployment/rook-ceph-operator
 ```
 
 ## Step 7 - Operator ConfigMap Issues
@@ -172,13 +172,13 @@ Common invalid settings that cause failures:
 - Wrong boolean string (use `"true"` not `true`)
 - CSI image overrides pointing to non-existent images
 
-Reset to defaults by deleting and recreating the ConfigMap:
+Reset to defaults by deleting the ConfigMap:
 
 ```bash
 kubectl -n rook-ceph delete configmap rook-ceph-operator-config
 ```
 
-Rook will recreate it with defaults when the operator restarts.
+The operator will fall back to built-in defaults and environment variables when the ConfigMap is absent. You do not need to recreate it for the operator to start.
 
 ## Step 8 - Enable Operator Debug Logging
 
@@ -204,4 +204,4 @@ kubectl -n rook-ceph set env deployment/rook-ceph-operator \
 
 ## Summary
 
-Rook-Ceph operator failures typically fall into three categories: CrashLoopBackOff (check previous logs for the root cause), reconciliation errors on CRDs (check CRD status conditions), and stuck finalizers (manually remove if operator is unavailable). Common causes include RBAC misconfiguration, stale CRDs after upgrades, invalid ConfigMap values, and leader election lock contention. Restarting the operator pod resolves most transient issues, while RBAC and CRD mismatches require re-applying the correct manifests.
+Rook-Ceph operator failures typically fall into three categories: CrashLoopBackOff (check previous logs for the root cause), reconciliation errors on CRDs (check CRD status conditions), and stuck finalizers (manually remove if operator is unavailable). Common causes include RBAC misconfiguration, stale CRDs after upgrades, invalid ConfigMap values, and stuck terminating pods blocking replacement. Restarting the operator pod resolves most transient issues, while RBAC and CRD mismatches require re-applying the correct manifests.
