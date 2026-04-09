@@ -36,12 +36,12 @@ ceph osd pool ls detail | grep pg_num
 List all pools with their PG counts:
 
 ```bash
-ceph osd dump | grep "^pool" | awk '{print $3, $7}'
+ceph osd dump | grep "^pool" | awk '{print $3, $14}'
 ```
 
 ## Why Power-of-Two Matters
 
-Ceph uses a modulo operation to map PG IDs to CRUSH buckets. With power-of-two PG counts, this maps to a bit-AND operation which is faster and produces perfectly balanced mappings. Non-power-of-two counts produce slight imbalances in how many objects end up in each PG.
+Ceph uses a bit-masking operation to map objects to placement groups. With power-of-two PG counts, the bitmask produces a perfectly balanced mapping where each PG receives an equal share of objects. Non-power-of-two counts require remapping some hash values, producing slight imbalances in how many objects end up in each PG.
 
 ## Fixing the Issue
 
@@ -67,7 +67,9 @@ watch ceph -s
 
 Wait until there are no PGs in `splitting` state.
 
-### Step 3 - Update pgp_num to Match
+### Step 3 - Update pgp_num to Match (Pre-Nautilus Only)
+
+Starting with Ceph Nautilus, `pgp_num` automatically tracks `pg_num` changes, so this step is only needed on older clusters:
 
 ```bash
 ceph osd pool set my-pool pgp_num 128
@@ -86,11 +88,16 @@ The autoscaler will automatically pick power-of-two values when adjusting PG cou
 
 ## Checking the Target
 
-If the autoscaler has a target set that is not a power of two, update it:
+Check the autoscaler's current targets with:
 
 ```bash
-ceph osd pool get my-pool pg_num_target
-ceph osd pool set my-pool pg_num_target 128
+ceph osd pool autoscale-status
+```
+
+If the autoscaler target for your pool is not a power of two, you can override `pg_num` directly:
+
+```bash
+ceph osd pool set my-pool pg_num 128
 ```
 
 ## Verifying Resolution
@@ -104,4 +111,4 @@ ceph osd pool ls detail | grep my-pool
 
 ## Summary
 
-`POOL_PG_NUM_NOT_POWER_OF_TWO` is a soft warning that a pool's PG count is not a power of two, causing minor data distribution inefficiency. Fix it by adjusting `pg_num` to the nearest power of two, waiting for PG splitting to complete, then updating `pgp_num`. Enable the PG autoscaler to automatically maintain power-of-two PG counts going forward.
+`POOL_PG_NUM_NOT_POWER_OF_TWO` is a soft warning that a pool's PG count is not a power of two, causing minor data distribution inefficiency. Fix it by adjusting `pg_num` to the nearest power of two and waiting for PG splitting to complete. On Nautilus and later, `pgp_num` adjusts automatically. Enable the PG autoscaler to automatically maintain power-of-two PG counts going forward.
