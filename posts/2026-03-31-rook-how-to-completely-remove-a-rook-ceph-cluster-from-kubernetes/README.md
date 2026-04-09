@@ -30,16 +30,16 @@ kubectl delete pvc <pvc-name> -n <namespace>
 
 Wait for all PVs to be released or deleted.
 
-## Step 2 - Delete Rook CRDs
+## Step 2 - Delete Ceph Custom Resources
 
-Delete the Ceph-specific CRDs in the correct order:
+Delete the Ceph custom resources in the correct order:
 
 ```bash
 kubectl -n rook-ceph delete cephblockpool --all
 kubectl -n rook-ceph delete cephfilesystem --all
 kubectl -n rook-ceph delete cephobjectstore --all
 kubectl -n rook-ceph delete cephobjectstoreuser --all
-kubectl -n rook-ceph delete objectbucketclaim --all-namespaces
+kubectl delete objectbucketclaim --all --all-namespaces
 ```
 
 ## Step 3 - Remove Finalizers from the CephCluster
@@ -79,11 +79,19 @@ Or delete the namespace:
 kubectl delete namespace rook-ceph
 ```
 
-If the namespace is stuck in `Terminating`, remove the finalizers from all remaining resources:
+If the namespace is stuck in `Terminating`, first identify remaining resources:
 
 ```bash
 kubectl api-resources --verbs=list --namespaced -o name | \
   xargs -n 1 kubectl get --show-kind --ignore-not-found -n rook-ceph
+```
+
+Then remove the namespace finalizer to allow deletion:
+
+```bash
+kubectl get namespace rook-ceph -o json | \
+  jq '.spec.finalizers = []' | \
+  kubectl replace --raw "/api/v1/namespaces/rook-ceph/finalize" -f -
 ```
 
 ## Step 5 - Clean Up Host Directories
@@ -140,12 +148,15 @@ sudo dd if=/dev/zero of=/dev/sdb bs=1M count=100 oflag=direct,dsync
 sudo blkdiscard /dev/sdb
 ```
 
-Using a Rook cleanup DaemonSet that targets specific devices:
+To wipe disks without SSH access to nodes, use a privileged DaemonSet or Job. Note that `sgdisk` is not available in minimal images like `busybox` - use an image like `ubuntu` or `alpine` with `sgdisk` installed:
 
 ```bash
+# Example: run a privileged pod on a specific node
 DISK="/dev/sdb"
-kubectl -n rook-ceph exec -it <node-pod> -- \
-  sgdisk --zap-all $DISK
+NODE="<node-name>"
+kubectl run disk-wipe --rm -it --restart=Never --image=ubuntu \
+  --overrides='{"spec":{"nodeName":"'"$NODE"'","containers":[{"name":"wipe","image":"ubuntu","securityContext":{"privileged":true}}]}}' \
+  -- bash -c "apt-get update && apt-get install -y gdisk && sgdisk --zap-all $DISK"
 ```
 
 ## Step 7 - Delete StorageClasses
