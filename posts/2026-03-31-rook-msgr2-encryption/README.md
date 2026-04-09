@@ -93,7 +93,7 @@ Also check the connection count in Mon status:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mon.* connection dump | grep -E "v2|secure"
+  ceph tell mon.a messenger dump | grep -E "v2|secure"
 ```
 
 ## Checking Active Configuration via Ceph Config
@@ -139,7 +139,7 @@ spec:
       requireMsgr2: false
 ```
 
-Ceph performs a rolling config update without requiring daemon restarts.
+Rook performs rolling restarts of the Ceph daemons to apply the configuration change, since messenger mode settings are read at startup.
 
 ## Summary
 
