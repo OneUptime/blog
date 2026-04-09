@@ -31,7 +31,7 @@ flowchart LR
 
 - Two separate Rook-Ceph clusters (primary and secondary)
 - Network connectivity between the two clusters
-- Rook v1.7+ for CephRBDMirror CRD support
+- Rook v1.4+ for CephRBDMirror CRD support
 
 ## Step 1: Enable Mirroring on the Block Pool (Primary)
 
@@ -145,34 +145,21 @@ rbd mirror image enable replicapool/csi-vol-xxxxxx journal
 rbd mirror image status replicapool/csi-vol-xxxxxx
 ```
 
-## Step 5: Enable via StorageClass (Snapshot Mode)
+## Step 5: Enable Snapshot-Based Mirroring on Individual Images
 
-For snapshot-based mirroring (no journaling required), configure the StorageClass:
+For snapshot-based mirroring (no journaling required), enable it per-image with the `snapshot` mode instead of `journal`:
 
-```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: ceph-rbd-mirrored
-provisioner: rook-ceph.rbd.csi.ceph.com
-parameters:
-  clusterID: rook-ceph
-  pool: replicapool
-  imageFormat: "2"
-  imageFeatures: layering
-  # Enable snapshot-based mirroring for all new PVCs
-  mirroringMode: snapshot
-  schedulingInterval: 1h
-  schedulingStartTime: "00:00:00-05:00"
-  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
-  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
-  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
-  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-reclaimPolicy: Retain
-allowVolumeExpansion: true
+```bash
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
+
+# Enable mirroring on the image in snapshot mode (no journaling feature needed)
+rbd mirror image enable replicapool/csi-vol-xxxxxx snapshot
+
+# Check mirroring status
+rbd mirror image status replicapool/csi-vol-xxxxxx
 ```
+
+The snapshot schedule configured on the `CephBlockPool` in Step 1 (`snapshotSchedules`) will automatically create periodic snapshots for replication. Alternatively, use `mirroring.mode: pool` in the `CephBlockPool` spec to mirror all images in the pool automatically without per-image enablement.
 
 ## Monitor Mirroring Status
 
@@ -186,7 +173,7 @@ rbd mirror pool status replicapool
 rbd mirror image status replicapool/csi-vol-xxxxxx
 
 # Detailed peer info
-rbd mirror pool peer list replicapool
+rbd mirror pool info replicapool
 ```
 
 ## Failover Procedure
