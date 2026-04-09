@@ -69,7 +69,7 @@ spec:
 # overlays/staging/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 patches:
 - path: cluster-patch.yaml
@@ -102,7 +102,7 @@ patches:
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 patches:
 - path: cluster-patch.yaml
@@ -154,8 +154,7 @@ spec:
   source:
     repoURL: https://github.com/myorg/rook-kustomize
     path: overlays/production
-    kustomize:
-      version: v4.5.7
+    kustomize: {}
 ```
 
 ## Summary
