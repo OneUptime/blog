@@ -43,7 +43,7 @@ ceph pg stat
 
 ## Why Set noout Immediately
 
-By default, Ceph marks OSDs "out" after 10 minutes (`osd_mon_report_interval` + `mon_osd_down_out_interval`). When out, Ceph starts copying data to remaining OSDs. With multiple failures, this can overload surviving OSDs.
+By default, Ceph marks OSDs "out" after 10 minutes (`mon_osd_down_out_interval = 600s`) once they are reported as down. When out, Ceph starts copying data to remaining OSDs. With multiple failures, this can overload surviving OSDs.
 
 ```bash
 # Prevent auto-out during investigation
