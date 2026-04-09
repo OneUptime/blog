@@ -23,7 +23,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 Look for:
 
 ```text
-pgs: 32 active+clean, 4 stale+active+undersized, 2 activating
+pgs: 32 active+clean, 2 inactive+peering, 1 stale+inactive
 ```
 
 Get detailed PG information:
@@ -85,10 +85,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg <pgid> query
 This shows the current peer state for a specific PG. To force a repeer:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd force-create-pg <pgid>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg repeer <pgid>
 ```
 
-Use this with caution - it forces PG creation and may result in data loss if replicas are missing.
+This instructs Ceph to reset the peering process for the specified PG. It does not destroy data, but the PG will be temporarily unavailable while it re-peers.
 
 ## Step 5 - Check CRUSH Map Consistency
 
@@ -145,7 +145,7 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-osd -w
 After OSDs come back online, watch PG recovery:
 
 ```bash
-watch -n5 "kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status"
+watch -n5 "kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status"
 ```
 
 Recovery progress will show:
