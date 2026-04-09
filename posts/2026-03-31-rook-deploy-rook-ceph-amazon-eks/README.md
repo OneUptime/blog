@@ -76,7 +76,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v18.2.2
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -100,7 +100,26 @@ spec:
 kubectl apply -f cluster-eks.yaml
 ```
 
-## Step 4 - Create Storage Classes
+## Step 4 - Create a CephBlockPool and Storage Class
+
+Create a CephBlockPool before the StorageClass, since Rook does not create pools automatically:
+
+```yaml
+# blockpool.yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+```
+
+```bash
+kubectl apply -f blockpool.yaml
+```
 
 Create an RBD storage class for block volumes:
 
@@ -116,6 +135,12 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
@@ -125,6 +150,13 @@ kubectl apply -f storageclass-rbd.yaml
 ```
 
 ## Step 5 - Verify the Deployment
+
+Deploy the Rook toolbox to run Ceph commands:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
+kubectl -n rook-ceph rollout status deployment/rook-ceph-tools
+```
 
 Check cluster health:
 
