@@ -48,7 +48,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.0 perf dum
 
 This returns detailed performance counters for that specific OSD.
 
-### Flushing OSD Journals
+### Flushing OSD Journals (FileStore Only)
+
+Note: The `flush_journal` command only applies to OSDs using FileStore. Rook and modern Ceph deployments use BlueStore by default, which does not have a traditional journal.
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.0 flush_journal
@@ -56,9 +58,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.0 flush_jo
 
 ### Triggering a Scrub on a Specific OSD
 
+Scrub operations are not `ceph tell` subcommands. Use `ceph osd scrub` or `ceph pg scrub` instead:
+
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.0 scrub
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.0 deep_scrub
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd scrub 0
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd deep-scrub 0
 ```
 
 ### Wildcard - Send to All OSDs
@@ -107,10 +111,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mon.* version
 
 ## Sending Commands to MDS Daemons
 
-### Getting MDS Session Information
+### Listing MDS Client Sessions
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.0 session ls
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.0 client ls
 ```
 
 ### Getting MDS Cache Stats
@@ -140,8 +144,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.0 config s
 
 ### Listing Active Modules
 
+Module listing is a monitor command, not an admin socket command. Use `ceph mgr module ls` instead of `ceph tell`:
+
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mgr.* module ls
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mgr module ls
 ```
 
 ### Getting Manager Stats
