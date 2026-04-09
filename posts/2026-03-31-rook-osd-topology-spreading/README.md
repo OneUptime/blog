@@ -159,9 +159,12 @@ ceph osd crush move node-3 zone=zone-c
 ## Verify Spreading
 
 ```bash
-# Check OSD distribution across zones
-kubectl get pods -n rook-ceph -l app=rook-ceph-osd -o custom-columns=\
-NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.spec.nodeSelector.'topology\.kubernetes\.io/zone'
+# Check OSD pod distribution across nodes
+kubectl get pods -n rook-ceph -l app=rook-ceph-osd -o wide
+
+# Check which zone each OSD node belongs to
+kubectl get nodes -l topology.kubernetes.io/zone -o custom-columns=\
+NAME:.metadata.name,ZONE:.metadata.labels.'topology\.kubernetes\.io/zone'
 
 # Check current OSD placement
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph osd df tree
