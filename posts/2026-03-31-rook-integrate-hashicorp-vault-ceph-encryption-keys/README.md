@@ -82,14 +82,15 @@ metadata:
   namespace: rook-ceph
 spec:
   security:
-    keyManagementService:
-      enable: true
+    kms:
       connectionDetails:
         KMS_PROVIDER: "vault"
         VAULT_ADDR: "https://vault.example.com:8200"
+        VAULT_SECRET_ENGINE: "kv"
+        VAULT_BACKEND: "v2"
         VAULT_BACKEND_PATH: "rook/osd"
         VAULT_AUTH_METHOD: "kubernetes"
-        VAULT_AUTH_KUBERNETES_PATH: "kubernetes"
+        VAULT_AUTH_MOUNT_PATH: "kubernetes"
         VAULT_AUTH_KUBERNETES_ROLE: "rook-ceph-osd"
       tokenSecretName: ""
   storage:
@@ -125,7 +126,7 @@ vault audit enable file file_path=/var/log/vault/audit.log
 View audit logs to see when Ceph accessed keys:
 
 ```bash
-tail -f /var/log/vault/audit.log | jq 'select(.type == "request") | {time, path, operation: .request.operation}'
+tail -f /var/log/vault/audit.log | jq 'select(.type == "request") | {time, path: .request.path, operation: .request.operation}'
 ```
 
 ## Summary
