@@ -147,7 +147,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const WORKER_COUNT = 50;
+  const WORKER_COUNT = engine === 'codex' ? 5 : 50;
+  const TIMEOUT_MS = engine === 'codex' ? 10 * 60 * 1000 : 5 * 60 * 1000;
   let completed = 0;
   const total = postsToValidate.length;
 
@@ -187,24 +188,32 @@ async function main(): Promise<void> {
       const prompt = getPrompt(blog.post, postContent, blog.title, blog.tags);
 
       const cmd = engine === 'codex' ? 'codex' : 'claude';
+      const useStdin = engine === 'codex';
       const args = engine === 'codex'
-        ? ['exec', '--full-auto', prompt]
+        ? ['exec', '--full-auto', '-']
         : ['-p', '--dangerously-skip-permissions', prompt];
 
       const child = spawn(cmd, args, {
         cwd: process.cwd(),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [useStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       });
+
+      if (useStdin) {
+        // Send prompt via stdin to avoid OS argument length limits
+        child.stdin?.write(prompt);
+        child.stdin?.end();
+      }
 
       let stdoutData = '';
       let stderrData = '';
       child.stdout?.on('data', (data: Buffer) => { stdoutData += data.toString(); });
       child.stderr?.on('data', (data: Buffer) => { stderrData += data.toString(); });
 
+      const timeoutMinutes = TIMEOUT_MS / 60000;
       const timeout = setTimeout(() => {
-        console.log(`\n[TIMEOUT] ${blog.post}: killed after 5 minutes`);
+        console.log(`\n[TIMEOUT] ${blog.post}: killed after ${timeoutMinutes} minutes`);
         child.kill();
-      }, 5 * 60 * 1000); // 5 minute timeout per post
+      }, TIMEOUT_MS);
 
       child.on('close', (code) => {
         clearTimeout(timeout);
