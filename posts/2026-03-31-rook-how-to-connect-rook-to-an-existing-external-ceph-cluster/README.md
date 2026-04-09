@@ -16,7 +16,7 @@ Rook can operate in two modes: it can deploy and manage a Ceph cluster entirely 
 
 Before connecting Rook to an external Ceph cluster, ensure you have:
 
-- A running Ceph cluster (Ceph Nautilus or later)
+- A running Ceph cluster (Ceph Pacific v16.2.x or later)
 - `kubectl` access to your Kubernetes cluster
 - Rook operator deployed in your Kubernetes cluster
 - Network connectivity between Kubernetes nodes and Ceph monitors
@@ -50,6 +50,8 @@ spec:
   external:
     enable: true
   dataDirHostPath: /var/lib/rook
+  crashCollector:
+    disable: true
   cephVersion:
     image: quay.io/ceph/ceph:v18
 ```
