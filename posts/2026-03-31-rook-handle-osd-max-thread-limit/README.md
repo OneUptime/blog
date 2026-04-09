@@ -10,7 +10,7 @@ Description: Diagnose and resolve Ceph OSD pods hitting the maximum thread limit
 
 ## Understanding the OSD Thread Limit Problem
 
-Ceph OSDs are multi-threaded processes that spawn threads for each client operation, recovery task, heartbeat, and internal service. The Linux kernel enforces a per-process thread limit controlled by `ulimit -u` (user process limit) and the kernel `threads-max` parameter. When an OSD pod hits this limit, new operations cannot create worker threads, causing request queuing, slow ops warnings, and eventually OSD crashes or HEALTH_ERR alerts.
+Ceph OSDs are multi-threaded processes that spawn threads for each client operation, recovery task, heartbeat, and internal service. The Linux kernel enforces a per-user process and thread limit controlled by `ulimit -u` (RLIMIT_NPROC) and a system-wide limit via the `kernel.threads-max` sysctl parameter. When an OSD pod hits either limit, new operations cannot create worker threads, causing request queuing, slow ops warnings, and eventually OSD crashes or HEALTH_ERR alerts.
 
 ## Identifying the Problem
 
@@ -33,9 +33,9 @@ kubectl -n rook-ceph exec -it rook-ceph-osd-<id>-<suffix> -- \
   cat /proc/1/status | grep Threads
 ```
 
-## Increasing Thread Limits via Pod Security
+## Ensuring Sufficient Resources for OSD Pods
 
-Rook OSD pods inherit the node's process limits. To raise limits, update the `CephCluster` resource to set custom resource limits:
+Thread-heavy OSDs need adequate CPU and memory to handle their workload efficiently. While resource limits do not control the thread creation limit itself (that is governed by `RLIMIT_NPROC` at the node level and `kernel.threads-max`), ensuring OSD pods have enough CPU and memory prevents resource starvation that compounds thread pressure. Update the `CephCluster` resource to set appropriate resource allocations:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
