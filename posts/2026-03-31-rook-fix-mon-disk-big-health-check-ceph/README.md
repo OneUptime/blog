@@ -71,11 +71,16 @@ Verify the current setting:
 ceph config get mon mon_min_osdmap_epochs
 ```
 
-Force trimming of old OSD map epochs:
+After lowering the retention setting, monitors will automatically trim old epochs. Verify the current OSD map epoch with:
 
 ```bash
-ceph osd get-epoch
-ceph tell mon.* osdmap trim --epoch <old-epoch>
+ceph osd stat
+```
+
+Then compact the store to reclaim space:
+
+```bash
+ceph tell mon.* compact
 ```
 
 ## Reducing PG Map History
