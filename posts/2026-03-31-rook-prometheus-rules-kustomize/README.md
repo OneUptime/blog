@@ -56,7 +56,7 @@ spec:
 
 ## Add a Custom Alerting Rule
 
-Add a custom rule for high write latency using a JSON patch:
+Add a custom rule for high write latency as a separate PrometheusRule resource:
 
 ```yaml
 # rook-monitoring/overlays/production/custom-rules.yaml
@@ -89,15 +89,14 @@ spec:
 # rook-monitoring/overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
+- custom-rules.yaml
 patches:
 - path: patch-pool-threshold.yaml
   target:
     kind: PrometheusRule
     name: prometheus-ceph-rules
-resources:
-- custom-rules.yaml
 commonLabels:
   environment: production
 ```
