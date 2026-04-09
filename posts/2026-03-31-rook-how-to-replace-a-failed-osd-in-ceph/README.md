@@ -144,12 +144,12 @@ If recovery is impacting production I/O:
 
 ```bash
 # Reduce recovery priority
-ceph osd set-option osd_recovery_op_priority 1
-ceph osd set-option osd_recovery_max_active 1
+ceph config set osd osd_recovery_op_priority 1
+ceph config set osd osd_recovery_max_active 1
 
 # Restore defaults once recovery is done
-ceph osd set-option osd_recovery_op_priority 3
-ceph osd set-option osd_recovery_max_active 3
+ceph config set osd osd_recovery_op_priority 3
+ceph config set osd osd_recovery_max_active 3
 ```
 
 ## Verifying Full Recovery
