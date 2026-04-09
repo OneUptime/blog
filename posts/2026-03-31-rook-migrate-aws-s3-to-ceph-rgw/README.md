@@ -48,6 +48,7 @@ kubectl exec -it rclone-migrator -- sh
 
 ```bash
 # Create rclone config inside the pod
+mkdir -p /root/.config/rclone
 cat << EOF > /root/.config/rclone/rclone.conf
 [aws-s3]
 type = s3
@@ -98,7 +99,7 @@ rclone check aws-s3:my-app-data ceph-rgw:my-app-data
 Run a delta sync to catch objects added after the initial copy:
 
 ```bash
-# Sync changes (only copies new/modified objects)
+# Sync changes (copies new/modified objects and deletes destination objects not in source)
 rclone sync aws-s3:my-app-data ceph-rgw:my-app-data \
   --transfers=16 \
   --progress
@@ -140,7 +141,7 @@ rclone check aws-s3:my-app-data ceph-rgw:my-app-data --one-way
 For large objects migrated with multipart, verify integrity:
 
 ```bash
-# List any incomplete multipart uploads in Ceph
+# List objects in the bucket to verify migration
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin bucket list --bucket=my-app-data --allow-unordered
 ```
