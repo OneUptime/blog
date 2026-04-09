@@ -10,7 +10,7 @@ Description: Configure Horizontal Pod Autoscaling for Rook-Ceph RGW gateways and
 
 ## How HPA Works with Rook-Ceph
 
-Rook-Ceph supports Horizontal Pod Autoscaling for two key scalable components: RGW (RadosGW) object store gateways and MDS (Metadata Server) daemons for CephFS. When traffic increases, HPA adds more RGW instances to handle S3 API requests. Similarly, when CephFS metadata operations spike, HPA can scale the active MDS count.
+Rook-Ceph supports Horizontal Pod Autoscaling for RGW (RadosGW) object store gateways. When traffic increases, HPA adds more RGW instances to handle S3 API requests. For MDS (Metadata Server) daemons, scaling is controlled through the CephFilesystem CR rather than HPA, because Rook creates a separate Deployment per MDS daemon (each with one replica).
 
 ```mermaid
 flowchart TD
@@ -135,39 +135,33 @@ Check current replica count and metric values:
 kubectl -n rook-ceph describe hpa rook-ceph-rgw-hpa
 ```
 
-## Step 4 - Create HPA for MDS (CephFS Metadata Server)
+## Step 4 - Scale MDS (CephFS Metadata Server)
 
-MDS daemons serve CephFS metadata requests. Scale the active MDS count based on load.
-
-First, check the MDS deployment name:
-
-```bash
-kubectl -n rook-ceph get deployment | grep mds
-```
-
-Create an HPA for MDS:
+MDS daemons serve CephFS metadata requests. Unlike RGW, Rook creates a separate Deployment for each MDS daemon with `replicas: 1`, so standard HPA cannot be used to scale MDS. Instead, MDS scaling is controlled through the `activeCount` field in the CephFilesystem CR:
 
 ```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystem
 metadata:
-  name: rook-ceph-mds-hpa
+  name: myfs
   namespace: rook-ceph
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: rook-ceph-mds-myfs-a
-  minReplicas: 1
-  maxReplicas: 4
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 75
+  metadataPool:
+    replicated:
+      size: 3
+  dataPools:
+    - replicated:
+        size: 3
+  metadataServer:
+    activeCount: 2
+    activeStandby: true
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
 ```
+
+Increase `activeCount` to add more active MDS daemons. Rook creates additional MDS Deployments to match the desired count. Set `activeStandby: true` so each active MDS has a standby ready for failover.
 
 ## Step 5 - Custom Metrics HPA with KEDA
 
@@ -197,7 +191,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus-operated.monitoring.svc:9090
-        metricName: rgw_requests_total
         query: |
           sum(rate(ceph_rgw_req[5m]))
         threshold: "500"
@@ -234,4 +227,4 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-rgw -w
 
 ## Summary
 
-Rook-Ceph RGW and MDS support Horizontal Pod Autoscaling by attaching an HPA to the Rook-managed Deployments. For CPU/memory-based scaling, use standard Kubernetes HPA with the Metrics Server. For custom metric scaling (RGW requests/sec, IOPS, etc.), use KEDA with Prometheus as the metrics source. Set the CephObjectStore `instances` to match HPA's minimum replica count to prevent Rook reconciliation from overriding the HPA-adjusted replica count.
+Rook-Ceph RGW supports Horizontal Pod Autoscaling by attaching an HPA to the Rook-managed Deployment. For CPU/memory-based scaling, use standard Kubernetes HPA with the Metrics Server. For custom metric scaling (RGW requests/sec, IOPS, etc.), use KEDA with Prometheus as the metrics source. Set the CephObjectStore `instances` to match HPA's minimum replica count to prevent Rook reconciliation from overriding the HPA-adjusted replica count. For MDS scaling, adjust `activeCount` in the CephFilesystem CR instead, as Rook creates individual Deployments per MDS daemon that are not compatible with HPA.
