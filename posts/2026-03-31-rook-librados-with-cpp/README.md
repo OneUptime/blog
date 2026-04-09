@@ -14,10 +14,10 @@ The librados C++ API wraps the C API in an object-oriented interface, providing 
 
 ```bash
 # Ubuntu/Debian
-sudo apt install librados-dev
+sudo apt install librados-dev libradospp-dev
 
 # RHEL/CentOS
-sudo dnf install librados-devel
+sudo dnf install librados-devel libradospp-devel
 ```
 
 ## Complete Write and Read Example
@@ -126,7 +126,7 @@ if (ret == 0) {
 // Append to existing object
 librados::bufferlist append_bl;
 append_bl.append(" - appended data");
-io.append("myobj", append_bl);
+io.append("myobj", append_bl, append_bl.length());
 
 // Remove object
 io.remove("myobj");
@@ -140,7 +140,10 @@ librados::bufferlist new_bl;
 new_bl.append("atomic write");
 
 op.write_full(new_bl);
-op.setxattr("written-by", librados::bufferlist().append_zero(0));
+
+librados::bufferlist xattr_bl;
+xattr_bl.append("rados-cpp");
+op.setxattr("written-by", xattr_bl);
 
 ret = io.operate("myobj", &op);
 ```
