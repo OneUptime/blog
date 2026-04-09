@@ -142,8 +142,9 @@ ceph tell mon.* mon_status
 If a monitor has an incorrect monmap (after IP changes, node replacements):
 
 ```bash
-# View current monmap
-ceph mon getmap | monmaptool - --print
+# Extract and view current monmap
+ceph mon getmap -o /tmp/monmap
+monmaptool /tmp/monmap --print
 
 # Or use the ceph command
 ceph mon dump
@@ -164,22 +165,29 @@ ceph mon add <mon-name> <new-ip>:6789
 If all monitors are down (total cluster outage):
 
 ```bash
-# Start one monitor in recovery mode (standalone Paxos)
 # On the monitor host with the most up-to-date data:
 
 # Stop all monitors
 systemctl stop ceph-mon@mon1
+systemctl stop ceph-mon@mon2
+systemctl stop ceph-mon@mon3
 
-# Force the monitor into standalone mode
-ceph-mon -i mon1 --mon-data /var/lib/ceph/mon/ceph-mon1 \
-  --public-addr 10.0.0.1:6789 \
-  --single-mon \
-  --foreground &
+# Extract the monmap from the most current monitor
+ceph-mon -i mon1 --extract-monmap /tmp/monmap
 
-# After it starts, allow it to advance past the old quorum
-ceph mon force-quorum <mon-name>
+# Remove the other monitors from the monmap so mon1 can form quorum alone
+monmaptool /tmp/monmap --rm mon2
+monmaptool /tmp/monmap --rm mon3
 
-# Restart other monitors normally
+# Inject the modified monmap back into the monitor store
+ceph-mon -i mon1 --inject-monmap /tmp/monmap
+
+# Start the single monitor (it will now form quorum by itself)
+systemctl start ceph-mon@mon1
+
+# Once healthy, re-add the other monitors
+ceph mon add mon2 <mon2-ip>:6789
+ceph mon add mon3 <mon3-ip>:6789
 systemctl start ceph-mon@mon2
 systemctl start ceph-mon@mon3
 ```
@@ -215,4 +223,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph quorum_status
 
 ## Summary
 
-Troubleshooting Ceph monitors follows a systematic approach: check quorum status with `ceph mon stat`, inspect clock skew, verify network connectivity between monitors, check disk space, and review monitor daemon logs for Paxos errors. Clock skew is the most common cause of monitor issues - ensure NTP/chrony is synchronized across all monitor nodes. For complete quorum loss, using `--single-mon` mode on the monitor with the most recent data allows incremental recovery. In Rook, access monitor logs via `kubectl logs` and check quorum from the toolbox pod.
+Troubleshooting Ceph monitors follows a systematic approach: check quorum status with `ceph mon stat`, inspect clock skew, verify network connectivity between monitors, check disk space, and review monitor daemon logs for Paxos errors. Clock skew is the most common cause of monitor issues - ensure NTP/chrony is synchronized across all monitor nodes. For complete quorum loss, extract the monmap, reduce it to a single monitor, and inject it back so that monitor can form quorum alone before re-adding the others. In Rook, access monitor logs via `kubectl logs` and check quorum from the toolbox pod.
