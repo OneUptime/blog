@@ -10,7 +10,7 @@ Description: List and explore available commands on any Ceph daemon admin socket
 
 ## Overview
 
-Each Ceph daemon exposes a rich set of commands through its admin socket. The `help` command lists everything available, and the output varies by daemon type. Knowing how to explore available commands is the first step to effective live daemon management.
+Each Ceph daemon exposes a rich set of commands through its admin socket. The `help` command lists everything available as a JSON object (keys are command names, values are descriptions), and the output varies by daemon type. Knowing how to explore available commands is the first step to effective live daemon management.
 
 ## Getting the Full Command List
 
@@ -50,35 +50,34 @@ ceph daemon osd.0 help | grep log
 
 ### Configuration Commands
 ```bash
-# View all config-related commands
-ceph daemon osd.0 help | grep -E "^config"
-# Typical output:
-# config diff
-# config get <key>
-# config set <key> <value>
-# config show
-# config unset <key>
+# View all config-related commands (help returns JSON, so match quoted keys)
+ceph daemon osd.0 help | grep '"config'
+# Typical output includes:
+# "config diff": "dump diff of current config and default config"
+# "config get": "config get <var>: ..."
+# "config help": "get config setting schema and descriptions"
+# "config set": "config set <var> <val>: ..."
+# "config show": "dump current config settings"
 ```
 
 ### Performance Counter Commands
 ```bash
 # View perf counter commands
-ceph daemon osd.0 help | grep -E "^perf"
-# Typical output:
-# perf dump
-# perf histogram dump
-# perf histogram schema
-# perf reset
-# perf schema
+ceph daemon osd.0 help | grep '"perf'
+# Typical output includes:
+# "perf dump": "dump perfcounters value"
+# "perf histogram dump": "dump perf histogram values"
+# "perf histogram schema": "dump perf histogram schema"
+# "perf reset": "perf reset <name>: ..."
+# "perf schema": "dump perfcounters schema"
 ```
 
 ### Log Commands
 ```bash
-ceph daemon osd.0 help | grep -E "^log"
-# Typical output:
-# log dump
-# log flush
-# log reopen
+ceph daemon osd.0 help | grep '"log'
+# Typical output includes:
+# "log flush": "flush log entries to log file"
+# "log reopen": "reopen log file"
 ```
 
 ## Exploring Commands with JSON Output
@@ -86,12 +85,12 @@ ceph daemon osd.0 help | grep -E "^log"
 Many admin socket commands return JSON, which you can parse:
 
 ```bash
-# Get structured help output
+# Parse the JSON help output to list commands
 ceph daemon osd.0 help | python3 -c "
-import sys
-commands = [line.strip() for line in sys.stdin if line.strip()]
+import sys, json
+commands = json.load(sys.stdin)
 print(f'Total commands available: {len(commands)}')
-for cmd in sorted(commands)[:20]:
+for cmd in sorted(commands.keys())[:20]:
     print(f'  {cmd}')
 "
 ```
@@ -100,14 +99,14 @@ for cmd in sorted(commands)[:20]:
 
 ```bash
 # List OSD-specific commands
-ceph daemon osd.0 help | grep -E "^(osd|pg|dump|get_)"
+ceph daemon osd.0 help | grep -E '"(dump_|flush_|get_latest)'
 
 # Key OSD commands:
-# dump_historic_ops        - show slow operations
+# dump_historic_ops        - show recent ops
 # dump_ops_in_flight       - show current in-flight operations
 # dump_watchers            - show object watch/notify state
-# flush_journal            - flush the journal
-# get_latest_osdmap        - fetch latest OSD map
+# flush_journal            - flush the journal (FileStore only)
+# get_latest_osdmap        - force osd to update the latest map from the mon
 ```
 
 ## RGW-Specific Commands
