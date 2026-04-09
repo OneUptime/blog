@@ -40,9 +40,6 @@ Mount the CephFS filesystem first (or use the toolbox pod):
 
 ```bash
 # Pin /tenant-a directory to MDS rank 0
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set myfs allow_dirfrags true
-
 setfattr -n ceph.dir.pin -v 0 /mnt/cephfs/tenant-a
 
 # Pin /tenant-b to MDS rank 1
