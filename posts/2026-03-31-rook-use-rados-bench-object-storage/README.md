@@ -34,7 +34,7 @@ rados -p my-pool cleanup
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-b <size>` | Object size in bytes | 4 MB |
+| `-b <size>` | Block size (write size per operation) | 4 MB |
 | `-t <threads>` | Concurrent write threads | 16 |
 | `--no-cleanup` | Keep objects after write test | false |
 | `-O <size>` | Object size (overrides `-b` for object size) | Same as `-b` |
@@ -68,7 +68,7 @@ for OBJ_SIZE in 4k 64k 1M 4M 16M; do
         --run-name "run_${OBJ_SIZE}_${THREADS}" 2>&1 \
         | grep -E "Bandwidth|IOPS|Latency"
     # Clean up between runs
-    rados bench -p $POOL 5 write --cleanup \
+    rados -p $POOL cleanup \
         --run-name "run_${OBJ_SIZE}_${THREADS}" > /dev/null 2>&1
   done
 done
@@ -127,7 +127,7 @@ spec:
           --no-cleanup -b 4M -t 16 && \
       rados bench -p benchmark-pool 60 seq -t 16 && \
       rados bench -p benchmark-pool 60 rand -t 16 && \
-      rados bench -p benchmark-pool 60 write --cleanup -t 16
+      rados -p benchmark-pool cleanup
     env:
     - name: CEPH_CONF
       value: /etc/ceph/ceph.conf
@@ -157,9 +157,9 @@ rados bench -p benchmark-pool 60 rand -t 16 \
     | tee /tmp/rand-read-results.txt
 
 # Extract bandwidth for comparison
-echo "Write BW: $(grep Bandwidth /tmp/write-results.txt | awk '{print $3}') MB/s"
-echo "Seq Read BW: $(grep Bandwidth /tmp/seq-read-results.txt | awk '{print $3}') MB/s"
-echo "Rand Read BW: $(grep Bandwidth /tmp/rand-read-results.txt | awk '{print $3}') MB/s"
+echo "Write BW: $(grep "^Bandwidth" /tmp/write-results.txt | awk '{print $3}') MB/s"
+echo "Seq Read BW: $(grep "^Bandwidth" /tmp/seq-read-results.txt | awk '{print $3}') MB/s"
+echo "Rand Read BW: $(grep "^Bandwidth" /tmp/rand-read-results.txt | awk '{print $3}') MB/s"
 ```
 
 ## Summary
