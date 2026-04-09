@@ -12,7 +12,7 @@ Description: Learn how to use librados to access Ceph object storage directly fr
 
 librados is the native Ceph client library that provides direct access to the RADOS object store. All higher-level Ceph interfaces (librbd for block storage, libcephfs for filesystem, and the RGW gateway) are built on top of librados. Applications that use librados directly can avoid the overhead of these layers and interact with objects using the full power of the RADOS API.
 
-librados bindings are available for C, C++, Python, Java, PHP, and Ruby.
+librados bindings are available for C, C++, Python, Java, and PHP.
 
 ## When to Use librados
 
@@ -75,22 +75,22 @@ for key, value in ioctx.get_xattrs('my-object'):
 
 ```python
 # Write omap entries (structured metadata)
-ioctx.set_omap('my-object', {
-    'field1': b'value1',
-    'field2': b'value2',
-    'counter': b'42'
-})
+with rados.WriteOpCtx() as op:
+    ioctx.set_omap(op, ('field1', 'field2', 'counter'),
+                       (b'value1', b'value2', b'42'))
+    ioctx.operate_write_op(op, 'my-object')
 
-# Read omap entries
-keys_to_fetch = ['field1', 'counter']
-results = ioctx.get_omap_vals_by_keys('my-object', keys_to_fetch)
-for key, value in results.items():
-    print(f"{key}: {value.decode()}")
+# Read omap entries by keys
+with rados.ReadOpCtx() as op:
+    omap_iter, ret = ioctx.get_omap_vals_by_keys(op, ('field1', 'counter'))
+    ioctx.operate_read_op(op, 'my-object')
+    for key, value in omap_iter:
+        print(f"{key}: {value.decode()}")
 
 # Iterate over all omap entries
 with rados.ReadOpCtx() as op:
     omap_iter, ret = ioctx.get_omap_vals(op, '', '', 100)
-    ioctx.operate_read('my-object', op)
+    ioctx.operate_read_op(op, 'my-object')
     for key, value in omap_iter:
         print(f"{key}: {value}")
 ```
@@ -103,12 +103,12 @@ librados supports compare-and-swap via write operations:
 # Create an atomic write operation
 with rados.WriteOpCtx() as op:
     # Conditional: only write if xattr equals expected value
-    op.cmpxattr('version', rados.CEPH_OSD_CMPXATTR_OP_EQ, b'1')
+    op.cmpxattr('version', rados.LIBRADOS_CMPXATTR_OP_EQ, b'1')
     op.write_full(b'new content')
     op.set_xattr('version', b'2')
 
     try:
-        ioctx.operate_write('my-object', op)
+        ioctx.operate_write_op(op, 'my-object')
         print("Conditional write succeeded")
     except rados.OSError as e:
         print(f"Condition failed: {e}")
