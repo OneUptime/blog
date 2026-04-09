@@ -26,7 +26,7 @@ AlmaLinux is a community RHEL-compatible distribution that serves as a drop-in r
 dnf update -y
 
 # Install prerequisites
-dnf install -y python3 curl podman lvm2
+dnf install -y python3 curl podman lvm2 policycoreutils-python-utils
 
 # Disable swap
 swapoff -a
