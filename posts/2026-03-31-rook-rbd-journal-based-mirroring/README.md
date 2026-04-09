@@ -16,9 +16,9 @@ RBD journal-based mirroring records every write to an internal journal and repla
 
 You need two Rook-Ceph clusters - a primary and a secondary. Both clusters must run compatible Ceph versions and have network connectivity between their monitor endpoints.
 
-## Step 1 - Enable Journaling on the Pool
+## Step 1 - Enable Mirroring on the Pool
 
-Journaling must be enabled on the RBD pool on the primary cluster. Enable it in the CephBlockPool spec or via the toolbox:
+Mirroring must be enabled on the RBD pool on the primary cluster. Enable it via the toolbox:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -44,9 +44,6 @@ spec:
   mirroring:
     enabled: true
     mode: image
-    snapshotSchedules:
-    - interval: 1h
-      startTime: "00:00:00"
 ```
 
 ```bash
