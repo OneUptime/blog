@@ -73,10 +73,12 @@ You can also tag pools with custom application names:
 ceph osd pool application enable my-pool my-app
 ```
 
-### Enabling with Parameters
+### Setting Application Metadata
+
+You can also set key-value metadata on an application tag:
 
 ```bash
-ceph osd pool application enable <pool-name> <app-name> [<key>] [<value>]
+ceph osd pool application set <pool-name> <app-name> <key> <value>
 ```
 
 ## Checking Which Application to Use
@@ -90,20 +92,20 @@ rados -p <pool-name> ls | head -5
 Object names can indicate the type:
 - `rbd_header.*` - RBD pool
 - `default.rgw.*` - RGW pool
-- `.ceph-osd.*` - CephFS related
+- `<inode_hex>.<offset_hex>` (e.g., `10000000000.00000000`) - CephFS data pool
 
 ## Deleting Truly Orphaned Pools
-
-If a pool is confirmed to be unused:
-
-```bash
-ceph osd pool rm <pool-name> <pool-name> --yes-i-really-really-mean-it
-```
 
 First enable pool deletion if not already enabled:
 
 ```bash
 ceph config set mon mon_allow_pool_delete true
+```
+
+Then remove the pool:
+
+```bash
+ceph osd pool rm <pool-name> <pool-name> --yes-i-really-really-mean-it
 ```
 
 ## Summary
