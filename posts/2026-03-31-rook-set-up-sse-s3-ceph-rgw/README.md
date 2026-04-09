@@ -14,7 +14,7 @@ SSE-S3 (Server-Side Encryption with S3-Managed Keys) is an AWS S3-compatible enc
 
 ## Prerequisites
 
-- Ceph 14.2+ (Nautilus)
+- Ceph 17.2+ (Quincy)
 - A running Ceph RGW instance
 - A HashiCorp Vault instance for key management
 
@@ -123,8 +123,12 @@ spec:
     securePort: 443
   security:
     s3:
-      enabled: true
-      kmsEnabled: false
+      connectionDetails:
+        KMS_PROVIDER: vault
+        VAULT_ADDR: https://vault.example.com:8200
+        VAULT_BACKEND_PATH: rgw
+        VAULT_SECRET_ENGINE: transit
+      tokenSecretName: rgw-vault-s3-token
 ```
 
 ## Summary
