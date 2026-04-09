@@ -75,8 +75,9 @@ cephadm version
 ## Step 5 - Bootstrap on the First Node
 
 ```bash
-# Get private IP
-PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+# Get private IP (AL2023 requires IMDSv2)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
 
 cephadm bootstrap \
   --mon-ip $PRIVATE_IP \
@@ -131,7 +132,7 @@ To reduce cross-AZ replication costs, place all Ceph nodes in the same Availabil
 
 ```bash
 # Set CRUSH to avoid cross-AZ replication
-ceph osd crush rule create-replicated local-az host firstn
+ceph osd crush rule create-replicated local-az default host
 ceph osd pool set mypool crush_rule local-az
 ```
 
