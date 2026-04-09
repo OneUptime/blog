@@ -57,7 +57,7 @@ spec:
   replicated:
     size: 3
   quotas:
-    maxBytes: 1099511627776    # 1 TB
+    maxSize: "1Ti"
     maxObjects: 10000000
 ```
 
@@ -73,9 +73,7 @@ metadata:
   namespace: rook-ceph
 spec:
   filesystemName: cephfs
-  quota:
-    maxBytes: 536870912000     # 500 GB
-    maxFiles: 500000
+  quota: "500Gi"
 ```
 
 ## Monitor Quota Usage
@@ -88,7 +86,7 @@ kubectl describe resourcequota storage-quota -n team-a
 ceph df detail | grep team-a-pool
 
 # Alert when approaching quota (Prometheus rule)
-# ceph_pool_quota_bytes_used / ceph_pool_quota_max_bytes > 0.85
+# ceph_pool_stored_raw / ceph_pool_quota_bytes > 0.85
 ```
 
 ## Automate Quota Enforcement with Admission Controller
