@@ -10,11 +10,11 @@ Description: Configure ServiceMonitors for Rook-Ceph exporter endpoints includin
 
 ## Overview
 
-Rook-Ceph exposes metrics through multiple endpoints beyond the MGR Prometheus module. The Ceph exporter sidecar provides additional per-OSD and per-daemon metrics. Configuring separate ServiceMonitors for each exporter ensures full coverage in your Prometheus monitoring stack.
+Rook-Ceph exposes metrics through multiple endpoints beyond the MGR Prometheus module. The Ceph exporter provides additional per-OSD and per-daemon metrics via dedicated per-node pods. Configuring separate ServiceMonitors for each exporter ensures full coverage in your Prometheus monitoring stack.
 
 ## Ceph Exporter Architecture
 
-Rook deploys a dedicated `rook-ceph-exporter` DaemonSet that runs alongside OSD pods to collect fine-grained performance counters. The exporter listens on port 9926 by default.
+Rook deploys dedicated per-node `rook-ceph-exporter` pods that run alongside OSD pods to collect fine-grained performance counters. The exporter listens on port 9926 by default.
 
 Check the exporter pods:
 
@@ -41,7 +41,7 @@ spec:
     matchLabels:
       app: rook-ceph-exporter
   endpoints:
-  - port: ceph-exporter
+  - port: ceph-exporter-http-metrics
     path: /metrics
     interval: 15s
     scheme: http
@@ -77,12 +77,6 @@ spec:
   - port: http-metrics
     path: /metrics
     interval: 5s
-  - port: dashboard
-    path: /metrics
-    interval: 30s
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
 ```
 
 ## Add Node Metadata Relabeling
@@ -91,7 +85,7 @@ Enrich exporter metrics with node labels to correlate storage performance with i
 
 ```yaml
 endpoints:
-- port: ceph-exporter
+- port: ceph-exporter-http-metrics
   path: /metrics
   interval: 15s
   relabelings:
@@ -133,4 +127,4 @@ kubectl get prometheusrule,servicemonitor -n rook-ceph
 
 ## Summary
 
-Configuring ServiceMonitors for the Rook-Ceph exporter DaemonSet provides granular per-OSD and per-daemon metrics beyond what the MGR Prometheus module offers. Adding node metadata relabeling correlates storage performance with specific hardware nodes, enabling precise capacity planning and performance troubleshooting.
+Configuring ServiceMonitors for the Rook-Ceph exporter provides granular per-OSD and per-daemon metrics beyond what the MGR Prometheus module offers. Adding node metadata relabeling correlates storage performance with specific hardware nodes, enabling precise capacity planning and performance troubleshooting.
