@@ -33,9 +33,10 @@ ceph osd pool set myecpool allow_ec_optimizations true
 ## Prerequisites
 
 `allow_ec_optimizations` requires:
-- Ceph Quincy (17.x) or later
+- Ceph Tentacle (20.x) or later
 - BlueStore backend (not Filestore)
 - EC overwrites enabled on the pool
+- Jerasure or ISA-L plugin with the `reed_sol_van` technique
 
 ```bash
 # Enable EC overwrites (required for RBD/CephFS on EC pools)
@@ -60,14 +61,14 @@ ceph osd pool set ec-optimized allow_ec_optimizations true
 
 ## EC Partial Write Optimizations
 
-Ceph Reef and later introduced EC partial writes, which allow small in-stripe updates without a full RMW cycle. This is a significant improvement for RBD workloads on EC pools:
+Ceph Tentacle and later introduced EC partial writes as part of the FastEC feature, which allow small in-stripe updates without a full RMW cycle. This is a significant improvement for RBD workloads on EC pools. EC partial writes are enabled automatically when `allow_ec_optimizations` is set on a pool — no separate config option is needed:
 
 ```bash
-# Enable EC partial writes (Ceph Reef+)
-ceph config set osd osd_ec_partial_writes true
+# Enable EC optimizations including partial writes (Ceph Tentacle+)
+ceph osd pool set myecpool allow_ec_optimizations true
 
-# Check if partial writes are active
-ceph config get osd osd_ec_partial_writes
+# Verify the flag is set
+ceph osd pool get myecpool allow_ec_optimizations
 ```
 
 ## Monitoring the Effect
@@ -84,7 +85,7 @@ ceph daemon osd.0 perf dump | grep -E "write|rmw|stripe"
 # Use rados bench to compare throughput
 rados bench -p ec-optimized 30 write -t 8 -b 1M --no-cleanup
 rados bench -p ec-optimized 30 seq -t 8
-rados bench -p ec-optimized 30 cleanup
+rados -p ec-optimized cleanup
 ```
 
 ## Hardware Acceleration
@@ -117,7 +118,8 @@ radosgw-admin bucket stats --bucket=<bucket-name>
 
 ## Caveats and Compatibility
 
-- `allow_ec_optimizations` may not be available in all Ceph versions
+- `allow_ec_optimizations` requires Ceph Tentacle (20.x) or later
+- Once enabled, `allow_ec_optimizations` cannot be disabled on a pool
 - Enabling after pool creation causes no data migration, only new writes use the optimized paths
 - Test with a benchmark pool before enabling on production
 - Some features (like object omap) are still not available on EC pools regardless of this flag
@@ -129,4 +131,4 @@ ceph version
 
 ## Summary
 
-The `allow_ec_optimizations` flag enables improved write code paths for Ceph erasure coded pools, reducing the overhead of read-modify-write cycles. Combined with `allow_ec_overwrites`, hardware-accelerated encoding via the ISA plugin, and Ceph Reef's EC partial writes feature, this significantly improves EC pool write performance. These optimizations are particularly beneficial for RBD block storage and RGW object storage workloads with large objects.
+The `allow_ec_optimizations` flag enables improved write code paths for Ceph erasure coded pools, reducing the overhead of read-modify-write cycles. Combined with `allow_ec_overwrites`, hardware-accelerated encoding via the ISA plugin, and Ceph Tentacle's EC partial writes feature, this significantly improves EC pool write performance. These optimizations are particularly beneficial for RBD block storage and RGW object storage workloads with large objects.
