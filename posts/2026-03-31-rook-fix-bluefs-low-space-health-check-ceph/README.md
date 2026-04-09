@@ -95,13 +95,13 @@ kubectl -n rook-ceph patch pvc rook-ceph-osd-7-wal \
 
 ## Reconfiguring BlueStore WAL/DB Split
 
-Adjust how BlueFS allocates space between WAL and DB. Reduce WAL size to give more to DB:
+Adjust the WAL size for future OSD deployments. Note that this setting only takes effect when creating new OSDs, not for existing ones:
 
 ```bash
-ceph config set osd.7 bluestore_wal_size 536870912  # 512MB WAL
+ceph config set osd bluestore_block_wal_size 536870912  # 512MB WAL
 ```
 
-After setting, restart the OSD:
+To apply to an existing OSD, you must recreate it. After reprovisioning, restart the OSD:
 
 ```bash
 kubectl -n rook-ceph delete pod <osd-7-pod>
@@ -115,13 +115,16 @@ If the WAL device is too small to be beneficial, remove it and use only the DB d
 # Stop OSD
 systemctl stop ceph-osd@7
 
-# Expand DB device to absorb WAL function
-ceph-bluestore-tool bluefs-bdev-expand \
-  --path /var/lib/ceph/osd/ceph-7
+# Migrate WAL data to DB device
+ceph-bluestore-tool bluefs-bdev-migrate \
+  --path /var/lib/ceph/osd/ceph-7 \
+  --devs-source /var/lib/ceph/osd/ceph-7/block.wal \
+  --dev-target /var/lib/ceph/osd/ceph-7/block.db
 
 # Remove the WAL symlink and rely on DB device
 rm /var/lib/ceph/osd/ceph-7/block.wal
-# Update the OSD to not expect a WAL device
+
+# Restart OSD without dedicated WAL device
 systemctl start ceph-osd@7
 ```
 
@@ -130,9 +133,9 @@ systemctl start ceph-osd@7
 ```yaml
 - alert: BlueFSWALCritical
   expr: |
-    ceph_bluestore_wal_total_bytes > 0 and
-    (ceph_bluestore_wal_total_bytes - ceph_bluestore_wal_used_bytes) /
-    ceph_bluestore_wal_total_bytes < 0.05
+    ceph_bluefs_wal_total_bytes > 0 and
+    (ceph_bluefs_wal_total_bytes - ceph_bluefs_wal_used_bytes) /
+    ceph_bluefs_wal_total_bytes < 0.05
   for: 5m
   labels:
     severity: critical
