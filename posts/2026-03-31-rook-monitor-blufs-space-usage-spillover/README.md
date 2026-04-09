@@ -25,16 +25,16 @@ ceph daemon osd.0 bluestore allocator score block
 ceph daemon osd.0 perf dump | jq '.bluefs'
 ```
 
-Or use the admin socket:
+Or use the admin socket for a human-readable summary:
 
 ```bash
 ceph daemon osd.0 bluefs stats
 ```
 
-Expected output fields:
+This outputs a text-based usage matrix, not JSON. For structured data, use the `perf dump` command above, which includes these fields under the `bluefs` section:
 - `db_total_bytes` - total DB device size
 - `db_used_bytes` - used bytes on DB device
-- `slow_total_bytes` - main device total bytes used by BlueFS
+- `slow_total_bytes` - main device total bytes available to BlueFS
 - `slow_used_bytes` - main device bytes used due to spillover
 
 ## Checking via ceph-bluestore-tool
