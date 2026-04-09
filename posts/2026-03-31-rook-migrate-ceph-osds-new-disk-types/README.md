@@ -17,14 +17,14 @@ Understand your current OSD layout:
 ```bash
 ceph osd tree
 ceph device ls
-ceph osd df sort -k 10 -r
+ceph osd df | sort -k 10 -rn
 ```
 
 Check the disk types currently in use:
 
 ```bash
 for osd in $(ceph osd ls); do
-  echo "OSD $osd: $(ceph device get-health-metrics osd.$osd 2>/dev/null | python3 -m json.tool | grep model)"
+  echo "OSD $osd: $(ceph osd metadata osd.$osd 2>/dev/null | python3 -m json.tool | grep -E '(devices|default_device_class)')"
 done
 ```
 
@@ -59,20 +59,21 @@ Assign the appropriate device class to the new OSD:
 # SSDs are auto-detected as 'ssd', NVMe as 'nvme', HDDs as 'hdd'
 ceph osd crush get-device-class osd.5
 
-# Manually set device class if needed
-ceph osd crush set-device-class ssd osd.5
+# Manually change device class if auto-detection is incorrect
+ceph osd crush rm-device-class osd.5
+ceph osd crush set-device-class nvme osd.5
 ```
 
 Create a new CRUSH rule targeting the new device class:
 
 ```bash
-ceph osd crush rule create-replicated ssd-rule default host ssd
+ceph osd crush rule create-replicated nvme-rule default host nvme
 ```
 
 Migrate a pool to use the new rule:
 
 ```bash
-ceph osd pool set mypool crush_rule ssd-rule
+ceph osd pool set mypool crush_rule nvme-rule
 ```
 
 ## Step 3 - Let Data Rebalance
@@ -92,13 +93,12 @@ Once all PGs are active+clean on the new OSDs:
 # Mark old OSD out
 ceph osd out osd.0
 
-# Wait for migration
+# Wait for data to migrate off the OSD
 watch ceph osd df
 
-# Remove OSD
+# Stop the OSD daemon (in Rook, remove the device from CephCluster CR)
+# Then purge the OSD (removes CRUSH entry, auth keys, and OSD map entry)
 ceph osd purge 0 --yes-i-really-mean-it
-ceph auth del osd.0
-ceph osd crush remove osd.0
 ```
 
 ## Step 5 - Remove Old CRUSH Bucket
