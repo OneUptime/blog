@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, NFS, Export, Storage
 
-Description: Create and manage NFS exports in Rook-Ceph using the CephNFSExport CRD and ceph CLI, with access control and path configuration examples.
+Description: Create and manage NFS exports in Rook-Ceph using the ceph CLI, with access control and path configuration examples.
 
 ---
 
 ## How NFS Exports Work in Rook-Ceph
 
-An NFS export in Rook-Ceph maps a CephFS directory path to an NFS pseudo-path that clients can mount. Each export is defined in the NFS-Ganesha configuration and backed by a CephFS filesystem. Rook supports managing exports via the `CephNFSExport` CRD (Rook 1.13+) or directly through the Ceph CLI.
+An NFS export in Rook-Ceph maps a CephFS directory path to an NFS pseudo-path that clients can mount. Each export is defined in the NFS-Ganesha configuration and backed by a CephFS filesystem. Exports are managed through the Ceph CLI (`ceph nfs export` commands) executed from the Rook toolbox pod.
 
 ```mermaid
 flowchart LR
@@ -39,14 +39,14 @@ Create an export for the root of CephFS:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph nfs export create cephfs my-nfs /cephfs-root myfs path=/
+  ceph nfs export create cephfs my-nfs /cephfs-root myfs --path=/
 ```
 
 Create an export for a specific subdirectory:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph nfs export create cephfs my-nfs /cephfs-data myfs path=/data
+  ceph nfs export create cephfs my-nfs /cephfs-data myfs --path=/data
 ```
 
 The parameters are:
@@ -54,46 +54,7 @@ The parameters are:
 - `my-nfs` - the CephNFS cluster name
 - `/cephfs-data` - the NFS pseudo path clients will mount
 - `myfs` - the CephFilesystem name
-- `path=/data` - the path inside the CephFS filesystem
-
-## Creating an Export via the CephNFSExport CRD (Rook 1.13+)
-
-For declarative, GitOps-friendly management, use the `CephNFSExport` CRD:
-
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephNFSExport
-metadata:
-  name: nfs-export-data
-  namespace: rook-ceph
-spec:
-  server:
-    name: my-nfs
-  export:
-    pseudoPath: /cephfs-data
-    accessType: RW
-    squash: none
-    protocols:
-      - 4
-    transports:
-      - TCP
-    fsal:
-      name: CEPH
-      filesystemName: myfs
-      cephFsPath: /data
-```
-
-Apply the export:
-
-```bash
-kubectl apply -f cephnfsexport.yaml
-```
-
-Check the export status:
-
-```bash
-kubectl -n rook-ceph get cephnfsexport nfs-export-data
-```
+- `--path=/data` - the path inside the CephFS filesystem
 
 ## Listing and Inspecting Exports
 
@@ -171,12 +132,6 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph nfs export rm my-nfs /cephfs-data
 ```
 
-Or delete the CephNFSExport CRD:
-
-```bash
-kubectl -n rook-ceph delete cephnfsexport nfs-export-data
-```
-
 ## Verifying the Export is Active
 
 Check the NFS-Ganesha pod logs to confirm the export is loaded:
@@ -194,4 +149,4 @@ kubectl run nfs-test --rm -it --image=alpine -- \
 
 ## Summary
 
-NFS exports in Rook-Ceph map CephFS paths to NFS pseudo-paths served by NFS-Ganesha. Use `ceph nfs export create` for quick CLI-based creation or the `CephNFSExport` CRD for declarative management. Configure access control through the client list in the export definition, and verify exports by listing them with `ceph nfs export ls` and checking Ganesha pod logs.
+NFS exports in Rook-Ceph map CephFS paths to NFS pseudo-paths served by NFS-Ganesha. Use `ceph nfs export create` for quick creation or `ceph nfs export apply` with a JSON definition for full control over export configuration. Configure access control through the client list in the export definition, and verify exports by listing them with `ceph nfs export ls` and checking Ganesha pod logs.
