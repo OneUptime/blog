@@ -60,20 +60,21 @@ Unset a flag from a specific OSD:
 
 ```bash
 # Unset noup from osd.3
-ceph osd rm-flag 3 noup
+ceph osd rm-noup osd.3
 
 # Unset multiple flags
-ceph osd rm-flag 3 noup nodown
+ceph osd rm-noup osd.3
+ceph osd rm-nodown osd.3
 
-# Or use the older syntax
-ceph osd unset-flag osd.3 noup
+# Or use unset-group syntax (Nautilus+) for multiple flags at once
+ceph osd unset-group noup,nodown osd.3
 ```
 
 For multiple OSDs with the same flag, clear them in bulk:
 
 ```bash
 for osd in 3 7 11; do
-  ceph osd rm-flag $osd noup
+  ceph osd rm-noup osd.$osd
 done
 ```
 
@@ -93,7 +94,7 @@ ceph osd find 3
 journalctl -u ceph-osd@3 | tail -50
 
 # Only unset after resolving the underlying issue
-ceph osd rm-flag 3 noup
+ceph osd rm-noup osd.3
 ```
 
 ## Bulk Flag Check Script
@@ -103,9 +104,9 @@ Use this script to find all OSDs with non-empty flags:
 ```bash
 #!/bin/bash
 ceph osd dump | awk '/^osd\./ {
-  match($0, /flags ([^,]+)/, arr)
-  if (arr[1] != "" && arr[1] != "{}") {
-    print "OSD " $1 " has flags: " arr[1]
+  if (match($0, /flags [a-z][a-z,_-]*/)) {
+    flags = substr($0, RSTART + 6, RLENGTH - 6)
+    print $1 " has flags: " flags
   }
 }'
 ```
@@ -121,9 +122,9 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd dump | grep flags
 If flags were set via the toolbox during debugging, unset them when done:
 
 ```bash
-kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd rm-flag <osd-id> <flag>
+kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph osd unset-group <flag> osd.<osd-id>
 ```
 
 ## Summary
 
-`OSD_FLAGS` warns that individual OSDs have flags set that modify their behavior. Identify affected OSDs with `ceph osd dump`, then use `ceph osd rm-flag` to clear unwanted flags. Always investigate why a flag was set before removing it - per-OSD flags are often set to prevent a problematic OSD from rejoining prematurely. Only clear flags after confirming the underlying issue is resolved.
+`OSD_FLAGS` warns that individual OSDs have flags set that modify their behavior. Identify affected OSDs with `ceph osd dump`, then use `ceph osd rm-<flag>` (e.g., `ceph osd rm-noup`) or `ceph osd unset-group` to clear unwanted flags. Always investigate why a flag was set before removing it - per-OSD flags are often set to prevent a problematic OSD from rejoining prematurely. Only clear flags after confirming the underlying issue is resolved.
