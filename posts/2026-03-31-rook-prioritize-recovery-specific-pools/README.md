@@ -21,19 +21,18 @@ Ceph does not have a direct "pool priority" recovery setting, but you can achiev
 3. Adjusting OSD weights to influence where recovery work concentrates
 4. Using the `ceph tell` interface to adjust per-OSD recovery parameters
 
-## Pool-Level norecovery Controls
+## Controlling Recovery for Specific Pools
 
-Pause recovery for non-critical pools to free resources for critical pools:
+Free resources for critical pools by reducing I/O load from non-critical pools:
 
 ```bash
 # List all pools
-ceph osd lspools
+ceph osd pool ls
 
-# Pause recovery for all PGs in a low-priority pool
+# Disable deep scrubbing on non-critical pools to free I/O resources
 ceph osd pool set backup-pool nodeep-scrub 1
-ceph osd pool set archive-pool norecover 1  # Note: this is a PG flag
 
-# Target specific pool PGs
+# Remove any forced recovery priority from low-priority pool PGs
 POOL_ID=$(ceph osd dump | grep "pool.*backup-pool" | awk '{print $2}')
 ceph pg ls $POOL_ID | awk '{print $1}' | while read pg; do
   ceph pg cancel-force-recovery $pg
