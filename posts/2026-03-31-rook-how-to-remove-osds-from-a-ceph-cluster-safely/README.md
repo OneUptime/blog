@@ -104,7 +104,7 @@ If using cephadm, the orchestrator can handle the drain and removal:
 
 ```bash
 # Safe removal with automatic data drain
-ceph orch osd rm 5 --replace
+ceph orch osd rm 5
 
 # Check removal status
 ceph orch osd rm status
