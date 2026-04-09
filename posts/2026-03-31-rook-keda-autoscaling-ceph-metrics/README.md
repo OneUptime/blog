@@ -22,6 +22,7 @@ Install KEDA:
 
 ```bash
 helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
@@ -56,7 +57,6 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
-      metricName: ceph_osd_op_wip
       threshold: "50"
       query: sum(ceph_osd_op_wip)
 ```
@@ -80,10 +80,9 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
-      metricName: pool_write_ops
       threshold: "1000"
       query: |
-        sum(rate(ceph_pool_write_ops_total{pool_name="replicapool"}[2m]))
+        sum(rate(ceph_pool_wr{pool_id="3"}[2m]))
 ```
 
 ## Scale Based on OSD Queue Depth
@@ -95,7 +94,6 @@ triggers:
 - type: prometheus
   metadata:
     serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
-    metricName: osd_queue_depth
     threshold: "100"
     query: max(ceph_osd_op_wip)
     activationThreshold: "5"
@@ -115,7 +113,7 @@ kubectl describe scaledobject storage-worker-scaler
 View HPA created by KEDA:
 
 ```bash
-kubectl get hpa -l scaledobject.keda.sh/name=storage-worker-scaler
+kubectl get hpa -l app.kubernetes.io/part-of=storage-worker-scaler
 ```
 
 Watch scaling events:
