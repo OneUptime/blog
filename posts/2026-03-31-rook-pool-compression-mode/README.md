@@ -112,10 +112,10 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
 ceph df detail | grep -A5 compressed-pool
 
 # Check OSD-level compression stats
-ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A10 compress
+ceph tell osd.0 perf dump | python3 -m json.tool | grep -A10 compress
 
-# Overall cluster compression ratio
-ceph osd df | awk '{print $1, $6, $7}'
+# Cluster-wide compression stats for all pools
+ceph df detail
 ```
 
 Example output:
@@ -125,7 +125,7 @@ POOL               STORED  COMPRESS_UNDER_BYTES  COMPRESS_BYTES_USED
 compressed-pool    12 GiB  16 GiB                8 GiB
 ```
 
-This shows 12 GiB of logical data compressed from 16 GiB to 8 GiB (50% savings).
+This shows the pool stores 12 GiB on disk. Of that, 8 GiB is compressed data that was originally 16 GiB before compression (50% compression ratio on the compressed portion).
 
 ## Disable Compression on a Pool
 
