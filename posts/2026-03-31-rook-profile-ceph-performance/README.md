@@ -21,7 +21,7 @@ kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
   ceph osd perf
 ```
 
-This shows per-OSD latency statistics including `apply_latency_ms` (write path) and `commit_latency_ms` (journal commit).
+This shows per-OSD latency statistics including `apply_latency_ms` (write path) and `commit_latency_ms` (transaction commit). Note that with BlueStore (the default backend), both values are effectively identical since BlueStore does not use a separate journal.
 
 ## Real-Time I/O Statistics
 
@@ -36,7 +36,7 @@ Filter for I/O statistics only:
 
 ```bash
 kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
-  ceph iostat 5
+  ceph iostat -p 5
 ```
 
 This outputs per-second read/write bytes and IOPS at 5-second intervals.
@@ -64,7 +64,7 @@ Check the operation latency histogram:
 
 ```bash
 kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
-  ceph tell osd.0 perf dump | jq '.osd.op_rlatency'
+  ceph tell osd.0 perf dump | jq '.osd.op_r_latency'
 ```
 
 ## Benchmarking with rados bench
@@ -111,14 +111,7 @@ kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
 
 ## Checking Network Utilization
 
-Verify whether the Ceph network is saturated:
-
-```bash
-kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
-  ceph osd stat
-```
-
-Also check with node-level tools:
+High OSD latencies in `ceph osd perf` can indicate network saturation. Check node-level network utilization directly:
 
 ```bash
 kubectl debug node/<node-name> -it --image=ubuntu -- \
