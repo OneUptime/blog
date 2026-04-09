@@ -63,7 +63,7 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "false"
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  # FSID of the external Ceph cluster
+  # Must match the namespace/clusterID in the ceph-csi-config ConfigMap
   clusterID: rook-ceph-external
   # RBD pool on the external cluster
   pool: replicapool
@@ -156,9 +156,9 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph-external
+  # Metadata pool must be replicated (cannot use erasure coded pool)
+  pool: replicapool
   # Data pool uses erasure coding for space efficiency
-  pool: ec-data-pool
-  # Required: metadata pool must be replicated
   dataPool: ec-data-pool
   imageFormat: "2"
   # Erasure coded pools require only layering feature
@@ -247,9 +247,9 @@ kubectl get storageclass
 # Check CSI provisioner logs for errors
 kubectl logs -n rook-ceph deploy/csi-rbdplugin-provisioner -c csi-provisioner | tail -20
 
-# Check if the clusterID matches the external cluster FSID
+# Check if the clusterID matches the namespace in ceph-csi-config ConfigMap
 kubectl describe storageclass rook-ceph-block-external | grep clusterID
-ceph fsid  # Run on external cluster - should match
+kubectl get configmap -n rook-ceph-external ceph-csi-config -o jsonpath='{.data.config}'
 
 # Verify CSI secrets exist in the correct namespace
 kubectl get secrets -n rook-ceph-external | grep csi
@@ -260,4 +260,4 @@ kubectl describe pvc test-block-external
 
 ## Summary
 
-Setting up StorageClasses for an external Ceph cluster requires configuring the correct `clusterID` (external cluster FSID), referencing the appropriate CSI secrets created during authentication setup, and specifying the correct pool names from the external cluster. Create separate StorageClasses for RBD block storage, CephFS shared filesystems, and erasure coded pools to give workloads access to the full range of external Ceph storage capabilities.
+Setting up StorageClasses for an external Ceph cluster requires configuring the correct `clusterID` (matching the namespace in the ceph-csi-config ConfigMap), referencing the appropriate CSI secrets created during authentication setup, and specifying the correct pool names from the external cluster. Create separate StorageClasses for RBD block storage, CephFS shared filesystems, and erasure coded pools to give workloads access to the full range of external Ceph storage capabilities.
