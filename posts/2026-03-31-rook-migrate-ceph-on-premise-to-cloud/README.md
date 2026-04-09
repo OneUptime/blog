@@ -48,14 +48,12 @@ Once synced, switch application endpoints to the cloud RGW.
 Use s3cmd or rclone to copy objects to AWS S3:
 
 ```bash
-# Configure rclone
+# Configure rclone with per-remote credentials
+# Run 'rclone config' to set up each remote with its own access key and secret
 rclone config
 
-# Sync all buckets
+# Sync all buckets (credentials are configured per-remote during setup)
 rclone sync ceph-s3:mybucket aws-s3:mybucket \
-  --s3-access-key-id=<aws-key> \
-  --s3-secret-access-key=<aws-secret> \
-  --s3-region=us-east-1 \
   --transfers=8 \
   --checksum \
   --progress
@@ -97,10 +95,15 @@ rsync -avz --checksum \
   root@cloud-node:/mnt/cloud-cephfs/
 ```
 
-For large datasets, use cephfs-data-scan:
+For large datasets, use parallel rsync workers or the CephFS mirroring daemon (`cephfs-mirror`) for continuous replication:
 
 ```bash
-cephfs-data-scan scan_extents --worker_n 0 --worker_m 4 myfs
+# Parallel rsync using multiple workers
+rsync -avz --checksum \
+  /mnt/cephfs/dir1/ root@cloud-node:/mnt/cloud-cephfs/dir1/ &
+rsync -avz --checksum \
+  /mnt/cephfs/dir2/ root@cloud-node:/mnt/cloud-cephfs/dir2/ &
+wait
 ```
 
 ## Cutover Strategy
@@ -117,7 +120,7 @@ To minimize downtime:
 
 ```bash
 # Verify object counts match after migration
-ceph df | grep mybucket
+radosgw-admin bucket stats --bucket=mybucket
 aws s3 ls s3://mybucket --recursive | wc -l
 ```
 
