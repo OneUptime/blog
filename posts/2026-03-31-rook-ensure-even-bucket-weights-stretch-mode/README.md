@@ -43,7 +43,7 @@ for node in nodes:
 Each OSD's CRUSH weight should be proportional to its capacity. For uniform drives, all weights should be equal:
 
 ```bash
-# Set weight to match drive capacity in TiB (e.g., 2TB = 2.0)
+# Set weight to match drive capacity in TiB (e.g., 2 TiB drive = 2.0)
 ceph osd crush reweight osd.0 2.0
 ceph osd crush reweight osd.1 2.0
 ceph osd crush reweight osd.4 2.0
@@ -79,13 +79,13 @@ ceph balancer execute myplan
 If sites have different OSD sizes, normalize the total capacity per site. For example, site A has four 4TB drives and site B has eight 2TB drives:
 
 ```bash
-# Site A: 4 x 4TB = 16TB total weight
+# Site A: 4 x 4 TiB = 16 TiB total weight
 ceph osd crush reweight osd.0 4.0
 ceph osd crush reweight osd.1 4.0
 ceph osd crush reweight osd.2 4.0
 ceph osd crush reweight osd.3 4.0
 
-# Site B: 8 x 2TB = 16TB total weight (matches site A)
+# Site B: 8 x 2 TiB = 16 TiB total weight (matches site A)
 for i in 4 5 6 7 8 9 10 11; do
   ceph osd crush reweight osd.$i 2.0
 done
@@ -99,13 +99,21 @@ After adjusting weights, monitor the cluster for rebalancing:
 watch ceph pg stat
 ```
 
-Check the distribution of PGs per OSD:
+Check the distribution of PGs per OSD and utilization:
 
 ```bash
-ceph osd df | awk '{print $1, $7}' | sort -k2 -n
+ceph osd df
 ```
 
-An ideally balanced cluster has similar `%USE` values across all OSDs.
+An ideally balanced cluster has similar `%USE` values across all OSDs. You can also use JSON output for scripted checks:
+
+```bash
+ceph osd df --format json | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for osd in sorted(data['nodes'], key=lambda x: x['utilization']):
+    print(f\"osd.{osd['id']}: {osd['utilization']:.2f}%\")"
+```
 
 ## Preventing Future Imbalance
 
