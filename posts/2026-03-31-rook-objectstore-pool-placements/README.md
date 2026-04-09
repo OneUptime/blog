@@ -16,7 +16,7 @@ In Rook, you configure this through `CephObjectZone` placement configurations. H
 
 ## Configuring Multiple Storage Classes
 
-Define placement targets in your object store zone configuration. For a single-cluster setup, the default zone is configured automatically, but you can extend it with custom storage classes:
+Define placement targets in your object store zone configuration. For a single-cluster setup, the default zone is configured automatically, but you can extend it with custom storage classes using `sharedPools` and `poolPlacements`. First create the additional pools as separate CephBlockPool CRDs, then reference them by name:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -33,16 +33,15 @@ spec:
     replicated:
       size: 3
   customEndpoints: []
-  storageClass:
-    - name: STANDARD
-      pools:
-        - name: my-store.rgw.buckets.data
-    - name: STANDARD_IA
-      pools:
-        - name: my-store.rgw.buckets.ia-data
-    - name: GLACIER
-      pools:
-        - name: my-store.rgw.buckets.archive-data
+  sharedPools:
+    poolPlacements:
+      - name: default-placement
+        dataPoolName: my-store.rgw.buckets.data
+        storageClasses:
+          - name: STANDARD_IA
+            dataPoolName: my-store.rgw.buckets.ia-data
+          - name: GLACIER
+            dataPoolName: my-store.rgw.buckets.archive-data
 ```
 
 ## Configuring Placement Targets via radosgw-admin
@@ -53,7 +52,7 @@ For immediate configuration without modifying CRDs, use the Rook toolbox:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # List current placement targets
-radosgw-admin placement list
+radosgw-admin zonegroup placement list
 
 # Add a new placement target pointing to a specific pool
 radosgw-admin zonegroup placement add \
@@ -85,9 +84,9 @@ aws s3 cp myfile.tar.gz s3://standard-bucket/ \
   --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc
 ```
 
-## Using StorageClass Hints in ObjectBucketClaims
+## Using ObjectBucketClaims
 
-Specify the default placement for buckets provisioned via OBC:
+Buckets provisioned via OBC use the default placement target of the object store. You can set quota limits through `additionalConfig`:
 
 ```yaml
 apiVersion: objectbucket.io/v1alpha1
@@ -99,7 +98,16 @@ spec:
   generateBucketName: ssd-bucket
   storageClassName: rook-ceph-bucket
   additionalConfig:
-    placementTarget: ssd-tier
+    maxSize: "10Gi"
+    maxObjects: "10000"
+```
+
+To create a bucket in a specific placement target, use the S3 API directly with `LocationConstraint` set to the placement target name:
+
+```bash
+aws s3api create-bucket --bucket my-ssd-bucket \
+  --create-bucket-configuration LocationConstraint=ssd-tier \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc
 ```
 
 ## Verifying Pool Data Distribution
