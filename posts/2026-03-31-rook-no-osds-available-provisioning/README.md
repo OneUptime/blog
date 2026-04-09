@@ -80,21 +80,16 @@ If pool size is 3 but you have fewer than 3 OSDs, either add more nodes/disks or
 
 ### Devices Already Partitioned or Filesystem-Formatted
 
-Rook will not use devices that have existing partitions or filesystems unless `config.osdsPerDevice` and cleanup settings allow it:
-
-```yaml
-spec:
-  storage:
-    config:
-      osdsPerDevice: "1"
-```
+Rook skips devices that have existing partitions, filesystems, or LVM data. These devices must be wiped before Rook will provision OSDs on them.
 
 Wipe devices manually if safe to do so:
 
 ```bash
 # On the node
+sgdisk --zap-all /dev/sdb
+dd if=/dev/zero of=/dev/sdb bs=1M count=100 oflag=direct,dsync
 wipefs -a /dev/sdb
-dd if=/dev/zero of=/dev/sdb bs=4096 count=100
+partprobe /dev/sdb
 ```
 
 ### Placement Group Issues
@@ -111,9 +106,11 @@ Adjust the pool's replication factor to match available OSD count:
 ```bash
 kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
   ceph osd pool set replicapool size 1
+kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
+  ceph osd pool set replicapool min_size 1
 ```
 
-Only do this temporarily - restore proper replication when more OSDs are available.
+Only do this temporarily - setting size and min_size to 1 means no redundancy and risks data loss. Restore proper replication when more OSDs are available.
 
 ## Verifying OSD Recovery
 
