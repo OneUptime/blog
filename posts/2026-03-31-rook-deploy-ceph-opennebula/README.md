@@ -112,8 +112,8 @@ onetemplate instantiate ceph-vm
 Ceph RBD enables live migration between hypervisors because VM disk images are stored in the shared Ceph cluster rather than on local host storage:
 
 ```bash
-# Migrate a running VM
-onevm migrate <VM_ID> <HOST_ID>
+# Live migrate a running VM
+onevm migrate --live <VM_ID> <HOST_ID>
 ```
 
 ## Monitoring Ceph from OpenNebula
