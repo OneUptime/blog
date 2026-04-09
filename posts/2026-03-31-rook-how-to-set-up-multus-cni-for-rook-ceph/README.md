@@ -94,7 +94,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18
+    image: quay.io/ceph/ceph:v18.2.5
   network:
     provider: multus
     selectors:
@@ -137,40 +137,28 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config get osd.0 public_network
 ```
 
-## Step 4 - Configure Client Access
+## Step 4 - Verify Client Access Configuration
 
-Update the CSI driver config to use the public network addresses for monitor endpoints:
+The Rook operator automatically manages the `rook-ceph-csi-config` ConfigMap with the correct monitor endpoints for the CSI driver. You do not need to manually edit this ConfigMap — any manual changes will be overwritten by the operator during reconciliation.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-ceph-csi-config
-  namespace: rook-ceph
-data:
-  config.json: |
-    [
-      {
-        "clusterID": "rook-ceph",
-        "monitors": [
-          "10.0.1.101:6789",
-          "10.0.1.102:6789",
-          "10.0.1.103:6789"
-        ]
-      }
-    ]
+Verify that the operator has populated the CSI config with the Multus public network addresses:
+
+```bash
+kubectl -n rook-ceph get configmap rook-ceph-csi-config -o jsonpath='{.data.config\.json}' | jq .
 ```
+
+You should see the monitor addresses from the Multus public network (e.g., addresses in the `10.0.1.0/24` range).
 
 ## Verifying Traffic Separation
 
 Monitor network traffic on each interface on a storage node:
 
 ```bash
-# Watch public network traffic
-tcpdump -i eth1 port 6789 -n
+# Watch public network traffic (monitors listen on ports 3300 and 6789)
+tcpdump -i eth1 port 3300 or port 6789 -n
 
-# Watch cluster replication traffic
-tcpdump -i eth2 port 6800 -n
+# Watch cluster replication traffic (OSDs use port range 6800-7300)
+tcpdump -i eth2 portrange 6800-7300 -n
 ```
 
 ## Summary
