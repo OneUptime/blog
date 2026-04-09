@@ -42,7 +42,19 @@ spec:
     pg_num: "128"
 ```
 
-Define a throughput pool for backups using erasure coding:
+Define a throughput pool for backups using erasure coding. RBD requires a replicated pool for image metadata even when the data pool uses erasure coding, so define both:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: backup-pool-metadata
+  namespace: rook-ceph
+spec:
+  replicated:
+    size: 3
+  deviceClass: hdd
+```
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -85,7 +97,8 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  pool: backup-pool
+  pool: backup-pool-metadata
+  dataPool: backup-pool
 ```
 
 ## Balancing PG Counts Across Pools
