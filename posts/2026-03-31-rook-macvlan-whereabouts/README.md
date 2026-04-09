@@ -29,7 +29,11 @@ whereabouts-ds-abc12   1/1     Running   0          5d
 Whereabouts requires a DaemonSet running on all nodes. Install it if missing:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/daemonset-install.yaml
+git clone https://github.com/k8snetworkplumbingwg/whereabouts && cd whereabouts
+kubectl apply \
+    -f doc/crds/daemonset-install.yaml \
+    -f doc/crds/whereabouts.cni.cncf.io_ippools.yaml \
+    -f doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
 ```
 
 ## Designing the IP Range
@@ -121,11 +125,10 @@ kubectl -n kube-system get ippools
 kubectl -n kube-system get overlappingrangeipreservations
 ```
 
-Or check the Whereabouts node-local state:
+Check for overlapping range reservations:
 
 ```bash
-kubectl -n kube-system get ipam -o yaml 2>/dev/null || \
-  echo "Check whereabouts daemonset logs"
+kubectl get overlappingrangeipreservations.whereabouts.cni.cncf.io -A -o yaml
 ```
 
 View allocations in the NAD:
@@ -190,7 +193,7 @@ spec:
 
 ```bash
 kubectl -n rook-ceph get pods | wc -l
-# Compare against range size: 192.168.100.200 - 192.168.100.10 = 190 IPs
+# Compare against range size: 192.168.100.10 - 192.168.100.200 = 191 IPs
 ```
 
 **Stale IP allocations:** If a pod crashes without releasing its IP, Whereabouts may hold the allocation. Check for stale entries:
