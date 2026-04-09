@@ -77,14 +77,26 @@ kubectl -n rook-ceph describe pvc rook-ceph-mon-a | grep -A5 Conditions
 
 ## Migrating the Monitor to a New Node
 
-If the current node cannot provide more disk space, migrate the monitor:
+If the current node cannot provide more disk space, migrate the monitor.
+
+In Rook/cephadm deployments, use the orchestrator to manage monitor placement:
 
 ```bash
 # Remove the struggling monitor
-ceph mon remove a
+ceph orch daemon rm mon.a
 
-# Add a new monitor on a node with sufficient space
-ceph mon add a <new-ip-address>:6789
+# Add a new monitor on a host with sufficient space
+ceph orch daemon add mon <new-hostname>
+```
+
+For manual (non-orchestrator) deployments, remove the old monitor and bootstrap a new one:
+
+```bash
+# Remove the struggling monitor from the cluster
+ceph mon rm a
+
+# On the new host, prepare and start the monitor daemon
+# (requires copying the monmap and mon keyring, then running ceph-mon --mkfs)
 ```
 
 Wait for the new monitor to sync and rejoin quorum:
