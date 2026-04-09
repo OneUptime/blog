@@ -20,7 +20,7 @@ Verify that all monitor pods are in a crash loop:
 
 ```bash
 kubectl get pods -n rook-ceph -l app=rook-ceph-mon
-kubectl logs -n rook-ceph <mon-pod> | grep -E "error|FAILED|leveldb"
+kubectl logs -n rook-ceph <mon-pod> | grep -E "error|FAILED|rocksdb"
 ```
 
 If all monitors report database errors and cannot start, proceed with recovery.
@@ -48,7 +48,23 @@ Save all OSD keyrings to a secure location.
 
 ## Step 4 - Rebuild the Monitor Store
 
-Use the `ceph-monstore-tool` to rebuild the store from OSD data. This tool scans OSD data stores to reconstruct the monitor database. You need to run this from a node or pod that has access to the OSD data directories:
+Use `ceph-objectstore-tool` and `ceph-monstore-tool` to rebuild the store from OSD data. You need to run these from a node or pod that has access to the OSD data directories.
+
+First, extract cluster map data from every OSD into a temporary monitor store directory. Run this for each OSD (replace `$osd_data_path` with each OSD's data directory):
+
+```bash
+ceph-objectstore-tool --data-path $osd_data_path --no-mon-config \
+  --op update-mon-db --mon-store-path /tmp/mon-store
+```
+
+Next, generate a monmap with the expected monitor addresses:
+
+```bash
+monmaptool --create --addv a [v2:<mon-a-ip>:3300,v1:<mon-a-ip>:6789] \
+  --fsid <cluster-fsid> /tmp/monmap
+```
+
+Finally, rebuild the monitor store from the collected OSD data:
 
 ```bash
 ceph-monstore-tool /tmp/mon-store rebuild -- \
@@ -56,13 +72,7 @@ ceph-monstore-tool /tmp/mon-store rebuild -- \
   --monmap /tmp/monmap
 ```
 
-Before running `rebuild`, generate a monmap with the expected monitor addresses:
-
-```bash
-monmaptool --create --add a <mon-a-ip>:6789 --fsid <cluster-fsid> /tmp/monmap
-```
-
-The rebuild command scans all available OSD stores to reconstruct the OSD map, crush map, and authentication data. Ensure all OSD data directories are accessible from where you run this command.
+The rebuild command reconstructs the OSD map, CRUSH map, and authentication data from the OSD stores collected earlier. Ensure all OSD data directories have been processed with `ceph-objectstore-tool` before running the rebuild.
 
 ## Step 5 - Inject the Rebuilt Store
 
@@ -120,4 +130,4 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- ceph fs status
 
 ## Summary
 
-Recovering CephFS after monitor store loss requires rebuilding the monitor database from OSD keyrings using `ceph-monstore-tool`. The process is destructive and should be a last resort after verifying all monitor stores are unrecoverable. Prevention is always preferable: use replicated monitors across failure domains and back up the monitor keyring and auth data regularly.
+Recovering CephFS after monitor store loss requires rebuilding the monitor database from OSD data stores using `ceph-objectstore-tool` and `ceph-monstore-tool`. The process is destructive and should be a last resort after verifying all monitor stores are unrecoverable. Prevention is always preferable: use replicated monitors across failure domains and back up the monitor keyring and auth data regularly.
