@@ -52,7 +52,8 @@ spec:
     useAllNodes: false
     nodes:
       - name: "storage-node-1"
-        encrypted: true
+        config:
+          encryptedDevice: "true"
         devices:
           - name: "sdb"
           - name: "sdc"
@@ -67,7 +68,7 @@ When no KMS is configured, Rook generates random encryption keys and stores them
 ```bash
 # View encryption keys (created automatically by Rook)
 kubectl -n rook-ceph get secrets | grep encryption
-# rook-ceph-osd-encryption-key-<osd-id>   Opaque   1   5m
+# rook-ceph-osd-encryption-key-<pvc-name>   Opaque   1   5m
 ```
 
 This is simple but means keys are stored within the Kubernetes cluster. If the cluster is compromised, keys are accessible.
@@ -129,7 +130,6 @@ spec:
         VAULT_ADDR: https://vault.example.com:8200
         VAULT_BACKEND_PATH: secret/rook
         VAULT_AUTH_METHOD: kubernetes
-        VAULT_AUTH_KUBERNETES_HOST: https://kubernetes.default.svc
         VAULT_AUTH_KUBERNETES_ROLE: rook-ceph
 ```
 
