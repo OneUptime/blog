@@ -28,9 +28,6 @@ Ceph provides a health warning for excessive fragmentation:
 ```bash
 # Check for fragmentation health warnings
 ceph health detail | grep BLUESTORE_FRAGMENTATION
-
-# Get fragmentation score per OSD (0.0 = no fragmentation, 1.0 = maximum)
-ceph osd df | grep -v "^osd\." | head -5
 ```
 
 Get a detailed fragmentation report:
@@ -44,58 +41,48 @@ Example output:
 
 ```json
 {
-  "allocator_name": "block",
-  "alloc_unit": 4096,
-  "capacity": 107374182400,
-  "num_free": 52428800,
   "fragmentation_rating": 0.42
 }
 ```
 
 ## Thresholds and Health Warnings
 
-Ceph issues health warnings at these fragmentation levels:
+Ceph issues a health warning when the fragmentation score exceeds a configurable threshold (default 0.8):
 
-| Score | Status |
+| Score | Description |
 |---|---|
-| 0.0 - 0.7 | HEALTH_OK |
-| 0.7 - 0.9 | HEALTH_WARN |
-| 0.9 - 1.0 | HEALTH_ERR |
+| 0.0 - 0.4 | Tiny fragmentation |
+| 0.4 - 0.7 | Small, acceptable fragmentation |
+| 0.7 - 0.9 | Considerable, but generally safe |
+| 0.9 - 1.0 | Severe fragmentation |
 
 ```bash
-# View current fragmentation thresholds
-ceph config show osd.0 bluestore_fragmentation_threshold
+# View current fragmentation warning threshold (default: 0.8)
+ceph config show osd.0 bluestore_warn_on_free_fragmentation
 ```
 
 ## Preventing Fragmentation
 
 ### Set Appropriate min_alloc_size
 
-Using a `min_alloc_size` that matches your workload's write size prevents creation of many small scattered extents:
+The `min_alloc_size` is baked into the OSD at creation time. It cannot be changed after the OSD is created — the OSD must be reprovisioned for a new value to take effect. The current default is 4096 (4KB). For HDD workloads with larger sequential writes, a larger value like 65536 (64KB) can reduce fragmentation:
 
 ```bash
+# This only takes effect for newly created OSDs
 ceph config set osd bluestore_min_alloc_size_hdd 65536
 ```
 
-### Enable Deferred Compaction
+### Tune Deferred Write Batching
 
-BlueStore can compact small free extents during idle periods:
+BlueStore batches small writes before flushing them to the block device, which can reduce write amplification and the resulting fragmentation. The `bluestore_deferred_batch_ops` option controls how many deferred write operations are batched together (defaults to 64 for HDDs, 16 for SSDs):
 
 ```bash
-ceph config set osd bluestore_deferred_batch_ops 32
+ceph config set osd bluestore_deferred_batch_ops_hdd 64
 ```
 
 ## Remediating Fragmentation
 
-### Method 1 - Deep Scrub with Compaction
-
-Force a deep scrub which triggers BlueStore cleanup:
-
-```bash
-ceph osd deep-scrub osd.0
-```
-
-### Method 2 - Rebalance the OSD
+### Method 1 - Rebalance the OSD
 
 Temporarily mark the OSD out and back in to trigger data redistribution:
 
@@ -107,7 +94,7 @@ ceph osd out 0
 ceph osd in 0
 ```
 
-### Method 3 - Online Compaction
+### Method 2 - Online Compaction
 
 For RocksDB metadata fragmentation, trigger a manual compaction:
 
@@ -117,7 +104,7 @@ ceph daemon osd.0 compact
 
 This compacts RocksDB but not the main block device allocator.
 
-### Method 4 - OSD Replacement
+### Method 3 - OSD Replacement
 
 For severe fragmentation, replace the OSD:
 
@@ -137,8 +124,11 @@ ceph osd purge 0 --yes-i-really-mean-it
 
 Create a monitoring script:
 
+Note: `ceph daemon` communicates via the local admin socket and only works for OSDs running on the same host. On a multi-node cluster, you need to run this script on each OSD host or use SSH.
+
 ```bash
 #!/bin/bash
+# Run this on each OSD host — ceph daemon only works for local OSDs
 for OSD in $(ceph osd ls); do
   SCORE=$(ceph daemon osd.$OSD bluestore allocator score block 2>/dev/null | \
     python3 -c "import sys,json; print(json.load(sys.stdin).get('fragmentation_rating','N/A'))")
@@ -148,4 +138,4 @@ done
 
 ## Summary
 
-BlueStore fragmentation develops naturally over time as objects are created and deleted. Monitoring fragmentation scores with `ceph daemon osd.X bluestore allocator score block`, setting appropriate `min_alloc_size` to match your workload, and periodically cycling heavily fragmented OSDs out-and-in keeps fragmentation manageable. For active degradation, triggering deep scrubs or RocksDB compaction provides partial relief without data movement.
+BlueStore fragmentation develops naturally over time as objects are created and deleted. Monitoring fragmentation scores with `ceph daemon osd.X bluestore allocator score block`, setting appropriate `min_alloc_size` before OSD creation to match your workload, and periodically cycling heavily fragmented OSDs out-and-in keeps fragmentation manageable. For metadata-level fragmentation, triggering RocksDB compaction with `ceph daemon osd.X compact` provides partial relief without data movement.
