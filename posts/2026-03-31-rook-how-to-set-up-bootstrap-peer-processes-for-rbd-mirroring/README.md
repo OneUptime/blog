@@ -27,7 +27,7 @@ Primary Cluster (Site A)         Secondary Cluster (Site B)
 
 ## Prerequisites
 
-- Ceph Luminous or later on both clusters
+- Ceph Nautilus (14.2.x) or later on both clusters
 - Both clusters must have the `rbd-mirror` daemon deployed
 - Network reachability between the Ceph monitor addresses of both clusters
 
@@ -97,18 +97,20 @@ rbd mirror pool peer bootstrap import \
 On **either cluster**:
 
 ```bash
-# List configured peers
-rbd mirror pool peer list rbd
+# Show pool mirroring info including peers
+rbd mirror pool info rbd
 
 # Expected output:
-# [{
-#     "uuid": "a1b2-...",
-#     "direction": "rx-only",
-#     "site_name": "primary",
-#     "mirror_uuid": "...",
-#     "client_name": "client.rbd-mirror-peer",
-#     "mon_host": "10.0.0.1:6789,10.0.0.2:6789"
-# }]
+# Mode: image
+# Site Name: secondary
+#
+# Peer Sites:
+#   UUID: a1b2-...
+#   Name: primary
+#   Mirror UUID: ...
+#   Direction: rx-only
+#   Client: client.rbd-mirror-peer
+#   Mon Host: 10.0.0.1:6789,10.0.0.2:6789
 ```
 
 ## Step 5 - Deploy rbd-mirror Daemons
@@ -128,8 +130,11 @@ ceph orch ps | grep rbd-mirror
 If using image mode:
 
 ```bash
-# Enable mirroring on a specific image
-rbd mirror image enable rbd/myimage
+# Enable mirroring on a specific image (snapshot mode, recommended)
+rbd mirror image enable rbd/myimage snapshot
+
+# Or use journal mode
+# rbd mirror image enable rbd/myimage journal
 
 # Verify
 rbd mirror image status rbd/myimage
@@ -166,15 +171,15 @@ In Rook, the bootstrap peer process is managed via Kubernetes Secrets and CephRB
 # Get bootstrap token via Rook toolbox on primary cluster
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd mirror pool peer bootstrap create --site-name primary rbd \
-  | base64 | tr -d '\n' > bootstrap-token.b64
+  > bootstrap-token.txt
 
 # Create secret on secondary cluster
 kubectl -n rook-ceph create secret generic rbd-mirror-peer \
-  --from-file=token=bootstrap-token.b64
+  --from-file=token=bootstrap-token.txt
 ```
 
 ```yaml
-# Apply CephRBDMirror on secondary cluster
+# Deploy CephRBDMirror daemon on secondary cluster
 apiVersion: ceph.rook.io/v1
 kind: CephRBDMirror
 metadata:
@@ -182,9 +187,24 @@ metadata:
   namespace: rook-ceph
 spec:
   count: 1
-  peers:
-    secretNames:
-      - rbd-mirror-peer
+```
+
+```yaml
+# Configure the peer on the CephBlockPool (not the CephRBDMirror)
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: rbd
+  namespace: rook-ceph
+spec:
+  replicated:
+    size: 3
+  mirroring:
+    enabled: true
+    mode: image
+    peers:
+      secretNames:
+        - rbd-mirror-peer
 ```
 
 ## Failover to Secondary
