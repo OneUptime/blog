@@ -65,13 +65,13 @@ If you need to unblock the PG immediately and have some headroom:
 
 ```bash
 # Temporarily raise the backfillfull threshold
-ceph config set global osd_backfillfull_ratio 0.95
+ceph osd set-backfillfull-ratio 0.95
 
 # Monitor the PG as it resumes backfill
 watch -n 5 "ceph pg dump pgs | grep backfill"
 
 # Restore the original threshold after backfill completes
-ceph config set global osd_backfillfull_ratio 0.90
+ceph osd set-backfillfull-ratio 0.90
 ```
 
 ## Resolution Strategy 3 - Add Capacity
@@ -119,7 +119,7 @@ After applying a fix, confirm the PG state transitions:
 
 ```bash
 # Watch PG state changes
-watch -n 3 "ceph pg dump pgs | awk '{print \$1, \$15}' | grep -v active+clean"
+watch -n 3 "ceph pg dump pgs | awk '{print \$1, \$13}' | grep -v active+clean"
 
 # Confirm no more backfill_toofull PGs
 ceph health detail | grep toofull
