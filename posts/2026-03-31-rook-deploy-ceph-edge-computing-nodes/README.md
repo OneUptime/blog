@@ -14,7 +14,7 @@ Edge computing locations present unique challenges for Ceph: limited hardware re
 
 A minimal edge Ceph cluster needs:
 - 3 nodes for quorum (minimum for HA) or 1 node for non-HA
-- 2 GB RAM per OSD daemon (reduce to 1 GB with tuning)
+- 2 GB RAM per OSD daemon (minimum recommended by Ceph)
 - At least 1 data disk per node
 - Gigabit networking between nodes
 
@@ -75,9 +75,7 @@ spec:
 Tune Ceph for low memory environments:
 
 ```bash
-ceph config set osd osd_memory_target 1073741824
-ceph config set osd bluestore_cache_size_hdd 536870912
-ceph config set osd bluestore_cache_size_ssd 1073741824
+ceph config set osd osd_memory_target 2147483648
 ```
 
 Reduce the number of PGs for small clusters:
@@ -101,9 +99,10 @@ spec:
 Limit replication traffic:
 
 ```bash
-ceph config set global osd_max_backfills 1
-ceph config set global osd_recovery_max_active 1
-ceph config set global osd_recovery_op_priority 3
+ceph config set osd osd_mclock_override_recovery_settings true
+ceph config set osd osd_max_backfills 1
+ceph config set osd osd_recovery_max_active 1
+ceph config set osd osd_recovery_op_priority 3
 ```
 
 ## Network Isolation
@@ -113,9 +112,11 @@ Use host networking to avoid overlay network overhead on edge hardware:
 ```yaml
 network:
   provider: host
-  selectors:
-    public: "eth0"
-    cluster: "eth1"
+  addressRanges:
+    public:
+      - "192.168.1.0/24"
+    cluster:
+      - "10.0.0.0/24"
 ```
 
 ## Verifying the Edge Deployment
