@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CacheTiering, Storage, Operation
 
-Description: Learn how to safely remove a writeback cache tier from Ceph by flushing all dirty objects, transitioning through readproxy mode, and then removing the tier relationship.
+Description: Learn how to safely remove a writeback cache tier from Ceph by flushing all dirty objects, transitioning through proxy mode, and then removing the tier relationship.
 
 ---
 
-Removing a writeback cache tier requires careful handling because dirty objects in the cache pool have not yet been written to the backing pool. Deleting the cache pool before flushing these objects would cause permanent data loss. The safe removal procedure transitions through readproxy mode and waits for all dirty objects to be flushed.
+Removing a writeback cache tier requires careful handling because dirty objects in the cache pool have not yet been written to the backing pool. Deleting the cache pool before flushing these objects would cause permanent data loss. The safe removal procedure transitions through proxy mode and waits for all dirty objects to be flushed.
 
 ## Understanding the Risk
 
@@ -19,16 +19,16 @@ In writeback mode, dirty objects exist only in the cache pool. If you delete the
 
 Always complete the full flush procedure before deleting the cache pool.
 
-## Step 1: Transition to Readproxy Mode
+## Step 1: Transition to Proxy Mode
 
-Stop accepting new writes to the cache pool by switching to readproxy:
+Stop accepting new writes to the cache pool by switching to proxy:
 
 ```bash
-ceph osd tier cache-mode cache-pool readproxy
+ceph osd tier cache-mode cache-pool proxy
 ```
 
 After this change:
-- New client writes go directly to the backing pool
+- New client reads and writes are proxied directly to the backing pool
 - No new dirty objects are created in the cache pool
 - Existing dirty objects continue to be flushed
 
@@ -40,7 +40,7 @@ Trigger immediate flushing of all remaining dirty objects:
 rados -p cache-pool cache-flush-evict-all
 ```
 
-This command reads all objects in the cache pool and flushes dirty ones to the backing pool.
+This command flushes all dirty objects to the backing pool and then evicts all objects from the cache pool.
 
 Monitor progress:
 
@@ -50,10 +50,10 @@ watch "ceph df | grep cache-pool"
 
 Wait until the dirty count drops to 0. This may take minutes to hours depending on cache size and I/O subsystem speed.
 
-## Step 3: Verify No Dirty Objects Remain
+## Step 3: Verify Cache Pool Is Empty
 
 ```bash
-# Check for dirty objects
+# Check for remaining objects
 rados -p cache-pool ls | wc -l
 ```
 
@@ -67,25 +67,9 @@ ceph osd pool stats cache-pool
 cache tier io 0 MiB/s flush, 0 MiB/s promote
 ```
 
-Zero flush rate with a decreasing or zero object count confirms flushing is complete.
+Zero flush rate with a zero object count confirms flushing and eviction are complete.
 
-## Step 4: Evict All Remaining Clean Objects
-
-Remove all clean objects from the cache pool:
-
-```bash
-rados -p cache-pool cache-evict-all
-```
-
-Wait for the pool to empty:
-
-```bash
-watch "ceph df | grep cache-pool"
-```
-
-The object count should reach 0.
-
-## Step 5: Remove Overlay and Tier Relationship
+## Step 4: Remove Overlay and Tier Relationship
 
 ```bash
 # Remove the overlay
@@ -95,7 +79,7 @@ ceph osd tier remove-overlay backing-pool
 ceph osd tier remove backing-pool cache-pool
 ```
 
-## Step 6: Delete the Cache Pool
+## Step 5: Delete the Cache Pool
 
 ```bash
 ceph config set mon mon_allow_pool_delete true
@@ -110,8 +94,8 @@ set -e
 BACKING=backing-pool
 CACHE=cache-pool
 
-echo "Step 1: Switching to readproxy mode..."
-ceph osd tier cache-mode $CACHE readproxy
+echo "Step 1: Switching to proxy mode..."
+ceph osd tier cache-mode $CACHE proxy
 
 echo "Step 2: Flushing all dirty objects..."
 rados -p $CACHE cache-flush-evict-all
@@ -130,14 +114,11 @@ for pool in df['pools']:
   sleep 30
 done
 
-echo "Step 4: Evicting clean objects..."
-rados -p $CACHE cache-evict-all
-
-echo "Step 5: Removing overlay and tier..."
+echo "Step 4: Removing overlay and tier..."
 ceph osd tier remove-overlay $BACKING
 ceph osd tier remove $BACKING $CACHE
 
-echo "Step 6: Deleting cache pool..."
+echo "Step 5: Deleting cache pool..."
 ceph config set mon mon_allow_pool_delete true
 ceph osd pool delete $CACHE $CACHE --yes-i-really-really-mean-it
 
@@ -147,4 +128,4 @@ ceph health
 
 ## Summary
 
-Removing a writeback cache tier requires transitioning to readproxy mode to stop new dirty writes, flushing all existing dirty objects to the backing pool, evicting all clean objects, then removing the overlay, tier relationship, and finally the pool. Never skip the flush step - dirty objects in the cache pool that are not in the backing pool will be permanently lost if the cache pool is deleted prematurely.
+Removing a writeback cache tier requires transitioning to proxy mode to stop new dirty writes, flushing and evicting all objects from the cache pool, then removing the overlay, tier relationship, and finally the pool. Never skip the flush step - dirty objects in the cache pool that are not in the backing pool will be permanently lost if the cache pool is deleted prematurely.
