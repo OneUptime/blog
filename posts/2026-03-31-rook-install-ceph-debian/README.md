@@ -10,7 +10,7 @@ Description: Install Ceph on Debian Linux using the official Ceph repository, co
 
 ## Overview
 
-Installing Ceph directly on Debian Linux (without Kubernetes) is appropriate for traditional server environments or when building a standalone storage cluster. The Ceph project provides official Debian packages via its APT repository. This guide covers installation on Debian 11 (Bullseye) and Debian 12 (Bookworm).
+Installing Ceph directly on Debian Linux (without Kubernetes) is appropriate for traditional server environments or when building a standalone storage cluster. The Ceph project provides official Debian packages via its APT repository. This guide covers installation on Debian 12 (Bookworm).
 
 ## Prerequisites
 
@@ -21,17 +21,20 @@ Installing Ceph directly on Debian Linux (without Kubernetes) is appropriate for
 
 ## Step 1 - Add the Ceph Repository
 
-On all nodes, add the official Ceph APT repository:
+On the admin/bootstrap node, add the official Ceph APT repository:
 
 ```bash
 # Install prerequisites
 apt update
 apt install -y curl gnupg apt-transport-https
 
+# Ensure keyrings directory exists
+mkdir -p /etc/apt/keyrings/
+
 # Add Ceph GPG key
 curl -fsSL https://download.ceph.com/keys/release.gpg | gpg --dearmor -o /etc/apt/keyrings/ceph.gpg
 
-# Add repository for Ceph Squid (18.x) on Debian 12
+# Add repository for Ceph Squid (19.x) on Debian 12
 echo "deb [signed-by=/etc/apt/keyrings/ceph.gpg] https://download.ceph.com/debian-squid/ bookworm main" \
   > /etc/apt/sources.list.d/ceph.list
 
@@ -40,16 +43,10 @@ apt update
 
 ## Step 2 - Install Ceph Packages
 
-On all nodes:
+On the admin/bootstrap node, install `cephadm` and `ceph-common`. `cephadm` is the modern tool for bootstrapping and managing Ceph clusters (the older `ceph-deploy` tool is deprecated and no longer maintained). `cephadm` deploys all Ceph daemons as containers, so you do not need to install individual daemon packages (such as `ceph-mon` or `ceph-osd`) on any node:
 
 ```bash
-apt install -y ceph ceph-mgr ceph-mon ceph-osd ceph-mds radosgw
-```
-
-On the admin node, install `cephadm` which is the modern tool for bootstrapping and managing Ceph clusters (the older `ceph-deploy` tool is deprecated and no longer maintained):
-
-```bash
-apt install -y cephadm
+apt install -y cephadm ceph-common
 ```
 
 ## Step 3 - Bootstrap the Cluster with cephadm
@@ -69,8 +66,8 @@ cephadm bootstrap \
 Copy the SSH key to other nodes:
 
 ```bash
-ssh-copy-id -i /etc/ceph/ceph.pub root@192.168.1.11
-ssh-copy-id -i /etc/ceph/ceph.pub root@192.168.1.12
+ssh-copy-id -f -i /etc/ceph/ceph.pub root@192.168.1.11
+ssh-copy-id -f -i /etc/ceph/ceph.pub root@192.168.1.12
 
 # Add hosts to the cluster
 ceph orch host add node2 192.168.1.11
@@ -123,10 +120,10 @@ services:
 
 ```bash
 ceph orch apply rgw mystore --placement="3"
-radosgw-admin realm create --rgw-realm=default --default
-radosgw-admin user create --uid=admin --display-name="Admin" --access-key=KEY --secret=SECRET
+cephadm shell -- radosgw-admin realm create --rgw-realm=default --default
+cephadm shell -- radosgw-admin user create --uid=admin --display-name="Admin" --access-key=KEY --secret=SECRET
 ```
 
 ## Summary
 
-Installing Ceph on Debian uses the official Ceph APT repository and `cephadm` for cluster bootstrapping and orchestration. Adding nodes via `ceph orch host add` and deploying OSDs with `ceph orch apply osd` creates a fully managed Ceph cluster that Debian's systemd handles as native services. The result is a production-capable storage cluster with block, file, and object storage capabilities.
+Installing Ceph on Debian uses the official Ceph APT repository and `cephadm` for cluster bootstrapping and orchestration. Adding nodes via `ceph orch host add` and deploying OSDs with `ceph orch apply osd` creates a fully managed Ceph cluster with daemons running as containers managed by systemd. The result is a production-capable storage cluster with block, file, and object storage capabilities.
