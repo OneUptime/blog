@@ -42,13 +42,19 @@ Example output:
 ```json
 {
   "mempool": {
-    "osd": {
-      "items": 24532,
-      "bytes": 12456789
+    "by_pool": {
+      "osd": {
+        "items": 24532,
+        "bytes": 12456789
+      },
+      "buffer_anon": {
+        "items": 1024,
+        "bytes": 4194304
+      }
     },
-    "buffer_anon": {
-      "items": 1024,
-      "bytes": 4194304
+    "total": {
+      "items": 25556,
+      "bytes": 16651093
     }
   }
 }
@@ -83,7 +89,7 @@ google-pprof --text /usr/bin/ceph-osd /tmp/ceph-osd.0.heap.0001.heap
 google-pprof --pdf /usr/bin/ceph-osd /tmp/ceph-osd.0.heap.0001.heap > heap.pdf
 
 # Show top 20 allocators
-google-pprof --top20 /usr/bin/ceph-osd /tmp/ceph-osd.0.heap.0001.heap
+google-pprof --text /usr/bin/ceph-osd /tmp/ceph-osd.0.heap.0001.heap | head -20
 ```
 
 ## Comparing Heap Snapshots
@@ -99,8 +105,8 @@ sleep 300
 ceph tell osd.0 heap dump
 
 # Compare the two profiles
-google-pprof --base=/tmp/heap.0001.heap --pdf \
-  /usr/bin/ceph-osd /tmp/heap.0002.heap > diff.pdf
+google-pprof --base=/tmp/ceph-osd.0.heap.0001.heap --pdf \
+  /usr/bin/ceph-osd /tmp/ceph-osd.0.heap.0002.heap > diff.pdf
 ```
 
 ## Monitoring Memory with Perf Counters
@@ -114,7 +120,7 @@ curl -s http://192.168.1.10:9283/metrics | grep "ceph_.*mem"
 
 Key metrics to monitor:
 
-- `ceph_daemon_memory_usage` - RSS memory per daemon
+- `ceph_bluestore_cache_bytes` - BlueStore cache memory per OSD
 - `ceph_osd_numpg` - PG count (high PG count increases memory use)
 
 ## Configuring OSD Memory Target
@@ -125,7 +131,7 @@ Tune the OSD memory target to avoid over-provisioning:
 # Set OSD memory target to 4GB
 ceph config set osd osd_memory_target 4294967296
 
-# Enable automatic memory caching
+# Enable automatic cache size tuning
 ceph config set osd bluestore_cache_autotune true
 ```
 
