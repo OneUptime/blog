@@ -82,12 +82,12 @@ For bare metal deployments in data centers with multiple racks:
 
 ```bash
 # Label nodes with their rack
-kubectl label node node-1 topology.kubernetes.io/rack=rack-a
-kubectl label node node-2 topology.kubernetes.io/rack=rack-a
-kubectl label node node-3 topology.kubernetes.io/rack=rack-b
-kubectl label node node-4 topology.kubernetes.io/rack=rack-b
-kubectl label node node-5 topology.kubernetes.io/rack=rack-c
-kubectl label node node-6 topology.kubernetes.io/rack=rack-c
+kubectl label node node-1 topology.rook.io/rack=rack-a
+kubectl label node node-2 topology.rook.io/rack=rack-a
+kubectl label node node-3 topology.rook.io/rack=rack-b
+kubectl label node node-4 topology.rook.io/rack=rack-b
+kubectl label node node-5 topology.rook.io/rack=rack-c
+kubectl label node node-6 topology.rook.io/rack=rack-c
 ```
 
 ```yaml
@@ -120,7 +120,7 @@ Example CRUSH tree with hosts:
 
 ```text
 ID CLASS WEIGHT  TYPE NAME      STATUS REWEIGHT PRI-AFF
--1       2.00000 root default
+-1       3.00000 root default
 -3       1.00000     host node-1
  0   hdd 1.00000         osd.0      up  1.00000 1.00000
 -5       1.00000     host node-2
