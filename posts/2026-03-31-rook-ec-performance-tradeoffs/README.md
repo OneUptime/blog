@@ -16,7 +16,7 @@ For a healthy cluster (no failures), EC reads can be as fast as replicated reads
 
 ```text
 Read Type              Replicated (3x)   EC (k=4, m=2)
-Small random reads     Fast (1 OSD)      Same or faster (4 OSDs in parallel)
+Small random reads     Fast (1 OSD)      Higher latency (k OSDs contacted)
 Large sequential       Fast              Fast (4 OSDs in parallel)
 Degraded read          1 OSD             Requires all k shards + decode CPU
 ```
@@ -52,7 +52,7 @@ Jerasure  ~15% per OSD core    ~12% per OSD core
 ISA-L     ~4% per OSD core     ~3% per OSD core
 ```
 
-ISA-L reduces CPU usage by 3-5x on Intel hardware via SIMD acceleration.
+ISA-L reduces CPU usage by roughly 2-3x on Intel hardware via optimized SIMD instructions (AVX2/AVX-512).
 
 ## Network Overhead
 
