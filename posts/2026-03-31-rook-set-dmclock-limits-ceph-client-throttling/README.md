@@ -27,29 +27,31 @@ Limits prevent over-consumption; reservations guarantee a minimum.
 Set a ceiling for all client I/O globally:
 
 ```bash
-# Allow max 2000 IOPS per OSD for client operations
-ceph config set osd osd_mclock_scheduler_client_lim 2000
+# Limit client operations to 50% of OSD max capacity (values are fractions 0.0–1.0)
+ceph config set osd osd_mclock_scheduler_client_lim 0.5
 
-# Allow max 500 IOPS for background recovery
-ceph config set osd osd_mclock_scheduler_background_recovery_lim 500
+# Limit background recovery to 25% of OSD max capacity
+ceph config set osd osd_mclock_scheduler_background_recovery_lim 0.25
 
-# Allow max 300 IOPS for best-effort operations
-ceph config set osd osd_mclock_scheduler_background_best_effort_lim 300
+# Limit best-effort operations to 10% of OSD max capacity
+ceph config set osd osd_mclock_scheduler_background_best_effort_lim 0.1
 ```
+
+Note: Since Ceph Quincy 17.2.7 and Reef 18.2.0, mClock `_res` and `_lim` values are fractions (0.0–1.0) of the OSD's maximum IOPS capacity, which is determined by `osd_mclock_max_capacity_iops_hdd` or `osd_mclock_max_capacity_iops_ssd`.
 
 ## Per-OSD Limit Configuration
 
 Configure tighter limits on slower HDDs to prevent latency spikes:
 
 ```bash
-# HDD OSDs - strict limits
-ceph config set osd.8 osd_mclock_scheduler_client_lim 300
-ceph config set osd.9 osd_mclock_scheduler_client_lim 300
-ceph config set osd.10 osd_mclock_scheduler_client_lim 300
+# HDD OSDs - stricter limits (30% of max capacity)
+ceph config set osd.8 osd_mclock_scheduler_client_lim 0.3
+ceph config set osd.9 osd_mclock_scheduler_client_lim 0.3
+ceph config set osd.10 osd_mclock_scheduler_client_lim 0.3
 
-# NVMe OSDs - higher limits
-ceph config set osd.0 osd_mclock_scheduler_client_lim 8000
-ceph config set osd.1 osd_mclock_scheduler_client_lim 8000
+# NVMe OSDs - higher limits (80% of max capacity)
+ceph config set osd.0 osd_mclock_scheduler_client_lim 0.8
+ceph config set osd.1 osd_mclock_scheduler_client_lim 0.8
 ```
 
 ## RBD Image-Level Throttling
@@ -66,7 +68,7 @@ rbd config image set vms/vm-noisy rbd_qos_write_iops_limit 200
 rbd config image set vms/vm-noisy rbd_qos_bps_limit 104857600   # 100MB/s
 
 # Verify settings
-rbd config image get vms/vm-noisy | grep qos
+rbd config image list vms/vm-noisy | grep qos
 ```
 
 ## Applying Kubernetes StorageClass QoS
@@ -87,9 +89,10 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  # QoS limits
-  qosIOPSLimit: "500"
-  qosBPSLimit: "52428800"
+  # QoS limits (requires rbd-nbd mounter)
+  mounter: rbd-nbd
+  maxIops: "500"
+  maxBps: "52428800"
 ```
 
 ## Testing Limit Enforcement
@@ -100,6 +103,8 @@ Verify limits are enforced under load:
 # This should be throttled to ~500 IOPS for rbd_qos_iops_limit=500
 fio --name=limit-test \
   --filename=/dev/rbd0 \
+  --ioengine=libaio \
+  --direct=1 \
   --rw=randwrite \
   --bs=4k \
   --numjobs=8 \
@@ -112,10 +117,10 @@ The reported IOPS should not exceed the configured limit.
 
 ## Monitoring Throttled Clients
 
-Identify which clients are being throttled:
+Identify which clients are being throttled by inspecting in-flight operations:
 
 ```bash
-ceph daemon osd.0 dump_mclock_queue
+ceph daemon osd.0 dump_ops_in_flight
 ```
 
 Check for queued/delayed operations:
