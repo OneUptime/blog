@@ -45,40 +45,54 @@ python3 create-external-cluster-resources.py \
   --format bash \
   --rbd-data-pool-name replicapool \
   --cephfs-filesystem-name myfs \
-  --output-directory /tmp/
+  --output /tmp/external-cluster-env.sh
 ```
 
 This script creates:
 - A restricted Ceph user with only the permissions Rook needs
 - Exports the MON endpoints, user keys, and pool information
 
-## Step 2: Review the Exported Secrets
+## Step 2: Review the Exported Environment Variables
 
 ```bash
-# The script generates a shell script with exports
-cat /tmp/import-external-cluster.sh
+# The script generates a file with environment variable exports
+cat /tmp/external-cluster-env.sh
 ```
 
 ```bash
 export ROOK_EXTERNAL_FSID=<cluster-fsid>
 export ROOK_EXTERNAL_USERNAME=client.healthchecker
-export ROOK_EXTERNAL_CEPH_MON_DATA="a=192.168.1.10:6789,b=192.168.1.11:6789,c=192.168.1.12:6789"
+export ROOK_EXTERNAL_CEPH_MON_DATA="a=192.168.1.10:6789"
+export ROOK_EXTERNAL_USER_SECRET=<base64-key>
 export CSI_RBD_NODE_SECRET=<base64-key>
+export CSI_RBD_NODE_SECRET_NAME=<ceph-username>
 export CSI_RBD_PROVISIONER_SECRET=<base64-key>
+export CSI_RBD_PROVISIONER_SECRET_NAME=<ceph-username>
 export CSI_CEPHFS_NODE_SECRET=<base64-key>
+export CSI_CEPHFS_NODE_SECRET_NAME=<ceph-username>
 export CSI_CEPHFS_PROVISIONER_SECRET=<base64-key>
+export CSI_CEPHFS_PROVISIONER_SECRET_NAME=<ceph-username>
+export MONITORING_ENDPOINT=<ip-address>
+export MONITORING_ENDPOINT_PORT=<port>
+export RBD_POOL_NAME=replicapool
+export RGW_POOL_PREFIX=default
 ```
 
 ## Step 3: Apply the Credentials to Kubernetes
 
 ```bash
-# On the Kubernetes cluster
-cd /tmp/
-source import-external-cluster.sh
+# On the Kubernetes cluster, first download the Rook import scripts
+curl -O https://raw.githubusercontent.com/rook/rook/master/deploy/examples/common-external.yaml
+curl -O https://raw.githubusercontent.com/rook/rook/master/deploy/examples/import-external-cluster.sh
 
-# The script also generates Kubernetes Secret manifests
+# Apply the common external resources (RBAC, ServiceAccounts)
 kubectl apply -f common-external.yaml
-kubectl apply -f import-external-cluster.sh  # or the generated yaml
+
+# Source the exported environment variables from Step 1
+source /tmp/external-cluster-env.sh
+
+# Run the import script to create Kubernetes Secrets and ConfigMaps
+bash import-external-cluster.sh
 ```
 
 ## Step 4: Deploy the External CephCluster CRD
@@ -93,7 +107,6 @@ metadata:
 spec:
   external:
     enable: true
-  dataDirHostPath: /var/lib/rook
   crashCollector:
     disable: true
 ```
@@ -106,8 +119,8 @@ kubectl -n rook-ceph get cephcluster
 ```
 
 ```text
-NAME                  DATADIRHOSTPATH   MONCOUNT   AGE   PHASE   MESSAGE
-rook-ceph-external    /var/lib/rook                3m    Ready   Cluster connected successfully
+NAME                  DATADIRHOSTPATH   MONCOUNT   AGE   PHASE       MESSAGE
+rook-ceph-external                                 3m    Connected   Cluster connected successfully
 ```
 
 ## Step 5: Create StorageClasses
@@ -130,6 +143,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
