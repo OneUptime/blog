@@ -20,13 +20,17 @@ Note: ceph-ansible supports Ceph releases through Pacific. For Quincy and later,
 # Install Ansible
 pip install ansible
 
-# Install ceph-ansible collection
-ansible-galaxy collection install ceph.automation
-
-# Or clone the ceph-ansible repository
+# Clone the ceph-ansible repository
 git clone https://github.com/ceph/ceph-ansible.git
 cd ceph-ansible
+
+# Check out the branch for your target Ceph release
+git checkout stable-6.0  # for Pacific
+
 pip install -r requirements.txt
+
+# Copy the sample playbooks
+cp site.yml.sample site.yml
 ```
 
 ## Inventory Configuration
@@ -63,7 +67,6 @@ Configure Ceph settings in `group_vars/all.yml`:
 ceph_origin: repository
 ceph_repository: community
 ceph_stable_release: pacific
-ceph_pkg_origin: distro
 
 monitor_interface: eth0
 public_network: 192.168.1.0/24
@@ -99,21 +102,22 @@ ansible-playbook site.yml -i inventory/hosts \
   -v
 ```
 
-For initial testing, use the containerized version:
+For containerized Ceph daemons, use the container site playbook instead:
 
 ```bash
-docker run --rm \
-  -v $(pwd):/ceph-ansible \
-  -v ~/.ssh:/root/.ssh \
-  -w /ceph-ansible \
-  ceph/ceph-ansible ansible-playbook site.yml -i inventory/hosts
+cp site-container.yml.sample site-container.yml
+
+ansible-playbook site-container.yml -i inventory/hosts \
+  --ask-become-pass \
+  -v
 ```
 
 ## Adding OSDs to an Existing Cluster
 
 ```bash
-# Run only the OSD playbook against new hosts
-ansible-playbook infrastructure-playbooks/add-osd.yml \
+# Add new OSD hosts to the inventory, then re-run the site playbook
+# targeting only the new hosts
+ansible-playbook site.yml \
   -i inventory/hosts \
   --limit "new-osd-host"
 ```
