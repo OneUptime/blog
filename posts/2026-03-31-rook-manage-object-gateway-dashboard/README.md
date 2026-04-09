@@ -48,6 +48,11 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   --uid=app-team-1 \
   --max-size=1099511627776 \
   --max-objects=10000000
+
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  radosgw-admin quota enable \
+  --quota-scope=user \
+  --uid=app-team-1
 ```
 
 ## Managing S3 Access Keys
@@ -90,8 +95,10 @@ aws s3 mb s3://my-bucket --endpoint-url $AWS_ENDPOINT_URL
 Enable bucket versioning from the Dashboard or CLI:
 
 ```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  radosgw-admin bucket versioning --bucket=my-bucket --versioning-state=enabled
+aws s3api put-bucket-versioning \
+  --bucket my-bucket \
+  --versioning-configuration Status=Enabled \
+  --endpoint-url $AWS_ENDPOINT_URL
 ```
 
 ## Setting Bucket Quotas
