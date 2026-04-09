@@ -33,9 +33,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd dump | grep fla
 ```
 
 ```text
-osd_epoch: 42
-osd_mkfs_uuid: ...
-flags noout
+flags sortbitwise,recovery_deletes,purged_snapdirs,pglog_hardlimit,noout
 ```
 
 ## Setting Additional Maintenance Flags
@@ -80,11 +78,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd tree
 ```
 
 ```text
--1         0.10797 root default
--3         0.03599     host node-3
- 4   hdd   0.01199         osd.4        down  1.00000          0.0  [offline]
- 5   hdd   0.01199         osd.5        down  1.00000          0.0  [offline]
- 6   hdd   0.01199         osd.6        down  1.00000          0.0  [offline]
+ID  CLASS  WEIGHT    TYPE NAME          STATUS  REWEIGHT  PRI-AFF
+-1         0.10797   root default
+-3         0.03599       host node-3
+ 4    hdd  0.01199           osd.4        down   1.00000  1.00000
+ 5    hdd  0.01199           osd.5        down   1.00000  1.00000
+ 6    hdd  0.01199           osd.6        down   1.00000  1.00000
 ```
 
 Status shows `down` but not `out` - this is correct with `noout` set.
