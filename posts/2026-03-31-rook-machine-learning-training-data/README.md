@@ -82,6 +82,7 @@ spec:
           resources:
             limits:
               nvidia.com/gpu: "1"
+      restartPolicy: Never
       volumes:
         - name: training-data
           persistentVolumeClaim:
@@ -103,7 +104,13 @@ metadata:
   namespace: ml
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
   template:
+    metadata:
+      labels:
+        app: mlflow
     spec:
       containers:
         - name: mlflow
@@ -135,10 +142,10 @@ Training workloads tend to read data sequentially. Tune the pool for this access
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool set ml-data-pool rbd_cache_max_dirty_age 5
+  ceph config set client rbd_cache_max_dirty_age 5
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global rbd_readahead_max_bytes 10485760
+  ceph config set client rbd_readahead_max_bytes 10485760
 ```
 
 ## Summary
