@@ -38,7 +38,7 @@ apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
   name: csi-rbdplugin-snapclass
-  annotations:
+  labels:
     velero.io/csi-volumesnapshot-class: "true"
 driver: rook-ceph.rbd.csi.ceph.com
 parameters:
@@ -48,7 +48,7 @@ parameters:
 deletionPolicy: Delete
 ```
 
-The annotation `velero.io/csi-volumesnapshot-class: "true"` tells Velero to use this class for RBD volumes.
+The label `velero.io/csi-volumesnapshot-class: "true"` tells Velero to use this class for RBD volumes.
 
 ## Install Velero with CSI Plugin
 
@@ -57,7 +57,7 @@ Install Velero with S3-compatible backup storage and CSI support:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.10.0 \
   --bucket velero-backups \
   --secret-file ./credentials-velero \
   --use-volume-snapshots true \
@@ -112,4 +112,4 @@ velero schedule create daily-backup \
 
 ## Summary
 
-Velero with the CSI plugin integrates with Rook RBD snapshots to provide application-consistent backups. The key components are a `VolumeSnapshotClass` annotated for Velero, the CSI plugin enabled in Velero, and an object store for backup metadata. Backups trigger native RBD snapshots, which are efficient and fast, while metadata is stored in S3-compatible storage for catalog and restore operations.
+Velero with the CSI plugin integrates with Rook RBD snapshots to provide application-consistent backups. The key components are a `VolumeSnapshotClass` labeled for Velero, the CSI plugin enabled in Velero, and an object store for backup metadata. Backups trigger native RBD snapshots, which are efficient and fast, while metadata is stored in S3-compatible storage for catalog and restore operations.
