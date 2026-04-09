@@ -23,10 +23,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon stat
 Output with a missing monitor:
 
 ```text
-e5: 3 mons at {a=[v2:10.0.0.1:3300/0],b=[v2:10.0.0.2:3300/0],c=[v2:10.0.0.3:3300/0]}, election epoch 12, leader a, quorum a,b out of quorum: c
+e5: 3 mons at {a=[v2:10.0.0.1:3300/0,v1:10.0.0.1:6789/0],b=[v2:10.0.0.2:3300/0,v1:10.0.0.2:6789/0],c=[v2:10.0.0.3:3300/0,v1:10.0.0.3:6789/0]}, election epoch 12, quorum 0,1 a,b
 ```
 
-MON `c` is out of quorum.
+MON `c` is out of quorum — it is listed in the monmap but absent from the quorum list.
 
 Also check:
 
@@ -138,15 +138,24 @@ Rook will deploy a new MON to replace it.
 
 ## Step 7 - Force Quorum with Only One MON (Emergency)
 
-If you have only one MON running and need to force quorum for emergency access:
+If you have only one MON running and need to force quorum for emergency access, you must manipulate the monmap to remove the dead monitors so the surviving one can form a quorum of one:
 
 ```bash
 # Get into the MON pod directly
 kubectl -n rook-ceph exec -it <mon-pod> -- bash
 
-# Force new election
-ceph mon force-quorum <mon-id>
+# Extract the monmap from the surviving monitor
+ceph-mon -i <surviving-mon-id> --extract-monmap /tmp/monmap
+
+# Remove dead monitors from the monmap
+monmaptool /tmp/monmap --rm <dead-mon-id-1>
+monmaptool /tmp/monmap --rm <dead-mon-id-2>
+
+# Inject the modified monmap back
+ceph-mon -i <surviving-mon-id> --inject-monmap /tmp/monmap
 ```
+
+After injecting the monmap, restart the MON pod by deleting it so Rook recreates it. The surviving monitor will now form a quorum of one. You can then re-add new monitors to restore redundancy.
 
 This is destructive and should only be used when the cluster is completely inaccessible.
 
@@ -161,7 +170,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon stat
 Expected:
 
 ```text
-e8: 3 mons at {...}, election epoch 14, leader a, quorum a,b,c
+e8: 3 mons at {...}, election epoch 14, quorum 0,1,2 a,b,c
 ```
 
 All three monitors should appear in the quorum list.
