@@ -28,7 +28,7 @@ On all nodes:
 dnf update -y
 
 # Install required tools
-dnf install -y python3 curl podman
+dnf install -y python3 curl podman policycoreutils-python-utils
 
 # Disable swap (recommended for Ceph)
 swapoff -a
@@ -122,7 +122,9 @@ ceph -w
 ceph mgr services | grep dashboard
 
 # Reset admin password if needed
-ceph dashboard ac-user-set-password admin --force-password Secure123!
+echo 'Secure123!' > /tmp/dashboard-pw.txt
+ceph dashboard ac-user-set-password admin -i /tmp/dashboard-pw.txt --force-password
+rm /tmp/dashboard-pw.txt
 ```
 
 ## Verify Cluster Health
