@@ -72,6 +72,8 @@ parameters:
   compression_algorithm: zstd
 ```
 
+Note that the Ceph documentation warns zstd is not recommended for BlueStore due to high CPU overhead when compressing small amounts of data. Consider `zlib` as an alternative if CPU usage is a concern.
+
 ## Verifying Compression is Active
 
 Check the pool configuration using the Ceph toolbox:
