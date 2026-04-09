@@ -41,7 +41,7 @@ kubectl get crd cephobjectstores.ceph.rook.io
 If CRDs are missing or old, reinstall them:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/crds/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/examples/crds.yaml
 ```
 
 ## Common Cause 2: RBAC Permission Issues
@@ -57,7 +57,7 @@ kubectl get serviceaccount rook-ceph-operator -n rook-ceph
 If missing, reapply the RBAC manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/operator.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/v1.13.0/deploy/examples/operator.yaml
 ```
 
 ## Common Cause 3: ConfigMap Conflict
