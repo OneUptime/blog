@@ -107,7 +107,7 @@ Confirm the underlying Ceph snapshot was actually created:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph fs subvolume snapshot ls myfs <subvolume> <group>
+  ceph fs subvolume snapshot ls myfs <subvolume> --group_name <group>
 ```
 
 ## Step 6 - Upgrade the Snapshot CRDs If Needed
