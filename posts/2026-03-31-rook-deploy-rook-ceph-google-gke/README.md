@@ -115,17 +115,20 @@ gcloud compute firewall-rules create allow-ceph-internal \
 
 ## Step 6 - Verify Deployment
 
-Check cluster health from the toolbox pod:
+Deploy the Rook toolbox and check cluster health:
 
 ```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph -s
 ```
 
-Create a test PVC using the Rook RBD storage class:
+Create a CephBlockPool, StorageClass, and test PVC:
 
 ```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/pool.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/storageclass.yaml
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/pvc.yaml
-kubectl get pvc test-pvc
+kubectl get pvc rbd-pvc
 ```
 
 ## Summary
