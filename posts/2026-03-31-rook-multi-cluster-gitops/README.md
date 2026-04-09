@@ -93,7 +93,7 @@ spec:
 # clusters/us-east-prod/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 patches:
 - path: cluster-patch.yaml
