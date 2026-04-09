@@ -170,10 +170,10 @@ For BlueStore OSDs, verify cache sizes are appropriate:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.2 config show | grep -E "bluestore_cache"
 ```
 
-For SSDs, increase the cache:
+For SSDs, increase the cache beyond the default 3 GB:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.2 injectargs '--bluestore-cache-size=2147483648'
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.2 injectargs '--bluestore-cache-size-ssd=4294967296'
 ```
 
 ## Summary
