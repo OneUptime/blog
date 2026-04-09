@@ -19,7 +19,6 @@ For large sequential reads, larger objects reduce the number of RADOS operations
 ```bash
 # Create pool optimized for large sequential reads
 ceph osd pool create streaming-data 128 128
-ceph osd pool set streaming-data stripe_unit 65536   # 64 KB stripe unit
 ```
 
 For RBD images, set larger object size:
@@ -55,9 +54,9 @@ echo 2048 > /sys/block/rbd0/queue/read_ahead_kb
 Tune BlueStore for sequential I/O patterns:
 
 ```bash
-# Increase sequential read buffer
-ceph config set osd bluestore_max_blob_size 131072     # 128 KB blobs
-ceph config set osd bluestore_max_blob_size_hdd 524288  # 512 KB for HDD
+# Increase blob size for sequential reads
+ceph config set osd bluestore_max_blob_size_ssd 131072   # 128 KB for SSD (default 64 KB)
+ceph config set osd bluestore_max_blob_size_hdd 524288   # 512 KB for HDD (default 512 KB)
 
 # Enable compression for compressible sequential data
 ceph config set osd bluestore_compression_algorithm snappy
