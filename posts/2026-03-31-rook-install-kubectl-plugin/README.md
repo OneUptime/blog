@@ -40,12 +40,12 @@ kubectl krew install rook-ceph
 Download the binary directly for environments without Krew:
 
 ```bash
-PLUGIN_VERSION=v0.4.0
+PLUGIN_VERSION=v0.9.6
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m | sed 's/x86_64/amd64/')
 
-curl -LO "https://github.com/rook/kubectl-rook-ceph/releases/download/${PLUGIN_VERSION}/kubectl-rook-ceph_${OS}_${ARCH}.tar.gz"
-tar xzf "kubectl-rook-ceph_${OS}_${ARCH}.tar.gz"
+curl -LO "https://github.com/rook/kubectl-rook-ceph/releases/download/${PLUGIN_VERSION}/kubectl-rook-ceph_${PLUGIN_VERSION}_${OS}_${ARCH}.tar.gz"
+tar xzf "kubectl-rook-ceph_${PLUGIN_VERSION}_${OS}_${ARCH}.tar.gz"
 chmod +x kubectl-rook-ceph
 sudo mv kubectl-rook-ceph /usr/local/bin/
 ```
@@ -53,7 +53,7 @@ sudo mv kubectl-rook-ceph /usr/local/bin/
 ## Verifying the Installation
 
 ```bash
-kubectl rook-ceph version
+kubectl rook-ceph rook version
 ```
 
 ## Common Plugin Commands
@@ -76,7 +76,7 @@ Show pool usage:
 kubectl rook-ceph ceph df
 ```
 
-Access the Rados Gateway:
+List RBD images in a pool:
 
 ```bash
 kubectl rook-ceph rbd ls replicapool
@@ -87,9 +87,6 @@ kubectl rook-ceph rbd ls replicapool
 The plugin provides dedicated debug commands:
 
 ```bash
-# Collect diagnostic information
-kubectl rook-ceph debug deploy-toolbox
-
 # Run operator commands
 kubectl rook-ceph operator restart
 
