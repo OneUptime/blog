@@ -62,6 +62,9 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: nvme-pool
+  imageFormat: "2"
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
 ```
 
 ## Create Pools Targeting Specific Tiers
@@ -103,7 +106,7 @@ spec:
 
 # Tiering strategy: put only 5-10% of data on NVMe/SSD
 # 100 TB total: 10 TB NVMe, 20 TB SSD, 70 TB HDD
-# Weighted cost: (10x$450 + 20x$240 + 70x$27) / 100 = ~$79/TB usable
+# Weighted cost: (10x$450 + 20x$240 + 70x$27) / 100 = ~$112/TB usable
 # vs all NVMe: $450/TB usable
 ```
 
