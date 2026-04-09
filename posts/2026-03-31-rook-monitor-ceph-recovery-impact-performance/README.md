@@ -33,12 +33,12 @@ Key metrics for recovery IO:
 # Recovery throughput in bytes/sec
 rate(ceph_osd_recovery_bytes[5m])
 
-# Number of objects being recovered per second
-rate(ceph_osd_recovering_objects_pushed[5m])
+# Number of recovery operations per second
+rate(ceph_osd_recovery_ops[5m])
 
-# Current client IO while recovery is active
-rate(ceph_cluster_total_bytes_written[5m])
-rate(ceph_cluster_total_bytes_read[5m])
+# Current client IO while recovery is active (summed across all pools)
+sum(rate(ceph_pool_wr_bytes[5m]))
+sum(rate(ceph_pool_rd_bytes[5m]))
 ```
 
 Build a Grafana panel overlaying client IOPS and recovery throughput to visualize contention.
@@ -49,8 +49,8 @@ Track recovery progress directly:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # Show detailed PG recovery progress
-  ceph pg dump_stuck recovering
+  # List PGs currently in recovery state
+  ceph pg ls recovering
 
   # Watch recovery in real time
   ceph -w | grep -E 'recovery|backfill|degraded'
@@ -63,10 +63,10 @@ Limit recovery IO to protect client performance. These settings control how aggr
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # Reduce max recovery operations (default: 3)
+  # Reduce max concurrent backfills per OSD (default: 1)
   ceph tell 'osd.*' injectargs '--osd-max-backfills 1'
 
-  # Reduce recovery sleep to throttle throughput
+  # Increase recovery sleep to throttle throughput (default: 0)
   ceph tell 'osd.*' injectargs '--osd-recovery-sleep 0.1'
 
   # Set max recovery chunk size
