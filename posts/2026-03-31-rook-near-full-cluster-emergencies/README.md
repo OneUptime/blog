@@ -54,9 +54,8 @@ Stop any non-critical workloads writing to Ceph immediately:
 # Scale down non-critical deployments
 kubectl scale deployment --all --replicas=0 -n staging
 
-# Pause backup jobs that write to Ceph
-kubectl delete cronjob backup-job -n rook-ceph --dry-run
-kubectl scale cronjob backup-job --replicas=0 -n rook-ceph
+# Suspend backup CronJobs that write to Ceph
+kubectl patch cronjob backup-job -n rook-ceph -p '{"spec":{"suspend":true}}'
 ```
 
 ## Step 3 - Raise Full Ratio (Emergency Only)
@@ -161,9 +160,9 @@ ceph osd df | sort -k9 -rn | head -5
 After stabilizing:
 
 ```bash
-# Return full ratio to conservative setting
-ceph osd set-full-ratio 0.85
-ceph osd set-nearfull-ratio 0.75
+# Return full ratio to default setting
+ceph osd set-full-ratio 0.95
+ceph osd set-nearfull-ratio 0.85
 
 # Conduct post-mortem
 ceph log last 50 | grep -E "full|nearfull|HEALTH_ERR"
