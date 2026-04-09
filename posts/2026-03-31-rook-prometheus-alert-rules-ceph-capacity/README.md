@@ -10,7 +10,7 @@ Description: Build Prometheus alert rules that warn on Ceph storage capacity thr
 
 ## Overview
 
-Ceph becomes read-only when raw capacity reaches the `full_ratio` (default 95%) and rejects new writes at `backfillfull_ratio` (default 90%). Alert rules at 75% and 85% provide sufficient warning time to expand capacity before hitting these hard limits.
+Ceph becomes read-only when raw capacity reaches the `full_ratio` (default 95%). The `backfillfull_ratio` (default 90%) prevents backfill and recovery operations, and `nearfull_ratio` (default 85%) triggers health warnings. Alert rules at 75% and 85% provide sufficient warning time to expand capacity before hitting these hard limits.
 
 ## Understanding Ceph Capacity Limits
 
@@ -37,7 +37,7 @@ groups:
   rules:
   - alert: CephClusterNearFull
     expr: |
-      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 75
+      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.75
     for: 15m
     labels:
       severity: warning
@@ -47,7 +47,7 @@ groups:
 
   - alert: CephClusterHighUsage
     expr: |
-      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 85
+      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.85
     for: 5m
     labels:
       severity: critical
@@ -57,7 +57,7 @@ groups:
 
   - alert: CephClusterFull
     expr: |
-      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100 > 90
+      (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) > 0.90
     for: 1m
     labels:
       severity: critical
@@ -71,7 +71,7 @@ groups:
   - alert: CephPoolNearFull
     expr: |
       (ceph_pool_bytes_used /
-       (ceph_pool_bytes_used + ceph_pool_max_avail)) * 100 > 75
+       (ceph_pool_bytes_used + ceph_pool_max_avail)) > 0.75
     for: 10m
     labels:
       severity: warning
@@ -81,7 +81,7 @@ groups:
   - alert: CephPoolCritical
     expr: |
       (ceph_pool_bytes_used /
-       (ceph_pool_bytes_used + ceph_pool_max_avail)) * 100 > 85
+       (ceph_pool_bytes_used + ceph_pool_max_avail)) > 0.85
     for: 5m
     labels:
       severity: critical
@@ -96,7 +96,7 @@ Alert on individual OSD near-full conditions (can cause data imbalance):
 ```yaml
   - alert: CephOSDNearFull
     expr: |
-      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 85
+      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) > 0.85
     for: 10m
     labels:
       severity: warning
@@ -106,7 +106,7 @@ Alert on individual OSD near-full conditions (can cause data imbalance):
 
   - alert: CephOSDFull
     expr: |
-      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 95
+      (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) > 0.95
     for: 1m
     labels:
       severity: critical
