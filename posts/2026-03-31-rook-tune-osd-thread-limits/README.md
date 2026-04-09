@@ -82,7 +82,7 @@ Check current OSD operation queues to determine if threads are saturated:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 dump_ops_in_flight | head -20
+  ceph tell osd.0 dump_ops_in_flight | head -20
 ```
 
 View OSD thread count and CPU usage from within the OSD pod:
@@ -101,9 +101,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd bluestore_aio_max_queue_depth 64
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd bluestore_rocksdb_threads 8
+  ceph config set osd bluestore_rocksdb_options "max_background_jobs=8"
 ```
 
 ## Summary
 
-OSD thread tuning controls how Ceph allocates CPU resources across client I/O, recovery, and internal tasks. Use more I/O shards for NVMe OSDs and fewer for HDDs. Keep recovery thread priority low in production to protect client I/O. Apply changes via `ceph config set` or the Rook `CephCluster` CR's `cephConfig` field, and monitor with `ceph daemon osd.X ops`.
+OSD thread tuning controls how Ceph allocates CPU resources across client I/O, recovery, and internal tasks. Use more I/O shards for NVMe OSDs and fewer for HDDs. Keep recovery thread priority low in production to protect client I/O. Apply changes via `ceph config set` or the Rook `CephCluster` CR's `cephConfig` field, and monitor with `ceph tell osd.X dump_ops_in_flight`.
