@@ -20,7 +20,7 @@ CPU profiling is useful when:
 
 ```bash
 # RHEL/Rocky/CentOS
-dnf install -y perf linux-perf
+dnf install -y perf
 
 # Ubuntu/Debian
 apt install -y linux-tools-$(uname -r) linux-tools-generic
@@ -105,7 +105,7 @@ Use `perf trace` to identify slow system calls:
 
 ```bash
 # Trace I/O system calls for OSD 0
-perf trace -e io -p $OSD_PID --duration 0.1 2>&1 | head -50
+perf trace -e read,write,pread64,pwrite64 -p $OSD_PID --duration 0.1 2>&1 | head -50
 # Shows calls slower than 0.1 ms
 
 # Count system calls by type
@@ -119,10 +119,10 @@ RocksDB compaction is a common CPU hotspot. Detect it:
 
 ```bash
 # Check if compaction is happening
-ceph daemon osd.0 bluestore bluefs stats | grep compact
+ceph daemon osd.0 perf dump rocksdb | grep compact
 
 # Profile with compaction-specific callchain depth
-perf record -F 99 -p $OSD_PID -g --call-graph dwarf -- sleep 30
+perf record -F 99 -p $OSD_PID --call-graph dwarf -- sleep 30
 perf report --call-graph fractal | grep -A5 compaction
 ```
 
