@@ -36,7 +36,7 @@ The kernel CephFS client has limits on simultaneous mounts. If many pods on the 
 # Count current CephFS mounts on the node
 mount | grep ceph | wc -l
 
-# Check kernel caps usage
+# Check system file descriptor usage
 cat /proc/sys/fs/file-nr
 ```
 
@@ -78,8 +78,10 @@ nc -zv <monitor-ip> 6789
 nc -zv <monitor-ip> 3300  # msgr2 port
 
 # Try specifying only one monitor address
+# Note: secretfile must contain only the secret key, not a full keyring
+# Extract it with: ceph auth get-key client.admin > /etc/ceph/admin.secret
 mount -t ceph <single-monitor-ip>:6789:/ /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring
+  -o name=admin,secretfile=/etc/ceph/admin.secret
 ```
 
 ### 5. Outdated Kernel Driver
