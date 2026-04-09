@@ -17,8 +17,9 @@ Ceph RGW ships with several sync module types:
 - `default`: Standard object replication between zones
 - `archive`: Retains object history indefinitely (even after deletion)
 - `cloud-s3`: Replicates data to an external S3-compatible target
-- `pubsub`: Publishes bucket notifications to messaging systems
 - `elasticsearch`: Indexes object metadata into Elasticsearch
+
+> **Note:** The `pubsub` sync module was removed in Ceph Pacific (v16). Use bucket notifications to publish object events to AMQP, Kafka, or HTTP endpoints.
 
 ## Setting Up a Zone with an Archive Sync Module
 
@@ -52,35 +53,43 @@ radosgw-admin zone create \
 To replicate objects to an external S3 bucket (e.g., AWS):
 
 ```bash
+# Create a cloud sync zone
+radosgw-admin zone create \
+  --rgw-zonegroup us \
+  --rgw-zone cloud-backup \
+  --tier-type cloud-s3 \
+  --endpoints http://cloud-rgw:7480
+
+# Configure the external S3 endpoint
 radosgw-admin zone modify \
   --rgw-zone cloud-backup \
-  --tier-type cloud-s3
-
-radosgw-admin zone placement modify \
-  --rgw-zone cloud-backup \
-  --placement-id default-placement \
-  --tier-type cloud-s3 \
-  --tier-config=endpoint=https://s3.amazonaws.com,\
-access_key=AKIAIOSFODNN7EXAMPLE,\
-secret=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY,\
+  --tier-config=connection.endpoint=https://s3.amazonaws.com,\
+connection.access_key=AKIAIOSFODNN7EXAMPLE,\
+connection.secret=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY,\
 target_path=my-aws-backup-bucket
 ```
 
-## Configuring a PubSub Sync Module
+## Configuring Bucket Notifications
 
-The pubsub module publishes object events to an AMQP or Kafka broker:
+> **Note:** The `pubsub` sync module was removed in Ceph Pacific (v16). Bucket notifications are the standard way to publish object events to AMQP, Kafka, or HTTP endpoints.
+
+Use the SNS-compatible API to create a topic and configure bucket notifications:
 
 ```bash
-radosgw-admin zone modify \
-  --rgw-zone events-zone \
-  --tier-type pubsub
+# Create an SNS topic with an AMQP endpoint
+aws --endpoint-url http://rgw:7480 sns create-topic \
+  --name rgw-events \
+  --attributes '{"push-endpoint":"amqp://rabbitmq.example.com","amqp-exchange":"rgw-events"}'
 
-radosgw-admin zone placement modify \
-  --rgw-zone events-zone \
-  --placement-id default-placement \
-  --tier-type pubsub \
-  --tier-config=endpoint=amqp://rabbitmq.example.com,\
-exchange=rgw-events
+# Configure bucket notifications
+aws --endpoint-url http://rgw:7480 s3api put-bucket-notification-configuration \
+  --bucket my-bucket \
+  --notification-configuration '{
+    "TopicConfigurations": [{
+      "TopicArn": "arn:aws:sns:default::rgw-events",
+      "Events": ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    }]
+  }'
 ```
 
 ## Verifying Sync Status
@@ -107,4 +116,4 @@ radosgw-admin period update --commit
 
 ## Summary
 
-Ceph RGW sync modules allow you to customize what happens when objects are replicated across zones. Use the archive module for immutable history, the cloud-s3 module to offload to public cloud, or pubsub to stream events to message brokers. Always commit the period after configuration changes to propagate them across the cluster.
+Ceph RGW sync modules allow you to customize what happens when objects are replicated across zones. Use the archive module for immutable history, the cloud-s3 module to offload to public cloud, or bucket notifications to stream events to message brokers. Always commit the period after configuration changes to propagate them across the cluster.
