@@ -47,21 +47,27 @@ for state, count in sorted(states.items()):
 
 ```bash
 # Check how many PGs have OSD 0 as primary
-ceph pg dump | awk '/^[0-9]/{if ($NF ~ /osd\.0/) print}' | wc -l
+ceph pg dump --format json 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+pgs = data.get('pg_stats', [])
+count = sum(1 for pg in pgs if pg.get('acting_primary') == 0)
+print(f'PGs with OSD 0 as primary: {count}')
+"
 
-# More detailed breakdown using pg dump
-ceph pg dump | python3 -c "
-import sys
+# More detailed breakdown: primary vs replica for OSD 0
+ceph pg dump --format json 2>/dev/null | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+pgs = data.get('pg_stats', [])
 primary = 0
 replica = 0
-for line in sys.stdin:
-    parts = line.split()
-    if len(parts) > 14 and parts[0].count('.') == 1:
-        acting = ' '.join(parts[14:])
-        if acting.startswith('[0,') or acting.startswith('[0]'):
-            primary += 1
-        elif ',0,' in acting or ',0]' in acting:
-            replica += 1
+for pg in pgs:
+    acting = pg.get('acting', [])
+    if acting and acting[0] == 0:
+        primary += 1
+    elif 0 in acting:
+        replica += 1
 print(f'Primary: {primary}, Replica: {replica}')
 "
 ```
@@ -69,19 +75,18 @@ print(f'Primary: {primary}, Replica: {replica}')
 ## Identifying Uneven PG Distribution
 
 ```bash
-# Get PG count per OSD and calculate imbalance
-ceph osd df | awk 'NR>1 && $1~/^[0-9]/{print $1, $7}' | head -20
-# $7 is the PG count column
+# Get PG count per OSD (dynamically find the PGS column from the header)
+ceph osd df | awk 'NR==1{for(i=1;i<=NF;i++) if($i=="PGS") c=i} NR>1 && $1~/^[0-9]/ && c{print "OSD "$1": "$c" PGs"}' | head -20
 
 # Check the OSD with most and fewest PGs
-ceph osd df | sort -k7 -n | head -5  # least PGs
-ceph osd df | sort -k7 -rn | head -5  # most PGs
+ceph osd df | awk 'NR==1{for(i=1;i<=NF;i++) if($i=="PGS") c=i} NR>1 && $1~/^[0-9]/ && c{print $1, $c}' | sort -k2 -n | head -5   # least PGs
+ceph osd df | awk 'NR==1{for(i=1;i<=NF;i++) if($i=="PGS") c=i} NR>1 && $1~/^[0-9]/ && c{print $1, $c}' | sort -k2 -rn | head -5  # most PGs
 ```
 
 ## Viewing PG Map Details for an OSD
 
 ```bash
-# Get detailed PG info from the OSD
+# Request the latest OSD map from the monitor
 ceph daemon osd.0 get_latest_osdmap
 
 # Dump the current OSD map epoch
