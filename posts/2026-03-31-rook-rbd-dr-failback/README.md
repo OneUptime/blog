@@ -43,9 +43,8 @@ kubectl get cephcluster -n rook-ceph
 # Check that all components are ready
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 
-# Verify mirroring daemon is running
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mirror daemon status
+# Verify mirroring daemon pod is running
+kubectl -n rook-ceph get pod -l app=rook-ceph-rbd-mirror
 
 # Check that pool mirroring is enabled
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -226,7 +225,7 @@ Ensure Site A is set up to mirror forward to Site B for future DR:
 ```bash
 # On Site A toolbox, verify mirroring is configured
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd mirror pool peer list replicapool
+  rbd mirror pool info replicapool
 
 # Verify Site B is receiving mirror data
 # On Site B toolbox:
