@@ -33,7 +33,7 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
 
 ## Step 2 - Start the Live Migration
 
-Prepare the migration (source image must be unmounted or in read-only mode for prep):
+Prepare the migration (all clients using the source image must be stopped before preparing):
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
@@ -44,15 +44,17 @@ Check migration status:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd migration status replicapool/myimage
+  rbd status fast-pool/myimage
 ```
 
 Sample output:
 
 ```text
-source: replicapool/myimage
-destination: fast-pool/myimage
-state: prepared
+Watchers: none
+Migration:
+            source: replicapool/myimage
+       destination: fast-pool/myimage
+             state: prepared
 ```
 
 ## Step 3 - Execute the Migration
@@ -68,14 +70,16 @@ Monitor progress:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd migration status fast-pool/myimage
+  rbd status fast-pool/myimage
 ```
 
 ```text
-state: executing
-source: replicapool/myimage
-destination: fast-pool/myimage
-executed: 65%
+Watchers:
+    watcher=10.0.0.1:0/12345 client.456 cookie=789
+Migration:
+            source: replicapool/myimage
+       destination: fast-pool/myimage
+             state: executing (65% complete)
 ```
 
 ## Step 4 - Commit the Migration
@@ -102,13 +106,17 @@ This restores the source image to its original state.
 
 ## Step 6 - Update PV References in Kubernetes
 
-After migration, update the PersistentVolume to reference the new pool:
+After migration, you need to update the PersistentVolume to reference the new pool. Since the `spec.csi` section of a PV is immutable after creation, you cannot patch it directly. Instead, export the PV, update the pool, and recreate it:
 
 ```bash
-kubectl patch pv <pv-name> -p '{"spec":{"csi":{"volumeAttributes":{"pool":"fast-pool"}}}}'
+kubectl get pv <pv-name> -o yaml > pv-backup.yaml
+# Edit pv-backup.yaml to change the pool in spec.csi.volumeAttributes.pool to "fast-pool"
+# Remove resourceVersion, uid, and status fields
+kubectl delete pv <pv-name>
+kubectl apply -f pv-backup.yaml
 ```
 
-Then delete and recreate the PVC binding, or use a Velero backup-restore cycle for a cleaner migration.
+Alternatively, use a Velero backup-restore cycle for a cleaner migration that handles PV and PVC rebinding automatically.
 
 ## Summary
 
