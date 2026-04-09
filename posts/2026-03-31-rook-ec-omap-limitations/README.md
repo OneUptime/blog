@@ -15,7 +15,7 @@ Erasure coded (EC) pools in Ceph have a fundamental limitation: they do not supp
 Omap is a secondary data structure attached to RADOS objects. It stores key-value pairs alongside the object's primary data. Ceph services use omap for:
 
 - **RGW**: bucket index entries (each bucket object's omap stores file listings)
-- **CephFS**: directory entry trees stored in MDS journal
+- **CephFS**: directory entries stored as omap on directory fragment objects in the metadata pool
 - **RBD**: object map for fast diff and resize operations
 
 EC pools cannot store omap data because the EC write path requires full-stripe operations, and omap updates are small, frequent, and non-stripe-aligned.
