@@ -67,7 +67,7 @@ volumes:
               storage: 50Gi
 ```
 
-`ReadWriteMany` ephemeral volumes are useful when a job spawns multiple pods (via a Job with parallelism) that need to share a working directory.
+CephFS ephemeral volumes provide POSIX filesystem semantics for per-pod temporary storage. Note that each pod in a parallel Job gets its own ephemeral PVC — GenericEphemeralVolumes are not shared across pods. To share a volume across parallel pods, use a regular PVC instead.
 
 ## Lifecycle and Cleanup Behavior
 
@@ -83,7 +83,7 @@ Output:
 batch-job-scratch   Bound   pvc-abc123   20Gi   RWO   rook-ceph-block   10s
 ```
 
-When the pod terminates (either successfully or due to failure), Kubernetes garbage-collects the PVC automatically. The Rook CSI provisioner then deletes the underlying Ceph volume.
+When the pod object is deleted from the cluster, Kubernetes garbage-collects the PVC automatically via owner references. The Rook CSI provisioner then deletes the underlying Ceph volume. Note that a terminated pod still exists as an API object until explicitly deleted or cleaned up by a controller such as the Job controller.
 
 ## Using in Kubernetes Jobs
 
