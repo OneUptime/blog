@@ -37,11 +37,11 @@ OSD_POD=$(kubectl get pod -n rook-ceph -l app=rook-ceph-osd \
 kubectl logs -n rook-ceph $OSD_POD --previous | tail -50
 ```
 
-Also check the init container logs (OSD prepare runs as init container):
+Also check the init container logs (OSD activation runs as an init container):
 
 ```bash
-kubectl logs -n rook-ceph $OSD_POD -c osd-init --previous 2>/dev/null || \
-kubectl logs -n rook-ceph $OSD_POD -c activation --previous
+kubectl logs -n rook-ceph $OSD_POD -c activate --previous 2>/dev/null || \
+kubectl logs -n rook-ceph $OSD_POD -c chown-container-data-dir --previous
 ```
 
 ## Common Causes and Fixes
@@ -122,7 +122,7 @@ The OSD is prepared by a Job that runs before the OSD pod. Check prepare job log
 
 ```bash
 kubectl get job -n rook-ceph | grep osd-prepare
-kubectl logs -n rook-ceph job/<osd-prepare-job> -c osd | tail -50
+kubectl logs -n rook-ceph job/<osd-prepare-job> -c provision | tail -50
 ```
 
 ## Operator-Triggered OSD Restart
