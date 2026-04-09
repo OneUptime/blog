@@ -102,11 +102,11 @@ A client may be blocklisted if it held caps too long or reconnected improperly:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd blacklist ls
+  ceph osd blocklist ls
 
 # Remove the blocklist entry for this client
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd blacklist rm <client-ip>:0/0
+  ceph osd blocklist rm <client-ip>:0/0
 ```
 
 ## Recovery Steps
@@ -122,7 +122,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph -s
 
 # 4. Remount
 mount -t ceph <mon-ip>:6789:/ /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring
+  -o name=admin,secretfile=/etc/ceph/admin.secret
 ```
 
 ## Summary
