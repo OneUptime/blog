@@ -44,9 +44,9 @@ Dashboard warning icons and their meanings:
 
 | Warning | Meaning | Action |
 |---|---|---|
-| OSD_NEAR_FULL | Pool approaching capacity | Add OSDs or expand |
+| OSD_NEARFULL | OSD approaching full ratio | Add OSDs or expand |
 | POOL_NO_REDUNDANCY | Pool has size=1 | Increase replica count |
-| AUTH_INSECURE_GLOBAL_ID | Security config needed | Set auth_allow_insecure_global_id_reclaim |
+| AUTH_INSECURE_GLOBAL_ID_RECLAIM | Security config needed | Set auth_allow_insecure_global_id_reclaim |
 | SLOW_OPS | OSD operations taking >30s | Check OSD performance |
 
 ## Reading the Capacity Widget
