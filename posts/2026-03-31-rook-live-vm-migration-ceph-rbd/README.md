@@ -141,7 +141,7 @@ If migration stalls due to dirty memory pages:
 
 ```bash
 virsh migrate-setmaxdowntime myvm 5000
-virsh migrate-setspeed myvm 8192  # 8 Gbps
+virsh migrate-setspeed myvm 8192  # 8 GiB/s
 ```
 
 ## Summary
