@@ -35,7 +35,7 @@ infrastructure/
       storageclasses.yaml
     policies/
       networkpolicies.yaml
-      podsecuritypolicies.yaml
+      podsecuritystandards.yaml
 ```
 
 ## Deploying Rook with ArgoCD
