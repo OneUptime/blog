@@ -144,10 +144,16 @@ In some scenarios, PGs get stuck in `creating` state. Check the affected pools:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg dump | grep creating
 ```
 
-Force a pool scrub to unstick:
+If the PG autoscaler is interfering with PG creation, disable automatic scaling:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool set <pool-name> pg_autoscale_mode warn
+```
+
+If PGs remain stuck, ensure the CRUSH rules can be satisfied by your OSD topology, then force a repair on the stuck PGs:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg repeer <pgid>
 ```
 
 ## Monitoring Recovery Progress
