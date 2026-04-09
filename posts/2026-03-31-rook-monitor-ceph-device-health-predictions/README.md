@@ -108,11 +108,11 @@ ceph osd destroy osd.<id> --yes-i-really-mean-it
 Set failure thresholds:
 
 ```bash
-# Warn when predicted life expectancy is below this many days
-ceph config set mgr mgr/devicehealth/warn_threshold 14
+# Warn when predicted life expectancy is below 14 days (value in seconds)
+ceph config set mgr mgr/devicehealth/warn_threshold 1209600
 
-# Mark out OSDs when predicted life is below this many days
-ceph config set mgr mgr/devicehealth/mark_out_threshold 7
+# Mark out OSDs when predicted life is below 7 days (value in seconds)
+ceph config set mgr mgr/devicehealth/mark_out_threshold 604800
 ```
 
 Enable automatic marking of devices for migration:
