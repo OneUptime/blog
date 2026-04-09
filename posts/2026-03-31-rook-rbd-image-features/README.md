@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, RBD, ImageFeature, CSI
 
-Description: Learn which RBD image features to enable in Rook for snapshots, cloning, mirroring, and encryption, and how to configure them in StorageClass definitions.
+Description: Learn which RBD image features to enable in Rook for snapshots, cloning, and mirroring, and how to configure them in StorageClass definitions.
 
 ---
 
-Ceph RBD images support optional features that enable capabilities like copy-on-write cloning, snapshots, live migration, journaling, and encryption. Understanding which features to enable ensures compatibility with CSI operations and unlocks advanced functionality.
+Ceph RBD images support optional features that enable capabilities like copy-on-write cloning, snapshots, live migration, and journaling. Understanding which features to enable ensures compatibility with CSI operations and unlocks advanced functionality.
 
 ## RBD Image Feature Overview
 
@@ -95,7 +95,7 @@ reclaimPolicy: Retain
 allowVolumeExpansion: true
 ```
 
-Note: `journaling` requires `exclusive-lock` to be enabled as well.
+Note: `journaling` requires `exclusive-lock` to be enabled. Similarly, `object-map` requires `exclusive-lock`, and `fast-diff` requires `object-map`.
 
 ## Enable/Disable Features on Existing Images
 
@@ -126,11 +126,19 @@ Some features require specific kernel versions. If you use the in-kernel RBD dri
 |---|---|
 | `layering` | 3.10 |
 | `exclusive-lock` | 4.9 |
-| `object-map` | Not supported in kernel client |
-| `fast-diff` | Not supported in kernel client |
+| `deep-flatten` | 5.1 |
+| `object-map` | 5.3 |
+| `fast-diff` | 5.3 |
 | `journaling` | Not supported in kernel client |
 
-When targeting kernel clients, limit features to `layering` only:
+When targeting kernel clients running kernel 5.4 or newer, you can safely use:
+
+```yaml
+parameters:
+  imageFeatures: layering,exclusive-lock,object-map,fast-diff,deep-flatten
+```
+
+For older kernels (< 5.3), limit features to `layering` only:
 
 ```yaml
 parameters:
