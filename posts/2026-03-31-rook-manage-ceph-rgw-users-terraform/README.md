@@ -41,9 +41,8 @@ resource "kubernetes_manifest" "rgw_user_app1" {
         maxSize    = "50GiB"
       }
       capabilities = {
-        user    = "read"
-        bucket  = "read,write"
-        objects = "read,write"
+        user   = "read"
+        bucket = "read,write"
       }
     }
   }
@@ -101,10 +100,22 @@ resource "terraform_data" "rgw_user" {
 variable "uid" { type = string }
 variable "display_name" { type = string }
 variable "email" { type = string }
-variable "max_buckets" { type = number; default = 100 }
-variable "quota_size_gb" { type = number; default = 10 }
-variable "store_name" { type = string; default = "my-store" }
-variable "namespace" { type = string; default = "rook-ceph" }
+variable "max_buckets" {
+  type    = number
+  default = 100
+}
+variable "quota_size_gb" {
+  type    = number
+  default = 10
+}
+variable "store_name" {
+  type    = string
+  default = "my-store"
+}
+variable "namespace" {
+  type    = string
+  default = "rook-ceph"
+}
 
 resource "kubernetes_manifest" "user" {
   manifest = {
