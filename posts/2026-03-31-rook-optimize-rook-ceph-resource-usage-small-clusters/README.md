@@ -77,17 +77,16 @@ Or via Rook's config override:
 ```yaml
 spec:
   cephConfig:
-    osd:
+    "osd.*":
       osd_memory_target: "1073741824"
 ```
 
 ## Use BlueStore Minimal Settings
 
-On small clusters, reduce BlueStore cache sizes:
+The default BlueStore cache size is 1 GiB for HDD and 3 GiB for SSD. On small clusters with SSD-backed OSDs, reduce the SSD cache size:
 
 ```bash
-ceph config set osd bluestore_cache_size_hdd 1073741824
-ceph config set osd bluestore_cache_size_ssd 1073741824
+ceph config set osd bluestore_cache_size_ssd 1073741824   # reduce from 3 GiB to 1 GiB
 ```
 
 ## Reduce Scrub Frequency
