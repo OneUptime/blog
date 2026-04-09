@@ -66,11 +66,27 @@ python3 create-external-cluster-resources.py \
 
 ## Step 4 - Export Credentials for Multiple Pools
 
-For environments with multiple RBD pools:
+The `--rbd-data-pool-name` flag accepts a single pool name, so for environments with multiple RBD pools, run the script separately for each pool:
 
 ```bash
 python3 create-external-cluster-resources.py \
-  --rbd-data-pool-name pool1,pool2,pool3 \
+  --rbd-data-pool-name pool1 \
+  --namespace rook-ceph-external \
+  --format bash > external-cluster-pool1.sh
+
+python3 create-external-cluster-resources.py \
+  --rbd-data-pool-name pool2 \
+  --namespace rook-ceph-external \
+  --format bash > external-cluster-pool2.sh
+```
+
+For topology-constrained pools, use the `--topology-pools` flag which accepts a comma-separated list:
+
+```bash
+python3 create-external-cluster-resources.py \
+  --topology-pools pool1,pool2,pool3 \
+  --topology-failure-domain-label topology.kubernetes.io/zone \
+  --topology-failure-domain-values zone-a,zone-b,zone-c \
   --namespace rook-ceph-external \
   --format bash
 ```
