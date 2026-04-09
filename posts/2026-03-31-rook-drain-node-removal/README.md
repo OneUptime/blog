@@ -18,11 +18,13 @@ flowchart TD
     B --> C[Check replication factor]
     C --> D[Mark OSDs out]
     D --> E[Wait for data backfill complete]
-    E --> F[Stop OSDs]
+    E --> F[Cordon node]
     F --> G[Drain Kubernetes workloads]
-    G --> H[Cordon node]
-    H --> I[Verify cluster health]
-    I --> J[Delete / decommission node]
+    G --> H[Stop OSD pods]
+    H --> I[Remove OSDs from Ceph]
+    I --> J[Update CephCluster spec]
+    J --> K[Verify cluster health]
+    K --> L[Delete / decommission node]
 ```
 
 ## Step 1: Identify OSDs on the Target Node
@@ -85,7 +87,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph health detail
 
 Expected output when safe to proceed:
 
-```yaml
+```text
 HEALTH_OK
 mon: 3 daemons, quorum a,b,c (age 5h)
 osd: 12 osds: 12 up, 9 in
@@ -107,8 +109,9 @@ kubectl drain $NODE \
   --delete-emptydir-data \
   --timeout=300s
 
-# The drain does NOT evict OSD pods (they are DaemonSet or static pods)
-# We handle OSD pods separately
+# Rook OSD pods are Deployments, so drain will evict them.
+# Since we already marked OSDs out and waited for backfill, this is safe.
+# Step 7 cleans up any remaining Rook pods on the node.
 ```
 
 ## Step 7: Stop OSD Pods on the Node
