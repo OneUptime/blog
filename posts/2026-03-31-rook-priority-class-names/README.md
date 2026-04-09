@@ -40,7 +40,7 @@ For reference, the built-in `system-cluster-critical` class has a value of `2000
 
 ## Setting priorityClassName in CephCluster
 
-Reference the priority class inside the `placement` block for each daemon type:
+Reference the priority class inside the `priorityClassNames` block for each daemon type:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -49,17 +49,12 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  placement:
-    mon:
-      priorityClassName: rook-critical
-    mgr:
-      priorityClassName: rook-critical
-    osd:
-      priorityClassName: rook-critical
-    crashcollector:
-      priorityClassName: rook-default
-    cleanup:
-      priorityClassName: rook-default
+  priorityClassNames:
+    mon: rook-critical
+    mgr: rook-critical
+    osd: rook-critical
+    crashcollector: rook-default
+    cleanup: rook-default
 ```
 
 Rook injects the `priorityClassName` field into each daemon pod spec during reconciliation.
@@ -69,11 +64,9 @@ Rook injects the `priorityClassName` field into each daemon pod spec during reco
 For clusters where storage underpins all other workloads, using the built-in `system-cluster-critical` class is appropriate:
 
 ```yaml
-placement:
-  mon:
-    priorityClassName: system-cluster-critical
-  osd:
-    priorityClassName: system-cluster-critical
+priorityClassNames:
+  mon: system-cluster-critical
+  osd: system-cluster-critical
 ```
 
 This places Ceph daemons at the same eviction priority as kube-apiserver and coredns, making them nearly impossible to evict under normal resource pressure.
@@ -90,8 +83,7 @@ metadata:
   namespace: rook-ceph
 spec:
   metadataServer:
-    placement:
-      priorityClassName: rook-critical
+    priorityClassName: rook-critical
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStore
@@ -100,8 +92,7 @@ metadata:
   namespace: rook-ceph
 spec:
   gateway:
-    placement:
-      priorityClassName: rook-default
+    priorityClassName: rook-default
 ```
 
 ## Verifying Priority Assignment
