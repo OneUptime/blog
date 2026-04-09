@@ -65,9 +65,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: myfs-metadata
-    namespace: nfs-ns
   server:
     active: 2
     resources:
@@ -140,7 +137,8 @@ metadata:
 provisioner: rook-ceph.nfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  nfsClusterID: my-nfs
+  nfsCluster: my-nfs
+  server: rook-ceph-nfs-my-nfs-a
   fsName: myfs
   pool: myfs-data0
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
@@ -183,7 +181,7 @@ sudo mount -t nfs4 10.96.5.200:/nfs-share /mnt/ceph-nfs
 df -h /mnt/ceph-nfs
 
 # Make persistent (/etc/fstab)
-echo "10.96.5.200:/nfs-share /mnt/ceph-nfs nfs4 defaults,_netdev 0 0" >> /etc/fstab
+echo "10.96.5.200:/nfs-share /mnt/ceph-nfs nfs4 defaults,_netdev 0 0" | sudo tee -a /etc/fstab
 ```
 
 ## Summary
