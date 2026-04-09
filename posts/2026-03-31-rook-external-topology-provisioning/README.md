@@ -56,7 +56,7 @@ On the external Ceph admin host, create CRUSH rules that align with your topolog
 ceph osd crush tree
 
 # Create a CRUSH rule that distributes replicas across zones
-ceph osd crush rule create-replicated zone-replicated default zone osd
+ceph osd crush rule create-replicated zone-replicated default zone
 
 # Alternatively, create via CRUSH map for fine-grained control
 ceph osd getcrushmap -o /tmp/crushmap.bin
