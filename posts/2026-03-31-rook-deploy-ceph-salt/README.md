@@ -39,11 +39,13 @@ salt-key -A  # Accept all pending keys
 ## Installing ceph-salt
 
 ```bash
-# Install on the Salt master
-pip install ceph-salt
-
-# Or from package on SUSE
+# Install from package on SUSE/openSUSE
 sudo zypper install ceph-salt
+
+# Or install from source
+git clone https://github.com/ceph/ceph-salt.git
+cd ceph-salt
+pip install .
 ```
 
 ## Configuring ceph-salt
@@ -55,17 +57,18 @@ ceph-salt uses an interactive shell to configure the cluster before applying:
 sudo ceph-salt config
 
 # Inside the shell:
-/Cluster/Minions add node1.example.com
-/Cluster/Minions add node2.example.com
-/Cluster/Minions add node3.example.com
+/ceph_cluster/minions add node1.example.com
+/ceph_cluster/minions add node2.example.com
+/ceph_cluster/minions add node3.example.com
 
-/Cluster/Roles/Admin add node1.example.com
-/Cluster/Roles/Bootstrap set node1.example.com
-/Cluster/Roles/Tuned/Storage add node2.example.com
-/Cluster/Roles/Tuned/Storage add node3.example.com
+/ceph_cluster/roles/cephadm add node1.example.com
+/ceph_cluster/roles/cephadm add node2.example.com
+/ceph_cluster/roles/cephadm add node3.example.com
+/ceph_cluster/roles/admin add node1.example.com
+/ceph_cluster/roles/bootstrap set node1.example.com
 
-/Deployment/Bootstrap/Ceph_conf/MSGRv2 enable
-/Deployment/Bootstrap/Mon_IP set 192.168.1.10
+/ssh generate
+/cephadm_bootstrap/mon_ip set 192.168.1.10
 
 ls  # List current configuration
 quit
@@ -77,7 +80,7 @@ Validate before applying:
 
 ```bash
 # Run pre-flight checks
-sudo ceph-salt diag
+sudo ceph-salt status
 
 # Apply the configuration (runs Salt states on all minions)
 sudo ceph-salt apply
@@ -93,7 +96,7 @@ This runs Salt states that:
 
 ```bash
 # Follow the apply progress
-sudo ceph-salt apply --log-level info
+sudo ceph-salt --log-level info apply
 
 # Check Salt job status
 salt-run jobs.active
@@ -124,8 +127,8 @@ After initial deployment, modify configuration and re-apply:
 sudo ceph-salt config
 
 # Add a new minion
-/Cluster/Minions add node4.example.com
-/Cluster/Roles/Tuned/Storage add node4.example.com
+/ceph_cluster/minions add node4.example.com
+/ceph_cluster/roles/cephadm add node4.example.com
 quit
 
 # Re-apply changes
