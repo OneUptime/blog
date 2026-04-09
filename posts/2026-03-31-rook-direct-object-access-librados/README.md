@@ -58,7 +58,7 @@ ioctx.trunc("bigobj", 100)  # Truncate to 100 bytes
 
 ## Atomic Compare-and-Swap Operations
 
-Use `ObjectWriteOperation` with a compare guard for atomic conditional writes:
+Use `WriteOp` with `assert_version` for atomic conditional writes. This ensures the write only succeeds if the object has not been modified since you last read it:
 
 ```python
 import rados
@@ -68,15 +68,15 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
         # Set initial value
         ioctx.write_full("counter", b"5")
 
-        # Only write if current content equals "5"
-        op = ioctx.create_write_op()
-        ioctx.set_write_op_assert_version(op, 0)
+        # Read current version
+        ioctx.stat("counter")
+        ver = ioctx.get_last_version()
 
-        # cmpxattr: only proceed if xattr equals expected value
-        ioctx.write_op_cmpxattr(
-            op, "locked", rados.CEPH_OSD_CMPXATTR_OP_EQ, b"0"
-        )
-        ioctx.write_op_setxattr(op, "locked", b"1")
+        # Atomic write: only succeeds if object version hasn't changed
+        op = ioctx.create_write_op()
+        op.assert_version(ver)
+        op.write_full(b"6")
+        op.set_xattr("locked", b"1")
         ioctx.operate_write_op(op, "counter")
         ioctx.release_write_op(op)
 ```
@@ -88,9 +88,8 @@ Iterate over all objects:
 ```python
 with cluster.open_ioctx("mypool") as ioctx:
     object_list = []
-    with ioctx.list_objects() as obj_iter:
-        for obj in obj_iter:
-            object_list.append(obj.key)
+    for obj in ioctx.list_objects():
+        object_list.append(obj.key)
     print(f"Found {len(object_list)} objects")
 ```
 
@@ -100,7 +99,8 @@ Copy objects between pools using read-then-write:
 
 ```python
 def copy_object(src_ioctx, dst_ioctx, key):
-    data = src_ioctx.read(key)
+    size, _ = src_ioctx.stat(key)
+    data = src_ioctx.read(key, length=size)
     dst_ioctx.write_full(key, data)
     # Copy xattrs
     for name, val in src_ioctx.get_xattrs(key):
@@ -119,4 +119,4 @@ ret = rados_read(io, "myobj", buf, 5, 10);
 
 ## Summary
 
-librados provides rich direct object access beyond basic put/get, including partial reads and writes by offset, atomic compare-and-swap via `ObjectWriteOperation`, object stat queries, append operations, and truncation. These primitives enable building efficient custom storage protocols on top of RADOS without the overhead of higher-level interfaces.
+librados provides rich direct object access beyond basic put/get, including partial reads and writes by offset, atomic compare-and-swap via `WriteOp` with `assert_version`, object stat queries, append operations, and truncation. These primitives enable building efficient custom storage protocols on top of RADOS without the overhead of higher-level interfaces.
