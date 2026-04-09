@@ -17,9 +17,9 @@ Unlike Ceph-native encryption (which encrypts at the OSD layer), fscrypt encrypt
 ## Prerequisites
 
 - Ceph Quincy (17.2) or later
-- Linux kernel 5.4 or later (for fscrypt v2 API)
+- Linux kernel 6.6 or later (CephFS fscrypt support was completed in this version)
 - `fscryptctl` or `fscrypt` user-space tool installed on clients
-- CephFS kernel client (not ceph-fuse for initial setup)
+- CephFS kernel client (ceph-fuse also supports fscrypt with limited cipher options)
 
 ```bash
 # Install fscryptctl on client
@@ -30,16 +30,16 @@ git clone https://github.com/google/fscryptctl
 cd fscryptctl && make
 ```
 
-## Step 1 - Enable fscrypt on the CephFS Filesystem
+## Step 1 - Verify CephFS fscrypt Prerequisites
 
-The cluster must have fscrypt enabled:
+fscrypt in CephFS is a client-side feature. The MDS and OSD are not aware of encryption policies or master keys. Ensure your Ceph cluster is running Quincy (17.2) or later and your client kernel is 6.6+:
 
 ```bash
-# Enable fscrypt feature
-ceph fs set myfs fscrypt true
+# Verify Ceph version supports fscrypt
+ceph version
 
-# Verify
-ceph fs get myfs | grep fscrypt
+# Verify kernel version on the client (must be 6.6+)
+uname -r
 ```
 
 ## Step 2 - Mount CephFS with fscrypt Support
@@ -58,8 +58,8 @@ mount | grep ceph
 ## Step 3 - Initialize fscrypt on the Mount Point
 
 ```bash
-# Initialize fscrypt on the mounted filesystem
-fscryptctl setup /mnt/cephfs
+# Initialize fscrypt on the mounted filesystem (uses the high-level fscrypt tool)
+fscrypt setup /mnt/cephfs
 
 # This creates /.fscrypt directory at the mount root
 ls /mnt/cephfs/.fscrypt/
@@ -70,12 +70,12 @@ ls /mnt/cephfs/.fscrypt/
 Generate an encryption key and create a policy:
 
 ```bash
-# Generate a random 512-bit key (for AES-256-XTS)
-dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64 > /secure/location/mykey.b64
+# Generate a random 64-byte raw key (for AES-256-XTS)
+dd if=/dev/urandom bs=64 count=1 2>/dev/null > /secure/location/mykey.raw
 
-# Add the key to the kernel keyring
-key_descriptor=$(fscryptctl add_key /mnt/cephfs < /secure/location/mykey.b64)
-echo "Key descriptor: $key_descriptor"
+# Add the key to the kernel keyring (fscryptctl reads raw binary from stdin)
+key_identifier=$(fscryptctl add_key /mnt/cephfs < /secure/location/mykey.raw)
+echo "Key identifier: $key_identifier"
 ```
 
 ## Step 5 - Apply Encryption to a Directory
@@ -85,7 +85,7 @@ echo "Key descriptor: $key_descriptor"
 mkdir /mnt/cephfs/encrypted-dir
 
 # Apply the encryption policy
-fscryptctl set_policy $key_descriptor /mnt/cephfs/encrypted-dir
+fscryptctl set_policy $key_identifier /mnt/cephfs/encrypted-dir
 
 # Verify the policy is set
 fscryptctl get_policy /mnt/cephfs/encrypted-dir
@@ -104,7 +104,7 @@ cat /mnt/cephfs/encrypted-dir/test.txt
 # Output: Secret data (decrypted because key is in keyring)
 
 # Remove key and verify data is inaccessible
-fscryptctl remove_key /mnt/cephfs < /secure/location/mykey.b64
+fscryptctl remove_key $key_identifier /mnt/cephfs
 ls /mnt/cephfs/encrypted-dir/
 # Shows encrypted filenames (garbled names)
 cat /mnt/cephfs/encrypted-dir/<garbled-name>
@@ -117,13 +117,13 @@ fscrypt supports:
 
 ```text
 Contents Encryption:  AES-256-XTS (recommended)
-Filenames Encryption: AES-256-CTS-CBC or AES-256-HCTR2
+Filenames Encryption: AES-256-CTS or AES-256-HCTR2
 ```
 
 ```bash
 # Set a policy with explicit cipher
-fscryptctl set_policy --contents=AES-256-XTS --filenames=AES-256-CTS-CBC \
-  $key_descriptor /mnt/cephfs/encrypted-dir
+fscryptctl set_policy --contents=AES-256-XTS --filenames=AES-256-CTS \
+  $key_identifier /mnt/cephfs/encrypted-dir
 ```
 
 ## Key Protectors and Key Derivation
@@ -160,17 +160,18 @@ spec:
     activeCount: 1
 ```
 
-After Rook creates the filesystem, enable fscrypt via the toolbox:
+After Rook creates the filesystem, fscrypt can be configured on the client side. No server-side flag is needed since fscrypt operates entirely at the client level. Use the Rook toolbox to verify the filesystem is ready:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set myfs fscrypt true
+  ceph fs status myfs
 ```
 
 ## Limitations
 
 ```text
-- Kernel client only (no fscrypt support in ceph-fuse)
+- Kernel client requires Linux 6.6 or later
+- ceph-fuse supports fscrypt but only with AES-256-XTS (contents) and AES-256-CTS (filenames)
 - Per-directory granularity (not per-file)
 - Key must be present in kernel keyring to access encrypted files
 - Snapshots of encrypted directories store encrypted data
@@ -179,4 +180,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-fscrypt in CephFS provides client-side per-directory encryption using the Linux kernel's encryption framework. Enabling it requires setting `fscrypt true` on the filesystem, mounting with the kernel client, and using `fscryptctl` to assign encryption policies to directories. Data and filenames are encrypted before leaving the client, providing strong security even if OSD storage is compromised. Key management via the kernel keyring or `fscrypt` tool enables per-user or per-session access control to encrypted directories.
+fscrypt in CephFS provides client-side per-directory encryption using the Linux kernel's encryption framework. Enabling it requires mounting with the kernel client (Linux 6.6+), initializing fscrypt on the mount point, and using `fscryptctl` to assign encryption policies to directories. Data and filenames are encrypted before leaving the client, providing strong security even if OSD storage is compromised. Key management via the kernel keyring or `fscrypt` tool enables per-user or per-session access control to encrypted directories.
