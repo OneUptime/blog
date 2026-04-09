@@ -17,7 +17,7 @@ graph TD
     A[Application with S3 SDK] --> B[RGW Service - port 80/443]
     B --> C[RGW Pod - RADOS Gateway]
     C --> D[RADOS Object Store]
-    D --> E[Data Pool - replicated]
+    D --> E[Data Pool - erasure coded]
     D --> F[Index Pool - replicated]
     D --> G[Metadata Pool - replicated]
     E --> H[OSDs]
@@ -140,11 +140,11 @@ spec:
   store: my-store
   displayName: "My Object Store User"
   capabilities:
-    user: "read, write, list"
-    bucket: "read, write, list"
-    metadata: "read, write, list"
-    usage: "read, write, list"
-    zone: "read, write, list"
+    user: "*"
+    bucket: "*"
+    metadata: "*"
+    usage: "*"
+    zone: "*"
   quotas:
     maxSize: 10Gi
     maxBuckets: 20
@@ -193,9 +193,11 @@ http://rook-ceph-rgw-my-store-a.rook-ceph.svc.cluster.local
 Install the AWS CLI in a test pod and create a bucket:
 
 ```bash
-kubectl run s3-test --rm -it --image=amazon/aws-cli --restart=Never -- \
+kubectl run s3-test --rm -it --image=amazon/aws-cli --restart=Never \
+  --env="AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+  --env="AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+  -- \
   --endpoint-url http://rook-ceph-rgw-my-store-a.rook-ceph.svc.cluster.local \
-  --no-verify-ssl \
   s3 mb s3://my-test-bucket
 ```
 
