@@ -83,8 +83,6 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 allowVolumeExpansion: true
-mountOptions:
-  - discard
 ```
 
 Create a PVC per user:
