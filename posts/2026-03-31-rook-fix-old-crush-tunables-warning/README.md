@@ -40,7 +40,7 @@ Ceph monitors issue this warning when the CRUSH tunables are older than the thre
 # Check the minimum required version setting
 ceph config get mon mon_crush_min_required_version
 
-# Default is typically 'firefly' or higher in modern Ceph versions
+# Default is 'hammer' in modern Ceph versions (Nautilus and later)
 ```
 
 ## Resolving the Warning
@@ -61,11 +61,11 @@ Then apply the appropriate profile:
 # For clusters with all modern clients (Luminous or later)
 ceph osd crush tunables optimal
 
-# For clusters with Hammer-era clients
-ceph osd crush tunables hammer
-
-# For maximum compatibility (still resolves most warnings)
+# For clusters with Jewel-era clients
 ceph osd crush tunables jewel
+
+# For maximum compatibility (resolves the default warning)
+ceph osd crush tunables hammer
 
 # Verify the warning is gone
 ceph health detail
@@ -102,12 +102,15 @@ watch -n 10 ceph -s
 Before applying, estimate how many PGs will be remapped:
 
 ```bash
-# Get current and new CRUSH maps
+# Export the current CRUSH map
 ceph osd getcrushmap -o crush-old.bin
-ceph osd crush tunables optimal  # Apply change
-ceph osd getcrushmap -o crush-new.bin
 
-# Compare mappings (revert first if needed)
+# Apply the tunable change, export the new map, then revert
+ceph osd crush tunables optimal
+ceph osd getcrushmap -o crush-new.bin
+ceph osd setcrushmap -i crush-old.bin  # Revert to original
+
+# Compare mappings offline
 crushtool -i crush-old.bin --test --rule 0 --num-rep 3 \
   --min-x 0 --max-x 10000 --show-mappings > old-mappings.txt
 
@@ -123,10 +126,10 @@ echo "PGs that will be remapped"
 If you need more time before upgrading:
 
 ```bash
-# Lower the minimum required version to suppress the warning
-ceph config set mon mon_crush_min_required_version argonaut
+# Disable the legacy tunables warning
+ceph config set mon mon_warn_on_legacy_crush_tunables false
 
-# Note: This is a workaround only - upgrade when possible
+# Note: This is a workaround only - upgrade tunables when possible
 ```
 
 ## Summary
