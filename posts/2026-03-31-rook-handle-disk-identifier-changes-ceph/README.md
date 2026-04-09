@@ -33,7 +33,7 @@ This means the disk is present but at a different path.
 Find where the disk is now:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl debug node/worker-1 --image=busybox -it -- \
   chroot /host lsblk -o NAME,WWN,MODEL,SERIAL,MOUNTPOINT
 ```
 
@@ -57,7 +57,7 @@ spec:
 Verify available persistent paths:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl debug node/worker-1 --image=busybox -it -- \
   chroot /host ls -la /dev/disk/by-id/ | grep -v part
 ```
 
