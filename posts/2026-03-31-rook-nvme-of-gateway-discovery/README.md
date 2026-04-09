@@ -20,23 +20,15 @@ The Ceph NVMe-oF gateway includes a discovery log service. Ensure the gateway is
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gateway
   namespace: rook-ceph
 spec:
-  server:
-    image: quay.io/ceph/nvmeof:latest
-    instances: 2
-  service:
-    type: LoadBalancer
-    ports:
-    - name: nvmeof
-      port: 4420
-      targetPort: 4420
-    - name: discovery
-      port: 8009
-      targetPort: 8009
+  image: quay.io/ceph/nvmeof:1.5
+  pool: .nvmeof       # required - must reference an existing CephBlockPool
+  group: gateway-grp   # required - gateway ANA group name
+  instances: 2
 ```
 
 ## Step 2 - Register Subsystems in the Discovery Log
@@ -44,8 +36,8 @@ spec:
 All subsystems must be registered with the discovery controller. Check that subsystems are visible in the discovery log:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof subsystem list
+kubectl exec -it deploy/rook-ceph-nvmeof-nvmeof-gateway -n rook-ceph -- \
+  ceph-nvmeof subsystem list
 ```
 
 Each subsystem should appear in the gateway's discovery log automatically after creation.
@@ -101,8 +93,8 @@ Save discovery configuration for automatic reconnection at boot:
 
 ```bash
 cat > /etc/nvme/discovery.conf << EOF
--t tcp -a 192.168.1.50 -s 8009 -q hostnqn
--t tcp -a 192.168.1.51 -s 8009 -q hostnqn
+--transport=tcp --traddr=192.168.1.50 --trsvcid=8009
+--transport=tcp --traddr=192.168.1.51 --trsvcid=8009
 EOF
 
 systemctl enable nvmf-autoconnect
@@ -114,8 +106,8 @@ systemctl start nvmf-autoconnect
 Restrict which initiators can see which subsystems in the discovery log by host NQN:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof subsystem add-host \
+kubectl exec -it deploy/rook-ceph-nvmeof-nvmeof-gateway -n rook-ceph -- \
+  ceph-nvmeof host add \
   --subsystem nqn.2026-03.com.ceph:subsystem-01 \
   --host-nqn "nqn.2014-08.org.nvmexpress:uuid:client-host-uuid"
 ```
