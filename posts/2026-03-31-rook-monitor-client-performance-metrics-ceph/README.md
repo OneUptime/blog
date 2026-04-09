@@ -86,7 +86,7 @@ ceph_pool_wr_bytes
 
 ## Grafana Dashboard
 
-Import the official Ceph Grafana dashboards (IDs 5336 and 7845) for visualizing client metrics. Key panels include:
+Import the official Ceph Grafana dashboards (IDs 2842 and 5336) for visualizing client metrics. Key panels include:
 
 - Pool throughput (read/write bytes/sec)
 - Pool IOPS (read/write ops/sec)
@@ -115,4 +115,4 @@ ceph tell osd.0 perf dump | jq '.osd.op_latency'
 
 ## Summary
 
-Ceph provides multiple layers of client performance visibility: `rbd perf iostat` for real-time per-image stats, admin socket perf counters for per-client details, pool-level stats via `ceph osd pool stats`, and Prometheus metrics for integration with Grafana. Combining these tools lets you trace a performance issue from the application layer down to specific OSDs.
+Ceph provides multiple layers of client performance visibility: `rbd perf image iostat` for real-time per-image stats, admin socket perf counters for per-client details, pool-level stats via `ceph osd pool stats`, and Prometheus metrics for integration with Grafana. Combining these tools lets you trace a performance issue from the application layer down to specific OSDs.
