@@ -12,7 +12,7 @@ Description: Learn how to resolve PG_SLOW_SNAP_TRIMMING in Ceph, a warning that 
 
 `PG_SLOW_SNAP_TRIMMING` is a Ceph health warning that fires when snapshot trimming - the process of removing objects associated with deleted snapshots - is running slower than expected. When you delete a snapshot in Ceph, the space is not immediately freed. Instead, objects from the deleted snapshot are queued for trimming (deletion) asynchronously. If trimming falls behind, PGs accumulate stale snapshot objects that consume disk space.
 
-This is commonly seen in RGW workloads with frequent bucket snapshot operations, or after bulk snapshot deletions.
+This is commonly seen in RBD or CephFS workloads with frequent snapshot operations, or after bulk snapshot deletions.
 
 ## Checking the Warning
 
@@ -76,7 +76,7 @@ ceph config set osd osd_snap_trim_cost 1048576
 Reduce sleep between trim operations:
 
 ```bash
-ceph config set osd osd_snap_trim_sleep_hdd 5
+ceph config set osd osd_snap_trim_sleep_hdd 0
 ceph config set osd osd_snap_trim_sleep_ssd 0
 ```
 
