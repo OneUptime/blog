@@ -45,8 +45,8 @@ You must choose which cluster's data to keep. This involves demoting one side an
 # Step 2: On cluster-A (the one you will discard), demote the image
 rbd mirror image demote replicapool/myimage
 
-# Step 3: On cluster-B (the one you keep), force resync to be safe
-# Actually cluster-B is now primary; cluster-A will resync from it
+# Step 3: On cluster-A, force resync from cluster-B (now primary)
+rbd mirror image resync replicapool/myimage
 ```
 
 Alternatively, if you want to keep cluster-A's data:
@@ -71,7 +71,7 @@ Implement safeguards to reduce split-brain risk:
 # Use automated demotion before forcing promotion where possible
 # Monitor replication lag before triggering manual failovers
 rbd mirror image status replicapool/myimage --format json | \
-  jq '.description | test("entries_behind_master=0")'
+  jq '.description | test("entries_behind_primary=0")'
 ```
 
 Use network fencing (STONITH) to ensure the original primary is truly offline before force-promoting.
@@ -108,7 +108,7 @@ rbd mirror image status replicapool/myimage
 
 # Verify replication is progressing
 watch rbd mirror image status replicapool/myimage
-# Should show: up+replaying with entries_behind_master decreasing
+# Should show: up+replaying with entries_behind_primary decreasing
 ```
 
 ## Summary
