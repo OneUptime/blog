@@ -26,10 +26,10 @@ The warning shows how many ops are slow, the oldest blocked time, and which OSD 
 
 ## Listing Slow Ops on an OSD
 
-Query an OSD directly for its slow request details:
+Query an OSD directly for its slow request details (run on the OSD host):
 
 ```bash
-ceph tell osd.4 ops
+ceph daemon osd.4 dump_ops_in_flight
 ```
 
 Example output:
@@ -78,11 +78,11 @@ High `waiting for ondisk` times point to storage device latency:
 iostat -x 1 10
 
 # Or via OSD perf dump
-ceph tell osd.4 perf dump | python3 -c "
+ceph daemon osd.4 perf dump | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 lat = data['osd']['op_w_latency']
-print(f'Write latency avg: {lat[\"avgcount\"]}')"
+print(f'Write latency avg: {lat[\"sum\"] / lat[\"avgcount\"]}s over {lat[\"avgcount\"]} ops')"
 ```
 
 ## Checking Network Between OSDs
@@ -102,7 +102,7 @@ mtr --report --report-cycles=20 <osd5_host>
 
 ```bash
 # Query apply and commit latency via Prometheus
-curl -s 'http://192.168.1.10:9283/metrics' | grep "ceph_osd_apply_latency\|ceph_osd_commit_latency"
+curl -s 'http://192.168.1.10:9283/metrics' | grep "ceph_osd_apply_latency_ms\|ceph_osd_commit_latency_ms"
 ```
 
 Alert on P99 commit latency above 50ms for production workloads.
@@ -112,10 +112,10 @@ Alert on P99 commit latency above 50ms for production workloads.
 For detailed slow op traces, increase OSD log level temporarily:
 
 ```bash
-ceph tell osd.4 injectargs --debug-osd 5
+ceph tell osd.4 config set debug_osd 5
 tail -f /var/log/ceph/ceph-osd.4.log | grep "slow request"
 # Reset after diagnosis
-ceph tell osd.4 injectargs --debug-osd 0
+ceph tell osd.4 config set debug_osd 1/5
 ```
 
 ## Blacklisting Slow OSDs Temporarily
@@ -130,4 +130,4 @@ ceph osd in 4
 
 ## Summary
 
-Diagnosing Ceph slow requests starts with `ceph health detail` and `ceph tell osd.X ops` to identify which OSD and which op stage is blocked. The op state (waiting for subop, ondisk, or commit) points to either a replica OSD, disk, or network issue. OSD perf dump and Prometheus latency metrics provide quantitative data, while increased debug logging captures full op traces for deep analysis.
+Diagnosing Ceph slow requests starts with `ceph health detail` and `ceph daemon osd.X dump_ops_in_flight` to identify which OSD and which op stage is blocked. The op state (waiting for subop, ondisk, or commit) points to either a replica OSD, disk, or network issue. OSD perf dump and Prometheus latency metrics provide quantitative data, while increased debug logging captures full op traces for deep analysis.
