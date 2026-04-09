@@ -127,7 +127,7 @@ Set up monitoring to alert on version drift using Prometheus:
 
 ```yaml
 - alert: CephDaemonOldVersion
-  expr: count(ceph_daemon_versions) > 1
+  expr: ceph_health_detail{name="DAEMON_OLD_VERSION"} > 0
   for: 10m
   labels:
     severity: warning
