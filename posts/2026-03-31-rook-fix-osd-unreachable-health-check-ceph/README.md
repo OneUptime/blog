@@ -50,7 +50,7 @@ Test connectivity from a monitor to the OSD's public network address:
 # Find OSD address
 ceph osd find 5
 
-# Test TCP connectivity to OSD port (6800-6810 range)
+# Test TCP connectivity to OSD port (default range 6800-7568)
 nc -zv <osd-ip> 6800
 nc -zv <osd-ip> 6801
 
@@ -94,8 +94,8 @@ ip link set dev eth0 mtu 1500
 # Check iptables on OSD host
 iptables -L INPUT -n | grep -E "6800|REJECT|DROP"
 
-# Allow OSD ports
-iptables -A INPUT -p tcp --dport 6800:6810 -j ACCEPT
+# Allow OSD ports (default range 6800-7568)
+iptables -A INPUT -p tcp --dport 6800:7568 -j ACCEPT
 
 # For the cluster network
 iptables -A INPUT -s <cluster-subnet> -j ACCEPT
@@ -141,4 +141,4 @@ The OSD should transition from unreachable to `up+in`.
 
 ## Summary
 
-`OSD_UNREACHABLE` means an OSD process is alive but the cluster cannot communicate with it. Diagnose by testing network connectivity from monitors to the OSD on ports 6800-6810. Common fixes include correcting MTU mismatches, adjusting firewall rules, or resolving Kubernetes CNI issues. After fixing the network, restart the OSD daemon to force reconnection and verify with `ceph health detail`.
+`OSD_UNREACHABLE` means an OSD process is alive but the cluster cannot communicate with it. Diagnose by testing network connectivity from monitors to the OSD on ports 6800-7568. Common fixes include correcting MTU mismatches, adjusting firewall rules, or resolving Kubernetes CNI issues. After fixing the network, restart the OSD daemon to force reconnection and verify with `ceph health detail`.
