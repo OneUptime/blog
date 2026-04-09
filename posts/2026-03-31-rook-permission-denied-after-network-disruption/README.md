@@ -20,7 +20,7 @@ When a CephFS client loses network connectivity, its session timer starts counti
 2. Revokes all capabilities the client held
 3. Adds the client's IP address to the OSD blocklist to prevent stale write data from being applied
 
-When the client reconnects, it is rejected because its IP is blocklisted, causing all operations to return `EACCES`.
+When the client reconnects, it is rejected because its IP is blocklisted, causing all operations to fail with `EBLOCKLISTED` (mapped to `ESHUTDOWN` in the Linux kernel). Applications typically see this surfaced as `Input/output error` (EIO).
 
 ## Diagnose the Issue
 
@@ -45,9 +45,16 @@ kubectl -n rook-ceph logs -l app=rook-ceph-mds,rook_file_system=cephfs \
 The fastest fix is to remove the client from the OSD blocklist:
 
 ```bash
+# First, find the exact blocklist entry for the client
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd blocklist rm <client-ip>:0/0
+  ceph osd blocklist ls
+
+# Remove using the exact address string from the listing above
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd blocklist rm <address-from-blocklist-ls>
 ```
+
+Use the exact address string shown by `ceph osd blocklist ls` (e.g., `192.168.1.10:0/1234567890`), as it includes a nonce value that must match.
 
 After removal, the client should be able to reconnect and access files normally.
 
@@ -61,8 +68,10 @@ umount -f -l /mnt/cephfs
 
 # Remount
 mount -t ceph <monitor-ip>:6789:/ /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring
+  -o name=admin,secretfile=/etc/ceph/admin.secret
 ```
+
+Note: The `secretfile` option must point to a file containing only the raw secret key (a base64 string), not the full keyring file.
 
 For Kubernetes pods, delete and recreate the pod to force a fresh mount.
 
@@ -73,12 +82,16 @@ Increase the session timeout to give clients more time to reconnect after disrup
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_session_timeout 300  # 5 minutes
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_reconnect_timeout 300
 ```
 
-Also configure the client to reconnect aggressively:
+For kernel CephFS mounts, you can enable automatic session recovery by adding the `recover_session=clean` mount option, which allows the kernel client to automatically reconnect after being evicted:
+
+```bash
+mount -t ceph <monitor-ip>:6789:/ /mnt/cephfs \
+  -o name=admin,secretfile=/etc/ceph/admin.secret,recover_session=clean
+```
+
+For FUSE clients (ceph-fuse / libcephfs), configure aggressive reconnection in ceph.conf:
 
 ```bash
 # In ceph.conf
@@ -97,7 +110,7 @@ In Rook-Ceph deployments, if a Kubernetes node goes offline temporarily, all pod
 # List blocklisted clients
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd blocklist ls
 
-# Remove all expired blocklist entries
+# Remove all blocklist entries
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd blocklist clear
 ```
