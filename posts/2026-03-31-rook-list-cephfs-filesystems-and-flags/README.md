@@ -89,7 +89,7 @@ compat compat={},rocompat={},incompat={1=base v0.20,2=client writeable ranges,3=
 Filesystem 'myfs' (1)
 fs_name    myfs
 epoch      36
-flags      12
+flags      50
 created    2026-01-15T12:00:00.000000+0000
 modified   2026-03-01T08:00:00.000000+0000
 tableserver 0
@@ -101,14 +101,21 @@ session_autoclose 300
 
 ## Understanding Filesystem Flags
 
-The `flags` field in the filesystem dump is a bitmask. Common flag values:
+The `flags` field in the filesystem dump is a bitmask. The flag definitions come from `CEPH_MDSMAP_*` constants in the Ceph source (`src/include/ceph_fs.h`):
 
-| Flag Bit | Meaning |
-|---|---|
-| `0x1` | Joinable (the filesystem is accepting clients) |
-| `0x4` | Allow standby replay |
-| `0x8` | Standby replay enabled |
-| `0x10` | Enabled (filesystem is active) |
+| Bit | Hex | Decimal | Flag Name | Meaning |
+|---|---|---|---|---|
+| 1<<0 | `0x1` | 1 | `CEPH_MDSMAP_NOT_JOINABLE` | MDS daemons cannot join this filesystem (inverse of joinable) |
+| 1<<1 | `0x2` | 2 | `CEPH_MDSMAP_ALLOW_SNAPS` | Cluster allowed to create snapshots |
+| 1<<2 | `0x4` | 4 | _(deprecated)_ | Was `ALLOW_MULTIMDS` |
+| 1<<3 | `0x8` | 8 | _(deprecated)_ | Was `ALLOW_DIRFRAGS` |
+| 1<<4 | `0x10` | 16 | `CEPH_MDSMAP_ALLOW_MULTIMDS_SNAPS` | Allow multi-active MDS with snapshots |
+| 1<<5 | `0x20` | 32 | `CEPH_MDSMAP_ALLOW_STANDBY_REPLAY` | Allow standby-replay MDS daemons |
+| 1<<6 | `0x40` | 64 | `CEPH_MDSMAP_REFUSE_CLIENT_SESSION` | Refuse new client sessions |
+| 1<<7 | `0x80` | 128 | `CEPH_MDSMAP_REFUSE_STANDBY_FOR_ANOTHER_FS` | Do not use this FS standby for another FS |
+| 1<<8 | `0x100` | 256 | `CEPH_MDSMAP_BALANCE_AUTOMATE` | Automate metadata balancing |
+
+The default flags for a new filesystem are `ALLOW_SNAPS | ALLOW_MULTIMDS_SNAPS` = `0x12` (decimal 18). A flags value of `50` (decimal) = `0x32` = `ALLOW_SNAPS` + `ALLOW_MULTIMDS_SNAPS` + `ALLOW_STANDBY_REPLAY`. Note that `NOT_JOINABLE` at bit 0 means the filesystem is **not** accepting MDS daemons when set -- the display label "joinable" shown by `ceph fs get` is inverted for readability.
 
 View the human-readable flags in the status output:
 
