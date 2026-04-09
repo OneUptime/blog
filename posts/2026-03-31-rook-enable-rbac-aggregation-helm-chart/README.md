@@ -51,23 +51,23 @@ helm template rook-ceph rook-release/rook-ceph \
 
 ## RBAC Aggregation
 
-RBAC aggregation allows Rook roles to be composed with other cluster roles using label selectors. This is useful when admins want to grant operators or users combined permissions without creating new ClusterRoles:
+RBAC aggregation allows Rook ObjectBucketClaim roles to be composed with built-in cluster roles using label selectors. This is useful when admins want to grant users permissions to manage ObjectBucketClaims without creating new ClusterRoles:
 
 ```yaml
-# Enable aggregation (default: true)
-rbac:
-  pspEnabled: false
+# Enable OBC aggregation (default: false)
+rbacAggregate:
+  enableOBCs: true
 ```
 
-With aggregation enabled, Rook ClusterRoles include labels like:
+With aggregation enabled, the chart creates two additional ClusterRoles with aggregation labels:
 
 ```yaml
 labels:
-  rbac.authorization.k8s.io/aggregate-to-admin: "true"
+  rbac.authorization.k8s.io/aggregate-to-view: "true"
   rbac.authorization.k8s.io/aggregate-to-edit: "true"
 ```
 
-These labels cause Kubernetes to automatically merge Rook permissions into the built-in `admin` and `edit` ClusterRoles.
+These labels cause Kubernetes to automatically merge ObjectBucketClaim permissions into the built-in `view` and `edit` ClusterRoles.
 
 ## Viewing Created RBAC Resources
 
