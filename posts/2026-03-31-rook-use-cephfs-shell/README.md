@@ -17,12 +17,8 @@ The CephFS Shell (`cephfs-shell`) is an interactive command-line tool that provi
 The CephFS Shell is part of the `cephfs-shell` package or included in `ceph-common` on some distributions:
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu (requires Ceph apt repository)
 apt-get install -y cephfs-shell
-
-# Or via pip
-pip install cephfs
-pip install cephfs-shell
 ```
 
 ## Basic Usage in Rook Toolbox
@@ -31,7 +27,7 @@ The easiest way to use the CephFS Shell in a Rook-Ceph cluster is from the toolb
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-shell --conf /etc/ceph/ceph.conf
+  cephfs-shell
 ```
 
 ## Interactive Shell Commands
@@ -39,16 +35,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Once inside the shell, you can use familiar filesystem commands:
 
 ```text
-CephFS:/>  ls
-CephFS:/>  ls /mydir
-CephFS:/>  cd /mydir
-CephFS:/mydir>  mkdir newfolder
-CephFS:/mydir>  put /tmp/localfile.txt remotefile.txt
-CephFS:/mydir>  get remotefile.txt /tmp/downloaded.txt
-CephFS:/mydir>  rm oldfile.txt
-CephFS:/mydir>  stat myfile.txt
-CephFS:/mydir>  du -h .
-CephFS:/mydir>  quit
+CephFS:~/>>>  ls
+CephFS:~/>>>  ls /mydir
+CephFS:~/>>>  cd /mydir
+CephFS:~/mydir>>>  mkdir newfolder
+CephFS:~/mydir>>>  put /tmp/localfile.txt remotefile.txt
+CephFS:~/mydir>>>  get remotefile.txt /tmp/downloaded.txt
+CephFS:~/mydir>>>  rm oldfile.txt
+CephFS:~/mydir>>>  stat myfile.txt
+CephFS:~/mydir>>>  du .
+CephFS:~/mydir>>>  quit
 ```
 
 ## Run Commands Non-Interactively
@@ -60,7 +56,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   cephfs-shell -- ls /
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-shell -- du -h /myapp
+  cephfs-shell -- du /myapp
 ```
 
 ## Set and View Extended Attributes
@@ -68,8 +64,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Manage extended attributes (xattrs) used for layout configuration:
 
 ```text
-CephFS:/>  setxattr /mydir ceph.dir.layout.stripe_count 4
-CephFS:/>  getxattr /mydir ceph.dir.layout
+CephFS:~/>>>  setxattr /mydir ceph.dir.layout.stripe_count 4
+CephFS:~/>>>  getxattr /mydir ceph.dir.layout
 ```
 
 ## Check Quotas
@@ -77,8 +73,8 @@ CephFS:/>  getxattr /mydir ceph.dir.layout
 View directory quota settings from within the shell:
 
 ```text
-CephFS:/>  getxattr /mydir ceph.quota.max_bytes
-CephFS:/>  getxattr /mydir ceph.quota.max_files
+CephFS:~/>>>  getxattr /mydir ceph.quota.max_bytes
+CephFS:~/>>>  getxattr /mydir ceph.quota.max_files
 ```
 
 ## Batch Operations with Scripts
@@ -103,7 +99,7 @@ For multi-filesystem clusters, specify the target filesystem:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  cephfs-shell --conf /etc/ceph/ceph.conf --fs cephfs2
+  cephfs-shell --fs cephfs2
 ```
 
 ## Summary
