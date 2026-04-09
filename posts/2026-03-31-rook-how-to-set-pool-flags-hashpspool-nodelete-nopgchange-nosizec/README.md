@@ -13,16 +13,16 @@ Description: Configure Ceph pool flags including HASHPSPOOL, NODELETE, NOPGCHANG
 Ceph pool flags are boolean properties that control specific behaviors of a pool. Some flags enable optional features, while others act as protection mechanisms against accidental changes.
 
 ```bash
-# View current pool flags
-ceph osd pool get mypool flags
-
-# Or see flags in pool detail listing
+# View current pool flags in the detail listing
 ceph osd pool ls detail | grep mypool
+
+# Or view all pool properties including individual flags
+ceph osd pool get mypool all
 ```
 
 ## HASHPSPOOL Flag
 
-`HASHPSPOOL` (Hash Placement and Scope Pool) is enabled by default on all modern Ceph pools. It enables a consistent hashing algorithm that prevents certain object placement bias issues that existed in very old Ceph versions.
+`HASHPSPOOL` is enabled by default on all modern Ceph pools. It hashes the pool ID into the PG seed calculation, which produces a more uniform object distribution and prevents placement bias issues that existed in very old Ceph versions.
 
 ```bash
 # This should already be set - verify
