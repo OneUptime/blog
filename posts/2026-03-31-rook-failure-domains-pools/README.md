@@ -77,6 +77,11 @@ ceph osd crush add-bucket zone-a zone
 ceph osd crush add-bucket zone-b zone
 ceph osd crush add-bucket zone-c zone
 
+# Place zone buckets under the root
+ceph osd crush move zone-a root=default
+ceph osd crush move zone-b root=default
+ceph osd crush move zone-c root=default
+
 # Move hosts under their zones
 ceph osd crush move node-1 zone=zone-a
 ceph osd crush move node-2 zone=zone-b
@@ -115,6 +120,9 @@ kubectl label node node-3 topology.rook.io/rack=rack-c
 ceph osd crush add-bucket rack-a rack
 ceph osd crush add-bucket rack-b rack
 ceph osd crush add-bucket rack-c rack
+ceph osd crush move rack-a root=default
+ceph osd crush move rack-b root=default
+ceph osd crush move rack-c root=default
 ceph osd crush move node-1 rack=rack-a
 ceph osd crush move node-2 rack=rack-b
 ceph osd crush move node-3 rack=rack-c
@@ -172,9 +180,9 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd crush rule dump zone-rule
 
-# Simulate placement to verify failure domains
+# Test object placement to verify failure domains
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd crush rule dump replicapool-replicated-rule
+  ceph osd map replicapool testobject
 
 # Check current PG distribution
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
