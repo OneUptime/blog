@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, CephFS, Performance, Optimization
 
-Description: Optimize CephFS in Rook for sequential access workloads by tuning readahead, object layout, and OSD journal settings for maximum streaming throughput.
+Description: Optimize CephFS in Rook for sequential access workloads by tuning readahead, object layout, and BlueStore cache settings for maximum streaming throughput.
 
 ---
 
@@ -24,10 +24,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client client_readahead_min 4194304
 ```
 
-For kernel-mounted CephFS, set readahead via sysfs after mounting:
+For kernel-mounted CephFS, set readahead via the BDI (Backing Device Info) interface after mounting:
 
 ```bash
-echo 131072 > /sys/block/sda/queue/read_ahead_kb
+# Find the BDI identifier for your CephFS mount
+BDI_ID=$(mountpoint -d /mnt/cephfs)
+echo 131072 > /sys/class/bdi/${BDI_ID}/read_ahead_kb
 ```
 
 ## Object Layout Optimization
@@ -54,7 +56,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd bluestore_cache_size_hdd 1073741824
 ```
 
-Increase OSD operation queue size:
+Configure the OSD operation queue scheduler for better throughput:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -66,7 +68,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Sequential workloads generate sustained high bandwidth. Verify the OSD network is not a bottleneck:
 
 ```bash
-# Check network bandwidth between OSD nodes
+# Check OSD commit and apply latency to identify slow nodes
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd perf
 ```
@@ -105,16 +107,17 @@ metadataServer:
 
 ## Benchmarking Sequential Throughput
 
-Test before and after tuning with fio:
+Test before and after tuning with fio from a pod that has CephFS mounted (the rook-ceph-tools pod does not mount CephFS by default):
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+# Run fio from a pod with a CephFS PVC mounted at /mnt/cephfs
+kubectl exec -it <your-cephfs-pod> -- \
   fio --name=seq-write --ioengine=libaio --rw=write \
       --bs=4m --size=20g --iodepth=16 \
       --filename=/mnt/cephfs/bench/seq-test
 ```
 
-Monitor during the test:
+Monitor OSD performance during the test from the tools pod:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
