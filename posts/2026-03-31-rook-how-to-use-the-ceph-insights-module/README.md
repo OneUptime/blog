@@ -10,7 +10,7 @@ Description: Enable and use the Ceph Insights module to collect cluster health r
 
 ## What Is the Ceph Insights Module
 
-The Ceph `insights` module is a manager plugin that stores periodic cluster health reports in a RADOS object. It maintains a rolling history of cluster health status, warnings, and errors over time. This allows you to answer questions like "when did this warning first appear?" or "how long has this health issue persisted?"
+The Ceph `insights` module is a manager plugin that collects periodic cluster health snapshots and stores them in memory. It maintains a rolling history of health checks, warnings, and errors in hourly time slots. This allows you to answer questions like "when did this warning first appear?" or "how long has this health issue persisted?" Note that insights data is held in-memory only and is lost on manager restart or failover.
 
 ## Enabling the Insights Module
 
@@ -53,10 +53,19 @@ Example output structure:
 
 ```json
 {
-    "version": 1,
-    "osd_stats_history": [...],
+    "version": {
+        "full": "ceph version 18.2.0 ...",
+        "release": 18,
+        "major": 2,
+        "minor": 0
+    },
+    "crashes": {
+        "summary": {},
+        "hours": 24
+    },
     "health": {
-        "2026-03-31T10:00:00.000000Z": {
+        "current": {
+            "status": "HEALTH_WARN",
             "checks": {
                 "OSD_NEARFULL": {
                     "severity": "HEALTH_WARN",
@@ -64,73 +73,74 @@ Example output structure:
                         "message": "1 nearfull osd(s)"
                     }
                 }
-            },
-            "status": "HEALTH_WARN"
+            }
+        },
+        "history": {
+            "checks": {
+                "OSD_NEARFULL": {
+                    "HEALTH_WARN": {
+                        "summary": ["1 nearfull osd(s)"],
+                        "detail": []
+                    }
+                }
+            }
         }
-    }
+    },
+    "config": [...],
+    "osd_dump": {...},
+    "df": {...},
+    "osd_tree": {...},
+    ...
 }
 ```
 
 ## Filtering Historical Health Data
 
-The insights module records health at regular intervals. To see when a specific issue first appeared:
+The insights report includes a health history section that records which health checks have been seen. To list all historical health checks and their severities:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph insights | \
   python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for ts, health in sorted(data.get('health', {}).items()):
-    status = health.get('status', 'unknown')
-    checks = list(health.get('checks', {}).keys())
-    if checks:
-        print(f'{ts}: {status} - {checks}')
+history = data.get('health', {}).get('history', {}).get('checks', {})
+for check_name, severities in sorted(history.items()):
+    for severity, info in severities.items():
+        msgs = info.get('summary', [])
+        print(f'{check_name} [{severity}]: {msgs}')
 "
 ```
 
 Output:
 
 ```text
-2026-03-31T09:00:00: HEALTH_WARN - ['OSD_NEARFULL']
-2026-03-31T09:30:00: HEALTH_WARN - ['OSD_NEARFULL', 'SLOW_OPS']
-2026-03-31T10:00:00: HEALTH_OK - []
+OSD_NEARFULL [HEALTH_WARN]: ['1 nearfull osd(s)']
+SLOW_OPS [HEALTH_WARN]: ['3 slow ops, oldest one blocked for 32 sec']
 ```
 
-## Configuring Retention Period
+## Understanding Retention
 
-By default, insights keeps data for several days. Configure the retention period:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mgr mgr/insights/retention_period 604800
-```
-
-This sets 7 days of retention (in seconds).
-
-Check current retention:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config get mgr mgr/insights/retention_period
-```
+The insights module retains health history for a hardcoded period of 30 hours in hourly time slots. Old slots are automatically pruned as new data arrives. There is no configuration option to change the retention period. If you need to manually clear old data, use the `prune-health` command described below.
 
 ## Pruning Old Insights Data
 
-If the insights object grows large, prune old data:
+To manually prune old health history data:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph insights prune-health 86400
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph insights prune-health 24
 ```
 
-This prunes health records older than 86400 seconds (1 day).
+This prunes health records older than 24 hours. Pass `0` to clear all health history data.
 
-## Using Insights for Capacity Planning
+## Reviewing Cluster State from the Report
 
-The insights module also tracks OSD statistics over time. Export and analyze trends:
+The insights report includes a point-in-time snapshot of various cluster components such as `osd_dump`, `df`, `osd_tree`, `crush_map`, and more. Export and analyze the current state:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph insights > /tmp/insights.json
 ```
 
-Process with Python to extract OSD usage over time:
+Process with Python to extract current cluster usage from the `df` section:
 
 ```python
 import json
@@ -138,11 +148,12 @@ import json
 with open('/tmp/insights.json') as f:
     data = json.load(f)
 
-for ts, stats in sorted(data.get('osd_stats_history', {}).items()):
-    total = sum(s.get('kb', 0) for s in stats.values())
-    used = sum(s.get('kb_used', 0) for s in stats.values())
-    pct = (used / total * 100) if total else 0
-    print(f"{ts}: {pct:.1f}% used")
+df = data.get('df', {})
+stats = df.get('stats', {})
+total = stats.get('total_bytes', 0)
+used = stats.get('total_used_bytes', 0)
+pct = (used / total * 100) if total else 0
+print(f"Cluster usage: {pct:.1f}% used ({used} / {total} bytes)")
 ```
 
 ## Disabling the Insights Module
@@ -155,4 +166,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mgr module disable 
 
 ## Summary
 
-The Ceph Insights module provides historical cluster health tracking without requiring external tools. Enable it with `ceph mgr module enable insights`, then use `ceph insights` to retrieve a JSON history of health states and OSD statistics. This is valuable for post-incident analysis, capacity planning, and understanding the timeline of cluster issues.
+The Ceph Insights module provides historical cluster health tracking without requiring external tools. Enable it with `ceph mgr module enable insights`, then use `ceph insights` to retrieve a JSON report containing current health status, health check history, and a snapshot of cluster state. Note that insights data is stored in memory only (lost on manager restart), with a 30-hour retention window. This is valuable for post-incident analysis and understanding recent cluster health trends.
