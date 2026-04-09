@@ -26,15 +26,15 @@ This enables Windows workloads to consume Ceph storage without intermediate Linu
 
 ## Installing the WNBD Driver and RBD Client
 
-Download the official Ceph Windows MSI installer from the Ceph releases page:
+Download the official Ceph Windows MSI installer from Cloudbase Solutions (https://cloudbase.it/ceph-for-windows/):
 
 ```powershell
-# Download the Ceph Windows installer (adjust version as needed)
-Invoke-WebRequest -Uri "https://windows.ceph.com/downloads/ceph-17.2.6-x64.msi" `
-  -OutFile "C:\Temp\ceph-17.2.6-x64.msi"
+# Download the Ceph Windows installer (adjust release as needed: ceph_reef, ceph_quincy, etc.)
+Invoke-WebRequest -Uri "https://cloudbase.it/downloads/ceph_quincy.msi" `
+  -OutFile "C:\Temp\ceph_quincy.msi"
 
 # Install silently
-msiexec /i "C:\Temp\ceph-17.2.6-x64.msi" /qn /l*v "C:\Temp\ceph-install.log"
+msiexec /i "C:\Temp\ceph_quincy.msi" /qn /l*v "C:\Temp\ceph-install.log"
 ```
 
 The installer deploys:
@@ -111,11 +111,8 @@ exit
 ## Unmapping and Cleanup
 
 ```powershell
-# Unmap the device
-& "C:\Program Files\Ceph\bin\rbd.exe" unmap E:
-
-# Or unmap by device ID
-& "C:\Program Files\Ceph\bin\rbd.exe" device unmap \\.\PhysicalDrive1
+# Unmap the device by image spec
+& "C:\Program Files\Ceph\bin\rbd.exe" device unmap replicapool/windows-disk
 ```
 
 ## RADOS Access from Windows
