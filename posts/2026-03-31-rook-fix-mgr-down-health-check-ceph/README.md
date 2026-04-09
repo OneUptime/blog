@@ -95,13 +95,12 @@ If the MGR is being OOM killed, increase its memory limit:
 kubectl -n rook-ceph edit cephcluster rook-ceph
 ```
 
-Add resource limits under `mgr`:
+Add resource limits for the `mgr` daemon under `spec.resources`:
 
 ```yaml
 spec:
-  mgr:
-    count: 2
-    resources:
+  resources:
+    mgr:
       requests:
         memory: "512Mi"
         cpu: "500m"
