@@ -35,9 +35,9 @@ backfillfull_ratio (default: 0.90)
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash
 
 # Check global thresholds
-ceph config get global osd_nearfull_ratio
-ceph config get global osd_full_ratio
-ceph config get global osd_backfillfull_ratio
+ceph config get global mon_osd_nearfull_ratio
+ceph config get global mon_osd_full_ratio
+ceph config get global mon_osd_backfillfull_ratio
 
 # Or via osd dump
 ceph osd dump | grep -E "full_ratio|nearfull_ratio|backfillfull_ratio"
@@ -66,24 +66,26 @@ ceph osd dump | grep -E "full_ratio|nearfull|backfillfull"
 ## Step 3 - Configure in Rook CephCluster
 
 ```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephCluster
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: rook-ceph
+  name: rook-config-override
   namespace: rook-ceph
-spec:
-  storage:
-    config:
-      osd_nearfull_ratio: "0.75"
-      osd_full_ratio: "0.85"
-      osd_backfillfull_ratio: "0.80"
+data:
+  config: |
+    [global]
+    mon_osd_nearfull_ratio = 0.75
+    mon_osd_full_ratio = 0.85
+    mon_osd_backfillfull_ratio = 0.80
 ```
+
+Note: This ConfigMap sets the default thresholds at cluster initialization. For an existing cluster, use the toolbox commands from Step 2 to modify the OSD map values directly.
 
 ## Step 4 - Per-OSD Threshold Checking
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd df | sort -k7 -rn | head -20
+  ceph osd df | sort -k8 -rn | head -20
 ```
 
 Output shows each OSD's utilization:
@@ -127,7 +129,7 @@ If writes are blocked due to full cluster:
 
 ```bash
 # Step 1: Check which OSDs are full
-ceph osd df | awk '$9 > 85 {print $0}'
+ceph osd df | awk '$8 > 85 {print $0}'
 
 # Step 2: Temporarily raise full ratio for emergency writes
 # USE WITH CAUTION - only buys time
