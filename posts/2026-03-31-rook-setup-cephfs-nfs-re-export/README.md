@@ -14,7 +14,7 @@ Not all clients can use the CephFS native protocol or Kubernetes CSI. Legacy app
 
 ## Prerequisites
 
-Ensure your Rook cluster is running a CephFS filesystem. Then create a CephNFS gateway:
+Ensure your Rook cluster is running a CephFS filesystem. Then create a CephNFS gateway. The Rook operator automatically creates and manages the `.nfs` RADOS pool used by NFS-Ganesha for configuration storage.
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -23,9 +23,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: nfs-ganesha
-    namespace: nfs-ns
   server:
     active: 2
     resources:
@@ -42,15 +39,6 @@ spec:
             labelSelector:
               matchLabels:
                 app: rook-ceph-nfs
-```
-
-Create the NFS RADOS pool first:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool create nfs-ganesha 32
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool application enable nfs-ganesha nfs
 ```
 
 ## Configuring NFS Exports
@@ -75,13 +63,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Kubernetes Service for NFS
 
-Expose the NFS gateway as a Kubernetes LoadBalancer or NodePort service:
+Rook automatically creates a per-instance ClusterIP service for each NFS server pod. To expose the NFS gateway externally, create a LoadBalancer service that selects all NFS pods for the CephNFS resource:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: rook-ceph-nfs
+  name: rook-ceph-nfs-lb
   namespace: rook-ceph
 spec:
   selector:
@@ -90,9 +78,6 @@ spec:
   ports:
     - name: nfs
       port: 2049
-      protocol: TCP
-    - name: rpcbind
-      port: 111
       protocol: TCP
   type: LoadBalancer
 ```
