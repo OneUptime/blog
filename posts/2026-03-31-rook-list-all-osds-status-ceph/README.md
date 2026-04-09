@@ -15,7 +15,7 @@ Each Ceph OSD daemon has two independent state bits:
 - **up** - the OSD process is running and reachable
 - **in** - the OSD is participating in data placement (part of the CRUSH map)
 
-An OSD that is `up` but `out` is running but not storing data. An OSD that is `down` but `in` will trigger recovery until it is marked `out`.
+An OSD that is `up` but `out` is running but not storing data. An OSD that is `down` but `in` will cause placement groups to become degraded. After a configurable timeout (`mon_osd_down_out_interval`, default 600 seconds), it is automatically marked `out`, which triggers data recovery.
 
 ## Listing All OSDs
 
