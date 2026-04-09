@@ -25,9 +25,11 @@ metadata:
 spec:
   network:
     provider: host
-    selectors:
-      public: "enp1s0"    # Client-facing, 10 GbE
-      cluster: "enp2s0"   # Replication, 10 GbE (can be separate VLAN)
+    addressRanges:
+      public:
+        - "10.0.1.0/24"   # Client-facing subnet, 10 GbE
+      cluster:
+        - "10.0.2.0/24"   # Replication subnet, 10 GbE
 ```
 
 ## Right-Size Network Bandwidth
@@ -39,8 +41,8 @@ Avoid over-buying NICs by understanding actual traffic patterns:
 ceph daemon osd.0 perf dump | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-sent = d['osd']['osd_network_sent_bytes']
-recv = d['osd']['osd_network_received_bytes']
+sent = sum(d[k]['msgr_send_bytes'] for k in d if k.startswith('AsyncMessenger::Worker'))
+recv = sum(d[k]['msgr_recv_bytes'] for k in d if k.startswith('AsyncMessenger::Worker'))
 print(f'Sent: {sent/(1024**2):.1f} MB, Recv: {recv/(1024**2):.1f} MB')
 "
 
@@ -48,15 +50,19 @@ print(f'Sent: {sent/(1024**2):.1f} MB, Recv: {recv/(1024**2):.1f} MB')
 # 10 GbE can handle ~1.2 GB/s sustained, sufficient for most HDDs
 ```
 
-## Enable Messenger v2 with Compression
+## Enable Messenger v2 Compression
 
 ```bash
-# Enable network-level compression for cluster traffic
-ceph config set global ms_compress_on_wire true
+# Enable OSD-to-OSD wire compression for replication traffic
+ceph config set osd ms_osd_compress_mode force
+ceph config set osd ms_osd_compression_algorithm snappy
 
 # This reduces replication bandwidth by 20-40% for compressible data
+# If encryption is also enabled, allow compression alongside it
+ceph config set osd ms_compress_secure true
+
 # Check messenger stats
-ceph daemon osd.0 perf dump | grep ms_
+ceph daemon osd.0 perf dump | grep msgr_
 ```
 
 ## Limit Recovery Bandwidth During Business Hours
@@ -85,19 +91,19 @@ ip link set enp2s0 mtu 9000
 # Verify end-to-end MTU works
 ping -M do -s 8972 <osd-node-ip>
 
-# Configure Ceph to use jumbo frames
+# Increase TCP buffer size to better utilize high-bandwidth links
 ceph config set global ms_tcp_rcvbuf 4194304
 ```
 
 ## Optimize for Local-Rack Traffic
 
-Configure CRUSH to prefer same-rack placement to minimize top-of-rack switch hops:
+Configure CRUSH with rack awareness to ensure balanced replica placement across racks:
 
 ```bash
-# Create rack-aware CRUSH rule
-ceph osd crush rule create-replicated rack-rule default rack host
+# Create rack-aware CRUSH rule (replicas distributed across different racks)
+ceph osd crush rule create-replicated rack-rule default rack
 
-# This reduces inter-rack traffic (which often crosses more expensive switches)
+# Apply to pool - ensures fault tolerance across racks with predictable traffic patterns
 ceph osd pool set mypool crush_rule rack-rule
 ```
 
