@@ -158,11 +158,11 @@ spec:
     - name: ceph-capacity
       rules:
         - alert: CephNearFull
-          expr: ceph_osd_utilization > 80
+          expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) * 100 > 80
           for: 5m
           annotations:
             summary: "Ceph OSD near full"
-            description: "OSD {{ $labels.osd }} is at {{ $value }}% capacity"
+            description: "OSD {{ $labels.ceph_daemon }} is at {{ $value }}% capacity"
         - alert: CephFull
           expr: ceph_health_status == 2
           for: 1m
