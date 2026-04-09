@@ -27,8 +27,8 @@ ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A3 "mclock\|queue"
 Key metrics to watch:
 
 ```bash
-# Check for operations waiting in queue
-ceph daemon osd.0 dump_mclock_queue
+# Check for operations waiting in queue (filter mclock counters)
+ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A5 "mclock"
 
 # Check op latency percentiles
 ceph daemon osd.0 perf dump | python3 -c "
@@ -48,7 +48,7 @@ Monitor how often RBD QoS throttling fires on specific images:
 rbd perf image iostat --pool mypool
 ```
 
-Check per-image statistics including throttle counters:
+Check per-image watchers and lock status:
 
 ```bash
 rbd status mypool/vm-disk
@@ -74,7 +74,8 @@ ceph_osd_op_latency_count
 
 # Recovery vs client ops
 ceph_osd_recovery_ops
-ceph_osd_op
+ceph_osd_op_r
+ceph_osd_op_w
 ```
 
 Set up Prometheus scraping:
@@ -92,14 +93,14 @@ scrape_configs:
 Create panels to visualize QoS enforcement:
 
 ```text
-# Client IOPS per OSD
-rate(ceph_osd_op[5m])
+# Client IOPS per OSD (reads + writes)
+rate(ceph_osd_op_r[5m]) + rate(ceph_osd_op_w[5m])
 
 # Recovery IOPS
 rate(ceph_osd_recovery_ops[5m])
 
 # Client vs recovery ratio
-rate(ceph_osd_op[5m]) / (rate(ceph_osd_op[5m]) + rate(ceph_osd_recovery_ops[5m]))
+(rate(ceph_osd_op_r[5m]) + rate(ceph_osd_op_w[5m])) / (rate(ceph_osd_op_r[5m]) + rate(ceph_osd_op_w[5m]) + rate(ceph_osd_recovery_ops[5m]))
 
 # OSD latency p99
 histogram_quantile(0.99, rate(ceph_osd_op_latency_bucket[5m]))
@@ -114,7 +115,7 @@ groups:
   - name: ceph_qos
     rules:
       - alert: CephHighOSDLatency
-        expr: ceph_osd_op_latency_sum / ceph_osd_op_latency_count > 0.05
+        expr: rate(ceph_osd_op_latency_sum[5m]) / rate(ceph_osd_op_latency_count[5m]) > 0.05
         for: 5m
         labels:
           severity: warning
@@ -136,14 +137,14 @@ Compare OSD latency before and after applying mClock profiles:
 
 ```bash
 # Before change - record baseline
-ceph osd perf | sort -k4 -rn | head -10 > /tmp/qos-before.txt
+ceph osd perf | sort -k3 -rn | head -10 > /tmp/qos-before.txt
 
 # Apply high_client_ops profile
 ceph config set osd osd_mclock_profile high_client_ops
 
 # After change - compare
 sleep 60
-ceph osd perf | sort -k4 -rn | head -10 > /tmp/qos-after.txt
+ceph osd perf | sort -k3 -rn | head -10 > /tmp/qos-after.txt
 diff /tmp/qos-before.txt /tmp/qos-after.txt
 ```
 
