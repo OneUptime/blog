@@ -99,8 +99,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
 Example warning:
 
 ```text
-HEALTH_WARN 1 devices have health metrics
-DEVICE_HEALTH osd.3 expected failure within 5 weeks
+HEALTH_WARN 1 device(s) expected to fail soon
+DEVICE_HEALTH osd.3 expected to fail
 ```
 
 To force a device health check:
