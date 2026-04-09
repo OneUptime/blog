@@ -10,7 +10,7 @@ Description: Learn how to resolve the OSD_NO_DOWN_OUT_INTERVAL health warning in
 
 ## What Is OSD_NO_DOWN_OUT_INTERVAL
 
-The `OSD_NO_DOWN_OUT_INTERVAL` health warning appears when the `mon_osd_down_out_interval` configuration option is set to zero or a very low value. This setting controls how long Ceph waits before marking a down OSD as "out" and redistributing its data. When set to zero, Ceph immediately starts rebalancing data the moment an OSD goes down, which can cause massive unnecessary rebalancing during transient failures like network blips or brief node reboots.
+The `OSD_NO_DOWN_OUT_INTERVAL` health warning appears when the `mon_osd_down_out_interval` configuration option is set to zero. This setting controls how long Ceph waits before marking a down OSD as "out" and redistributing its data. When set to zero, Ceph disables automatic out-marking entirely, meaning down OSDs are never automatically marked out and data is never automatically redistributed. The cluster cannot self-heal without manual intervention.
 
 Check cluster health:
 
@@ -21,14 +21,14 @@ ceph health detail
 Sample output:
 
 ```text
-HEALTH_WARN mon_osd_down_out_interval is 0
-[WRN] OSD_NO_DOWN_OUT_INTERVAL: mon_osd_down_out_interval is 0
-    Having a non-zero mon_osd_down_out_interval avoids short-lived OSD outages causing large amounts of unnecessary data migration
+HEALTH_WARN mons have mon_osd_down_out_interval set to 0
+[WRN] OSD_NO_DOWN_OUT_INTERVAL: mon rook-ceph-a has mon_osd_down_out_interval set to 0
+    mon.rook-ceph-a has mon_osd_down_out_interval set to 0
 ```
 
 ## Why This Is Dangerous
 
-With `mon_osd_down_out_interval` set to zero, even a 30-second network timeout causes Ceph to begin moving all the data that was on that OSD to other OSDs. If the OSD comes back online moments later, Ceph must reverse all that migration. On large clusters, this can saturate disk I/O and cluster network bandwidth for hours.
+With `mon_osd_down_out_interval` set to zero, Ceph will never automatically mark a down OSD as "out." This means if an OSD goes down — whether from a disk failure, node crash, or network partition — the cluster will not redistribute data to maintain the configured number of replicas. The degraded placement groups will remain degraded indefinitely until an administrator manually marks the OSD out with `ceph osd out <osd-id>`. This leaves the cluster vulnerable to further failures and potential data loss.
 
 ## Checking Current Value
 
@@ -112,8 +112,8 @@ While fixing this, also verify the companion setting `mon_osd_down_out_subtree_l
 ceph config get mon mon_osd_down_out_subtree_limit
 ```
 
-The default `host` value means Ceph will not mark an entire host's OSDs as out, preventing catastrophic data loss during host failures.
+The default `rack` value means Ceph will not mark an entire rack's OSDs as out, preventing catastrophic data loss during rack-level failures.
 
 ## Summary
 
-The `OSD_NO_DOWN_OUT_INTERVAL` warning indicates `mon_osd_down_out_interval` is zero, which causes excessive data rebalancing during transient OSD failures. Fix it by setting the interval to at least 300-600 seconds using `ceph config set` or via the Rook `CephCluster` CRD's `cephConfig` section.
+The `OSD_NO_DOWN_OUT_INTERVAL` warning indicates `mon_osd_down_out_interval` is zero, which disables automatic out-marking and prevents the cluster from self-healing when OSDs go down. Fix it by setting the interval to 300-600 seconds using `ceph config set` or via the Rook `CephCluster` CRD's `cephConfig` section.
