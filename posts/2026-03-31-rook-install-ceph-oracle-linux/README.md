@@ -21,20 +21,7 @@ Oracle Linux is a RHEL-compatible enterprise distribution that ships with the Un
 
 ## Step 1 - Configure Oracle Linux Repositories
 
-Oracle Linux provides Ceph packages via Oracle Linux App Streams:
-
-```bash
-# List available Ceph modules
-dnf module list ceph
-
-# Enable the Ceph module stream
-dnf module enable ceph:reef -y
-
-# Install from Oracle repos
-dnf install -y ceph cephadm
-```
-
-Alternatively, use the official Ceph repository:
+Oracle Linux 9 does not ship Ceph packages in its App Streams. Use the official Ceph repository instead:
 
 ```bash
 cat > /etc/yum.repos.d/ceph.repo <<'EOF'
@@ -71,7 +58,7 @@ After reboot, verify UEK:
 
 ```bash
 uname -r
-# Should show: 5.15.x-xxx.x.x.el9uek.x86_64
+# Should show a UEK version, e.g.: 5.15.x-xxx.x.x.el9uek.x86_64 (UEK R7) or 6.8.x-xxx.x.x.el9uek.x86_64 (UEK R8)
 ```
 
 ## Step 3 - Configure Firewall and SELinux
@@ -125,8 +112,8 @@ With UEK, the kernel RBD client shows improved performance. Verify the RBD modul
 # Check RBD module is loaded
 lsmod | grep rbd
 
-# Check RBD features supported by UEK
-rbd feature list
+# Check RBD kernel module details
+modinfo rbd
 ```
 
 Test RBD performance with UEK:
@@ -148,4 +135,4 @@ ceph df
 
 ## Summary
 
-Installing Ceph on Oracle Linux 9 with the UEK kernel provides enhanced RBD and CephFS client performance through Oracle's storage-optimized kernel. Oracle Linux's RHEL compatibility makes it straightforward to use the official Ceph RPM repository or Oracle Linux App Streams. The UEK kernel's improved storage subsystem makes Oracle Linux a strong choice for Ceph client workloads, particularly for RBD-backed virtual machine disks.
+Installing Ceph on Oracle Linux 9 with the UEK kernel provides enhanced RBD and CephFS client performance through Oracle's storage-optimized kernel. Oracle Linux's RHEL compatibility makes it straightforward to use the official Ceph RPM repository. The UEK kernel's improved storage subsystem makes Oracle Linux a strong choice for Ceph client workloads, particularly for RBD-backed virtual machine disks.
