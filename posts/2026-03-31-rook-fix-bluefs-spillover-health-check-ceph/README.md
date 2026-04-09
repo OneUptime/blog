@@ -46,7 +46,7 @@ ceph daemon osd.3 perf dump | python3 -m json.tool | grep -i bluefs
 Or use the BlueStore debug command:
 
 ```bash
-ceph daemon osd.3 bluestore bluefs stats
+ceph daemon osd.3 bluefs stats
 ```
 
 This shows the allocation across WAL, DB, and main devices.
@@ -76,7 +76,7 @@ After expanding the DB device, instruct BlueFS to migrate the spilled data back:
 
 ```bash
 # Check current spillover
-ceph daemon osd.3 bluestore bluefs device-info
+ceph daemon osd.3 bluestore bluefs device info
 
 # Initiate migration of data back to the DB device
 ceph-bluestore-tool bluefs-bdev-migrate \
@@ -98,13 +98,14 @@ systemctl start ceph-osd@3
 If spillover is persistent and the DB device is too small to be useful:
 
 ```bash
-# Merge the DB device back into the main block device
-ceph-bluestore-tool bluefs-bdev-new-wal \
+# Migrate all data from the DB device back to the main block device
+ceph-bluestore-tool bluefs-bdev-migrate \
   --path /var/lib/ceph/osd/ceph-3 \
+  --devs-source /var/lib/ceph/osd/ceph-3/block.db \
   --dev-target /var/lib/ceph/osd/ceph-3/block
 ```
 
-The RocksDB metadata will then live entirely on the main data device (no more spillover, but slower performance).
+This requires stopping the OSD first. The source DB device is removed on success. The RocksDB metadata will then live entirely on the main data device (no more spillover, but slower performance).
 
 ## Preventing Spillover
 
