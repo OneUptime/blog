@@ -40,8 +40,7 @@ Open `https://localhost:8443` in your browser and log in as `admin`.
 In the Ceph Dashboard:
 
 1. Click **NFS** in the left navigation menu
-2. Select **NFS** under the Ganesha section
-3. The list of existing NFS clusters and exports is displayed
+2. The list of existing NFS exports is displayed
 
 ## Creating a New Export via Dashboard
 
@@ -49,17 +48,16 @@ Click **Create** to open the export creation form and fill in:
 
 ```text
 Cluster: my-nfs
-Storage Backend: CephFS
-Filesystem: my-fs
+Volume: my-fs
 Path: /
-Pseudo Path: /data
+Pseudo: /data
 Access Type: RW
-Squash: None
-Protocols: NFSv4
-Transports: TCP
+Squash: no_root_squash
+NFS Protocol: NFSv4
+Transport Protocol: TCP
 ```
 
-For an object store-backed export, change **Storage Backend** to RGW and specify the bucket name.
+The dashboard also supports RGW-backed exports by selecting the RGW backend type and specifying the bucket name.
 
 Click **Submit** to create the export. The dashboard sends the configuration to the Ceph Manager NFS module, which writes it to the RADOS pool and notifies Ganesha instances.
 
@@ -72,7 +70,7 @@ To add a client restriction that allows only a specific CIDR:
 ```text
 Clients: 192.168.10.0/24
 Access Type: RO
-Squash: Root
+Squash: root_squash
 ```
 
 This limits read-only access to clients on the specified subnet.
@@ -83,15 +81,7 @@ Select the export in the list and click **Delete**. The dashboard will prompt fo
 
 ## Monitoring NFS via Dashboard
 
-The NFS section also shows daemon status. Navigate to **NFS > Daemons** to see:
-
-```text
-Daemon: nfs.my-nfs.0
-Status: running
-Host: node-1
-```
-
-This provides a quick health check without needing `kubectl` access.
+You can check NFS daemon status in the dashboard by navigating to **Cluster > Services**. NFS daemons appear with names like `nfs.my-nfs.0` along with their running status and host placement. This provides a quick health check without needing `kubectl` access.
 
 ## Summary
 
