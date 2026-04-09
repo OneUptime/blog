@@ -169,9 +169,9 @@ ls /dev/ | grep -E "^sd[b-z]"
 Rook-Ceph (Nautilus+) using BlueStore will skip devices with existing LVM metadata. Clear it:
 
 ```bash
-sudo pvremove /dev/sdb
-sudo lvremove /dev/sdb
+sudo lvremove /dev/vg_name/lv_name
 sudo vgremove vg_name
+sudo pvremove /dev/sdb
 sudo wipefs -a /dev/sdb
 ```
 
