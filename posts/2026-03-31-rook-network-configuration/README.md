@@ -34,9 +34,9 @@ spec:
     provider: host
     addressRanges:
       public:
-        - cidr: 10.0.0.0/24
+        - "10.0.0.0/24"
       cluster:
-        - cidr: 10.1.0.0/24
+        - "10.1.0.0/24"
 ```
 
 The `public` CIDR is for client-to-OSD and client-to-MON communication. The `cluster` CIDR is for OSD-to-OSD replication. Use separate physical or VLAN interfaces for each when possible.
@@ -55,7 +55,7 @@ With host networking, Ceph services bind to node IP addresses. Ensure the follow
 
 - MON: 3300, 6789
 - OSD: 6800-7300
-- MDS: 6800
+- MDS: 6800-7300
 - RGW: 80, 443 (configurable)
 - MGR dashboard: 8080, 8443
 
@@ -97,7 +97,7 @@ spec:
         enabled: true
 ```
 
-This enforces TLS encryption for all Ceph daemon communication.
+This enforces in-transit encryption (AES-128-GCM) for all Ceph daemon communication via the msgr2 secure mode.
 
 ## Configuring IPv6
 
@@ -110,7 +110,7 @@ spec:
     provider: host
     addressRanges:
       public:
-        - cidr: fd00::/64
+        - "fd00::/64"
 ```
 
 Or for dual-stack:
