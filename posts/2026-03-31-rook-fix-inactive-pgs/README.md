@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix inactive Placement Groups in Ceph clu
 
 ## What Are Inactive PGs?
 
-An "inactive" Placement Group is one that has not had an active primary OSD for more than a configurable time threshold. Inactive PGs cannot serve client reads or writes. The data they contain is inaccessible until the PG becomes active again. Inactive PGs are more severe than undersized PGs because they block I/O entirely.
+An "inactive" Placement Group is one that does not currently have an active set of OSDs that can serve as primary. Inactive PGs cannot serve client reads or writes. The data they contain is inaccessible until the PG becomes active again. Inactive PGs are more severe than undersized PGs because they block I/O entirely.
 
 ## Identifying Inactive PGs
 
@@ -82,7 +82,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Force the PG to re-peer
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph pg <pgid> query
+  ceph pg repeer <pgid>
 ```
 
 ## Step 4 - Mark Down OSDs as Out
