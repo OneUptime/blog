@@ -56,13 +56,6 @@ ceph osd pool set replicapool pgp_num 128
 ceph osd pool get replicapool pg_autoscale_mode
 ```
 
-### Crash Replay Interval
-
-```bash
-ceph osd pool set replicapool crash_replay_interval 0
-ceph osd pool get replicapool crash_replay_interval
-```
-
 ## Read All Parameters at Once
 
 ```bash
