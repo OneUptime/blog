@@ -123,13 +123,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # Mount the filesystem (or use a client pod)
 # Set pool for a directory subtree
-setfattr -n ceph.dir.layout.pool -v hdd-data /mnt/cephfs/archive
+setfattr -n ceph.dir.layout.pool -v myfs-hdd-data /mnt/cephfs/archive
 
 # Verify the layout
 getfattr -n ceph.dir.layout /mnt/cephfs/archive
 ```
 
-New files created under `/mnt/cephfs/archive` will be stored in `hdd-data`.
+New files created under `/mnt/cephfs/archive` will be stored in the `myfs-hdd-data` pool.
 
 ## Enabling Compression for Data Pools
 
