@@ -24,10 +24,10 @@ View all connected initiator sessions:
 targetcli ls /iscsi
 ```
 
-Get a count of active sessions:
+Get a count of active sessions on the gateway:
 
 ```bash
-iscsiadm -m session 2>/dev/null | wc -l
+targetcli sessions list 2>/dev/null | wc -l
 ```
 
 Or via the API:
@@ -67,10 +67,10 @@ NAME       WR       RD  WR_BYTES  RD_BYTES     WR_LAT   RD_LAT
 vol1      120        5   61440B   2560B    0.5ms   0.3ms
 ```
 
-Continuous monitoring:
+Sort by write latency during continuous monitoring:
 
 ```bash
-rbd perf image iostat --pool iscsi -p 5
+rbd perf image iostat --pool iscsi --sort-by write-latency
 ```
 
 ## System Resource Monitoring
@@ -101,7 +101,7 @@ The `node_exporter` collects network and disk statistics that include iSCSI traf
 ```bash
 cat > /usr/local/bin/iscsi-metrics.sh << 'EOF'
 #!/bin/bash
-SESSIONS=$(iscsiadm -m session 2>/dev/null | wc -l)
+SESSIONS=$(targetcli sessions list 2>/dev/null | wc -l)
 echo "# HELP iscsi_active_sessions Number of active iSCSI sessions"
 echo "# TYPE iscsi_active_sessions gauge"
 echo "iscsi_active_sessions $SESSIONS"
