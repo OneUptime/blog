@@ -44,10 +44,10 @@ Several companion metrics provide fuller context:
 ceph_pool_max_avail
 
 # Number of objects in the pool
-ceph_pool_objects_total
+ceph_pool_objects
 
-# Raw bytes stored (before replication factor)
-ceph_pool_raw_bytes_used
+# Raw bytes stored (including replication overhead)
+ceph_pool_stored_raw
 ```
 
 ## Calculating Pool Usage Percentage
@@ -72,7 +72,7 @@ groups:
       severity: warning
     annotations:
       summary: "Ceph pool {{ $labels.name }} is over 75% full"
-      description: "Pool usage: {{ $value | humanizePercentage }}"
+      description: "Pool usage: {{ $value | printf \"%.1f\" }}%"
 
   - alert: CephPoolUsageCritical
     expr: |
@@ -91,10 +91,10 @@ Use Prometheus range queries to predict when a pool will fill:
 
 ```promql
 # Growth rate over 24 hours (bytes per second)
-rate(ceph_pool_bytes_used[24h])
+deriv(ceph_pool_bytes_used[24h])
 
 # Predicted time to full (in seconds)
-(ceph_pool_max_avail) / rate(ceph_pool_bytes_used[24h])
+(ceph_pool_max_avail) / deriv(ceph_pool_bytes_used[24h])
 ```
 
 ## Setting Pool Quotas
