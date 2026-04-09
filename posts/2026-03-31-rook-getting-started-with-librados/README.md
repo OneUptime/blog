@@ -36,7 +36,7 @@ RADOS is the foundation of Ceph. Every piece of data - whether a block device im
 librados ships with official bindings for:
 
 - **C** - `librados.h` - lowest-level, maximum control
-- **C++** - `libradosstriper.hpp` - object-oriented wrapper
+- **C++** - `librados/librados.hpp` - object-oriented wrapper
 - **Python** - `rados` module via `python3-rados` package
 
 ## Installing librados
