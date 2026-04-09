@@ -49,16 +49,16 @@ echo "Design capacity in kW: $(echo "scale=1; $DESIGN_POWER / 1000" | bc)kW"
 ## Step 2 - PDU and Circuit Requirements
 
 ```bash
-# For 5520W design power across 2 PDUs (N+1):
+# For 5040W design power across 2 PDUs (N+1):
 # Each PDU must support full load
-# 5520W / 220V = 25A per PDU
+# 5040W / 208V = 24.2A per PDU
 # Use 30A circuits with 80% derating
 # 30A * 0.8 = 24A per circuit
 
 # Typical rack PDU: 20-30A @ 208/220V
-# Number of circuits per PDU = ceil(25/24) = 2 circuits
+# At 80% derating, a single 30A circuit is tight: consider higher-rated PDU or 2 circuits
 
-echo "Minimum per PDU: 32A @ 208V or 30A @ 220V"
+echo "Minimum per PDU: 30A @ 208V"
 echo "Use: Dual 30A @ 208V PDUs per rack"
 ```
 
@@ -68,7 +68,7 @@ echo "Use: Dual 30A @ 208V PDUs per rack"
 # Power to cooling conversion
 # 1 kW = approximately 3,412 BTU/hr
 
-DESIGN_KW=6  # kW
+DESIGN_KW=5  # kW (rounded from 5040W design power)
 BTU_PER_HOUR=$((DESIGN_KW * 3412))
 TONS_OF_COOLING=$(echo "scale=1; $BTU_PER_HOUR / 12000" | bc)
 
