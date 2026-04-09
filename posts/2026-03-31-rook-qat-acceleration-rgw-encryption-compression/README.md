@@ -14,7 +14,7 @@ Intel QuickAssist Technology (QAT) is a hardware accelerator that can offload cr
 
 - Intel QAT-capable server (Xeon D, E5/E7, or Atom C3000 series)
 - QAT kernel drivers installed (`qat_c62xvf` or similar)
-- `crypto-qat` package installed on OSD/RGW nodes
+- QAT user-space libraries installed (`qatlib`, `qat-engine`, `QATzip`)
 - Ceph built with QAT support (check: `ceph --version` and inspect build flags)
 
 ## Verifying QAT Driver Installation
@@ -35,20 +35,19 @@ adf_ctl status
 
 ## Enabling QAT for RGW Encryption
 
-Configure RGW to use QAT for the AES-GCM encryption backend:
+Configure Ceph to use the QAT crypto accelerator plugin instead of the default software implementation:
 
 ```bash
-ceph config set client.rgw rgw_crypt_s3_kms_backend qat
-ceph config set client.rgw qat_compressor_enabled true
+ceph config set global plugin_crypto_accelerator crypto_qat
 ```
 
-For SSE-KMS with Vault, QAT handles the actual encrypt/decrypt operations:
+For SSE-KMS with Vault, QAT accelerates the underlying crypto operations while Vault manages the keys:
 
 ```bash
 ceph config set client.rgw rgw_crypt_vault_addr http://vault.example.com:8200
-ceph config set client.rgw rgw_crypt_vault_token your-token
+ceph config set client.rgw rgw_crypt_vault_auth token
+ceph config set client.rgw rgw_crypt_vault_token_file /etc/ceph/vault.token
 ceph config set client.rgw rgw_crypt_s3_kms_backend vault
-# QAT still accelerates the crypto operations
 ```
 
 ## Enabling QAT for Object Compression
@@ -80,7 +79,8 @@ ceph daemon client.rgw.$(hostname -s) perf dump | grep -i qat
 Monitor QAT utilization with Intel QAT tools:
 
 ```bash
-qatstat -s
+adf_ctl status
+cat /sys/kernel/debug/qat_*/fw_counters
 ```
 
 Benchmark compression throughput with and without QAT:
@@ -103,12 +103,14 @@ spec:
         requiredDuringSchedulingIgnoredDuringExecution:
           nodeSelectorTerms:
           - matchExpressions:
-            - key: feature.node.kubernetes.io/cpu-cpuid.AVX512F
-              operator: Exists
+            - key: feature.node.kubernetes.io/pci-0b40_8086.present
+              operator: In
+              values:
+              - "true"
 ```
 
 Also mount the QAT device into RGW containers via device plugins.
 
 ## Summary
 
-QAT hardware acceleration in Ceph RGW offloads AES-GCM encryption and DEFLATE compression to dedicated Intel silicon, freeing CPU cycles for other workloads. Enable it by setting `qat_compressor_enabled` and using a QAT-capable crypto backend. In Rook deployments, schedule RGW pods on QAT-capable nodes using node affinity.
+QAT hardware acceleration in Ceph RGW offloads AES-GCM encryption and DEFLATE compression to dedicated Intel silicon, freeing CPU cycles for other workloads. Enable it by setting `qat_compressor_enabled` for compression and `plugin_crypto_accelerator = crypto_qat` for encryption. In Rook deployments, schedule RGW pods on QAT-capable nodes using node affinity.
