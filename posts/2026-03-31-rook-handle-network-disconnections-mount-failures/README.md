@@ -29,7 +29,7 @@ dmesg | grep -E "hung_task|blocked|ceph" | tail -20
 ps aux | grep " D " | grep -v grep  # D = uninterruptible sleep
 
 # Check ceph kernel client status
-cat /sys/kernel/debug/ceph/*/osds 2>/dev/null | head -20
+cat /sys/kernel/debug/ceph/*/osdc 2>/dev/null | head -20
 
 # Verify RBD device connectivity
 rbd status <pool>/<image>
@@ -52,19 +52,18 @@ kubectl logs -n rook-ceph -l app=csi-cephfsplugin --tail=50 | grep -E "error|tim
 Kernel RBD automatically reconnects to Ceph after network recovery. Key kernel parameters:
 
 ```bash
-# Check and set RBD timeout (seconds before I/O error is returned)
-cat /sys/bus/rbd/devices/0/timeout
-echo 60 > /sys/bus/rbd/devices/0/timeout
+# Set OSD request timeout when mapping the RBD device (seconds before I/O error)
+rbd map <pool>/<image> -o osd_request_timeout=60
 
-# Set at module load time
-echo "options rbd timeout=60" > /etc/modprobe.d/rbd.conf
+# Or set globally in /etc/ceph/ceph.conf under [client]:
+#     osd_request_timeout = 60
 ```
 
 After network recovery, verify device reconnected:
 
 ```bash
 # Check OSD map is current
-cat /sys/kernel/debug/ceph/*/osds
+cat /sys/kernel/debug/ceph/*/osdmap
 cat /sys/kernel/debug/ceph/*/monmap
 
 # Test I/O
@@ -76,7 +75,7 @@ dd if=/dev/rbd0 of=/dev/null bs=4k count=100 2>&1
 CephFS mounts use the `recover_session=clean` or `recover_session=no` option:
 
 ```bash
-# Mount with recover_session=clean (safer, reconnects after split-brain)
+# Mount with recover_session=clean (reconnects after client blocklisting, drops dirty state)
 mount -t ceph mon1:6789,mon2:6789:/ /mnt/cephfs \
     -o name=admin,secretfile=/etc/ceph/admin.secret,recover_session=clean
 
@@ -133,8 +132,10 @@ Configure appropriate timeouts to fail fast vs. retry indefinitely:
 
 ```bash
 # For RBD (fast-fail for databases)
-echo "options rbd timeout=30" > /etc/modprobe.d/rbd.conf
-modprobe -r rbd && modprobe rbd
+# Set osd_request_timeout in /etc/ceph/ceph.conf under [client]:
+#     osd_request_timeout = 30
+# Or specify when mapping:
+rbd map <pool>/<image> -o osd_request_timeout=30
 
 # For CephFS (retry longer for bulk storage)
 mount -t ceph mon1:6789:/ /mnt/cephfs \
