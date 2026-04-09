@@ -10,7 +10,7 @@ Description: Compare NVMe-oF and iSCSI for Ceph block storage access to choose t
 
 ## Overview
 
-Ceph supports both iSCSI (via the `CephBlockPoolRadosNamespace` and tcmu-runner) and NVMe-oF for block storage network access. Choosing between them depends on latency requirements, existing network hardware, and operational preferences.
+Ceph supports both iSCSI (via the `ceph-iscsi` gateway and tcmu-runner) and NVMe-oF for block storage network access. Choosing between them depends on latency requirements, existing network hardware, and operational preferences.
 
 ## Protocol Architecture Comparison
 
@@ -18,8 +18,8 @@ Ceph supports both iSCSI (via the `CephBlockPoolRadosNamespace` and tcmu-runner)
 |---|---|---|
 | Protocol overhead | Low (NVMe native) | Higher (SCSI over TCP) |
 | Min kernel version | 5.0+ | 2.6.16+ |
-| Transport options | TCP, RDMA, FC | TCP only |
-| Queue depth | Up to 65535 | 1 per session |
+| Transport options | TCP, RDMA, FC | TCP, iSER (RDMA) |
+| Queue depth | Up to 65535 per queue | Configurable (default 32 per LUN) |
 | Parallelism | Native multi-queue | Single queue per LUN |
 | Maturity in Ceph | Newer (Reef+) | Stable |
 
