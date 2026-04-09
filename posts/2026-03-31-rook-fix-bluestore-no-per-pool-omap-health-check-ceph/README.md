@@ -82,9 +82,6 @@ ceph config set osd osd_max_scrubs 3
 
 # Reduce minimum scrub interval
 ceph config set osd osd_scrub_min_interval 3600
-
-# Force scrub scheduling
-ceph osd set-require-min-compat-client luminous
 ```
 
 Restore defaults after migration:
