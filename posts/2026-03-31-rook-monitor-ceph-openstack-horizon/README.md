@@ -31,7 +31,7 @@ ceph mgr module enable dashboard
 ceph dashboard create-self-signed-cert
 
 # Set admin credentials
-echo -n "adminpassword" | ceph dashboard ac-user-create admin administrator -i -
+echo -n "adminpassword" | ceph dashboard ac-user-create admin -i - administrator
 
 # Get the dashboard URL
 ceph mgr services | grep dashboard
