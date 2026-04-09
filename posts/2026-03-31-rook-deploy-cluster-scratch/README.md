@@ -34,7 +34,7 @@ sequenceDiagram
 
 Prepare your Kubernetes environment before starting:
 
-- Kubernetes 1.22 or later with `kubectl` access
+- Kubernetes 1.25 or later with `kubectl` access
 - Helm 3.x installed locally
 - At least 3 nodes with raw, unformatted block devices (or directories for testing)
 - Nodes must not have LVM or filesystem signatures on the intended disks
