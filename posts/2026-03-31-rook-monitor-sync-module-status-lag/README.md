@@ -39,12 +39,11 @@ radosgw-admin bucket sync status \
 ## Step 2 - Measure Sync Lag Per Shard
 
 ```bash
-# Check per-shard sync positions
-radosgw-admin data sync status --source-zone=primary-zone \
-  | jq '.sync_status.incremental_sync.shards_behind_on_sync'
+# Check per-shard sync positions (output is human-readable text)
+radosgw-admin data sync status --source-zone=primary-zone
 
-# Get detailed shard-level status
-radosgw-admin datalog status --source-zone=primary-zone
+# Get detailed shard-level status for the local zone
+radosgw-admin datalog status
 
 # Compare positions between source and destination
 PRIMARY_POS=$(radosgw-admin datalog list --shard-id=0 \
@@ -58,13 +57,13 @@ echo "Primary: ${PRIMARY_POS}, Sync: ${SYNC_POS}"
 Enable and scrape RGW Prometheus metrics:
 
 ```bash
-# Verify the Prometheus endpoint
-curl -s http://rgw.example.com:9283/metrics | grep -E "rgw_sync|rgw_data_sync"
+# Verify the Prometheus endpoint (metrics exposed by the Ceph MGR Prometheus module)
+curl -s http://rgw.example.com:9283/metrics | grep -E "ceph_data_sync|ceph_rgw"
 
-# Key sync metrics:
-# rgw_sync_full_sync_index_count - objects remaining in full sync
-# rgw_sync_inc_sync_index_count - objects in incremental sync queue
-# rgw_sync_error_count - number of sync errors
+# Key sync metrics (where <zone> is the source zone name):
+# ceph_data_sync_from_<zone>_fetch_bytes_sum - total bytes fetched from source zone
+# ceph_data_sync_from_<zone>_fetch_errors - number of fetch errors during sync
+# ceph_data_sync_from_<zone>_poll_latency_sum - sync polling latency
 
 # Create a Prometheus scrape config
 ```
@@ -79,33 +78,33 @@ scrape_configs:
           - rgw-secondary.example.com:9283
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "rgw_sync.*"
+        regex: "ceph_data_sync.*"
         action: keep
 ```
 
 ## Step 4 - Create Grafana Alerts for Sync Lag
 
 ```yaml
-# Grafana alert rule for sync lag
-apiVersion: 1
+# Prometheus alerting rules for sync lag
 groups:
   - name: ceph-sync-alerts
     rules:
-      - alert: CephRGWSyncBehind
-        expr: rgw_sync_inc_sync_index_count > 1000
+      - alert: CephRGWSyncFetchErrors
+        expr: increase(ceph_data_sync_from_primary_zone_fetch_errors[15m]) > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Ceph RGW sync is behind by {{ $value }} objects"
-          description: "The sync module has {{ $value }} objects waiting to sync."
+          summary: "Ceph RGW sync fetch errors detected ({{ $value }} new errors)"
+          description: "The sync module encountered fetch errors replicating from the source zone."
 
-      - alert: CephRGWSyncErrors
-        expr: increase(rgw_sync_error_count[15m]) > 0
+      - alert: CephRGWSyncHighPollLatency
+        expr: rate(ceph_data_sync_from_primary_zone_poll_latency_sum[5m]) / rate(ceph_data_sync_from_primary_zone_poll_latency_count[5m]) > 5
+        for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Ceph RGW sync errors detected"
+          summary: "Ceph RGW sync poll latency is high ({{ $value }}s)"
 ```
 
 ## Step 5 - Monitor Sync Errors
@@ -119,8 +118,8 @@ radosgw-admin sync error list --max-entries=50 \
 radosgw-admin sync error list --max-entries=100 \
   | jq 'group_by(.error_code) | map({error: .[0].error_code, count: length})'
 
-# Trim acknowledged errors older than 7 days
-radosgw-admin sync error trim --start-time=$(date -d '7 days ago' +%s)
+# Trim sync errors older than 7 days
+radosgw-admin sync error trim --end-date=$(date -d '7 days ago' +%Y-%m-%d)
 ```
 
 ## Step 6 - Automate Sync Health Checks
@@ -152,8 +151,8 @@ fi
 ```
 
 ```bash
-# Add to crontab
-echo "*/5 * * * * /usr/local/bin/ceph-sync-healthcheck.sh secondary-zone" | crontab -
+# Add to crontab (preserving existing entries)
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/ceph-sync-healthcheck.sh secondary-zone") | crontab -
 ```
 
 ## Summary
