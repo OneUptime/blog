@@ -16,8 +16,8 @@ Slow requests are the first indicator of performance problems:
 
 ```bash
 ceph health detail | grep "slow requests"
-ceph daemon osd.0 ops
 ceph daemon osd.0 dump_ops_in_flight
+ceph daemon osd.0 dump_historic_ops
 ```
 
 If you see many slow requests on one OSD, the issue is likely local to that OSD's disk or CPU.
@@ -50,10 +50,10 @@ ceph osd metadata 3 | grep -E "osd_data|bluestore_bdev_dev_node"
 smartctl -a /dev/sdb
 
 # Check kernel I/O stats
-iostat -xz 1 10 /dev/sdb
+iostat -xz /dev/sdb 1 10
 ```
 
-Watch for high `await` values (over 20ms) and high `util%` approaching 100%.
+Watch for high `await` values (over 20ms) and high `%util` approaching 100%.
 
 ## Step 4 - Check Network Performance
 
@@ -83,7 +83,6 @@ ceph status | grep -E "recovering|backfilling|degraded"
 ceph pg stat
 
 # Throttle recovery to reduce impact on production traffic
-ceph osd set-backfillfull-ratio 0.90
 ceph config set osd osd_recovery_max_active 1
 ceph config set osd osd_max_backfills 1
 ```
