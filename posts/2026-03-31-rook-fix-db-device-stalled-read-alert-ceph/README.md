@@ -31,7 +31,7 @@ HEALTH_WARN DB device stalled reads
 Locate the DB device for the affected OSD:
 
 ```bash
-ceph osd metadata 1 | python3 -m json.tool | grep -E "bluestore_block_db|devname"
+ceph osd metadata 1 | python3 -m json.tool | grep -E "bluefs_db|devname"
 
 # Check symlink
 ls -la /var/lib/ceph/osd/ceph-1/
@@ -67,17 +67,14 @@ ceph daemon osd.1 perf dump | python3 -m json.tool | grep -E "db_|kv_"
 
 Key metrics:
 - `bluefs_db_total_bytes` vs `bluefs_db_used_bytes` - check if DB is nearly full
-- `kv_get_latency_sum` / `kv_get_latency_avgcount` - average KV read latency
+- `rocksdb.get_latency` (sub-fields `sum` / `avgcount`) - average RocksDB read latency
 
 ## Fix: Check DB Device Fill Level
 
 A DB device that is nearly full will perform much worse due to RocksDB compaction overhead:
 
 ```bash
-df -h /var/lib/ceph/osd/ceph-1/
-
-# Or check BlueFS stats
-ceph daemon osd.1 bluestore bluefs stats
+ceph daemon osd.1 bluefs stats
 ```
 
 If the DB device is over 80% full, expand it (see `BLUEFS_AVAILABLE_SPACE` fix guide).
@@ -87,7 +84,7 @@ If the DB device is over 80% full, expand it (see `BLUEFS_AVAILABLE_SPACE` fix g
 Increase the RocksDB block cache to reduce reads to the DB device:
 
 ```bash
-ceph config set osd.1 bluestore_rocksdb_options "max_open_files=500,compaction_style=kUniversalCompaction,write_buffer_size=67108864,target_file_size_base=67108864,max_bytes_for_level_base=268435456,cache_index_and_filter_blocks=true,cache_index_and_filter_blocks_with_high_priority=true,block_cache=512MB"
+ceph config set osd.1 bluestore_rocksdb_options "max_open_files=500,compaction_style=kUniversalCompaction,write_buffer_size=67108864,target_file_size_base=67108864,max_bytes_for_level_base=268435456,cache_index_and_filter_blocks=true,cache_index_and_filter_blocks_with_high_priority=true"
 ```
 
 Or increase the default BlueStore cache:
