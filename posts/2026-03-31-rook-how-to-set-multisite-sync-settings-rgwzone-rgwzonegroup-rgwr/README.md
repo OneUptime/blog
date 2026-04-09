@@ -101,6 +101,15 @@ radosgw-admin user create \
   --system
 
 # Note the access_key and secret_key from the output
+
+# Update the master zone with the system user's credentials
+radosgw-admin zone modify \
+  --rgw-zone=us-east-1 \
+  --access-key=<sync-user-access-key> \
+  --secret=<sync-user-secret>
+
+# Commit the updated period
+radosgw-admin period update --commit
 ```
 
 ## Step 4 - Set Up the Secondary Zone
@@ -135,8 +144,7 @@ radosgw-admin zone create \
   --access-key=<sync-user-access-key> \
   --secret=<sync-user-secret>
 
-# Commit the period (must be done from the master zone)
-# On the secondary, update the period
+# Commit the period through the master zone
 radosgw-admin period update --commit \
   --url=http://rgw-primary.example.com:80 \
   --access-key=<sync-user-access-key> \
