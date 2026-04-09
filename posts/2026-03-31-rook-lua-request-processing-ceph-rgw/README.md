@@ -48,7 +48,7 @@ log_request()
 local MAX_SIZE_BYTES = 1073741824  -- 1 GiB
 local method = Request.HTTP.Method
 local user = Request.User.Id or ""
-local content_length = Request.HTTP.ContentLength or 0
+local content_length = Request.ContentLength or 0
 
 -- Check if this is an upload operation
 if method == "PUT" or method == "POST" then
@@ -58,8 +58,9 @@ if method == "PUT" or method == "POST" then
       RGWDebugLog("BLOCKED: Upload too large for user=" .. user ..
                   " size=" .. tostring(content_length))
       -- Abort the request with a 403 response
-      abort(403, "EntityTooLarge",
-            "Upload size exceeds the maximum allowed for this account.")
+      Request.Response.HTTPStatusCode = 403
+      Request.Response.Message = "Upload size exceeds the maximum allowed for this account."
+      return RGW_ABORT_REQUEST
     end
   end
 end
@@ -92,8 +93,9 @@ if method == "PUT" and object_key ~= "" then
   local date_prefix = string.match(object_key, "^%d%d%d%d%-%d%d%-%d%d/")
   if not date_prefix then
     RGWDebugLog("BLOCKED: Object key missing date prefix: " .. object_key)
-    abort(400, "InvalidKeyPrefixError",
-          "Object key must start with a date prefix (YYYY-MM-DD/).")
+    Request.Response.HTTPStatusCode = 400
+    Request.Response.Message = "Object key must start with a date prefix (YYYY-MM-DD/)."
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -121,35 +123,45 @@ if method == "PUT" then
   -- Require a mandatory metadata field
   local owner = Request.HTTP.Metadata["x-amz-meta-owner"]
   if not owner or owner == "" then
-    abort(400, "MissingMetadataError",
-          "Objects must include the x-amz-meta-owner metadata.")
+    Request.Response.HTTPStatusCode = 400
+    Request.Response.Message = "Objects must include the x-amz-meta-owner metadata."
+    return RGW_ABORT_REQUEST
   end
 end
 ```
 
-## Step 5 - Post-Request Response Modification
+## Step 5 - Post-Request Response Inspection
 
 ```lua
--- add_response_headers.lua
--- Add custom headers to every response (postRequest context)
+-- inspect_response.lua
+-- Log response details for observability (postRequest context)
 
--- Add a server identifier header
-Response.HTTP.AddHeader("X-Storage-Backend", "Ceph-RGW")
-Response.HTTP.AddHeader("X-Cluster-ID", "prod-ceph-01")
+local status_code = Request.Response.HTTPStatusCode
+local status_text = Request.Response.HTTPStatus
+local method = Request.HTTP.Method
+local bucket = Request.Bucket.Name or "none"
+local object = Request.Object.Name or "none"
 
--- Add CORS headers for browser applications
-if Request.HTTP.Method == "OPTIONS" then
-  Response.HTTP.AddHeader("Access-Control-Allow-Origin", "*")
-  Response.HTTP.AddHeader("Access-Control-Allow-Methods",
-                          "GET, PUT, DELETE, HEAD, POST")
-  Response.HTTP.AddHeader("Access-Control-Max-Age", "3600")
+-- Log every response for telemetry
+RGWDebugLog("RESPONSE method=" .. method ..
+            " bucket=" .. bucket ..
+            " object=" .. object ..
+            " status=" .. tostring(status_code) ..
+            " status_text=" .. (status_text or ""))
+
+-- Log error responses at higher detail
+if status_code >= 400 then
+  local message = Request.Response.Message or ""
+  RGWDebugLog("ERROR_RESPONSE status=" .. tostring(status_code) ..
+              " message=" .. message ..
+              " user=" .. (Request.User.Id or "anonymous"))
 end
 ```
 
 ```bash
 # Upload the postRequest script
 radosgw-admin script put \
-  --infile=add_response_headers.lua \
+  --infile=inspect_response.lua \
   --context=postRequest
 ```
 
@@ -159,7 +171,7 @@ radosgw-admin script put \
 -- safe_script.lua
 -- Best practice: wrap all logic in pcall for safety
 
-local ok, err = pcall(function()
+local ok, result = pcall(function()
   local method = Request.HTTP.Method
   local bucket = Request.Bucket.Name
 
@@ -167,17 +179,20 @@ local ok, err = pcall(function()
 
   -- Your processing logic here
   if method == "DELETE" and bucket == "protected-bucket" then
-    abort(403, "BucketProtected",
-          "This bucket is protected from deletion.")
+    Request.Response.HTTPStatusCode = 403
+    Request.Response.Message = "This bucket is protected from deletion."
+    return RGW_ABORT_REQUEST
   end
 end)
 
 if not ok then
-  RGWDebugLog("Lua script error: " .. tostring(err))
+  RGWDebugLog("Lua script error: " .. tostring(result))
   -- Do NOT abort here - log and continue to avoid blocking valid requests
+elseif result == RGW_ABORT_REQUEST then
+  return RGW_ABORT_REQUEST
 end
 ```
 
 ## Summary
 
-Lua request processing scripts in Ceph RGW provide a powerful, zero-overhead hook into the S3 request lifecycle. Using preRequest scripts you can validate object sizes, enforce naming conventions, check required metadata fields, and block unauthorized operations via the `abort()` function. postRequest scripts modify outgoing response headers for CORS, observability, and custom branding. Wrapping logic in `pcall` prevents script errors from impacting normal request processing.
+Lua request processing scripts in Ceph RGW provide a powerful, low-overhead in-process hook into the S3 request lifecycle. Using preRequest scripts you can validate object sizes, enforce naming conventions, check required metadata fields, and block unauthorized operations by returning `RGW_ABORT_REQUEST`. postRequest scripts inspect response details for observability and telemetry. Wrapping logic in `pcall` prevents script errors from impacting normal request processing.
