@@ -51,7 +51,7 @@ rbd pool init proxmox-ct
 ceph auth get-or-create client.proxmox \
   mon 'profile rbd' \
   osd 'profile rbd pool=proxmox-vms, profile rbd pool=proxmox-ct' \
-  mgr 'profile rbd pool=proxmox-vms' \
+  mgr 'profile rbd pool=proxmox-vms, profile rbd pool=proxmox-ct' \
   -o /etc/ceph/ceph.client.proxmox.keyring
 
 # Copy to all Proxmox nodes
@@ -71,7 +71,7 @@ In the Proxmox web UI:
    - Pool: `proxmox-vms`
    - Username: `proxmox`
    - Keyring Path: `/etc/ceph/ceph.client.proxmox.keyring`
-   - Content: Disk image, ISO image
+   - Content: Disk image, Container
 
 ## Step 5: Add via CLI (Datacenter Config)
 
