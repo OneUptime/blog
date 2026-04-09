@@ -96,9 +96,11 @@ metadata:
 spec:
   network:
     provider: host
-    selectors:
-      public: "10.0.1.0/24"
-      cluster: "192.168.10.0/24"
+    addressRanges:
+      public:
+        - "10.0.1.0/24"
+      cluster:
+        - "192.168.10.0/24"
 ```
 
 With Multus for Kubernetes network isolation:
@@ -126,7 +128,7 @@ cat /proc/interrupts | grep eth0
 
 # Bind to specific CPUs (CPU 4-7 for the NIC)
 for irq in $(grep eth0 /proc/interrupts | awk '{print $1}' | tr -d ':'); do
-  echo "c0" > /proc/irq/$irq/smp_affinity  # CPUs 0-3 in hex bitmask
+  echo "f0" > /proc/irq/$irq/smp_affinity  # CPUs 4-7 in hex bitmask
 done
 ```
 
@@ -146,7 +148,7 @@ ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "msgr|bytes"
 
 # Prometheus metrics for network
 ceph mgr module enable prometheus
-# Scrape http://mgr-node:9283/metrics | grep ceph_osd_numpg
+# Scrape http://mgr-node:9283/metrics | grep ceph_osd_recovery_bytes
 ```
 
 ## Ceph Messenger Configuration
