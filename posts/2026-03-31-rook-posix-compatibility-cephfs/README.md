@@ -22,7 +22,7 @@ CephFS fully supports the core POSIX filesystem operations:
 - Link operations: link, symlink, readlink, unlink
 - Attribute operations: stat, chmod, chown, utimes
 - Extended attributes: setxattr, getxattr, listxattr, removexattr
-- File locking: flock, fcntl (POSIX locks)
+- File locking: flock (BSD locks), fcntl (POSIX locks)
 - Atomic rename: rename (POSIX guarantee maintained)
 ```
 
@@ -41,7 +41,7 @@ Applications that share files and expect immediate visibility across clients may
 
 ### Locking Behavior
 
-POSIX advisory locks (`flock`, `fcntl`) work correctly within a single CephFS mount but have limitations across disconnected clients:
+Advisory file locks (`flock`, `fcntl`) work correctly within a single CephFS mount but have limitations across disconnected clients:
 
 ```bash
 # Test file locking behavior
