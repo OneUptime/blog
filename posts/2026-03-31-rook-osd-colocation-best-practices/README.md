@@ -58,7 +58,7 @@ spec:
 
 ## Separating OSD Nodes from Application Nodes
 
-For production clusters, use node labels and tolerations to dedicate nodes to OSDs:
+For production clusters, use node labels and node affinity rules to direct OSDs to specific nodes:
 
 ```bash
 kubectl label node worker-1 node-role.kubernetes.io/storage=osd
@@ -104,6 +104,14 @@ metadata:
   name: ceph-osd-priority
 value: 1000000
 globalDefault: false
+```
+
+Then reference it in the `CephCluster` spec so OSD pods actually use it:
+
+```yaml
+spec:
+  priorityClassNames:
+    osd: ceph-osd-priority
 ```
 
 ## Avoid Placing MONs and OSDs on Same Small Nodes
