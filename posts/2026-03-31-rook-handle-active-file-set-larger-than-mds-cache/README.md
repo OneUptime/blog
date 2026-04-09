@@ -14,7 +14,7 @@ In CephFS, the Metadata Server (MDS) maintains an in-memory cache of inode and d
 
 Common symptoms include:
 
-- `mds_cache_oversized` health warning in `ceph status`
+- `MDS_CACHE_OVERSIZED` health warning in `ceph status`
 - Slow metadata operations (stat, readdir, open)
 - MDS log messages showing `trim_lru` running frequently
 - Elevated `mds_mem` metrics in Prometheus
@@ -44,7 +44,7 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   ceph config set mds mds_cache_memory_limit 8589934592
 ```
 
-For persistent configuration in the Rook `CephFilesystem` resource:
+For persistent configuration in the Rook `CephFilesystem` resource, set the MDS pod memory limits. Rook automatically calculates `mds_cache_memory_limit` as approximately 50% of `resources.limits.memory` (controlled by the `cacheMemoryLimitFactor` field, which defaults to ~0.5):
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -65,12 +65,12 @@ spec:
     activeStandby: true
     resources:
       limits:
-        memory: "12Gi"
+        memory: "16Gi"
       requests:
-        memory: "8Gi"
-    config:
-      mds_cache_memory_limit: "8589934592"
+        memory: "16Gi"
 ```
+
+With `limits.memory: "16Gi"` and the default factor of ~0.5, Rook sets `mds_cache_memory_limit` to approximately 8 GiB.
 
 ## Step 3 - Tune Cache Trim Aggressiveness
 
@@ -78,11 +78,13 @@ If you cannot increase memory, tune how aggressively the MDS trims its cache:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph config set mds mds_cache_trim_threshold 0.7
+  ceph config set mds mds_cache_reservation 0.10
 
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph config set mds mds_cache_trim_decay_rate 1
+  ceph config set mds mds_cache_trim_decay_rate 0.5
 ```
+
+The `mds_cache_reservation` option (default 0.05) controls what fraction of the cache limit the MDS tries to keep free — increasing it to 0.10 triggers trimming earlier. The `mds_cache_trim_decay_rate` (default 1.0) controls the half-life of the trim throttle — lowering it to 0.5 allows the MDS to trim more frequently.
 
 ## Step 4 - Add Active MDS Daemons
 
@@ -104,14 +106,14 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
 
 ## Step 5 - Monitor Cache Health Over Time
 
-Deploy Prometheus scraping and add a Grafana alert for cache saturation:
+Deploy Prometheus scraping and add a Grafana alert for cache saturation. The `ceph_mds_mem_rss` metric tracks the MDS process resident memory, which you can compare against the configured cache limit:
 
 ```yaml
 groups:
 - name: cephfs-mds
   rules:
   - alert: MDSCacheFull
-    expr: ceph_mds_mem_rss / ceph_mds_mem_heap > 0.9
+    expr: ceph_mds_mem_rss > 0.9 * ceph_mds_cache_size
     for: 5m
     labels:
       severity: warning
