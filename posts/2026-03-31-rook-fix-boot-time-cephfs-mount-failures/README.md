@@ -67,7 +67,7 @@ umount -l /var/lib/kubelet/plugins/kubernetes.io/csi/pv/<pv-name>/globalmount
 
 ## Step 5 - Adjust CSI Driver Startup Ordering
 
-Ensure the CSI node plugin waits for the Ceph cluster to be healthy. Edit the `CephCluster` resource to configure the health check:
+Tuning the health check intervals helps the Rook operator detect and recover unhealthy Ceph daemons faster after a reboot, reducing the window where mount failures can occur. Edit the `CephCluster` resource to adjust the health check intervals:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -89,22 +89,24 @@ spec:
         interval: 60s
 ```
 
-## Step 6 - Use NodeAffinity and Readiness Gates
+## Step 6 - Use Init Containers to Wait for Ceph Readiness
 
-Prevent application pods from scheduling until the Ceph CSI driver is ready by using pod scheduling constraints:
+Prevent application containers from starting until the Ceph cluster is reachable by using an init container:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 spec:
   initContainers:
-  - name: wait-for-csi
+  - name: wait-for-ceph
     image: busybox
-    command: ["sh", "-c", "until ls /dev/ceph-* 2>/dev/null; do sleep 2; done"]
+    command: ["sh", "-c", "until nslookup rook-ceph-mon-a.rook-ceph.svc.cluster.local > /dev/null 2>&1; do sleep 2; done"]
   containers:
   - name: app
     image: myapp:latest
 ```
+
+Replace `rook-ceph-mon-a` with the name of one of your Ceph monitor services.
 
 ## Step 7 - Restart Stuck Pods
 
