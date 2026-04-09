@@ -69,7 +69,7 @@ osd_memory_target = 8589934592   # 8 GB per OSD
 bluestore_compression_mode = passive
 bluestore_compression_algorithm = snappy
 
-# Increase recovery/backfill limits to prevent impacting client I/O
+# Keep recovery/backfill conservative to minimize impact on client I/O
 osd_recovery_max_active = 3
 osd_max_backfills = 1
 ```
