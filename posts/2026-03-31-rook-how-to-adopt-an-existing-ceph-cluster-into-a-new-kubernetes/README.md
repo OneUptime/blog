@@ -65,7 +65,7 @@ data:
 
 ## Step 4 - Create CephCluster with Existing OSD Configuration
 
-Configure the `CephCluster` CRD to manage the existing OSDs without reinitializing them. Use `allowUnsupported` to skip device checks if needed:
+Configure the `CephCluster` CRD to manage the existing OSDs without reinitializing them. The `skipUpgradeChecks` flag prevents the operator from running upgrade checks during the adoption process:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
