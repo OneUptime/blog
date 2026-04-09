@@ -28,23 +28,25 @@ radosgw-admin metadata sync status
 # List pending metadata sync operations
 radosgw-admin metadata sync status | grep -E "behind|conflict|error"
 
-# View metadata log entries
-radosgw-admin log list --log-type=metadata | head -20
+# View metadata log entries for a specific shard
+radosgw-admin mdlog list --shard-id=0 | head -20
 
-# Fetch a specific metadata log entry
-radosgw-admin log show --log-type=metadata --id=<log-id>
+# Check metadata log status across all shards
+radosgw-admin mdlog status
 ```
 
 ## Comparing Metadata Between Zones
 
 ```bash
 # Compare bucket metadata between zones
-# Zone A
-radosgw-admin bucket stats --bucket=mybucket --rgw-zone=us-east \
+# radosgw-admin operates against the local RADOS cluster, so run from each zone's host
+
+# On Zone A host (us-east):
+radosgw-admin metadata get bucket:mybucket \
     | python3 -m json.tool > /tmp/bucket-us-east.json
 
-# Zone B
-radosgw-admin bucket stats --bucket=mybucket --rgw-zone=us-west \
+# On Zone B host (us-west):
+radosgw-admin metadata get bucket:mybucket \
     | python3 -m json.tool > /tmp/bucket-us-west.json
 
 # Diff the metadata
@@ -55,16 +57,16 @@ diff /tmp/bucket-us-east.json /tmp/bucket-us-west.json
 
 ```bash
 # Re-sync bucket metadata from authoritative zone to secondary
-# First, identify which zone has the correct state
-radosgw-admin bucket stats --bucket=mybucket --rgw-zone=us-east
+# First, identify which zone has the correct state (run on the authoritative zone's host)
+radosgw-admin bucket stats --bucket=mybucket
 
 # Force resync of bucket metadata
 radosgw-admin metadata get bucket:mybucket > /tmp/bucket-meta.json
 # Edit if needed, then put it back
 radosgw-admin metadata put bucket:mybucket < /tmp/bucket-meta.json
 
-# Sync the bucket to all zones
-radosgw-admin bucket sync run --bucket=mybucket --source-zone=us-east
+# Verify bucket sync status (sync propagates automatically via the RGW daemon)
+radosgw-admin bucket sync status --bucket=mybucket
 ```
 
 ## Resolving User Metadata Conflicts
@@ -111,11 +113,11 @@ done
 ## Rebuilding Bucket Index After Conflict
 
 ```bash
-# If bucket index is corrupted, rebuild it
-radosgw-admin bucket reshard --bucket=mybucket --num-shards=16
+# Rebuild the bucket index from actual object state in OSDs
+radosgw-admin bucket check --bucket=mybucket --check-objects --fix
 
-# Rebuild the bucket index from OSD data
-radosgw-admin bucket check --bucket=mybucket --fix
+# Verify the bucket index is consistent
+radosgw-admin bucket check --bucket=mybucket
 ```
 
 ## Summary
