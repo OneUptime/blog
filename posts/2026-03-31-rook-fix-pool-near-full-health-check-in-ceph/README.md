@@ -109,15 +109,27 @@ ceph osd pool set-quota <pool-name> max_bytes 2199023255552
 
 ## Setting Up Proactive Alerting
 
-Configure Prometheus to alert before reaching nearfull:
+Configure Prometheus to alert before reaching nearfull. The built-in `ceph_pool_percent_used` metric (available since Ceph Pacific) gives the pool utilization as a 0-to-1 fraction and is guaranteed to match `ceph df` output:
 
 ```yaml
 - alert: CephPoolNearFull
-  expr: (ceph_pool_stored / ceph_pool_max_avail) > 0.75
+  expr: ceph_pool_percent_used > 0.75
   for: 5m
   annotations:
     summary: "Ceph pool {{ $labels.pool_id }} usage above 75%"
 ```
+
+If `ceph_pool_percent_used` is not available in your Ceph version, calculate utilization manually. The correct formula divides stored bytes by total capacity (stored + available):
+
+```yaml
+- alert: CephPoolNearFull
+  expr: (ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail)) > 0.75
+  for: 5m
+  annotations:
+    summary: "Ceph pool {{ $labels.pool_id }} usage above 75%"
+```
+
+Note: Do not use `ceph_pool_stored / ceph_pool_max_avail` alone, because that ratio approaches infinity as the pool fills rather than producing a 0-to-1 percentage.
 
 ## Summary
 
