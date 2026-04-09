@@ -43,7 +43,6 @@ radosgw-admin sync status | grep "caught up"
 # On secondary zone host - promote to master
 radosgw-admin zone modify --rgw-zone=us-west --master
 radosgw-admin period update --commit
-radosgw-admin period pull   # Pull the updated period
 ```
 
 ## Emergency Failover (Primary Zone Unavailable)
@@ -53,7 +52,7 @@ When the primary is completely unreachable:
 ```bash
 # On secondary zone host - force promote to master
 radosgw-admin zone modify --rgw-zone=us-west --master
-radosgw-admin period update --commit --rgw-zone=us-west
+radosgw-admin period update --commit
 
 # Restart RGW on secondary
 systemctl restart ceph-radosgw@rgw.us-west
@@ -99,7 +98,7 @@ journalctl -u ceph-radosgw@rgw.us-west --no-pager | tail -20
 
 ```bash
 # Check what was in-flight during failover
-radosgw-admin log list --log-type=data
+radosgw-admin datalog list
 
 # Verify bucket stats on secondary
 radosgw-admin bucket stats --bucket=critical-bucket
@@ -114,10 +113,10 @@ radosgw-admin bucket check --bucket=critical-bucket
 # Watch RGW error rate
 ceph daemon rgw.us-west perf dump | python3 -m json.tool | grep -E "err|fail"
 
-# Check for any orphan objects
-radosgw-admin orphans find --pool=us-west.rgw.buckets.data --num-shards=16
+# Check for any orphan objects (note: radosgw-admin orphans find is deprecated)
+rgw-orphan-list --pool us-west.rgw.buckets.data
 ```
 
 ## Summary
 
-Failing over to a secondary Ceph RGW zone involves promoting the secondary zone to master using `radosgw-admin zone modify --master`, committing the updated period, and updating DNS to redirect client traffic. For emergency failovers where the primary is unreachable, use `--force` options and expect some data loss based on the sync lag at the time of failure. Always verify write acceptance and run integrity checks after completing the failover.
+Failing over to a secondary Ceph RGW zone involves promoting the secondary zone to master using `radosgw-admin zone modify --master`, committing the updated period, and updating DNS to redirect client traffic. For emergency failovers where the primary is unreachable, expect some data loss based on the sync lag at the time of failure. Always verify write acceptance and run integrity checks after completing the failover.
