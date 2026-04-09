@@ -32,7 +32,7 @@ flowchart LR
 
 ## Step 1: Configure maxSize Quota on a CephBlockPool
 
-The `maxSize` quota limits the total raw data stored in the pool (before replication overhead):
+The `maxSize` quota limits the total logical data stored in the pool (excluding replication overhead):
 
 ```yaml
 # blockpool-with-size-quota.yaml
@@ -46,7 +46,7 @@ spec:
     size: 3
     requireSafeReplicaSize: true
   quotas:
-    # Maximum raw bytes stored in this pool (not counting replication)
+    # Maximum logical bytes stored in this pool (excluding replication overhead)
     maxSize: "100Gi"
 ```
 
@@ -207,7 +207,7 @@ spec:
       rules:
         - alert: CephPoolQuotaNearFull
           expr: |
-            (ceph_pool_stored_raw / ceph_pool_quota_max_bytes) > 0.80
+            (ceph_pool_stored / ceph_pool_quota_max_bytes) > 0.80
           for: 5m
           labels:
             severity: warning
@@ -216,7 +216,7 @@ spec:
             description: "Pool {{ $labels.name }} has used more than 80% of its maxSize quota."
         - alert: CephPoolQuotaFull
           expr: |
-            (ceph_pool_stored_raw / ceph_pool_quota_max_bytes) > 0.95
+            (ceph_pool_stored / ceph_pool_quota_max_bytes) > 0.95
           for: 1m
           labels:
             severity: critical
