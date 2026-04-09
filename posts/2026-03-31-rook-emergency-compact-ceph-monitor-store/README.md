@@ -20,15 +20,15 @@ You may need emergency compaction when:
 - Monitors experience excessive read latency during recovery
 - RocksDB WAL (write-ahead log) files accumulate
 
-Check current monitor store size before proceeding:
-
-```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph tell mon.* version
-```
+Check current monitor status before proceeding:
 
 ```bash
 kubectl -n rook-ceph get pods -l app=rook-ceph-mon
+```
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph daemon mon.a mon_status
 ```
 
 ## Step 1: Identify the Affected Monitor
@@ -73,12 +73,9 @@ spec:
   - name: compact
     image: quay.io/ceph/ceph:v18
     command:
-    - ceph-mon
-    - --compact
-    - -i
-    - a
-    - --mon-data
+    - ceph-monstore-tool
     - /var/lib/ceph/mon/ceph-a
+    - compact
     volumeMounts:
     - name: mon-data
       mountPath: /var/lib/ceph/mon/ceph-a
@@ -93,7 +90,7 @@ Apply and wait for completion:
 
 ```bash
 kubectl apply -f mon-compact-debug.yaml
-kubectl -n rook-ceph wait --for=condition=complete pod/mon-compact-debug --timeout=300s
+kubectl -n rook-ceph wait --for=jsonpath='{.status.phase}'=Succeeded pod/mon-compact-debug --timeout=300s
 kubectl -n rook-ceph logs mon-compact-debug
 ```
 
@@ -114,20 +111,19 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph -s
 
 ## Preventive Measures
 
-Configure monitor compaction schedule in the CephCluster spec:
+Configure monitor compaction in the CephCluster CR using the `cephConfig` section:
 
 ```yaml
 spec:
+  cephConfig:
+    mon:
+      mon_compact_on_start: "true"
   mon:
     count: 3
   cephVersion:
     image: quay.io/ceph/ceph:v18
-  storage:
-    config:
-      mon_compact_on_start: "true"
-      mon_rocksdb_options: "compaction_style=level"
 ```
 
 ## Summary
 
-Emergency compaction of the Ceph monitor store is performed by scaling down the monitor, running `ceph-mon --compact` via a debug pod, and then restoring the deployment. This resolves RocksDB bloat and certain corruption scenarios that prevent normal monitor operation. Enabling `mon_compact_on_start` helps prevent excessive store growth going forward.
+Emergency compaction of the Ceph monitor store is performed by scaling down the monitor, running `ceph-monstore-tool` via a debug pod, and then restoring the deployment. This resolves RocksDB bloat and certain corruption scenarios that prevent normal monitor operation. Enabling `mon_compact_on_start` helps prevent excessive store growth going forward.
