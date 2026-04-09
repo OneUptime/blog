@@ -23,8 +23,8 @@ flowchart LR
 Ceph uses application labels for:
 - Health check validation
 - Per-application statistics
-- Quota tracking by application
-- Crush rule enforcement
+- Application-specific pool metadata
+- Pool purpose identification
 
 ## Standard Application Labels
 
