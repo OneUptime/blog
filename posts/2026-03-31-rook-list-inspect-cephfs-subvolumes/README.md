@@ -52,11 +52,13 @@ Example output:
     "bytes_quota": 21474836480,
     "bytes_used": 9126805504,
     "created_at": "2026-03-01 10:00:00",
+    "ctime": "2026-03-31 08:45:00",
     "data_pool": "cephfs.data",
     "features": ["snapshot-clone", "snapshot-autoprotect"],
     "gid": 1000,
     "mode": 493,
     "mon_addrs": ["10.0.0.1:6789", "10.0.0.2:6789"],
+    "mtime": "2026-03-31 09:00:00",
     "path": "/volumes/_nogroup/webapp/abc-123-uuid",
     "pool_namespace": "",
     "state": "complete",
@@ -69,12 +71,12 @@ Example output:
 
 ```bash
 # The "state" field indicates health
-# States: complete, pending, in-progress, retained, purging
+# States: complete, snapshot-retained
 ceph fs subvolume info cephfs webapp --format json | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])"
 ```
 
-A state of `retained` means the subvolume was deleted but has snapshots preventing full removal.
+A state of `snapshot-retained` means the subvolume was deleted but has snapshots preventing full removal.
 
 ## Audit Script: Usage Across All Groups
 
@@ -129,4 +131,4 @@ ceph fs subvolume getpath cephfs webapp
 
 ## Summary
 
-The `ceph fs subvolume ls` and `ceph fs subvolume info` commands provide complete visibility into subvolume state, quota, usage, and data pool placement. Building audit scripts around the JSON output format makes it easy to generate usage reports, identify over-utilized subvolumes approaching their quotas, and find subvolumes in unexpected states such as `retained` (deleted but holding snapshots). Regular inspection is essential for proactive capacity management in multi-tenant CephFS deployments.
+The `ceph fs subvolume ls` and `ceph fs subvolume info` commands provide complete visibility into subvolume state, quota, usage, and data pool placement. Building audit scripts around the JSON output format makes it easy to generate usage reports, identify over-utilized subvolumes approaching their quotas, and find subvolumes in unexpected states such as `snapshot-retained` (deleted but holding snapshots). Regular inspection is essential for proactive capacity management in multi-tenant CephFS deployments.
