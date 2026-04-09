@@ -58,7 +58,7 @@ kubectl get secret rook-ceph-object-user-my-store-team-a-user \
   -n rook-ceph -o yaml
 ```
 
-## Create User with Bucket-Level Quota
+## Create User with Quota and Read Capabilities
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -80,38 +80,25 @@ spec:
 
 ## View and Update Quotas via CLI
 
-```bash
-# Get RGW admin credentials from the Rook-generated secret
-ADMIN_ACCESS=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
-  -n rook-ceph -o jsonpath='{.data.AccessKey}' | base64 -d)
-ADMIN_SECRET=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
-  -n rook-ceph -o jsonpath='{.data.SecretKey}' | base64 -d)
-
-RGW_ENDPOINT=http://$(kubectl get svc -n rook-ceph rook-ceph-rgw-my-store \
-  -o jsonpath='{.spec.clusterIP}')
-
-# Check current quota for a user
-radosgw-admin quota get --quota-scope=user --uid=team-a-user \
-  --rgw-admin-url=${RGW_ENDPOINT}
-
-# Update quota
-radosgw-admin quota set --quota-scope=user --uid=team-a-user \
-  --max-size=20G --max-objects=2000000
-```
-
-Or use the toolbox:
+The `radosgw-admin` tool connects directly to the Ceph cluster via RADOS and must be run from a pod with access to the Ceph configuration. Use the Rook toolbox:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
 
+# Check current quota for a user
+radosgw-admin quota get --quota-scope=user --uid=team-a-user
+
+# Update quota
 radosgw-admin quota set --quota-scope=user \
   --uid=team-a-user \
   --max-size=20G \
   --max-objects=2000000
 
-# Enable the quota (quotas must be explicitly enabled)
+# Enable the quota (quotas must be explicitly enabled when set via CLI)
 radosgw-admin quota enable --quota-scope=user --uid=team-a-user
 ```
+
+Note: When quotas are configured via the `CephObjectStoreUser` CRD, the Rook operator automatically enables them. You only need to manually run `quota enable` when setting quotas directly via `radosgw-admin`.
 
 ## Check Quota Usage
 
@@ -125,20 +112,27 @@ radosgw-admin user stats --uid=team-a-user
 radosgw-admin usage show --uid=team-a-user --show-log-entries=false
 ```
 
-Example output:
+Example output of `radosgw-admin quota get`:
 
 ```json
 {
-    "quota": {
-        "enabled": true,
-        "check_on_raw": false,
-        "max_size": 10737418240,
-        "max_size_kb": 10485760,
-        "max_objects": 1000000
-    },
-    "size": 5368709120,
-    "size_actual": 5368709120,
-    "num_objects": 250000
+    "enabled": true,
+    "check_on_raw": false,
+    "max_size": 10737418240,
+    "max_size_kb": 10485760,
+    "max_objects": 1000000
+}
+```
+
+Example output of `radosgw-admin user stats`:
+
+```json
+{
+    "stats": {
+        "size": 5368709120,
+        "size_rounded": 5368709120,
+        "num_objects": 250000
+    }
 }
 ```
 
@@ -189,4 +183,4 @@ aws s3 cp largefile.bin s3://my-bucket/ \
 
 ## Summary
 
-Object store user quotas in Rook are configured via the `quotas` field in `CephObjectStoreUser`, or managed directly via `radosgw-admin` for existing users. Always explicitly enable quotas after setting them. Use user-level quotas for per-team limits and bucket-level quotas to cap individual bucket growth. Monitor usage with `radosgw-admin user stats` to track consumption before limits are hit.
+Object store user quotas in Rook are configured via the `quotas` field in `CephObjectStoreUser`, or managed directly via `radosgw-admin` for existing users. When using the CRD, quotas are automatically enabled by the Rook operator. When setting quotas manually via `radosgw-admin`, you must explicitly enable them with `quota enable`. Use user-level quotas for per-team limits and bucket-level quotas to cap individual bucket growth. Monitor usage with `radosgw-admin user stats` to track consumption before limits are hit.
