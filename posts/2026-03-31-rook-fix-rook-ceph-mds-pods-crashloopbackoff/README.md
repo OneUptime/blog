@@ -120,17 +120,19 @@ spec:
 
 ## Common Cause 5: Metadata Filesystem Needs Repair
 
-For persistent crash loops, run a filesystem check:
+For persistent crash loops, rebuild metadata from the data pool as a last resort:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # Set cluster to recovery mode
-  ceph fs set myfs joinable false
+  # Fail the filesystem to stop MDS crash loops
+  ceph fs fail myfs
 
-  # Run scrub
-  ceph fs scrub start myfs recursive
+  # Rebuild metadata from data pool (WARNING: may lose directory hierarchy)
+  cephfs-data-scan scan_extents myfs-data0
+  cephfs-data-scan scan_inodes myfs-data0
+  cephfs-data-scan scan_links
 
-  # Re-enable
+  # Re-enable the filesystem
   ceph fs set myfs joinable true
 "
 ```
