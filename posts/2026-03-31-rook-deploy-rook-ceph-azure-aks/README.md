@@ -29,7 +29,7 @@ AKS_RG=$(az aks show -g my-rg -n my-aks --query nodeResourceGroup -o tsv)
 kubectl get nodes -o wide
 
 # Attach a disk to each node's VM
-for i in 1 2 3; do
+for i in 0 1 2; do
   DISK_ID=$(az disk create \
     --resource-group $AKS_RG \
     --name ceph-osd-$i \
@@ -82,7 +82,7 @@ spec:
   storage:
     useAllNodes: true
     useAllDevices: false
-    deviceFilter: "^sd[b-z]$"
+    deviceFilter: "^sd[c-z]$"
     config:
       osdsPerDevice: "1"
 ```
@@ -101,7 +101,7 @@ kubectl create clusterrolebinding rook-ceph-privileged \
   --serviceaccount=rook-ceph:rook-ceph-operator
 ```
 
-For AKS with Azure Policy addon, add exemptions:
+For AKS with Azure Policy addon, you may need to disable it if policies block privileged pods:
 
 ```bash
 az aks disable-addons \
@@ -110,7 +110,28 @@ az aks disable-addons \
   --name my-aks
 ```
 
-## Step 5 - Create Storage Class
+## Step 5 - Create CephBlockPool and Storage Class
+
+Create the block pool that the StorageClass will reference:
+
+```yaml
+# blockpool-aks.yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+```
+
+```bash
+kubectl apply -f blockpool-aks.yaml
+```
+
+Then create the StorageClass:
 
 ```yaml
 # storageclass-aks.yaml
@@ -124,6 +145,12 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -133,7 +160,15 @@ volumeBindingMode: WaitForFirstConsumer
 kubectl apply -f storageclass-aks.yaml
 ```
 
-## Step 6 - Verify Health
+## Step 6 - Deploy Toolbox and Verify Health
+
+Deploy the Rook toolbox to run Ceph commands:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/toolbox.yaml
+```
+
+Wait for the toolbox pod to be ready, then verify the cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
