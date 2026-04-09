@@ -28,7 +28,7 @@ ceph mgr module enable nfs
 An NFS cluster groups one or more NFS-Ganesha daemons behind a common namespace:
 
 ```bash
-ceph nfs cluster create mynfs --placement="2"
+ceph nfs cluster create mynfs "2"
 ```
 
 Verify the cluster was created:
@@ -83,9 +83,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: nfs-ganesha
-    namespace: nfs-ns
   server:
     active: 2
 ```
@@ -102,11 +99,20 @@ kubectl -n rook-ceph get cephnfs
 Update an existing export to change access permissions:
 
 ```bash
-ceph nfs export apply mynfs <<EOF
+ceph nfs export apply mynfs -i export.json
+```
+
+Where `export.json` contains the full export configuration:
+
+```json
 {
   "export_id": 1,
   "pseudo": "/exports/data",
   "access_type": "RW",
+  "fsal": {
+    "name": "CEPH",
+    "fs_name": "cephfs"
+  },
   "clients": [
     {
       "addresses": ["192.168.1.0/24"],
@@ -115,7 +121,6 @@ ceph nfs export apply mynfs <<EOF
     }
   ]
 }
-EOF
 ```
 
 ## Summary
