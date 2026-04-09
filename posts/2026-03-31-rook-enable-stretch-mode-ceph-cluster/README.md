@@ -48,7 +48,7 @@ ceph osd crush move host-dc2b datacenter=dc2
 The arbiter monitor lives in a third location with no OSDs. Assign the arbiter monitor a distinct CRUSH location:
 
 ```bash
-ceph mon set-location mon-arbiter datacenter=arbiter
+ceph mon set_location mon-arbiter datacenter=arbiter
 ```
 
 Verify monitor locations:
@@ -62,7 +62,7 @@ ceph mon dump
 Create a CRUSH rule that enforces placement across both datacenters:
 
 ```bash
-ceph osd crush rule create-replicated stretch_rule default datacenter osd
+ceph osd crush rule create-replicated stretch_rule default datacenter
 ```
 
 ## Step 4 - Enable Stretch Mode
@@ -121,7 +121,8 @@ Reset after testing:
 
 ```bash
 ceph osd unset norebalance
-ceph osd up osd.0 osd.1
+systemctl start ceph-osd@0
+systemctl start ceph-osd@1
 ```
 
 ## Summary
