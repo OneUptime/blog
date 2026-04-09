@@ -51,7 +51,7 @@ Note that compression requires Msgr2 (`requireMsgr2: true`). Compression does no
 
 ## Combining Encryption and Compression
 
-Both can be enabled simultaneously:
+Both can be set simultaneously:
 
 ```yaml
 spec:
@@ -64,7 +64,7 @@ spec:
       requireMsgr2: true
 ```
 
-Ceph applies compression before encryption, so compressed messages are then encrypted for security.
+However, when encryption is enabled, Ceph disables compression by default for security reasons. To force compression even when encryption is active, an admin must explicitly set `ms_compress_secure` to `true` via `ceph config set`. Without that override, compression is silently ignored on encrypted connections.
 
 ## Verifying Compression is Active
 
@@ -72,21 +72,21 @@ Check the Ceph configuration from the toolbox:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config dump | grep -E "ms_compress|compression"
+  ceph config dump | grep -E "ms_osd_compress|ms_compress"
 ```
 
 Expected output when compression is enabled:
 
 ```text
-ms_compress_msgs    true
+global   basic   ms_osd_compress_mode   force
 ```
 
-Check the compression mode per daemon:
+Check the compression mode for a specific OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config get osd.0 ms_cluster_compress_msgs
-# Expected: true
+  ceph config get osd.0 ms_osd_compress_mode
+# Expected: force
 ```
 
 ## Compression Algorithm
@@ -97,7 +97,7 @@ Check active compression algorithm:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config get mon ms_compress_msgs_algorithm
+  ceph config get osd.0 ms_osd_compression_algorithm
 # Expected: snappy
 ```
 
@@ -105,24 +105,26 @@ To configure a different algorithm (not recommended unless benchmarked):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global ms_compress_msgs_algorithm zlib
+  ceph config set global ms_osd_compression_algorithm zlib
 ```
 
 ## Measuring Compression Effectiveness
 
-Check the Ceph perf counters for compression stats on an OSD:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell osd.0 perf dump | python3 -m json.tool | grep -A5 compress
-```
-
-Monitor network throughput before and after enabling compression:
+Msgr2 wire compression does not expose dedicated per-connection compression ratio counters. The most practical way to measure effectiveness is to compare network throughput before and after enabling compression:
 
 ```bash
 # Network stats on a storage node
 sar -n DEV 5 3
 ```
+
+You can also monitor OSD network bytes via the AsyncMessenger perf counters:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph tell osd.0 perf dump AsyncMessenger
+```
+
+Look at `msgr_send_bytes` and `msgr_recv_bytes` to observe changes in wire traffic volume after enabling compression.
 
 ## When NOT to Enable Compression
 
@@ -142,8 +144,8 @@ spec:
         enabled: false
 ```
 
-Apply and Ceph updates the configuration rolling without daemon restarts.
+Apply the updated CephCluster resource. Rook will trigger a rolling restart of Ceph daemons to apply the change, since compression is negotiated during the Msgr2 connection handshake.
 
 ## Summary
 
-Network compression in Rook-Ceph is enabled via `network.connections.compression.enabled: true` and requires Msgr2 (`requireMsgr2: true`). It compresses Ceph wire traffic using the snappy algorithm, reducing bandwidth usage for OSD replication and client I/O at the cost of CPU cycles. It is most beneficial when the storage network is bandwidth-constrained and data is compressible. Verify compression is active with `ceph config dump | grep compress` and monitor network throughput to confirm bandwidth savings.
+Network compression in Rook-Ceph is enabled via `network.connections.compression.enabled: true` and requires Msgr2 (`requireMsgr2: true`). It compresses Ceph wire traffic using the snappy algorithm, reducing bandwidth usage for OSD replication and client I/O at the cost of CPU cycles. Note that compression is disabled by default when encryption is also enabled. It is most beneficial when the storage network is bandwidth-constrained and data is compressible. Verify compression is active with `ceph config dump | grep ms_osd_compress` and monitor network throughput to confirm bandwidth savings.
