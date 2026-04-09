@@ -21,8 +21,8 @@ ceph health detail
 Sample output:
 
 ```text
-HEALTH_WARN 2 auth entities have bad caps
-[WRN] AUTH_BAD_CAPS: 2 auth entities have bad caps
+HEALTH_ERR 2 auth entities have invalid capabilities
+[ERR] AUTH_BAD_CAPS: 2 auth entities have invalid capabilities
     client.baduser: mon 'allow r invalid_option', osd 'allow rw'
     osd.5: osd 'allow *; invalid'
 ```
