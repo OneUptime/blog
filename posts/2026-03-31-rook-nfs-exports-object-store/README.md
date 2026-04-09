@@ -36,7 +36,7 @@ Inside the toolbox, use the Ceph NFS export command:
 ```bash
 ceph nfs export create rgw \
   --cluster-id my-nfs \
-  --pseudo /s3export \
+  --pseudo-path /s3export \
   --bucket my-nfs-bucket
 ```
 
@@ -67,7 +67,7 @@ The output shows the RGW bucket binding and access mode:
   "protocols": [4],
   "fsal": {
     "name": "RGW",
-    "rgw_user": "nfs.my-nfs.2"
+    "user_id": "nfs.my-nfs.2"
   }
 }
 ```
