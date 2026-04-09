@@ -4,24 +4,28 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Multus, Auto-Discovery, Networking
 
-Description: Learn how to enable and use Multus auto-discovery in Rook-Ceph to automatically detect correct network interfaces for Ceph traffic without manual NAD configuration.
+Description: Learn how to use Multus networking with Rook-Ceph, including auto-discovery of network CIDRs and manual addressRanges configuration for Ceph traffic.
 
 ---
 
-Multus auto-discovery in Rook-Ceph allows the operator to automatically identify the appropriate network interfaces on each node, rather than requiring you to manually specify NetworkAttachmentDefinitions. This simplifies configuration for environments where network interfaces have consistent naming across nodes.
+When Rook-Ceph uses Multus for networking, it needs to know the CIDR ranges of the public and cluster networks so it can configure Ceph's `public_network` and `cluster_network` settings. Rook provides two approaches: automatic discovery using network canary pods, or manual specification using `addressRanges`.
 
-## How Multus Auto-Discovery Works
+## How Multus Networking Works in Rook
 
-When auto-discovery is enabled, Rook examines the network interfaces on the nodes and attempts to match them against a pattern or criteria you specify. Instead of pinning to a specific NAD by name, Rook uses node network information to create or select appropriate attachments dynamically.
+With Multus, you define NetworkAttachmentDefinitions (NADs) that describe the additional networks Ceph pods should attach to. In the CephCluster spec, you reference these NADs using `selectors`. Rook then needs to determine the CIDR ranges for these networks to configure Ceph properly.
 
-This is useful when:
-- Network interface names vary slightly across nodes
-- You want Rook to adapt to the available interfaces automatically
-- The storage network exists but NADs have not been pre-created
+**Auto-discovery (default):** When `addressRanges` is not specified, Rook automatically launches network canary pods attached to the Multus networks. These pods report back the assigned IPs and CIDRs, which Rook uses to configure Ceph's network settings.
 
-## Enabling Auto-Discovery Mode
+**Manual ranges:** When `addressRanges` is specified, Rook skips auto-discovery and passes the provided CIDRs directly to Ceph's configuration.
 
-Configure the CephCluster to use Multus with auto-discovery:
+Auto-discovery is useful when:
+- You want Rook to determine the network CIDRs automatically
+- The Multus networks are correctly configured and assign IPs as expected
+- You prefer fewer manual configuration steps
+
+## Configuring Multus with Auto-Discovery
+
+To use auto-discovery, configure the CephCluster with Multus selectors but omit `addressRanges`. Rook will launch canary pods to discover the network CIDRs automatically:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -35,23 +39,21 @@ spec:
     selectors:
       public: rook-ceph/rook-public-network
       cluster: rook-ceph/rook-cluster-network
-    addressRanges:
-      public:
-      - 192.168.100.0/24
-      cluster:
-      - 192.168.200.0/24
 ```
 
-The `addressRanges` field tells Rook which IP ranges correspond to the public and cluster networks. Rook will then select the interface on each node that has an IP in the specified range.
+Rook deploys temporary canary pods attached to the specified NADs, reads their assigned IPs from the `k8s.v1.cni.cncf.io/network-status` annotation, and uses the discovered CIDRs to set Ceph's `public_network` and `cluster_network` configuration.
 
-## Using addressRanges for Interface Discovery
+## Using addressRanges to Skip Auto-Discovery
 
-The primary auto-discovery mechanism in Rook is `addressRanges`. This is more reliable than name-based NAD selection because it works with any interface naming convention:
+If you already know the network CIDRs, you can specify them manually with `addressRanges` to skip the canary pod auto-discovery step. Note that `selectors` are still required when using `provider: multus`:
 
 ```yaml
 spec:
   network:
     provider: multus
+    selectors:
+      public: rook-ceph/rook-public-network
+      cluster: rook-ceph/rook-cluster-network
     addressRanges:
       public:
       - 10.10.0.0/16
@@ -59,7 +61,7 @@ spec:
       - 10.20.0.0/16
 ```
 
-Rook checks each node's network interfaces and selects the one with an IP matching the specified range. This works automatically as long as the storage network IPs are pre-configured on the host interfaces.
+The `addressRanges` CIDRs are passed directly to Ceph's `public_network` and `cluster_network` configuration. Ceph then binds to the interface that matches the specified ranges on each node. This is useful when auto-discovery is unreliable or you want deterministic configuration.
 
 ## Verifying Auto-Discovery Results
 
@@ -70,10 +72,7 @@ After applying the configuration, verify which interfaces Rook has selected:
 kubectl -n rook-ceph logs -l app=rook-ceph-operator | grep -i "network\|interface\|discover"
 ```
 
-```text
-discovered public network interface: net1 (192.168.100.15/24)
-discovered cluster network interface: net2 (192.168.200.20/24)
-```
+Look for log entries related to network configuration, canary pod results, and Ceph network settings being applied.
 
 Check that OSD pods have the correct network annotations:
 
@@ -82,28 +81,17 @@ kubectl -n rook-ceph get pod -l app=rook-ceph-osd \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.k8s\.v1\.cni\.cncf\.io/network-status}{"\n"}{end}'
 ```
 
-## Auto-Discovery with Node Annotations
-
-For more explicit control, annotate nodes to specify which interface to use for Ceph:
-
-```bash
-kubectl annotate node node-1 \
-  rook.io/public-network-interface=eth1
-
-kubectl annotate node node-1 \
-  rook.io/cluster-network-interface=eth2
-```
-
-Rook reads these annotations when creating Ceph pods on those nodes, overriding the automatic selection.
-
 ## Handling Heterogeneous Nodes
 
-In clusters where different nodes have different network interface names (e.g., `eth1` on some nodes and `ens4` on others), addressRanges-based discovery is the most robust approach:
+In clusters where different nodes are on different subnets, you can list multiple CIDR ranges in `addressRanges`. Ceph will match whichever range applies to each node:
 
 ```yaml
 spec:
   network:
     provider: multus
+    selectors:
+      public: rook-ceph/rook-public-network
+      cluster: rook-ceph/rook-cluster-network
     addressRanges:
       public:
       - 192.168.100.0/24
@@ -112,7 +100,7 @@ spec:
       - 192.168.200.0/24
 ```
 
-Rook will match any interface with an IP in any of the listed ranges.
+Multiple CIDRs are combined into a comma-separated list in Ceph's `public_network` and `cluster_network` settings, so Ceph will bind to any matching interface.
 
 ## Checking Discovery Status on Nodes
 
@@ -150,21 +138,22 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mon dump | grep "mo
 
 If monitors show Kubernetes pod network IPs instead of storage network IPs, auto-discovery did not select the correct interfaces. Review the addressRanges configuration and verify the node interfaces have the expected IPs.
 
-## Running the Validation Tool
+## Running the Multus Validation Tool
 
-Rook includes a Multus validation tool that can confirm auto-discovery is working:
+Rook includes a built-in Multus validation tool accessible via the `rook` CLI inside the operator pod. This validates that Multus networks are configured correctly:
 
 ```bash
-kubectl -n rook-ceph create -f \
-  https://raw.githubusercontent.com/rook/rook/main/deploy/examples/multus-validation.yaml
+# Exec into the Rook operator pod
+kubectl -n rook-ceph exec -it deploy/rook-ceph-operator -- rook multus validation run \
+  --namespace rook-ceph
 ```
 
-Review the validation job output:
+For more configuration options:
 
 ```bash
-kubectl -n rook-ceph logs job/rook-ceph-multus-validation
+kubectl -n rook-ceph exec -it deploy/rook-ceph-operator -- rook multus validation run --help
 ```
 
 ## Summary
 
-Multus auto-discovery in Rook-Ceph uses `addressRanges` to automatically select the correct network interface on each node based on IP address matching, rather than requiring manual NAD name configuration. Configure the public and cluster network CIDR ranges in the CephCluster spec, and Rook will identify matching interfaces on each node. Use node annotations for explicit per-node overrides when automatic selection does not produce the correct results. Verify auto-discovery by checking operator logs and confirming Ceph monitor addresses use the storage network IPs.
+Rook-Ceph provides two approaches for determining network CIDRs when using Multus: automatic discovery via canary pods (the default when `addressRanges` is omitted) and manual specification using `addressRanges`. Both approaches require `selectors` referencing valid NetworkAttachmentDefinitions. When `addressRanges` is provided, the CIDRs are passed directly to Ceph's `public_network` and `cluster_network` configuration. Verify the setup by checking operator logs and confirming Ceph monitor addresses use the storage network IPs.
