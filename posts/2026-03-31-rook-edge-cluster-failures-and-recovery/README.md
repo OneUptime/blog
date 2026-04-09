@@ -39,8 +39,6 @@ If the disk is dead, remove the OSD:
 ceph osd out osd.0
 ceph osd down osd.0
 ceph osd purge 0 --yes-i-really-mean-it
-ceph auth del osd.0
-ceph osd crush remove osd.0
 ```
 
 Replace the disk and let Rook provision a new OSD automatically:
@@ -61,7 +59,9 @@ Kubernetes will restart it. If the mon's data is corrupted:
 
 ```bash
 # Force single-mon cluster recovery
-ceph-mon --inject-monmap /var/lib/ceph/monmap --id a
+# First extract the monmap, then inject it back
+ceph-mon -i a --extract-monmap /tmp/monmap
+ceph-mon -i a --inject-monmap /tmp/monmap
 ```
 
 ## Remote Recovery via SSH
@@ -130,7 +130,7 @@ cat > /root/ceph-recovery.sh <<'EOF'
 echo "Checking cluster health..."
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
 echo "Restarting unhealthy OSDs..."
-kubectl -n rook-ceph get pods -l app=rook-ceph-osd | grep -v Running | awk '{print $1}' | xargs -I{} kubectl -n rook-ceph delete pod {}
+kubectl -n rook-ceph get pods -l app=rook-ceph-osd --no-headers | grep -v Running | awk '{print $1}' | xargs -I{} kubectl -n rook-ceph delete pod {}
 EOF
 chmod +x /root/ceph-recovery.sh
 ```
