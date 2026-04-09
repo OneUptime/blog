@@ -10,7 +10,7 @@ Description: Resolve Ceph PGs stuck in backfill_toofull state by understanding t
 
 ## What is backfillfull?
 
-Ceph stops sending backfill (data migration) to an OSD when it reaches the `backfillfull` ratio, which defaults to 90% of `full_ratio` (itself defaulting to 95% of OSD capacity). This safety threshold prevents OSDs from filling completely during recovery, which would cause write errors for clients.
+Ceph stops sending backfill (data migration) to an OSD when it reaches the `backfillfull` ratio, which defaults to 0.90 (90% of OSD capacity). The separate `full_ratio` defaults to 0.95 (95% of OSD capacity). This safety threshold prevents OSDs from filling completely during recovery, which would cause write errors for clients.
 
 PGs stuck in `backfill_toofull` state means recovery cannot complete because target OSDs don't have enough free space to receive additional data.
 
@@ -44,7 +44,7 @@ Default thresholds and their effects:
 
 ## Immediate Fixes
 
-### Option 1: Temporarily Lower backfillfull Ratio
+### Option 1: Temporarily Raise backfillfull Ratio
 
 Allow backfill to proceed by raising the threshold temporarily:
 
@@ -84,7 +84,7 @@ Reduce the target weight of full OSDs to direct new data elsewhere:
 ceph osd crush reweight osd.5 0.8
 
 # Alternatively use the auto-reweight tool
-ceph osd reweight-by-utilization 95  # Reweight OSDs above 95% of average
+ceph osd reweight-by-utilization 110  # Reweight OSDs above 110% of average
 ```
 
 ### Option 4: Add More Storage
