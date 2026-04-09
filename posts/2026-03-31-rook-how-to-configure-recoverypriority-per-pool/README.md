@@ -96,7 +96,7 @@ kubectl apply -f archive-pool.yaml
 
 ## Step 4 - Understanding How Priority Affects Recovery
 
-When multiple pools have degraded PGs, Ceph's OSD recovery scheduler considers `recovery_priority` when selecting which PGs to recover next. Higher priority pools get more of the available recovery I/O bandwidth.
+When multiple pools have degraded PGs, Ceph's OSD recovery scheduler considers `recovery_priority` when selecting which PGs to recover next. PGs from higher priority pools are scheduled for recovery before those from lower priority pools.
 
 This is especially important in mixed-criticality environments:
 
@@ -117,7 +117,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.* injectar
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell osd.* injectargs '--osd-max-backfills=1'
 ```
 
-Even with throttling, high-priority pools will use more of the available recovery budget.
+Even with throttling, PGs from high-priority pools will still be recovered before those from lower-priority pools.
 
 ## Step 6 - Monitor Per-Pool Recovery Progress
 
