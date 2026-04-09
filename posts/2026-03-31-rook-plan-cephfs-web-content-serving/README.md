@@ -121,6 +121,9 @@ spec:
     matchLabels:
       app: nginx-web
   template:
+    metadata:
+      labels:
+        app: nginx-web
     spec:
       containers:
         - name: nginx
