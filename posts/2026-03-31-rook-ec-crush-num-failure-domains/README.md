@@ -47,14 +47,15 @@ This tells Ceph: "I need 6 total OSD slots, spread across 3 hosts, with 2 slots 
 
 ## Relationship Between Parameters
 
-The relationship between parameters must be consistent:
+The relationship between parameters must satisfy:
 
 ```text
-k + m = crush-num-failure-domains * crush-osds-per-failure-domain
+k + m <= crush-num-failure-domains * crush-osds-per-failure-domain
 
-Example: 4 + 2 = 3 * 2 = 6  (consistent)
-Example: 4 + 2 = 6 * 1 = 6  (consistent, default)
-Example: 4 + 2 = 4 * 2 = 8  (INCONSISTENT - would fail)
+Example: 4 + 2 = 6 <= 3 * 2 = 6  (exact fit)
+Example: 4 + 2 = 6 <= 6 * 1 = 6  (exact fit, default)
+Example: 4 + 2 = 6 <= 4 * 2 = 8  (valid - 2 slots unused, some domains get fewer chunks)
+Example: 4 + 2 = 6 >  2 * 2 = 4  (INVALID - not enough slots for all chunks)
 ```
 
 ```bash
@@ -79,7 +80,12 @@ ceph osd erasure-code-profile set ec-rack-6 \
   crush-failure-domain=rack
 
 # Option 2: Spread 6 chunks across 4 racks (uneven: some racks get 2, some get 1)
-# This is not directly supported - use osds-per-failure-domain=2 for even distribution
+# MSR rules handle this automatically - 2 racks get 2 chunks, 2 racks get 1
+ceph osd erasure-code-profile set ec-rack-4 \
+  k=4 m=2 \
+  crush-failure-domain=rack \
+  crush-num-failure-domains=4 \
+  crush-osds-per-failure-domain=2
 
 # Option 3: Use only 3 racks with 2 chunks per rack
 ceph osd erasure-code-profile set ec-rack-3 \
@@ -93,7 +99,7 @@ ceph osd erasure-code-profile set ec-rack-3 \
 
 ```bash
 # Create a pool with the custom profile
-ceph osd pool create ec-rack-pool 64 64 erasure ec-rack-3
+ceph osd pool create ec-rack-pool erasure ec-rack-3
 
 # Verify chunk placement
 ceph osd map ec-rack-pool testobject
@@ -104,4 +110,4 @@ ceph pg dump pgs | grep "ec-rack-pool" | head -5
 
 ## Summary
 
-`crush-num-failure-domains` explicitly sets the number of distinct failure domain instances (hosts/racks) that erasure coded chunks are distributed across. It must satisfy `crush-num-failure-domains * crush-osds-per-failure-domain = k + m`. Use this parameter when you need to adapt an erasure coding configuration to a specific number of available hosts or racks without changing k and m values. Always verify that the resulting fault tolerance meets your requirements given the number of chunks per failure domain.
+`crush-num-failure-domains` explicitly sets the number of distinct failure domain instances (hosts/racks) that erasure coded chunks are distributed across. It must satisfy `k + m <= crush-num-failure-domains * crush-osds-per-failure-domain`. Use this parameter when you need to adapt an erasure coding configuration to a specific number of available hosts or racks without changing k and m values. Always verify that the resulting fault tolerance meets your requirements given the number of chunks per failure domain.
