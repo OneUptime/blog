@@ -63,7 +63,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph mon set_location mon.arbiter zone=zone-c
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mon enable_stretch_mode mon.arbiter
+  ceph mon enable_stretch_mode mon.arbiter stretch_rule zone
 ```
 
 Or configure this via the Rook CephCluster CRD:
