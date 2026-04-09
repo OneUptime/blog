@@ -47,6 +47,13 @@ parameters:
   pool: replicapool
   imageFormat: "2"
   imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 ```
@@ -61,13 +68,14 @@ kubectl get cstorvolume -n openebs
 
 # Create a cStor snapshot
 cat << EOF | kubectl apply -f -
-apiVersion: volumesnapshot.external-storage.k8s.io/v1
+apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
   name: pre-migration-snap
   namespace: production
 spec:
-  persistentVolumeClaimName: my-app-data
+  source:
+    persistentVolumeClaimName: my-app-data
 EOF
 ```
 
@@ -133,7 +141,7 @@ spec:
 ```bash
 kubectl apply -f migration-pod.yaml
 kubectl wait pod openebs-to-ceph -n production \
-  --for=condition=Succeeded --timeout=3600s
+  --for=jsonpath='{.status.phase}'=Succeeded --timeout=3600s
 ```
 
 ## Step 4: Application Cutover
