@@ -19,7 +19,7 @@ During peering, the PG is not accessible for reads or writes, making it the most
 ```bash
 # List PGs in peering state
 ceph pg ls peering
-ceph pg dump_stuck peering
+ceph pg dump_stuck inactive
 
 # Count peering PGs
 ceph pg ls peering | wc -l
@@ -155,7 +155,7 @@ ceph osd stat
 ceph osd pool get <pool> min_size  # Should be size-1 or size/2+1
 
 # Check that OSDs have free space (full OSDs stop)
-ceph osd df | awk '$8 > 85 {print "WARNING: OSD", $1, "at", $8"% full"}'
+ceph osd df | awk '$11 > 85 {print "WARNING: OSD", $1, "at", $11"% full"}'
 ```
 
 ## Summary
