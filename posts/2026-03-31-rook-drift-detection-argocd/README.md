@@ -103,13 +103,13 @@ argocd app sync rook-ceph
 
 ## Step 5: Audit Log Integration
 
-Enable ArgoCD audit events for Rook applications:
+Enable JSON-formatted logging on the ArgoCD server to make audit events easier to parse:
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 data:
-  audit.logFormat: json
-  server.enable.gzip: "true"
+  server.log.format: json
+  server.log.level: info
 ```
 
 View sync events:
