@@ -26,7 +26,7 @@ Determine how many OSDs are down relative to your replication factor:
 ceph osd pool ls detail | grep size
 ```
 
-Critical threshold: if `down_osds >= (size - min_size)` for any pool, PGs in that pool may be unavailable.
+Critical threshold: if `down_osds > (size - min_size)` for any pool, PGs in that pool may be unavailable.
 
 ## Checking PG Availability
 
@@ -56,11 +56,13 @@ This prevents Ceph from marking OSDs `out` and triggering unnecessary data movem
 
 ### Temporary failures (network interruption, brief power loss)
 
-Wait for OSDs to come back online naturally. Ceph will resume recovery automatically:
+Wait for OSDs to come back online naturally. Unset all flags to let Ceph resume recovery automatically:
 
 ```bash
 ceph osd unset noout
 ceph osd unset norebalance
+ceph osd unset nobackfill
+ceph osd unset norecover
 ```
 
 ### Permanent OSD failures
@@ -80,7 +82,7 @@ kubectl -n rook-ceph get pods -l app=rook-ceph-osd
 
 ## Rook OSD Replacement Workflow
 
-For permanent OSD failures, update the CephCluster spec to remove the failed OSD device and let Rook reprovision:
+For permanent OSD failures, you can enable automatic OSD removal by setting `removeOSDsIfOutAndSafeToRemove` in the CephCluster spec. This tells Rook to automatically purge OSDs that are marked `out` and safe to destroy:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -89,11 +91,10 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  cleanupPolicy:
-    allowUninstallWithVolumes: false
+  removeOSDsIfOutAndSafeToRemove: true
 ```
 
-Remove the OSD via the Rook operator:
+For manual removal, delete the failed OSD deployment:
 
 ```bash
 kubectl -n rook-ceph delete deployment rook-ceph-osd-<id>
