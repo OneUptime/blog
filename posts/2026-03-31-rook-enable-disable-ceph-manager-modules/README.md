@@ -69,7 +69,7 @@ Some modules cannot be disabled because they provide core cluster functionality:
 ```bash
 # This will fail
 ceph mgr module disable balancer
-# Error: module 'balancer' is always-on
+# Error EINVAL: module 'balancer' cannot be disabled (always-on)
 ```
 
 ## Checking Module Status After Enable
