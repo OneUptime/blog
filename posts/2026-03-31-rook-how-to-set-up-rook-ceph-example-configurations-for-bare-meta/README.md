@@ -22,7 +22,7 @@ Bare metal Rook-Ceph deployments use physical disks directly attached to Kuberne
 # Verify nodes have raw (unused) block devices
 for node in $(kubectl get nodes -o name | cut -d/ -f2); do
   echo "=== $node ==="
-  kubectl debug node/$node -- chroot /host lsblk -d -o NAME,SIZE,TYPE,MOUNTPOINT | grep disk
+  kubectl debug -it --image=busybox node/$node -- chroot /host lsblk -d -o NAME,SIZE,TYPE,MOUNTPOINT | grep disk
 done
 
 # Disks must have no partitions, no filesystems, no LVM
