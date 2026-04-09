@@ -31,7 +31,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd mirror image status replicapool/<image-name>
 ```
 
-Wait until `entries_behind_primary: 0` or `replay_lag: 0s` before proceeding.
+Wait until `entries_behind_primary: 0` (for journal-based mirroring) or until the description shows `replaying` with no pending snapshots (for snapshot-based mirroring) before proceeding.
 
 ## Step 2 - Stop Writes to the Primary Application
 
@@ -77,14 +77,18 @@ spec:
     storage: 50Gi
   accessModes:
   - ReadWriteOnce
-  rbd:
-    monitors:
-    - 192.168.2.1:6789
-    pool: replicapool
-    image: <image-name>
-    user: admin
-    secretRef:
-      name: ceph-secret
+  csi:
+    driver: rook-ceph.rbd.csi.ceph.com
+    fsType: ext4
+    nodeStageSecretRef:
+      name: rook-csi-rbd-node
+      namespace: rook-ceph
+    volumeAttributes:
+      clusterID: rook-ceph
+      pool: replicapool
+      staticVolume: "true"
+      imageFeatures: "layering"
+    volumeHandle: <image-name>
   persistentVolumeReclaimPolicy: Retain
   storageClassName: rook-ceph-block
 ```
@@ -129,10 +133,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Step 7 - Reverse the Mirror Direction (Optional)
 
-If you want to use the new secondary as the ongoing primary and replicate back:
+If pool-level mirroring with two-way peering is configured, replication automatically reverses after Step 6. The demoted image on the original primary begins replaying from the newly promoted primary without additional commands.
+
+If you are using image-level mirroring and the image on the original primary was not previously enabled for mirroring, enable it explicitly:
 
 ```bash
-# Enable reverse replication on the original primary cluster
+# Only needed for image-level mirroring mode
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd mirror image enable replicapool/<image-name> snapshot
 ```
