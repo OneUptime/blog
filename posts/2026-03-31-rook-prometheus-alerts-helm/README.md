@@ -29,7 +29,7 @@ monitoring:
 Upgrade the release:
 
 ```bash
-helm upgrade rook-ceph rook-release/rook-ceph \
+helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
   --namespace rook-ceph \
   --set monitoring.enabled=true \
   --set monitoring.createPrometheusRules=true
@@ -46,7 +46,7 @@ kubectl get prometheusrule -n rook-ceph
 Rook publishes alerting rules in its repository. Apply them directly:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/prometheus-ceph-v14.yaml -n rook-ceph
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/localrules.yaml -n rook-ceph
 ```
 
 ## Option 3 - kube-prometheus-stack Integration
@@ -62,7 +62,7 @@ prometheus:
         kubernetes.io/metadata.name: rook-ceph
     ruleSelector:
       matchLabels:
-        role: alert-rules
+        release: kube-prometheus-stack
 ```
 
 Label the `rook-ceph` namespace for selection:
@@ -78,12 +78,12 @@ The default Rook alerting rules cover:
 ```text
 - CephHealthError          - Cluster is in HEALTH_ERR state
 - CephOSDDown              - One or more OSDs are down
-- CephOSDNearFull          - OSD capacity above 80%
+- CephOSDNearFull          - OSD capacity above 85%
 - CephOSDFull              - OSD capacity above 95%
 - CephMonDown              - Monitor quorum at risk
-- CephPGUnavailable        - Placement groups unavailable
-- CephPoolNearFull         - Pool capacity above 70%
-- CephMgrIsAbsent          - Manager daemon missing
+- CephPGUnavailableBlockingIO - Placement groups unavailable, blocking I/O
+- CephPoolNearFull         - Pool capacity above 85%
+- CephMgrPrometheusModuleInactive - Prometheus manager module inactive
 ```
 
 ## Test an Alert Rule
