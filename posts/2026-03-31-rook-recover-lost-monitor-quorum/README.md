@@ -91,7 +91,13 @@ kubectl -n rook-ceph scale deploy rook-ceph-mon-a --replicas=1
 
 ## Letting Rook Rebuild Monitors
 
-After establishing single-monitor quorum, trigger Rook to add new monitors by confirming the `CephCluster` spec:
+After establishing single-monitor quorum, scale the Rook operator back up so it can manage the cluster again:
+
+```bash
+kubectl -n rook-ceph scale deploy rook-ceph-operator --replicas=1
+```
+
+Confirm the `CephCluster` spec has `mon.count: 3`:
 
 ```bash
 kubectl -n rook-ceph edit cephcluster rook-ceph
