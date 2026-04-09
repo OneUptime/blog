@@ -49,11 +49,11 @@ Use the `rbd` command on the Windows client to map the image:
 
 ```powershell
 # Map the RBD image as a Windows disk
-rbd-nbd map windows-pool/windows-disk01 --id windows-node1 `
+rbd device map windows-pool/windows-disk01 --id windows-node1 `
   --keyring C:\ProgramData\ceph\ceph.client.windows-node1.keyring
 
-# Alternative: use the rbd.exe directly
-rbd map windows-pool/windows-disk01
+# List mapped devices
+rbd device list
 ```
 
 ## Initializing and Formatting the Disk
@@ -83,7 +83,7 @@ Create a startup script to automatically map the RBD image:
 @"
 # Mount Ceph RBD on startup
 $rbdPath = "C:\Program Files\Ceph\bin\rbd.exe"
-& $rbdPath map windows-pool/windows-disk01 --id windows-node1
+& $rbdPath device map windows-pool/windows-disk01 --id windows-node1
 "@ | Set-Content "C:\Scripts\mount-ceph-rbd.ps1"
 
 # Register as a scheduled task at system startup
