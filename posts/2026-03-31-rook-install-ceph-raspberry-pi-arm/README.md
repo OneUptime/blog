@@ -39,36 +39,38 @@ sed -i '/ swap / s/^/#/' /etc/fstab
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 sysctl -p
 
-# Set static IP in /etc/dhcpcd.conf
-echo "interface eth0
-static ip_address=192.168.1.21/24
-static routers=192.168.1.1
-static domain_name_servers=1.1.1.1" >> /etc/dhcpcd.conf
+# Set static IP (Raspberry Pi OS Bookworm uses NetworkManager)
+nmcli c mod "Wired connection 1" ipv4.addresses 192.168.1.21/24 \
+  ipv4.gateway 192.168.1.1 ipv4.dns "1.1.1.1" ipv4.method manual
+nmcli c down "Wired connection 1" && nmcli c up "Wired connection 1"
+
+# On Ubuntu 22.04, use netplan instead:
+# Edit /etc/netplan/50-cloud-init.yaml with static IP config, then run: netplan apply
 ```
 
-## Step 2 - Install Ceph for ARM64
+## Step 2 - Install cephadm
 
-Ceph provides ARM64 packages in its Debian repositories:
+Download the standalone cephadm script, which works on both Raspberry Pi OS and Ubuntu ARM64:
 
 ```bash
-# Add Ceph GPG key
-curl -fsSL https://download.ceph.com/keys/release.gpg | gpg --dearmor \
-  -o /etc/apt/keyrings/ceph.gpg
+# Download cephadm for Squid release
+curl --silent --remote-name --location \
+  https://raw.githubusercontent.com/ceph/ceph/squid/src/cephadm/cephadm.py
+chmod +x cephadm.py
 
-# Add ARM64 repository
-echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/ceph.gpg] https://download.ceph.com/debian-squid/ bookworm main" \
-  > /etc/apt/sources.list.d/ceph.list
+# Add the Ceph repository and install cephadm
+./cephadm.py add-repo --release squid
+./cephadm.py install
 
-apt update
-apt install -y ceph cephadm
+# Verify installation
+which cephadm
 ```
 
-## Step 3 - Install Podman for cephadm
+## Step 3 - Container Runtime
+
+cephadm automatically installs Podman (or uses Docker if present) during bootstrap. No manual container runtime installation is required. After bootstrap, verify ARM64 container support:
 
 ```bash
-apt install -y podman
-
-# Verify ARM64 container support
 podman run --rm arm64v8/alpine uname -m
 # Expected output: aarch64
 ```
@@ -102,12 +104,18 @@ cephadm bootstrap \
 
 The `--skip-monitoring-stack` flag skips Prometheus and Grafana to conserve RAM on the Pi.
 
+Install the Ceph CLI tools on the host for convenience:
+
+```bash
+cephadm install ceph-common
+```
+
 ## Step 6 - Add Remaining Pi Nodes
 
 ```bash
-# Copy SSH keys
-ssh-copy-id -i /etc/ceph/ceph.pub root@192.168.1.22
-ssh-copy-id -i /etc/ceph/ceph.pub root@192.168.1.23
+# Copy SSH keys (-f required since cephadm manages the private key)
+ssh-copy-id -f -i /etc/ceph/ceph.pub root@192.168.1.22
+ssh-copy-id -f -i /etc/ceph/ceph.pub root@192.168.1.23
 
 # Add nodes
 ceph orch host add pi-ceph-2 192.168.1.22
