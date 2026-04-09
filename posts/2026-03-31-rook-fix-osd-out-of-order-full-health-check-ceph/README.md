@@ -116,10 +116,10 @@ ceph health detail
 The `OSD_OUT_OF_ORDER_FULL` error should be gone. Also verify the OSDs are within safe utilization:
 
 ```bash
-ceph osd df | sort -k 8 -rn | head -10
+ceph osd df
 ```
 
-This shows OSDs sorted by utilization percentage. Any OSD above 75% should be flagged for capacity planning.
+Review the `%USE` column for each OSD. Any OSD above 75% should be flagged for capacity planning.
 
 ## Summary
 
