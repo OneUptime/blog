@@ -12,12 +12,12 @@ Description: Learn how to monitor Ceph cluster throughput metrics using Promethe
 
 Ceph exposes cluster-level and per-OSD throughput metrics through Prometheus. The most important ones are:
 
-- `ceph_cluster_total_bytes_read` - cumulative bytes read from the cluster
-- `ceph_cluster_total_bytes_written` - cumulative bytes written to the cluster
-- `ceph_osd_op_r_out_bytes` - bytes read out per OSD
-- `ceph_osd_op_w_in_bytes` - bytes written in per OSD
+- `ceph_osd_op_r_out_bytes` - cumulative bytes read out per OSD
+- `ceph_osd_op_w_in_bytes` - cumulative bytes written in per OSD
+- `ceph_pool_rd_bytes` - cumulative bytes read per pool
+- `ceph_pool_wr_bytes` - cumulative bytes written per pool
 
-Use `rate()` in PromQL to convert these counters to bytes-per-second throughput.
+Use `rate()` in PromQL to convert these counters to bytes-per-second throughput. For cluster-wide totals, aggregate per-OSD or per-pool metrics with `sum()`.
 
 ## Enable Prometheus Metrics
 
@@ -45,12 +45,12 @@ kubectl -n rook-ceph get servicemonitor
 
 Calculate cluster read and write throughput in bytes per second:
 
-```bash
+```promql
 # Cluster write throughput (bytes/sec)
-rate(ceph_cluster_total_bytes_written[5m])
+sum(rate(ceph_osd_op_w_in_bytes[5m]))
 
 # Cluster read throughput (bytes/sec)
-rate(ceph_cluster_total_bytes_read[5m])
+sum(rate(ceph_osd_op_r_out_bytes[5m]))
 
 # Per-OSD write throughput
 rate(ceph_osd_op_w_in_bytes[5m])
@@ -78,9 +78,12 @@ The `ceph -s` output shows current read/write throughput in the `io:` section:
     health: HEALTH_OK
 
   services:
-    io:
-      client:   read: 150 MiB/s
-                write: 80 MiB/s
+    mon: ...
+    mgr: ...
+    osd: ...
+
+  io:
+    client:   150 MiB/s rd, 80 MiB/s wr
 ```
 
 ## Benchmark Throughput with rados bench
@@ -115,14 +118,14 @@ spec:
     - name: ceph-throughput
       rules:
         - alert: CephHighWriteThroughput
-          expr: rate(ceph_cluster_total_bytes_written[5m]) > 500e6
+          expr: sum(rate(ceph_osd_op_w_in_bytes[5m])) > 500e6
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Ceph write throughput above 500 MB/s for 10 minutes"
         - alert: CephLowReadThroughput
-          expr: rate(ceph_cluster_total_bytes_read[5m]) < 1e6
+          expr: sum(rate(ceph_osd_op_r_out_bytes[5m])) < 1e6
           for: 30m
           labels:
             severity: info
@@ -141,4 +144,4 @@ Build a throughput dashboard with these panels:
 
 ## Summary
 
-Monitoring Ceph throughput requires querying Prometheus with `rate()` on cumulative counter metrics to derive bytes-per-second values for both reads and writes. Combining Prometheus alerts for throughput anomalies with Grafana dashboards gives operators visibility into normal traffic patterns and early warning of bottlenecks or unexpected workload spikes.
+Monitoring Ceph throughput requires querying Prometheus with `rate()` on per-OSD or per-pool counter metrics and aggregating with `sum()` to derive cluster-wide bytes-per-second values for both reads and writes. Combining Prometheus alerts for throughput anomalies with Grafana dashboards gives operators visibility into normal traffic patterns and early warning of bottlenecks or unexpected workload spikes.
