@@ -40,11 +40,11 @@ spec:
   displayName: "Application Service User"
   # Optional: set capabilities (default is full access)
   capabilities:
-    user: "read, write, list"
-    bucket: "read, write, list"
-    metadata: "read, write, list"
-    usage: "read, write, list"
-    zone: "read, write, list"
+    user: "read, write"
+    bucket: "read, write"
+    metadata: "read, write"
+    usage: "read, write"
+    zone: "read, write"
   # Optional: set storage quotas
   quotas:
     maxBuckets: 10
@@ -134,11 +134,11 @@ radosgw-admin key rm \
 ```bash
 radosgw-admin quota set \
   --uid=app-user \
-  --quota-type=user \
+  --quota-scope=user \
   --max-objects=50000 \
   --max-size=10GiB
 
-radosgw-admin quota enable --uid=app-user --quota-type=user
+radosgw-admin quota enable --uid=app-user --quota-scope=user
 ```
 
 ### Suspend a User (Disable Access)
@@ -179,13 +179,13 @@ radosgw-admin bucket stats --bucket=my-app-data
 ```bash
 radosgw-admin quota set \
   --bucket=my-app-data \
-  --quota-type=bucket \
+  --quota-scope=bucket \
   --max-size=5GiB \
   --max-objects=10000
 
 radosgw-admin quota enable \
   --bucket=my-app-data \
-  --quota-type=bucket
+  --quota-scope=bucket
 ```
 
 ### Link a Bucket to a Different User
@@ -231,10 +231,10 @@ Check per-user usage:
 radosgw-admin usage show --uid=app-user
 ```
 
-Trim usage logs older than 30 days:
+Trim usage logs older than 30 days (adjust the end date as needed):
 
 ```bash
-radosgw-admin usage trim --start-date=2026-01-01
+radosgw-admin usage trim --end-date=2026-03-01
 ```
 
 ## Summary
