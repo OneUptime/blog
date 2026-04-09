@@ -83,8 +83,8 @@ If backfill is progressing too slowly:
 
 ```bash
 ceph config set osd osd_max_backfills 4
-ceph config set osd osd_backfill_scan_min 64
-ceph config set osd osd_backfill_scan_max 512
+ceph config set osd osd_backfill_scan_min 128
+ceph config set osd osd_backfill_scan_max 1024
 ```
 
 ### Step 3 - Throttle Backfill if Impacting Clients
@@ -93,13 +93,13 @@ If backfill is too aggressive and degrading client I/O:
 
 ```bash
 ceph config set osd osd_max_backfills 1
-ceph config set osd osd_backfill_full_ratio 0.85
+ceph osd set-backfillfull-ratio 0.85
 ```
 
 ### Step 4 - Check for Stuck PGs
 
 ```bash
-ceph pg dump_stuck | grep remapped
+ceph pg ls remapped
 ```
 
 Force recovery on stuck PGs:
