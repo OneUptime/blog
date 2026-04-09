@@ -46,7 +46,7 @@ for v in vols:
 openstack server remove volume <instance-id> <volume-id>
 
 # Create an LVM snapshot
-lvcreate -L100%ORIGIN -s -n snap_<volume-uuid> /dev/cinder-volumes/volume-<volume-uuid>
+lvcreate -l 100%ORIGIN -s -n snap_<volume-uuid> /dev/cinder-volumes/volume-<volume-uuid>
 
 # Export to raw image
 dd if=/dev/cinder-volumes/snap_<volume-uuid> \
@@ -57,7 +57,11 @@ dd if=/dev/cinder-volumes/snap_<volume-uuid> \
 ## Step 3: Import Raw Image into Ceph RBD
 
 ```bash
-# Import into Ceph RBD (from Rook toolbox)
+# Copy the raw image from the host into the Rook toolbox pod
+TOOLBOX_POD=$(kubectl -n rook-ceph get pod -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
+kubectl cp /tmp/volume-<volume-uuid>.raw rook-ceph/$TOOLBOX_POD:/tmp/volume-<volume-uuid>.raw
+
+# Open a shell in the Rook toolbox
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- bash
 
 # Import the raw image as an RBD volume
@@ -96,10 +100,10 @@ rbd_secret_uuid = <libvirt-secret-uuid>
 For existing volumes, update the Cinder database to reflect the new RBD location:
 
 ```bash
-# Using cinder-manage (OpenStack CLI)
-cinder-manage db migrate
-openstack volume update <volume-id> \
-  --property volume_backend_name=ceph
+# Update the host field for volumes to point to the Ceph backend
+cinder-manage volume update_host \
+  --currenthost <old-host>@lvm#LVM \
+  --newhost <cinder-host>@ceph#ceph
 ```
 
 ## Step 6: Verify and Reattach Volumes
@@ -124,7 +128,8 @@ lsblk
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
   ceph auth get-or-create client.cinder \
     mon 'profile rbd' \
-    osd 'profile rbd pool=replicapool'
+    osd 'profile rbd pool=replicapool' \
+    mgr 'profile rbd pool=replicapool'
 
 # Get the key for cinder.conf
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
