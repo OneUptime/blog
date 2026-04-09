@@ -50,10 +50,9 @@ EXPORT_DEFAULTS {
     Squash = No_Root_Squash;
 }
 
-FSAL {
-    name = RGW;
+RGW {
     ceph_conf = "/etc/ceph/ceph.conf";
-    name = "rgw.ganesha";
+    name = "client.rgw.ganesha";
     cluster = "ceph";
 }
 
@@ -67,11 +66,9 @@ EXPORT {
     Squash = No_Root_Squash;
     FSAL {
         name = RGW;
-        rgw_name = "rgw.ganesha";
         user_id = "nfs-user";
         access_key_id = "NFS_ACCESS_KEY";
         secret_access_key = "NFS_SECRET_KEY";
-        bucket = "mybucket";
     }
 }
 EOF
@@ -128,9 +125,6 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: rook-ceph-nfs
-    namespace: nfs-ns
   server:
     active: 1
     resources:
