@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix clock skew warnings between Ceph moni
 
 ## Why Clock Skew Breaks Ceph Monitors
 
-Ceph monitors use time-based consensus. If system clocks diverge by more than the `mon_clock_drift_allowed` threshold (default: 0.05 seconds / 50 milliseconds), monitors emit `HEALTH_WARN` messages and may refuse to form quorum. Severe clock skew (default threshold: 2x drift allowed) causes monitors to reject peer connections entirely, potentially losing quorum.
+Ceph monitors use time-based consensus. If system clocks diverge by more than the `mon_clock_drift_allowed` threshold (default: 0.05 seconds / 50 milliseconds), monitors emit `HEALTH_WARN` messages and may refuse to form quorum. Severe clock skew can cause election storms where monitors get stuck in the electing state, potentially losing quorum.
 
 Modern Kubernetes nodes running on bare metal or VMs rely on NTP (typically `chrony` or `ntpd`) for clock synchronization. Container runtimes inherit the host clock, so all Ceph processes on a node use the host's system clock.
 
@@ -55,7 +55,11 @@ Install and configure chrony on all nodes:
 sudo apt-get install -y chrony || sudo yum install -y chrony
 
 # Configure NTP servers
-sudo tee /etc/chrony.conf > /dev/null <<'EOF'
+# Config path: /etc/chrony.conf on RHEL/CentOS, /etc/chrony/chrony.conf on Debian/Ubuntu
+CHRONY_CONF="/etc/chrony.conf"
+[ -d /etc/chrony ] && CHRONY_CONF="/etc/chrony/chrony.conf"
+
+sudo tee "$CHRONY_CONF" > /dev/null <<'EOF'
 server 0.pool.ntp.org iburst
 server 1.pool.ntp.org iburst
 server 2.pool.ntp.org iburst
@@ -65,7 +69,8 @@ makestep 1.0 3
 rtcsync
 EOF
 
-sudo systemctl enable --now chronyd
+# Service name: chronyd on RHEL/CentOS, chrony on Debian/Ubuntu
+sudo systemctl enable --now chronyd 2>/dev/null || sudo systemctl enable --now chrony
 ```
 
 Force clock synchronization:
