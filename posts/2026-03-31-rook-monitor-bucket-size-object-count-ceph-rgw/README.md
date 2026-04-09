@@ -20,20 +20,30 @@ Use `radosgw-admin` to get detailed statistics for a specific bucket:
 radosgw-admin bucket stats --bucket my-bucket
 ```
 
-Sample output:
+Sample output (abbreviated):
 
 ```json
 {
   "bucket": "my-bucket",
-  "num_objects": 1523,
-  "size": 4831838208,
-  "size_actual": 4831838208,
-  "size_kb": 4718592,
-  "size_kb_actual": 4718600
+  "owner": "alice",
+  "usage": {
+    "rgw.main": {
+      "size": 4831838208,
+      "size_actual": 4831838208,
+      "size_kb": 4718592,
+      "size_kb_actual": 4718600,
+      "num_objects": 1523
+    }
+  },
+  "bucket_quota": {
+    "enabled": false,
+    "max_size": -1,
+    "max_objects": -1
+  }
 }
 ```
 
-The `size` field is in bytes. Divide by 1073741824 for GB.
+The `usage.rgw.main.size` field is in bytes. Divide by 1073741824 for GB.
 
 ## Listing All Buckets with Usage
 
@@ -59,7 +69,7 @@ Check how much storage a specific user consumes:
 radosgw-admin user stats --uid=alice
 ```
 
-Enable usage tracking if not already on (required for per-user stats):
+Enable usage tracking if not already on (required for `usage show` logs):
 
 ```bash
 ceph config set client.rgw rgw_enable_usage_log true
@@ -85,14 +95,24 @@ radosgw-admin bucket check --bucket my-bucket --fix
 If you have the Ceph MGR Prometheus module enabled, bucket metrics are exposed:
 
 ```bash
-curl http://mgr-host:9283/metrics | grep rgw_bucket
+curl http://mgr-host:9283/metrics | grep ceph_rgw
 ```
 
-Relevant metrics include:
+Relevant per-daemon metrics include:
 - `ceph_rgw_req` - total RGW requests
-- `ceph_rgw_get_b` - bytes served via GET
+- `ceph_rgw_get` - GET operation count
+- `ceph_rgw_get_b` - bytes transferred via GET
+- `ceph_rgw_put` - PUT operation count
+- `ceph_rgw_put_b` - bytes transferred via PUT
+- `ceph_rgw_failed_req` - failed HTTP requests
 
-For per-bucket dashboards, use the Ceph RGW Grafana dashboard from the community repository.
+For per-bucket metrics, enable bucket counters on your RGW daemons:
+
+```bash
+ceph config set client.rgw rgw_bucket_counters_cache true
+```
+
+For RGW dashboards, use the Ceph RGW Grafana dashboard from the community repository.
 
 ## Scripting a Usage Report
 
