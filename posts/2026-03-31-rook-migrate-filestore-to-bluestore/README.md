@@ -10,7 +10,7 @@ Description: Step-by-step guide to migrating Ceph OSDs from the legacy FileStore
 
 ## Why Migrate from FileStore to BlueStore
 
-FileStore was the original Ceph OSD backend, storing objects as files on an XFS filesystem. BlueStore, introduced in Ceph Luminous, stores data directly on raw block devices without an intermediate filesystem. BlueStore delivers 2x write performance improvement, built-in checksumming, inline compression, and lower CPU overhead. All Ceph clusters running Nautilus or later should use BlueStore exclusively. If you have legacy FileStore OSDs, migrating them is essential for performance and supportability.
+FileStore was the original Ceph OSD backend, storing objects as files on an XFS filesystem. BlueStore, introduced in Ceph Luminous, stores data directly on raw block devices without an intermediate filesystem. BlueStore delivers significant write performance improvements (20-30%+ depending on workload), built-in checksumming, inline compression, and lower CPU overhead. All Ceph clusters running Nautilus or later should use BlueStore exclusively. If you have legacy FileStore OSDs, migrating them is essential for performance and supportability.
 
 ## Pre-Migration Checks
 
@@ -46,7 +46,7 @@ Wait for the cluster to recover fully before proceeding:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  watch ceph status
+  ceph -w
 ```
 
 ### Step 2 - Remove the OSD via Rook
@@ -82,8 +82,8 @@ spec:
       nodeName: <node-name>
       containers:
       - name: wipe
-        image: busybox
-        command: ["sh", "-c", "dd if=/dev/zero of=/dev/sdX bs=1M count=100"]
+        image: rook/ceph:master
+        command: ["sh", "-c", "wipefs -a /dev/sdX && sgdisk --zap-all /dev/sdX && dd if=/dev/zero of=/dev/sdX bs=1M count=100"]
         securityContext:
           privileged: true
         volumeMounts:
