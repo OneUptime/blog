@@ -42,10 +42,28 @@ Example output showing a size mismatch:
   "epoch": 42,
   "inconsistents": [
     {
-      "object": { "name": "my-object", "snap": "head" },
-      "errors": ["size_mismatch"],
-      "osd": 3,
-      "primary": false
+      "object": {
+        "name": "my-object",
+        "nspace": "",
+        "locator": "",
+        "snap": "head"
+      },
+      "errors": [],
+      "union_shard_errors": ["size_mismatch_info"],
+      "shards": [
+        {
+          "osd": 0,
+          "primary": true,
+          "errors": [],
+          "size": 1024
+        },
+        {
+          "osd": 3,
+          "primary": false,
+          "errors": ["size_mismatch_info"],
+          "size": 512
+        }
+      ]
     }
   ]
 }
@@ -97,18 +115,21 @@ ceph tell osd.0 perf dump | python3 -m json.tool | grep -i inconsist
 
 ## Comparing Object Data Manually
 
-For thorough validation, use rados get to compare object content across pools:
+Ceph manages replicas internally across OSDs within the same pool, so you cannot retrieve individual replicas with `rados get`. To compare object data on different OSDs directly, use `ceph-objectstore-tool` on the OSD nodes:
 
 ```bash
-rados -p mypool get myobject /tmp/obj1
-rados -p mypool-replica get myobject /tmp/obj2
-diff /tmp/obj1 /tmp/obj2
+# On the OSD node hosting osd.0
+ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-0 --pgid 2.1a myobject get-bytes /tmp/obj_osd0
+
+# On the OSD node hosting osd.3
+ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-3 --pgid 2.1a myobject get-bytes /tmp/obj_osd3
 ```
 
-Or compute checksums:
+Then compare the two files:
 
 ```bash
-md5sum /tmp/obj1 /tmp/obj2
+diff /tmp/obj_osd0 /tmp/obj_osd3
+md5sum /tmp/obj_osd0 /tmp/obj_osd3
 ```
 
 ## Automating Consistency Checks
@@ -118,11 +139,11 @@ Write a script to check consistency daily:
 ```bash
 #!/bin/bash
 POOL="mypool"
-INCONSISTENT=$(rados list-inconsistent-pg $POOL 2>/dev/null | wc -l)
+INCONSISTENT=$(rados list-inconsistent-pg "$POOL" 2>/dev/null | jq 'length')
 
 if [ "$INCONSISTENT" -gt 0 ]; then
   echo "WARNING: $INCONSISTENT inconsistent PGs found in $POOL"
-  rados list-inconsistent-pg $POOL
+  rados list-inconsistent-pg "$POOL"
   exit 1
 fi
 echo "All PGs consistent in $POOL"
