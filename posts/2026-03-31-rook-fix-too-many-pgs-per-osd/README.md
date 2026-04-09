@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix the HEALTH_WARN TOO_MANY_PGS warning 
 
 ## Understanding the TOO_MANY_PGS Warning
 
-Ceph recommends keeping PGs per OSD between 100 and 250. When the ratio exceeds a configurable threshold (default: 300 PGs per OSD), the cluster emits a `HEALTH_WARN` with `TOO_MANY_PGS`. Each PG consumes approximately 10 MB of RAM per OSD and CPU resources for tracking. Excessive PGs cause:
+Ceph recommends keeping PGs per OSD between 100 and 200. When the ratio exceeds a configurable threshold (default: 300 PGs per OSD), the cluster emits a `HEALTH_WARN` with `TOO_MANY_PGS`. Each PG consumes memory (typically a few megabytes per PG per OSD, varying with object count) and CPU resources for tracking. Excessive PGs cause:
 
 - Higher memory consumption on all OSDs
 - Slower recovery times
@@ -25,18 +25,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph health detail
 ```
 
-View PGs per OSD:
+View PGs per OSD (check the `PGS` column in the output):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd df | awk 'NR>1 && NF>0 {print $1, "PGs:", $14}' | head -20
+  ceph osd df
 ```
 
 List all pools and their PG counts:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd lspools
+  ceph osd pool ls
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool ls detail | grep pg_num
@@ -67,7 +67,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set replicapool pg_num 64
 ```
 
-Note: `pg_num` can be decreased since Luminous. Wait for PG merging to complete before further reduction.
+Note: `pg_num` can be decreased since Nautilus (14.2.x). Wait for PG merging to complete before further reduction.
 
 ## Solution 3 - Delete Unused Pools
 
