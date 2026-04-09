@@ -14,14 +14,14 @@ Rook-Ceph provides a `logCollector` feature that runs a sidecar container alongs
 
 ```mermaid
 flowchart TD
-    OSD["OSD Pod"]
-    subgraph OSD
+    subgraph OSD["OSD Pod"]
         OSDDaemon["ceph-osd process\n(writes /var/lib/rook/rook-ceph/log/)"]
-        Sidecar["logcollector sidecar\n(rotates + ships logs)"]
+        Sidecar["logcollector sidecar\n(rotates logs)"]
     end
     OSDDaemon --> LogFile["/var/lib/rook/rook-ceph/log/ceph-osd.0.log"]
     LogFile --> Sidecar
-    Sidecar --> Fluentd["External Log Aggregator\n(Fluentd/Loki)"]
+    LogFile --> FluentBit["Fluent Bit DaemonSet\n(reads rotated logs from hostPath)"]
+    FluentBit --> Loki["External Log Aggregator\n(Loki/Elasticsearch)"]
 ```
 
 ## Configuring the Log Collector
@@ -111,7 +111,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Reset to default after debugging
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd debug_osd 0/5
+  ceph config set osd debug_osd 1/5
 ```
 
 ## Shipping Logs to an External Aggregator
