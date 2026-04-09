@@ -19,9 +19,6 @@ For objects larger than 100 MB, clients should use multipart upload. Configure R
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_multipart_min_part_size 67108864
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_multipart_sync_on_manifest true
 ```
 
 Set the maximum object size allowed:
@@ -31,16 +28,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_max_put_size 107374182400
 ```
 
-## Network Buffer Tuning
+## Write Window and Timeout Tuning
 
-Increase TCP send/receive buffers for large object transfers:
+Increase the RGW write window size and operation timeout for large object transfers:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_op_thread_timeout 600
+  ceph config set client.rgw rgw_op_thread_timeout 1800
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_put_obj_max_window_size 67108864
+  ceph config set client.rgw rgw_put_obj_max_window_size 134217728
 ```
 
 Set the maximum chunk size for object writes:
@@ -91,7 +88,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_frontends \
-    "beast port=80 num_threads=128 request_timeout_ms=600000"
+    "beast port=80 request_timeout_ms=600000"
 ```
 
 ## Concurrent Large Object Uploads
