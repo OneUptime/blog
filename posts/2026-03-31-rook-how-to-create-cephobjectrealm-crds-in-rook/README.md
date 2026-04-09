@@ -14,8 +14,7 @@ A CephObjectRealm is the top-level organizational unit in Ceph RGW multisite. It
 
 When you create a CephObjectRealm in Rook, the operator:
 1. Creates the realm in the Ceph cluster
-2. Designates the local cluster as the master zone
-3. Makes the realm available for zone group and zone CRDs to reference
+2. Makes the realm available for zone group and zone CRDs to reference
 
 ## Creating a CephObjectRealm
 
@@ -27,6 +26,7 @@ kind: CephObjectRealm
 metadata:
   name: my-realm
   namespace: rook-ceph
+spec: {}
 ```
 
 Apply the manifest:
@@ -72,7 +72,7 @@ Get detailed realm information:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin realm get --rgwrealm=my-realm
+  radosgw-admin realm get --rgw-realm=my-realm
 ```
 
 Output shows the realm ID and epoch:
@@ -92,7 +92,7 @@ Once the realm is established, export it to configure secondary clusters:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin realm export --rgwrealm=my-realm
+  radosgw-admin realm export --rgw-realm=my-realm
 ```
 
 Save the output as a JSON file and apply it to secondary clusters using `realm import`.
