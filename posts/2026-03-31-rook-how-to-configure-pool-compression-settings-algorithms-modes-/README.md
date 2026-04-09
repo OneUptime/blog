@@ -125,15 +125,8 @@ ceph df detail | grep compressed-pool
 # View compression statistics from OSD
 ceph daemon osd.0 perf dump | grep compress
 
-# Pool-level compression ratio
-ceph osd pool stats compressed-pool --format json | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for pool in data:
-    if pool.get('pool_name') == 'compressed-pool':
-        stored = pool.get('client_stats', {}).get('write_bytes_sec', 0)
-        print(pool)
-"
+# View pool I/O statistics
+ceph osd pool stats compressed-pool
 ```
 
 ## Best Practices for Compression
