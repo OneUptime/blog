@@ -35,14 +35,14 @@ ceph progress
 Example output:
 
 ```text
-Global Recovery Event
-  [========================  ] (Progress: 0.97)
+Global Recovery Event (2m)
+    [========================......] (remaining: 01m)
 
-Rebalancing after osd.4 down
-  [================          ] (Progress: 0.63)
+Rebalancing after osd.4 marked out (5m)
+    [================..............] (remaining: 03m)
 ```
 
-The progress bar shows completion from 0.0 to 1.0 (0% to 100%).
+The progress bar visually represents completion, with `=` for completed and `.` for remaining work.
 
 ## Clearing Completed Events
 
@@ -106,7 +106,7 @@ Operations that create progress events include:
 - PG recovery after OSD failure
 - Data backfill after adding OSDs
 - Data rebalancing triggered by CRUSH map changes
-- Scrub operations on large pools
+- PG autoscaler adjustments when matching target PG counts
 
 ## Summary
 
