@@ -56,10 +56,11 @@ rbd rm <pool-name>/<image-name>
 rbd snap purge <pool-name>/<image-name>
 ```
 
-For CephFS, remove large files:
+For CephFS, find and remove large files from within a mounted CephFS volume:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- cephfs-top
+du -sh /mnt/cephfs/*
+find /mnt/cephfs -type f -size +1G
 ```
 
 ### Option 2 - Expand the Cluster
