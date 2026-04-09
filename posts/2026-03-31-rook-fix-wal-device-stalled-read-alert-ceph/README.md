@@ -99,7 +99,7 @@ update-initramfs -u
 If the WAL device is overwhelmed, reduce WAL size to limit what BlueStore writes there:
 
 ```bash
-ceph config set osd.4 bluestore_wal_size 268435456  # 256MB
+ceph config set osd.4 bluestore_block_wal_size 268435456  # 256MB
 ```
 
 Restart the OSD to apply:
