@@ -55,7 +55,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 smartctl -a /dev/sdb
 ```
 
-Look for `Reallocated_Sector_Ct`, `Pending_Sector`, or a non-zero `Offline_Uncorrectable` value.
+Look for `Reallocated_Sector_Ct`, `Current_Pending_Sector`, or a non-zero `Offline_Uncorrectable` value.
 
 ### Step 2 - Mark the OSD Out
 
@@ -86,10 +86,9 @@ ceph pg dump osds | awk '$1 == 2 {print $0}'
 Once PG count is zero:
 
 ```bash
-ceph osd down osd.2
-ceph osd rm osd.2
 ceph osd crush remove osd.2
 ceph auth del osd.2
+ceph osd rm osd.2
 ```
 
 Replace the disk and let Rook reprovision:
