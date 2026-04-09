@@ -17,36 +17,12 @@ For Rook clusters using PVC-based OSD storage (common in cloud environments), en
 In a PVC-based encrypted OSD setup:
 1. Each OSD PVC contains a LUKS-encrypted block device
 2. LUKS passphrase is stored in an external KMS (Vault, IBM Key Protect, etc.)
-3. On OSD startup, Rook CSI retrieves the key from KMS and unlocks the device
+3. On OSD startup, the Rook operator retrieves the key from KMS and unlocks the device
 4. On OSD shutdown, the key is not stored locally
-
-## Configure the KMS ConfigMap
-
-First, set up the `rook-ceph-csi-kms-config` ConfigMap with your KMS details. For HashiCorp Vault:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-ceph-csi-kms-config
-  namespace: rook-ceph
-data:
-  config.json: |-
-    {
-      "vault-osd-kms": {
-        "encryptionKMSType": "vault",
-        "vaultAddress": "https://vault.example.com:8200",
-        "vaultAuthPath": "/v1/auth/kubernetes/login",
-        "vaultRole": "rook-osd-encryption",
-        "vaultPassphraseRoot": "/v1/secret",
-        "vaultPassphrasePath": "rook-ceph/osd/"
-      }
-    }
-```
 
 ## Enable Encryption in CephCluster CRD
 
-Configure the OSD `storageDeviceSets` with encryption enabled:
+Configure the OSD `storageClassDeviceSets` with encryption enabled. The KMS connection is configured directly in the CephCluster CR's `security.kms` section (note: the `rook-ceph-csi-kms-config` ConfigMap is for CSI per-volume encryption, which is separate from OSD encryption):
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -78,8 +54,7 @@ spec:
         KMS_PROVIDER: vault
         VAULT_ADDR: https://vault.example.com:8200
         VAULT_BACKEND_PATH: secret
-        VAULT_AUTH_METHOD: kubernetes
-        VAULT_AUTH_KUBERNETES_ROLE: rook-osd-encryption
+        VAULT_SECRET_ENGINE: kv
       tokenSecretName: rook-vault-kms-token
 ```
 
@@ -99,10 +74,11 @@ After deployment, check that OSD pods initialized with LUKS encryption:
 kubectl logs -n rook-ceph -l app=rook-ceph-osd --container osd | grep -i "luks\|encrypt"
 ```
 
-From the toolbox, verify OSD encryption status:
+From an OSD pod, confirm the underlying block device is a dm-crypt (LUKS) device:
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph osd dump | grep -i encrypt
+OSD_POD=$(kubectl get pod -n rook-ceph -l app=rook-ceph-osd -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rook-ceph "$OSD_POD" -- lsblk | grep crypt
 ```
 
 ## Summary
