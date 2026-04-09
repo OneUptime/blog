@@ -58,7 +58,7 @@ bs = d.get('bluestore', {})
 for key in ['state_kv_committing_lat', 'state_io_done_lat', 'state_finishing_lat']:
     if key in bs:
         v = bs[key]
-        print(f'{key}: avg={v.get(\"avgcount\", 0)}')"
+        print(f'{key}: avgtime={v.get(\"avgtime\", 0)}')"
 ```
 
 Key BlueStore latency stages:
@@ -67,7 +67,7 @@ Key BlueStore latency stages:
 |---------------------------|--------------------------------------|
 | `state_io_done_lat`       | Time for device I/O to complete      |
 | `state_kv_committing_lat` | RocksDB/WAL commit latency           |
-| `state_finishing_lat`     | Total write path latency             |
+| `state_finishing_lat`     | Post-commit finalization latency     |
 
 ## Network Round-Trip Latency
 
