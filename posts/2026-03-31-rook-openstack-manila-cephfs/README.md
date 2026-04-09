@@ -78,8 +78,7 @@ openstack share type create cephfs False \
 openstack share create \
   --name my-cephfs-share \
   --share-type cephfs \
-  --size 100 \
-  CEPHFS
+  CEPHFS 100
 ```
 
 ## Step 6: Grant Access and Mount
