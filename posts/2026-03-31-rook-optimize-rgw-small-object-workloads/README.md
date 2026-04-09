@@ -24,7 +24,6 @@ metadata:
   namespace: rook-ceph
 spec:
   gateway:
-    type: s3
     port: 80
     instances: 2
     resources:
@@ -41,9 +40,6 @@ Configure thread count via Ceph config:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_thread_pool_size 512
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_num_rados_handles 16
 ```
 
 ## Bucket Index Sharding
@@ -78,7 +74,7 @@ Use the Beast frontend (default in modern Ceph) for best small object performanc
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_frontends "beast port=80 num_threads=512"
+  ceph config set client.rgw rgw_frontends "beast port=80"
 ```
 
 ## Dedicated Pool for Small Objects
@@ -93,13 +89,13 @@ metadata:
   namespace: rook-ceph
 spec:
   metadataPool:
+    deviceClass: ssd
     replicated:
       size: 3
-      deviceClass: ssd
   dataPool:
+    deviceClass: ssd
     replicated:
       size: 3
-      deviceClass: ssd
 ```
 
 ## Benchmarking Small Object IOPS
