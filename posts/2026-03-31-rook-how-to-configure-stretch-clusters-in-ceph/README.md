@@ -51,25 +51,12 @@ ceph osd crush move node-b1 datacenter=datacenter-b
 ceph osd crush move node-b2 datacenter=datacenter-b
 ```
 
-## Step 2 - Configure the Stretch Cluster
+## Step 2 - Create Stretch Pool CRUSH Rules
 
-Enable stretch mode with the arbiter monitor:
-
-```bash
-ceph mon enable_stretch_mode mon.arbiter datacenter datacenter-a datacenter-b
-```
-
-This command:
-- Sets the tiebreaker monitor to `mon.arbiter`
-- Configures the CRUSH failure domain to `datacenter`
-- Sets `min_size=1` for the stretch pool (since 3 copies span two sites, losing one site gives 1 copy)
-
-## Step 3 - Create Stretch Pool CRUSH Rules
-
-The pool must be configured to place one copy per datacenter:
+The pool must be configured to distribute copies across both datacenters:
 
 ```bash
-ceph osd crush rule create-replicated stretch_rule default datacenter host
+ceph osd crush rule create-replicated stretch_rule default datacenter
 ```
 
 Verify the rule:
@@ -77,6 +64,26 @@ Verify the rule:
 ```bash
 ceph osd crush rule dump stretch_rule
 ```
+
+## Step 3 - Configure the Stretch Cluster
+
+Set the monitor election strategy to connectivity mode, which is required for stretch mode:
+
+```bash
+ceph mon set election_strategy connectivity
+```
+
+Enable stretch mode with the arbiter monitor:
+
+```bash
+ceph mon enable_stretch_mode arbiter stretch_rule datacenter
+```
+
+This command:
+- Sets the tiebreaker monitor to `mon.arbiter`
+- Applies the `stretch_rule` CRUSH rule to all existing pools
+- Configures the CRUSH bucket type `datacenter` as the site divider
+- When a site fails, the cluster enters degraded stretch mode and automatically reduces min_size so I/O continues from the surviving site
 
 ## Step 4 - Apply the Rule to Pools
 
@@ -91,8 +98,8 @@ With size=4 and two sites, each site holds 2 replicas. The pool can survive a co
 ## Step 5 - Verify Stretch Mode
 
 ```bash
-ceph mon stat
-# Should show: stretch_mode=true, tiebreaker_mon=mon.arbiter
+ceph mon dump
+# Should show: stretch_mode_enabled, tiebreaker_mon=arbiter
 
 ceph osd crush tree
 # Verify datacenter buckets are visible
@@ -142,4 +149,4 @@ ceph pg dump | awk '{print $1, $14}' | head -20
 
 ## Summary
 
-A Ceph stretch cluster enables site-level fault tolerance by distributing OSDs across two data centers and using an arbiter monitor for quorum. Configuring it requires proper CRUSH map topology with datacenter buckets, stretch-mode pool rules with size=4 for 2+2 replica placement, and enabling stretch mode via `ceph mon enable_stretch_mode`. This setup ensures continued operation even if one entire data center goes offline.
+A Ceph stretch cluster enables site-level fault tolerance by distributing OSDs across two data centers and using an arbiter monitor for quorum. Configuring it requires proper CRUSH map topology with datacenter buckets, stretch-mode pool rules with size=4 for 2+2 replica placement, setting the election strategy to connectivity, and enabling stretch mode via `ceph mon enable_stretch_mode`. This setup ensures continued operation even if one entire data center goes offline.
