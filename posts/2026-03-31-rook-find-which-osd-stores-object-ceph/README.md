@@ -76,18 +76,21 @@ ceph osd find 1
 ceph osd find 7
 ```
 
-Each returns the host name and data path.
+Each returns JSON with the host name, network address, and CRUSH location.
 
 ## Step 4: Verify the Object Exists on the OSD
 
-SSH to the primary OSD's host and check:
+SSH to the primary OSD's host. The OSD must be stopped before `ceph-objectstore-tool` can access the data directory:
 
 ```bash
-# Find the OSD data directory
-ls /var/lib/ceph/osd/ceph-4/
+# Stop the OSD first (required — BlueStore locks the data directory)
+systemctl stop ceph-osd@4
 
 # List RADOS objects (BlueStore)
 ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-4 --op list | grep rbd_data.1234abc
+
+# Restart the OSD when done
+systemctl start ceph-osd@4
 ```
 
 ## Scripting for Multiple Objects
