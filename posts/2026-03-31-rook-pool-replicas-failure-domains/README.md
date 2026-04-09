@@ -39,11 +39,11 @@ spec:
 For production deployments, spreading replicas across racks prevents data loss during rack-level failures. First, label your nodes with rack information:
 
 ```bash
-kubectl label node node1 topology.kubernetes.io/zone=rack-a
-kubectl label node node2 topology.kubernetes.io/zone=rack-a
-kubectl label node node3 topology.kubernetes.io/zone=rack-b
-kubectl label node node4 topology.kubernetes.io/zone=rack-b
-kubectl label node node5 topology.kubernetes.io/zone=rack-c
+kubectl label node node1 topology.rook.io/rack=rack-a
+kubectl label node node2 topology.rook.io/rack=rack-a
+kubectl label node node3 topology.rook.io/rack=rack-b
+kubectl label node node4 topology.rook.io/rack=rack-b
+kubectl label node node5 topology.rook.io/rack=rack-c
 ```
 
 Configure Rook to use rack topology:
