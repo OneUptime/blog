@@ -88,7 +88,7 @@ ceph health detail | grep "auth\|denied"
 Re-create a missing keyring:
 
 ```bash
-ceph auth get-or-create client.admin osd "allow *" mon "allow *" mgr "allow *"
+ceph auth get-or-create client.admin osd "allow *" mon "allow *" mgr "allow *" mds "allow *"
 ```
 
 ## 8 - RBD Image Locked
@@ -107,7 +107,7 @@ rbd lock remove POOL/IMAGE "LOCKID" "LOCKER"
 
 ```bash
 ceph osd pool stats POOL
-ceph osd pool get POOL quota
+ceph osd pool get-quota POOL
 ```
 
 Temporarily increase quota:
