@@ -21,6 +21,7 @@ Before renaming:
 - All clients should be unmounted from the filesystem
 - MDS daemons should be active
 - The new name must not already be in use by another filesystem
+- Mirroring must be disabled on the filesystem
 
 ## Performing the Rename
 
@@ -85,7 +86,7 @@ In Rook, you cannot rename the `CephFilesystem` CRD name directly since Rook tie
 
 1. Create a new `CephFilesystem` with the new name and configuration
 2. Migrate data if needed
-3. Delete the old `CephFilesystem` (with `preserveFilesystemOnDelete: false`)
+3. Delete the old `CephFilesystem` (with `preserveFilesystemOnDelete: true` to preserve the underlying data and pools)
 
 However, if you renamed the Ceph filesystem directly using the Ceph CLI outside of Rook, update the Rook reconciliation by restarting the operator:
 
