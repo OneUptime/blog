@@ -18,11 +18,11 @@ Each OSD has two independent state axes:
 |---|---|
 | `up` | Daemon is running and reachable |
 | `down` | Daemon is stopped or unreachable |
-| `in` | Included in data placement (has CRUSH weight > 0) |
-| `out` | Excluded from data placement (CRUSH weight = 0) |
+| `in` | Included in data placement (reweight > 0) |
+| `out` | Excluded from data placement (reweight = 0) |
 
 Normal state: `up + in`
-Degraded: `down + in` (Ceph is recovering data)
+Degraded: `down + in` (data has fewer copies, recovery starts after timeout)
 Draining: `up + out` or `down + out` (being removed)
 
 ## Get OSD Summary Statistics
@@ -79,7 +79,7 @@ The `VAR` column shows variance from mean utilization (1.0 = average, >1 = above
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd df | sort -k10 -n -r
+  ceph osd df | sort -k17 -n -r
 ```
 
 ## Monitor Down OSDs
