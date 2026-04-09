@@ -10,7 +10,7 @@ Description: Learn how to deploy multiple independent CephObjectStore instances 
 
 ## Why Run Multiple Object Store Instances
 
-A single Rook cluster can host multiple independent CephObjectStore instances. Each instance has its own RGW pool namespace, its own set of RGW pods, and its own Kubernetes service. This enables:
+A single Rook cluster can host multiple independent CephObjectStore instances. Each instance has its own set of RADOS pools, its own set of RGW pods, and its own Kubernetes service. This enables:
 
 - **Tenant isolation**: separate object stores for different teams or customers
 - **Environment separation**: production and staging stores on the same cluster
@@ -110,7 +110,7 @@ reclaimPolicy: Delete
 
 ## Pool Isolation
 
-Each store creates its own pool namespace, so data is isolated by default. Confirm pool separation:
+Each store creates its own set of RADOS pools, so data is isolated by default. Confirm pool separation:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool ls | grep rgw
@@ -131,7 +131,7 @@ Track capacity per object store:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket stats --rgw-zone default
+  radosgw-admin bucket stats
 ```
 
 Or check pool usage:
