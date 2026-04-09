@@ -121,10 +121,6 @@ resource "azurerm_managed_disk" "ceph_osd" {
   create_option        = "Empty"
   disk_size_gb         = var.osd_disk_size_gb
 
-  encryption_settings {
-    enabled = true
-  }
-
   tags = {
     purpose = "ceph-osd"
   }
