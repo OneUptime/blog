@@ -46,10 +46,10 @@ import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
 metrics = [
-    'bluestore_write_big',        # Large direct writes
-    'bluestore_write_small',      # Small writes via WAL
-    'bluestore_write_deferred',   # Deferred writes pending
-    'bluestore_write_pad_bytes',  # Wasted padding bytes
+    'write_big',              # Large min_alloc_size-aligned writes
+    'write_small',            # Small writes (below min_alloc_size)
+    'write_big_deferred',     # Large writes deferred to disk
+    'write_pad_bytes',        # Wasted padding bytes
 ]
 for m in metrics:
     print(m, ':', bs.get(m, 'N/A'))
@@ -64,10 +64,10 @@ import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
 metrics = [
-    'bluestore_cache_hits',
-    'bluestore_cache_misses',
-    'bluestore_cache_bytes',
-    'bluestore_cache_trim_max_skip_pinned',
+    'onode_hits',
+    'onode_misses',
+    'buffer_hit_bytes',
+    'buffer_bytes',
 ]
 for m in metrics:
     print(m, ':', bs.get(m, 'N/A'))
@@ -101,8 +101,8 @@ Key BlueStore Prometheus metrics:
 # OSD write latency (seconds)
 rate(ceph_osd_op_w_latency_sum[5m]) / rate(ceph_osd_op_w_latency_count[5m])
 
-# BlueStore cache hit ratio
-ceph_bluestore_cache_hits / (ceph_bluestore_cache_hits + ceph_bluestore_cache_misses)
+# BlueStore onode cache hit ratio
+rate(ceph_bluestore_onode_hits[5m]) / (rate(ceph_bluestore_onode_hits[5m]) + rate(ceph_bluestore_onode_misses[5m]))
 
 # OSD write bytes per second
 rate(ceph_osd_op_w_in_bytes[5m])
@@ -127,22 +127,23 @@ echo "OSD, WriteLatency_ms, CacheHitRatio, DeferredWrites"
 for OSD in $(ceph osd ls | head -10); do
   DATA=$(ceph daemon osd.$OSD perf dump 2>/dev/null)
   if [ -n "$DATA" ]; then
-    echo $DATA | python3 -c "
+    echo "$DATA" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-osd = data.get('osd', {})
+osd_data = data.get('osd', {})
 
-hits = bs.get('bluestore_cache_hits', {}).get('avgcount', 0)
-misses = bs.get('bluestore_cache_misses', {}).get('avgcount', 0)
+hits = bs.get('onode_hits', 0)
+misses = bs.get('onode_misses', 0)
 total = hits + misses
 hit_ratio = hits / total if total > 0 else 0
 
-write_lat = osd.get('op_w_latency', {}).get('sum', 0)
-write_cnt = osd.get('op_w_latency', {}).get('avgcount', 1)
+write_lat_raw = osd_data.get('op_w_latency', {})
+write_lat = write_lat_raw.get('sum', 0) if isinstance(write_lat_raw, dict) else 0
+write_cnt = write_lat_raw.get('avgcount', 1) if isinstance(write_lat_raw, dict) else 1
 avg_lat_ms = (write_lat / write_cnt * 1000) if write_cnt > 0 else 0
 
-deferred = bs.get('bluestore_write_deferred', {}).get('avgcount', 0)
+deferred = bs.get('write_big_deferred', 0)
 print(f'$OSD, {avg_lat_ms:.2f}, {hit_ratio:.3f}, {deferred}')
 "
   fi
