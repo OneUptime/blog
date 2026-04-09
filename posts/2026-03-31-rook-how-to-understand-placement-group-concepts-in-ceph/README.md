@@ -13,7 +13,7 @@ Description: Understand core Ceph placement group concepts including how PGs map
 Ceph does not store objects directly on individual OSDs. Instead, it uses an intermediate abstraction called Placement Groups (PGs). Each object is hashed into a PG, and each PG is then mapped to a set of OSDs by the CRUSH algorithm. This two-level indirection allows Ceph to balance data efficiently without tracking every object location individually.
 
 ```text
-Object -> (CRUSH hash) -> PG -> (CRUSH map) -> OSD set
+Object -> (hash mod pg_num) -> PG -> (CRUSH map) -> OSD set
 ```
 
 ## Why Placement Groups Exist
@@ -39,7 +39,7 @@ ceph osd pool ls detail
 
 ## How Objects Map to PGs
 
-Ceph uses a hash of the object name (and optionally the pool ID) to determine which PG holds the object:
+Ceph uses a hash of the object name modulo `pg_num` to determine which PG holds the object. The pool ID is combined with this hash result to form the full PG identifier:
 
 ```bash
 # Find which PG an object belongs to
