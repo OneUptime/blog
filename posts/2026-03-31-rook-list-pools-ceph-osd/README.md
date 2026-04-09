@@ -15,22 +15,28 @@ Listing and inspecting pools is a fundamental Ceph administration task. Ceph pro
 The two primary commands for listing pools are:
 
 ```bash
-# Modern command - preferred
+# Modern command - preferred (outputs pool names only)
 ceph osd pool ls
 
-# Legacy alias - identical output
+# Legacy command (outputs pool IDs and names)
 ceph osd lspools
 ```
 
-Both commands output the pool ID and pool name:
+`ceph osd pool ls` outputs pool names only, one per line:
 
 ```text
-1 .mgr
-2 device_health_metrics
-3 rbd-metadata
-4 rbd-ec-data
-5 .rgw.root
-6 default.rgw.buckets.data
+.mgr
+device_health_metrics
+rbd-metadata
+rbd-ec-data
+.rgw.root
+default.rgw.buckets.data
+```
+
+`ceph osd lspools` includes the pool ID alongside each name:
+
+```text
+1 .mgr,2 device_health_metrics,3 rbd-metadata,4 rbd-ec-data,5 .rgw.root,6 default.rgw.buckets.data,
 ```
 
 ## Listing Pools with Details
@@ -58,9 +64,8 @@ List only pools tagged for a specific application:
 ```bash
 # List only RBD pools
 ceph osd pool ls | while read pool; do
-  app=$(ceph osd pool application get $pool 2>/dev/null)
-  echo "$app: $pool"
-done | grep "^rbd"
+  ceph osd pool application get "$pool" 2>/dev/null | grep -q '"rbd"' && echo "$pool"
+done
 ```
 
 Or use the dump format to filter:
@@ -113,7 +118,6 @@ crush_rule: ec-rule
 erasure_code_profile: rbd-ec-profile
 allow_ec_overwrites: true
 compression_mode: none
-application: rbd
 ```
 
 ## Pool Listing in Rook Toolbox
