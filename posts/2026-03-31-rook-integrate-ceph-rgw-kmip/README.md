@@ -42,7 +42,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out server.crt -days 365
 
 # Start PyKMIP server
-python -m kmip.services.server.engine --config kmip.conf
+pykmip-server -f kmip.conf
 ```
 
 ## Generating Client Certificates for RGW
@@ -97,7 +97,7 @@ ceph config set client.rgw rgw_crypt_kmip_addr "kmip-host:5696"
 # TLS client certificates
 ceph config set client.rgw rgw_crypt_kmip_client_cert /etc/ceph/kmip-client.crt
 ceph config set client.rgw rgw_crypt_kmip_client_key /etc/ceph/kmip-client.key
-ceph config set client.rgw rgw_crypt_kmip_ca_cert /etc/ceph/kmip-ca.crt
+ceph config set client.rgw rgw_crypt_kmip_ca_path /etc/ceph/kmip-ca.crt
 
 # Restart RGW to apply config
 systemctl restart ceph-radosgw@rgw.default
