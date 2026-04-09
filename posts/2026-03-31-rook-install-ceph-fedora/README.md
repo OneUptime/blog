@@ -41,7 +41,7 @@ dnf install -y ceph ceph-mgr ceph-mon ceph-osd ceph-radosgw cephadm
 Alternatively, use the official Ceph repository for the latest version:
 
 ```bash
-# For Ceph Squid (18.x)
+# For Ceph Squid (19.x)
 cat > /etc/yum.repos.d/ceph.repo <<'EOF'
 [ceph]
 name=Ceph Squid
