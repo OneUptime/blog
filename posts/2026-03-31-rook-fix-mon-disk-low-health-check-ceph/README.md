@@ -59,18 +59,22 @@ du -sh /var/lib/ceph/mon/ceph-b/
 
 ## Trimming Monitor History
 
-Old map epochs accumulate over time. Trim them to reduce storage:
+Old map epochs accumulate over time. Reduce the number of OSD map epochs retained by monitors:
 
 ```bash
-ceph config set mon mon_min_osdmap_epochs 500
-ceph tell mon.* sync_force
+ceph config set mon mon_min_osdmap_epochs 200
 ```
 
-Reduce the number of retained PGMap epochs:
+Make Paxos state trimming more aggressive to reclaim space from all monitor services:
 
 ```bash
-ceph config set mon paxos_min_wait 0.05
-ceph config set mon paxos_trim_min 10
+ceph config set mon paxos_trim_min 100
+```
+
+After changing these settings, trimming occurs automatically. Run compaction again to reclaim freed space:
+
+```bash
+ceph tell mon.* compact
 ```
 
 ## Expanding Monitor Disk in Rook
