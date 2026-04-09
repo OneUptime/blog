@@ -83,7 +83,7 @@ groups:
   rules:
   - alert: CephRGWHighErrorRate
     expr: |
-      (rate(ceph_rgw_failed_req[5m]) / rate(ceph_rgw_req[5m])) * 100 > 5
+      (rate(ceph_rgw_failed_req[5m]) / rate(ceph_rgw_req[5m])) > 0.05
     for: 5m
     labels:
       severity: warning
@@ -106,7 +106,7 @@ If running multiple RGW instances, check per-instance rates:
 
 ```promql
 # Request rate per RGW daemon
-rate(ceph_rgw_req[5m]) by (ceph_daemon)
+sum(rate(ceph_rgw_req[5m])) by (ceph_daemon)
 ```
 
 Check individual RGW pod logs:
@@ -121,19 +121,23 @@ kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=100 | \
 Combine request count with timing for average latency:
 
 ```promql
-# Average request duration
-rate(ceph_rgw_request_duration_seconds_sum[5m]) /
-  rate(ceph_rgw_request_duration_seconds_count[5m])
+# Average GET request initial latency
+rate(ceph_rgw_get_initial_lat_sum[5m]) /
+  rate(ceph_rgw_get_initial_lat_count[5m])
+
+# Average PUT request initial latency
+rate(ceph_rgw_put_initial_lat_sum[5m]) /
+  rate(ceph_rgw_put_initial_lat_count[5m])
 ```
 
 ## Grafana Dashboard for RGW
 
 ```javascript
 // Request rate over time
-Query A: rate(ceph_rgw_put[5m]) * by (ceph_daemon)
+Query A: sum(rate(ceph_rgw_put[5m])) by (ceph_daemon)
 Label: "PUT - {{ceph_daemon}}"
 
-Query B: rate(ceph_rgw_get[5m]) * by (ceph_daemon)
+Query B: sum(rate(ceph_rgw_get[5m])) by (ceph_daemon)
 Label: "GET - {{ceph_daemon}}"
 
 // Error rate
