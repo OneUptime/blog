@@ -90,21 +90,21 @@ groups:
     annotations:
       summary: "{{ $value }} Ceph PGs are degraded - data is under-replicated"
 
-  - alert: CephPGsStuck
-    expr: ceph_pg_stuck_unclean > 0
+  - alert: CephPGsNotClean
+    expr: ceph_health_detail{name="PG_NOT_CLEAN"} > 0
     for: 15m
     labels:
       severity: warning
     annotations:
-      summary: "{{ $value }} Ceph PGs are stuck unclean for 15 minutes"
+      summary: "Ceph PGs have been unclean for 15 minutes"
 
-  - alert: CephPGsBackfilling
-    expr: ceph_pg_backfilling > 10
-    for: 30m
+  - alert: CephPGsBackfillBlocked
+    expr: ceph_health_detail{name="PG_BACKFILL_FULL"} > 0
+    for: 5m
     labels:
-      severity: info
+      severity: warning
     annotations:
-      summary: "{{ $value }} Ceph PGs are backfilling"
+      summary: "Ceph backfill is blocked due to full OSDs"
 ```
 
 ## Device Health Alerts
@@ -173,4 +173,4 @@ kubectl -n rook-ceph get prometheusrule
 
 ## Summary
 
-Comprehensive Ceph health alerting requires covering the cluster health status metric, monitor quorum and clock skew, OSD up/down states and weights, PG degraded and stuck conditions, device health predictions, and pool capacity. Organizing these into severity levels ensures on-call teams receive appropriately prioritized notifications for each type of health event.
+Comprehensive Ceph health alerting requires covering the cluster health status metric, monitor quorum and clock skew, OSD up/down states and weights, PG degraded and unclean conditions, backfill capacity, device health predictions, and pool capacity. Organizing these into severity levels ensures on-call teams receive appropriately prioritized notifications for each type of health event.
