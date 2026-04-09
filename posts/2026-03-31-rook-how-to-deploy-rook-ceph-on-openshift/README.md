@@ -35,15 +35,12 @@ oc debug node/<node-name> -- chroot /host lsmod | grep -E "rbd|ceph"
 Rook requires privileged access for OSD pods to interact with raw block devices.
 
 ```bash
-# Clone the Rook repository for the SCC manifests
+# Clone the Rook repository for the deployment manifests
 git clone --single-branch --branch v1.13.0 https://github.com/rook/rook.git
 cd rook/deploy/examples
-
-# Apply the SCCs (OpenShift-specific)
-oc create -f scc.yaml
 ```
 
-The `scc.yaml` grants the `privileged` SCC to the Rook service accounts:
+The `operator-openshift.yaml` manifest includes SCC definitions that grant the `privileged` SCC to the Rook service accounts. Here is an example of what the SCC looks like:
 
 ```yaml
 apiVersion: security.openshift.io/v1
@@ -95,7 +92,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v18.2.2
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -139,6 +136,9 @@ oc -n rook-ceph get pods
 
 # Check CephCluster status
 oc -n rook-ceph get cephcluster
+
+# Deploy the Ceph toolbox (required before running ceph commands)
+oc create -f toolbox.yaml
 
 # Use the Ceph toolbox for cluster health
 oc -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
