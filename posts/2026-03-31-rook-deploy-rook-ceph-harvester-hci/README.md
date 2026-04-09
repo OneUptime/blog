@@ -10,7 +10,7 @@ Description: Deploy Rook-Ceph on Harvester HCI to provide distributed storage al
 
 ## Overview
 
-Harvester is an open-source hyper-converged infrastructure (HCI) solution built on Kubernetes, Kubevirt, and Longhorn. While Harvester includes Longhorn as its default storage, you can deploy Rook-Ceph on Harvester clusters to add S3-compatible object storage, CephFS shared file storage, or higher-performance RBD block storage. This guide covers deploying Rook on Harvester.
+Harvester is an open-source hyper-converged infrastructure (HCI) solution built on Kubernetes, KubeVirt, and Longhorn. While Harvester includes Longhorn as its default storage, you can deploy Rook-Ceph on Harvester clusters to add S3-compatible object storage, CephFS shared file storage, or higher-performance RBD block storage. This guide covers deploying Rook on Harvester.
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v19.2.0
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -133,7 +133,11 @@ kubectl apply -f rgw-harvester.yaml
 
 ## Step 6 - Verify Coexistence with Longhorn
 
-Verify Longhorn is still healthy after Rook deployment:
+Deploy the Rook toolbox to access Ceph CLI tools, then verify Longhorn is still healthy after Rook deployment:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/release-1.16/deploy/examples/toolbox.yaml
+```
 
 ```bash
 kubectl -n longhorn-system get pods
