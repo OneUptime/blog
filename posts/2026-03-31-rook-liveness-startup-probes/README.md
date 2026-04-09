@@ -110,7 +110,7 @@ kubectl -n rook-ceph get pod -l app=rook-ceph-osd \
   -o custom-columns='NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount,REASON:.status.containerStatuses[0].lastState.terminated.reason'
 ```
 
-If the restart reason is `Error` with exit code `137`, the container was OOM-killed, not probe-killed.
+If the restart reason is `OOMKilled`, the container ran out of memory rather than being killed due to a probe failure. Both OOM kills and probe kills result in exit code `137` (SIGKILL), but Kubernetes sets the reason to `OOMKilled` specifically for out-of-memory terminations.
 
 ## Summary
 
