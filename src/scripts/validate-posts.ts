@@ -147,7 +147,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const WORKER_COUNT = engine === 'codex' ? 5 : 50;
+  const WORKER_COUNT = engine === 'codex' ? 5 : 5;
   const TIMEOUT_MS = engine === 'codex' ? 10 * 60 * 1000 : 5 * 60 * 1000;
   let completed = 0;
   const total = postsToValidate.length;
