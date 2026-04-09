@@ -193,11 +193,11 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
 "
 ```
 
-Update the VolumeReplication on the secondary cluster:
+Update the VolumeReplication on the secondary cluster to mark it as the new primary:
 
 ```yaml
 spec:
-  replicationState: secondary
+  replicationState: primary
 ```
 
 ## Summary
