@@ -74,7 +74,7 @@ List all PGs with their states:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg ls
 ```
 
-Check PGs in a specific state:
+List PGs on a specific OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
