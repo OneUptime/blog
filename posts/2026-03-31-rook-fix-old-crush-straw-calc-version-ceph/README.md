@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ceph, Rook, CRUSH, Upgrade, Map
 
-Description: Learn how to resolve the OLD_CRUSH_STRAW_CALC_VERSION warning in Ceph by recompiling the CRUSH map to use the modern straw2 algorithm for better data distribution.
+Description: Learn how to resolve the OLD_CRUSH_STRAW_CALC_VERSION warning in Ceph by recompiling the CRUSH map to use the corrected straw calculation for better data distribution.
 
 ---
 
 ## Understanding OLD_CRUSH_STRAW_CALC_VERSION
 
-The CRUSH algorithm uses a "straw" bucket type for distributing data across OSDs. Ceph introduced an improved `straw2` calculation algorithm in Firefly (0.93). The original `straw` algorithm has an uneven distribution problem where changing the weight of one OSD causes unnecessary data movement across unrelated OSDs. `OLD_CRUSH_STRAW_CALC_VERSION` fires when the cluster's CRUSH map still uses the old straw calculation version.
+The CRUSH algorithm uses a "straw" bucket type for distributing data across OSDs. Ceph introduced a corrected straw weight calculation (`straw_calc_version 1`) in Firefly (0.80). The original straw calculation has a bug where changing the weight of one OSD causes unnecessary data movement across unrelated OSDs. `OLD_CRUSH_STRAW_CALC_VERSION` fires when the cluster's CRUSH map still uses the old straw calculation version.
 
 Check current health:
 
@@ -40,7 +40,7 @@ crushtool -d /tmp/crushmap.bin -o /tmp/crushmap.txt
 grep straw_calc_version /tmp/crushmap.txt
 ```
 
-A value of `0` uses the old algorithm. A value of `1` uses straw2.
+A value of `0` uses the old buggy calculation. A value of `1` uses the corrected straw calculation.
 
 ## Updating the CRUSH Map
 
@@ -124,4 +124,4 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- /bin/bash
 
 ## Summary
 
-`OLD_CRUSH_STRAW_CALC_VERSION` warns that the cluster CRUSH map uses the old straw algorithm (version 0). Fix by extracting the CRUSH map, changing `straw_calc_version` to `1`, recompiling, and injecting it back. This triggers a data rebalance - use `noout` during the process and monitor recovery to completion. The straw2 algorithm provides better distribution and reduces unnecessary data movement during OSD weight changes.
+`OLD_CRUSH_STRAW_CALC_VERSION` warns that the cluster CRUSH map uses the old straw calculation (version 0). Fix by extracting the CRUSH map, changing `straw_calc_version` to `1`, recompiling, and injecting it back. This triggers a data rebalance - use `noout` during the process and monitor recovery to completion. The corrected straw calculation provides better distribution and reduces unnecessary data movement during OSD weight changes.
