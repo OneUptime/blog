@@ -81,7 +81,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph auth get client.rgw
 If the keyring is missing:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph auth get-or-create client.rgw.my-store osd 'allow rwx' mon 'allow rw' -o /etc/ceph/ceph.client.rgw.my-store.keyring
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph auth get-or-create client.rgw.my-store osd 'allow rwx' mon 'allow rw' mgr 'allow rw'
 ```
 
 In Rook, keyrings are stored as Kubernetes Secrets. Check them:
