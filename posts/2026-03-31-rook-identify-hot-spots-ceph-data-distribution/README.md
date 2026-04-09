@@ -31,15 +31,7 @@ Look for OSDs with significantly higher `%USE` values than others. Healthy clust
 
 ## Check PG Distribution Across OSDs
 
-Identify how many PGs are assigned per OSD:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  ceph pg dump | awk '/^[0-9]/{print $NF}' | sort | uniq -c | sort -rn | head -20
-"
-```
-
-Alternatively, use `ceph osd df` which shows the PG count per OSD:
+Identify how many PGs are assigned per OSD using `ceph osd df` which shows the PG count per OSD directly:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
@@ -59,7 +51,7 @@ topk(10, rate(ceph_osd_op_w[1h]))
 topk(10, rate(ceph_osd_op_w_in_bytes[1h]))
 
 # Standard deviation of OSD utilization (high = imbalance)
-stddev(ceph_osd_utilization)
+stddev(ceph_osd_stat_bytes_used / ceph_osd_stat_bytes)
 ```
 
 ## Check CRUSH Weights for Imbalance
@@ -68,11 +60,11 @@ OSDs with incorrect CRUSH weights receive proportionally more or fewer PGs:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  ceph osd crush tree --show-shadow
+  ceph osd tree
 "
 ```
 
-Compare the `weight` and `reweight` values. The `reweight` value adjusts PG distribution without changing the CRUSH map:
+Compare the `WEIGHT` and `REWEIGHT` columns. The `REWEIGHT` value (0.0-1.0) adjusts PG distribution without changing the CRUSH map:
 
 ```bash
 # Reweight a specific OSD to reduce its load
@@ -88,7 +80,7 @@ Ceph has a built-in command to automatically rebalance by utilization:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
   # Test what changes would be made (dry run)
-  ceph osd reweight-by-utilization 120 0 0 --no-increasing
+  ceph osd test-reweight-by-utilization 120
 
   # Apply the rebalancing
   ceph osd reweight-by-utilization 120
