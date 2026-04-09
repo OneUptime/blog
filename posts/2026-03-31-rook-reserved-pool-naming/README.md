@@ -97,7 +97,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 import json, sys
 pools = json.load(sys.stdin)
 for p in pools:
-    print(f\"{p['pool']:3d}  {p['pool_name']}\")
+    print(f\"{p['pool_id']:3d}  {p['pool_name']}\")
 "
 ```
 
