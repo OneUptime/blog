@@ -56,13 +56,13 @@ spec:
       replicasPerFailureDomain: 1  # One replica per host
 ```
 
-### Erasure Coding for Metadata (Not Recommended)
+### Erasure Coding for Metadata (Not Supported)
 
-While erasure coding is possible for the metadata pool, it is generally not recommended because:
-- Metadata operations require partial writes, which are inefficient with EC
-- EC adds latency that impacts all filesystem operations
+Erasure coding is not supported for the CephFS metadata pool. Ceph requires the metadata pool to be a replicated pool. Attempting to use an erasure-coded pool as a CephFS metadata pool will be rejected by Ceph. This is because:
+- Metadata operations require partial overwrites, which are not supported by erasure-coded pools
+- The metadata pool must support omap operations, which are only available on replicated pools
 
-Stick with replicated pools for metadata.
+Always use replicated pools for metadata.
 
 ### Using a Specific Device Class for Metadata
 
@@ -118,7 +118,7 @@ The MDS (Metadata Server) manages the metadata pool and handles filesystem names
     parameters:
       # Disable compression for metadata (metadata is usually not compressible)
       compression_mode: "none"
-      # Min object size for write-back caching
+      # Minimum number of replicas required for I/O on a degraded pool
       min_size: "2"
 ```
 
@@ -128,10 +128,10 @@ Apply additional Ceph-level tuning via the toolbox:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # Tune metadata pool PG autoscaler target size
-ceph osd pool set ceph-filesystem-metadata target_size_ratio 0.1
+ceph osd pool set myfs-metadata target_size_ratio 0.1
 
 # Enable PG autoscaler
-ceph osd pool set ceph-filesystem-metadata pg_autoscale_mode on
+ceph osd pool set myfs-metadata pg_autoscale_mode on
 
 # Check metadata pool stats
 ceph df detail | grep metadata
@@ -149,8 +149,8 @@ ceph mds stat
 ceph fs status myfs
 
 # Verify metadata pool replicas
-ceph osd pool get ceph-filesystem-metadata size
-ceph osd pool get ceph-filesystem-metadata min_size
+ceph osd pool get myfs-metadata size
+ceph osd pool get myfs-metadata min_size
 ```
 
 Expected MDS output:
