@@ -37,18 +37,6 @@ Key columns:
 ## Viewing Compression Statistics
 
 ```bash
-# View compression savings per pool
-ceph osd pool stats --format json-pretty | python3 -c "
-import sys, json
-pools = json.load(sys.stdin)
-for p in pools:
-    stats = p.get('client_stats', {})
-    print(f\"Pool: {p.get('pool_name')}\")
-    print(f\"  Compress attempts: {stats.get('compress_attempts', 0)}\")
-    print(f\"  Compress success:  {stats.get('compress_success', 0)}\")
-    print()
-"
-
 # Check compression ratio via df detail
 ceph df detail --format json-pretty | python3 -c "
 import sys, json
@@ -71,16 +59,18 @@ for p in data.get('pools', []):
 OMAP is used by RGW bucket indexes and CephFS directory entries. Excessive OMAP can cause performance issues.
 
 ```bash
-# Check OMAP stats per pool
-ceph osd pool stats --format json-pretty | python3 -c "
+# Check for large OMAP object health warnings
+ceph health detail | grep -i omap
+
+# View OMAP bytes per pool (Reef+ includes stored_omap in df detail)
+ceph df detail --format json-pretty | python3 -c "
 import sys, json
-pools = json.load(sys.stdin)
-for p in pools:
-    stats = p.get('client_stats', {})
-    omap_r = stats.get('omap_rop', 0)
-    omap_w = stats.get('omap_wop', 0)
-    if omap_r > 0 or omap_w > 0:
-        print(f\"Pool {p['pool_name']}: omap_reads={omap_r}, omap_writes={omap_w}\")
+data = json.load(sys.stdin)
+for p in data.get('pools', []):
+    stats = p.get('stats', {})
+    omap = stats.get('stored_omap', 0)
+    if omap > 0:
+        print(f\"Pool {p['name']}: omap_stored={omap/(1024**2):.1f}MiB\")
 "
 ```
 
@@ -124,7 +114,7 @@ ceph pg dump --format json-pretty | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 pool_pg = {}
-for pg in data.get('pg_map', {}).get('pg_stats', []):
+for pg in data.get('pg_stats', []):
     pgid = pg['pgid']
     pool_id = pgid.split('.')[0]
     state = pg['state']
@@ -146,8 +136,8 @@ ceph osd pool stats --format json-pretty | python3 -c "
 import sys, json
 pools = json.load(sys.stdin)
 for p in pools:
-    cs = p.get('client_stats', {})
-    print(f\"{p['pool_name']}: reads={cs.get('read_bytes_sec',0)//(1024**2)}MB/s writes={cs.get('write_bytes_sec',0)//(1024**2)}MB/s ops={cs.get('op_per_sec',0)}/s\")
+    cs = p.get('client_io_rate', {})
+    print(f\"{p['pool_name']}: reads={cs.get('read_bytes_sec',0)//(1024**2)}MB/s writes={cs.get('write_bytes_sec',0)//(1024**2)}MB/s read_ops={cs.get('read_op_per_sec',0)}/s write_ops={cs.get('write_op_per_sec',0)}/s\")
 "
 ```
 
@@ -159,7 +149,7 @@ For granular per-OSD pool usage:
 # Query specific OSD for pool stats
 ceph daemon osd.0 perf dump | grep -A 5 "pool"
 
-# BlueStore allocator stats
+# List in-flight OSD operations
 ceph daemon osd.0 dump_ops_in_flight
 ```
 
