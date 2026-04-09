@@ -58,7 +58,7 @@ type TenantPoolStatus struct {
 ## Writing the Controller Logic
 
 ```go
-// controllers/tenantpool_controller.go
+// internal/controller/tenantpool_controller.go
 func (r *TenantPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
     log := log.FromContext(ctx)
 
@@ -75,7 +75,7 @@ func (r *TenantPoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
             Name:      poolName,
             Namespace: "rook-ceph",
         },
-        Spec: rookv1.NamedPoolSpec{
+        Spec: rookv1.NamedBlockPoolSpec{
             PoolSpec: rookv1.PoolSpec{
                 Replicated: rookv1.ReplicatedSpec{
                     Size: uint(tenantPool.Spec.Replicas),
