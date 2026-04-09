@@ -98,4 +98,4 @@ Use FUSE when:
 
 ## Summary
 
-Both the kernel driver and `ceph-fuse` are production-ready CephFS clients with different trade-offs. The kernel driver wins on raw performance and is the better choice for storage-intensive production workloads on modern kernels. The FUSE client provides maximum feature coverage and is more accessible in constrained environments. In Rook-Ceph deployments, the CSI driver uses the FUSE approach internally for Kubernetes PVC provisioning, while direct host mounts can use either method.
+Both the kernel driver and `ceph-fuse` are production-ready CephFS clients with different trade-offs. The kernel driver wins on raw performance and is the better choice for storage-intensive production workloads on modern kernels. The FUSE client provides maximum feature coverage and is more accessible in constrained environments. In Rook-Ceph deployments, the CSI driver defaults to the kernel driver for CephFS PVC mounts (`CSI_FORCE_CEPHFS_KERNEL_CLIENT: "true"`) but can be configured to use ceph-fuse via the `mounter` parameter in the StorageClass.
