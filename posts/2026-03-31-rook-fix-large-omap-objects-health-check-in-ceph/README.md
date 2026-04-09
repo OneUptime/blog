@@ -29,17 +29,17 @@ Example output:
     2 large omap objects found in pool 'default.rgw.buckets.index'
 ```
 
-List large OMAP objects across pools:
+List large OMAP objects in a pool:
 
 ```bash
-ceph pg dump_stuck | grep omap
+rados -p <pool-name> ls
 rados -p default.rgw.buckets.index listomapkeys <object-name> | wc -l
 ```
 
 For deep inspection during scrub:
 
 ```bash
-ceph osd deep-scrub all
+ceph osd pool deep-scrub <pool-name>
 ceph log last 20 | grep "omap"
 ```
 
@@ -67,13 +67,13 @@ radosgw-admin bucket reshard --bucket=<bucket-name> --num-shards=64
 
 A CephFS directory with millions of files becomes a large OMAP object.
 
-Check large directories:
+List directory fragments to identify large directories:
 
 ```bash
-ceph tell mds.* dirfrag split <directory-inode> 1
+ceph tell mds.0 dirfrag ls /path/to/large/directory
 ```
 
-Enable CephFS dirfrag splitting to distribute large directories:
+Enable CephFS dirfrag splitting to automatically distribute large directories:
 
 ```bash
 ceph config set mds mds_bal_split_size 10000
@@ -98,15 +98,15 @@ ceph config set client.rgw rgw_override_bucket_index_max_shards 64
 
 For new RGW instances, set default sharding:
 
-```yaml
+```ini
 [client.rgw]
 rgw_bucket_index_max_shards = 64
 ```
 
-Increase the OMAP warning threshold if needed:
+Increase the OMAP warning threshold if the default (200000) is too sensitive:
 
 ```bash
-ceph config set osd osd_deep_scrub_large_omap_object_key_threshold 200000
+ceph config set osd osd_deep_scrub_large_omap_object_key_threshold 500000
 ```
 
 ## Summary
