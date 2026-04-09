@@ -52,12 +52,12 @@ For non-commercial use, install directly from the Ceph project:
 zypper install -y python3 curl podman
 
 # Download cephadm
-curl -fsSL https://download.ceph.com/rpm-squid/opensuse-leap-15.5/noarch/cephadm \
+curl -fsSL https://download.ceph.com/rpm-squid/el9/noarch/cephadm \
   -o /usr/local/bin/cephadm
 chmod +x /usr/local/bin/cephadm
 ```
 
-## Step 1 - Configure Firewall (SuSEfirewall2 / firewalld)
+## Step 1 - Configure Firewall (firewalld)
 
 SLES 15 uses firewalld:
 
@@ -87,7 +87,7 @@ systemctl status apparmor
 
 # For cephadm containers, add to AppArmor abstractions
 echo "/var/lib/ceph/** rwk," >> /etc/apparmor.d/abstractions/ceph
-apparmor_parser -r /etc/apparmor.d/abstractions/ceph
+systemctl reload apparmor
 ```
 
 ## Step 4 - Add Nodes and Deploy
@@ -116,11 +116,10 @@ wipefs -a /dev/sdb
 sgdisk --zap-all /dev/sdb
 ```
 
-Configure Ceph to use XFS for non-BlueStore setups (legacy):
+For legacy FileStore setups, configure the OSD journal size:
 
 ```bash
 ceph config set osd osd_journal_size 1024
-ceph config set osd bluestore_block_size 107374182400
 ```
 
 ## Step 6 - Verify Health
@@ -136,7 +135,7 @@ ceph df
 SUSE Enterprise Storage includes pre-configured Grafana dashboards:
 
 ```bash
-ceph mgr module enable grafana
+ceph mgr module enable dashboard
 ceph dashboard set-grafana-api-url http://localhost:3000
 ```
 
