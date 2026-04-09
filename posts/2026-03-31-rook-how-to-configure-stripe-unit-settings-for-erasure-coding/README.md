@@ -64,17 +64,15 @@ For a 1 MiB object:
 
 ## Pool-Level Stripe Configuration
 
-At the pool level, you configure `stripe_width` (not `stripe_unit`):
+For erasure-coded pools, `stripe_width` is automatically derived from the EC profile (`stripe_unit * k`) and is read-only. You can view it but cannot set it manually:
 
 ```bash
 # View pool stripe width
 ceph osd pool get mypool stripe_width
-
-# Set stripe width (must equal stripe_unit * k from EC profile)
-ceph osd pool set mypool stripe_width 262144  # 256 KiB (stripe_unit=64K, k=4)
+# For stripe_unit=64K, k=4: stripe_width = 262144 (256 KiB)
 ```
 
-Ceph automatically derives `stripe_width` from the EC profile, so you typically do not need to set this manually.
+If you need a different `stripe_width`, create a new EC profile with the desired `stripe_unit` and `k` values, then create a new pool using that profile.
 
 ## Alignment Considerations for RGW
 
@@ -115,7 +113,7 @@ ceph config get osd bluestore_min_alloc_size_hdd
 # Default: 65536 (64 KiB) for HDD
 
 ceph config get osd bluestore_min_alloc_size_ssd
-# Default: 16384 (16 KiB) for SSD
+# Default: 4096 (4 KiB) for SSD
 ```
 
 For best space efficiency, set `stripe_unit` to a multiple of `bluestore_min_alloc_size`.
