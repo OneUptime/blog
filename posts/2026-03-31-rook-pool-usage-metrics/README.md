@@ -33,8 +33,8 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph df detail
 
 Additional columns include:
 - `DIRTY`: Unflushed data (for cache tiering)
-- `USED COMPR`: Bytes saved by compression
-- `UNDER COMPR`: Bytes that would be stored without compression
+- `USED COMPR`: Compressed size of data stored on disk
+- `UNDER COMPR`: Original uncompressed size of data stored compressed
 - `QUOTA OBJECTS`: Maximum objects allowed (0 = unlimited)
 - `QUOTA BYTES`: Maximum bytes allowed (0 = unlimited)
 
@@ -82,8 +82,7 @@ for pool in data['pools']:
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
   # Check quota settings
-  ceph osd pool get replicapool max_bytes
-  ceph osd pool get replicapool max_objects
+  ceph osd pool get-quota replicapool
 
   # Check current usage
   ceph df detail | grep replicapool
@@ -99,7 +98,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph df --format json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-print(f'{'Pool':<30} {'Stored':>10} {'Used':>10} {'%Used':>7}')
+print('{:<30} {:>10} {:>10} {:>7}'.format('Pool', 'Stored', 'Used', '%Used'))
 print('-' * 60)
 for p in sorted(data['pools'], key=lambda x: -x['stats']['bytes_used']):
     s = p['stats']
@@ -117,7 +116,7 @@ Rook exposes pool metrics via Prometheus. Query them in Grafana:
 ```text
 ceph_pool_stored_raw{pool_id="1"}
 ceph_pool_max_avail{pool_id="1"}
-ceph_pool_objects_total{pool_id="1"}
+ceph_pool_objects{pool_id="1"}
 ```
 
 ## Summary
