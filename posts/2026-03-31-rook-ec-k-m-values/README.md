@@ -75,17 +75,17 @@ For a k=8 profile, recovery reads from 8 OSDs simultaneously for each object rec
 
 ## Practical Example: 12-Node Cluster
 
-For a 12-node cluster with 12 x 10 TiB drives per node (1.44 PiB raw):
+For a 12-node cluster with 12 x 10 TiB drives per node (1440 TiB raw):
 
 ```text
 Profile     Usable Capacity   Fault Tolerance
 k=4, m=2    960 TiB           2 nodes
-k=6, m=3    1.08 PiB          3 nodes
-k=8, m=4    1.04 PiB          4 nodes
+k=6, m=2    1080 TiB          2 nodes
+k=8, m=3    1047 TiB          3 nodes
 3-way rep    480 TiB           2 nodes
 ```
 
-The k=6, m=3 profile offers the most usable capacity while tolerating 3 simultaneous node failures.
+The k=6, m=2 profile offers the most usable capacity, while k=8, m=3 provides 3-node fault tolerance at slightly lower capacity.
 
 ## Creating the Profile in Rook
 
