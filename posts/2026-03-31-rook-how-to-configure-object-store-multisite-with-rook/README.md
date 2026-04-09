@@ -119,7 +119,19 @@ spec:
     endpoint: http://primary-rgw-endpoint:80
 ```
 
-Create matching ZoneGroup and a secondary Zone:
+Create the matching ZoneGroup on the secondary cluster:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZoneGroup
+metadata:
+  name: us-east
+  namespace: rook-ceph
+spec:
+  realm: my-realm
+```
+
+Create the secondary Zone:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -135,6 +147,22 @@ spec:
   dataPool:
     replicated:
       size: 3
+```
+
+Create the Object Store on the secondary cluster referencing the secondary zone:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: my-store
+  namespace: rook-ceph
+spec:
+  zone:
+    name: us-east-2
+  gateway:
+    port: 80
+    instances: 2
 ```
 
 ## Verify Multisite Replication
