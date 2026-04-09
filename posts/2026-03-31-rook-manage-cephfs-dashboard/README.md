@@ -10,7 +10,7 @@ Description: Use the Ceph Dashboard to create, monitor, and manage CephFS filesy
 
 ## Overview
 
-The CephFS section of the Ceph Dashboard allows you to view filesystem details, monitor MDS daemon health, browse filesystem directories, and manage quotas without using the command line.
+The CephFS section of the Ceph Dashboard allows you to view filesystem details, monitor MDS daemon health, browse filesystem directories, and view quotas without using the command line.
 
 ## Accessing CephFS Management
 
@@ -80,7 +80,7 @@ The Dashboard File Systems detail page includes a directory browser showing:
 The Dashboard shows quotas but CLI is needed to set them:
 
 ```bash
-# Mount the filesystem to set quotas
+# Create subvolumes with size quotas
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph fs subvolumegroup create myfs mygroup
 
@@ -117,7 +117,7 @@ Monitor via CLI:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph mds perf dump
+  ceph tell mds.myfs-a perf dump
 
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph fs perf stats
