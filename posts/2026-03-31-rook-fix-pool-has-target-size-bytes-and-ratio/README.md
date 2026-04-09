@@ -12,7 +12,7 @@ Description: Learn how to fix POOL_HAS_TARGET_SIZE_BYTES_AND_RATIO in Ceph, a wa
 
 `POOL_HAS_TARGET_SIZE_BYTES_AND_RATIO` is a Ceph health warning that fires when a pool has both `target_size_bytes` and `target_size_ratio` set at the same time. These two settings are mutually exclusive hints for the PG autoscaler - having both set creates an ambiguous configuration where the autoscaler does not know which hint to prefer.
 
-When both are set, Ceph uses `target_size_bytes` and ignores `target_size_ratio`, but the warning indicates a misconfiguration that should be cleaned up.
+When both are set, Ceph uses `target_size_ratio` and ignores `target_size_bytes`, but the warning indicates a misconfiguration that should be cleaned up.
 
 ## Checking the Warning
 
