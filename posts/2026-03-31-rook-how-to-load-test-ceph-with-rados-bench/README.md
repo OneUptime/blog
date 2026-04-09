@@ -127,7 +127,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool delete ben
 |--------|-----------------|-------------------|
 | Write Bandwidth | 100-300 MB/s | 1-3 GB/s |
 | Write Latency | 5-20ms | 0.1-1ms |
-| Write IOPS | 100-500 | 50,000-500,000 |
+| Write IOPS (4MB objects) | 25-75 | 250-750 |
 
 ## Summary
 
