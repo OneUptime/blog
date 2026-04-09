@@ -17,13 +17,13 @@ Federated identity in Ceph RGW lets users from external identity providers (IdP)
 ```bash
 # Enable required features
 ceph config set client.rgw.my-store rgw_s3_auth_use_sts true
-ceph config set client.rgw.my-store rgw_sts_key "federated-sts-key-32chars!!!!!!!!"
+ceph config set client.rgw.my-store rgw_sts_key "$(openssl rand -hex 16)"
 
 # Create an IAM admin user
 radosgw-admin user create \
   --uid=iam-admin \
   --display-name="IAM Admin" \
-  --caps="roles=*;oidc-provider=*;policies=*"
+  --caps="roles=*;oidc-provider=*;user-policy=*"
 ```
 
 ## Step 2 - Register an OIDC Provider
