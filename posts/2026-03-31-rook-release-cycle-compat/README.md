@@ -18,14 +18,14 @@ flowchart LR
     Rook114["Rook v1.14\n(supported)"]
     Rook113["Rook v1.13\n(EOL)"]
 
-    Ceph19["Ceph Squid v19.x"]
     Ceph18["Ceph Reef v18.x"]
     Ceph17["Ceph Quincy v17.x"]
 
-    Rook115 --> Ceph19
     Rook115 --> Ceph18
+    Rook115 --> Ceph17
     Rook114 --> Ceph18
     Rook114 --> Ceph17
+    Rook113 --> Ceph18
     Rook113 --> Ceph17
 ```
 
@@ -35,10 +35,10 @@ Rook releases support a rolling window of Kubernetes versions:
 
 | Rook Version | Min Kubernetes | Max Kubernetes |
 |---|---|---|
-| v1.15 | 1.26 | 1.32 |
-| v1.14 | 1.25 | 1.31 |
-| v1.13 | 1.24 | 1.30 |
-| v1.12 | 1.23 | 1.29 |
+| v1.15 | 1.26 | 1.31 |
+| v1.14 | 1.25 | 1.30 |
+| v1.13 | 1.23 | 1.29 |
+| v1.12 | 1.22 | 1.28 |
 
 Always check the official compatibility matrix on the Rook documentation site before upgrading.
 
@@ -46,7 +46,7 @@ Always check the official compatibility matrix on the Rook documentation site be
 
 | Rook Version | Ceph Versions Supported |
 |---|---|
-| v1.15 | v18 (Reef), v19 (Squid) |
+| v1.15 | v17 (Quincy), v18 (Reef) |
 | v1.14 | v17 (Quincy), v18 (Reef) |
 | v1.13 | v17 (Quincy), v18 (Reef) |
 
@@ -75,7 +75,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph version
 
 # Kubernetes version
-kubectl version --short
+kubectl version
 ```
 
 ## Upgrade Path Rules
