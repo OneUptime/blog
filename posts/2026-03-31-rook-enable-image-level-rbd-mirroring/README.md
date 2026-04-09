@@ -87,7 +87,7 @@ Add a snapshot schedule for automatic replication:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image snapshot schedule add replicapool/app-data 1h
+  rbd mirror snapshot schedule add --pool replicapool --image app-data 1h
 ```
 
 ## Step 5 - List All Mirrored Images
@@ -96,14 +96,25 @@ Check which images in the pool have mirroring enabled:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image list replicapool
+  rbd mirror pool status replicapool --verbose
 ```
 
 ```text
-IMAGENAME   POOL         GLOBAL_ID   STATUS    PRIMARY
-critical-db replicapool  abc-123     up+replay  true
-app-data    replicapool  def-456     up+replay  true
-temp-data   replicapool  -           -          -
+health: OK
+daemon health: OK
+image health: OK
+images: 2 total
+    2 replaying
+
+IMAGES
+replicapool/critical-db:
+  global_id:   abc-123
+  state:       up+replaying
+  description: replaying, ...
+replicapool/app-data:
+  global_id:   def-456
+  state:       up+replaying
+  description: replaying, ...
 ```
 
 ## Step 6 - Disable Mirroring on an Image
@@ -115,24 +126,38 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd mirror image disable replicapool/temp-data
 ```
 
-## Step 7 - Automate via Rook Annotations
+## Step 7 - Manage Mirroring via VolumeReplication CRD
 
-In Kubernetes, annotate PVCs to control which ones use the mirroring-enabled StorageClass:
+In Kubernetes, use the VolumeReplication CRD (from the CSI Addons project) to manage mirroring at the PVC level. First, create a `VolumeReplicationClass`:
 
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplicationClass
 metadata:
-  name: critical-db-pvc
-  annotations:
-    rook.io/volumeAttributes: '{"mirroring":"enabled"}'
+  name: rbd-volumereplicationclass
 spec:
-  storageClassName: rook-ceph-block-mirrored
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
+  provisioner: rook-ceph.rbd.csi.ceph.com
+  parameters:
+    mirroringMode: snapshot
+    schedulingInterval: "1h"
+    replication.storage.openshift.io/replication-secret-name: rook-csi-rbd-provisioner
+    replication.storage.openshift.io/replication-secret-namespace: rook-ceph
+```
+
+Then, create a `VolumeReplication` resource referencing the PVC you want to mirror:
+
+```yaml
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplication
+metadata:
+  name: critical-db-pvc-replication
+  namespace: rook-ceph
+spec:
+  volumeReplicationClass: rbd-volumereplicationclass
+  replicationState: primary
+  dataSource:
+    kind: PersistentVolumeClaim
+    name: critical-db-pvc
 ```
 
 ## Summary
