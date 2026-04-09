@@ -64,7 +64,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v18.2.8
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -84,17 +84,56 @@ kubectl apply -f cluster-k3s.yaml
 k3s uses a different kubelet path, so CSI drivers must register at the correct location:
 
 ```bash
-kubectl -n rook-ceph get csidriver
+kubectl get csidriver
 kubectl -n rook-ceph get pods | grep csi
 ```
 
 Confirm the csi-provisioner pods are running:
 
 ```bash
-kubectl -n rook-ceph describe pod rook-ceph-csi-provisioner-0 | grep -A5 "Volumes:"
+kubectl -n rook-ceph describe deploy csi-rbdplugin-provisioner | grep -A5 "Volumes:"
 ```
 
-## Step 4 - Test PVC Creation
+## Step 4 - Create a CephBlockPool and StorageClass
+
+Before testing PVCs, create a CephBlockPool and StorageClass since Rook does not create these automatically:
+
+```yaml
+# storageclass-k3s.yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: replicapool
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+```
+
+```bash
+kubectl apply -f storageclass-k3s.yaml
+```
+
+## Step 5 - Test PVC Creation
 
 ```yaml
 # test-pvc-k3s.yaml
@@ -127,7 +166,7 @@ kubectl -n rook-ceph logs deploy/csi-rbdplugin-provisioner -c csi-provisioner | 
 Ensure the kubelet path matches:
 
 ```bash
-kubectl -n rook-ceph get ds rook-ceph-csi-rbdplugin -o yaml | grep kubeletDir
+kubectl -n rook-ceph get ds csi-rbdplugin -o yaml | grep kubeletDir
 ```
 
 ## Summary
