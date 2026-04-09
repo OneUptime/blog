@@ -70,12 +70,19 @@ Rook uses a predefined list of topology keys in priority order. Nodes are placed
 ```text
 1. topology.kubernetes.io/region
 2. topology.kubernetes.io/zone
-3. topology.rook.io/rack
-4. topology.rook.io/chassis
-5. kubernetes.io/hostname (always last)
+3. topology.rook.io/datacenter
+4. topology.rook.io/room
+5. topology.rook.io/pod
+6. topology.rook.io/pdu
+7. topology.rook.io/row
+8. topology.rook.io/rack
+9. topology.rook.io/chassis
+10. kubernetes.io/hostname (always last)
 ```
 
-You can override the priority list in the operator ConfigMap:
+Rook automatically creates CRUSH buckets for whichever labels in this list are present on your nodes — only apply the labels that match your infrastructure.
+
+To configure which topology labels the CSI driver uses for volume provisioning, set `CSI_TOPOLOGY_DOMAIN_LABELS` in the operator ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -84,7 +91,7 @@ metadata:
   name: rook-ceph-operator-config
   namespace: rook-ceph
 data:
-  ROOK_TOPOLOGY_NODE_LABELS: "topology.kubernetes.io/region,topology.kubernetes.io/zone,topology.rook.io/rack"
+  CSI_TOPOLOGY_DOMAIN_LABELS: "topology.kubernetes.io/region,topology.kubernetes.io/zone,topology.rook.io/rack"
 ```
 
 ## Verifying CRUSH Bucket Creation
