@@ -34,7 +34,7 @@ global:
     region: us-west-2
 ```
 
-When using Prometheus Operator with Rook, update the `PrometheusRule` or the Prometheus custom resource:
+When using Prometheus Operator with Rook, update the Prometheus custom resource:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
