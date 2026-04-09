@@ -21,7 +21,7 @@ ceph health detail
 Example output:
 
 ```text
-HEALTH_WARN mons are allowing insecure global_id reclaim
+HEALTH_WARN 3 monitors have not enabled msgr2
 [WRN] MON_MSGR2_NOT_ENABLED: 3 monitors have not enabled msgr2
     mon.a has not enabled msgr2
     mon.b has not enabled msgr2
