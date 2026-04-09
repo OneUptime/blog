@@ -23,7 +23,7 @@ Sample output:
 ```text
 HEALTH_WARN Dashboard debug mode is enabled
 [WRN] DASHBOARD_DEBUG: Dashboard debug mode is enabled
-    Dashboard debug mode is enabled, which could expose sensitive information.
+    Please disable debug mode in production environments using "ceph dashboard debug disable"
 ```
 
 ## Why Debug Mode Gets Enabled
@@ -41,7 +41,7 @@ ceph dashboard debug status
 Sample output:
 
 ```text
-Debug: 'on'
+Debug: 'enabled'
 ```
 
 ## Fixing the Warning
@@ -61,7 +61,7 @@ ceph dashboard debug status
 Expected output:
 
 ```text
-Debug: 'off'
+Debug: 'disabled'
 ```
 
 ## Verifying Cluster Health
@@ -100,7 +100,7 @@ While you have the dashboard in focus, verify other security-related settings:
 
 ```bash
 # Check if SSL is enabled
-ceph dashboard get-ssl-certificate
+ceph config-key get mgr/dashboard/crt
 
 # List current dashboard configuration
 ceph dashboard get-jwt-token-ttl
@@ -121,7 +121,7 @@ Create a runbook or checklist that includes disabling dashboard debug mode after
 ```bash
 #!/bin/bash
 STATUS=$(ceph dashboard debug status 2>/dev/null)
-if echo "$STATUS" | grep -q "'on'"; then
+if echo "$STATUS" | grep -q "'enabled'"; then
   echo "WARNING: Ceph dashboard debug mode is enabled"
   exit 1
 fi
