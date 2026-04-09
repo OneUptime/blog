@@ -34,8 +34,10 @@ ceph health
 Set up multi-site sync between source and destination:
 
 ```bash
-# Source cluster - export realm
+# Source cluster - list existing realms
 radosgw-admin realm list
+
+# Destination cluster - pull realm from source
 radosgw-admin realm pull \
   --url=http://source-rgw.example.com \
   --access-key=<key> \
@@ -65,7 +67,7 @@ Enable RBD mirroring between clusters:
 ```bash
 # Source cluster
 rbd mirror pool enable mypool image
-rbd mirror image enable mypool/myvolume
+rbd mirror image enable mypool/myvolume snapshot
 
 # Destination cluster - add peer
 rbd mirror pool peer add mypool \
@@ -89,10 +91,11 @@ rsync -avz --checksum \
   /mnt/dest-cephfs/
 ```
 
-For ongoing incremental syncs, use ceph-sync:
+For ongoing incremental syncs, use the CephFS mirroring daemon:
 
 ```bash
-ceph-diff-stream source-pool dest-pool
+ceph fs snapshot mirror enable myfs
+ceph fs snapshot mirror peer_add myfs client.mirror@dest-cluster /dest-cephfs
 ```
 
 ## Cutover Sequence
@@ -111,7 +114,8 @@ Day N:   1. Put application in maintenance mode
 Promote the destination zone:
 
 ```bash
-radosgw-admin zone modify --rgw-zone=dc2-zone --master
+radosgw-admin zone modify --rgw-zone=dc2-zone --master --default
+radosgw-admin zonegroup modify --rgw-zonegroup=main --master --default
 radosgw-admin period update --commit
 ```
 
