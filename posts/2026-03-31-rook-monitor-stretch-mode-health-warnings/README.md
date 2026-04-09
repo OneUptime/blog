@@ -18,13 +18,13 @@ Check all current warnings:
 ceph health detail
 ```
 
-## STRETCH_MODE_DEGRADED
+## DEGRADED_STRETCH_MODE
 
 This warning appears when one site is down or has fewer OSDs than the other site:
 
 ```text
 HEALTH_WARN 1 osds down in stretch mode; 2 pgs degraded
-STRETCH_MODE_DEGRADED 1 osds down in stretch mode
+DEGRADED_STRETCH_MODE 1 osds down in stretch mode
 ```
 
 To identify which site and OSDs are affected:
@@ -34,7 +34,7 @@ ceph osd tree | grep -E "down|CRUSH"
 ceph osd df | grep down
 ```
 
-## MON_STRETCH_MODE_NOT_DEFINED
+## NONEXISTENT_MON_CRUSH_LOC_STRETCH_MODE
 
 This warning indicates that stretch mode configuration is incomplete. Monitors may not have CRUSH location labels set:
 
@@ -45,11 +45,11 @@ ceph mon dump | grep crush_location
 Set missing location labels:
 
 ```bash
-ceph mon set-location mon-dc1a datacenter=dc1
-ceph mon set-location mon-dc2a datacenter=dc2
+ceph mon set_location mon-dc1a datacenter=dc1
+ceph mon set_location mon-dc2a datacenter=dc2
 ```
 
-## SITE_IMBALANCE Warning
+## STRETCH_MODE_BUCKET_WEIGHT_IMBALANCE
 
 If one site has significantly more OSDs than the other, CRUSH placement may favor one site. Check OSD distribution:
 
@@ -69,22 +69,37 @@ Verify that PGs are evenly distributed between sites:
 
 ```bash
 ceph pg dump | awk '{print $1}' | grep -v pg | head -5
-ceph osd map <pool> <object> | grep primary
+ceph osd map <pool> <object>
 ```
 
 Use a script to check how many PGs have primaries on each site:
 
 ```bash
-for site in dc1 dc2; do
-  count=$(ceph pg dump --format json 2>/dev/null | \
-    python3 -c "
-import sys, json
+ceph pg dump --format json 2>/dev/null | python3 -c "
+import sys, json, subprocess
+tree = json.loads(subprocess.check_output(
+    ['ceph', 'osd', 'tree', '--format', 'json']).decode())
+nodes = {n['id']: n for n in tree['nodes']}
+osd_to_site = {}
+for node in tree['nodes']:
+    if node.get('type') == 'datacenter':
+        stack = list(node.get('children', []))
+        while stack:
+            cid = stack.pop()
+            if cid in nodes:
+                if nodes[cid]['type'] == 'osd':
+                    osd_to_site[cid] = node['name']
+                stack.extend(nodes[cid].get('children', []))
 data = json.load(sys.stdin)
-pg_stats = data.get('pg_stats', [])
-print(len([p for p in pg_stats if '$site' in str(p.get('up', []))]))
-  ")
-  echo "$site: $count PGs"
-done
+counts = {}
+for pg in data.get('pg_stats', []):
+    up = pg.get('up', [])
+    if up:
+        site = osd_to_site.get(up[0], 'unknown')
+        counts[site] = counts.get(site, 0) + 1
+for site in sorted(counts):
+    print(f'{site}: {counts[site]} PGs')
+"
 ```
 
 ## Setting Up Alerts with Prometheus
@@ -122,4 +137,4 @@ ceph -w | grep -E "stretch|site|down|degraded"
 
 ## Summary
 
-Monitoring Ceph stretch mode requires tracking site-specific OSD health, PG distribution across sites, and monitor quorum status. Common warnings like STRETCH_MODE_DEGRADED should trigger immediate investigation to determine whether a site is fully down or only partially affected. Integrating Prometheus alerts ensures you are notified proactively before a minor issue becomes a service outage.
+Monitoring Ceph stretch mode requires tracking site-specific OSD health, PG distribution across sites, and monitor quorum status. Common warnings like DEGRADED_STRETCH_MODE should trigger immediate investigation to determine whether a site is fully down or only partially affected. Integrating Prometheus alerts ensures you are notified proactively before a minor issue becomes a service outage.
