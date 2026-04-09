@@ -23,6 +23,12 @@ csi:
   # No Helm flag needed - it's configured per StorageClass
 ```
 
+You also need to enable encryption support in the operator ConfigMap:
+
+```bash
+kubectl patch cm rook-ceph-operator-config -n rook-ceph -p $'data:\n "CSI_ENABLE_ENCRYPTION": "true"'
+```
+
 For KMS-backed encryption (recommended for production), configure KMS connectivity at the cluster level in your `CephCluster` CR rather than the Helm chart.
 
 ## Creating an Encryption-Enabled StorageClass
@@ -52,22 +58,34 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
-  csi.storage.k8s.io/controller-expand-secret-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
-## Configuring the KMS Secret
+## Configuring the KMS ConfigMap and Secret
 
-For Kubernetes secret-based encryption (simple mode without an external KMS):
+The `encryptionKMSID` in the StorageClass references a key in the `rook-ceph-csi-kms-config` ConfigMap, which defines how encryption keys are managed. For Kubernetes secret-based encryption (simple mode without an external KMS), first create the KMS config:
 
 ```bash
-kubectl create secret generic user-secret-metadata \
+kubectl patch configmap rook-ceph-csi-kms-config -n rook-ceph --type merge -p '{
+  "data": {
+    "config.json": "{\"user-secret-metadata\":{\"encryptionKMSType\":\"metadata\",\"secretName\":\"storage-encryption-secret\"}}"
+  }
+}'
+```
+
+Then create the secret containing the encryption passphrase:
+
+```bash
+kubectl create secret generic storage-encryption-secret \
   --from-literal=encryptionPassphrase="your-strong-passphrase" \
   -n rook-ceph
 ```
 
-Reference this secret name in the `encryptionKMSID` parameter of the StorageClass.
+The `encryptionKMSID` value in the StorageClass (`user-secret-metadata`) must match the key in the `rook-ceph-csi-kms-config` ConfigMap, which in turn points to the Kubernetes secret via `secretName`.
 
 ## Creating an Encrypted PVC
 
