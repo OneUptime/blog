@@ -24,14 +24,14 @@ The `osd perf` output shows commit and apply latency per OSD. Flag any OSD with 
 Get real-time I/O throughput and IOPS:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph iostat 5
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph iostat -p 5
 ```
 
 For detailed OSD-level stats:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell osd.* perf dump | python3 -m json.tool
+  ceph tell osd.0 perf dump | python3 -m json.tool
 ```
 
 ## Step 3: Check for Recovery Impacting Performance
@@ -61,8 +61,10 @@ Check if the cluster network is the bottleneck:
 kubectl -n rook-ceph exec -it rook-ceph-osd-0-<pod> -- \
   cat /proc/net/dev | grep eth
 
-# Use iperf3 between nodes to measure raw bandwidth
-kubectl -n rook-ceph exec -it rook-ceph-tools -- \
+# Use iperf3 between nodes to measure raw bandwidth (install first if needed)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  dnf install -y iperf3 && \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   iperf3 -c <osd-node-ip> -t 10
 ```
 
@@ -76,8 +78,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 import json, sys
 d = json.load(sys.stdin)
 bs = d.get('bluestore', {})
-print('BlueStore cache hits:', bs.get('bluestore_cache_hits', 'N/A'))
-print('BlueStore cache misses:', bs.get('bluestore_cache_misses', 'N/A'))
+print('Onode cache hits:', bs.get('onode_hits', 'N/A'))
+print('Onode cache misses:', bs.get('onode_misses', 'N/A'))
+print('Buffer hit bytes:', bs.get('buffer_hit_bytes', 'N/A'))
+print('Buffer miss bytes:', bs.get('buffer_miss_bytes', 'N/A'))
 "
 ```
 
