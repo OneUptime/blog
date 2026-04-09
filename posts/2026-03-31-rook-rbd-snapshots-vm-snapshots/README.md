@@ -10,7 +10,7 @@ Description: Use Ceph RBD snapshots as the backing mechanism for virtual machine
 
 ## Overview
 
-When VM disks live in Ceph RBD, VM snapshots map directly to RBD snapshots. This provides near-instantaneous snapshot creation regardless of disk size, and efficient storage using copy-on-write semantics. This guide covers taking consistent VM snapshots and using them for rollback.
+When VM disks live in Ceph RBD, you can leverage RBD snapshots for VM disk state capture. This provides near-instantaneous snapshot creation regardless of disk size, and efficient storage using copy-on-write semantics. This guide covers taking VM snapshots via libvirt, creating RBD snapshots directly, and using them for rollback.
 
 ## VM Snapshot Types
 
@@ -37,7 +37,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   rbd snap ls vms/myvm-disk
 ```
 
-The snapshot created by libvirt appears as an RBD snapshot in the pool.
+This lists any RBD-level snapshots on the image. Note that libvirt external snapshots (created with `--disk-only` in Step 1) create qcow2 overlay files rather than RBD-level snapshots. To create snapshots at the RBD level, use the direct commands in Step 5.
 
 ## Step 3 - Take a Memory + Disk Snapshot (Full)
 
@@ -64,6 +64,8 @@ virsh snapshot-revert myvm pre-upgrade
 # Start VM from the snapshot state
 virsh start myvm
 ```
+
+Note: `virsh snapshot-revert` for external snapshots (created with `--disk-only`) requires libvirt 9.9.0 or later. On older versions, shut down the VM and use `rbd snap rollback` directly (see Step 5).
 
 ## Step 5 - Manage RBD Snapshots Directly
 
@@ -95,7 +97,7 @@ KEEP=7  # Keep last 7 snapshots
 
 # List snapshots sorted by creation time
 SNAPS=$(rbd snap ls ${POOL}/${IMAGE} --format json | \
-  jq -r 'sort_by(.timestamp) | .[].name')
+  jq -r 'sort_by(.id) | .[].name')
 
 COUNT=$(echo "$SNAPS" | wc -l)
 DELETE_COUNT=$((COUNT - KEEP))
