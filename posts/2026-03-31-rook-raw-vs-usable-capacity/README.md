@@ -15,10 +15,10 @@ The distinction between raw and usable capacity is fundamental to Ceph planning.
 ## The Basic Formula
 
 ```text
-Usable Capacity = Raw Capacity / Replication Factor x (1 - full_threshold)
+Usable Capacity = Raw Capacity / Replication Factor x full_ratio
 ```
 
-Where `full_threshold` is typically 0.95 but you should plan for 0.80 usable maximum.
+Where `full_ratio` (the `mon_osd_full_ratio`) is typically 0.95 but you should plan for 0.80 usable maximum.
 
 ## Step 1 - Measure Raw Capacity
 
@@ -61,11 +61,11 @@ echo "Usable capacity (80%): ${USABLE} TB"
 echo "EC 2+1 (k=2, m=1): Overhead = $(echo 'scale=2; 3/2' | bc)x = 1.5x overhead"
 echo "EC 4+2 (k=4, m=2): Overhead = $(echo 'scale=2; 6/4' | bc)x = 1.5x overhead"
 echo "EC 6+2 (k=6, m=2): Overhead = $(echo 'scale=2; 8/6' | bc)x = 1.33x overhead"
-echo "EC 8+3 (k=8, m=3): Overhead = $(echo 'scale=2; 11/8' | bc)x = 1.375x overhead"
+echo "EC 8+3 (k=8, m=3): Overhead = $(echo 'scale=3; 11/8' | bc)x = 1.375x overhead"
 
 # Compare to 3-replica: 3.0x overhead
 # EC 4+2 usable from 300 TB:
-USABLE_EC=$(echo "scale=1; 300 * (4/6) * 0.80" | bc)
+USABLE_EC=$(echo "scale=1; 300 * 4/6 * 0.80" | bc)
 echo "EC 4+2 usable from 300 TB (80%): ${USABLE_EC} TB"
 # EC 4+2 gives ~160 TB usable vs ~80 TB for 3-replica
 ```
