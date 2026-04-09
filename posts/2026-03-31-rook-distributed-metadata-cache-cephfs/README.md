@@ -25,7 +25,7 @@ The MDS metadata cache holds:
 
 ## Cache Memory Management
 
-The MDS limits its cache using a memory-based limit rather than a fixed inode count (Nautilus+):
+The MDS limits its cache using a memory-based limit rather than a fixed inode count (Mimic+):
 
 ```bash
 # View current cache memory limit
@@ -54,7 +54,7 @@ If the MDS is under memory pressure, it will aggressively trim the cache, which 
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 perf dump | jq '.mds | {inodes, inode_max, caps}'
+  ceph tell mds.cephfs:0 perf dump | jq '.mds | {inodes, caps}'
 ```
 
 A `caps` count close to `inodes` indicates heavy client-side caching.
@@ -64,13 +64,13 @@ A `caps` count close to `inodes` indicates heavy client-side caching.
 Tune when and how aggressively the MDS trims its cache:
 
 ```bash
-# Start trimming when cache reaches 95% of limit
+# Set the number of dentries to trim per tick (default: 262144)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_cache_trim_threshold 0.95
+  ceph config set mds mds_cache_trim_threshold 262144
 
-# Trim 5% of cache per pass
+# Set the decay rate for the trim throttle (default: 1.0, lower = more aggressive)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_cache_trim_decay_rate 0.05
+  ceph config set mds mds_cache_trim_decay_rate 1.0
 ```
 
 ## Capability Management
@@ -78,9 +78,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Capabilities (caps) are tokens the MDS grants to clients authorizing specific operations (read, write, etc.). The MDS reclaims caps when the cache is full or when other clients need access:
 
 ```bash
-# View cap statistics
+# View cap count from perf counters
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 perf dump | jq '.mds | {cap_revoke_eviction, cap_revoke_timeout}'
+  ceph tell mds.cephfs:0 perf dump | jq '.mds.caps'
+
+# List client sessions with their cap counts
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph tell mds.cephfs:0 session ls
 ```
 
 ## Multi-Active MDS Cache Distribution
@@ -90,7 +94,7 @@ When running multiple active MDS ranks, each rank manages a portion of the names
 ```bash
 # View subtree partition
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 dump_subtrees
+  ceph tell mds.cephfs:0 get subtrees
 ```
 
 ## Summary
