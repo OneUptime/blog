@@ -14,23 +14,20 @@ NFS performance bottlenecks can occur at multiple layers in a Rook deployment: t
 
 ## Enabling Ganesha Prometheus Metrics
 
-Configure Ganesha to expose Prometheus metrics by adding the monitoring block to the Ganesha config in your `CephNFS`:
+Configure Ganesha to expose Prometheus metrics by enabling the monitoring parameters in your `CephNFS` config:
 
 ```yaml
 ganesha:
   config: |
     NFS_CORE_PARAM {
       Protocols = 4;
-    }
-    MONITORING {
-      Prometheus {
-        Enable = true;
-        Port = 9587;
-      }
+      Enable_Metrics = true;
+      Enable_Dynamic_Metrics = true;
+      Monitoring_Port = 9587;
     }
 ```
 
-The Ganesha pod now serves metrics at port 9587 on the `/metrics` endpoint.
+The Ganesha pod now serves metrics at port 9587.
 
 ## Creating a Prometheus ServiceMonitor
 
@@ -65,14 +62,14 @@ ports:
 
 | Metric | Description |
 |--------|-------------|
-| `ganesha_nfs_v4_total_ops` | Total NFSv4 operations |
-| `ganesha_nfs_v4_read_bytes` | Bytes read via NFS |
-| `ganesha_nfs_v4_write_bytes` | Bytes written via NFS |
-| `ganesha_nfs_v4_op_latency_seconds` | Operation latency histogram |
-| `ganesha_cache_inode_hit_count` | Inode cache hits |
-| `ganesha_cache_inode_miss_count` | Inode cache misses |
+| `nfs_requests_total` | Total NFS requests |
+| `nfs_bytes_received_total` | Bytes read via NFS |
+| `nfs_bytes_sent_total` | Bytes written via NFS |
+| `nfs_latency_ms` | Operation latency histogram |
+| `nfs_mdcache_hits_total` | Metadata cache hits |
+| `nfs_mdcache_misses_total` | Metadata cache misses |
 
-High cache miss rates indicate the inode cache is undersized. Increase `Entries_HWMark` in the `CACHE_INODE` config block.
+High cache miss rates indicate the metadata cache is undersized. Increase `Entries_HWMark` in the `MDCACHE` config block.
 
 ## Monitoring CephFS MDS for NFS Workloads
 
@@ -80,10 +77,10 @@ NFS operations backed by CephFS ultimately pass through the MDS. Monitor MDS per
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mds perf dump
+  ceph tell mds.<id> perf dump
 ```
 
-Watch for high `request_lat` values, which indicate MDS latency caused by metadata operations from NFS clients.
+Replace `<id>` with your MDS daemon name (e.g., `mds.myfs-a`). Watch for high per-operation latency values (such as `req_lookup`, `req_create`, `req_getattr` with their `.lat` sub-fields), which indicate MDS latency caused by metadata operations from NFS clients.
 
 ## Checking NFS Ganesha Stats Directly
 
@@ -92,10 +89,10 @@ Use the Ganesha management tool for a quick snapshot without Prometheus:
 ```bash
 kubectl -n rook-ceph exec -it \
   $(kubectl -n rook-ceph get pod -l app=rook-ceph-nfs -o name | head -1) -- \
-  ganesha_mgr get_stats
+  ganesha_stats v4_full
 ```
 
-This prints per-export operation counts and latency summaries.
+This prints NFSv4 per-export operation counts and latency summaries. Other useful subcommands include `v3_full` for NFSv3 stats and `fsal <name>` for FSAL-specific stats.
 
 ## Grafana Dashboard for NFS
 
@@ -111,4 +108,4 @@ Import the Ceph NFS Grafana dashboard (community dashboards available at grafana
 
 ## Summary
 
-Monitoring NFS performance in Rook requires metrics from three sources: the Ganesha Prometheus endpoint for NFS protocol metrics, Ceph MDS perf for metadata layer metrics, and Ceph OSD metrics for data path performance. Enable the Ganesha Prometheus exporter via the `MONITORING` config block, create a ServiceMonitor for automatic scraping, and build Grafana dashboards to correlate NFS, MDS, and OSD metrics.
+Monitoring NFS performance in Rook requires metrics from three sources: the Ganesha Prometheus endpoint for NFS protocol metrics, Ceph MDS perf for metadata layer metrics, and Ceph OSD metrics for data path performance. Enable the Ganesha Prometheus exporter via `Enable_Metrics` in the `NFS_CORE_PARAM` config block, create a ServiceMonitor for automatic scraping, and build Grafana dashboards to correlate NFS, MDS, and OSD metrics.
