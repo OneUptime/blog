@@ -99,14 +99,15 @@ radosgw-admin bucket sync status --bucket=critical-bucket --source-zone=us-east
 ## Step 6 - Verify Rebuild Completion
 
 ```bash
-# Wait for full sync completion
+# Wait for full sync completion (both metadata and data must be caught up)
 while true; do
-    STATUS=$(radosgw-admin sync status 2>&1 | grep "caught up")
-    if [ -n "$STATUS" ]; then
+    SYNC_OUTPUT=$(radosgw-admin sync status 2>&1)
+    CAUGHT_UP=$(echo "$SYNC_OUTPUT" | grep -c "caught up")
+    if [ "$CAUGHT_UP" -ge 2 ]; then
         echo "Secondary zone fully synced!"
         break
     fi
-    echo "Still syncing... $(date)"
+    echo "Still syncing ($CAUGHT_UP/2 caught up)... $(date)"
     sleep 120
 done
 
@@ -124,8 +125,9 @@ radosgw-admin bucket stats --bucket=critical-bucket | \
 ```bash
 # Estimate based on data volume and network bandwidth
 # Get total data size in primary zone
-radosgw-admin bucket list | while read b; do
-    radosgw-admin bucket stats --bucket=$b 2>/dev/null | \
+radosgw-admin bucket list | python3 -c "import sys,json; [print(b) for b in json.load(sys.stdin)]" | \
+while read b; do
+    radosgw-admin bucket stats --bucket="$b" 2>/dev/null | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('usage',{}).get('rgw.main',{}).get('size_actual',0))"
 done | awk '{sum+=$1} END {print sum/1024/1024/1024, "GB total"}'
 ```
