@@ -61,7 +61,7 @@ kubectl -n rook-ceph create secret tls ceph-dashboard-tls \
 
 ## Step 3: Create the Ingress Resource
 
-For NGINX Ingress with TLS passthrough (dashboard handles TLS):
+For NGINX Ingress with HTTPS backend (dashboard has SSL enabled):
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -71,7 +71,8 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      proxy_ssl_verify off;
 spec:
   ingressClassName: nginx
   tls:
@@ -100,7 +101,7 @@ metadata:
   name: rook-ceph-dashboard
   namespace: rook-ceph
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 spec:
   ingressClassName: nginx
   tls:
