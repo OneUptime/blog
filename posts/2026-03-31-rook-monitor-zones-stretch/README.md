@@ -106,7 +106,7 @@ metadata:
   name: stretch-pool
   namespace: rook-ceph
 spec:
-  failureDomain: host
+  failureDomain: zone
   replicated:
     size: 4
     requireSafeReplicaSize: true
@@ -159,8 +159,8 @@ Expected: OSDs grouped under zones a and b, with balanced placement.
 ## Failure Scenarios
 
 **Zone A fails:**
-- Mons in Zone A go down
-- Arbiter Mon + Zone B Mon maintain quorum (2 of 5 total, but 2 of 3 "vote groups")
+- Mons in Zone A go down (2 mons lost)
+- Zone B Mons + Arbiter Mon maintain quorum (3 of 5 mons remain, which is a majority)
 - OSD copies in Zone A go down, Zone B copies remain
 - Cluster enters HEALTH_WARN, continues serving I/O from Zone B replicas
 
