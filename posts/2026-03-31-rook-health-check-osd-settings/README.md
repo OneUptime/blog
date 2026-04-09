@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, OSD, HealthCheck, Reliability
 
-Description: Tune OSD health check intervals and timeouts in Rook so the operator detects disk failures quickly and initiates recovery without triggering false-positive OSD removals.
+Description: Tune OSD health check intervals in Rook so the operator detects disk failures quickly and initiates recovery without triggering false-positive OSD removals.
 
 ---
 
 ## Why OSD Health Checks Need Tuning
 
-Ceph marks an OSD as down and starts recovery when the OSD fails to respond for a set period. Rook adds a second layer: the operator watches OSD pod health and can evict or replace OSDs that remain unhealthy.
+Ceph marks an OSD as down and starts recovery when the OSD fails to respond for a set period. Rook adds a second layer: the operator periodically polls OSD status and, if `removeOSDsIfOutAndSafeToRemove` is enabled, can remove OSD deployments that are both down and out once Ceph confirms they are safe to destroy.
 
-Too-aggressive health check timeouts cause spurious OSD removal on slow disks or network blips, leading to unnecessary data rebalancing. Too-long timeouts delay recovery when a disk genuinely fails. Finding the right balance is critical for maintaining cluster performance.
+Too-frequent health check polling on slow disks or network blips can surface transient issues, while too-infrequent polling delays detection when a disk genuinely fails. Finding the right balance is critical for maintaining cluster performance.
 
 ## Configuring OSD Health Checks
 
@@ -30,47 +30,43 @@ spec:
       osd:
         disabled: false
         interval: 60s
-        timeout: 600s
 ```
 
-`interval` is how often the operator polls OSD health. `timeout` is how long an OSD can remain unhealthy before operator-level remediation begins.
+`interval` is how often the operator polls OSD health (default: 60 seconds). `disabled` controls whether the health check runs at all. Note that the `timeout` field, while accepted in the YAML schema, is only used by the `mon` health checker — it has no effect under the `osd` section.
 
 ## OSD Removal vs Ceph's Own osd.down Mechanism
 
-Ceph internally marks an OSD `down` after `mon_osd_report_timeout` seconds (default 900s). Rook's `timeout` triggers different behavior: it signals that the OSD pod itself is unhealthy and may need to be rescheduled. These two timeouts operate independently.
+Ceph internally marks an OSD `down` after `mon_osd_report_timeout` seconds (default 900s). Rook's health check operates independently: it polls OSD status at the configured `interval` and checks for OSDs that are both down and out. If `removeOSDsIfOutAndSafeToRemove` is enabled on the CephCluster spec, the operator will delete the OSD deployment once Ceph confirms the OSD is safe to destroy and a grace period has elapsed.
 
-For most production clusters, align the Rook timeout with or slightly below Ceph's internal timeout:
+For most production clusters, the default 60-second polling interval is sufficient:
 
 ```yaml
 healthCheck:
   daemonHealth:
     osd:
       interval: 60s
-      timeout: 600s   # slightly below Ceph's default 900s
 ```
 
 ## High-Latency Storage Environments
 
-On clusters with slow HDDs or heavily loaded nodes, OSD responses can be delayed. Increase the timeout to avoid false positives:
+On clusters with slow HDDs or heavily loaded nodes, frequent polling may add unnecessary load. Increase the interval to reduce operator overhead:
 
 ```yaml
 healthCheck:
   daemonHealth:
     osd:
       interval: 120s
-      timeout: 900s
 ```
 
 ## NVMe Clusters Requiring Fast Detection
 
-For all-NVMe clusters where disk failures are clean and abrupt, reduce the timeout for faster automated recovery:
+For all-NVMe clusters where disk failures are clean and abrupt, reduce the interval for faster detection:
 
 ```yaml
 healthCheck:
   daemonHealth:
     osd:
       interval: 30s
-      timeout: 180s
 ```
 
 ## Monitoring OSD Health Manually
@@ -109,4 +105,4 @@ Restore after the maintenance window closes.
 
 ## Summary
 
-OSD health check configuration in Rook requires balancing the speed of failure detection against the risk of spurious remediation. Match your timeout values to your disk technology (fast NVMe vs slow HDD) and network reliability. Always disable health checks during planned maintenance to avoid triggering recovery operations that compete with your maintenance work.
+OSD health check configuration in Rook controls how frequently the operator polls for OSD status. Match your `interval` value to your disk technology (fast NVMe vs slow HDD) and network reliability. If you want the operator to automatically remove failed OSDs, enable `removeOSDsIfOutAndSafeToRemove` in your CephCluster spec. Always disable health checks during planned maintenance to avoid triggering recovery operations that compete with your maintenance work.
