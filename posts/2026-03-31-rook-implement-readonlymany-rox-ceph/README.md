@@ -126,7 +126,13 @@ metadata:
   namespace: ml-platform
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: model-server
   template:
+    metadata:
+      labels:
+        app: model-server
     spec:
       containers:
         - name: inference
