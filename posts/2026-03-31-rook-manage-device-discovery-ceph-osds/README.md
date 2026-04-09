@@ -88,7 +88,7 @@ Devices that should never become OSDs can be excluded by ensuring they have a fi
 
 ```bash
 # Check device state on a node
-kubectl -n rook-ceph debug node/worker-1 -- \
+kubectl debug node/worker-1 -it --image=busybox -- \
   chroot /host lsblk -f
 ```
 
