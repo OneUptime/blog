@@ -28,13 +28,18 @@ Sample output to interpret:
 realm mycompany (realm-id)
     zonegroup us (zg-id)
         zone us-west (zone-id)
-            data sync source: us-east (zone-id)
-                              behind shards: 0
-                              newest full sync: 2026-03-31 12:00:00
-                              oldest incremental sync: 2026-03-31 12:05:00
+  metadata sync syncing
+                full sync: 0/64 shards
+                incremental sync: 64/64 shards
+                metadata is caught up with master
+      data sync source: us-east (zone-id)
+                        syncing
+                        full sync: 0/128 shards
+                        incremental sync: 128/128 shards
+                        data is caught up with source
 ```
 
-`behind shards: 0` means fully synced. Non-zero means lag exists.
+`data is caught up with source` means fully synced. If lagging, you will see `data is behind on N shards` followed by the shard IDs.
 
 ## Step 2: Check Per-Bucket Sync Status
 
@@ -45,8 +50,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --source-zone=us-east
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket sync markers \
-  --bucket=my-critical-bucket
+  radosgw-admin data sync status \
+  --source-zone=us-east
 ```
 
 ## Step 3: Check Sync Error Log
@@ -54,34 +59,35 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin sync error list \
-  --start-time=2026-03-30T00:00:00 \
-  --end-time=2026-03-31T23:59:59 | python3 -m json.tool
+  --start-date=2026-03-30 \
+  --end-date=2026-03-31 | python3 -m json.tool
 ```
 
-For retry of failed syncs:
+To clear resolved sync error entries from the log:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin sync error trim \
-  --start-time=2026-03-30T00:00:00
+  --start-date=2026-03-30
 ```
 
 ## Step 4: Prometheus Metrics for RGW Sync
 
-Enable RGW metrics:
+Enable the ceph-mgr Prometheus module:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_enable_ops_log true
+  ceph mgr module enable prometheus
 ```
 
-Key Prometheus metrics from the RGW:
+Key Prometheus metrics for RGW sync (exposed by ceph-mgr on port 9283):
 
 ```text
-# Scrape from http://rgw-service:7480/metrics
-rgw_sync_seconds_behind - lag in seconds
-rgw_data_sync_status - number of shards behind
-rgw_metadata_sync_full_total - total full sync operations
+# Scrape from http://ceph-mgr-service:9283/metrics
+ceph_data_sync_from_<zone>_fetch_bytes_sum - bytes fetched from source zone
+ceph_data_sync_from_<zone>_fetch_bytes_count - fetch operation count
+ceph_data_sync_from_<zone>_poll_latency_sum - sync poll latency
+ceph_data_sync_from_<zone>_fetch_errors - sync fetch error count
 ```
 
 ## Step 5: Automated Lag Monitoring Script
@@ -89,9 +95,12 @@ rgw_metadata_sync_full_total - total full sync operations
 ```bash
 #!/bin/bash
 MAX_LAG_SHARDS=10
-BEHIND=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+BEHIND=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   radosgw-admin sync status 2>&1 | \
-  grep "behind shards" | awk '{print $NF}')
+  grep -oP 'data is behind on \K[0-9]+' | head -1)
+
+# If no "behind" line found, sync is caught up
+BEHIND=${BEHIND:-0}
 
 if [ "$BEHIND" -gt "$MAX_LAG_SHARDS" ]; then
   echo "ALERT: RGW sync lag - $BEHIND shards behind"
@@ -107,22 +116,22 @@ echo "OK: RGW sync lag = $BEHIND shards"
 groups:
 - name: rgw-multisite
   rules:
-  - alert: RGWSyncLagHigh
-    expr: rgw_sync_seconds_behind > 300
+  - alert: RGWSyncFetchErrors
+    expr: rate(ceph_data_sync_from_us_east_fetch_errors[5m]) > 0
     for: 5m
     labels:
       severity: warning
     annotations:
-      summary: "RGW multisite sync lag exceeds 5 minutes"
-      description: "Zone {{ $labels.zone }} is {{ $value }}s behind"
+      summary: "RGW multisite sync fetch errors detected"
+      description: "Sync from source zone is experiencing fetch errors"
 
-  - alert: RGWSyncStopped
-    expr: increase(rgw_data_sync_status[10m]) == 0 and rgw_sync_seconds_behind > 0
+  - alert: RGWSyncPollLatencyHigh
+    expr: rate(ceph_data_sync_from_us_east_poll_latency_sum[5m]) / rate(ceph_data_sync_from_us_east_poll_latency_count[5m]) > 10
     for: 15m
     labels:
       severity: critical
     annotations:
-      summary: "RGW multisite sync appears stopped"
+      summary: "RGW multisite sync poll latency is high"
 ```
 
 ## Summary
