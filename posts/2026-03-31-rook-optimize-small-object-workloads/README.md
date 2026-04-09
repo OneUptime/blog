@@ -19,7 +19,6 @@ Tune the RADOS Gateway for high-frequency small object operations:
 ```bash
 # Increase RGW operation threads for concurrency
 ceph config set client.rgw rgw_thread_pool_size 512
-ceph config set client.rgw rgw_num_rados_handles 8
 
 # Enable RGW metadata cache
 ceph config set client.rgw rgw_cache_enabled true
@@ -38,8 +37,8 @@ The minimum allocation unit must match your typical object size:
 ceph config set osd bluestore_min_alloc_size_ssd 4096    # 4 KB
 ceph config set osd bluestore_min_alloc_size_hdd 4096
 
-# For very small objects (under 4 KB), use inline data
-ceph config set osd bluestore_max_inline_data_size 4096
+# Note: bluestore_min_alloc_size is set at OSD creation time.
+# Changing it requires recreating the OSD to take effect.
 ```
 
 ## Metadata Cache Tuning
@@ -53,7 +52,7 @@ ceph config set osd osd_memory_target 8589934592  # 8 GiB
 # Prioritize key-value (metadata) cache over data cache
 ceph config set osd bluestore_cache_kv_ratio 0.5     # 50% for RocksDB
 ceph config set osd bluestore_cache_meta_ratio 0.4   # 40% for metadata
-ceph config set osd bluestore_cache_data_ratio 0.1   # 10% for data
+# Remaining 10% is automatically allocated to data cache
 ```
 
 ## PG Count Optimization
@@ -81,7 +80,7 @@ With millions of small objects, bucket index becomes a bottleneck:
 
 ```bash
 # Enable dynamic resharding
-ceph config set osd osd_pool_default_pg_num 64
+ceph config set global osd_pool_default_pg_num 64
 ceph config set client.rgw rgw_dynamic_resharding true
 ceph config set client.rgw rgw_reshard_num_logs 16
 
@@ -89,9 +88,9 @@ ceph config set client.rgw rgw_reshard_num_logs 16
 radosgw-admin bucket reshard --bucket=my-bucket --num-shards=64
 ```
 
-## S3 Multipart for Small Objects
+## Concurrent S3 Uploads for Small Objects
 
-For applications uploading many small objects, batch operations reduce overhead:
+For applications uploading many small objects, concurrent uploads reduce overhead:
 
 ```python
 import boto3
