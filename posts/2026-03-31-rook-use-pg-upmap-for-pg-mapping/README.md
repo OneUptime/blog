@@ -32,7 +32,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Checking Current PG Mapping
 
-View the current CRUSH-computed mapping for a PG:
+View the current effective mapping for a PG (includes any upmap overrides):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph pg map 1.0
@@ -87,7 +87,7 @@ Remove all upmap overrides from the cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd dump | grep upmap | awk '{print $2}' | \
+  ceph osd dump | grep '^pg_upmap_items ' | awk '{print $2}' | \
   xargs -I {} kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
     ceph osd rm-pg-upmap-items {}
 ```
