@@ -8,22 +8,27 @@ Description: Learn how to enable allow_ec_optimizations on Ceph erasure coded po
 
 ---
 
-Starting with Ceph Quincy (17.x), Ceph introduced the `allow_ec_optimizations` flag for erasure coded pools. This flag enables a smarter write path that reduces unnecessary read-modify-write (RMW) operations, improving performance for workloads that overwrite aligned stripes or append data to EC pools.
+Starting with Ceph Tentacle (20.x), Ceph introduced the `allow_ec_optimizations` flag for erasure coded pools. This flag enables a new Fast Erasure Coding (Fast EC) I/O path that improves performance for smaller I/Os, eliminates unnecessary padding for small objects, and reduces read-modify-write (RMW) overhead through techniques like partial reads, partial writes, and parity delta writes.
 
 ## What allow_ec_optimizations Does
 
-When `allow_ec_overwrites` is enabled, every partial write to an EC pool triggers a full RMW cycle - even if the write aligns perfectly to a stripe boundary. The `allow_ec_optimizations` flag adds logic to detect when a write covers a full stripe and bypass the read phase entirely, directly encoding and writing the new data.
+The `allow_ec_optimizations` flag switches the pool to a new Fast EC I/O code path that includes several improvements:
+
+- **Partial reads**: Instead of reading entire stripes for small read requests, only the minimal necessary data chunks are read.
+- **Small object padding elimination**: Objects smaller than a full stripe are no longer padded to stripe boundaries, saving storage capacity.
+- **Partial writes**: Subsegment writes read only the affected data strips rather than entire stripes before recalculating parity.
+- **Parity delta writes**: A dynamic technique that computes XOR differences between old and new data and applies delta operations to parity chunks, reducing overall I/O amplification.
 
 This optimization is particularly valuable for:
-- RBD sequential workloads that write in stripe-aligned chunks
-- RGW multipart uploads with part sizes aligned to the stripe width
-- CephFS data pool writes from MDS that issue full-stripe writes
+- RBD workloads, especially with smaller I/O sizes
+- RGW workloads with many small objects
+- CephFS data pool writes from clients
 
 ## Requirements
 
-- Ceph Quincy (17.2+) or later
+- Ceph Tentacle (20.2+) or later — all Monitors and OSDs must be upgraded
 - All OSDs must use BlueStore
-- `allow_ec_overwrites` must already be enabled on the pool
+- Erasure code profile must use the Jerasure or ISA-L plugin with the `reed_sol_van` technique (the default)
 
 ## Enabling the Optimization
 
@@ -33,20 +38,27 @@ First, confirm your Ceph version supports the flag:
 ceph version
 ```
 
-Expected: `ceph version 17.x.x` or higher.
+Expected: `ceph version 20.x.x` or higher.
 
-Enable overwrites and then optimizations:
+Enable the optimization:
 
 ```bash
-ceph osd pool set ec-pool allow_ec_overwrites true
 ceph osd pool set ec-pool allow_ec_optimizations true
 ```
 
-Verify both are active:
+Note: Once enabled, this flag cannot be disabled because it changes how new data is stored.
+
+If the pool is used with RBD or CephFS, you should also enable overwrites (if not already set):
 
 ```bash
-ceph osd pool get ec-pool allow_ec_overwrites
+ceph osd pool set ec-pool allow_ec_overwrites true
+```
+
+Verify the flags:
+
+```bash
 ceph osd pool get ec-pool allow_ec_optimizations
+ceph osd pool get ec-pool allow_ec_overwrites
 ```
 
 ## Rook CephBlockPool Configuration
@@ -62,39 +74,40 @@ spec:
     dataChunks: 4
     codingChunks: 2
   parameters:
-    allow_ec_overwrites: "true"
     allow_ec_optimizations: "true"
 ```
 
 ## Performance Impact
 
-Without optimizations, a full-stripe write to an EC pool (k=4, stripe=256 KiB) still reads 4 chunks before writing. With optimizations enabled, full-stripe writes skip the read:
+Fast EC provides improvements across multiple I/O patterns:
 
 ```text
-Write Type              Without Optimization   With Optimization
-Full stripe write       Read + Encode + Write  Encode + Write only
-Partial stripe write    Read + Encode + Write  Read + Encode + Write
-Append (new stripe)     Encode + Write         Encode + Write
+Operation                Without Optimization        With Optimization
+Small read               Read full stripe            Read only needed chunks
+Full stripe write        Read + Encode + Write       Encode + Write (skip read)
+Partial stripe write     Read full stripe + RMW      Read affected strips only + PDW
+Small object store       Padded to stripe boundary   Stored without padding
 ```
 
-The savings are most significant for workloads that write in multiples of the logical stripe size. For RBD workloads with a 256 KiB stripe (k=4, stripe_unit=64 KiB), sequential I/O using 256 KiB or larger I/O blocks benefits the most.
+The savings are most significant for workloads with smaller I/O sizes or many small objects. For the majority of I/O workloads, it is recommended to increase the stripe unit to at least 16 KiB when using optimizations.
 
 ## Monitoring RMW Operations
 
-You can verify the optimization is reducing RMW cycles by monitoring OSD perf stats:
+You can monitor OSD performance stats to observe the impact of the optimization:
 
 ```bash
-ceph daemon osd.0 perf dump | grep ec_
+ceph daemon osd.0 perf dump
 ```
 
-Look for `ec_read_in_progress` counter - it should be lower when most writes hit aligned full-stripe paths.
+Look for erasure coding related counters in the output. You can also compare overall read and write latency metrics before and after enabling the optimization to measure improvement.
 
 ## Limitations
 
-- The optimization only fires when the write fully covers one or more stripes
-- Random sub-stripe writes still incur full RMW overhead
-- This is a best-effort optimization; Ceph falls back to RMW when needed
+- Once enabled, the flag cannot be disabled because it changes how new data is stored
+- Only supported with the Jerasure and ISA-L plugins using the `reed_sol_van` technique
+- EC optimizations for non-4K-aligned chunk sizes are not supported
+- Requires all Monitors and OSDs to be running Tentacle or later
 
 ## Summary
 
-`allow_ec_optimizations` reduces read-modify-write overhead for full-stripe overwrites in erasure coded pools. It requires Ceph Quincy or newer and BlueStore OSDs. Enable it alongside `allow_ec_overwrites` for any EC pool used with RBD or CephFS to recover much of the write performance lost to the RMW cycle, especially for sequential workloads.
+`allow_ec_optimizations` enables the Fast EC I/O path for erasure coded pools, providing substantial performance improvements through partial reads, padding elimination, partial writes, and parity delta writes. It requires Ceph Tentacle (20.2+) or newer and BlueStore OSDs. Enable it on any EC pool used with RBD, CephFS, or RGW to improve I/O performance, especially for workloads with smaller I/O sizes or many small objects. Note that once enabled, the flag cannot be reversed.
