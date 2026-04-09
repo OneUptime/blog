@@ -33,7 +33,7 @@ Client Request
                          Serve to client
 ```
 
-D3N caches are local to each RGW instance. In a multi-RGW deployment, each instance maintains its own independent cache. The cache is backed by a directory on a fast local disk (NVMe recommended) and uses a configurable eviction policy (LRU or LFUDA).
+D3N caches are local to each RGW instance. In a multi-RGW deployment, each instance maintains its own independent cache. The cache is backed by a directory on a fast local disk (NVMe recommended) and uses a configurable eviction policy (LRU or Random).
 
 ## D3N vs Traditional RGW Caching
 
@@ -41,7 +41,7 @@ D3N caches are local to each RGW instance. In a multi-RGW deployment, each insta
 |---------|----------------|-----|
 | Cache location | Memory (RAM) | NVMe SSD |
 | Cache size limit | RAM capacity | Disk capacity (TBs) |
-| Cache persistence | Lost on restart | Survives restarts |
+| Cache persistence | Lost on restart | On disk but purged on restart by default |
 | Read amplification | High for cold data | Low for warm data |
 | Best for | Low-latency small objects | Large repeated reads |
 
@@ -91,25 +91,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set client.r
 
 ## Monitoring D3N Cache Performance
 
-Check D3N cache hit rates via the RGW admin API:
+D3N does not have dedicated perf counters. Monitoring is done via RGW log files. D3N-related log lines in `radosgw.*.log` contain the string `d3n`. Enable low-level D3N logs with the `debug_rgw_datacache` subsystem:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- radosgw-admin bucket stats --bucket=my-bucket
-```
+# Enable detailed D3N cache logging
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set client.rgw.my-store debug_rgw_datacache 20
 
-Or check cache metrics from RGW perf counters:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell rgw.* perf dump | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for daemon, stats in data.items():
-    cache_stats = {k: v for k, v in stats.items() if 'd3n' in k.lower() or 'cache' in k.lower()}
-    if cache_stats:
-        print(f'Daemon: {daemon}')
-        for k, v in cache_stats.items():
-            print(f'  {k}: {v}')
-"
+# Check RGW logs for D3N cache activity
+kubectl -n rook-ceph logs -l app=rook-ceph-rgw | grep -i d3n
 ```
 
 ## D3N Cache Eviction Policies
@@ -120,11 +109,11 @@ D3N supports two eviction policies:
 # LRU (Least Recently Used) - default, evicts oldest accessed objects
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set client.rgw.my-store rgw_d3n_l1_eviction_policy lru
 
-# LFUDA (Least Frequently Used with Dynamic Aging) - better for skewed access
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set client.rgw.my-store rgw_d3n_l1_eviction_policy lfuda
+# Random - randomly evicts cached objects when space is needed
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set client.rgw.my-store rgw_d3n_l1_eviction_policy random
 ```
 
-LFUDA is recommended for workloads with power-law access distributions (e.g., ML training where some datasets are accessed much more than others).
+LRU is the default and is generally recommended for most workloads.
 
 ## Summary
 
