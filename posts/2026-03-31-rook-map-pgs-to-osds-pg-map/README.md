@@ -55,7 +55,7 @@ List all PG-to-OSD mappings for a pool:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg dump 2>/dev/null | \
-  awk '/^[0-9]+\.[0-9a-f]+/ {print $1, "acting:", $16}'
+  awk '/^[0-9]+\.[0-9a-f]+/ {print $1, "acting:", $19}'
 ```
 
 ## Checking Primary OSD for a PG
