@@ -97,8 +97,6 @@ spec:
         memory: "8Gi"
       requests:
         memory: "4Gi"
-    config:
-      mds_cache_memory_limit: "6442450944"  # 6 GiB
 ```
 
 Apply:
@@ -107,10 +105,16 @@ Apply:
 kubectl apply -f filesystem.yaml
 ```
 
-Or inject dynamically:
+Then set the MDS cache memory limit (persistently) via the Ceph config:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.myfs-a injectargs '--mds-cache-memory-limit=6442450944'
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mds mds_cache_memory_limit 6442450944
+```
+
+Or inject dynamically (takes effect immediately but resets on restart):
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.myfs-a injectargs '--mds_cache_memory_limit=6442450944'
 ```
 
 ## Step 5 - Check for Client Overload
@@ -130,7 +134,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.myfs-a ses
 If a specific client is sending excessive requests, evict it temporarily:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.myfs-a evict_client <client-id>
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph tell mds.myfs-a client evict id=<client-id>
 ```
 
 ## Step 6 - Check the Metadata Pool Health
@@ -154,7 +158,7 @@ spec:
     activeStandby: true
 ```
 
-With `activeStandby: true`, Rook deploys a warm standby that is pre-loaded with metadata cache, allowing fast failover when the active MDS becomes laggy.
+With `activeStandby: true`, Rook deploys a standby MDS daemon that can quickly take over the active rank if the active MDS fails or becomes unresponsive. Note that a standby MDS does not have the metadata cache pre-loaded — it will rebuild its cache after taking over, but failover is still faster because the daemon is already running.
 
 ## Step 8 - Restart the Laggy MDS
 
