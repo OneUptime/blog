@@ -27,7 +27,7 @@ Monitors store the cluster map in memory. Larger clusters with more OSD history 
 
 ## Step 1 - Calculate OSD RAM (BlueStore)
 
-BlueStore uses a write-ahead cache and metadata cache:
+BlueStore uses a write-ahead log (WAL) and metadata cache:
 
 ```bash
 # Default BlueStore cache size
@@ -96,17 +96,17 @@ Or set per OSD in the Rook CephCluster spec:
 
 ```yaml
 spec:
-  storage:
-    config:
+  cephConfig:
+    osd:
       osd_memory_target: "5368709120"
 ```
 
 ## Step 5 - Monitor Memory Usage
 
 ```bash
-# Check actual OSD memory usage
+# Check actual OSD memory usage via heap stats (requires TCMalloc)
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd memory --format=json | jq '.osds[] | {id:.id, allocated_bytes:.heap_allocated_bytes}'
+  ceph tell osd.* heap stats
 
 # Check from the OS
 ps aux | grep ceph-osd | awk '{sum += $6} END {print sum/1024/1024 " GB"}'

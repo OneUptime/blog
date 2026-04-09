@@ -27,7 +27,7 @@ flowchart TD
 
 ## Prerequisites
 
-- Rook v1.10+
+- Rook v1.9+
 - An existing `CephBlockPool`
 - Rook CSI driver installed
 
@@ -94,7 +94,16 @@ kubectl get cephblockpoolradosnamespace -n rook-ceph
 
 ## Create StorageClass per Namespace
 
-Each namespace gets its own StorageClass with the `radosNamespaceName` parameter:
+Each `CephBlockPoolRadosNamespace` resource generates a unique `clusterID` in its status. This `clusterID` — not the main cluster's `rook-ceph` ID — is what ties the StorageClass to a specific RADOS namespace. Retrieve it first:
+
+```bash
+TEAM_A_CLUSTER_ID=$(kubectl -n rook-ceph get cephblockpoolradosnamespace team-a-namespace \
+  -o jsonpath='{.status.info.clusterID}')
+TEAM_B_CLUSTER_ID=$(kubectl -n rook-ceph get cephblockpoolradosnamespace team-b-namespace \
+  -o jsonpath='{.status.info.clusterID}')
+```
+
+Use the namespace-specific `clusterID` in each StorageClass:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -103,9 +112,8 @@ metadata:
   name: ceph-rbd-team-a
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: rook-ceph
+  clusterID: <team-a-namespace-clusterID>   # from status.info.clusterID of team-a-namespace
   pool: replicapool
-  radosNamespaceName: team-a-namespace    # isolate to this namespace
   imageFormat: "2"
   imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
@@ -123,9 +131,8 @@ metadata:
   name: ceph-rbd-team-b
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
-  clusterID: rook-ceph
+  clusterID: <team-b-namespace-clusterID>   # from status.info.clusterID of team-b-namespace
   pool: replicapool
-  radosNamespaceName: team-b-namespace
   imageFormat: "2"
   imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner

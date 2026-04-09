@@ -176,20 +176,24 @@ aws s3 cp test.txt --endpoint-url http://${BUCKET_HOST} s3://${BUCKET_NAME}/test
 
 ## Exposing RGW Externally
 
-To expose RGW outside the cluster, change the Service type to LoadBalancer:
+To expose RGW outside the cluster, create a separate Kubernetes Service with type LoadBalancer:
 
 ```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephObjectStore
+apiVersion: v1
+kind: Service
 metadata:
-  name: my-store
+  name: rook-ceph-rgw-my-store-lb
   namespace: rook-ceph
 spec:
-  gateway:
-    port: 80
-    instances: 2
-    externalRgwEndpoints:
-      - ip: 192.168.1.100
+  type: LoadBalancer
+  selector:
+    app: rook-ceph-rgw
+    rook_object_store: my-store
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
 ```
 
 Or patch the existing service:

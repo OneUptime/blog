@@ -51,10 +51,10 @@ spec:
     requireSafeReplicaSize: true
   mirroring:
     enabled: true
-    # journal mode mirrors at the journal level
-    mode: journal
-    # Optional: snapshot-based mirroring schedule
-    # mode: snapshot
+    # image mode mirrors individual images (use 'pool' to mirror all images in the pool)
+    mode: image
+    # Optional: configure snapshot-based mirroring schedule
+    # Omit snapshotSchedules to use journal-based mirroring instead
     snapshotSchedules:
       - interval: 24h
         startTime: "00:00:00-05:00"
@@ -128,7 +128,7 @@ spec:
     requireSafeReplicaSize: true
   mirroring:
     enabled: true
-    mode: journal
+    mode: image
     # Reference the bootstrap token secret from Site A
     peers:
       secretNames:
@@ -172,7 +172,7 @@ Update Site A's CephBlockPool to include Site B as a peer:
 spec:
   mirroring:
     enabled: true
-    mode: journal
+    mode: image
     peers:
       secretNames:
         - site-b-peer-token
@@ -220,7 +220,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Check mirror daemon connectivity
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mirror daemon status
+  rbd mirror pool status replicapool --verbose
 
 # Verify the bootstrap token is valid JSON when decoded
 echo "$BOOTSTRAP_TOKEN" | base64 -d | python3 -m json.tool

@@ -98,17 +98,9 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin period update --commit
 ```
 
-### 6. Export Realm Pull Token
+### 6. Export Realm Credentials
 
-```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin realm pull-token \
-    --url=http://store-east-endpoint \
-    --access-key=<admin-access> \
-    --secret-key=<admin-secret>
-```
-
-Get the realm endpoint and credentials from the object store user:
+Create a system user on the primary cluster, then retrieve its access and secret keys. These credentials will be used to create the pull secret on the secondary cluster.
 
 ```bash
 # Create a system user for realm operations
@@ -118,6 +110,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
     --display-name="Realm Sync User" \
     --system
 
+# Retrieve access-key and secret-key for use on the secondary cluster
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin user info --uid=realm-sync
 ```
@@ -128,8 +121,8 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ```bash
 kubectl create secret generic realm-my-realm \
-  --from-literal=endpoint="http://store-east.cluster1.example.com:80" \
-  --from-literal=token="<access-key>:<secret-key>" \
+  --from-literal=access-key="<access-key-from-system-user>" \
+  --from-literal=secret-key="<secret-key-from-system-user>" \
   -n rook-ceph
 ```
 
