@@ -10,7 +10,7 @@ Description: Learn how to enable the journaling feature on RBD images in Ceph, w
 
 ## Overview
 
-The journaling feature records all writes to an RBD image in a journal before they are applied to the image itself. This journal enables two key capabilities: crash-consistent replication (via RBD mirroring) and point-in-time recovery. Enabling journaling does add some write overhead, so it is most appropriate for images that require mirroring or strict consistency guarantees.
+The journaling feature records all writes to an RBD image in a journal before they are applied to the image itself. This journal enables two key capabilities: crash-consistent replication (via RBD mirroring) and write-ordering guarantees that ensure data consistency after a crash. Enabling journaling does add some write overhead, so it is most appropriate for images that require mirroring or strict consistency guarantees.
 
 ## RBD Image Features
 
