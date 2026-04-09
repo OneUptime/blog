@@ -54,8 +54,8 @@ spec:
       "master": "eth1",
       "mode": "bridge",
       "ipam": {
-        "type": "static",
-        "addresses": []
+        "type": "whereabouts",
+        "range": "192.168.10.0/24"
       }
     }
 ```
@@ -76,8 +76,8 @@ spec:
       "master": "eth2",
       "mode": "bridge",
       "ipam": {
-        "type": "static",
-        "addresses": []
+        "type": "whereabouts",
+        "range": "192.168.11.0/24"
       }
     }
 ```
