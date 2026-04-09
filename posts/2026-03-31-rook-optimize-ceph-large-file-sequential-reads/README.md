@@ -39,7 +39,7 @@ Large sequential reads benefit from aggressive readahead:
 ```bash
 # Set readahead to 64MB
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph config set client readahead_max_bytes 67108864
+  ceph config set client client_readahead_max_bytes 67108864
 
 # Increase the number of in-flight ops
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
@@ -51,14 +51,6 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 ```
 
 ## Optimize Object Size for Large Files
-
-Adjust the pool stripe unit to match typical file sizes:
-
-```bash
-# For ML workloads with files > 1GB, increase stripe unit
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph osd pool set ml-datasets stripe_width 4096
-```
 
 When creating RBD images for large datasets, use a larger object size:
 
@@ -76,7 +68,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph config set osd osd_op_num_threads_per_shard 4
 
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph config set osd osd_op_queue_mclock_client_read_res 50.0
+  ceph config set osd osd_mclock_scheduler_client_res 50.0
 ```
 
 ## Configure Pool Parameters
@@ -102,7 +94,7 @@ metadata:
   name: rook-cephfs-ml-seq
 provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
-  kernelMountOptions: "rsize=4194304,noatime,nodiratime"
+  kernelMountOptions: "rasize=8388608,noatime,nodiratime"
   fuseMountOptions: "default_permissions"
 ```
 
