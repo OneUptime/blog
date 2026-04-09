@@ -10,7 +10,7 @@ Description: Load and configure the Linux RBD kernel module to mount Ceph block 
 
 ## What Is the RBD Kernel Module?
 
-The `rbd` kernel module (part of the Linux kernel) enables direct kernel-level access to Ceph RADOS Block Device (RBD) images. It provides better performance than the FUSE-based approach and is required for features like ReadWriteMany in some Kubernetes environments.
+The `rbd` kernel module (part of the Linux kernel) enables direct kernel-level access to Ceph RADOS Block Device (RBD) images. It provides better performance than the userspace `librbd` approach and is commonly used for ReadWriteOnce block storage in Kubernetes environments with Rook-Ceph.
 
 ## Checking if the Module Is Available
 
@@ -55,7 +55,7 @@ Set module parameters at load time:
 # Allow single_major mode for more efficient minor number allocation
 sudo modprobe rbd single_major=Y
 
-# Set the number of request queues
+# Set the major device number for rbd devices
 sudo modprobe rbd rbd_major=252
 ```
 
@@ -99,7 +99,7 @@ Adjust parameters at runtime without reloading:
 
 ```bash
 # Set the max outstanding requests per device
-echo 128 | sudo tee /sys/bus/rbd/devices/0/queue/nr_requests
+echo 128 | sudo tee /sys/block/rbd0/queue/nr_requests
 ```
 
 ## Persistent Module Options
@@ -107,7 +107,7 @@ echo 128 | sudo tee /sys/bus/rbd/devices/0/queue/nr_requests
 Create a modprobe options file:
 
 ```bash
-cat | sudo tee /etc/modprobe.d/rbd.conf << 'EOF'
+cat << 'EOF' | sudo tee /etc/modprobe.d/rbd.conf
 options rbd single_major=Y
 EOF
 ```
