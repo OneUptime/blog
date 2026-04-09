@@ -53,10 +53,10 @@ Use CephFS directory statistics to find the largest consumers:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph tell mds.myfs:0 dirfrag ls /volumes
+  ceph fs subvolume ls myfs --group_name <groupname>
 
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph fs subvolume info myfs <subvolname> <groupname>
+  ceph fs subvolume info myfs <subvolname> --group_name <groupname>
 ```
 
 ## Step 4 - Expand Pool Capacity
@@ -85,7 +85,7 @@ Apply subvolume quotas to prevent individual workloads from consuming all capaci
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph fs subvolume resize myfs <subvolname> 100G --no_shrink <groupname>
+  ceph fs subvolume resize myfs <subvolname> 107374182400 --group_name <groupname> --no_shrink
 ```
 
 For directory-level quotas using CephFS extended attributes:
