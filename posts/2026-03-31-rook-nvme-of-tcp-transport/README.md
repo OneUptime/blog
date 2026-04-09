@@ -34,28 +34,26 @@ The CephNVMeoFGateway defaults to TCP transport:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMeoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-tcp-gw
   namespace: rook-ceph
 spec:
-  server:
-    active: 2
-  pool:
-    name: nvmeof-pool
+  image: quay.io/ceph/nvmeof:1.5
+  instances: 2
+  pool: nvmeof-pool
+  group: nvmeof-group
 ```
 
 Add a TCP listener to the subsystem:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph nvmeof gateway add_listener \
-  --nqn nqn.2024-01.io.ceph:my-subsystem \
+  ceph nvmeof listener add \
+  --subsystem nqn.2024-01.io.ceph:my-subsystem \
   --host-name nvmeof-tcp-gw-0 \
   --traddr 10.0.1.10 \
-  --trsvcid 4420 \
-  --trtype TCP \
-  --adrfam IPv4
+  --trsvcid 4420
 ```
 
 ## Connect Initiator via TCP
@@ -83,11 +81,11 @@ nvme list-subsys
 Tune the network stack for NVMe/TCP performance:
 
 ```bash
-# Disable Nagle - NVMe/TCP sends small commands that benefit from no-delay
-sysctl -w net.ipv4.tcp_nodelay=1
-
-# Enable TCP fast open for connection reuse
-sysctl -w net.ipv4.tcp_fastopen=3
+# Increase socket buffer sizes for high throughput
+sysctl -w net.core.rmem_max=16777216
+sysctl -w net.core.wmem_max=16777216
+sysctl -w net.ipv4.tcp_rmem="4096 131072 16777216"
+sysctl -w net.ipv4.tcp_wmem="4096 131072 16777216"
 
 # Increase TCP backlog for gateway
 sysctl -w net.core.somaxconn=4096
@@ -142,4 +140,4 @@ fio --name=nvme-tcp-seq-write \
 
 ## Summary
 
-NVMe-oF TCP transport enables high-performance storage over standard Ethernet without RDMA hardware. With 25GbE networking and proper TCP tuning (tcp_nodelay, socket buffers), NVMe/TCP achieves near-RDMA performance for sequential workloads. Multi-path configuration using multiple gateways provides both redundancy and aggregate bandwidth increase.
+NVMe-oF TCP transport enables high-performance storage over standard Ethernet without RDMA hardware. With 25GbE networking and proper TCP tuning (socket buffers, connection backlog), NVMe/TCP achieves near-RDMA performance for sequential workloads. Multi-path configuration using multiple gateways provides both redundancy and aggregate bandwidth increase.
