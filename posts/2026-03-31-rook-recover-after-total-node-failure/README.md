@@ -108,11 +108,10 @@ If no monitor pod is running, check if monitor data exists on recovered nodes:
 ls /var/lib/rook/
 ```
 
-With existing mon data, annotate the CephCluster to restore quorum from the recovered node:
+With existing mon data, restore quorum from the recovered monitor using the kubectl-rook-ceph plugin:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  ceph.rook.io/restore-mon-quorum="a"
+kubectl rook-ceph mons restore-quorum a
 ```
 
 ## Handling Incomplete PGs
@@ -124,11 +123,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg dump | grep incomplete
 ```
 
-For `incomplete` PGs with replication factor 3, data loss occurs only if all 3 replicas were on the failed nodes. Force PG recovery (accepting potential data loss):
+For `incomplete` PGs with replication factor 3, data loss occurs only if all 3 replicas were on the failed nodes. First, mark the permanently lost OSDs so Ceph stops waiting for them:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph pg force-recovery <pg-id>
+  ceph osd lost <osd-id> --yes-i-really-mean-it
+```
+
+If objects remain unfound after PGs attempt to re-peer, accept the data loss:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph pg <pg-id> mark_unfound_lost delete
 ```
 
 ## Post-Recovery Validation
