@@ -49,7 +49,6 @@ data:
       host elasticsearch.logging.svc.cluster.local
       port 9200
       index_name ceph-logs
-      type_name _doc
       include_timestamp true
       <buffer>
         @type file
