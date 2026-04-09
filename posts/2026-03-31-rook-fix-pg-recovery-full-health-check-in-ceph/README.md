@@ -24,8 +24,8 @@ ceph df
 Example output:
 
 ```text
-[ERR] PG_RECOVERY_FULL: Recovery is blocked because the cluster is full
-    OSD(s) are too full to perform recovery
+[ERR] PG_RECOVERY_FULL: Full OSDs blocking recovery: 5 pg(s) recovery_toofull
+    pg 1.a is recovery_toofull for 300s
 ```
 
 Check the full ratio thresholds:
@@ -49,7 +49,7 @@ The core problem is insufficient free space. You need to free capacity before re
 ### Step 1 - Identify Which OSDs Are Full
 
 ```bash
-ceph osd df | sort -k6 -n -r | head -10
+ceph osd df | sort -k11 -n -r | head -10
 ```
 
 ### Step 2 - Delete Unused Data
@@ -101,7 +101,9 @@ spec:
 kubectl -n rook-ceph rollout restart deploy/rook-ceph-operator
 ```
 
-### Step 5 - Manually Trigger Recovery After Capacity Is Added
+### Step 5 - Ensure Recovery Flags Are Not Set
+
+Recovery resumes automatically once OSDs drop below the full threshold. However, if someone previously set `norecover` or `nobackfill` flags manually, you need to unset them:
 
 ```bash
 ceph osd unset norecover
