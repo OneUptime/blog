@@ -59,7 +59,7 @@ ceph tell mon.* sessions
 Also check which Ceph client library versions are in use across your application pods:
 
 ```bash
-kubectl -n <app-namespace> exec <pod> -- python3 -c "import ceph; print(ceph.__version__)"
+kubectl -n <app-namespace> exec <pod> -- python3 -c "import rados; print(rados.version())"
 ```
 
 ## Updating Ceph Client Libraries
