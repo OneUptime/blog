@@ -10,7 +10,7 @@ Description: Plan Ceph cluster capacity to avoid backfillfull stalls and recover
 
 ## Why Capacity Planning Matters for Recovery
 
-Ceph recovery requires free space to store additional replicas during rebalancing. If OSDs fill up past the `backfillfull` threshold (default: 90% of 95% full ratio = ~85% capacity), backfill stops. This leaves data degraded and creates a catch-22: Ceph needs free space to recover, but the cluster is too full to free it up.
+Ceph recovery requires free space to store additional replicas during rebalancing. If OSDs fill up past the `backfillfull` threshold (default: 90% of total OSD capacity), backfill stops. This leaves data degraded and creates a catch-22: Ceph needs free space to recover, but the cluster is too full to free it up.
 
 ## Ceph Fill Thresholds
 
@@ -36,7 +36,7 @@ For a cluster with replication factor 3, the minimum free space needed to recove
 ```bash
 # Formula: one OSD worth of data must fit on remaining OSDs
 # If OSD has 10 TB and cluster has 12 OSDs:
-# Required headroom >= 10 TB / (12-1) = ~909 GB per remaining OSD
+# Required headroom >= 10 TB / (12-1) = ~931 GB per remaining OSD
 
 python3 -c "
 osd_size_tb = 10
@@ -147,7 +147,7 @@ ceph balancer on
 ceph balancer mode upmap
 
 # Monitor quota usage per pool
-ceph osd pool get <pool> quota
+ceph osd pool get-quota <pool>
 ```
 
 ## Summary
