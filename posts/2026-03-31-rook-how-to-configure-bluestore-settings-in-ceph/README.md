@@ -35,9 +35,7 @@ spec:
           - name: sda
             config:
               osdsPerDevice: "1"
-          - name: nvme0n1
-            config:
-              metadataDevice: "sda"
+              metadataDevice: "nvme0n1"
 ```
 
 Placing BlueStore DB and WAL on NVMe while data is on HDD dramatically improves random I/O:
@@ -97,7 +95,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set replicapool compression_algorithm lz4
 
-# Set minimum compression ratio threshold
+# Set minimum blob size for compression to be applied
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set replicapool compression_min_blob_size 8192
 ```
@@ -145,7 +143,7 @@ Get BlueStore allocator statistics for an OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 perf dump | grep bluestore
+  ceph tell osd.0 perf dump
 ```
 
 ## Summary
