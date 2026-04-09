@@ -24,7 +24,7 @@ Common states that indicate a problem:
 
 ```text
 csi-rbdplugin-provisioner-xxx    2/4    Running    3    45m
-csi-rbdplugin-provisioner-xxx    0/4    CrashLoop  5    12m
+csi-rbdplugin-provisioner-xxx    0/4    CrashLoopBackOff  5    12m
 csi-rbdplugin-provisioner-xxx    4/4    Running    0    3m  (but not responding)
 ```
 
@@ -95,9 +95,9 @@ csi:
           memory: 2Gi
 ```
 
-### Cause 4: ConfigMap Lock Stale Entry
+### Cause 4: Stale Leader Election Lease
 
-A stale lock entry in the ConfigMap used for leader election can block the provisioner. Delete the lease:
+A stale Lease object used for leader election can block the provisioner. Delete the lease:
 
 ```bash
 kubectl delete lease -n rook-ceph \
