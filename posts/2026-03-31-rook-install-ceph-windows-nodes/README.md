@@ -10,12 +10,11 @@ Description: Learn how to install and configure Ceph client components on Window
 
 ## Ceph Windows Support Overview
 
-Ceph provides Windows client support through the `ceph-windows` project, which ports the RADOS, RBD, and CephFS client libraries to Windows. This enables Windows nodes in a Kubernetes cluster to use Ceph-backed persistent volumes.
+Ceph provides native Windows client support, porting the RADOS, RBD, and CephFS client libraries to Windows. This enables Windows nodes in a Kubernetes cluster to use Ceph-backed persistent volumes, avoiding the need for additional layers such as iSCSI gateways or SMB shares.
 
 Key components for Windows:
-- `ceph-rbd.exe` - RBD image management
-- `ceph-dokan` - CephFS mount via Dokan filesystem driver
-- `ceph-iscsi` bridge - for iSCSI-based RBD access
+- `rbd-wnbd.exe` - RBD block device mapping via WNBD (Windows Network Block Device) driver
+- `ceph-dokan` - CephFS mount via Dokany filesystem driver
 
 ## Prerequisites
 
@@ -38,9 +37,9 @@ Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V
 Download and install the Ceph Windows package:
 
 ```powershell
-# Download the latest Ceph Windows installer
-$cephVersion = "18.2.4"
-Invoke-WebRequest -Uri "https://download.ceph.com/windows/$cephVersion/ceph-$cephVersion-amd64.msi" `
+# Download the Ceph Windows installer from Cloudbase Solutions
+# Check https://cloudbase.it/ceph-for-windows/ for the latest version
+Invoke-WebRequest -Uri "https://cloudbase.it/downloads/ceph_reef.msi" `
   -OutFile "ceph-windows.msi"
 
 # Install silently
@@ -62,7 +61,7 @@ New-Item -ItemType Directory -Force -Path "C:\ProgramData\ceph"
 @"
 [global]
 fsid = <your-fsid>
-mon_host = <mon1-ip>:6789,<mon2-ip>:6789,<mon3-ip>:6789
+mon_host = <mon1-ip>,<mon2-ip>,<mon3-ip>
 auth_cluster_required = cephx
 auth_service_required = cephx
 auth_client_required = cephx
@@ -95,7 +94,8 @@ Create the client key from your Linux management node:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth get-or-create client.windows-node1 \
   mon 'profile rbd' \
-  osd 'profile rbd pool=windows-pool'
+  osd 'profile rbd pool=windows-pool' \
+  mgr 'profile rbd pool=windows-pool'
 ```
 
 ## Testing Connectivity
@@ -110,19 +110,18 @@ ceph -c C:\ProgramData\ceph\ceph.conf status
 ceph -c C:\ProgramData\ceph\ceph.conf osd pool ls
 ```
 
-## Installing the WinFSP and Dokan Drivers
+## Installing the Dokany Driver
 
-For CephFS filesystem mounting, install the required filesystem drivers:
+For CephFS filesystem mounting, install the Dokany userspace filesystem driver (version 2.0.5 or later). Dokany is not included in the Ceph MSI installer and must be installed separately:
 
 ```powershell
-# Install WinFSP (required for CephFS Dokan driver)
-winget install WinFsp.WinFsp
+# Download and install Dokany from https://github.com/dokan-dev/dokany/releases
+winget install Dokany.DokanLibrary
 
-# Install Dokan (included with Ceph Windows package)
 # Verify Dokan service is running
 Get-Service -Name "dokan*"
 ```
 
 ## Summary
 
-Installing Ceph on Windows nodes involves installing the Ceph Windows client package, creating the ceph.conf with cluster connection details, and setting up an authentication keyring scoped to specific pools. For RBD access, the base package is sufficient. For CephFS mounting, the WinFSP and Dokan drivers are additionally required. With these components in place, Windows workloads can access Ceph block and file storage as persistent volumes in your Kubernetes cluster.
+Installing Ceph on Windows nodes involves installing the Ceph Windows client package, creating the ceph.conf with cluster connection details, and setting up an authentication keyring scoped to specific pools. For RBD access, the base package is sufficient. For CephFS mounting, the Dokany driver is additionally required. With these components in place, Windows workloads can access Ceph block and file storage as persistent volumes in your Kubernetes cluster.
