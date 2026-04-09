@@ -110,12 +110,43 @@ spec:
           containers:
           - name: snapshot
             image: rook/ceph:v1.13.0
+            env:
+            - name: ROOK_CEPH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-mon
+                  key: ceph-username
+            - name: ROOK_CEPH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-mon
+                  key: ceph-secret
             command:
             - /bin/bash
             - -c
             - |
+              MON_ENDPOINTS=$(cat /etc/rook/mon-endpoints)
+              MON_HOSTS=$(echo "$MON_ENDPOINTS" | sed 's/[a-z]=//g')
+              echo "[global]" > /etc/ceph/ceph.conf
+              echo "mon_host = $MON_HOSTS" >> /etc/ceph/ceph.conf
+              echo "[$ROOK_CEPH_USERNAME]" > /etc/ceph/keyring
+              echo "key = $ROOK_CEPH_SECRET" >> /etc/ceph/keyring
               SNAP="snap-$(date +%Y-%m-%d)"
               rados mksnap "$SNAP" -p replicapool
+            volumeMounts:
+            - name: mon-endpoint-volume
+              mountPath: /etc/rook
+            - name: ceph-config
+              mountPath: /etc/ceph
+          volumes:
+          - name: mon-endpoint-volume
+            configMap:
+              name: rook-ceph-mon-endpoints
+              items:
+              - key: data
+                path: mon-endpoints
+          - name: ceph-config
+            emptyDir: {}
           restartPolicy: OnFailure
 ```
 
