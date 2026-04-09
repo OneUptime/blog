@@ -108,4 +108,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-`ceph pg dump` provides comprehensive Placement Group state data for diagnostics and capacity planning. Use `pgs_brief` for quick state overviews, `pools` for pool-level aggregates, and `--format json` for programmatic processing. Filter the output with `grep` and `awk` to find PGs in specific states, identify unscubbed PGs, or analyze data distribution across the cluster.
+`ceph pg dump` provides comprehensive Placement Group state data for diagnostics and capacity planning. Use `pgs_brief` for quick state overviews, `pools` for pool-level aggregates, and `--format json` for programmatic processing. Filter the output with `grep` and `awk` to find PGs in specific states, identify unscrubbed PGs, or analyze data distribution across the cluster.
