@@ -10,7 +10,7 @@ Description: Configure Ceph NVMe-oF gateways in Rook to expose block storage wit
 
 ## Introduction
 
-NVMe-oF (NVMe over Fabrics) allows Ceph block storage to be accessed with lower latency than traditional iSCSI or RBD by using the NVMe protocol over TCP or RDMA transports. Rook supports deploying Ceph NVMe-oF gateways via the `CephNVMeoFGateway` CRD introduced in Ceph Reef (v18). This enables Kubernetes workloads with stringent IOPS and latency requirements to leverage NVMe-oF as an alternative to RBD.
+NVMe-oF (NVMe over Fabrics) allows Ceph block storage to be accessed with lower latency than traditional iSCSI or RBD by using the NVMe protocol over TCP or RDMA transports. Rook supports deploying Ceph NVMe-oF gateways via the `CephNVMeOFGateway` CRD introduced in Rook v1.19 (experimental). This enables Kubernetes workloads with stringent IOPS and latency requirements to leverage NVMe-oF as an alternative to RBD.
 
 ## NVMe-oF Architecture
 
@@ -19,27 +19,27 @@ flowchart LR
     A[Kubernetes Pod] -->|NVMe-oF TCP/RDMA| B[NVMe-oF Gateway\nrook-ceph namespace]
     B --> C[Ceph RBD Pool]
     C --> D[NVMe SSDs / OSDs]
-    E[CephNVMeoFGateway CRD] --> B
+    E[CephNVMeOFGateway CRD] --> B
     F[StorageClass nvmeof] --> A
 ```
 
 ## Prerequisites
 
-- Rook v1.13 or newer (NVMe-oF support)
+- Rook v1.19 or newer (NVMe-oF support, experimental)
 - Ceph Reef (v18.2+) or newer
-- Linux kernel 5.15+ on worker nodes (for NVMe-oF TCP initiator support)
+- Linux kernel 5.0+ on worker nodes (for NVMe-oF TCP initiator support)
 - `nvme-tcp` kernel module loaded on all worker nodes
 - Ceph cluster with NVMe OSDs for best performance
 
 ## Step 1: Verify NVMe-oF Kernel Support
 
 ```bash
-# Check kernel version on all nodes (must be 5.15+)
+# Check kernel version on all nodes (must be 5.0+)
 kubectl get nodes -o custom-columns='NAME:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion'
 
 # Verify nvme-tcp module is available
 kubectl get nodes -o name | head -1 | xargs -I{} kubectl debug {} \
-  --image=busybox --profile=sysadmin -- \
+  --image=alpine --profile=sysadmin -- \
   modinfo nvme-tcp
 
 # Load the module if not loaded (run on each node or via DaemonSet)
@@ -76,7 +76,7 @@ spec:
             privileged: true
       containers:
         - name: pause
-          image: gcr.io/google_containers/pause:3.1
+          image: registry.k8s.io/pause:3.9
 ```
 
 ```bash
@@ -105,33 +105,33 @@ spec:
 kubectl apply -f nvmeof-pool.yaml
 ```
 
-## Step 4: Deploy the CephNVMeoFGateway
+## Step 4: Deploy the CephNVMeOFGateway
 
 ```yaml
 # nvmeof-gateway.yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMeoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gw
   namespace: rook-ceph
 spec:
+  # Container image for the NVMe-oF gateway
+  image: quay.io/ceph/nvmeof:1.5
   # Number of gateway instances for high availability
-  gatewaySpec:
-    instances: 2
+  instances: 2
   # Reference to the Ceph Rados Block Device pool
   pool: nvmeof-pool
-  # Network configuration (use host network for lowest latency)
-  network:
-    hostNetwork: true
-  # NVMe-oF service identifier
-  serviceAccount: rook-ceph-default
+  # Gateway group name for HA (ANA group)
+  group: nvmeof-group-1
+  # Use host network for lowest latency
+  hostNetwork: true
 ```
 
 ```bash
 kubectl apply -f nvmeof-gateway.yaml
 
 # Check gateway pods are running
-kubectl get pods -n rook-ceph -l app=ceph-nvmeof-gateway
+kubectl get pods -n rook-ceph -l app=rook-ceph-nvmeof
 
 # Check gateway status
 kubectl describe cephnvmeofgateway nvmeof-gw -n rook-ceph
@@ -148,12 +148,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 # Create an NVMe subsystem
 rbd create nvmeof-pool/nvmeof-vol-1 --size 100G
 
-# Configure the gateway with the subsystem
+# Register the gateway (requires gateway ID, pool, and group)
 # (This may also be done via the Ceph dashboard or CLI depending on Rook version)
-ceph nvme-gw create nvmeof-pool nvmeof-group-1
+ceph nvme-gw create gw-1 nvmeof-pool nvmeof-group-1
 
-# List NVMe gateways
-ceph nvme-gw list nvmeof-pool
+# Show NVMe gateways in the pool/group
+ceph nvme-gw show nvmeof-pool nvmeof-group-1
 ```
 
 ## Step 6: Connect from a Kubernetes Node (Manual Test)
@@ -178,7 +178,7 @@ nvme id-ns /dev/nvme0n1
 
 ## Step 7: Create a StorageClass for NVMe-oF Volumes
 
-For Kubernetes dynamic provisioning via NVMe-oF, use the RBD CSI driver pointed at the NVMe-enabled pool:
+For Kubernetes dynamic provisioning via NVMe-oF, use the dedicated NVMe-oF CSI provisioner (not the standard RBD CSI driver):
 
 ```yaml
 # storageclass-nvmeof.yaml
@@ -188,15 +188,13 @@ metadata:
   name: rook-ceph-nvmeof
   annotations:
     description: "High-performance NVMe-oF backed block storage"
-provisioner: rook-ceph.rbd.csi.ceph.com
+provisioner: rook-ceph.nvmeof.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   # Use the NVMe-dedicated pool
   pool: nvmeof-pool
-  imageFormat: "2"
-  imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
-  # Mounter: use nvme for NVMe-oF transport (where supported by CSI)
-  mounter: nvme
+  # NVMe subsystem NQN
+  subsystemNQN: nqn.2016-06.io.spdk:cnode1
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
@@ -241,7 +239,7 @@ EOF
 
 ```bash
 # Gateway pods not starting
-kubectl describe pod -n rook-ceph -l app=ceph-nvmeof-gateway | grep -A10 Events
+kubectl describe pod -n rook-ceph -l app=rook-ceph-nvmeof | grep -A10 Events
 
 # Check if SPDK service is running
 kubectl -n rook-ceph exec -it <gateway-pod> -- \
@@ -257,4 +255,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-NVMe-oF block storage with Rook leverages the CephNVMeoFGateway CRD to deploy Ceph NVMe-oF gateway instances that expose RBD images over NVMe TCP or RDMA transports. This provides lower latency than traditional RBD kernel mapping for workloads with ultra-high IOPS requirements. The setup requires Ceph Reef or newer, Linux kernel 5.15+ with the nvme-tcp module, and a dedicated CephBlockPool targeting NVMe-class OSDs. For most Kubernetes workloads, the standard RBD CSI driver still provides the best compatibility, while NVMe-oF is reserved for latency-critical applications.
+NVMe-oF block storage with Rook leverages the CephNVMeOFGateway CRD to deploy Ceph NVMe-oF gateway instances that expose RBD images over NVMe TCP or RDMA transports. This provides lower latency than traditional RBD kernel mapping for workloads with ultra-high IOPS requirements. The setup requires Rook v1.19+, Ceph Reef or newer, Linux kernel 5.0+ with the nvme-tcp module, and a dedicated CephBlockPool targeting NVMe-class OSDs. For most Kubernetes workloads, the standard RBD CSI driver still provides the best compatibility, while NVMe-oF is reserved for latency-critical applications.
