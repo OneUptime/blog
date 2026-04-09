@@ -18,19 +18,21 @@ RGW supports Lua scripts at these hooks:
 
 ## Writing a Basic Lua Script
 
-A script that logs request details and adds a custom response header:
+A script that logs request details and adds custom object metadata:
 
 ```lua
 -- log request info
-RGWDebugLog("Request: " .. Request.RGWOp .. " on " .. Request.BucketName)
+RGWDebugLog("Request: " .. Request.RGWOp .. " on " .. Request.Bucket.Name)
 
--- Add custom response header
-Response.RGWSetHeader("X-Custom-RGW", "processed-by-lua")
+-- Add custom object metadata
+Request.HTTP.Metadata["custom-rgw"] = "processed-by-lua"
 
 -- Block access to a specific prefix
-if Request.ObjectName ~= nil then
-  if string.match(Request.ObjectName, "^restricted/") then
-    RGWAbortRequest(403, "AccessDenied", "Access to restricted prefix is not allowed")
+if Request.Object.Name ~= nil then
+  if string.match(Request.Object.Name, "^restricted/") then
+    Request.Response.HTTPStatusCode = 403
+    Request.Response.Message = "Access to restricted prefix is not allowed"
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -46,13 +48,10 @@ radosgw-admin script put \
   --context preRequest
 ```
 
-## Listing and Getting Scripts
+## Getting a Stored Script
 
 ```bash
-# List stored scripts
-radosgw-admin script list
-
-# Get the stored script
+# Get the stored script for a context
 radosgw-admin script get --context preRequest
 ```
 
@@ -70,7 +69,9 @@ Reject uploads without a proper Content-Type header:
 if Request.RGWOp == "put_obj" then
   local ct = Request.HTTP.ContentType
   if ct == nil or ct == "" then
-    RGWAbortRequest(400, "MissingContentType", "Content-Type header is required")
+    Request.Response.HTTPStatusCode = 400
+    Request.Response.Message = "Content-Type header is required"
+    return RGW_ABORT_REQUEST
   end
 
   local allowed = {"image/jpeg", "image/png", "application/pdf"}
@@ -80,7 +81,9 @@ if Request.RGWOp == "put_obj" then
   end
 
   if not found then
-    RGWAbortRequest(415, "UnsupportedMediaType", "Content-Type not allowed: " .. ct)
+    Request.Response.HTTPStatusCode = 415
+    Request.Response.Message = "Content-Type not allowed: " .. ct
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -92,8 +95,8 @@ Enrich object metadata automatically:
 ```lua
 if Request.RGWOp == "put_obj" then
   -- Add upload timestamp metadata
-  Request.HTTP.meta["upload-time"] = tostring(os.time())
-  Request.HTTP.meta["uploaded-by"] = Request.User.id
+  Request.HTTP.Metadata["upload-time"] = tostring(os.time())
+  Request.HTTP.Metadata["uploaded-by"] = Request.User.Id
 end
 ```
 
@@ -102,12 +105,15 @@ end
 Key variables available in Lua scripts:
 
 ```lua
-Request.RGWOp          -- Operation name (e.g., "put_obj", "get_obj")
-Request.BucketName     -- Target bucket name
-Request.ObjectName     -- Target object key
-Request.User.id        -- Authenticated user ID
-Request.HTTP.Host      -- HTTP Host header
-Response.HTTPStatusCode -- Response status code (postRequest)
+Request.RGWOp                    -- Operation name (e.g., "put_obj", "get_obj")
+Request.Bucket.Name              -- Target bucket name
+Request.Object.Name              -- Target object key
+Request.User.Id                  -- Authenticated user ID
+Request.HTTP.Host                -- HTTP Host header
+Request.HTTP.ContentType         -- Request content type
+Request.HTTP.Metadata            -- Object metadata table (x-amz-meta-* headers)
+Request.Response.HTTPStatusCode  -- Response status code (postRequest)
+Request.Response.Message         -- Response message
 ```
 
 ## Summary
