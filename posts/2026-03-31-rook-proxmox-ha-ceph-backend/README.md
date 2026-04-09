@@ -43,7 +43,7 @@ ha-manager groupadd production \
   --restricted 0
 
 # List HA groups
-ha-manager grouplist
+ha-manager groupconfig
 
 # Or via GUI: Datacenter -> HA -> Groups -> Add
 ```
@@ -76,11 +76,11 @@ Fencing ensures a failed node cannot access shared storage while being restarted
 # Check watchdog status on each node
 systemctl status watchdog-mux
 
-# Verify the HA watchdog is configured
-cat /etc/pve/corosync.conf | grep watchdog
+# Verify the watchdog module configuration
+cat /etc/default/pve-ha-manager
 
-# Test watchdog (WARNING: this will cause node reboot)
-# watchdog-mux --test
+# Check if the watchdog device exists
+ls -la /dev/watchdog*
 ```
 
 ## Step 5: Test HA Failover
@@ -112,7 +112,7 @@ journalctl -u pve-ha-crm -f
 
 # View Proxmox cluster log
 pvecm status
-cat /var/log/pve-cluster/pve-cluster.log | tail -20
+journalctl -u pve-cluster -n 20 --no-pager
 ```
 
 ## HA Best Practices with Ceph
