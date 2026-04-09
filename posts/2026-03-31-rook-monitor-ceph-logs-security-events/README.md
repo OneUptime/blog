@@ -44,7 +44,7 @@ Create a Grafana alert on security log patterns using LogQL:
 
 ```bash
 # Query for auth failures in Loki
-count_over_time({namespace="rook-ceph", ceph_component="rook-ceph-mon"} |= "auth" |= "error" [5m]) > 5
+count_over_time({namespace="rook-ceph", app="rook-ceph-mon"} |= "auth" |= "error" [5m]) > 5
 ```
 
 Add this as a Grafana alert rule:
@@ -57,7 +57,7 @@ groups:
   interval: 1m
   rules:
   - title: Ceph Auth Failure Spike
-    condition: C
+    condition: A
     data:
     - refId: A
       queryType: instant
@@ -86,7 +86,7 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/ceph-auth-failures" \
             "query": {
               "bool": {
                 "must": [
-                  {"match": {"log": "could not find secret"}},
+                  {"match_phrase": {"log": "could not find secret"}},
                   {"range": {"@timestamp": {"gte": "now-5m"}}}
                 ]
               }
@@ -95,7 +95,7 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/ceph-auth-failures" \
         }
       }
     },
-    "condition": {"compare": {"ctx.payload.hits.total": {"gt": 10}}},
+    "condition": {"compare": {"ctx.payload.hits.total.value": {"gt": 10}}},
     "actions": {
       "send_email": {
         "email": {
@@ -109,11 +109,17 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/ceph-auth-failures" \
 
 ## Audit RGW Access with S3 Logs
 
-Enable per-bucket access logging in RGW:
+Enable per-bucket access logging in RGW using the S3 PutBucketLogging API:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin bucket logging enable --bucket=sensitive-bucket --target-bucket=audit-logs
+aws --endpoint-url http://<rgw-endpoint> s3api put-bucket-logging \
+  --bucket sensitive-bucket \
+  --bucket-logging-status '{
+    "LoggingEnabled": {
+      "TargetBucket": "audit-logs",
+      "TargetPrefix": "sensitive-bucket/"
+    }
+  }'
 ```
 
 ## Summary
