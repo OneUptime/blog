@@ -14,7 +14,7 @@ Controlling OSD placement is critical for production Rook-Ceph deployments. Usin
 
 ```mermaid
 flowchart LR
-    A[Rook Operator] --> B[OSD DaemonSet/Job]
+    A[Rook Operator] --> B[OSD Prepare Job / Deployment]
     B --> C{nodeAffinity check}
     C -->|label matches| D[Storage Node]
     C -->|no match| E[Compute Node - skipped]
