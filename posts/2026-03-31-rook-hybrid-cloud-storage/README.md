@@ -48,68 +48,74 @@ aws s3api put-bucket-lifecycle-configuration \
     "Rules": [{
       "ID": "archive-to-aws",
       "Status": "Enabled",
+      "Filter": {},
       "Transitions": [{
         "Days": 90,
         "StorageClass": "GLACIER"
       }]
     }]
   }' \
-  --endpoint-url http://rook-ceph-rgw.rook-ceph.svc.cluster.local
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
 ```
 
 ## Cross-Region Replication to Cloud
 
-Replicate Ceph buckets to AWS S3 for disaster recovery:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rgw-multisite-config
-  namespace: rook-ceph
-data:
-  config: |
-    [client.rgw.my-store]
-    # Enable sync to remote zone
-    rgw_enable_sync_module = true
-    rgw_data_log_num_shards = 64
-```
-
-Configure bucket replication rules:
+Replicate Ceph buckets to AWS S3 for disaster recovery using the cloud-s3 tier. Unlike cloud tiering (which moves data and removes the local copy), DR replication retains the local copy by setting `retain_head_object`:
 
 ```bash
-aws s3api put-bucket-replication \
+# Create a storage class for cloud DR replication
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zonegroup placement add \
+    --rgw-zonegroup default \
+    --placement-id default-placement \
+    --storage-class CLOUD_BACKUP
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zone placement add \
+    --rgw-zone default \
+    --placement-id default-placement \
+    --storage-class CLOUD_BACKUP \
+    --tier-type=cloud-s3 \
+    --tier-config=endpoint=https://s3.amazonaws.com,access_key=AWS_KEY,secret=AWS_SECRET,target_path=mydata-backup,retain_head_object=true
+```
+
+Apply a lifecycle rule to transition objects to the cloud backup tier:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
   --bucket mydata \
-  --replication-configuration '{
-    "Role": "arn:aws:iam::123456789012:role/replication-role",
+  --lifecycle-configuration '{
     "Rules": [{
+      "ID": "replicate-to-cloud",
       "Status": "Enabled",
-      "Destination": {
-        "Bucket": "arn:aws:s3:::mydata-backup",
-        "StorageClass": "STANDARD_IA"
-      }
+      "Filter": {},
+      "Transitions": [{
+        "Days": 1,
+        "StorageClass": "CLOUD_BACKUP"
+      }]
     }]
   }' \
-  --endpoint-url http://rook-ceph-rgw.rook-ceph.svc.cluster.local
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
 ```
 
 ## Using Rook as a Cache Tier for Cloud Data
 
-Configure Rook-Ceph as a fast cache in front of cloud storage:
+Configure Rook-Ceph as a fast cache in front of cloud storage using pool-level cache tiering:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-config-override
-  namespace: rook-ceph
-data:
-  config: |
-    [global]
-    # Cache tier settings
-    osd_tier_default_cache_mode = writeback
-    osd_tier_cache_target_full_ratio = 0.8
-    osd_tier_cache_target_dirty_ratio = 0.4
+> **Note:** Ceph cache tiering is deprecated since Luminous. For new deployments, consider using RGW cloud tiering with lifecycle policies (shown above) instead.
+
+```bash
+# Set up a cache pool in front of the base storage pool
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c '
+  ceph osd tier add base-pool cache-pool
+  ceph osd tier cache-mode cache-pool writeback
+  ceph osd tier set-overlay base-pool cache-pool
+  ceph osd pool set cache-pool hit_set_type bloom
+  ceph osd pool set cache-pool hit_set_count 1
+  ceph osd pool set cache-pool hit_set_period 3600
+  ceph osd pool set cache-pool cache_target_full_ratio 0.8
+  ceph osd pool set cache-pool cache_target_dirty_ratio 0.4
+'
 ```
 
 ## Unified Storage Interface for Applications
@@ -123,7 +129,7 @@ import boto3
 # Ceph handles tiering to cloud transparently
 s3 = boto3.client(
     "s3",
-    endpoint_url="http://rook-ceph-rgw.rook-ceph.svc.cluster.local",
+    endpoint_url="http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local",
     aws_access_key_id="app-access-key",
     aws_secret_access_key="app-secret-key",
 )
