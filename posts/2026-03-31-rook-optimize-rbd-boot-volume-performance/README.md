@@ -110,7 +110,7 @@ Monitor OSD latency during boot:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd perf | sort -k4 -rn | head -5
+  ceph osd perf | sort -k3 -rn | head -5
 ```
 
 ## Summary
