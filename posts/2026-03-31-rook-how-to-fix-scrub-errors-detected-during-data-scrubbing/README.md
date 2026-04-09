@@ -150,7 +150,7 @@ If disks show SMART errors, plan for OSD replacement.
 To prevent scrub errors from accumulating undetected, ensure deep scrubs run regularly:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool set <pool-name> nodeep-scrub false
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd pool unset <pool-name> nodeep-scrub
 ```
 
 Control the scrub schedule with:
