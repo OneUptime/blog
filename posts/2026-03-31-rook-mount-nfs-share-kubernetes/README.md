@@ -159,7 +159,7 @@ parameters:
   server: <nfs-service-ip>
   share: /cephfs-data
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
-  onDeletePolicy: delete
+  onDelete: delete
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 mountOptions:
