@@ -59,28 +59,29 @@ influx -host influxdb.example.com -database ceph
 
 ```sql
 SHOW MEASUREMENTS;
-SELECT * FROM ceph_osd_stats LIMIT 10;
+SELECT * FROM ceph_daemon_stats LIMIT 10;
 ```
 
 Example measurement fields you will see:
 
 ```text
-time                apply_latency_ms commit_latency_ms osd_id
-2026-03-31T00:00:00Z 1.2             2.5               0
-2026-03-31T00:00:00Z 0.8             1.9               1
+time                 ceph_daemon        apply_latency_ms commit_latency_ms
+2026-03-31T00:00:00Z osd.0              1.2              2.5
+2026-03-31T00:00:00Z osd.1              0.8              1.9
 ```
 
 ## Grafana Dashboard
 
 Import the official Ceph InfluxDB dashboard from Grafana's dashboard library or build custom panels using these measurements:
 
-- `ceph_osd_stats` - Per-OSD apply and commit latency
-- `ceph_pool_stats` - Pool read/write IOPS and bandwidth
-- `ceph_cluster_stats` - Global health, capacity, and PG states
+- `ceph_daemon_stats` - Per-daemon performance counters (OSDs, MONs, MDSs)
+- `ceph_pool_stats` - Pool-level DF statistics and IOPS
+- `ceph_pg_summary_osd` - PG summary statistics per OSD
+- `ceph_pg_summary_pool` - PG summary statistics per pool
 
 ```bash
 # Verify metric ingestion rate
-influx -execute "SELECT count(*) FROM ceph_osd_stats WHERE time > now() - 5m" -database ceph
+influx -execute "SELECT count(*) FROM ceph_daemon_stats WHERE time > now() - 5m" -database ceph
 ```
 
 ## Disabling the Module
