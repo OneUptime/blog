@@ -30,7 +30,7 @@ Example output:
 Inspect the cache pool's tier configuration:
 
 ```bash
-ceph osd tier cache-mode hot-storage
+ceph osd pool get hot-storage cache_mode
 ceph osd dump | grep cache
 ```
 
@@ -56,18 +56,18 @@ ceph osd pool set hot-storage cache_min_evict_age 300
 
 Lower values mean objects are flushed/evicted sooner and more aggressively.
 
-### Option 2 - Increase Cache Pool Size
+### Option 2 - Increase Cache Pool Capacity
 
-Add more SSDs and expand the cache pool:
+Add more OSDs to the cache pool and increase the cache target size:
 
 ```bash
-ceph osd pool set hot-storage size 3
+ceph osd pool set hot-storage target_max_bytes 536870912000
 ```
 
-Or increase the quota:
+Or set the target based on object count:
 
 ```bash
-ceph osd pool set-quota hot-storage max_bytes 536870912000
+ceph osd pool set hot-storage target_max_objects 1000000
 ```
 
 ### Option 3 - Increase Cache Pool Hit Set Parameters
