@@ -18,7 +18,7 @@ Key concepts:
 - Each PG maps to a set of OSDs determined by the CRUSH algorithm
 - More PGs = better data distribution, more memory usage
 - The target is approximately 100-200 PGs per OSD
-- PG count must be a power of 2
+- PG count is recommended to be a power of 2 (no longer required since Ceph Nautilus)
 
 ## Using the Built-in PG Auto-Scaling
 
@@ -65,11 +65,11 @@ Ceph provides an online PG calculator at `https://old.ceph.com/pgcalc/`. Input:
 
 ## Using the CLI to Estimate PG Count
 
-Get Ceph's suggested PG count for a new pool:
+Check the autoscale mode for a specific pool:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool get replicapool pg_autoscale_status
+  ceph osd pool get replicapool pg_autoscale_mode
 ```
 
 Ask the autoscaler for a recommendation:
@@ -138,7 +138,7 @@ Check for imbalanced PG distribution (any OSD with significantly more or fewer P
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph pg dump_pools
+  ceph pg dump pools
 ```
 
 ## Summary
