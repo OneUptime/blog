@@ -46,9 +46,8 @@ csi:
 
   # Optional: set the snapshotter image version
   snapshotter:
-    image:
-      repository: registry.k8s.io/sig-storage/csi-snapshotter
-      tag: v6.3.0
+    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    tag: v6.3.0
 ```
 
 ## Applying the Configuration
