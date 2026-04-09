@@ -49,8 +49,8 @@ Resolve-DnsName mon1.ceph.cluster
 Verify the Ceph configuration is correct:
 
 ```powershell
-# Dump parsed config to verify it loads correctly
-ceph -c C:\ProgramData\ceph\ceph.conf config dump
+# Dump effective config to verify settings are applied
+ceph-conf -c C:\ProgramData\ceph\ceph.conf --show-config
 
 # Test authentication
 ceph -c C:\ProgramData\ceph\ceph.conf `
@@ -93,14 +93,15 @@ Get-Service -Name "dokan*" | Select-Object Name, Status, StartType
 # Check Windows Event Log for Dokan errors
 Get-WinEvent -LogName System | Where-Object {$_.Message -match "dokan"} | Select-Object -First 10
 
-# Reinstall Dokan if it's corrupted
-dokanctl /r
+# Reinstall Dokan driver if it's corrupted (remove then install)
+dokanctl /r d
+dokanctl /i d
 
 # Try mounting with error output
 ceph-dokan -c C:\ProgramData\ceph\ceph.conf `
   --id windows-cephfs `
   -l Z: `
-  --debug 2>&1 | Tee-Object C:\Logs\dokan-debug.log
+  --debug-client 10 2>&1 | Tee-Object C:\Logs\dokan-debug.log
 ```
 
 ## Fixing Authentication Errors
@@ -124,9 +125,9 @@ icacls C:\ProgramData\ceph\ceph.client.windows-client.keyring /grant:r "Administ
 # Check RBD I/O statistics
 rbd perf image iostat windows-pool
 
-# Test basic I/O performance
-$disk = Get-Disk | Where-Object FriendlyName -Match "Ceph"
-winsat disk -ran -write -count 3 -drive ($disk.DriveLetter)
+# Test basic I/O performance on the mapped RBD drive
+$vol = Get-Volume | Where-Object FileSystemLabel -Match "Ceph"
+winsat disk -ran -write -count 3 -drive $vol.DriveLetter
 ```
 
 ## Summary
