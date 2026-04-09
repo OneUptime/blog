@@ -44,10 +44,11 @@ Example output:
     osd.5 is predicted to fail within 6 weeks
 ```
 
-Get raw device health data:
+List the device IDs associated with the OSD, then get raw health data for the device:
 
 ```bash
-ceph device get-health-metrics osd.5
+ceph device ls-by-daemon osd.5
+ceph device get-health-metrics <device-id>
 ```
 
 Check the SMART data directly on the node:
