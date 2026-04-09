@@ -153,7 +153,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
     m=3 \
     plugin=jerasure \
     technique=reed_sol_van \
-    ruleset-failure-domain=host
+    crush-failure-domain=host
 
   # Create a pool using the custom profile
   ceph osd pool create my-ec-pool erasure my-custom-ec
@@ -173,7 +173,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
 **Limitations of EC:**
 - Higher CPU overhead for encode/decode operations
 - Partial writes require read-modify-write cycles (slower for small random writes)
-- OSD recovery after failure requires reading from all surviving shards
+- OSD recovery after failure requires reading from at least k surviving shards
 - EC pools cannot be used for Ceph monitor data
 - Performance for small, random I/O is significantly worse than replication
 
