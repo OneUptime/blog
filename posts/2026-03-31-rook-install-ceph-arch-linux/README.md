@@ -76,7 +76,7 @@ Before=ceph.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/losetup -f /var/lib/ceph-osd.img
-ExecStop=/usr/bin/losetup -d /dev/loop0
+ExecStop=/bin/sh -c 'losetup -d $(losetup -j /var/lib/ceph-osd.img | cut -d: -f1)'
 
 [Install]
 WantedBy=multi-user.target
@@ -126,7 +126,7 @@ cephadm bootstrap \
 
 ```bash
 LOOP=$(losetup -j /var/lib/ceph-osd.img | cut -d: -f1)
-ceph orch daemon add osd localhost:$LOOP
+ceph orch daemon add osd $(hostname):$LOOP
 ```
 
 ## Step 7 - Verify Functionality
