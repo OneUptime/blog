@@ -72,11 +72,13 @@ RGWDebugLog(string.format("RATE: user=%s tier=%s op=%s method=%s",
   user, tier, op_type, method))
 ```
 
-## Step 3 - Implement Soft Rate Limiting with Response Headers
+## Step 3 - Log Rate Limit Information in Post-Request Context
+
+The RGW Lua API does not support adding custom HTTP response headers. The `Request.Response` table only exposes `HTTPStatusCode`, `HTTPStatus`, `RGWCode`, and `Message`. However, you can use the `postrequest` context to log rate limit information for monitoring and alerting.
 
 ```lua
--- rate_limit_headers.lua (postRequest)
--- Add rate limit information headers to all responses
+-- rate_limit_log.lua (postrequest)
+-- Log rate limit information after each request for monitoring
 
 local RATE_LIMITS = {
   default = {reads_per_hour = 3600, writes_per_hour = 360},
@@ -87,17 +89,14 @@ local user = Request.User.Id or "anonymous"
 local tier = (user == "admin") and "admin" or "default"
 local limits = RATE_LIMITS[tier]
 
--- Add rate limit headers (similar to GitHub API style)
-Response.HTTP.AddHeader("X-RateLimit-Limit-Reads",
-  tostring(limits.reads_per_hour))
-Response.HTTP.AddHeader("X-RateLimit-Limit-Writes",
-  tostring(limits.writes_per_hour))
-Response.HTTP.AddHeader("X-RateLimit-User-Tier", tier)
+local method = Request.HTTP.Method
+local status = Request.Response.HTTPStatusCode
 
--- Calculate reset time (next hour boundary)
-local now = os.time()
-local next_hour = now + (3600 - (now % 3600))
-Response.HTTP.AddHeader("X-RateLimit-Reset", tostring(next_hour))
+-- Log request details for external rate limit monitoring
+RGWDebugLog(string.format(
+  "RATE_LOG: user=%s tier=%s method=%s status=%d read_limit=%d write_limit=%d",
+  user, tier, method, status,
+  limits.reads_per_hour, limits.writes_per_hour))
 ```
 
 ## Step 4 - Bucket-Level Operation Rate Limiting
@@ -122,8 +121,10 @@ if is_list then
   -- Block anonymous list operations on buckets not marked public
   if user == "anonymous" then
     RGWDebugLog("RATE: Blocking anonymous LIST on bucket=" .. bucket)
-    abort(403, "AnonymousListNotAllowed",
-          "Anonymous bucket listing is not permitted on this gateway.")
+    Request.Response.HTTPStatusCode = 403
+    Request.Response.HTTPStatus = "Forbidden"
+    Request.Response.Message = "Anonymous bucket listing is not permitted on this gateway."
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -131,24 +132,24 @@ end
 ## Step 5 - Combine with Built-In Rate Limiting
 
 ```bash
-# Set coarse-grained limits via the admin API
+# Set coarse-grained global default limits via the admin API
 # These are enforced by RGW before Lua runs
-radosgw-admin ratelimit set \
-  --ratelimit-scope=global \
+radosgw-admin global ratelimit set \
+  --ratelimit-scope=bucket \
   --max-read-ops=10000 \
   --max-write-ops=2000 \
   --max-read-bytes=10737418240 \
   --max-write-bytes=10737418240
 
-radosgw-admin ratelimit enable --ratelimit-scope=global
+radosgw-admin global ratelimit enable --ratelimit-scope=bucket
 
 # Then use Lua for fine-grained per-user or per-bucket logic
 radosgw-admin script put \
-  --infile=rate_limit_headers.lua \
-  --context=postRequest
+  --infile=rate_limit_log.lua \
+  --context=postrequest
 
 # Verify rate limit configuration
-radosgw-admin ratelimit get --ratelimit-scope=global
+radosgw-admin global ratelimit get --ratelimit-scope=bucket
 ```
 
 ## Step 6 - Test and Monitor Rate Limiting
@@ -170,4 +171,4 @@ curl -s http://rgw.example.com:9283/metrics | grep rgw_ratelimit
 
 ## Summary
 
-Rate limiting in Ceph RGW combines the built-in `radosgw-admin ratelimit` feature for coarse-grained global and per-user throttles with Lua scripts for fine-grained logic such as blocking anonymous list operations and adding rate limit information headers. The built-in rate limiting is more efficient for high-volume enforcement, while Lua provides flexibility for custom policies that the built-in feature cannot express.
+Rate limiting in Ceph RGW combines the built-in `radosgw-admin ratelimit` feature for coarse-grained global and per-user throttles with Lua scripts for fine-grained logic such as blocking anonymous list operations and logging rate limit information for monitoring. The built-in rate limiting is more efficient for high-volume enforcement, while Lua provides flexibility for custom policies that the built-in feature cannot express.
