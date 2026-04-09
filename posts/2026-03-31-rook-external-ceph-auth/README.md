@@ -10,7 +10,7 @@ Description: Learn how to configure Ceph authentication credentials and Kubernet
 
 ## Introduction
 
-When connecting Rook to an existing external Ceph cluster, authentication is the critical first step. Ceph uses the CAPS (Cephx) authentication system, and Rook must be provided with a client key that has the appropriate capabilities to manage pools, images, and filesystems on behalf of Kubernetes workloads.
+When connecting Rook to an existing external Ceph cluster, authentication is the critical first step. Ceph uses the cephx authentication protocol, and access is controlled through capabilities (caps). Rook must be provided with a client key that has the appropriate capabilities to manage pools, images, and filesystems on behalf of Kubernetes workloads.
 
 This guide walks through generating the required Ceph keyrings, creating Kubernetes secrets, and validating that Rook can authenticate with the external cluster.
 
@@ -26,9 +26,9 @@ This guide walks through generating the required Ceph keyrings, creating Kuberne
 ```mermaid
 flowchart TD
     A[External Ceph Cluster] -->|Cephx keyrings| B[ceph auth get-or-create]
-    B --> C[Admin Keyring]
-    B --> D[Mon Keyring]
-    B --> E[OSD Keyring]
+    B --> C[Operator Keyring]
+    B --> D[RBD CSI Keyrings]
+    B --> E[CephFS CSI Keyrings]
     C & D & E --> F[Kubernetes Secrets]
     F --> G[Rook CephCluster CR]
     G --> H[Rook Operator]
@@ -77,7 +77,7 @@ ceph auth get-or-create client.rook-csi-cephfs-node \
 
 ## Step 2: Extract Keyring Values
 
-Extract the base64-encoded key strings needed for Kubernetes secrets:
+Extract the key strings needed for Kubernetes secrets:
 
 ```bash
 # Extract key for each user
@@ -120,24 +120,26 @@ kind: Secret
 metadata:
   name: rook-ceph-mon
   namespace: rook-ceph-external
+type: kubernetes.io/rook
 stringData:
-  # Comma-separated list of monitor IP:port pairs
-  mon_host: "192.168.1.10:6789,192.168.1.11:6789,192.168.1.12:6789"
-  # Cluster FSID from `ceph fsid`
+  cluster-name: "rook-ceph-external"
   fsid: "a945d810-3d4c-4a29-b71e-3dd7ffb6c8d2"
+  admin-secret: ""
+  mon-secret: "AQCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=="
+  # The Ceph user Rook will authenticate as
+  ceph-username: "client.rook-ceph-op"
+  ceph-secret: "AQCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=="
 ---
 apiVersion: v1
-kind: Secret
+kind: ConfigMap
 metadata:
-  name: rook-ceph-admin-keyring
+  name: rook-ceph-mon-endpoints
   namespace: rook-ceph-external
-stringData:
-  keyring: |
-    [client.rook-ceph-op]
-        key = AQCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==
-        caps mon = "profile rbd, allow r"
-        caps osd = "profile rbd"
-        caps mgr = "allow rw"
+data:
+  # Monitor endpoints in the format a=IP:PORT,b=IP:PORT,c=IP:PORT
+  data: "a=192.168.1.10:6789,b=192.168.1.11:6789,c=192.168.1.12:6789"
+  mapping: "{}"
+  maxMonId: "0"
 ```
 
 ```yaml
@@ -269,15 +271,13 @@ kubectl get secret rook-csi-rbd-provisioner -n rook-ceph-external -o jsonpath='{
 ceph auth get client.rook-csi-rbd-provisioner
 
 # Test connectivity from within the cluster using toolbox
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph -s \
-  --conf /etc/ceph/external.conf \
-  --keyring /etc/ceph/external.keyring
+kubectl -n rook-ceph-external exec -it deploy/rook-ceph-tools -- ceph -s
 ```
 
 ## Security Best Practices
 
 - Use dedicated Ceph users per workload type (RBD, CephFS) rather than the admin user
-- Rotate keyrings periodically using `ceph auth caps` to update and Kubernetes secret updates
+- Rotate keyrings periodically by recreating Ceph users with `ceph auth get-or-create` and updating the corresponding Kubernetes secrets
 - Store keyring values in a secret manager (Vault, AWS Secrets Manager) and sync via the External Secrets Operator
 - Use RBAC to restrict which Kubernetes service accounts can read the keyring secrets
 - Enable msgr2 encryption on the external Ceph cluster to protect keyrings in transit
