@@ -18,63 +18,52 @@ The Rook CSI driver uses CRUSH location labels on Kubernetes nodes to select a r
 
 ## Step 1 - Label Kubernetes Nodes with CRUSH Locations
 
-Label each node with its CRUSH topology:
+Label each node with standard Kubernetes topology labels. The ceph-csi driver uses the portion after the `/` in the label name as the CRUSH bucket type, and the label value as the CRUSH bucket name. The `kubernetes.io/hostname` label is typically applied automatically by Kubernetes.
+
+For a multi-zone cluster, add zone labels:
 
 ```bash
-# Single-zone cluster - label by host
-kubectl label node worker-01 topology.rook.io/crush-location='{"host":"worker-01"}'
-kubectl label node worker-02 topology.rook.io/crush-location='{"host":"worker-02"}'
-kubectl label node worker-03 topology.rook.io/crush-location='{"host":"worker-03"}'
+kubectl label node worker-01 topology.kubernetes.io/zone=zone-a
+kubectl label node worker-02 topology.kubernetes.io/zone=zone-a
+kubectl label node worker-03 topology.kubernetes.io/zone=zone-b
 ```
 
-For a multi-zone cluster:
+You can also use Rook-specific topology labels for finer-grained placement:
 
 ```bash
-# Zone-aware labels
-kubectl label node worker-01 topology.rook.io/crush-location='{"host":"worker-01","zone":"zone-a"}'
-kubectl label node worker-02 topology.rook.io/crush-location='{"host":"worker-02","zone":"zone-a"}'
-kubectl label node worker-03 topology.rook.io/crush-location='{"host":"worker-03","zone":"zone-b"}'
+kubectl label node worker-01 topology.rook.io/rack=rack-01
+kubectl label node worker-02 topology.rook.io/rack=rack-01
+kubectl label node worker-03 topology.rook.io/rack=rack-02
 ```
 
-## Step 2 - Enable Read Affinity in Rook CSI Config
+## Step 2 - Enable Read Affinity in the CephCluster CR
 
-Update the Rook CSI configuration ConfigMap to enable read affinity:
+The Rook operator manages the CSI ConfigMap (`rook-ceph-csi-config`) automatically. To enable read affinity, patch the CephCluster custom resource:
+
+```bash
+kubectl -n rook-ceph patch cephclusters.ceph.rook.io rook-ceph --type merge \
+  -p '{"spec":{"csi":{"readAffinity":{"enabled":true,"crushLocationLabels":["topology.kubernetes.io/zone","kubernetes.io/hostname"]}}}}'
+```
+
+Or equivalently, add this to your CephCluster YAML spec:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-ceph-csi-config
-  namespace: rook-ceph
-data:
-  config.json: |
-    [
-      {
-        "clusterID": "rook-ceph",
-        "monitors": [
-          "192.168.1.10:6789",
-          "192.168.1.11:6789",
-          "192.168.1.12:6789"
-        ],
-        "readAffinity": {
-          "enabled": true,
-          "crushLocationLabels": [
-            "topology.rook.io/crush-location"
-          ]
-        }
-      }
-    ]
+spec:
+  csi:
+    readAffinity:
+      enabled: true
+      crushLocationLabels:
+        - topology.kubernetes.io/zone
+        - kubernetes.io/hostname
 ```
 
-Apply the ConfigMap:
+The `crushLocationLabels` array lists the Kubernetes node labels the CSI driver will read to determine CRUSH location. Each label name's suffix (after the `/`) becomes the CRUSH bucket type. For example, `topology.kubernetes.io/zone` maps to the `zone` bucket type.
 
-```bash
-kubectl apply -f csi-config.yaml
-```
+The operator will update the `rook-ceph-csi-config` ConfigMap with the corresponding `readAffinity` configuration.
 
 ## Step 3 - Restart CSI Nodeplugin Pods
 
-After updating the config, restart the CSI node plugin DaemonSet:
+The Rook operator typically restarts CSI pods automatically after updating the ConfigMap. If needed, you can manually restart the CSI node plugin DaemonSet:
 
 ```bash
 kubectl -n rook-ceph rollout restart daemonset/csi-rbdplugin
@@ -91,7 +80,7 @@ kubectl -n rook-ceph logs daemonset/csi-rbdplugin -c csi-rbdplugin | grep -i "re
 Expected log line:
 
 ```text
-read affinity enabled for cluster rook-ceph with CRUSH location labels [topology.rook.io/crush-location]
+read affinity enabled for cluster rook-ceph with CRUSH location labels [topology.kubernetes.io/zone kubernetes.io/hostname]
 ```
 
 ## Step 5 - Verify OSD CRUSH Location Matches
@@ -120,14 +109,15 @@ Read affinity works best when:
 - Your cluster has replicated pools (not erasure coded)
 - The replication factor matches or exceeds the number of zones/hosts
 - Network latency between zones/racks is significant
+- The Linux kernel is version 5.8 or later (required for the `read_from_replica` KRBD map option)
 
-Monitor read latency before and after enabling read affinity:
+Monitor OSD latency before and after enabling read affinity:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd perf | grep read_latency
+  ceph osd perf
 ```
 
 ## Summary
 
-Read affinity in Rook CSI routes RBD reads to topologically close OSDs by matching Kubernetes node CRUSH location labels against the Ceph CRUSH map. Label nodes with `topology.rook.io/crush-location`, enable `readAffinity` in the CSI config, and restart the node plugin. This reduces cross-zone or cross-rack read latency, particularly in multi-zone Kubernetes deployments where pods and their storage replicas may be co-located.
+Read affinity in Rook CSI routes RBD reads to topologically close OSDs by matching Kubernetes node topology labels against the Ceph CRUSH map. Label nodes with standard topology labels (such as `topology.kubernetes.io/zone` and `kubernetes.io/hostname`), enable `readAffinity` in the CephCluster CR, and verify the configuration in the CSI node plugin logs. This reduces cross-zone or cross-rack read latency, particularly in multi-zone Kubernetes deployments where pods and their storage replicas may be co-located.
