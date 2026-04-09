@@ -31,7 +31,7 @@ HEALTH_WARN 1 backfillfull osd(s)
 Check which OSDs are near or above the backfill threshold:
 
 ```bash
-ceph osd df | awk '$8 > 88 {print NR, $0}'
+ceph osd df -f json-pretty | jq '.nodes[] | select(.utilization > 88) | {name: .name, utilization: .utilization}'
 ```
 
 Check the current backfill ratio:
@@ -80,13 +80,13 @@ ceph osd reweight-by-utilization
 
 ## Option 2: Reweight Full OSDs
 
-Reduce the CRUSH weight of the near-full OSD so less data maps to it:
+Reduce the reweight value of the near-full OSD so less data maps to it. Note that `ceph osd reweight` adjusts a temporary override weight (0.0–1.0), which is different from the CRUSH weight changed by `ceph osd crush reweight`:
 
 ```bash
-# Check current weight
+# Check current weight and reweight
 ceph osd tree | grep osd.2
 
-# Lower the weight to shift data away
+# Lower the reweight to shift data away
 ceph osd reweight 2 0.8
 ```
 
@@ -114,8 +114,8 @@ If you can delete data from the overloaded pool:
 # Check pool utilization
 ceph df detail
 
-# List and remove large objects
-rados -p <pool-name> ls | xargs -I{} rados -p <pool-name> stat {} | sort -k4 -rn | head
+# List and remove large objects (prepend size for sorting)
+rados -p <pool-name> ls | xargs -I{} rados -p <pool-name> stat {} | awk '{print $NF, $0}' | sort -rn | head
 
 rados -p <pool-name> rm <large-object>
 ```
