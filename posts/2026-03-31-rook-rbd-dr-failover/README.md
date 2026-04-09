@@ -104,7 +104,7 @@ If the Volume Replication Operator is unavailable, use direct Ceph commands:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # List all mirrored images in the pool
-rbd mirror image ls replicapool
+rbd mirror pool status replicapool --verbose
 
 # Force promote a specific image to primary
 # WARNING: only use --force if primary site is confirmed down
