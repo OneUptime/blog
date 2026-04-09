@@ -14,11 +14,13 @@ Kubernetes cluster federation allows managing multiple clusters from a single co
 
 ## Option 1: KubeFed (Kubernetes Federation v2)
 
+> **Note:** The KubeFed project has been retired and archived (April 2023). The repository was moved to `kubernetes-retired/kubefed`. Consider using ArgoCD (Option 2) for new deployments.
+
 Install KubeFed:
 
 ```bash
 # Add the KubeFed Helm repository
-helm repo add kubefed-charts https://raw.githubusercontent.com/kubernetes-sigs/kubefed/master/charts
+helm repo add kubefed-charts https://raw.githubusercontent.com/kubernetes-retired/kubefed/master/charts
 helm repo update
 
 # Install KubeFed
@@ -52,6 +54,8 @@ spec:
       pool: replicated-pool
       csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
       csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+      csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+      csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   placement:
     clusters:
       - name: cluster1
@@ -118,9 +122,9 @@ spec:
 
 Use Kustomize overlays for cluster-specific differences:
 
-```bash
+```yaml
 # rook/overlays/cluster1/kustomization.yaml
-bases:
+resources:
   - ../../base
 patches:
   - patch: |-
