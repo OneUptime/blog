@@ -22,7 +22,7 @@ ls /var/log/ceph/
 # ceph-mgr.hostname.log  - manager log
 ```
 
-## Reading the Cluster Audit Log
+## Reading the Cluster Log
 
 The cluster-wide log captures significant events:
 
@@ -71,6 +71,7 @@ ceph daemon osd.2 config set debug_bluestore 10
 
 # Reset after debugging
 ceph daemon osd.2 config set debug_osd 1
+ceph daemon osd.2 config set debug_bluestore 1
 ```
 
 ## Using journalctl for Systemd-Managed Ceph
