@@ -87,8 +87,8 @@ kubectl rollout restart deployment -n rook-ceph -l app=rook-ceph-rgw
 For buckets with tens of millions of objects, resharding can take significant time. During resharding, RGW processes requests normally using the old index while building the new one. After completion it atomically switches to the new shards:
 
 ```bash
-# Check logs for resharding completion
-radosgw-admin log list --bucket mybucket
+# Check resharding progress and completion
+radosgw-admin reshard status --bucket mybucket
 ```
 
 ## Summary
