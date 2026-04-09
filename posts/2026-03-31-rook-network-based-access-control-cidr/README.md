@@ -87,7 +87,7 @@ rados --name client.restricted-net --keyring /tmp/restricted.keyring \
 Expected error:
 
 ```text
-RADOS returned error: -13 (Permission denied)
+error listing mypool: (1) Operation not permitted
 ```
 
 When connecting from within the authorized CIDR, the command succeeds.
