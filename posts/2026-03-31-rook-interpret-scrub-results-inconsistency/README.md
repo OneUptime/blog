@@ -66,19 +66,17 @@ Ceph scrub reports different types of problems:
 ## Parsing the Scrub Report Structure
 
 ```bash
-# Get full PG scrub report in JSON
+# List inconsistent PGs in a pool
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  rados list-inconsistent-pg mypool --format=json-pretty
+
+# List inconsistent objects in a specific PG
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  rados list-inconsistent-obj 3.1a --format=json-pretty
+
+# Save PG query output for state inspection
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph pg 3.1a query > /tmp/pg-report.json
-
-# Parse with Python for readable output
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c '
-ceph pg 3.1a query | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-errors = data.get(\"peer_stat\", {})
-for k, v in errors.items():
-    print(f\"Replica {k}: {v}\")
-"'
 ```
 
 ## Identifying Authoritative vs. Inconsistent Copies
@@ -105,4 +103,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Interpreting Ceph scrub results requires understanding the different inconsistency types and their severity. Shallow scrub inconsistencies involving size or attribute mismatches should be confirmed with a deep scrub before taking action. Data digest mismatches from deep scrubs indicate actual corruption and require immediate repair. Use `ceph pg query` for detailed JSON reports and OSD logs for the most granular error information. When in doubt, use `ceph pg repair` to let Ceph resolve conflicts using its authoritative copy selection logic.
+Interpreting Ceph scrub results requires understanding the different inconsistency types and their severity. Shallow scrub inconsistencies involving size or attribute mismatches should be confirmed with a deep scrub before taking action. Data digest mismatches from deep scrubs indicate actual corruption and require careful investigation before repair. Use `rados list-inconsistent-obj` for detailed per-object inconsistency reports and OSD logs for the most granular error information. Exercise caution with `ceph pg repair` — it copies the primary's data to other replicas, which can propagate corruption if the primary holds the wrong data. For digest mismatch errors, inspect the inconsistency details and consider backing up affected objects before running repair.
