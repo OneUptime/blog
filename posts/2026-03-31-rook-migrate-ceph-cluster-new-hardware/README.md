@@ -102,8 +102,6 @@ Once all PGs are active+clean with old OSDs out:
 # Remove OSDs permanently
 for osd in 0 1 2; do
   ceph osd purge $osd --yes-i-really-mean-it
-  ceph auth del osd.$osd
-  ceph osd crush remove osd.$osd
 done
 ```
 
@@ -119,7 +117,7 @@ ceph osd crush remove old-node-2
 Remove old nodes from the CephCluster storage spec and delete the OSD pods:
 
 ```bash
-kubectl -n rook-ceph delete pod -l app=rook-ceph-osd,node=old-node-1
+kubectl -n rook-ceph delete deployment -l app=rook-ceph-osd,topology-location-host=old-node-1
 ```
 
 ## Verifying Migration Complete
