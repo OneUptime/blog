@@ -30,15 +30,15 @@ graph TD
 Too few PGs: OSDs are underutilized, limited parallelism, potential for data imbalance.
 Too many PGs: High memory overhead on OSDs (each PG consumes ~100KB RAM), slow recovery.
 
-The general guideline is 100-200 PGs per OSD across all pools combined. With 9 OSDs and 3-replica replication, the total PG count formula is:
+The general guideline is 100-200 PGs per OSD across all pools combined. With 9 OSDs, 3-replica replication, and 3 pools, the per-pool PG count formula is:
 
 ```text
-Target PGs per pool = (OSD count * PGs per OSD target) / replication factor
-                    = (9 * 150) / 3
-                    = 450 PGs per pool
+Target PGs per pool = (OSD count * PGs per OSD target) / (replication factor * number of pools)
+                    = (9 * 150) / (3 * 3)
+                    = 150 PGs per pool
 ```
 
-PG counts must be powers of 2: 256, 512, 1024, etc.
+PG counts are recommended to be powers of 2 (128, 256, 512, etc.) for optimal data distribution, though this is no longer a hard requirement since Ceph Nautilus (14.x).
 
 ## PG Autoscaling (Recommended)
 
