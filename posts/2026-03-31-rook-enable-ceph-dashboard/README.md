@@ -42,7 +42,7 @@ spec:
     ssl: true
     # Optional: use a custom port (default 8443 for HTTPS, 7000 for HTTP)
     # port: 8443
-    # Optional: provide a custom TLS secret
+    # Optional: set a URL prefix for reverse proxy setups
     # urlPrefix: /ceph-dashboard
 ```
 
