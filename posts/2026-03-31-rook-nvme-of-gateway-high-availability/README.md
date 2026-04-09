@@ -52,7 +52,7 @@ for GW in 0 1 2 3; do
   kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
     nvmeof listener add \
     --subsystem nqn.2026-03.com.ceph:ha-subsystem \
-    --gateway-name nvmeof-gateway-${GW} \
+    --host-name nvmeof-gateway-${GW} \
     --traddr 192.168.1.$((50+GW)) \
     --trsvcid 4420 \
     --adrfam ipv4 \
@@ -60,15 +60,15 @@ for GW in 0 1 2 3; do
 done
 ```
 
-## Step 3 - Configure ANA Groups
+## Step 3 - Allow Host Access to the Subsystem
 
-Assign ANA state to each gateway to define optimal and non-optimal paths:
+Allow all hosts to connect to the subsystem:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof subsystem add-host \
+  nvmeof host add \
   --subsystem nqn.2026-03.com.ceph:ha-subsystem \
-  --host-nqn "*"
+  --host "*"
 ```
 
 ## Step 4 - Connect with Multipath from the Client
@@ -77,11 +77,11 @@ On the NVMe/TCP client, connect to all gateway addresses simultaneously:
 
 ```bash
 nvme connect-all \
-  -t tcp -d "nqn.2026-03.com.ceph:ha-subsystem" \
+  -t tcp -n "nqn.2026-03.com.ceph:ha-subsystem" \
   -a 192.168.1.50 -s 4420
 
 nvme connect-all \
-  -t tcp -d "nqn.2026-03.com.ceph:ha-subsystem" \
+  -t tcp -n "nqn.2026-03.com.ceph:ha-subsystem" \
   -a 192.168.1.51 -s 4420
 ```
 
