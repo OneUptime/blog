@@ -34,31 +34,37 @@ openssl s_client -connect $(echo $JWKS_URI | sed 's|https://||' | cut -d/ -f1):4
 
 ## Registering an OIDC Provider
 
+OIDC providers in Ceph RGW are managed through the IAM-compatible REST API. Use the AWS CLI pointed at your RGW endpoint:
+
 ```bash
-radosgw-admin oidc-provider create \
-  --provider-url https://accounts.google.com \
-  --client-id 123456789-abcdefg.apps.googleusercontent.com \
-  --thumbprint 9BE1290E8F8B7FE8EF5E048E43CF04B4E3B5B4E3
+aws iam create-open-id-connect-provider \
+  --url https://accounts.google.com \
+  --client-id-list 123456789-abcdefg.apps.googleusercontent.com \
+  --thumbprint-list 9BE1290E8F8B7FE8EF5E048E43CF04B4E3B5B4E3 \
+  --endpoint-url http://your-rgw-host:7480
 ```
 
 For Okta:
 
 ```bash
-radosgw-admin oidc-provider create \
-  --provider-url https://dev-12345.okta.com/oauth2/default \
-  --client-id 0oabc1234EXAMPLEID \
-  --thumbprint AABBCCDDEEFF00112233445566778899AABBCCDD
+aws iam create-open-id-connect-provider \
+  --url https://dev-12345.okta.com/oauth2/default \
+  --client-id-list 0oabc1234EXAMPLEID \
+  --thumbprint-list AABBCCDDEEFF00112233445566778899AABBCCDD \
+  --endpoint-url http://your-rgw-host:7480
 ```
 
 ## Listing and Getting Providers
 
 ```bash
 # List all registered OIDC providers
-radosgw-admin oidc-provider list
+aws iam list-open-id-connect-providers \
+  --endpoint-url http://your-rgw-host:7480
 
 # Get details for a specific provider
-radosgw-admin oidc-provider get \
-  --provider-url https://accounts.google.com
+aws iam get-open-id-connect-provider \
+  --open-id-connect-provider-arn arn:aws:iam:::oidc-provider/accounts.google.com \
+  --endpoint-url http://your-rgw-host:7480
 ```
 
 ## Creating a Role Trusting the OIDC Provider
@@ -102,8 +108,9 @@ aws sts assume-role-with-web-identity \
 ## Deleting an OIDC Provider
 
 ```bash
-radosgw-admin oidc-provider delete \
-  --provider-url https://accounts.google.com
+aws iam delete-open-id-connect-provider \
+  --open-id-connect-provider-arn arn:aws:iam:::oidc-provider/accounts.google.com \
+  --endpoint-url http://your-rgw-host:7480
 ```
 
 ## Summary
