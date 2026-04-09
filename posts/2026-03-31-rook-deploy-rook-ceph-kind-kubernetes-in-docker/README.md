@@ -88,7 +88,7 @@ helm install rook-ceph rook-release/rook-ceph \
 
 ## Step 5 - Create a Test Cluster Using Directories
 
-For a quick Kind test without real block devices, use the `useAllDevices: false` and a `directories` configuration:
+For a quick Kind test on a cluster with loop devices attached, use the following configuration:
 
 ```yaml
 # cluster-kind.yaml
@@ -113,7 +113,7 @@ spec:
     storageClassDeviceSets: []
     config:
       databaseSizeMB: "1024"
-      journalSizeMB: "1024"
+      walSizeMB: "1024"
 ```
 
 ```bash
@@ -140,8 +140,9 @@ kubectl get pvc
 kind delete cluster --name rook-test
 # Remove loop devices
 for i in 1 2 3; do
-  losetup -d /dev/loop1$i
-  rm /tmp/ceph-osd-$i.img
+  LOOP=$(losetup -j /tmp/ceph-osd-$i.img | cut -d: -f1)
+  [ -n "$LOOP" ] && losetup -d "$LOOP"
+  rm -f /tmp/ceph-osd-$i.img
 done
 ```
 
