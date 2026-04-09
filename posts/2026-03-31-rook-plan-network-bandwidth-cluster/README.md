@@ -116,7 +116,7 @@ sar -n DEV 1 60 | grep -E "eth0|eth1|IFACE"
 sar -n DEV 5 5 | awk '/eth1/ {if ($NF > 80) print "SATURATED: eth1 at", $NF"%"}'
 
 # OSD network stats
-ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "bytes_sent|bytes_recv"
+ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "msgr_send_bytes|msgr_recv_bytes"
 ```
 
 ## Prometheus Alerting for Network Saturation
