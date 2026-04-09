@@ -76,7 +76,7 @@ RGW has a concept of small objects that are stored differently. Objects below a 
 ceph config set client.rgw rgw_max_chunk_size 1048576
 ```
 
-Objects smaller than `rgw_max_chunk_size` are stored inline in the bucket index. Larger objects use the EC data pool.
+Objects smaller than `rgw_max_chunk_size` fit entirely in the head object, which is stored in a replicated pool rather than the EC data pool. Larger objects are split: the first chunk (head object) stays in the replicated pool, while remaining tail chunks are written to the EC data pool.
 
 ## Multipart Upload Alignment
 
@@ -91,8 +91,11 @@ k=8, su=64K   512 KiB          >=512 KiB (ideally 16 MiB+)
 Example S3 CLI with aligned multipart:
 
 ```bash
+# Configure multipart chunk size (64 MiB)
+aws configure set default.s3.multipart_chunksize 64MB
+
+# Upload with aligned multipart parts
 aws s3 cp large-file.tar s3://my-bucket/large-file.tar \
-  --multipart-chunksize 67108864 \
   --endpoint-url http://rook-rgw-service:80
 ```
 
