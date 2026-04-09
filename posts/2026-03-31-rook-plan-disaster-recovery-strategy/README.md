@@ -69,6 +69,7 @@ spec:
     count: 5
     stretchCluster:
       failureDomainLabel: topology.kubernetes.io/zone
+      subFailureDomain: host
       zones:
       - name: zone-a
         arbiter: false
