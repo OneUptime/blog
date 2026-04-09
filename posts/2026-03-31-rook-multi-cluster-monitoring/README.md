@@ -12,9 +12,9 @@ Description: Configure custom cluster labels in Rook-Ceph Prometheus metrics to 
 
 When monitoring multiple Rook-Ceph clusters from a single Prometheus or Grafana instance (using remote_write or federation), all clusters emit metrics with the same names. Without custom labels, there is no way to distinguish which cluster a metric belongs to. Rook supports injecting custom external labels into all Ceph metrics.
 
-## Add External Labels via CephCluster CRD
+## Enable Monitoring and Add Custom Labels
 
-The `externalMgrPrometheusPort` and `labels` settings in the CephCluster spec allow you to inject labels:
+First, enable monitoring in the CephCluster CRD. The `monitoring` section configures the Prometheus metrics endpoint but does not support injecting custom metric labels directly:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -30,7 +30,7 @@ spec:
     externalMgrPrometheusPort: 9283
 ```
 
-For label injection at the Prometheus scrape level, use `relabelings` in the ServiceMonitor:
+To inject custom labels into scraped metrics, use `relabelings` in the ServiceMonitor:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
