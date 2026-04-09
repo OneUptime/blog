@@ -54,7 +54,7 @@ Severity label: severity=critical
 Alert when any pool exceeds 75% full:
 
 ```promql
-(ceph_pool_bytes_used / ceph_pool_max_avail) * 100 > 75
+(ceph_pool_bytes_used / (ceph_pool_bytes_used + ceph_pool_max_avail)) * 100 > 75
 ```
 
 ```yaml
@@ -62,7 +62,7 @@ Rule name: ceph-pool-capacity-high
 Condition: WHEN last() OF A IS ABOVE 0
 FOR: 10m
 Annotations:
-  summary: "Ceph pool {{ $labels.name }} is {{ $values.A }}% full"
+  summary: "Ceph pool {{ $labels.name }} is {{ $values.A.Value }}% full"
   runbook: "https://docs.ceph.com/en/latest/rados/operations/health-checks/"
 ```
 
