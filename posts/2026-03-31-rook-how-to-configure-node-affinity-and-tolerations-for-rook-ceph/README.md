@@ -129,7 +129,7 @@ spec:
                     - rook-ceph-mon
             topologyKey: kubernetes.io/hostname
         # Also prefer different zones:
-      preferredDuringSchedulingIgnoredDuringExecution:
+        preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
             labelSelector:
