@@ -42,10 +42,7 @@ Primary Cluster (Site A)          Secondary Cluster (Site B)
 On the primary cluster:
 
 ```bash
-# Deploy the cephfs-mirror daemon
-ceph mgr module enable mirroring
-
-# Using cephadm
+# Deploy the cephfs-mirror daemon using cephadm
 ceph orch apply cephfs-mirror
 
 # Verify it's running
@@ -53,55 +50,7 @@ ceph orch ls | grep cephfs-mirror
 ceph fs snapshot mirror daemon status
 ```
 
-## Step 2 - Create a Bootstrap Token on the Secondary Cluster
-
-On the secondary cluster, generate a peer token:
-
-```bash
-# Get credentials for the secondary cluster's admin
-ceph auth get client.admin > /tmp/secondary-admin.keyring
-
-# Or create a dedicated mirroring user
-ceph auth get-or-create client.mirror-peer \
-  mon 'profile rbd-mirror-peer' \
-  osd 'profile rbd-mirror-peer' \
-  > /tmp/mirror-peer.keyring
-
-# Generate a bootstrap peer token
-ceph fs snapshot mirror peer_bootstrap create myfs-secondary client.admin > /tmp/peer-token
-cat /tmp/peer-token
-```
-
-## Step 3 - Add the Secondary as a Peer
-
-On the primary cluster:
-
-```bash
-# Import the bootstrap token from the secondary
-ceph fs snapshot mirror peer_add myfs /tmp/peer-token
-
-# Verify the peer is added
-ceph fs snapshot mirror show-peers myfs
-```
-
-Example peer output:
-
-```text
-{
-    "peers": [
-        {
-            "uuid": "a1b2c3d4-...",
-            "remote": {
-                "client_name": "client.admin",
-                "cluster_name": "secondary",
-                "fs_name": "myfs-secondary"
-            }
-        }
-    ]
-}
-```
-
-## Step 4 - Enable Mirroring on the Filesystem
+## Step 2 - Enable Mirroring on the Filesystem
 
 ```bash
 # Enable mirroring on the primary filesystem
@@ -109,6 +58,28 @@ ceph fs snapshot mirror enable myfs
 
 # Verify
 ceph fs snapshot mirror status myfs
+```
+
+## Step 3 - Create a Bootstrap Token on the Secondary Cluster
+
+On the secondary cluster, generate a peer token:
+
+```bash
+# Generate a bootstrap peer token
+ceph fs snapshot mirror peer_bootstrap create myfs-secondary client.admin site-secondary > /tmp/peer-token
+cat /tmp/peer-token
+```
+
+## Step 4 - Import the Bootstrap Token on the Primary
+
+On the primary cluster:
+
+```bash
+# Import the bootstrap token from the secondary
+ceph fs snapshot mirror peer_bootstrap import myfs $(cat /tmp/peer-token)
+
+# Verify the peer is added
+ceph fs snapshot mirror peer list myfs
 ```
 
 ## Step 5 - Configure Directories to Mirror
@@ -120,7 +91,7 @@ Mirroring is configured per-directory. The directory must be at the root of the 
 ceph fs snapshot mirror add myfs /data
 
 # Verify
-ceph fs snapshot mirror dirmap myfs /data
+ceph fs snapshot mirror daemon status
 ```
 
 ## Step 6 - Create and Mirror Snapshots
@@ -133,7 +104,7 @@ mkdir /mnt/cephfs/data/.snap/snap1
 
 # The cephfs-mirror daemon automatically syncs it to the secondary
 # Check sync status
-ceph fs snapshot mirror snapshot_status myfs /data
+ceph fs snapshot mirror daemon status
 ```
 
 ## Monitoring Replication
@@ -142,21 +113,11 @@ ceph fs snapshot mirror snapshot_status myfs /data
 # Overall mirroring status
 ceph fs snapshot mirror status myfs
 
-# Peer sync status
-ceph fs snapshot mirror peer_status myfs <peer-uuid>
+# Peer information
+ceph fs snapshot mirror peer list myfs
 
-# Directory sync status
-ceph fs snapshot mirror snapshot_status myfs /data
-```
-
-Expected output:
-
-```text
-{
-    "syncing_snapshots": ["snap1"],
-    "synced_snapshots": ["initial-sync"],
-    "failed_snapshots": []
-}
+# Mirror daemon status (shows per-directory sync details)
+ceph fs snapshot mirror daemon status
 ```
 
 ## Removing a Mirrored Directory
@@ -174,7 +135,17 @@ ceph fs snapshot mirror disable myfs
 
 ## Rook Configuration
 
-In Rook, configure CephFS mirroring using the CephFilesystem spec:
+In Rook, configure CephFS mirroring using the `CephFilesystemMirror` and `CephFilesystem` CRDs:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystemMirror
+metadata:
+  name: myfs-mirror
+  namespace: rook-ceph
+spec:
+  count: 1
+```
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -185,22 +156,11 @@ metadata:
 spec:
   mirroring:
     enabled: true
-    # Peer configuration managed separately via CephFilesystemMirrorPeer resource
-```
-
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephFilesystemMirrorPeer
-metadata:
-  name: myfs-mirror-peer
-  namespace: rook-ceph
-spec:
-  filesystemName: myfs
-  peers:
-    secretNames:
-      - rook-ceph-mirror-peer-secret
+    peers:
+      secretNames:
+        - rook-ceph-mirror-peer-secret
 ```
 
 ## Summary
 
-CephFS snapshot mirroring replicates filesystem directory snapshots from a primary to secondary Ceph cluster for disaster recovery. The setup involves deploying the `cephfs-mirror` daemon, generating a bootstrap peer token on the secondary cluster, adding the peer to the primary, and enabling mirroring per directory. Snapshots are automatically detected and synchronized asynchronously. Monitor progress with `ceph fs snapshot mirror status` and `ceph fs snapshot mirror snapshot_status`.
+CephFS snapshot mirroring replicates filesystem directory snapshots from a primary to secondary Ceph cluster for disaster recovery. The setup involves deploying the `cephfs-mirror` daemon, generating a bootstrap peer token on the secondary cluster, adding the peer to the primary, and enabling mirroring per directory. Snapshots are automatically detected and synchronized asynchronously. Monitor progress with `ceph fs snapshot mirror status` and `ceph fs snapshot mirror daemon status`.
