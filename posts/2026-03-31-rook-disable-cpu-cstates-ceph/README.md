@@ -62,10 +62,10 @@ Disable deep C-states at runtime using the cpupower tool:
 ```bash
 # Install cpupower
 dnf install -y kernel-tools   # RHEL/Rocky
-apt install -y linux-tools-common  # Ubuntu
+apt install -y linux-tools-common linux-tools-$(uname -r)  # Ubuntu
 
-# Disable all C-states except C0 and C1
-cpupower idle-set -D 2
+# Disable all C-states with exit latency >= 10 microseconds (keeps C0 and C1)
+cpupower idle-set -D 10
 ```
 
 Or write directly to sysfs for each CPU:
@@ -96,7 +96,7 @@ After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -c 'cpupower idle-set -D 2'
+ExecStart=/bin/bash -c 'cpupower idle-set -D 10'
 RemainAfterExit=yes
 
 [Install]
@@ -125,27 +125,26 @@ spec:
       labels:
         app: ceph-cpu-tuning
     spec:
-      hostPID: true
       nodeSelector:
         ceph-osd: "true"
       initContainers:
       - name: disable-cstates
-        image: centos:8
+        image: rockylinux:9
         securityContext:
           privileged: true
         command:
         - /bin/bash
         - -c
         - |
-          for i in /sys/devices/system/cpu/cpu*/cpuidle/state*/disable; do
-            echo 1 > $i 2>/dev/null || true
+          for i in /sys/devices/system/cpu/cpu*/cpuidle/state[2-9]*/disable; do
+            echo 1 > "$i" 2>/dev/null || true
           done
         volumeMounts:
         - name: sys
           mountPath: /sys
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.1
+        image: registry.k8s.io/pause:3.9
       volumes:
       - name: sys
         hostPath:
