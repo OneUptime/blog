@@ -82,7 +82,11 @@ usermod -aG smbusers smbuser1
 Enable and start the Samba services:
 
 ```bash
+# RHEL/CentOS
 systemctl enable --now smb nmb
+
+# Ubuntu/Debian
+systemctl enable --now smbd nmbd
 ```
 
 Test the configuration:
@@ -117,14 +121,12 @@ Optimize Samba for CephFS workloads by adjusting buffer settings:
 
 ```ini
 [global]
-    # Increase socket options for throughput
-    socket options = TCP_NODELAY SO_RCVBUF=131072 SO_SNDBUF=131072
-    # Async I/O
-    aio read size = 1
-    aio write size = 1
-    # Large read/write
+    # Use SMB3 for best performance
     max protocol = SMB3
-    large readwrite = yes
+    # Increase SMB2/3 read and write buffer sizes
+    smb2 max read = 8388608
+    smb2 max write = 8388608
+    smb2 max trans = 8388608
 ```
 
 Apply settings and restart:
