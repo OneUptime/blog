@@ -156,7 +156,7 @@ Build an autocomplete index.
 
 ```redis
 ZADD autocomplete 0 "redis" 0 "redisson" 0 "redisearch" 0 "redisqueue" 0 "react" 0 "rust"
-ZRANGEBYLEX autocomplete "[redis" "(rediu"
+ZRANGEBYLEX autocomplete "[redis" "(redit"
 ```
 
 ```text
@@ -174,7 +174,7 @@ Paginate through usernames alphabetically.
 
 ```redis
 ZADD usernames 0 "alice" 0 "bob" 0 "carol" 0 "dave" 0 "eve" 0 "frank"
-ZRANGEBYLEX usernames "[b" "[d" LIMIT 0 10
+ZRANGEBYLEX usernames "[b" "(e" LIMIT 0 10
 ```
 
 ```text
