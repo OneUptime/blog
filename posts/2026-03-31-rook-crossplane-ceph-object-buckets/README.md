@@ -66,7 +66,22 @@ kubectl -n my-app get secret my-app-bucket -o yaml
 
 ## Using Crossplane Compositions for Bucket Provisioning
 
-Define a Crossplane Composition that wraps the OBC with additional resources:
+To compose an ObjectBucketClaim in a Crossplane Composition, Crossplane needs RBAC permissions to manage OBC resources. Create a ClusterRole that aggregates into the Crossplane service account:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-obc-access
+  labels:
+    rbac.crossplane.io/aggregate-to-crossplane: "true"
+rules:
+  - apiGroups: ["objectbucket.io"]
+    resources: ["objectbucketclaims"]
+    verbs: ["*"]
+```
+
+Then define a Crossplane Composition that wraps the OBC with additional resources:
 
 ```yaml
 apiVersion: apiextensions.crossplane.io/v1
