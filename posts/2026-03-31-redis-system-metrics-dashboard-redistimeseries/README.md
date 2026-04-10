@@ -129,12 +129,12 @@ Query all hosts using label filters:
 ```python
 def get_all_hosts_current(metric: str) -> list:
     result = r.execute_command(
-        'TS.MGET', 'FILTER', f'metric={metric}'
+        'TS.MGET', 'WITHLABELS', 'FILTER', f'metric={metric}'
     )
     hosts = []
     for item in result:
         key = item[0]
-        labels = dict(zip(item[1][0::2], item[1][1::2]))
+        labels = dict(item[1])
         if item[2]:
             ts, val = item[2]
             hosts.append({
