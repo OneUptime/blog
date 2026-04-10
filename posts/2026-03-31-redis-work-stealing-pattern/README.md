@@ -65,9 +65,18 @@ def claim_job(timeout: int = 1) -> dict | None:
         return json.loads(data)
 
     # Own queue empty - try stealing from another worker
-    return steal_job()
+    stolen_from = steal_job()
+    if stolen_from:
+        # Job was moved into our queue by LMOVE, pop it for processing
+        data = r.lpop(MY_QUEUE)
+        if data:
+            job = json.loads(data)
+            job['stolen_from'] = stolen_from
+            return job
 
-def steal_job() -> dict | None:
+    return None
+
+def steal_job() -> str | None:
     all_workers = r.smembers(WORKER_REGISTRY)
     other_workers = [w for w in all_workers if w != WORKER_ID]
 
@@ -79,10 +88,8 @@ def steal_job() -> dict | None:
         if queue_len > 1:
             data = r.lmove(target_queue, MY_QUEUE, 'RIGHT', 'LEFT')
             if data:
-                job = json.loads(data)
-                job['stolen_from'] = target_worker
-                print(f"Worker {WORKER_ID} stole job {job['id']} from {target_worker}")
-                return job
+                print(f"Worker {WORKER_ID} stole a job from {target_worker}")
+                return target_worker
 
     return None
 ```
