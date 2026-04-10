@@ -76,13 +76,13 @@ kubectl apply -f cluster.yaml
 
 ## Verifying Checksums are Active
 
-Check OSD perf counters for checksum hits:
+Check OSD perf counters for checksum latency:
 
 ```bash
-ceph daemon osd.0 perf dump | jq '.bluestore | {csum_read: .bluestore_csum_read, csum_write: .bluestore_csum_write}'
+ceph daemon osd.0 perf dump | jq '.bluestore.csum_lat'
 ```
 
-If both counters are non-zero, checksumming is active.
+If `avgcount` is greater than zero after some read activity, checksumming is active and verifying data on reads.
 
 ## Handling Checksum Errors
 
