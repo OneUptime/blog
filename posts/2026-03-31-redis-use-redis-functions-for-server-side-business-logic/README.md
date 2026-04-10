@@ -89,6 +89,7 @@ Update a player's score and return their tier in one call:
 
 redis.register_function('update_score', function(keys, args)
     local leaderboard_key = keys[1]
+    local player_key = keys[2]
     local player_id = args[1]
     local points = tonumber(args[2]) or 0
 
@@ -110,7 +111,7 @@ redis.register_function('update_score', function(keys, args)
     end
 
     -- Store tier in player profile
-    redis.call('HSET', 'player:' .. player_id, 'tier', tier, 'score', new_score)
+    redis.call('HSET', player_key, 'tier', tier, 'score', new_score)
 
     return {new_score, tier}
 end)
@@ -122,7 +123,7 @@ import redis
 r = redis.Redis()
 
 def award_points(player_id: str, points: int):
-    result = r.fcall("update_score", 1, "leaderboard:global", player_id, points)
+    result = r.fcall("update_score", 2, "leaderboard:global", f"player:{player_id}", player_id, points)
     new_score, tier = result
     return {"score": new_score, "tier": tier.decode()}
 ```
