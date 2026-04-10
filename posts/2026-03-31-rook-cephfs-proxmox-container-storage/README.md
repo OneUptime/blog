@@ -8,13 +8,13 @@ Description: Configure CephFS as a shared storage backend for Proxmox LXC contai
 
 ---
 
-Proxmox supports CephFS as a storage backend for LXC container rootfs and shared data volumes. Unlike RBD which provides block devices, CephFS provides a POSIX filesystem that can be shared across multiple Proxmox nodes simultaneously, making it ideal for shared container data.
+Proxmox supports CephFS as a storage backend for container templates, ISO images, backups, snippets, and shared data volumes. Unlike RBD which provides block devices, CephFS provides a POSIX filesystem that can be shared across multiple Proxmox nodes simultaneously, making it ideal for shared data accessible by all nodes. Note that container rootfs storage requires Ceph RBD, not CephFS.
 
 ## Use Cases for CephFS in Proxmox
 
-- Shared configuration directories accessible by multiple containers
-- Container rootfs that can be live-migrated between nodes
-- Shared media storage accessible by all LXC instances
+- Shared configuration directories accessible by multiple containers via bind mounts
+- Container templates and ISO images available on all Proxmox nodes
+- Shared media storage accessible by all LXC instances via bind mounts
 - Backup staging area with high capacity
 
 ## Step 1: Enable CephFS on Your Ceph Cluster
@@ -62,7 +62,7 @@ pvesm add cephfs pve-cephfs \
   --monhost "mon1:6789,mon2:6789,mon3:6789" \
   --username proxmox-fs \
   --path /mnt/pve/cephfs \
-  --content vztmpl,iso,backup,rootdir
+  --content vztmpl,iso,backup,snippets
 
 # Verify storage is mounted
 pvesm status | grep pve-cephfs
@@ -73,17 +73,17 @@ Or via the Proxmox GUI:
 1. Datacenter -> Storage -> Add -> CephFS
 2. Set Monitor hosts, Username, Path, and Content types
 
-## Step 5: Create an LXC Container Using CephFS
+## Step 5: Create an LXC Container Using a Template from CephFS
 
 ```bash
-# Create a container with rootfs on CephFS
+# Create a container using a template stored on CephFS
+# Note: rootfs must be on local or RBD storage, not CephFS
 pct create 200 pve-cephfs:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst \
   --hostname cephfs-ct \
   --memory 512 \
   --cores 2 \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --storage pve-cephfs \
-  --rootfs pve-cephfs:8
+  --rootfs local-lvm:8
 
 # Start the container
 pct start 200
@@ -105,16 +105,17 @@ pct set 200 -mp0 /mnt/pve/cephfs/shared/app-data,mp=/shared
 pct create 201 ... --mp0 /mnt/pve/cephfs/shared/app-data,mp=/shared
 ```
 
-## Verifying Container Storage
+## Verifying CephFS Storage and Bind Mounts
 
 ```bash
-# Check the container's rootfs location in CephFS
-pct config 200 | grep rootfs
+# Verify CephFS is mounted and accessible
+df -h /mnt/pve/cephfs
+ls /mnt/pve/cephfs/
 
-# Verify the actual path on the filesystem
-ls /mnt/pve/cephfs/subvol-200-disk-0/
+# Check the container's bind mount configuration
+pct config 200 | grep mp
 ```
 
 ## Summary
 
-CephFS in Proxmox provides a flexible shared filesystem for LXC container storage. After deploying MDS, creating a Proxmox CephFS auth user, and adding the storage via `pvesm add cephfs`, containers can have rootfs stored on CephFS and can share bind-mounted directories across nodes. Unlike RBD storage, CephFS directories are accessible from all Proxmox nodes simultaneously, making shared datasets and configuration directories straightforward to manage across a datacenter cluster.
+CephFS in Proxmox provides a flexible shared filesystem for storing container templates, ISO images, backups, snippets, and shared data. After deploying MDS, creating a Proxmox CephFS auth user, and adding the storage via `pvesm add cephfs`, all Proxmox nodes can access the same templates and backups, and containers can share bind-mounted CephFS directories across nodes. Note that container rootfs requires Ceph RBD (block storage), not CephFS. CephFS directories are accessible from all Proxmox nodes simultaneously, making shared datasets and configuration directories straightforward to manage across a datacenter cluster.
