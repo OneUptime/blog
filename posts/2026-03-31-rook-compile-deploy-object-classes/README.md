@@ -14,8 +14,8 @@ After writing an object class, you need to compile it into a shared library and 
 
 ```bash
 # Install Ceph development headers
-apt install ceph-dev librados-dev  # Debian/Ubuntu
-dnf install ceph-devel librados-devel  # RHEL/CentOS
+apt install rados-objclass-dev librados-dev  # Debian/Ubuntu
+dnf install rados-objclass-devel librados-devel  # RHEL/CentOS
 
 # Verify headers are available
 ls /usr/include/rados/
@@ -135,8 +135,18 @@ grep "myclass" /var/log/ceph/ceph-osd.*.log | grep -i "load\|error"
 rados -p mypool ls  # Create a test object first if needed
 echo "hello world test" | rados -p mypool put test-obj -
 
-# Call the object class method
-rados -p mypool cls-call test-obj myclass count_words
+# Call the object class method via the librados Python API
+# (the rados CLI does not have a subcommand for invoking class methods)
+python3 << 'PYEOF'
+import rados
+cluster = rados.Rados(conffile='/etc/ceph/ceph.conf')
+cluster.connect()
+ioctx = cluster.open_ioctx('mypool')
+result = ioctx.execute('test-obj', 'myclass', 'count_words', b'')
+print(result)
+ioctx.close()
+cluster.shutdown()
+PYEOF
 ```
 
 ## Troubleshooting
