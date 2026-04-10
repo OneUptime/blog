@@ -51,7 +51,7 @@ When connected to a replica:
 - Field 1: `"slave"` (the internal term Redis uses)
 - Field 2: master IP address
 - Field 3: master port
-- Field 4: replication state (`"connected"`, `"sync"`, or `"connect"`)
+- Field 4: replication state (`"connect"`, `"connecting"`, `"sync"`, or `"connected"`)
 - Field 5: the amount of data the replica has received from the master
 
 ## Sentinel Node Response
