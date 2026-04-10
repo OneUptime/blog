@@ -83,11 +83,11 @@ kubectl top node
 # 1. Identify largest pools
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 
-# 2. Identify largest objects or RBD images
+# 2. Identify largest RBD images by usage
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rados df --pool <pool-name>
+  rbd du -p <pool-name>
 
-# 3. Temporarily increase noout flag to prevent OSD removal during remediation
+# 3. Temporarily set noout flag to prevent rebalancing during remediation
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd set noout
 ```
