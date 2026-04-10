@@ -64,21 +64,21 @@ spec:
       storage: 500Gi
 ```
 
-## Practical Use Case: Seeding Staging Environments
+## Practical Use Case: Seeding a Test Database
 
-Clone production data to staging without taking production offline:
+Clone a database PVC within the same namespace for testing without affecting the original:
 
 ```bash
-# Get the production PVC name
-kubectl get pvc -n production | grep db-data
+# List PVCs in the namespace
+kubectl get pvc -n myapp
 
 # Apply the clone manifest
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: staging-db-data
-  namespace: staging
+  name: db-data-test-clone
+  namespace: myapp
 spec:
   storageClassName: rook-ceph-block
   dataSource:
@@ -92,14 +92,14 @@ spec:
 EOF
 
 # Wait for clone to be bound
-kubectl wait --for=condition=Bound pvc/staging-db-data -n staging --timeout=120s
+kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/db-data-test-clone -n myapp --timeout=120s
 ```
 
 ## Verifying the Clone
 
 ```bash
 # Check clone status
-kubectl get pvc staging-db-data -n staging
+kubectl get pvc db-data-test-clone -n myapp
 
 # Verify it's a separate RBD image in Ceph
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
