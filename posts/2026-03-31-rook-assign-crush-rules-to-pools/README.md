@@ -44,7 +44,7 @@ ceph osd dump | grep -E "pool|crush_rule"
 # Create a pool using a specific CRUSH rule
 ceph osd pool create mypool 128 128 replicated rack-rule
 
-# Create an erasure coded pool with an EC-specific rule
+# Create an erasure coded pool with a specific erasure code profile
 ceph osd pool create ec-pool 128 128 erasure ec-4-2-profile
 
 # Verify the rule was applied
