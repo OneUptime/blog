@@ -135,7 +135,6 @@ SMEMBERS retrieves the entire set in a single blocking call. For large sets, thi
 Use SSCAN when your set may contain thousands of members or more.
 
 ```redis
--- Safe incremental scan for large sets
 SSCAN largeset 0 COUNT 100
 ```
 
