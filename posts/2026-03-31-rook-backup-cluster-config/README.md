@@ -53,8 +53,12 @@ echo "Backing up CephObjectStoreUsers..."
 kubectl -n rook-ceph get cephobjectstoreuser -o yaml > $BACKUP_DIR/cephobjectstoreusers.yaml
 
 echo "Backing up StorageClasses..."
-kubectl get storageclass -l provisioner=rook-ceph.rbd.csi.ceph.com -o yaml > $BACKUP_DIR/storageclasses-rbd.yaml
-kubectl get storageclass -l provisioner=rook-ceph.cephfs.csi.ceph.com -o yaml > $BACKUP_DIR/storageclasses-cephfs.yaml
+kubectl get storageclass -o json \
+  | jq '.items[] | select(.provisioner=="rook-ceph.rbd.csi.ceph.com")' \
+  > $BACKUP_DIR/storageclasses-rbd.json
+kubectl get storageclass -o json \
+  | jq '.items[] | select(.provisioner=="rook-ceph.cephfs.csi.ceph.com")' \
+  > $BACKUP_DIR/storageclasses-cephfs.json
 
 echo "Backup saved to $BACKUP_DIR/"
 ls -la $BACKUP_DIR/
@@ -113,7 +117,7 @@ The Ceph monitor database contains the cluster map (CRUSH map, OSD map, PG map, 
 kubectl -n rook-ceph get pods -l app=rook-ceph-mon -o wide | awk '{print $7}'
 
 # SSH to each monitor node and backup the data directory
-# Default dataDirHostPath is /var/lib/rook
+# Common dataDirHostPath is /var/lib/rook (check your CephCluster CR)
 sudo tar -czf /tmp/rook-mon-backup-$(hostname)-$(date +%Y%m%d).tar.gz \
   /var/lib/rook/mon-a  # or mon-b, mon-c
 ```
@@ -127,25 +131,30 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
   # Export CRUSH map
   ceph osd getcrushmap -o /tmp/crush.bin
   crushtool -d /tmp/crush.bin -o /tmp/crush.txt
+  echo '=== CRUSH MAP ==='
   cat /tmp/crush.txt
 
   # Export OSD map
-  ceph osd dump > /tmp/osd-dump.txt
+  echo '=== OSD DUMP ==='
+  ceph osd dump
 
   # Export pool configuration
-  ceph osd pool ls detail > /tmp/pool-config.txt
+  echo '=== POOL CONFIGURATION ==='
+  ceph osd pool ls detail
 
   # Export auth keys
-  ceph auth list > /tmp/auth-keys.txt
+  echo '=== AUTH KEYS ==='
+  ceph auth list
 
   # Export full cluster config
-  ceph config dump > /tmp/ceph-config-dump.txt
+  echo '=== CEPH CONFIG DUMP ==='
+  ceph config dump
 " > $BACKUP_DIR/ceph-state.txt
 ```
 
 ## Automated Backup with CronJob
 
-Create a CronJob that runs daily backups and stores them in S3-compatible storage:
+Create a CronJob that runs daily backups and stores them to a PersistentVolumeClaim:
 
 ```yaml
 apiVersion: batch/v1
