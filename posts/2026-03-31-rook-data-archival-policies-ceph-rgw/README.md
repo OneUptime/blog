@@ -29,20 +29,22 @@ spec:
   deviceClass: hdd
   parameters:
     compression_mode: aggressive
-    bulk: "true"  # Enable bulk flag for large sequential reads
 ```
 
 ## Configuring an Archive Placement Target
 
 ```bash
-# Add archive placement target to the zone
+# Add GLACIER storage class to the default placement target
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin zone placement add \
   --rgw-zone default \
-  --placement-id archive \
-  --data-pool rook-ceph.archive-pool.data \
-  --index-pool rook-ceph.archive-pool.index \
-  --storage-class GLACIER
+  --placement-id default-placement \
+  --storage-class GLACIER \
+  --data-pool archive-pool
+
+# Commit the period change (required for changes to take effect)
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin period update --commit
 
 # Verify placement targets
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
@@ -110,7 +112,7 @@ aws s3api put-object-lock-configuration \
 
 ## Restoring Objects from Archive
 
-When accessing archived objects (stored in the cold pool), they may need a restore step if the archive tier is configured as a tape-like system:
+If using the cloud transition feature to move archived objects to a remote S3-compatible endpoint, they will need a restore step before they can be accessed locally:
 
 ```bash
 # Request restore for archived objects
