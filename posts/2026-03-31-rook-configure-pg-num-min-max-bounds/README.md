@@ -107,13 +107,13 @@ Remove bounds to allow unrestricted autoscaling:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool set mypool pg_num_min 1
+  ceph osd pool set mypool pg_num_min 0
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set mypool pg_num_max 0
 ```
 
-Setting `pg_num_max` to 0 removes the upper bound.
+Setting `pg_num_min` to 0 removes the lower bound, and setting `pg_num_max` to 0 removes the upper bound.
 
 ## Summary
 
