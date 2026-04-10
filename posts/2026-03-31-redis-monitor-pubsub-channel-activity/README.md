@@ -57,14 +57,14 @@ redis-cli MONITOR | grep PUBLISH
 
 ## Keyspace Notifications for Pub/Sub Events
 
-Enable keyspace notifications to track subscribe/unsubscribe events:
+Enable keyspace notifications to track key-level data events (such as SET, DEL, and EXPIRE operations):
 
 ```bash
-# Enable keyspace event notifications (g = generic, $ = string, E = keyevent)
+# Enable keyspace event notifications (K = keyspace, E = keyevent, g = generic commands)
 redis-cli CONFIG SET notify-keyspace-events "KEg"
 ```
 
-Then subscribe to the keyevent channel to watch for changes:
+Then subscribe to the keyevent channel to watch for key changes:
 
 ```bash
 redis-cli PSUBSCRIBE '__keyevent@0__:*'
@@ -88,8 +88,8 @@ while True:
     print(f"--- {time.strftime('%H:%M:%S')} ---")
     print(f"Active channels: {len(active_channels)}")
     print(f"Pattern subscriptions: {pattern_subs}")
-    for i in range(0, len(counts), 2):
-        print(f"  {counts[i]}: {counts[i+1]} subscribers")
+    for channel, num_subs in counts.items():
+        print(f"  {channel}: {num_subs} subscribers")
     print()
     time.sleep(5)
 ```
@@ -97,14 +97,13 @@ while True:
 ## Track Message Throughput with INFO Stats
 
 ```bash
-# Total messages published since server start
+# Current Pub/Sub state from server stats
 redis-cli INFO stats | grep pubsub
 
 # Example output:
 # pubsub_channels:12
 # pubsub_patterns:3
 # pubsub_shardchannels:0
-# total_commands_processed:1283921
 ```
 
 ## Grafana Dashboard Metrics
