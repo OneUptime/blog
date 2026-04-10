@@ -150,7 +150,7 @@ cluster:
 ```
 
 **CIDR not matching any node NIC:**
-If no NIC on a node has an IP within the CIDR, Ceph falls back to the default route interface. Always verify node IP assignments match the configured CIDRs.
+If no NIC on a node has an IP within the CIDR, the Ceph daemon will fail to start with an error like `unable to find any IP address in networks`. Always verify node IP assignments match the configured CIDRs before deploying.
 
 ```bash
 # Check node NIC IPs
