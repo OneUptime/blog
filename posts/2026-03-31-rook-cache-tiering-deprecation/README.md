@@ -29,10 +29,10 @@ The Ceph development community identified several serious issues:
 ```text
 Ceph Version   Cache Tiering Status
 Octopus 15.x   Supported
-Pacific 16.x   Supported (with warnings)
-Quincy 17.x    Supported (deprecation announced)
-Reef 18.x      Deprecated (still functional, removal planned)
-Squid 19.x     Likely removed (check release notes)
+Pacific 16.x   Supported (deprecation docs backported in 16.2.14)
+Quincy 17.x    Supported (deprecation docs backported in 17.2.7)
+Reef 18.x      Deprecated (first official deprecation)
+Squid 19.x     Deprecated (tests removed, feature still present)
 ```
 
 ## Migration Path 1: Direct SSD Pool
@@ -95,7 +95,7 @@ Before upgrading to Ceph Reef, remove all cache tiers to avoid upgrade complicat
 
 ```bash
 # For each writeback cache
-ceph osd tier cache-mode cache-pool readproxy
+ceph osd tier cache-mode cache-pool proxy
 rados -p cache-pool cache-flush-evict-all
 ceph osd tier remove-overlay backing-pool
 ceph osd tier remove backing-pool cache-pool
