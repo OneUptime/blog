@@ -49,14 +49,14 @@ Use server instances with 256+ GB RAM per node to accommodate 233 GB of data plu
 Long key names waste memory at scale. Compare:
 
 ```bash
-# Bad: 45 bytes just for the key name
+# Bad: 34 bytes just for the key name
 SET user_profile:username:12345:active 1
 
-# Good: 18 bytes for the key name
+# Good: 9 bytes for the key name
 SET u:12345:a 1
 ```
 
-With 10 billion keys, saving 27 bytes per key saves 270 GB.
+With 10 billion keys, saving 25 bytes per key saves 250 GB.
 
 ## Use Hash Encoding for Small Objects
 
@@ -102,11 +102,7 @@ OBJECT ENCODING counter:user:1
 ## Monitor Key Distribution
 
 ```bash
-for slot in $(redis-cli -p 7001 CLUSTER MYID); do
-  redis-cli -p 7001 DBSIZE
-done
-
-# Or across all nodes:
+# Check key count across all cluster nodes:
 redis-cli --cluster info 127.0.0.1:7001
 ```
 
@@ -115,8 +111,8 @@ redis-cli --cluster info 127.0.0.1:7001
 Run SCAN-based analysis without blocking:
 
 ```bash
-redis-cli --bigkeys --scan
-redis-cli --memkeys --scan
+redis-cli --bigkeys
+redis-cli --memkeys
 ```
 
 ## Summary
