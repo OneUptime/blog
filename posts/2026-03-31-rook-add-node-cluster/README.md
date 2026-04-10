@@ -14,8 +14,8 @@ Rook-Ceph places Ceph components (monitors, OSDs) on Kubernetes nodes based on t
 
 ```mermaid
 graph TD
-    A[New Physical Node] --> B[Join Kubernetes Cluster]
-    B --> C[Install Prerequisites - kernel modules, lvm2]
+    A[New Physical Node] --> B[Install Prerequisites - kernel modules, lvm2]
+    B --> C[Join Kubernetes Cluster]
     C --> D[Label Node with role=storage-node]
     D --> E[Rook Discovers New Node]
     E --> F{useAllNodes?}
