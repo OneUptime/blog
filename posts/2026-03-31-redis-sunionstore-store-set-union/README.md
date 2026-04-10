@@ -96,7 +96,7 @@ SADD item:2:tags "redis" "caching"
 SADD item:3:tags "postgresql" "database"
 
 SUNIONSTORE tags:all-items item:1:tags item:2:tags item:3:tags
--- (integer) 4
+-- (integer) 5
 
 SMEMBERS tags:all-items
 -- 1) "redis"
