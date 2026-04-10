@@ -97,7 +97,7 @@ std::cout << "Executed " << replies.size() << " commands\n";
 ```cpp
 auto tx = redis.transaction();
 try {
-    tx.multi();
+    // MULTI is sent automatically by the transaction object
     tx.set("balance:alice", "70");
     tx.set("balance:bob", "80");
     auto result = tx.exec();
