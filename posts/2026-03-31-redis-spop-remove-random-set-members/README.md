@@ -133,7 +133,6 @@ Pick winners at random from a pool of entries without picking the same person tw
 
 ```redis
 SADD entries "user:1" "user:2" "user:3" "user:4" "user:5"
--- Draw 2 winners
 SPOP entries 2
 ```
 
@@ -150,7 +149,6 @@ Assign unique tasks to workers without duplication.
 
 ```redis
 SADD tasks:available "task:A" "task:B" "task:C" "task:D"
--- Each worker pops one task
 SPOP tasks:available
 ```
 
