@@ -92,7 +92,7 @@ echo "Pass:   $REDIS_PASSWORD"
 psql "$DB_URL" -c "
   INSERT INTO tenant_redis_config (tenant_id, host, port, password)
   VALUES ('$TENANT_ID', '$REDIS_HOST', 6379, '$REDIS_PASSWORD')
-  ON CONFLICT (tenant_id) DO UPDATE SET host=EXCLUDED.host;
+  ON CONFLICT (tenant_id) DO UPDATE SET host=EXCLUDED.host, password=EXCLUDED.password;
 "
 ```
 
