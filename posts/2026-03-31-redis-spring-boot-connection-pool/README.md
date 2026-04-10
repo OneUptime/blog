@@ -114,7 +114,7 @@ management:
 ```
 
 ```bash
-curl http://localhost:8080/actuator/metrics/lettuce.command.completion.time
+curl http://localhost:8080/actuator/metrics/lettuce.command.completion
 ```
 
 ## Tune for High Throughput
