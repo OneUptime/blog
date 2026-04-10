@@ -86,7 +86,7 @@ On the Ceph side, you can verify the subvolume snapshot was created:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs subvolume snapshot ls myfs csi <subvolume-name> --group_name csi
+  ceph fs subvolume snapshot ls myfs <subvolume-name> --group_name csi
 ```
 
 ## Restore a CephFS Snapshot to a New PVC
