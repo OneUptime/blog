@@ -154,6 +154,7 @@ spec:
           kubectl create secret generic ceph-appuser \
             --from-file=keyring=/tmp/keyring \
             -n appnamespace
+      restartPolicy: Never
 ```
 
 ## Summary
