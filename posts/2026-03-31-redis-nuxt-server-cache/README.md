@@ -21,17 +21,11 @@ npm install ioredis
 export default defineNuxtConfig({
   nitro: {
     storage: {
-      redis: {
+      cache: {
         driver: "redis",
         host: process.env.REDIS_HOST || "localhost",
         port: 6379,
         db: 0,
-      },
-    },
-    cache: {
-      default: {
-        storage: "redis",
-        ttl: 300,
       },
     },
   },
@@ -42,7 +36,7 @@ export default defineNuxtConfig({
 
 ```typescript
 // server/api/products/[id].ts
-import { defineEventHandler, getRouterParam } from "h3";
+import { getRouterParam } from "h3";
 
 export default defineCachedEventHandler(
   async (event) => {
@@ -68,7 +62,7 @@ import { defineEventHandler } from "h3";
 import { useStorage } from "#imports";
 
 export default defineEventHandler(async () => {
-  const storage = useStorage("redis");
+  const storage = useStorage("cache");
   const cacheKey = "api:categories:all";
 
   const cached = await storage.getItem(cacheKey);
@@ -89,12 +83,12 @@ export default defineEventHandler(async () => {
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook("render:html", async (html, { event }) => {
     const url = event.node.req.url;
-    const storage = useStorage("redis");
+    const storage = useStorage("cache");
     const key = `ssr:${url}`;
 
     // Cache rendered pages for public routes
     if (!url.startsWith("/dashboard") && !url.startsWith("/account")) {
-      await storage.setItem(key, html.body, { ttl: 300 });
+      await storage.setItem(key, html.body.join(""), { ttl: 300 });
     }
   });
 });
@@ -115,7 +109,7 @@ const { data: product } = await useAsyncData(
     return $fetch(`/api/products/${id}`);
   },
   {
-    // Server cache config via useFetch
+    // Fetch on server during SSR (default behavior)
     server: true,
   }
 );
@@ -133,10 +127,10 @@ export default defineEventHandler(async (event) => {
   await updateProduct(id, body);
 
   // Invalidate product cache
-  const storage = useStorage("redis");
+  const storage = useStorage("cache");
   await storage.removeItem(`product:${id}`);
-  // Also purge nitro's cache
-  await useCache().removeItem(`nitro:handlers:product:${id}`);
+  // Also purge nitro's cached handler
+  await storage.removeItem(`nitro:handlers:product:${id}`);
 
   return { success: true };
 });
