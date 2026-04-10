@@ -34,7 +34,6 @@ HSET doc:1 content "Redis is an in-memory database" \
 ```python
 import redis
 import numpy as np
-import struct
 
 r = redis.Redis()
 
