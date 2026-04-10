@@ -40,17 +40,17 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 echo ""
 echo "4. Pool Usage (alert if >70% full)"
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph df | awk 'NR==1 || /[7-9][0-9]\.[0-9]+%|100\./'
+  ceph df | awk 'NR==1 || /[7-9][0-9]\.[0-9]+|100\./'
 
 echo ""
-echo "5. Scrub Errors"
+echo "5. Stuck Placement Groups"
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph pg dump_stuck | head -20
+  ceph pg dump_stuck unclean | head -20
 
 echo ""
 echo "6. Slow Requests"
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd pool stats | grep "slow requests"
+  ceph health detail | grep -i "slow requests"
 
 echo "=== Health Check Complete ==="
 ```
@@ -68,7 +68,7 @@ Before any maintenance activity:
 - [ ] `ceph health` returns HEALTH_OK
 - [ ] All OSDs are up: `ceph osd stat` shows all OSDs up
 - [ ] No pending recovery: `ceph pg stat` shows 0 degraded PGs
-- [ ] No slow requests: `ceph osd pool stats` shows 0 slow requests
+- [ ] No slow requests: `ceph health detail` shows no slow requests
 - [ ] Monitor quorum is full: `ceph mon stat` shows all monitors in quorum
 
 ### Notification
