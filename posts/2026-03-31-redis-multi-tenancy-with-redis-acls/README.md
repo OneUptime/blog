@@ -45,7 +45,7 @@ Explanation:
 - `on` - enable the user
 - `>password` - set the password
 - `~alpha:*` - allow access only to keys matching `alpha:*`
-- `&alpha:*` - allow pub/sub channels matching `alpha:*`
+- `&alpha:*` - allow pub/sub channels matching `alpha:*` (requires Redis 6.2+)
 - `+@all` - allow all commands (can be restricted further)
 
 ## Connecting as a Tenant User
@@ -133,10 +133,16 @@ Output:
    2) (integer) 3
    3) "reason"
    4) "key"
-   5) "object"
-   6) "beta:session:xyz"
-   7) "username"
-   8) "tenant_alpha"
+   5) "context"
+   6) "toplevel"
+   7) "object"
+   8) "beta:session:xyz"
+   9) "username"
+   10) "tenant_alpha"
+   11) "age-seconds"
+   12) "5.0800000000000001"
+   13) "client-info"
+   14) "id=4 addr=127.0.0.1:59348 ..."
 ```
 
 This reveals which users are attempting to access keys outside their allowed pattern.
