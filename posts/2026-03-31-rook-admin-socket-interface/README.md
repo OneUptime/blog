@@ -16,7 +16,7 @@ In a Rook environment, admin sockets are created inside the daemon containers. F
 
 ```bash
 kubectl exec -n rook-ceph \
-  $(kubectl get pod -n rook-ceph -l ceph_daemon_type=osd,ceph_daemon_id=0 -o name) \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
   -c osd -- ls /var/run/ceph/
 ```
 
@@ -30,15 +30,16 @@ Typical socket names:
 
 ```bash
 kubectl exec -n rook-ceph \
-  $(kubectl get pod -n rook-ceph -l ceph_daemon_type=osd,ceph_daemon_id=0 -o name) \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
   -c osd -- ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok help
 ```
 
-Or use `ceph daemon` from within the toolbox (if the toolbox has access to the socket):
+Or use the `ceph daemon` shorthand from within the daemon pod:
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 help
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 help
 ```
 
 Sample commands available:
@@ -57,22 +58,25 @@ flush_journal      - Flush the journal
 ## Query OSD Configuration
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 config show | python3 -m json.tool | head -30
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 config show | python3 -m json.tool | head -30
 ```
 
 Get a specific config key:
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 config get osd_max_write_size
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 config get osd_max_write_size
 ```
 
 ## Dump In-Flight OSD Operations
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 dump_ops_in_flight
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 dump_ops_in_flight
 ```
 
 This lists all active RADOS operations being processed by the OSD, useful for finding slow or stuck I/O.
@@ -80,35 +84,40 @@ This lists all active RADOS operations being processed by the OSD, useful for fi
 ## Query Monitor Admin Socket
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mon.a status
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-mon,ceph_daemon_id=a -o name) \
+  -c mon -- ceph daemon mon.a status
 ```
 
 ## Query MDS Admin Socket
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs-a status
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-mds -o name | head -1) \
+  -c mds -- ceph daemon mds.myfs-a status
 
 # Check MDS cache utilization
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs-a cache status
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-mds -o name | head -1) \
+  -c mds -- ceph daemon mds.myfs-a cache status
 ```
 
 ## Retrieve Performance Counters
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A3 '"op"'
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A3 '"op"'
 ```
 
 Reset counters after capturing a baseline:
 
 ```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon osd.0 perf reset all
+kubectl exec -n rook-ceph \
+  $(kubectl get pod -n rook-ceph -l app=rook-ceph-osd,ceph_daemon_id=0 -o name) \
+  -c osd -- ceph daemon osd.0 perf reset all
 ```
 
 ## Summary
 
-The Ceph admin socket interface provides direct access to live daemon state through Unix socket files in `/var/run/ceph/`. In Rook environments, use `ceph daemon <daemon-name> <command>` from the toolbox to list in-flight operations, query runtime configuration, and retrieve performance counters without affecting cluster operations. Admin socket queries are invaluable for diagnosing slow I/O and configuration drift.
+The Ceph admin socket interface provides direct access to live daemon state through Unix socket files in `/var/run/ceph/`. In Rook environments, exec into the specific daemon pod and use `ceph daemon <daemon-name> <command>` to list in-flight operations, query runtime configuration, and retrieve performance counters without affecting cluster operations. Admin socket queries are invaluable for diagnosing slow I/O and configuration drift.
