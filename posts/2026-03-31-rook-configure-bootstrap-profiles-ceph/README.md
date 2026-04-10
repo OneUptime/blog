@@ -22,7 +22,7 @@ Ceph provides the following bootstrap profiles:
 | `bootstrap-mds` | Bootstrapping new MDS daemons |
 | `bootstrap-mgr` | Bootstrapping new Manager daemons |
 | `bootstrap-rgw` | Bootstrapping new RGW daemons |
-| `bootstrap-rbd` | Bootstrapping RBD mirror daemons |
+| `bootstrap-rbd` | Bootstrapping RBD client users |
 | `bootstrap-rbd-mirror` | Bootstrapping the RBD mirror daemon |
 
 ## Creating Bootstrap Users
