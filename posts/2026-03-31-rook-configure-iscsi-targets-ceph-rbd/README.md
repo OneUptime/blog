@@ -60,18 +60,22 @@ Add portal IPs (one per gateway node):
 /gateways> create gw2 10.0.1.11
 ```
 
-## Adding RBD Disks to the Target
+## Registering the RBD Disk
+
+Before adding the disk to a target, register the RBD image globally in gwcli:
 
 ```text
-/iscsi-targets/iqn.../> cd disks
-/disks> add rbd iscsi vol1
+/> cd /disks
+/disks> create pool=iscsi image=vol1
 ```
 
-Map the disk to a LUN in the target:
+## Adding the Disk to the Target
+
+Map the registered disk as a LUN in the target:
 
 ```text
-/iscsi-targets/iqn.../> cd luns
-/luns> add rbd/iscsi/vol1
+/> cd /iscsi-targets/iqn.2024-01.com.example:production-storage/disks
+/disks> add iscsi/vol1
 ```
 
 ## Configuring ACLs for Initiators
@@ -83,11 +87,10 @@ Add the initiator IQN to the ACL:
 /hosts> create iqn.1993-08.org.debian:prod-server-01
 ```
 
-Assign the LUN to the initiator:
+Assign the disk to the initiator:
 
 ```text
-/hosts/iqn.1993-08.org.debian:prod-server-01/> cd luns
-/luns> add rbd/iscsi/vol1
+/hosts/iqn.1993-08.org.debian:prod-server-01> disk add iscsi/vol1
 ```
 
 ## Using the REST API
