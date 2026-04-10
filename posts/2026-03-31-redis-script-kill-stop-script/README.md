@@ -34,7 +34,7 @@ Lua scripts in Redis run atomically and block the entire server during execution
 - A very large dataset iteration taking longer than expected
 - A programming error that causes unbounded execution
 
-Redis has a configurable timeout (`lua-time-limit`, default 5000 ms). After this timeout, Redis starts accepting `SCRIPT KILL` and `SHUTDOWN` commands while the script continues executing in the background.
+Redis has a configurable timeout (`lua-time-limit`, default 5000 ms). After this timeout, Redis starts accepting `SCRIPT KILL` and `SHUTDOWN NOSAVE` commands while the script continues executing in the background.
 
 ## Basic Usage
 
@@ -54,10 +54,10 @@ SCRIPT KILL
 
 ### Check if a script is running before killing
 
+If no script is running, SCRIPT KILL returns a NOTBUSY error:
 ```redis
--- Use the INFO all output or DEBUG SLEEP to simulate
-INFO server
--- Look for: redis_is_loading:0 and blocked_clients count
+SCRIPT KILL
+-- Returns: NOTBUSY No scripts in execution right now.
 ```
 
 ```mermaid
@@ -81,10 +81,9 @@ If the script has already executed at least one write command (SET, LPUSH, ZADD,
 ```redis
 -- Script has called SET before getting stuck
 SCRIPT KILL
--- Returns: UNKILLABLE No scripts in execution right now.
--- Or: ERR UNKILLABLE Sorry the script already executed write commands
---     against the dataset. You can either wait the script to
---     terminate or kill the server in a non-graceful way using
+-- Returns: UNKILLABLE Sorry the script already executed write commands
+--     against the dataset. You can either wait the script
+--     termination or kill the server in a hard way using
 --     the SHUTDOWN NOSAVE command.
 ```
 
