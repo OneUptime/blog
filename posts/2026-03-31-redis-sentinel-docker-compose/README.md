@@ -102,9 +102,11 @@ services:
 
   sentinel-1:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26379:26379"
     networks:
       - redis-net
     depends_on:
@@ -114,17 +116,21 @@ services:
 
   sentinel-2:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26380:26379"
     networks:
       - redis-net
 
   sentinel-3:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command: sh -c "cp /etc/redis/sentinel.conf /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - ./sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26381:26379"
     networks:
       - redis-net
 
