@@ -125,7 +125,7 @@ return '0'
 
 ## Limitations on Return Types
 
-Redis only accepts flat arrays (not nested tables) as return values:
+Redis only serializes integer-indexed (array) entries from Lua tables, ignoring string keys:
 
 ```lua
 -- This won't work as expected
@@ -146,4 +146,4 @@ user = dict(zip(result[::2], result[1::2]))
 
 ## Summary
 
-Lua tables are the foundation of data manipulation in Redis scripts. Use them as arrays with integer keys and the `table` library for list operations, or as dictionaries with string keys for structured data. When returning results to Redis clients, flatten nested structures into arrays, since Redis cannot serialize nested Lua tables. Iterate Redis list results with `ipairs()` for clean, readable code.
+Lua tables are the foundation of data manipulation in Redis scripts. Use them as arrays with integer keys and the `table` library for list operations, or as dictionaries with string keys for structured data. When returning results to Redis clients, flatten dictionary structures into flat arrays, since Redis ignores string keys in Lua tables. Iterate Redis list results with `ipairs()` for clean, readable code.
