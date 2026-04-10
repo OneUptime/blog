@@ -75,18 +75,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
 
 ## Algorithm Benchmarks
 
-Before choosing an algorithm, benchmark compression ratio and speed on your data:
+Before choosing an algorithm, benchmark compression ratio and speed on your data. Note that `zstd` and `lz4` have CLI tools, while `zlib` compression can be tested via `gzip` (which uses zlib internally) and `snappy` has no standard CLI tool:
 
 ```bash
-# Compare compression ratio for a sample file
-for algo in snappy lz4 zstd zlib; do
-  echo -n "$algo: "
-  cat /var/log/syslog | $algo > /tmp/test.$algo 2>/dev/null
-  ls -lh /tmp/test.$algo | awk '{print $5}'
-done
+# Compare compression ratio for a sample file using available CLI tools
+echo -n "zstd: " && zstd -c /var/log/syslog | wc -c
+echo -n "lz4:  " && lz4 -c /var/log/syslog | wc -c
+echo -n "zlib: " && gzip -c /var/log/syslog | wc -c
+echo -n "orig: " && wc -c < /var/log/syslog
 ```
 
-For CPU overhead comparison, use the Ceph benchmark tool:
+For a real-world comparison across all algorithms including snappy, use `rados bench` on pools configured with each algorithm:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
