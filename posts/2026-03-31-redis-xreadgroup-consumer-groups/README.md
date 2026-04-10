@@ -117,7 +117,7 @@ A typical worker reads, processes, and acknowledges in a loop:
 ```bash
 # Bash pseudo-loop using redis-cli
 while true; do
-  redis-cli XREADGROUP GROUP workers consumer1 COUNT 10 BLOCK 2000 STREAMS mystream >
+  redis-cli XREADGROUP GROUP workers consumer1 COUNT 10 BLOCK 2000 STREAMS mystream '>'
   # process messages, then XACK each one
 done
 ```
