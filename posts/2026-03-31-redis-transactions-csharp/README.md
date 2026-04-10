@@ -120,7 +120,7 @@ Condition.SetContains("my:set", "member");
 Redis transactions do not roll back on command errors:
 
 ```csharp
-// If StringSet fails, StringIncrement still executes
+// StringSet succeeds, but StringIncrement errors - both still execute
 ITransaction tran = db.CreateTransaction();
 tran.StringSetAsync("key", "val");
 tran.StringIncrementAsync("key"); // type mismatch - will error at runtime
