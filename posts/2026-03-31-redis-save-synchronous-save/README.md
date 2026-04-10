@@ -87,7 +87,7 @@ Redis calls `SAVE` internally during `SHUTDOWN SAVE` to ensure data is persisted
 SHUTDOWN SAVE
 ```
 
-Or configure `shutdown-save-on-empty-config yes` in `redis.conf` (default) to always save on shutdown even if no `save` rules are configured.
+You can also control shutdown persistence behavior via `shutdown-on-sigint` and `shutdown-on-sigterm` in `redis.conf`. Setting these to `save` ensures Redis performs an RDB save on shutdown even if no `save` rules are configured.
 
 ## Production Warning
 
@@ -100,7 +100,7 @@ Monitor with `redis-cli --latency` if you suspect a blocking save is occurring u
 
 ## Detecting a Blocking SAVE in Logs
 
-```json
+```text
 [1234] 31 Mar 2026 12:30:00.000 * DB saved on disk
 ```
 
