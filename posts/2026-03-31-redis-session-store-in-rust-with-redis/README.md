@@ -15,11 +15,14 @@ Redis is the standard choice for session storage: fast lookups, automatic key ex
 ```toml
 [dependencies]
 axum = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
 redis = { version = "0.25", features = ["tokio-comp"] }
+deadpool-redis = { version = "0.15", features = ["rt_tokio_1"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
 tower-http = { version = "0.5", features = ["trace"] }
 ```
 
@@ -94,6 +97,8 @@ impl SessionStore {
 
 ```rust
 use axum::{extract::State, http::StatusCode, Json};
+use axum_extra::TypedHeader;
+use axum_extra::headers::{Authorization, authorization::Bearer};
 use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
@@ -114,7 +119,10 @@ async fn login(
     let session = Session {
         user_id: 1,
         username: req.username,
-        created_at: std::time::UNIX_EPOCH.elapsed().unwrap().as_secs(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
     };
 
     let token = store.create(&session).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -124,7 +132,7 @@ async fn login(
 
 async fn logout(
     State(store): State<Arc<SessionStore>>,
-    axum::TypedHeader(auth): axum::TypedHeader<axum::headers::Authorization<axum::headers::authorization::Bearer>>,
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
 ) -> StatusCode {
     store.delete(auth.token()).await.ok();
     StatusCode::NO_CONTENT
