@@ -77,7 +77,7 @@ ceph osd pool set mypool compression_algorithm zstd
 Test your actual data compressibility with zstd before choosing:
 
 ```bash
-zstd -b -e9 --bench-unlink /tmp/sample-data.bin
+zstd -b -e9 /tmp/sample-data.bin
 ```
 
 Write a pool benchmark to compare algorithms:
