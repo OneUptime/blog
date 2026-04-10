@@ -98,9 +98,11 @@ ceph config set mon mon_allow_pool_delete false
 Monitors retain a history of OSD map versions for recovery purposes:
 
 ```bash
-# Number of OSD map versions to retain
+# Minimum number of OSD map epochs to retain
 ceph config get mon mon_min_osdmap_epochs
-ceph config get mon mon_max_pgmap_epochs
+
+# Maximum number of log epochs to retain
+ceph config get mon mon_max_log_epochs
 
 # Compact monitor store (removes old map versions)
 ceph tell mon.* compact
@@ -118,7 +120,8 @@ ceph config set mon debug_mon 10
 ceph config set mon debug_ms 1
 
 # Reset to defaults after debugging
-ceph config set mon debug_mon 0
+ceph config rm mon debug_mon
+ceph config rm mon debug_ms
 ```
 
 ## Monitor Timeouts
@@ -130,7 +133,7 @@ ceph config set mon mon_lease 5
 # How quickly the leader refreshes its lease
 ceph config set mon mon_lease_renew_interval_factor 0.6
 
-# Timeout for receiving commands
+# Subscription refresh interval for client map updates (seconds)
 ceph config set mon mon_subscribe_interval 86400
 ```
 
@@ -145,8 +148,8 @@ ceph mon stat
 # Detailed monitor info
 ceph mon dump
 
-# Monitor store stats
-ceph tell mon.* mon_metadata
+# Monitor metadata (version, hostname, etc.)
+ceph mon metadata
 ```
 
 Expected healthy `ceph mon stat` output:
@@ -158,4 +161,4 @@ election epoch 12, leader 0 a, quorum 0,1,2 a,b,c
 
 ## Summary
 
-Monitor configuration controls cluster quorum stability, clock drift tolerance, pool management safety, and log verbosity. Key settings include monitor count (always odd), clock drift tolerance (keep below 0.1s), pool deletion protection (disable by default), and lease timeouts that affect failover speed. In Rook, monitor count and storage are managed through the CephCluster CRD. Regularly checking `ceph mon stat` and `ceph quorum_status` ensures the monitor layer remains healthy and responsive.
+Monitor configuration controls cluster quorum stability, clock drift tolerance, pool management safety, and log verbosity. Key settings include monitor count (always odd), clock drift tolerance (keep below 0.1s), pool deletion protection (enabled by default), and lease timeouts that affect failover speed. In Rook, monitor count and storage are managed through the CephCluster CRD. Regularly checking `ceph mon stat` and `ceph quorum_status` ensures the monitor layer remains healthy and responsive.
