@@ -107,12 +107,9 @@ Create a MySQL configuration file optimized for block storage:
 [mysqld]
 # InnoDB settings for RBD storage
 innodb_buffer_pool_size = 2G
-innodb_log_file_size = 512M
+innodb_redo_log_capacity = 1G
 innodb_flush_log_at_trx_commit = 1
 innodb_flush_method = O_DIRECT
-
-# Disable doublewrite buffer (RBD is atomic at the block level)
-innodb_doublewrite = OFF
 
 # Increase I/O capacity for SSDs
 innodb_io_capacity = 2000
@@ -131,10 +128,11 @@ data:
   my.cnf: |
     [mysqld]
     innodb_buffer_pool_size = 2G
-    innodb_log_file_size = 512M
+    innodb_redo_log_capacity = 1G
     innodb_flush_log_at_trx_commit = 1
     innodb_flush_method = O_DIRECT
     innodb_io_capacity = 2000
+    innodb_io_capacity_max = 4000
 ```
 
 ## Backup MySQL to Ceph RGW
@@ -150,4 +148,4 @@ kubectl -n databases exec -it mysql-0 -- bash -c \
 
 ## Summary
 
-Ceph RBD provides the block storage that MySQL needs for reliable InnoDB operation. Setting `innodb_flush_method = O_DIRECT` avoids double-caching (OS page cache + InnoDB buffer pool), and disabling the doublewrite buffer is safe with RBD since it provides atomic block writes. Using `reclaimPolicy: Retain` ensures data survives StatefulSet deletion during maintenance operations.
+Ceph RBD provides the block storage that MySQL needs for reliable InnoDB operation. Setting `innodb_flush_method = O_DIRECT` avoids double-caching (OS page cache + InnoDB buffer pool), and the doublewrite buffer should remain enabled since RBD does not guarantee atomic writes at the InnoDB page level (16KB). Using `reclaimPolicy: Retain` ensures data survives StatefulSet deletion during maintenance operations.
