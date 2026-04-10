@@ -14,7 +14,7 @@ Messenger v2 (msgr2) is the second generation network protocol for Ceph, introdu
 - **Better security**: Optional encryption of all wire traffic using AES-GCM
 - **Authentication improvements**: Auth before payload, preventing data injection
 - **Compression**: Optional on-wire compression to reduce bandwidth usage
-- **Better performance**: Improved framing and connection multiplexing
+- **Better performance**: Improved framing and connection handling
 
 The previous msgr1 protocol lacked wire encryption and had authentication timing vulnerabilities. Ceph Quincy and later deprecate msgr1 and recommend msgr2.
 
@@ -115,11 +115,11 @@ ceph tell mon.* sessions | grep v1
 Enable compression on the cluster network to save bandwidth:
 
 ```bash
-# Enable compression for OSD cluster traffic
+# Enable compression for OSD cluster traffic when encryption is also enabled
 ceph config set osd ms_compress_secure true
 
-# Set compression algorithm (snappy, zlib, zstd, lz4)
-ceph config set osd ms_osd_compress_mode snappy
+# Enable compression mode for OSD messenger (none, force)
+ceph config set osd ms_osd_compress_mode force
 ```
 
 ## Verifying Msgr2 Connections
@@ -127,7 +127,7 @@ ceph config set osd ms_osd_compress_mode snappy
 ```bash
 # Check messenger stats on a running OSD
 kubectl exec -it rook-ceph-tools -n rook-ceph -- \
-  ceph daemon osd.0 perf dump | python3 -m json.tool | grep -A 5 msgr
+  ceph tell osd.0 perf dump | python3 -m json.tool | grep -A 5 msgr
 
 # Monitor connection types
 ceph -w | grep msgr
