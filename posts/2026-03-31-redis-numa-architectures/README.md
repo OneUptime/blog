@@ -106,13 +106,16 @@ numastat -p $(pgrep redis-server)
 
 ```text
 # Disable jemalloc background threads (they can run on remote NUMA nodes)
+jemalloc-bg-thread no
+
+# Use a fixed hz to keep background task frequency predictable
 dynamic-hz no
 hz 10
 
 # Disable large page support
 # (set in OS, not redis.conf)
 
-# Use fewer background save forks (forks copy-on-write can spread across nodes)
+# Disable automatic RDB saves (fork copy-on-write can spread pages across nodes)
 save ""
 ```
 
