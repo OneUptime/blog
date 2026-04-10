@@ -114,14 +114,14 @@ Exchange bootstrap tokens between clusters:
 
 ```bash
 # On primary cluster
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   rbd mirror pool peer bootstrap create \
-    --site-name=primary ha-pool > /tmp/bootstrap-token
+    --site-name primary ha-pool > /tmp/bootstrap-token
 
 # On secondary cluster
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec -i deploy/rook-ceph-tools -- \
   rbd mirror pool peer bootstrap import \
-    --site-name=secondary ha-pool /tmp/bootstrap-token
+    --site-name secondary ha-pool - < /tmp/bootstrap-token
 ```
 
 ## Monitoring HA Status
