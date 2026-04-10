@@ -55,6 +55,20 @@ spec:
     compression_mode: "passive"
 ```
 
+Create a replicated metadata pool for the erasure-coded pool (required for RBD):
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: tier-capacity-metadata
+  namespace: rook-ceph
+spec:
+  replicated:
+    size: 3
+  deviceClass: hdd
+```
+
 ## Step 2 - Assign CRUSH Rules
 
 Ensure each pool uses the correct rule:
@@ -89,7 +103,8 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  pool: tier-capacity
+  pool: tier-capacity-metadata
+  dataPool: tier-capacity
 reclaimPolicy: Retain
 ```
 
@@ -108,6 +123,7 @@ spec:
     spec:
       template:
         spec:
+          restartPolicy: OnFailure
           containers:
           - name: migrator
             image: rclone/rclone:latest
@@ -116,6 +132,18 @@ spec:
             - copy
             - /mnt/fast/archive/
             - /mnt/capacity/archive/
+            volumeMounts:
+            - name: fast-storage
+              mountPath: /mnt/fast
+            - name: capacity-storage
+              mountPath: /mnt/capacity
+          volumes:
+          - name: fast-storage
+            persistentVolumeClaim:
+              claimName: fast-data
+          - name: capacity-storage
+            persistentVolumeClaim:
+              claimName: capacity-data
 ```
 
 ## Checking Pool Utilization
