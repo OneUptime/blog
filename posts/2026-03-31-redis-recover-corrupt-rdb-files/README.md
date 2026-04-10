@@ -55,23 +55,30 @@ cp /var/lib/redis/dump.rdb /var/lib/redis/dump.rdb.backup
 cp /var/lib/redis/dump.rdb /tmp/dump-repair.rdb
 ```
 
-## Step 2: Attempt Automatic Fix with redis-check-rdb
+## Step 2: Diagnose Corruption with redis-check-rdb
 
-Redis includes a fix mode:
+Run `redis-check-rdb` to identify the corruption offset:
 
 ```bash
-redis-check-rdb --fix /tmp/dump-repair.rdb
+redis-check-rdb /tmp/dump-repair.rdb
 ```
-
-This truncates the file at the first corruption point, preserving all data before the corrupt section. Keys after the corruption are lost.
 
 ```text
-Checking RDB file dump-repair.rdb
+[offset 0] Checking RDB file dump-repair.rdb
 [offset 100] Scanning type: RDB_TYPE_STRING
 [err] Corrupted data at offset 512
-Fixing...
-Truncated at 512 bytes.
 ```
+
+Note: `redis-check-rdb` is a read-only diagnostic tool. Unlike `redis-check-aof --fix` (which can truncate corrupt AOF files), it has no `--fix` mode for RDB files.
+
+If the corruption is a checksum mismatch at the end of the file (common after incomplete writes), try loading with checksum verification disabled:
+
+```text
+# redis.conf for recovery only
+rdbchecksum no
+```
+
+If the data itself is corrupt (not just the checksum), your best option is to recover from a replica or backup (see Step 5).
 
 ## Step 3: Load the Repaired File
 
@@ -106,12 +113,11 @@ redis-cli -p 6399 --scan --pattern "*" | while read key; do
 done
 ```
 
-For a full migration, use `redis-cli --rdb`:
+For a full migration, use `redis-cli --rdb` to download a consistent RDB snapshot from the repair instance:
 
 ```bash
-# Dump to a fresh RDB from the repair instance
-redis-cli -p 6399 BGSAVE
-cp /tmp/dump-repair.rdb /var/lib/redis/dump.rdb
+# Download a fresh RDB from the repair instance
+redis-cli -p 6399 --rdb /var/lib/redis/dump.rdb
 ```
 
 ## Step 5: Recover from a Replica or Backup
@@ -136,7 +142,7 @@ sudo systemctl start redis
 ```text
 # redis.conf
 rdbchecksum yes       # Validate checksum on load
-rdbcompression yes    # Smaller files, faster checksums
+rdbcompression yes    # Compress strings in RDB files
 ```
 
 ```bash
@@ -155,4 +161,4 @@ tune2fs -j /dev/sda1   # ext4 journaling
 
 ## Summary
 
-Recover corrupt RDB files using `redis-check-rdb --fix` to truncate at the first corruption point and salvage all preceding data. Always work on a copy, never the original file. Load the repaired file in a temporary Redis instance to validate and extract data before replacing the production file. Enable `rdbchecksum yes` and validate backups with `redis-check-rdb` to detect corruption early.
+Diagnose corrupt RDB files using `redis-check-rdb` to identify the corruption offset. If the corruption is a checksum mismatch, try loading with `rdbchecksum no` temporarily. For actual data corruption, recover from a replica or backup. Always work on a copy, never the original file. Load recovered data in a temporary Redis instance to validate and extract it before replacing the production file. Enable `rdbchecksum yes` and validate backups with `redis-check-rdb` to detect corruption early.
