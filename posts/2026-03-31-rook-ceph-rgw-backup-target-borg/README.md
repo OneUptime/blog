@@ -101,7 +101,7 @@ chmod +x /usr/local/bin/borg-backup.sh
 
 ```bash
 borg list /mnt/borg-ceph/myserver-repo
-borg extract /mnt/borg-ceph/myserver-repo::myserver-2026-03-31 --target /restore
+mkdir -p /restore && cd /restore && borg extract /mnt/borg-ceph/myserver-repo::myserver-2026-03-31
 ```
 
 ## Summary
