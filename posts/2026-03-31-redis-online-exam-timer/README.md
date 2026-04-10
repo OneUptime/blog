@@ -23,7 +23,6 @@ Online exam timers cannot rely on the client. JavaScript timers can be paused, m
 import redis
 import json
 import time
-import threading
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -81,7 +80,6 @@ Run this in a background thread or scheduled task:
 ```python
 def broadcast_countdown(exam_id: str, student_id: str):
     channel = f"{CHANNEL_PREFIX}:{exam_id}:{student_id}"
-    session_key = f"{SESSION_PREFIX}:{exam_id}:{student_id}"
 
     while True:
         remaining = get_remaining_time(exam_id, student_id)
@@ -160,4 +158,4 @@ def extend_exam_time(exam_id: str, student_id: str, extra_seconds: int) -> int:
 
 ## Summary
 
-A Redis exam timer stores session state with a TTL equal to the exam duration, making the server the sole source of truth for remaining time. Remaining time is derived from the key's TTL using `PTTL`, submissions are rejected after key expiry, and Pub/Sub delivers countdown ticks to the browser without trusting any client-reported time.
+A Redis exam timer stores session state with a TTL equal to the exam duration, making the server the sole source of truth for remaining time. Remaining time is derived from the key's TTL using `TTL`, submissions are rejected after key expiry, and Pub/Sub delivers countdown ticks to the browser without trusting any client-reported time.
