@@ -110,7 +110,7 @@ redis-cli LRANGE dead-letter-queue 0 -1
 redis-cli LLEN dead-letter-queue
 
 # Reprocess a DLQ entry manually
-redis-cli RPOPLPUSH dead-letter-queue work-queue
+redis-cli LMOVE dead-letter-queue work-queue RIGHT LEFT
 ```
 
 ## Running Multiple Workers with Graceful Shutdown
