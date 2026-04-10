@@ -8,14 +8,14 @@ Description: Configure the Ceph Manager local pool module to create and manage s
 
 ---
 
-The Ceph Manager local pool module provides a simplified interface for creating and managing RADOS pools tailored to local storage requirements. It automates pool configuration with sensible defaults while exposing key tuning parameters.
+The Ceph Manager local pool module automatically creates RADOS pools that are localized to a subset of the overall cluster. It monitors the CRUSH topology and creates pools with corresponding CRUSH rules, applying sensible defaults while exposing key tuning parameters.
 
 ## Understanding the Local Pool Module
 
 The local pool module is a MGR module that:
-- Simplifies pool creation with pre-defined profiles
+- Automatically creates localized pools for each CRUSH subtree (e.g., per rack or per host)
+- Generates CRUSH rules that restrict data placement to the local subtree
 - Manages placement group counts automatically
-- Provides a CLI wrapper for common pool operations
 
 ## Enabling the Local Pool Module
 
@@ -40,15 +40,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph config set mgr mgr/localpool/min_size 2
 
-# Set the crush ruleset name to use
+# Set the CRUSH subtree type for pool creation (default: rack)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph config set mgr mgr/localpool/crush_rule replicated_rule
+  ceph config set mgr mgr/localpool/subtree host
 ```
 
-## Creating Pools via the Local Pool Module
+## Creating Pools Manually
+
+The localpool module creates pools automatically, but you can also create pools manually using standard Ceph commands:
 
 ```bash
-# Create a pool using the local pool profile
+# Create a replicated pool with 32 placement groups
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph osd pool create my-app-pool 32 32
 
