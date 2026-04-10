@@ -151,12 +151,22 @@ failed to connect to mons: ...
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
 
-# Regenerate the key for the CSI node user
+# Delete the existing entity so a new key is generated
+ceph auth del client.csi-rbd-node
+
+# Recreate the user with a new key
 ceph auth get-or-create client.csi-rbd-node mon 'profile rbd' \
   osd 'profile rbd' mgr 'allow rw'
 
-# Get the new key
-NEW_KEY=$(ceph auth get-key client.csi-rbd-node)
+exit
+```
+
+Then, from outside the tools pod, update the Kubernetes secret:
+
+```bash
+# Get the new key from the tools pod
+NEW_KEY=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph auth get-key client.csi-rbd-node)
 
 # Update the Kubernetes secret
 kubectl create secret generic rook-csi-rbd-node \
