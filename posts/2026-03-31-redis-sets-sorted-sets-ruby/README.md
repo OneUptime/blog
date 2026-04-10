@@ -18,10 +18,10 @@ require 'redis'
 redis = Redis.new
 
 # Add members
-redis.sadd('tags:post:1', 'ruby', 'redis', 'tutorial')
+redis.sadd('tags:post:1', ['ruby', 'redis', 'tutorial'])
 
 # Add multiple
-redis.sadd('tags:post:2', 'ruby', 'rails', 'web')
+redis.sadd('tags:post:2', ['ruby', 'rails', 'web'])
 
 # Check membership
 redis.sismember('tags:post:1', 'redis')  # true
