@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Benchmarking, Performance, Storage, Testing
 
-Description: Learn how to benchmark Ceph storage performance using rados bench, fio, and cosbench to measure throughput, IOPS, and latency for block, object, and file workloads.
+Description: Learn how to benchmark Ceph storage performance using rados bench and fio to measure throughput, IOPS, and latency for block, object, and file workloads.
 
 ---
 
@@ -27,7 +27,7 @@ rados bench -p <pool-name> 30 seq -t 16
 rados bench -p <pool-name> 30 rand -t 16
 
 # Clean up test objects after benchmarking
-rados bench -p <pool-name> 30 write --cleanup
+rados -p <pool-name> cleanup
 ```
 
 Sample output interpretation:
@@ -91,17 +91,17 @@ Common fio profiles:
 # Sequential write throughput
 fio --ioengine=rbd --pool=replicapool --rbdname=fio-test \
     --rw=write --bs=1M --numjobs=4 --iodepth=16 --runtime=60 \
-    --name=seq-write --group_reporting
+    --time_based --name=seq-write --group_reporting
 
 # Random read IOPS
 fio --ioengine=rbd --pool=replicapool --rbdname=fio-test \
     --rw=randread --bs=4k --numjobs=8 --iodepth=128 --runtime=60 \
-    --name=rand-read --group_reporting
+    --time_based --name=rand-read --group_reporting
 
 # Mixed read/write (70/30)
 fio --ioengine=rbd --pool=replicapool --rbdname=fio-test \
     --rw=randrw --rwmixread=70 --bs=4k --numjobs=4 --iodepth=64 \
-    --runtime=60 --name=mixed --group_reporting
+    --runtime=60 --time_based --name=mixed --group_reporting
 ```
 
 ## Benchmarking CephFS with fio
