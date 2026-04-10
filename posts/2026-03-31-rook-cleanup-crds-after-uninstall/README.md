@@ -37,6 +37,7 @@ cephobjectstoreusers.ceph.rook.io            2024-01-01T00:00:00Z
 cephobjectzonegroups.ceph.rook.io            2024-01-01T00:00:00Z
 cephobjectzones.ceph.rook.io                 2024-01-01T00:00:00Z
 cephrbdmirrors.ceph.rook.io                  2024-01-01T00:00:00Z
+cephcosidrivers.ceph.rook.io                 2024-01-01T00:00:00Z
 objectbucketclaims.objectbucket.io           2024-01-01T00:00:00Z
 objectbuckets.objectbucket.io                2024-01-01T00:00:00Z
 ```
@@ -89,6 +90,7 @@ kubectl delete crd cephclients.ceph.rook.io --ignore-not-found
 kubectl delete crd cephobjectrealms.ceph.rook.io --ignore-not-found
 kubectl delete crd cephobjectzonegroups.ceph.rook.io --ignore-not-found
 kubectl delete crd cephobjectzones.ceph.rook.io --ignore-not-found
+kubectl delete crd cephcosidrivers.ceph.rook.io --ignore-not-found
 kubectl delete crd objectbucketclaims.objectbucket.io --ignore-not-found
 kubectl delete crd objectbuckets.objectbucket.io --ignore-not-found
 ```
@@ -124,8 +126,8 @@ kubectl patch crd cephclusters.ceph.rook.io \
 After CRDs, clean up other cluster-scoped Rook resources:
 
 ```bash
-kubectl delete clusterrole -l operator.rook.io/core-cluster=rook-ceph --ignore-not-found
-kubectl delete clusterrolebinding -l operator.rook.io/core-cluster=rook-ceph --ignore-not-found
+kubectl delete clusterrole -l operator=rook,storage-backend=ceph --ignore-not-found
+kubectl delete clusterrolebinding -l operator=rook,storage-backend=ceph --ignore-not-found
 kubectl delete clusterrole rook-ceph-system rook-ceph-cluster-mgmt --ignore-not-found
 kubectl delete clusterrolebinding rook-ceph-system --ignore-not-found
 ```
