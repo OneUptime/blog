@@ -75,31 +75,36 @@ export default async function handler(req, res) {
 ## Option 2: next-auth with Redis Adapter
 
 ```bash
-npm install next-auth @auth/redis-adapter redis
+npm install next-auth @auth/upstash-redis-adapter @upstash/redis
 ```
 
-`pages/api/auth/[...nextauth].js`:
+`app/api/auth/[...nextauth]/route.js`:
 
 ```javascript
 import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import { RedisAdapter } from "@auth/redis-adapter";
-import { createClient } from "redis";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { UpstashRedisAdapter } from "@auth/upstash-redis-adapter";
+import { Redis } from "@upstash/redis";
 
-const redisClient = createClient({ url: process.env.REDIS_URL });
-redisClient.connect();
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-export default NextAuth({
-  adapter: RedisAdapter(redisClient),
+export const authOptions = {
+  adapter: UpstashRedisAdapter(redis),
   providers: [
-    Credentials({
+    CredentialsProvider({
       async authorize(credentials) {
         return await verifyUser(credentials);
       },
     }),
   ],
-  session: { strategy: "database" },
-});
+  session: { strategy: "jwt" },
+};
+
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
 ```
 
 ## Access Session in Server Components (App Router)
@@ -107,6 +112,7 @@ export default NextAuth({
 ```javascript
 // app/dashboard/page.jsx
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "../api/auth/[...nextauth]/route";
 
 export default async function Dashboard() {
