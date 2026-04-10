@@ -110,11 +110,11 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
   # Warn at 75% OSD usage
   ceph config set global mon_osd_nearfull_ratio 0.75
 
-  # Error at 85% OSD usage
-  ceph config set global mon_osd_full_ratio 0.85
+  # Backfill pauses at 85%
+  ceph config set global mon_osd_backfillfull_ratio 0.85
 
-  # Backfill pauses at 90%
-  ceph config set global mon_osd_backfillfull_ratio 0.90
+  # Block writes at 90% OSD usage
+  ceph config set global mon_osd_full_ratio 0.90
 "
 ```
 
