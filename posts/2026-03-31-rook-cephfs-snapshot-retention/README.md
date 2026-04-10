@@ -32,7 +32,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph mgr module ls | gre
 
 Retention is configured per path and per schedule interval. The interval codes are:
 
-- `m` - minutes
+- `n` - last N snapshots (regardless of timing)
 - `h` - hours
 - `d` - days
 - `w` - weeks
@@ -54,7 +54,7 @@ ceph fs snap-schedule retention add / w 4 --fs myfs
 List the current schedules and retention settings:
 
 ```bash
-ceph fs snap-schedule list / --fs myfs --format json
+ceph fs snap-schedule status / --fs myfs --format json
 ```
 
 Sample output:
@@ -104,14 +104,14 @@ Each entry is a read-only directory named with the timestamp of when the snapsho
 
 ## Estimating Snapshot Storage Usage
 
-Snapshots do not clone data immediately. They reference unchanged blocks. Over time, changed blocks are kept alive by snapshots. To estimate snapshot overhead:
+Snapshots do not clone data immediately. They reference unchanged blocks. Over time, changed blocks are kept alive by snapshots. To view pool storage usage:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df detail
 ```
 
-Look at the pool's `USED` versus `STORED` columns. The difference reflects shared block overhead including snapshots.
+Note that the POOLS section numbers are notional and do not directly account for snapshot overhead. For a more accurate view of snapshot-related storage, check the `OBJECTS` column growth over time for the CephFS data pool.
 
 ## Summary
 
-Snapshot retention policies for CephFS in Rook are set using the `snap_schedule` manager module with the `retention add` command. Specify the path, interval code, and count. Retention automatically prunes the oldest snapshots beyond the configured limit. Review `ceph fs snap-schedule list` output regularly to confirm pruning is working as expected and storage usage remains bounded.
+Snapshot retention policies for CephFS in Rook are set using the `snap_schedule` manager module with the `retention add` command. Specify the path, interval code, and count. Retention automatically prunes the oldest snapshots beyond the configured limit. Review `ceph fs snap-schedule status` output regularly to confirm pruning is working as expected and storage usage remains bounded.
