@@ -33,13 +33,13 @@ echo "Token: $TOKEN"
 The Dashboard provides a built-in Swagger UI:
 
 ```yaml
-https://localhost:8443/api/swagger-ui
+https://localhost:8443/docs
 ```
 
 Or access the raw OpenAPI spec:
 
 ```bash
-curl -sk "$DASHBOARD_URL/api/swagger.json" | python3 -m json.tool | head -100
+curl -sk "$DASHBOARD_URL/docs/api.json" | python3 -m json.tool | head -100
 ```
 
 ## Query Cluster Health
@@ -54,7 +54,7 @@ curl -sk "$DASHBOARD_URL/api/health/full" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 
 # Get cluster capacity
-curl -sk "$DASHBOARD_URL/api/cluster_conf" \
+curl -sk "$DASHBOARD_URL/api/health/get_cluster_capacity" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -130,9 +130,9 @@ class CephDashboardAPI:
 
 api = CephDashboardAPI("https://localhost:8443", "admin", "password")
 health = api.get_health()
-print(f"Cluster status: {health['status']}")
+print(f"Cluster status: {health['health']['status']}")
 ```
 
 ## Summary
 
-The Ceph Dashboard REST API enables full automation of cluster management tasks using standard HTTP requests and JWT authentication. The Swagger UI at `/api/swagger-ui` documents all available endpoints. Building Python clients around the API allows integration of Ceph health data and management actions into CI/CD pipelines, chatbots, and custom monitoring dashboards.
+The Ceph Dashboard REST API enables full automation of cluster management tasks using standard HTTP requests and JWT authentication. The Swagger UI at `/docs` documents all available endpoints. Building Python clients around the API allows integration of Ceph health data and management actions into CI/CD pipelines, chatbots, and custom monitoring dashboards.
