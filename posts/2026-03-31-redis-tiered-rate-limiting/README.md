@@ -39,7 +39,7 @@ def get_user_tier(user_id: str) -> str:
 
 ## Multi-Window Tiered Rate Check
 
-Enforce both per-minute and per-day limits simultaneously:
+Enforce per-minute, per-hour, and per-day limits simultaneously:
 
 ```python
 def check_tiered_rate_limit(user_id: str) -> dict:
