@@ -58,7 +58,7 @@ ceph osd tier set-overlay backing-hdd cache-ssd
 # Set target cache size (80% of the cache pool)
 ceph osd pool set cache-ssd target_max_bytes 107374182400  # 100 GiB
 
-# Set dirty flush threshold (60% dirty triggers flush)
+# Set dirty flush threshold (40% dirty triggers flush)
 ceph osd pool set cache-ssd cache_target_dirty_ratio 0.4
 
 # Set eviction threshold (80% full triggers eviction)
