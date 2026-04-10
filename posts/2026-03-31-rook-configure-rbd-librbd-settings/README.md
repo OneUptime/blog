@@ -68,7 +68,7 @@ Configure the default object size for new images:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd config global set rbd_default_order 22
+  rbd config global set global rbd_default_order 22
 ```
 
 Order 22 means 4 MiB objects (default). Order 23 means 8 MiB objects for sequential workloads.
@@ -111,8 +111,8 @@ For latency-sensitive databases, disable the write-back cache to ensure write du
 ```text
 [client]
 rbd_cache = false
-rbd_read_ahead_trigger_requests = 10
-rbd_read_ahead_max_bytes = 524288
+rbd_readahead_trigger_requests = 10
+rbd_readahead_max_bytes = 524288
 ```
 
 ## Summary
