@@ -14,32 +14,20 @@ Managing quotas individually for each user is impractical at scale. Ceph RGW sup
 
 Default user quotas are applied to every new user created after the default is set. Existing users are not affected.
 
-Set default user quotas at the zone level:
+Set default user quotas using RGW configuration options:
 
 ```bash
-radosgw-admin zone modify \
-  --rgw-zone default \
-  --default-quota-max-size 53687091200 \
-  --default-quota-max-objects 5000000
-
-# Apply the period update
-radosgw-admin period update --commit
+ceph config set client.rgw rgw_user_default_quota_max_size 53687091200
+ceph config set client.rgw rgw_user_default_quota_max_objects 5000000
 ```
 
-Verify the default quota is set in zone configuration:
+Default quotas are automatically enabled when max size or max objects is set to a non-negative value.
+
+Verify the default quota configuration:
 
 ```bash
-radosgw-admin zone get --rgw-zone default | jq '.default_user_quota'
-```
-
-Output:
-
-```json
-{
-  "enabled": true,
-  "max_size": 53687091200,
-  "max_objects": 5000000
-}
+ceph config get client.rgw rgw_user_default_quota_max_size
+ceph config get client.rgw rgw_user_default_quota_max_objects
 ```
 
 ## Testing Default Quota Application
@@ -63,22 +51,25 @@ The new user should have the default quota pre-configured and enabled.
 Set a default bucket quota (applied to every new bucket):
 
 ```bash
-radosgw-admin zone modify \
-  --rgw-zone default \
-  --default-bucket-quota-max-size 10737418240 \
-  --default-bucket-quota-max-objects 1000000
-
-radosgw-admin period update --commit
+ceph config set client.rgw rgw_bucket_default_quota_max_size 10737418240
+ceph config set client.rgw rgw_bucket_default_quota_max_objects 1000000
 ```
 
 ## Global Quotas via Configuration
 
-For stricter cluster-wide enforcement, set global quota limits in RGW config:
+For stricter cluster-wide enforcement, set global quota limits that act as hard caps for all users and buckets:
 
 ```bash
-ceph config set client.rgw rgw_user_quota_max_size 53687091200
-ceph config set client.rgw rgw_bucket_quota_max_size 10737418240
-ceph config set client.rgw rgw_quota_check_threads 2
+radosgw-admin global quota set --quota-scope user \
+  --max-size 53687091200 --max-objects 5000000
+radosgw-admin global quota enable --quota-scope user
+
+radosgw-admin global quota set --quota-scope bucket \
+  --max-size 10737418240 --max-objects 1000000
+radosgw-admin global quota enable --quota-scope bucket
+
+# In multisite deployments, commit the period update
+radosgw-admin period update --commit
 ```
 
 These act as hard caps that cannot be exceeded even if individual quotas are not set.
@@ -106,15 +97,14 @@ done
 
 ## Rook: Configuring Default Quotas
 
-In Rook deployments, set zone defaults via the Ceph toolbox:
+In Rook deployments, set defaults via the Ceph toolbox:
 
 ```bash
-kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin zone modify --rgw-zone default \
-  --default-quota-max-size 53687091200 && \
-  radosgw-admin period update --commit
+kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- bash -c '
+  ceph config set client.rgw rgw_user_default_quota_max_size 53687091200 &&
+  ceph config set client.rgw rgw_user_default_quota_max_objects 5000000'
 ```
 
 ## Summary
 
-Default quotas in Ceph RGW automatically apply storage limits to new users and buckets without per-object configuration. Set them at the zone level with `zone modify` and commit the period. For existing users, use a bulk script to apply quotas retroactively. This approach scales quota management across thousands of users without manual intervention.
+Default quotas in Ceph RGW automatically apply storage limits to new users and buckets without per-user configuration. Set them with `ceph config set` using the `rgw_user_default_quota_*` and `rgw_bucket_default_quota_*` options. For cluster-wide hard caps, use `radosgw-admin global quota`. For existing users, use a bulk script to apply quotas retroactively. This approach scales quota management across thousands of users without manual intervention.
