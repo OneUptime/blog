@@ -50,8 +50,12 @@ ingest_event("page_view", "user:42", {
 
 ```python
 def process_page_view_events():
-    r.xgroup_create("events:page_view", "feature-processor", id="0",
-                    mkstream=True)
+    try:
+        r.xgroup_create("events:page_view", "feature-processor", id="0",
+                        mkstream=True)
+    except redis.exceptions.ResponseError as e:
+        if "BUSYGROUP" not in str(e):
+            raise
 
     while True:
         messages = r.xreadgroup(
@@ -98,7 +102,7 @@ def record_purchase(user_id: int, amount: float):
 
 def get_purchases_last_hour(user_id: int) -> tuple:
     cutoff = time.time() - 3600
-    members = r.zrangebyscore(f"purchases:{user_id}", cutoff, "+inf")
+    members = r.zrange(f"purchases:{user_id}", cutoff, "+inf", byscore=True)
     amounts = [float(m.split(":")[1]) for m in members]
     return len(amounts), sum(amounts)
 ```
