@@ -16,8 +16,8 @@ Azure Cache for Redis supports vertical scaling - you can change the cache size 
 |---|---|
 | Scale up (e.g., C1 to C2) | Brief reconnect |
 | Scale down (e.g., C2 to C1) | Brief reconnect |
-| Basic to Standard | Brief reconnect |
-| Standard to Premium | Yes - data may be lost |
+| Basic to Standard | Yes - data may be lost |
+| Standard to Premium | Brief reconnect |
 | Premium to lower tier | Not supported |
 | Change shard count (Premium) | Online |
 
@@ -34,10 +34,10 @@ az redis update \
 az redis show \
   --name my-redis \
   --resource-group rg-prod \
-  --query "{Size:vmSize,State:provisioningState}"
+  --query "{Sku:sku.name,Family:sku.family,Capacity:sku.capacity,State:provisioningState}"
 ```
 
-## Scaling via Azure Portal (Terraform)
+## Scaling via Terraform
 
 ```hcl
 # Scale from capacity 1 (C1) to capacity 2 (C2)
@@ -48,7 +48,7 @@ resource "azurerm_redis_cache" "main" {
   capacity            = 2  # Changed from 1
   family              = "C"
   sku_name            = "Standard"
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 }
 ```
@@ -61,7 +61,7 @@ For Premium caches with cluster mode enabled, you can scale the shard count onli
 az redis update \
   --name my-premium-redis \
   --resource-group rg-prod \
-  --shard-count 4
+  --set shardCount=4
 ```
 
 ## Planning for Minimal Impact
@@ -95,11 +95,12 @@ watch -n 10 "az redis show --name my-redis --resource-group rg-prod --query prov
 |---|---|---|
 | C0 | 250 MB | $0.022 |
 | C1 | 1 GB | $0.046 |
-| C2 | 6 GB | $0.093 |
-| C3 | 13 GB | $0.187 |
-| C4 | 26 GB | $0.374 |
-| C5 | 53 GB | $0.748 |
+| C2 | 2.5 GB | $0.093 |
+| C3 | 6 GB | $0.187 |
+| C4 | 13 GB | $0.374 |
+| C5 | 26 GB | $0.748 |
+| C6 | 53 GB | $1.496 |
 
 ## Summary
 
-Azure Cache for Redis vertical scaling involves changing the cache size or tier. Scale-up within the same tier (e.g., C1 to C2) causes only a brief client reconnect. Upgrading from Standard to Premium may involve data loss, so plan a maintenance window. Always add client-side retry logic to tolerate the brief disconnection that occurs during any scaling event.
+Azure Cache for Redis vertical scaling involves changing the cache size or tier. Scale-up within the same tier (e.g., C1 to C2) causes only a brief client reconnect. Upgrading from Basic to Standard may involve data loss since Basic has no replication, so plan a maintenance window. Always add client-side retry logic to tolerate the brief disconnection that occurs during any scaling event.
