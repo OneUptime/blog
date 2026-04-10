@@ -12,10 +12,12 @@ The Ceph DiskPrediction module uses machine learning models to analyze OSD healt
 
 ## DiskPrediction Module Variants
 
-Ceph offers two DiskPrediction modules:
+Ceph originally offered two DiskPrediction modules:
 
 - **diskprediction_local** - Uses a local ML model (no external dependencies)
-- **diskprediction_cloud** - Sends data to Prophetstor cloud service for predictions
+- **diskprediction_cloud** - Sent data to ProphetStor cloud service for predictions (removed in Octopus v15)
+
+The `diskprediction_cloud` module was removed in Ceph Octopus (v15) because the ProphetStor external service became inaccessible. Only `diskprediction_local` is available in current releases.
 
 ## Enabling the Local Module
 
@@ -23,6 +25,10 @@ Ceph offers two DiskPrediction modules:
 # Enable local disk prediction
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph mgr module enable diskprediction_local
+
+# Set the prediction mode to local
+kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
+  ceph config set global device_failure_prediction_mode local
 
 # Verify it is active
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
@@ -32,13 +38,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
 ## Configuring Prediction Parameters
 
 ```bash
-# Set data collection interval (seconds, default: 600)
+# Set prediction interval (seconds, default: 86400 = 1 day)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph config set mgr mgr/diskprediction_local/predict_interval 600
+  ceph config set mgr mgr/diskprediction_local/predict_interval 86400
 
-# Set prediction mode
+# Set sleep interval between data collection runs (seconds, default: 600)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph config set mgr mgr/diskprediction_local/predict_base_dir /var/lib/ceph/disk_predictions
+  ceph config set mgr mgr/diskprediction_local/sleep_interval 600
 ```
 
 ## Viewing Disk Health Predictions
@@ -50,19 +56,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
 
 # Get health prediction for a specific device
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph device get-predicted-life-expectancy DEVICE_ID
+  ceph device predict-life-expectancy DEVICE_ID
 ```
 
-Sample output:
-
-```bash
-{
-    "device_id": "SAMSUNG_MZ7LH960HAJR_S3EWNX0M123456",
-    "near_death": false,
-    "life_expectancy_min": "2026-12-01T00:00:00.000000",
-    "life_expectancy_max": "2027-06-01T00:00:00.000000"
-}
-```
+The module classifies devices into categories such as `>6w` (good, more than 6 weeks), `>=2w and <=6w` (warning), or `<2w` (bad, less than 2 weeks). It then sets life expectancy dates on the device using `ceph device set-life-expectancy`.
 
 ## Checking SMART Data
 
@@ -71,9 +68,9 @@ Sample output:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph device ls --format json | python3 -m json.tool
 
-# Get SMART metrics for a device
+# Get SMART health metrics for a device
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph device info DEVICE_ID
+  ceph device get-health-metrics DEVICE_ID
 ```
 
 ## Setting Up Proactive OSD Replacement
@@ -90,16 +87,16 @@ spec:
   groups:
   - name: disk-prediction
     rules:
-    - alert: CephDeviceNearDeath
-      expr: ceph_device_health_score < 0.2
+    - alert: CephDeviceFailurePredicted
+      expr: ceph_health_detail{name="DEVICE_HEALTH"} > 0
       for: 1h
       labels:
         severity: warning
       annotations:
-        summary: "Ceph OSD device at risk of failure"
-        description: "Device {{ $labels.devid }} has health score {{ $value }}"
+        summary: "Ceph device failure predicted"
+        description: "One or more Ceph devices have a predicted failure (DEVICE_HEALTH check active)"
 ```
 
 ## Summary
 
-The Ceph DiskPrediction local module uses ML models to score OSD disk health and predict failure timelines. Enable it with `ceph mgr module enable diskprediction_local`, then query predictions with `ceph device get-predicted-life-expectancy`. Combine with Prometheus alerting to trigger proactive OSD replacement before actual failures occur.
+The Ceph DiskPrediction local module uses ML models to score OSD disk health and predict failure timelines. Enable it with `ceph mgr module enable diskprediction_local`, then query predictions with `ceph device predict-life-expectancy`. Combine with Prometheus alerting on the `DEVICE_HEALTH` health check to trigger proactive OSD replacement before actual failures occur.
