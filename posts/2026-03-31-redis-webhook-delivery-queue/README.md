@@ -136,7 +136,7 @@ def process_webhook_queue():
             "last_error": str(result),
         })
     else:
-        r.rpush("webhook:dlq", job_data)
+        r.rpush("webhook:dlq", json.dumps(job))
         r.hset(f"webhook:status:{job_id}", mapping={
             "state": "failed",
             "attempts": str(job["attempts"]),
