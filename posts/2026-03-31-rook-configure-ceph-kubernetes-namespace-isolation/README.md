@@ -56,7 +56,7 @@ parameters:
 reclaimPolicy: Delete
 ```
 
-## Applying RBAC to Restrict StorageClass Access
+## Applying ResourceQuotas to Restrict StorageClass Access
 
 Prevent team-b from using team-a's StorageClass using ResourceQuotas:
 
@@ -111,6 +111,15 @@ spec:
     ports:
     - protocol: TCP
       port: 80
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
 ```
 
 ## Verifying Isolation
@@ -131,4 +140,4 @@ kubectl -n team-a exec -it test-pod -- \
 
 ## Summary
 
-Namespace isolation for Rook-Ceph involves creating per-team Ceph users, dedicated storage pools and StorageClasses, RBAC ResourceQuotas to enforce access boundaries, and NetworkPolicies to prevent cross-namespace traffic. This multi-layered approach provides strong isolation guarantees for multi-tenant Kubernetes clusters.
+Namespace isolation for Rook-Ceph involves creating per-team Ceph users, dedicated storage pools and StorageClasses, ResourceQuotas to enforce access boundaries, and NetworkPolicies to prevent cross-namespace traffic. This multi-layered approach provides strong isolation guarantees for multi-tenant Kubernetes clusters.
