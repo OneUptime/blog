@@ -111,4 +111,4 @@ echo "Drift: $((MASTER_OFFSET - REPLICA_OFFSET)) bytes"
 
 ## Summary
 
-The Redis replication monitoring script validates replica count, connection state, and lag in both seconds and bytes. Running on the primary, it inspects each connected replica from the `INFO replication` output. Running on a replica, it checks master link status and offset drift. Scheduled via cron, it provides continuous replication health visibility with Slack alerting on degradation.
+The Redis replication monitoring script validates replica count, connection state, and lag in both seconds and bytes. Running on the primary, it inspects each connected replica from the `INFO replication` output. Running on a replica, it checks master link status and offset drift. Scheduled via cron, it provides continuous replication health visibility with alerting on degradation.
