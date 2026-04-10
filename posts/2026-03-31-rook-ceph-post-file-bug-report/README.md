@@ -10,7 +10,7 @@ Description: Use ceph-post-file to securely upload diagnostic data, logs, and cl
 
 ## What is ceph-post-file
 
-`ceph-post-file` is a utility that uploads files to the Ceph project's secure file hosting service (`ceph.com/upload`) so they can be attached to bug reports on the Ceph tracker. It handles large log files and diagnostic bundles that are too big to attach directly to issue tickets.
+`ceph-post-file` is a utility that uploads files via SFTP to the Ceph project's file drop service (`drop.ceph.com`) so they can be shared with Ceph developers when filing bug reports on the Ceph tracker. It handles large log files and diagnostic bundles that are too big to attach directly to issue tickets.
 
 ## Install the Tool
 
@@ -63,9 +63,9 @@ ls -lh /tmp/ceph-diagnostics.tar.gz
 # Upload the diagnostic bundle
 ceph-post-file /tmp/ceph-diagnostics.tar.gz
 
-# The tool outputs a URL like:
-# https://ceph.com/upload/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-# Include this URL in your bug report
+# The tool outputs a unique identifier like:
+# ceph-post-file: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# Include this ID in your bug report
 ```
 
 ## Upload Multiple Files
@@ -97,10 +97,10 @@ Include only what is needed to reproduce the issue:
 
 ```bash
 # Minimal bug report bundle
-cat > /tmp/rook-version.txt << 'EOF'
+cat > /tmp/rook-version.txt << EOF
 Rook version: $(kubectl -n rook-ceph get deployment rook-ceph-operator \
   -o jsonpath='{.spec.template.spec.containers[0].image}')
-Kubernetes version: $(kubectl version --short)
+Kubernetes version: $(kubectl version)
 Ceph version: $(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph version)
 EOF
 
@@ -113,4 +113,4 @@ ceph-post-file /tmp/minimal-bug-report.tar.gz
 
 ## Summary
 
-`ceph-post-file` simplifies sharing large diagnostic files with the Ceph community when filing bug reports. By collecting cluster state, recent logs, and crash data into a bundle and uploading it with `ceph-post-file`, you get a shareable URL to include in your tracker ticket, enabling faster triage from Ceph maintainers.
+`ceph-post-file` simplifies sharing large diagnostic files with the Ceph community when filing bug reports. By collecting cluster state, recent logs, and crash data into a bundle and uploading it with `ceph-post-file`, you get a unique identifier to include in your tracker ticket, enabling faster triage from Ceph maintainers.
