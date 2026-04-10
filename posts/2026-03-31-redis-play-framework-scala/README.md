@@ -26,17 +26,11 @@ libraryDependencies ++= Seq(
 # conf/application.conf
 play.modules.enabled += "play.api.cache.redis.RedisCacheModule"
 
-redis {
-  host: "localhost"
-  port: 6379
+play.cache.redis {
+  host:     "localhost"
+  port:     6379
   password: null
   database: 0
-  timeout: 5s
-  pool {
-    max-total: 20
-    max-idle: 10
-    min-idle: 2
-  }
 }
 ```
 
@@ -46,7 +40,7 @@ redis {
 // app/controllers/ProductController.scala
 package controllers
 
-import play.api.cache.redis.AsyncCacheApi
+import play.api.cache.AsyncCacheApi
 import play.api.libs.json.Json
 import play.api.mvc._
 import javax.inject._
