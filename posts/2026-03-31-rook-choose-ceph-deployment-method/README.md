@@ -46,7 +46,7 @@ metadata:
 
 cephadm is the right choice when:
 - You need a standalone Ceph cluster (not Kubernetes)
-- Deploying Ceph Pacific or later
+- Deploying Ceph Octopus or later
 - You want the officially supported day-2 operations tool
 - Your team is comfortable with containers but not Kubernetes
 
