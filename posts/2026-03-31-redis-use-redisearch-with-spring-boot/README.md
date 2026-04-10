@@ -29,8 +29,8 @@ Add the Redis OM Spring dependency to `pom.xml`:
 In `application.properties`:
 
 ```properties
-spring.redis.host=localhost
-spring.redis.port=6379
+spring.data.redis.host=localhost
+spring.data.redis.port=6379
 ```
 
 Enable Redis repositories in your main class:
