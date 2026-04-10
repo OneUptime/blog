@@ -125,23 +125,26 @@ If either key changes before EXEC, the transaction is aborted.
 
 ### Retry loop pattern
 
-A robust retry loop in bash:
+A robust retry loop in Python using redis-py. The pipeline object maintains a single connection, so WATCH, READ, MULTI, and EXEC all happen on the same connection:
 
-```bash
-while true; do
-  redis-cli WATCH balance:user:1
-  current=$(redis-cli GET balance:user:1)
-  new_balance=$((current - 50))
+```python
+import redis
 
-  result=$(redis-cli MULTI && redis-cli SET balance:user:1 $new_balance && redis-cli EXEC)
+r = redis.Redis()
 
-  if [ "$result" != "" ]; then
-    echo "Success: $result"
-    break
-  fi
-
-  echo "Conflict detected, retrying..."
-done
+while True:
+    with r.pipeline() as pipe:
+        try:
+            pipe.watch('balance:user:1')
+            current = int(pipe.get('balance:user:1'))
+            new_balance = current - 50
+            pipe.multi()
+            pipe.set('balance:user:1', new_balance)
+            pipe.execute()
+            print(f"Success: balance set to {new_balance}")
+            break
+        except redis.WatchError:
+            print("Conflict detected, retrying...")
 ```
 
 ### UNWATCH - cancel watches without aborting
