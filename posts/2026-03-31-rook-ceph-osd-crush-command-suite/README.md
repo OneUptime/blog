@@ -112,7 +112,7 @@ ceph osd crush remove worker-4
 ## Validating a CRUSH Map Before Applying
 
 ```bash
-crushtool -t crushmap.bin --test --show-choose-tries
+crushtool -i crushmap.bin --test --show-choose-tries
 ```
 
 ## Summary
