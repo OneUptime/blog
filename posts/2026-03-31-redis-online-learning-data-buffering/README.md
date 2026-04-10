@@ -17,7 +17,7 @@ API/Events --> Redis List (buffer) --> Training Worker (pops batches) --> Model 
                                            |
                                     (periodically)
                                            |
-                              Model weights persisted to Redis Hash
+                              Model weights persisted to Redis String
 ```
 
 ## Buffering Incoming Examples
@@ -117,7 +117,7 @@ def get_buffer_stats(model_name: str) -> dict:
 
 ```bash
 # Quick check from CLI
-LLEN training_buffer:fraud_model
+redis-cli LLEN training_buffer:fraud_model
 ```
 
 ## Handling Backpressure
@@ -125,7 +125,7 @@ LLEN training_buffer:fraud_model
 If the buffer fills faster than the training worker can consume, implement backpressure:
 
 ```python
-async def buffer_example_async(model_name: str, features: dict, label: float):
+def buffer_example_with_backpressure(model_name: str, features: dict, label: float):
     key = f"training_buffer:{model_name}"
     size = r.llen(key)
 
