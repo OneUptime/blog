@@ -68,7 +68,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph df
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd df
 ```
 
-Alert thresholds: warn at 75%, critical at 85%, full at 95%.
+Default Ceph thresholds: nearfull at 85%, backfillfull at 90%, full at 95%.
 
 ## Step 6: Runbook Template
 
@@ -84,19 +84,19 @@ echo "=== Ceph Cluster Health Check ==="
 echo "Timestamp: $(date -u)"
 
 echo "--- Overall Status ---"
-kubectl -n $ROOK_NS exec -it $TOOLS_DEPLOY -- ceph status
+kubectl -n $ROOK_NS exec $TOOLS_DEPLOY -- ceph status
 
 echo "--- OSD Summary ---"
-kubectl -n $ROOK_NS exec -it $TOOLS_DEPLOY -- ceph osd stat
+kubectl -n $ROOK_NS exec $TOOLS_DEPLOY -- ceph osd stat
 
 echo "--- PG Summary ---"
-kubectl -n $ROOK_NS exec -it $TOOLS_DEPLOY -- ceph pg stat
+kubectl -n $ROOK_NS exec $TOOLS_DEPLOY -- ceph pg stat
 
 echo "--- Capacity ---"
-kubectl -n $ROOK_NS exec -it $TOOLS_DEPLOY -- ceph df
+kubectl -n $ROOK_NS exec $TOOLS_DEPLOY -- ceph df
 
 echo "--- Health Detail (if not OK) ---"
-kubectl -n $ROOK_NS exec -it $TOOLS_DEPLOY -- ceph health detail
+kubectl -n $ROOK_NS exec $TOOLS_DEPLOY -- ceph health detail
 ```
 
 ## Step 7: Automate with a CronJob
@@ -117,9 +117,22 @@ spec:
           - name: health-check
             image: rook/ceph:v1.13.0
             command: ["/bin/bash", "-c", "ceph status && ceph health detail"]
-            env:
-            - name: ROOK_CEPH_USERNAME
-              value: client.admin
+            volumeMounts:
+            - name: ceph-config
+              mountPath: /etc/ceph/ceph.conf
+              subPath: ceph.conf
+              readOnly: true
+            - name: ceph-admin-keyring
+              mountPath: /etc/ceph/keyring
+              subPath: keyring
+              readOnly: true
+          volumes:
+          - name: ceph-config
+            configMap:
+              name: rook-ceph-config
+          - name: ceph-admin-keyring
+            secret:
+              secretName: rook-ceph-admin-keyring
           restartPolicy: OnFailure
 ```
 
