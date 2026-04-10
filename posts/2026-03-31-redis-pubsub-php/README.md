@@ -113,8 +113,10 @@ A connection in subscribe mode cannot issue regular Redis commands. Use a separa
 $publisher = new Client();
 $subscriber = new Client();
 
-$subscriber->subscribe(['events'], function ($loop, $message) {
-    echo $message->payload . PHP_EOL;
+$subscriber->pubSubLoop(['subscribe' => 'events'], function ($loop, $message) {
+    if ($message->kind === 'message') {
+        echo $message->payload . PHP_EOL;
+    }
 });
 
 // In another process or thread:
