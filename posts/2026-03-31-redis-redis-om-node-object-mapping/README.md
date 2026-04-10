@@ -13,7 +13,7 @@ redis-om-node is the Node.js counterpart of redis-om-python. It provides an enti
 ## Installation
 
 ```bash
-npm install redis-om
+npm install redis-om redis
 ```
 
 Requires Redis Stack or Redis with RedisJSON and RediSearch:
@@ -25,9 +25,11 @@ docker run -d -p 6379:6379 redis/redis-stack-server:latest
 ## Defining a Schema and Repository
 
 ```javascript
-import { Client, Schema, Repository } from 'redis-om';
+import { createClient } from 'redis';
+import { Schema, Repository } from 'redis-om';
 
-const client = await new Client().open('redis://localhost:6379');
+const redis = createClient();
+await redis.connect();
 
 const productSchema = new Schema('product', {
   name: { type: 'text' },
@@ -37,14 +39,16 @@ const productSchema = new Schema('product', {
   tags: { type: 'string[]' },
 });
 
-const productRepo = client.fetchRepository(productSchema);
+const productRepo = new Repository(productSchema, redis);
 await productRepo.createIndex();
 ```
 
 ## Creating Entities
 
 ```javascript
-const product = productRepo.createEntity({
+import { EntityId } from 'redis-om';
+
+const product = await productRepo.save({
   name: 'Wireless Keyboard',
   price: 49.99,
   category: 'electronics',
@@ -52,7 +56,7 @@ const product = productRepo.createEntity({
   tags: ['keyboard', 'wireless', 'usb'],
 });
 
-const id = await productRepo.save(product);
+const id = product[EntityId];
 console.log('Saved with ID:', id);
 ```
 
@@ -116,7 +120,8 @@ await productRepo.remove(id);
 ## TypeScript Example
 
 ```typescript
-import { Client, Schema, Repository, Entity } from 'redis-om';
+import { createClient } from 'redis';
+import { Schema, Repository, Entity } from 'redis-om';
 
 interface Product extends Entity {
   name: string;
@@ -130,8 +135,9 @@ const schema = new Schema<Product>('product', {
   category: { type: 'string' },
 });
 
-const client = await new Client().open('redis://localhost:6379');
-const repo: Repository<Product> = client.fetchRepository(schema);
+const redis = createClient();
+await redis.connect();
+const repo = new Repository<Product>(schema, redis);
 await repo.createIndex();
 ```
 
