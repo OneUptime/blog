@@ -19,7 +19,7 @@ Redis pipelines can fail at two levels: the entire batch fails due to a connecti
 2. Command error - WRONGTYPE, wrong arity, Lua error
    Result: only that command failed; retrying will fail again
 
-3. Partial execution - pipeline sent but connection dropped before EXEC
+3. Partial execution - connection dropped mid-pipeline during send or response read
    Result: unknown how many commands were processed
 ```
 
@@ -104,16 +104,16 @@ For non-idempotent commands, use a deduplication pattern:
 ```python
 import uuid
 
-def safe_increment(r, key):
-    """Idempotent increment using a request ID."""
-    request_id = str(uuid.uuid4())
+def safe_increment(r, key, request_id):
+    """Idempotent increment using a request ID.
+    Pass the same request_id across retries to prevent double-counting."""
     lock_key = f"incr_lock:{key}:{request_id}"
 
-    with r.pipeline(transaction=False) as pipe:
-        pipe.set(lock_key, "1", nx=True, ex=10)  # claim slot
-        pipe.execute()
+    pipe = r.pipeline(transaction=False)
+    pipe.set(lock_key, "1", nx=True, ex=10)  # claim slot
+    result = pipe.execute()
 
-    if r.get(lock_key) == "1":
+    if result[0]:  # True if key was newly set
         return r.incr(key)
     else:
         return None  # already processed
