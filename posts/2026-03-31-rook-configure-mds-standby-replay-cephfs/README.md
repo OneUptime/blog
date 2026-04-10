@@ -59,11 +59,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 You should see output similar to:
 
-```yaml
-MDS version: myfs:1
-active:   myfs.a(mds.0)  up:active{0=myfs.a=up:active}
-standby-replay: myfs.b(mds.1)  up:standby-replay{0=myfs.b=up:standby-replay}
 ```
+myfs - 0 clients
+====
+RANK  STATE             MDS       ACTIVITY     DNS    INOS   DIRS   CAPS
+ 0    active            myfs-a    Reqs:    0   10      13     12      1
+ 0-s  standby-replay    myfs-b    Evts:    0    0       0      0      0
+      POOL              TYPE     USED  AVAIL
+      myfs-metadata     metadata  96.0k  27.9G
+      myfs-replicated   data       0    27.9G
+```
+
+The key indicator is the `standby-replay` state in the RANK column (`0-s`).
 
 ## Memory Requirements for Standby-Replay
 
@@ -118,8 +125,10 @@ Check how far behind the standby-replay daemon is:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.b status | grep replay
+  ceph tell mds.myfs-b status | grep replay
 ```
+
+Note: Use `ceph tell` rather than `ceph daemon` from the tools pod, since `ceph daemon` requires the local admin socket which is only available inside the MDS pod itself.
 
 A lag of more than a few seconds indicates the standby is having difficulty keeping up.
 
