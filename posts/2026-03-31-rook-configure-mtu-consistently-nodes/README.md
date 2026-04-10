@@ -31,7 +31,7 @@ Check MTU at the switch/network level:
 ```bash
 # Send a packet of known size to test path MTU
 ping -M do -s 8972 <remote-ip>  # For 9000 MTU jumbo frames
-# If this fails, path MTU discovery is not working
+# If this fails, the path does not support 9000-byte frames
 ```
 
 ## Standard MTU (1500) Configuration
@@ -148,6 +148,7 @@ spec:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache iproute2
           ip link set eth0 mtu 1500
           ip link set eth1 mtu 9000
           echo "MTU configured"
