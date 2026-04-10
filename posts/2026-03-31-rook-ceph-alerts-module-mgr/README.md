@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Alert, Monitoring, Manager
 
-Description: Configure the Ceph Manager alerts module to send email or webhook notifications when cluster health changes, OSDs go down, or capacity thresholds are breached.
+Description: Configure the Ceph Manager alerts module to send email notifications when cluster health changes, OSDs go down, or capacity thresholds are breached.
 
 ---
 
-The Ceph Manager alerts module monitors cluster health and sends notifications when conditions change. It integrates with email (SMTP) and HTTP webhook endpoints for alerting.
+The Ceph Manager alerts module monitors cluster health and sends notifications when conditions change. It integrates with email (SMTP) for alerting.
 
 ## Enabling the Alerts Module
 
@@ -28,7 +28,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph config set mgr mgr/alerts/smtp_host smtp.example.com
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph config set mgr mgr/alerts/smtp_port 587
+  ceph config set mgr mgr/alerts/smtp_port 465
 
 # Set sender and recipient
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
@@ -44,7 +44,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph config set mgr mgr/alerts/smtp_password YOUR_SMTP_PASSWORD
 
-# Enable STARTTLS
+# Enable SSL
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
   ceph config set mgr mgr/alerts/smtp_ssl true
 ```
