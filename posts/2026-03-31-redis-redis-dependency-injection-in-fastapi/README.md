@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, FastAPI, Dependency Injection, Async, Python
 
-Description: Learn how to use Redis with FastAPI's dependency injection system for clean, testable connection management using aioredis and lifespan events.
+Description: Learn how to use Redis with FastAPI's dependency injection system for clean, testable connection management using redis.asyncio and lifespan events.
 
 ---
 
@@ -13,7 +13,7 @@ FastAPI's dependency injection system is ideal for managing Redis connections. I
 ## Installation
 
 ```bash
-pip install fastapi redis[asyncio] uvicorn
+pip install fastapi redis uvicorn
 ```
 
 ## Application Lifespan and Redis Pool
