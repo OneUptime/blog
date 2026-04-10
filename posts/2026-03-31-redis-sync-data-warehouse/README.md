@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Data Warehouse, ETL, Kafka, Pipeline
 
-Description: Learn how to sync Redis data to a data warehouse using Kafka Connect, Debezium, or custom scripts to enable analytics on your operational data.
+Description: Learn how to sync Redis data to a data warehouse using Kafka Connect, RDB snapshots, or custom scripts to enable analytics on your operational data.
 
 ---
 
@@ -35,7 +35,7 @@ Configure the connector to capture keyspace events:
 {
   "name": "redis-source",
   "config": {
-    "connector.class": "com.github.jaredpetersen.kafkaconnectredis.source.RedisSourceConnector",
+    "connector.class": "io.github.jaredpetersen.kafkaconnectredis.source.RedisSourceConnector",
     "redis.uri": "redis://localhost:6379",
     "redis.channels": "__keyevent@0__:set",
     "topic": "redis-events"
@@ -105,7 +105,7 @@ Then load the JSON into your warehouse using the native loader.
 
 ## Handling Data Types
 
-Redis stores data as strings, hashes, sets, and sorted sets. Map them to warehouse tables:
+Redis stores data as strings, hashes, lists, sets, and sorted sets. Map them to warehouse tables:
 
 ```text
 Redis Hash     -> One row per hash, columns per field
