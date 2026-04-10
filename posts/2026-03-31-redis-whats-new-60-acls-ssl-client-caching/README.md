@@ -17,21 +17,21 @@ Before 6.0, Redis had a single password for all users. Redis 6.0 introduced mult
 Create a read-only user:
 
 ```bash
-redis-cli ACL SETUSER readonly on >readpass ~* &* +@read
+redis-cli ACL SETUSER readonly on >readpass ~* +@read
 ```
 
 Create a user limited to specific key patterns:
 
 ```bash
-redis-cli ACL SETUSER app-user on >apppass ~app:* &* +@all -@dangerous
+redis-cli ACL SETUSER app-user on >apppass ~app:* +@all -@dangerous
 ```
 
 List all users:
 
 ```bash
 redis-cli ACL LIST
-# user default on nopass ~* &* +@all
-# user readonly on >readpass ~* &* +@read
+# user default on nopass ~* +@all
+# user readonly on >readpass ~* +@read
 ```
 
 Store ACLs in a file for persistence:
