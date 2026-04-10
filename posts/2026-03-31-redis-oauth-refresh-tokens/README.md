@@ -50,6 +50,9 @@ async function issueRefreshToken(userId, clientId) {
   });
   await redis.expire(key, REFRESH_TTL);
 
+  // Track token hash in user's set for bulk revocation
+  await redis.sAdd(`user:${userId}:refresh_tokens`, tokenHash);
+
   return token; // Return raw token to client
 }
 ```
@@ -96,6 +99,11 @@ async function rotateRefreshToken(token, clientId) {
     lastUsed: Date.now()
   });
   await redis.expire(newKey, REFRESH_TTL);
+
+  // Update the user's token set: remove old hash, add new hash
+  const userTokensKey = `user:${stored.userId}:refresh_tokens`;
+  await redis.sRem(userTokensKey, tokenHash);
+  await redis.sAdd(userTokensKey, newHash);
 
   return newToken;
 }
