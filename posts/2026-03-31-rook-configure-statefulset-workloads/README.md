@@ -76,6 +76,8 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+        labels:
+          app: mydb
       spec:
         accessModes:
           - ReadWriteOnce
@@ -85,6 +87,8 @@ spec:
             storage: 50Gi
     - metadata:
         name: logs
+        labels:
+          app: mydb
       spec:
         accessModes:
           - ReadWriteOnce
