@@ -32,7 +32,7 @@ Output typically shows:
 
 ```text
 k=2
-m=1
+m=2
 plugin=jerasure
 technique=reed_sol_van
 ```
