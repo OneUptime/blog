@@ -28,7 +28,6 @@ spec:
     replicated:
       size: 3
   gateway:
-    type: s3
     port: 80
     instances: 3
     resources:
@@ -110,7 +109,7 @@ gateway:
 Use the `radosgw-admin` tool to check per-instance usage:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-operator -- \
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin usage show --show-log-entries=false
 ```
 
