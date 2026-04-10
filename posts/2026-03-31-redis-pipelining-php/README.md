@@ -17,7 +17,7 @@ use Predis\Client;
 
 $client = new Client();
 
-// Without pipeline: 5 round-trips
+// Without pipeline: 3 round-trips
 $client->set('key1', 'val1');
 $client->set('key2', 'val2');
 $client->set('key3', 'val3');
