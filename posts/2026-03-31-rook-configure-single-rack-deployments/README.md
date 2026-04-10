@@ -50,13 +50,19 @@ spec:
 # Check NIC bonding status
 cat /proc/net/bonding/bond0
 
-# Configure Ceph to use bonded interface
+# Configure Ceph to use bonded interface via host networking
 # In CephCluster spec:
+# With host networking, Ceph daemons use the host network stack directly,
+# including bonded interfaces. Use addressRanges to specify which subnets
+# correspond to each bond.
 spec:
   network:
-    selectors:
-      public: "bond0"
-      cluster: "bond1"
+    provider: "host"
+    addressRanges:
+      public:
+        - "192.168.100.0/24"   # Subnet on bond0
+      cluster:
+        - "192.168.200.0/24"   # Subnet on bond1
 ```
 
 ## Node Placement Within the Rack
@@ -97,7 +103,7 @@ ceph config set osd osd_op_queue mclock_scheduler
 ceph config set osd osd_mclock_profile high_recovery_ops
 
 # Single rack = no need for WAN-optimized settings
-ceph config set global ms_dispatch_throttle_bytes 104857600  # 100 MB
+ceph config set global ms_dispatch_throttle_bytes 104857600  # 100 MB (default value; ensures WAN-reduced settings are not in effect)
 ```
 
 ## Capacity Planning for Single Rack
