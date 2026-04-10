@@ -29,7 +29,6 @@ SETBIT student:u42:course:py101:lessons 2 0
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -57,13 +56,20 @@ def complete_lesson(student_id: str, course_id: str, lesson_index: int, lesson_c
     module_num = (lesson_index // 10) + 1
     module_key = f"module_{module_num}"
 
-    # Count completed lessons in this module
+    # Count completed lessons in this module using GETBIT
     start_bit = (module_num - 1) * 10
-    end_bit = min(start_bit + 9, lesson_count - 1)
+    end_bit = min(start_bit + 10, lesson_count)
+    bit_pipe = r.pipeline()
+    for i in range(start_bit, end_bit):
+        bit_pipe.getbit(bitmap_key, i)
+    bits = bit_pipe.execute()
+    module_completed = sum(bits)
+    module_lessons = end_bit - start_bit
+    module_pct = round((module_completed / module_lessons) * 100, 1) if module_lessons > 0 else 0
 
     pipe = r.pipeline()
     pipe.hset(progress_key, mapping={
-        module_key: completion_pct,
+        module_key: module_pct,
         "overall_completion": completion_pct,
         "last_lesson": lesson_index,
         "last_active": int(time.time())
@@ -80,25 +86,22 @@ def record_quiz_score(student_id: str, course_id: str, quiz_id: str, score: floa
     progress_key = f"{PROGRESS_PREFIX}:{student_id}:course:{course_id}"
     leaderboard_key = f"{LEADERBOARD_PREFIX}:{course_id}:leaderboard"
 
+    # Read existing quiz scores before update
+    existing_fields = r.hgetall(progress_key)
+    quiz_scores = {k: float(v) for k, v in existing_fields.items()
+                   if k.startswith("quiz_") and k.endswith("_score")}
+
+    # Include or update the current quiz score
+    quiz_scores[f"quiz_{quiz_id}_score"] = score
+    avg_score = sum(quiz_scores.values()) / len(quiz_scores)
+
     pipe = r.pipeline()
     pipe.hset(progress_key, mapping={
         f"quiz_{quiz_id}_score": score,
         "last_quiz_score": score,
         "last_active": int(time.time())
     })
-
-    # Update leaderboard - use average score approach
-    existing_scores_raw = r.hkeys(progress_key)
-    quiz_keys = [k for k in existing_scores_raw if k.startswith("quiz_") and k.endswith("_score")]
-
-    if quiz_keys:
-        scores = [float(r.hget(progress_key, k) or 0) for k in quiz_keys]
-        scores.append(score)
-        avg_score = sum(scores) / len(scores)
-        pipe.zadd(leaderboard_key, {student_id: avg_score})
-    else:
-        pipe.zadd(leaderboard_key, {student_id: score})
-
+    pipe.zadd(leaderboard_key, {student_id: avg_score})
     pipe.execute()
 ```
 
@@ -121,7 +124,7 @@ def get_student_progress(student_id: str, course_id: str, lesson_count: int) -> 
         "completed_lessons": completed_lessons,
         "total_lessons": lesson_count,
         "completion_pct": round((completed_lessons / lesson_count) * 100, 1) if lesson_count > 0 else 0,
-        "rank": (rank or 0) + 1,
+        "rank": rank + 1 if rank is not None else None,
         "last_active": progress.get("last_active"),
         "progress": progress
     }
