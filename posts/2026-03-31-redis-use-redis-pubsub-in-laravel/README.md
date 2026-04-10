@@ -120,7 +120,7 @@ Subscribe to multiple channels using glob patterns:
 
 ```php
 Redis::psubscribe(['user-notifications:*'], function (string $message, string $channel) {
-    $userId = explode(':', $channel)[2] ?? null;
+    $userId = explode(':', $channel)[1] ?? null;
     $data = json_decode($message, true);
 
     \Log::info("Message for user {$userId}", $data);
