@@ -43,6 +43,11 @@ radosgw-admin zone create --rgw-zonegroup=main \
 radosgw-admin user create --uid=sync-user \
   --display-name="Sync User" --system
 
+# Add system user keys to the master zone (use keys from user create output)
+radosgw-admin zone modify --rgw-zone=core-zone \
+  --access-key=<sync-user-access-key> \
+  --secret=<sync-user-secret-key>
+
 # Commit
 radosgw-admin period update --commit
 ```
@@ -105,9 +110,13 @@ Expected output:
           realm 1234-abcd (global)
       zonegroup main (main)
            zone edge-zone (edge-zone)
-  metadata sync no sync (zone is master)
-      data sync source: core-zone (syncing)
-                    docs behind: 0
+  metadata sync syncing
+                full sync: 0/64 shards
+                incremental sync: 64/64 shards
+      data sync source: core-zone
+                syncing
+                full sync: 0/128 shards
+                incremental sync: 128/128 shards
 ```
 
 ## Monitoring Sync Lag
