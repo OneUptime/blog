@@ -34,7 +34,7 @@ ceph orch host add arbiter-host 10.0.3.10
 Deploy a monitor on the arbiter host:
 
 ```bash
-ceph orch apply mon --placement="host:arbiter-host"
+ceph orch daemon add mon arbiter-host:10.0.3.10
 ```
 
 Alternatively, use a placement spec file:
@@ -59,7 +59,7 @@ ceph orch apply -i mon-placement.yaml
 The arbiter monitor must be assigned a CRUSH location label that is distinct from both site labels:
 
 ```bash
-ceph mon set-location mon-arbiter datacenter=arbiter
+ceph mon set_location mon-arbiter datacenter=arbiter
 ```
 
 Verify the location is set:
@@ -91,12 +91,12 @@ This tells the Ceph election algorithm that `mon-arbiter` is the tiebreaker and 
 Verify the arbiter is in quorum and recognized as the tiebreaker:
 
 ```bash
-ceph quorum_status --format json-pretty | python3 -m json.tool
+ceph mon dump --format json-pretty
 ```
 
-Look for `"tiebreaker_mon": "mon-arbiter"` in the output.
+Look for `"tiebreaker_mon": "mon-arbiter"` and `"stretch_mode": true` in the output.
 
-Check monitor health:
+Check that the arbiter is in quorum:
 
 ```bash
 ceph mon stat
@@ -110,8 +110,8 @@ If the arbiter monitor fails, the cluster continues to operate normally as long 
 ceph orch daemon rm mon.mon-arbiter
 ceph orch host rm arbiter-host
 ceph orch host add new-arbiter-host 10.0.3.20
-ceph orch apply mon --placement="hosts:mon-dc1a,mon-dc1b,mon-dc2a,mon-dc2b,mon-new-arbiter"
-ceph mon set-location mon-new-arbiter datacenter=arbiter
+ceph orch apply mon --placement="mon-dc1a,mon-dc1b,mon-dc2a,mon-dc2b,mon-new-arbiter"
+ceph mon set_location mon-new-arbiter datacenter=arbiter
 ```
 
 ## Summary
