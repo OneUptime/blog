@@ -65,7 +65,8 @@ irssi -c irc.oftc.net -n yourname
 # Then: /join #ceph
 
 # Using weechat
-weechat irc.oftc.net
+weechat
+# Then: /connect irc.oftc.net
 # Then: /join #ceph
 ```
 
