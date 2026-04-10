@@ -12,7 +12,7 @@ Description: Learn how to create CRUSH rules specifically designed for Ceph eras
 
 Erasure coded pools require CRUSH rules of type `erasure` (type 3), which differ from replicated rules. An erasure coded pool with a `k+m` profile needs `k+m` distinct OSDs - one per chunk. The CRUSH rule must be able to select enough distinct failure domain members to satisfy this requirement.
 
-Unlike replicated rules, erasure coded rules use `chooseleaf` to select one OSD per failure domain instance rather than one OSD per entire domain.
+Unlike replicated rules which use `chooseleaf firstn`, erasure coded rules use `chooseleaf indep`. With `indep`, each chunk position is mapped independently, so an OSD failure only causes the affected chunk to be remapped rather than shifting all subsequent placements.
 
 ## Viewing Existing Erasure Rules
 
