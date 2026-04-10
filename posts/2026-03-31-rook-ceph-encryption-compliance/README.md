@@ -112,7 +112,6 @@ Ensure the TLS certificate meets compliance requirements (minimum TLS 1.2, stron
 
 ```bash
 ceph config set client.rgw rgw_crypt_require_ssl true
-ceph config set client.rgw rgw_crypt_s3_kms_encryption_keys ""
 ```
 
 ## FIPS 140-2 Compliance
@@ -130,12 +129,13 @@ openssl ciphers -v 'HIGH:!aNULL' | grep -v "SSLv3\|RC4\|MD5"
 ## Verifying Encryption Status
 
 ```bash
-# Check OSD encryption status
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph health detail | grep -i encrypt
+# Check OSD encryption via dmcrypt devices
+kubectl -n rook-ceph exec -it <osd-pod> -- \
+  ls /dev/mapper/ | grep ceph
 
-# List encrypted devices
-kubectl -n rook-ceph get pods -l app=rook-ceph-osd -o wide
+# Check encryption metadata for a specific OSD
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd metadata 0 | grep -i dmcrypt
 ```
 
 ## Summary
