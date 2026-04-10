@@ -103,7 +103,8 @@ redis-cli SORT mylist ALPHA LIMIT 0 10
 ```bash
 # Wrong - invalid CLIENT subcommand
 redis-cli CLIENT UNKNOWNOPTION
-# (error) ERR syntax error
+# (error) ERR unknown subcommand or wrong number of arguments
+# Older Redis versions may return: (error) ERR syntax error
 
 # Correct
 redis-cli CLIENT LIST
@@ -116,11 +117,13 @@ redis-cli CLIENT ID
 
 ### Check Command Documentation
 
+Use the `help` built-in inside the interactive redis-cli shell:
+
 ```bash
-# Get help for a specific command
-redis-cli HELP SET
-redis-cli HELP ZADD
-redis-cli HELP EXPIRE
+redis-cli
+127.0.0.1:6379> help SET
+127.0.0.1:6379> help ZADD
+127.0.0.1:6379> help EXPIRE
 ```
 
 ### Test in redis-cli Interactively
