@@ -104,6 +104,7 @@ If you are already using Redisson, it has a built-in distributed rate limiter:
 
 ```java
 import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateIntervalUnit;
 import org.redisson.api.RateType;
 
 RRateLimiter rateLimiter = client.getRateLimiter("api:limiter");
