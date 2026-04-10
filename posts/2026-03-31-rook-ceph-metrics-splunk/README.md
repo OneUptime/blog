@@ -77,7 +77,7 @@ helm upgrade splunk-otel-collector \
 
 ## Step 4 - Forward Metrics to Splunk Enterprise (HEC)
 
-For on-premises Splunk, use the OTLP exporter with the HTTP Event Collector:
+For on-premises Splunk, use the Splunk HEC exporter with the HTTP Event Collector:
 
 ```yaml
 exporters:
@@ -115,6 +115,8 @@ curl -u admin:password \
   "https://splunk-enterprise.example.com:8089/servicesNS/admin/search/saved/searches" \
   -d name="Ceph Health Alert" \
   -d search="| mstats avg(ceph.health_status) WHERE index=infra_metrics | where 'avg(ceph.health_status)' > 0" \
+  -d is_scheduled=1 \
+  -d "cron_schedule=*/5 * * * *" \
   -d alert_type=always \
   -d alert.severity=3 \
   -d actions=email \
