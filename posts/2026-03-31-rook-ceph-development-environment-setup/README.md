@@ -41,10 +41,13 @@ minikube start \
   --disk-size=40g \
   --kubernetes-version=v1.28.0 \
   --extra-config=kubelet.max-pods=250
+```
 
-# Add extra disks for OSD testing
+Alternatively, if you need extra disks for OSD testing, use a VM-based driver that supports the `--extra-disks` flag:
+
+```bash
 minikube start \
-  --driver=virtualbox \
+  --driver=kvm2 \
   --cpus=4 \
   --memory=8192 \
   --disk-size=40g \
@@ -148,6 +151,9 @@ kubectl apply -f ceph-cluster-dev.yaml
 # Watch cluster come up
 kubectl -n rook-ceph get pods -w
 
+# Deploy the Rook toolbox (not included with the operator or cluster by default)
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
+
 # Access Ceph tools
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 ```
@@ -156,8 +162,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 ```bash
 # On each worker node, create loop devices
-for i in 1 2 3; do
-  docker exec ceph-dev-worker${i} bash -c "
+# Note: kind names workers as ceph-dev-worker, ceph-dev-worker2, ceph-dev-worker3
+for node in ceph-dev-worker ceph-dev-worker2 ceph-dev-worker3; do
+  docker exec ${node} bash -c "
     dd if=/dev/zero of=/tmp/osd.img bs=1M count=5120
     losetup /dev/loop0 /tmp/osd.img
   "
