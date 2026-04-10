@@ -1,38 +1,38 @@
-# How to Configure init-only Mirroring Mode for RBD
+# How to Perform a One-Time RBD Image Sync Using Snapshot Mirroring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RBD, Mirroring, Snapshot
 
-Description: Learn how to configure init-only mirroring mode for RBD images in Rook-Ceph for one-time initial sync without ongoing continuous replication.
+Description: Learn how to perform a one-time initial sync of RBD images in Rook-Ceph using snapshot-based mirroring before enabling continuous replication or completing a data migration.
 
 ---
 
-## What Is init-only Mirroring Mode
+## Why Use Snapshot Mirroring for a One-Time Sync
 
-The `init-only` mirroring mode is a special RBD snapshot mirroring mode introduced to handle the initial synchronization of large images to a secondary cluster. When set to `init-only`, the image is mirrored once (the full initial sync) and then stops replicating further changes.
+RBD snapshot-based mirroring can be used to perform a controlled one-time synchronization of a large image to a secondary cluster. By enabling snapshot mirroring on an image and creating a single manual snapshot (without a recurring schedule), you can sync the image once and then decide whether to add a schedule for continuous replication or promote the secondary for a data migration.
 
-This mode is useful for:
+This approach is useful for:
 - Seeding a secondary cluster with a large base image before switching to continuous mirroring
 - One-time data migration between clusters
 - Creating a point-in-time copy on the secondary without ongoing overhead
 
 ## Step 1 - Enable Snapshot Mirroring on the Pool
 
-The `init-only` mode requires snapshot-based mirroring to be configured at the pool level:
+Snapshot-based mirroring must be configured at the pool level first:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd mirror pool enable replicapool image
 ```
 
-## Step 2 - Enable init-only Mirroring on an Image
+## Step 2 - Enable Snapshot Mirroring on the Image
 
-Enable `init-only` mode on the image to sync:
+Enable snapshot-based mirroring on the image to sync:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image enable replicapool/large-base-image init-only
+  rbd mirror image enable replicapool/large-base-image snapshot
 ```
 
 ## Step 3 - Create the Initial Snapshot
@@ -61,32 +61,27 @@ large-base-image:
   last_update: 2026-03-31T10:05:00
 ```
 
-Wait until the state changes to `up+stopped`:
+Wait until the sync completes and the state shows `up+replaying` with an idle status:
 
 ```text
 large-base-image:
-  state:       up+stopped
-  description: local image is primary
+  global_id:   xyz-789
+  state:       up+replaying
+  description: idle
 ```
 
-## Step 5 - Transition to Continuous Mirroring After Init
+## Step 5 - Transition to Continuous Mirroring
 
-Once the initial sync is complete, transition to snapshot-based continuous mirroring:
+Once the initial sync is complete, add a snapshot schedule to enable continuous replication. Since the image is already using snapshot-based mirroring, you only need to add a recurring schedule:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image disable replicapool/large-base-image
-
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image enable replicapool/large-base-image snapshot
-
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror image snapshot schedule add replicapool/large-base-image 1h
+  rbd mirror snapshot schedule add --pool replicapool --image large-base-image 1h
 ```
 
-## Step 6 - Use init-only for Data Migration
+## Step 6 - Use One-Time Sync for Data Migration
 
-For a one-time migration, complete the `init-only` sync, then use the secondary image as the new primary:
+For a one-time migration, complete the initial sync (skip Step 5), then use the secondary image as the new primary:
 
 ```bash
 # Demote primary on source
@@ -108,8 +103,10 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph-secondary -- \
 ```
 
 ```text
-state: up+stopped
-description: local image is primary
+large-base-image:
+  global_id:   xyz-789
+  state:       up+stopped
+  description: local image is primary
 ```
 
 ```bash
@@ -123,4 +120,4 @@ mirroring primary: true
 
 ## Summary
 
-The RBD `init-only` mirroring mode provides an efficient way to perform the initial one-time synchronization of large images before enabling continuous replication. Enable it with `rbd mirror image enable <image> init-only`, trigger a snapshot, wait for the sync to complete, then transition to snapshot-based continuous mirroring or promote the secondary for a clean data migration. This avoids the overhead of continuous journal streaming during the potentially slow initial sync.
+RBD snapshot-based mirroring provides a controlled way to perform an initial one-time synchronization of large images before enabling continuous replication. Enable snapshot mirroring with `rbd mirror image enable <pool>/<image> snapshot`, create a manual snapshot, wait for the sync to complete, then add a snapshot schedule for continuous mirroring or promote the secondary for a clean data migration. By creating a single manual snapshot first (without a schedule), you control exactly when the initial sync happens and can verify it completes before enabling ongoing replication.
