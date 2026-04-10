@@ -28,8 +28,8 @@ Returns an integer representing the number of dimensions, or an error if the key
 ## Basic Usage
 
 ```redis
-VADD embeddings 0.1 0.2 0.3 0.4 doc1
-VADD embeddings 0.5 0.6 0.7 0.8 doc2
+VADD embeddings VALUES 4 0.1 0.2 0.3 0.4 doc1
+VADD embeddings VALUES 4 0.5 0.6 0.7 0.8 doc2
 
 VDIM embeddings
 ```
@@ -47,12 +47,12 @@ The dimension is set by the first `VADD` call and is immutable for the lifetime 
 Once the first vector is added, all subsequent vectors must have the same number of dimensions:
 
 ```redis
-VADD fixed_dim 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 first_doc
+VADD fixed_dim VALUES 8 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 first_doc
 VDIM fixed_dim
 # Returns 8
 
 # Attempting to add a 4-dim vector will fail
-VADD fixed_dim 0.1 0.2 0.3 0.4 bad_doc
+VADD fixed_dim VALUES 4 0.1 0.2 0.3 0.4 bad_doc
 # ERR: wrong number of arguments / dimension mismatch
 ```
 
@@ -82,15 +82,14 @@ def validated_add(key, member, vector):
             raise ValueError(
                 f"Expected {expected_dim} dimensions, got {len(vector)}"
             )
-    except Exception as e:
-        # Key may not exist yet -- first insert
-        if "ERR" in str(e) or "WRONGTYPE" in str(e):
-            raise
-        # Key does not exist, let VADD set the dimension
+    except ValueError:
+        raise
+    except Exception:
+        # Key does not exist yet -- first insert sets the dimension
         pass
 
     vec_args = [str(v) for v in vector]
-    r.execute_command("VADD", key, *vec_args, member)
+    r.execute_command("VADD", key, "VALUES", str(len(vector)), *vec_args, member)
 
 # Works
 validated_add("docs", "article1", [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
@@ -119,7 +118,7 @@ async function safeAddVector(key, member, vector) {
     throw new Error(`Dimension mismatch: expected ${dim}, got ${vector.length}`);
   }
   const vecArgs = vector.map(String);
-  return redis.call("VADD", key, ...vecArgs, member);
+  return redis.call("VADD", key, "VALUES", vector.length, ...vecArgs, member);
 }
 
 await safeAddVector("docs", "article1", [0.1, 0.2, 0.3, 0.4]);
@@ -146,7 +145,7 @@ If `VADD` was called with the `REDUCE dim` option, `VDIM` returns the reduced di
 
 ```redis
 # Original vectors are 1536-dimensional, reduced to 64
-VADD big_embeddings REDUCE 64 0.01 0.02 ... (1536 values) ... doc1
+VADD big_embeddings REDUCE 64 VALUES 1536 0.01 0.02 ... (1536 values) ... doc1
 
 VDIM big_embeddings
 # Returns 64
