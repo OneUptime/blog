@@ -14,7 +14,7 @@ Rook CSI drivers expose liveness metrics that indicate whether the CSI gRPC endp
 
 ## Enable CSI Liveness Metrics
 
-Liveness metrics are enabled by default in recent Rook versions. Verify the liveness port is configured:
+Liveness metrics are disabled by default in Rook. Verify whether liveness is enabled and check the port configuration:
 
 ```bash
 kubectl get configmap rook-ceph-operator-config -n rook-ceph -o yaml | grep -i liveness
@@ -30,7 +30,8 @@ metadata:
   namespace: rook-ceph
 data:
   CSI_ENABLE_LIVENESS: "true"
-  CSI_LIVENESS_METRICS_PORT: "9080"
+  CSI_RBD_LIVENESS_METRICS_PORT: "9080"
+  CSI_CEPHFS_LIVENESS_METRICS_PORT: "9081"
 ```
 
 ```bash
@@ -64,11 +65,9 @@ curl -s http://localhost:9080/metrics
 Key metrics to look for:
 
 ```text
-# HELP liveness_probe_result Result of the liveness probe (1 = success, 0 = failure)
-liveness_probe_result{driver_name="rook-ceph.rbd.csi.ceph.com"} 1
-
-# HELP liveness_probe_latency_seconds Latency in seconds for the liveness probe
-liveness_probe_latency_seconds{driver_name="rook-ceph.rbd.csi.ceph.com"} 0.002
+# HELP csi_liveness CSI driver liveness (1 = healthy, 0 = unhealthy)
+# TYPE csi_liveness gauge
+csi_liveness{driver_name="rook-ceph.rbd.csi.ceph.com"} 1
 ```
 
 ## Create a ServiceMonitor for CSI Liveness
@@ -111,7 +110,7 @@ spec:
   - name: csi-liveness
     rules:
     - alert: RookCSILivenessFailure
-      expr: liveness_probe_result == 0
+      expr: csi_liveness == 0
       for: 2m
       labels:
         severity: critical
@@ -122,4 +121,4 @@ spec:
 
 ## Summary
 
-CSI liveness metrics in Rook provide an early warning system for CSI driver health degradation. By enabling the liveness metrics port, creating a ServiceMonitor to scrape it, and defining a PrometheusRule alert on `liveness_probe_result == 0`, teams can detect and respond to CSI driver issues before they cause PVC provisioning failures or pod scheduling problems.
+CSI liveness metrics in Rook provide an early warning system for CSI driver health degradation. By enabling the liveness metrics port, creating a ServiceMonitor to scrape it, and defining a PrometheusRule alert on `csi_liveness == 0`, teams can detect and respond to CSI driver issues before they cause PVC provisioning failures or pod scheduling problems.
