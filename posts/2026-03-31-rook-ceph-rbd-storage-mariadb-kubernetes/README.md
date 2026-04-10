@@ -130,14 +130,14 @@ kubectl -n databases exec -it mariadb-0 -- bash -c \
 ## Monitoring Replication
 
 ```sql
--- Check replication status on replicas
-SHOW SLAVE STATUS\G
+-- Check replication status on replicas (MariaDB 10.5.1+)
+SHOW REPLICA STATUS\G
 
 -- Check Galera cluster status
 SHOW STATUS LIKE 'wsrep_%';
 
--- Check binary log position
-SHOW MASTER STATUS;
+-- Check binary log position (MariaDB 10.5.2+)
+SHOW BINLOG STATUS;
 ```
 
 ## Summary
