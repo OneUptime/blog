@@ -40,7 +40,7 @@ def rollup_month(metric: str, any_day_ts: float) -> int:
     if r.exists(month_key):
         return int(r.get(month_key) or 0)
 
-    dt = datetime.datetime.utcfromtimestamp(any_day_ts)
+    dt = datetime.datetime.fromtimestamp(any_day_ts, tz=datetime.timezone.utc)
     year, mon = dt.year, dt.month
     # Number of days in this month
     if mon == 12:
@@ -49,7 +49,7 @@ def rollup_month(metric: str, any_day_ts: float) -> int:
         next_month = datetime.datetime(year, mon + 1, 1)
     days_in_month = (next_month - datetime.datetime(year, mon, 1)).days
 
-    first_day_ts = datetime.datetime(year, mon, 1).timestamp()
+    first_day_ts = datetime.datetime(year, mon, 1, tzinfo=datetime.timezone.utc).timestamp()
     pipe = r.pipeline()
     for d in range(days_in_month):
         ts = first_day_ts + d * 86400
@@ -68,13 +68,13 @@ def rollup_month(metric: str, any_day_ts: float) -> int:
 ```python
 def month_over_month(metric: str) -> dict:
     now = time.time()
-    dt = datetime.datetime.utcfromtimestamp(now)
+    dt = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc)
     this_month = month_bucket(now)
 
     if dt.month == 1:
-        last_dt = datetime.datetime(dt.year - 1, 12, 1)
+        last_dt = datetime.datetime(dt.year - 1, 12, 1, tzinfo=datetime.timezone.utc)
     else:
-        last_dt = datetime.datetime(dt.year, dt.month - 1, 1)
+        last_dt = datetime.datetime(dt.year, dt.month - 1, 1, tzinfo=datetime.timezone.utc)
     last_month = month_bucket(last_dt.timestamp())
 
     pipe = r.pipeline()
@@ -118,9 +118,8 @@ def archive_year(metric: str, year: int):
 
 ```python
 def get_monthly_history(metric: str, months: int = 12) -> list:
-    results = []
     now = time.time()
-    dt = datetime.datetime.utcfromtimestamp(now)
+    dt = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc)
 
     pipe = r.pipeline()
     month_keys = []
