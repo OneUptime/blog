@@ -101,7 +101,7 @@ A high `rdb_changes_since_last_save` with stale `rdb_last_save_time` indicates y
 Every BGSAVE forks the Redis process. On Linux, copy-on-write (COW) means this is cheap initially, but memory usage can double if many writes occur during the save. Monitor:
 
 ```bash
-redis-cli INFO memory | grep rdb_last_cow_size
+redis-cli INFO persistence | grep rdb_last_cow_size
 ```
 
 For large datasets (>10 GB), consider less frequent saves to reduce fork overhead:
