@@ -25,6 +25,9 @@ redis-cli TS.ADD sensor:temperature * 23.1
 # Query a range
 redis-cli TS.RANGE sensor:temperature 1711800000000 1711900000000
 
+# Create a destination key for downsampled data
+redis-cli TS.CREATE sensor:temperature:1h RETENTION 2592000000 LABELS region us-east type temperature
+
 # Downsample with aggregation
 redis-cli TS.CREATERULE sensor:temperature sensor:temperature:1h \
   AGGREGATION avg 3600000
@@ -74,6 +77,9 @@ Both systems support data retention and downsampling, but with different approac
 ```bash
 # RedisTimeSeries: retention in milliseconds per key
 redis-cli TS.ALTER sensor:cpu RETENTION 86400000
+
+# Create a destination key for hourly averages
+redis-cli TS.CREATE sensor:cpu:1h RETENTION 2592000000
 
 # Create a compaction rule for hourly averages
 redis-cli TS.CREATERULE sensor:cpu sensor:cpu:1h AGGREGATION avg 3600000
