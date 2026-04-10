@@ -26,11 +26,22 @@ XRANGE user:events - +
 
 ```text
 1) 1) "1711234567890-0"
-   2) action login user_id 42
+   2) 1) "action"
+      2) "login"
+      3) "user_id"
+      4) "42"
 2) 1) "1711234567891-0"
-   2) action page_view user_id 42 page /dashboard
+   2) 1) "action"
+      2) "page_view"
+      3) "user_id"
+      4) "42"
+      5) "page"
+      6) "/dashboard"
 3) 1) "1711234567892-0"
-   2) action logout user_id 42
+   2) 1) "action"
+      2) "logout"
+      3) "user_id"
+      4) "42"
 ```
 
 ## Ordering Within a Consumer Group
@@ -83,8 +94,6 @@ publish_ordered('user:42', 'order.shipped', {'tracking': 'TRK-123'})
 When multiple producers write to the same stream, clock skew can cause unexpected ordering. Add a logical sequence number:
 
 ```python
-import time
-
 def publish_with_sequence(stream, entity_id, event_type, data):
     # Increment sequence atomically
     seq = r.incr(f'seq:{stream}:{entity_id}')
