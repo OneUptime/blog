@@ -71,7 +71,7 @@ velero install \
   --plugins velero/velero-plugin-for-aws:v1.10.0 \
   --bucket velero-backups \
   --secret-file /tmp/ceph-credentials \
-  --use-volume-snapshots=true \
+  --use-volume-snapshots=false \
   --backup-location-config \
     region=us-east-1,\
     s3ForcePathStyle=true,\
@@ -98,20 +98,16 @@ velero schedule create hourly-critical \
 
 ## Setting Object Lifecycle Policies
 
-Automate retention and archiving with S3 lifecycle rules:
+Automate retention with S3 lifecycle expiration rules:
 
 ```bash
 aws s3api put-bucket-lifecycle-configuration \
   --bucket velero-backups \
   --lifecycle-configuration '{
     "Rules": [{
-      "ID": "archive-old-backups",
+      "ID": "expire-old-backups",
       "Status": "Enabled",
       "Filter": {"Prefix": "backups/"},
-      "Transitions": [{
-        "Days": 30,
-        "StorageClass": "GLACIER"
-      }],
       "Expiration": {
         "Days": 365
       }
@@ -119,6 +115,8 @@ aws s3api put-bucket-lifecycle-configuration \
   }' \
   --endpoint-url http://rook-ceph-rgw-backup-store.rook-ceph.svc.cluster.local
 ```
+
+Note: Ceph RGW supports lifecycle expiration rules natively. Transitions between storage classes (such as AWS GLACIER) require custom storage classes to be configured in the Ceph zone group first.
 
 ## Enabling Object Lock for Immutable Backups
 
