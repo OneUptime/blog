@@ -90,17 +90,19 @@ app.get("/products/:id", async (req, res) => {
 });
 ```
 
-## Component-Level Caching with vue-server-renderer
+## Component-Level Caching with vue-server-renderer (Vue 2 Only)
 
-For fine-grained control, cache individual components:
+The `vue-server-renderer` package provides built-in component-level caching for Vue 2. Note that this feature is not available in Vue 3's `@vue/server-renderer`.
+
+For fine-grained control in Vue 2, cache individual components:
 
 ```javascript
 const { createRenderer } = require("vue-server-renderer");
 
 const renderer = createRenderer({
   cache: {
-    get(key) {
-      return redis.get(key);
+    get(key, cb) {
+      redis.get(key).then((val) => cb(val));
     },
     set(key, val) {
       redis.set(key, val, "EX", 600);
