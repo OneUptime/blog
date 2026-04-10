@@ -104,7 +104,7 @@ Expected output:
 
 ```text
 pool 1 'backing-pool' replicated ...
-        tier_of pool 0 ''
+        tiers [2]
         read_tier 2
         write_tier 2
 ```
