@@ -10,7 +10,7 @@ Description: Configure Ceph Quality of Service and I/O throttling in Rook-Ceph u
 
 ## How Ceph QoS Works
 
-Ceph supports QoS (Quality of Service) at the RBD image level through the mClock scheduler and RBD namespace throttling. This allows you to limit the IOPS and throughput that individual RBD volumes can consume, preventing any single workload from saturating the storage cluster and impacting other tenants.
+Ceph supports QoS (Quality of Service) at the RBD image level through librbd QoS configuration options and at the OSD level through the mClock scheduler. This allows you to limit the IOPS and throughput that individual RBD volumes can consume, preventing any single workload from saturating the storage cluster and impacting other tenants.
 
 ```mermaid
 flowchart TD
@@ -84,7 +84,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Configuring StorageClass with QoS Annotations
 
-For new volumes provisioned via CSI, you can set QoS parameters in the StorageClass or in volume annotations. Use the `csi.storage.k8s.io/fstype` and custom parameters:
+Ceph CSI does not currently support setting RBD QoS parameters directly through StorageClass fields. Instead, provision volumes using a standard StorageClass and then apply QoS settings to the underlying RBD images manually:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -103,7 +103,6 @@ parameters:
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
-  imageFeatures: layering
   mounter: rbd
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -126,7 +125,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_recovery_max_active 1
 ```
 
-Limit recovery operations per OSD:
+Set recovery operation priority (lower value means lower priority, range 1-63):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -142,7 +141,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Configuring mClock QoS Scheduler
 
-Ceph's mClock scheduler (available in Quincy and later) provides weighted QoS for OSD operations. Configure it via the CephCluster config section:
+Ceph's mClock scheduler is the default OSD operation queue in Quincy and later (for BlueStore OSDs). It provides weighted QoS for OSD operations. Configure it via the CephCluster config section:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -152,7 +151,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephConfig:
-    osd:
+    "osd.*":
       osd_op_queue: mclock_scheduler
       osd_mclock_profile: balanced
 ```
@@ -178,14 +177,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd perf
 ```
 
-Check Prometheus metrics for I/O rates:
+Watch real-time cluster I/O activity:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph -w
 ```
 
-The `ceph -w` output shows real-time I/O rates, which should reflect the throttle limits.
+The `ceph -w` output shows real-time cluster activity including I/O rates, which should reflect the throttle limits.
 
 ## Summary
 
