@@ -30,7 +30,7 @@ graph TD
 TDIGEST.ADD key value [value ...]
 ```
 
-- `key` - the T-Digest key (auto-created with default compression if not present)
+- `key` - the T-Digest key (must already exist, created via `TDIGEST.CREATE`)
 - `value [value ...]` - one or more floating-point numbers to add
 
 Returns `OK` on success.
@@ -86,16 +86,16 @@ TDIGEST.QUANTILE response_ms 0.5 0.9 0.95 0.99
 4) "500"
 ```
 
-## Auto-Creation Behavior
+## Key Must Exist
 
-If the key does not exist, `TDIGEST.ADD` automatically creates a T-Digest with default compression (100):
+`TDIGEST.ADD` requires the key to already exist. If the key does not exist, an error is returned. Always create the sketch first:
 
 ```redis
--- No TDIGEST.CREATE needed
+TDIGEST.CREATE auto_digest
 TDIGEST.ADD auto_digest 42.0 55.0 30.0
 ```
 
-For production use, always create explicitly with `TDIGEST.CREATE` to control the compression parameter.
+Use `TDIGEST.CREATE` with the `COMPRESSION` parameter to control accuracy vs memory tradeoff.
 
 ## Batch vs Single Insertions
 
@@ -188,13 +188,15 @@ TDIGEST.INFO response_ms
 ```
 
 ```text
-1) "Compression"
-2) (integer) 100
-...
-7) "Observations"
-8) (integer) 14
-9) "Total compressions"
-10) (integer) 1
+ 1) "Compression"
+ 2) (integer) 100
+ ...
+13) "Observations"
+14) (integer) 14
+15) "Total compressions"
+16) (integer) 1
+17) "Memory usage"
+18) (integer) 9768
 ```
 
 `Observations` shows how many values have been added total.
@@ -209,4 +211,4 @@ T-Digest accepts:
 
 ## Summary
 
-`TDIGEST.ADD` inserts one or more numerical values into a Redis T-Digest for approximate percentile computation. Add values in batches for efficiency. The structure is auto-created with default compression if the key does not exist. Use it for continuous stream ingestion of latency measurements, metric values, financial amounts, and any numerical data where you need percentile statistics without storing all individual values.
+`TDIGEST.ADD` inserts one or more numerical values into a Redis T-Digest for approximate percentile computation. Add values in batches for efficiency. The key must already exist (create it first with `TDIGEST.CREATE`). Use it for continuous stream ingestion of latency measurements, metric values, financial amounts, and any numerical data where you need percentile statistics without storing all individual values.
