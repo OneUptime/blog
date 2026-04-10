@@ -83,7 +83,7 @@ rbd trash rm replicapool/<trash-id>
 
 ## Mapping and Unmapping Images
 
-Map an RBD image to a block device on a host (requires `rbd-nbd` or kernel RBD):
+Map an RBD image to a block device on a host (requires `rbd-nbd` or kernel RBD). Note: these mapping commands must be run on the host node with kernel access, not from the Rook toolbox pod:
 
 ```bash
 rbd map replicapool/myimage
@@ -116,7 +116,7 @@ Watchers:
         watcher=192.168.1.10:0/2345 client.12345 cookie=18446744073709551615
 ```
 
-## Listing Features
+## Managing Features
 
 Enable or disable RBD features on an image:
 
