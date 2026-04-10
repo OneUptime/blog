@@ -29,7 +29,7 @@ TDIGEST.BYREVRANK key rank [rank ...]
 
 - `key` - the T-Digest sketch key
 - `rank` - zero-based reverse rank position(s); 0 is the largest value
-- Returns one value per rank; returns `nan` for out-of-range positions
+- Returns one value per rank; returns `-inf` for out-of-range positions
 
 ## Examples
 
@@ -79,7 +79,7 @@ TDIGEST.BYREVRANK api:latency 0 1 2 3 4
 5) "3654.8"
 ```
 
-### Out-of-Range Returns nan
+### Out-of-Range Returns -inf
 
 ```redis
 TDIGEST.ADD temps 22.1 23.4 24.8
@@ -87,7 +87,7 @@ TDIGEST.BYREVRANK temps 10
 ```
 
 ```text
-1) "nan"
+1) "-inf"
 ```
 
 ## Use Cases
