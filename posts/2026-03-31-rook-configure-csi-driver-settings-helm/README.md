@@ -20,10 +20,11 @@ By default, RBD and CephFS are enabled while NFS is disabled. Control this per d
 csi:
   enableRbdDriver: true
   enableCephfsDriver: true
-  enableNFSDriver: false
+  nfs:
+    enabled: false
 ```
 
-To add NFS support, set `enableNFSDriver: true` and ensure NFS kernel modules are available on nodes.
+To add NFS support, set `csi.nfs.enabled: true` and ensure NFS kernel modules are available on nodes.
 
 ## RBD Driver Settings
 
@@ -47,15 +48,14 @@ CephFS handles shared filesystem PVCs and subvolumes:
 ```yaml
 csi:
   enableCephfsSnapshotter: true
-  cephFSFUSEClient: false
+  forceCephFSKernelClient: true
   enableCSIHostNetwork: false
-  cephfsPluginUpdateStrategy: OnDelete
-  cephfsPluginUpdateStrategyMaxUnavailable: 1
-  fuseMountOptions: ""
-  kernelMountOptions: "ms_mode=prefer-crc"
+  cephFSPluginUpdateStrategy: OnDelete
+  cephFSPluginUpdateStrategyMaxUnavailable: 1
+  cephFSKernelMountOptions: "ms_mode=prefer-crc"
 ```
 
-Setting `cephFSFUSEClient: true` forces the FUSE client instead of the kernel client - useful for environments where kernel modules are unavailable.
+Setting `forceCephFSKernelClient: false` allows the FUSE client instead of the kernel client - useful for environments where kernel modules are unavailable.
 
 ## NFS Driver Settings
 
@@ -63,7 +63,8 @@ When NFS is enabled:
 
 ```yaml
 csi:
-  enableNFSDriver: true
+  nfs:
+    enabled: true
   nfsPluginUpdateStrategy: OnDelete
 ```
 
@@ -74,20 +75,16 @@ CSI driver registration controls node-level integration:
 ```yaml
 csi:
   registrar:
-    image:
-      tag: v2.9.0
+    tag: v2.16.0
 
   provisioner:
-    image:
-      tag: v3.7.0
+    tag: v6.1.1
 
   attacher:
-    image:
-      tag: v4.4.0
+    tag: v4.11.0
 
   resizer:
-    image:
-      tag: v1.9.0
+    tag: v2.1.0
 ```
 
 ## Applying Driver Configuration
