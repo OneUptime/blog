@@ -61,38 +61,37 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- ceph config set client.rgw rgw_dn
 
 ## Tuning Multipart Upload Settings
 
-Large object uploads use the S3 multipart API. You can tune minimum part size and maximum number of parts:
+Large object uploads use the S3 multipart API. You can tune minimum part size (default 5 MiB) and maximum number of parts (default 10000):
 
 ```bash
 kubectl -n rook-ceph exec -it <toolbox-pod> -- \
-  ceph config set client.rgw rgw_multipart_min_part_size 5242880
+  ceph config set client.rgw rgw_multipart_min_part_size 16777216
 
 kubectl -n rook-ceph exec -it <toolbox-pod> -- \
-  ceph config set client.rgw rgw_multipart_part_upload_limit 10000
+  ceph config set client.rgw rgw_multipart_part_upload_limit 5000
 ```
 
-## Enabling Bucket Policies
+## Bucket Policies
 
-Bucket policies (IAM-style JSON policies) are disabled by default in some Ceph versions. Enable them via:
+Bucket policies (IAM-style JSON policies) are enabled by default in Ceph RGW and do not require any additional configuration to use. You can apply a bucket policy using the S3 API or the `aws` CLI:
 
 ```bash
-kubectl -n rook-ceph exec -it <toolbox-pod> -- \
-  ceph config set client.rgw rgw_enable_bucket_policy true
+aws --endpoint-url http://<rgw-endpoint> s3api put-bucket-policy \
+  --bucket my-bucket \
+  --policy file://policy.json
 ```
 
 ## Enabling Object Lock (WORM)
 
-S3 Object Lock prevents deletion or overwrite for a specified retention period. To enable it for a new bucket, the object store must have the `objectLockEnabled` field set:
+S3 Object Lock prevents deletion or overwrite for a specified retention period. Object Lock is enabled per-bucket at creation time using the S3 API:
 
-```yaml
-spec:
-  protocols:
-    s3:
-      enabled: true
-      objectLockEnabled: true
+```bash
+aws --endpoint-url http://<rgw-endpoint> s3api create-bucket \
+  --bucket my-locked-bucket \
+  --object-lock-enabled-for-bucket
 ```
 
-Note: Object Lock requires bucket versioning to be active and cannot be disabled after the store is created.
+Note: Object Lock automatically enables bucket versioning and cannot be disabled after the bucket is created.
 
 ## Verifying Settings
 
@@ -112,4 +111,4 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- \
 
 ## Summary
 
-Rook exposes S3 API settings through the `CephObjectStore` CRD and through Ceph config parameters set via the toolbox. Key areas include enabling Keystone auth, tuning multipart upload limits, enabling bucket policies, and optionally turning on Object Lock for immutable storage. Apply changes incrementally and verify each one through the toolbox before moving on.
+Rook exposes S3 API settings through the `CephObjectStore` CRD and through Ceph config parameters set via the toolbox. Key areas include enabling Keystone auth, tuning multipart upload limits, applying bucket policies, and optionally turning on Object Lock for immutable storage. Apply changes incrementally and verify each one through the toolbox before moving on.
