@@ -37,7 +37,7 @@ data:
           hs.message = "Cluster is initializing"
           return hs
         end
-        if obj.status.phase == "Error" then
+        if obj.status.phase == "Failure" then
           hs.status = "Degraded"
           hs.message = obj.status.message
           return hs
@@ -61,7 +61,7 @@ data:
         hs.message = "Pool is ready"
         return hs
       end
-      if obj.status.phase == "Error" then
+      if obj.status.phase == "Failure" then
         hs.status = "Degraded"
         hs.message = obj.status.message
         return hs
@@ -84,7 +84,7 @@ data:
         hs.message = "Filesystem is ready"
         return hs
       end
-      if obj.status.phase == "Error" then
+      if obj.status.phase == "Failure" then
         hs.status = "Degraded"
         hs.message = obj.status.message
         return hs
@@ -100,7 +100,7 @@ data:
 ```bash
 kubectl -n argocd apply -f argocd-cm.yaml
 kubectl -n argocd rollout restart deployment/argocd-server
-kubectl -n argocd rollout restart deployment/argocd-application-controller
+kubectl -n argocd rollout restart statefulset/argocd-application-controller
 ```
 
 ## Verify Health Check in UI
