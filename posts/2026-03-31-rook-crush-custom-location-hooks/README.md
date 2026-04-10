@@ -10,13 +10,13 @@ Description: Learn how to implement Ceph CRUSH custom location hooks to dynamica
 
 ## What are CRUSH Location Hooks
 
-Ceph's `crush_location_hook` configuration option specifies a script that runs when an OSD daemon starts. The script outputs key-value pairs representing the OSD's location in the CRUSH hierarchy. This allows dynamic topology detection without hardcoding locations in ceph.conf - especially useful in cloud environments, automated deployments, or where hostname patterns encode location information.
+Ceph's `osd crush location hook` configuration option specifies a script that runs when an OSD daemon starts. The script outputs key-value pairs representing the OSD's location in the CRUSH hierarchy. This allows dynamic topology detection without hardcoding locations in ceph.conf - especially useful in cloud environments, automated deployments, or where hostname patterns encode location information.
 
 ## Basic Hook Configuration
 
 ```ini
 [osd]
-crush_location_hook = /usr/local/bin/ceph-crush-location
+osd crush location hook = /usr/local/bin/ceph-crush-location
 ```
 
 The hook script receives the OSD ID as an argument and must output the CRUSH location to stdout in the format `key=value` separated by spaces:
@@ -125,8 +125,8 @@ Before deploying, test the hook directly:
 # Expected output:
 # root=default datacenter=dc1 rack=rack1 host=node-01
 
-# Test that it parses correctly with crushtool
-ceph osd find osd.0
+# Verify the OSD location in the CRUSH map
+ceph osd find 0
 ```
 
 ## Summary
