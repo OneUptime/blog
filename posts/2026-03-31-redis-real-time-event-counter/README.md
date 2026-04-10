@@ -8,7 +8,7 @@ Description: Build a flexible real-time event counter with Redis that tracks any
 
 ---
 
-Whether you need to count logins, purchases, errors, or custom business events, a Redis-backed event counter provides atomic increments with nanosecond precision across any time granularity you define.
+Whether you need to count logins, purchases, errors, or custom business events, a Redis-backed event counter provides atomic increments with sub-millisecond latency across any time granularity you define.
 
 ## Multi-Granularity Event Counter
 
