@@ -59,6 +59,8 @@ export async function getStaticPaths() {
 
 ```javascript
 // pages/api/revalidate.js
+import { getRedis } from "../../lib/redis";
+
 export default async function handler(req, res) {
   if (req.headers["x-webhook-secret"] !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
