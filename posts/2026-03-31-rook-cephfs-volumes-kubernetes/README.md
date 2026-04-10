@@ -13,7 +13,6 @@ CephFS provides POSIX-compliant shared filesystem storage for Kubernetes, suppor
 ## Prerequisites
 
 - Rook-Ceph operator installed and a CephCluster deployed
-- CephFS filesystem created via CephFilesystem CRD
 - Rook CSI driver running
 
 ## Step 1: Create the CephFilesystem
@@ -67,8 +66,6 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  - discard
 ```
 
 ```bash
