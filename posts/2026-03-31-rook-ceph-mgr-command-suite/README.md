@@ -42,7 +42,7 @@ Example `mgr stat` output:
 ceph mgr module ls
 ```
 
-Output shows `enabled_modules` and `disabled_modules` sections.
+Output shows `always_on_modules`, `enabled_modules`, and `disabled_modules` sections.
 
 ## Enabling and Disabling Modules
 
@@ -57,20 +57,17 @@ ceph mgr module enable dashboard
 ceph mgr module enable balancer
 
 # Disable a module
-ceph mgr module disable pg_autoscaler
+ceph mgr module disable iostat
 ```
 
 ## Configuring the Dashboard Module
 
 ```bash
 # Set dashboard credentials
-ceph dashboard ac-user-create admin -i /tmp/password --roles administrator
+ceph dashboard ac-user-create admin -i /tmp/password administrator
 
 # Check dashboard URL
 ceph mgr services
-
-# Get the dashboard URL
-ceph dashboard get-mgr-server-addr
 ```
 
 ## Configuring Prometheus Metrics
