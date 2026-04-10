@@ -29,7 +29,7 @@ ceph config show osd.0 bluestore_min_alloc_size_hdd
 # Default HDD: 65536 (64 KB) in older releases, 4096 in newer ones
 
 ceph config show osd.0 bluestore_min_alloc_size_ssd
-# Default SSD: 16384 (16 KB) in Ceph Quincy+
+# Default SSD: 4096 (4 KB) in Ceph Quincy+
 ```
 
 ## Choosing the Right Value
@@ -75,11 +75,11 @@ kubectl apply -f rook-config-override.yaml
 ## Verifying the Current Setting on an Existing OSD
 
 ```bash
-# Check min_alloc_size set during OSD creation
-ceph-osd -i 0 --dump-log | grep alloc_size
+# Check min_alloc_size baked into the OSD at creation
+ceph-bluestore-tool show-label --path /var/lib/ceph/osd/ceph-0/
 
 # Or from admin socket
-ceph daemon osd.0 config show bluestore_min_alloc_size
+ceph daemon osd.0 config get bluestore_min_alloc_size
 ```
 
 ## Space Amplification Analysis
@@ -97,8 +97,8 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-alloc = bs.get('bluestore_allocated', {}).get('sum', 0)
-stored = bs.get('bluestore_stored', {}).get('sum', 0)
+alloc = bs.get('bluestore_allocated', 0)
+stored = bs.get('bluestore_stored', 0)
 if stored > 0:
     print(f'Space amplification: {alloc/stored:.2f}x')
 "
@@ -114,8 +114,8 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-deferred = bs.get('bluestore_write_deferred', {}).get('avgcount', 0)
-big = bs.get('bluestore_write_big', {}).get('avgcount', 0)
+deferred = bs.get('bluestore_write_deferred', 0)
+big = bs.get('bluestore_write_big', 0)
 print(f'Deferred writes: {deferred}, Direct writes: {big}')
 "
 ```
