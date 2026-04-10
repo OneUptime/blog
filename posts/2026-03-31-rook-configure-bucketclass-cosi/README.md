@@ -29,14 +29,13 @@ kubectl get crd | grep objectstorage
 If COSI is not yet installed:
 
 ```bash
-kubectl apply -k github.com/kubernetes-sigs/container-object-storage-interface-api//config
-kubectl apply -k github.com/kubernetes-sigs/container-object-storage-interface-controller//config
+kubectl apply -k github.com/kubernetes-sigs/container-object-storage-interface
 ```
 
 ## Installing the Rook-Ceph COSI Driver
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/cosi/driver.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/cosi/cephcosidriver.yaml
 ```
 
 ## Creating a BucketClass
@@ -48,12 +47,11 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketClass
 metadata:
   name: rook-ceph-bucketclass
-driverName: rook-ceph.ceph.rook.io
-deletionPolicy: delete
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+deletionPolicy: Delete
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-  region: us-east-1
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ```bash
@@ -64,36 +62,31 @@ kubectl apply -f bucketclass.yaml
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `objectStoreName` | Name of the CephObjectStore | `my-store` |
-| `objectStoreNamespace` | Namespace of the object store | `rook-ceph` |
-| `region` | S3 region identifier | `us-east-1` |
-| `bucketMaxObjects` | Max objects quota | `1000000` |
-| `bucketMaxSize` | Max size quota in bytes | `10737418240` |
+| `objectStoreUserSecretName` | Name of the secret for the CephObjectStoreUser | `rook-ceph-object-user-my-store-cosi` |
+| `objectStoreUserSecretNamespace` | Namespace of the CephObjectStoreUser secret | `rook-ceph` |
 
-## BucketClass with Quotas
+## BucketClass with Retain Policy
 
 ```yaml
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketClass
 metadata:
-  name: rook-ceph-quota-bucketclass
-driverName: rook-ceph.ceph.rook.io
-deletionPolicy: retain
+  name: rook-ceph-retain-bucketclass
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+deletionPolicy: Retain
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-  bucketMaxObjects: "500000"
-  bucketMaxSize: "5368709120"
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ## Deletion Policy Options
 
-- **`delete`**: When a BucketClaim is deleted, Rook removes the bucket and all its contents from Ceph
-- **`retain`**: The bucket persists in Ceph even after the BucketClaim is removed; useful for compliance scenarios
+- **`Delete`**: When a BucketClaim is deleted, Rook removes the bucket and all its contents from Ceph
+- **`Retain`**: The bucket persists in Ceph even after the BucketClaim is removed; useful for compliance scenarios
 
 ```yaml
-# Use retain for production data
-deletionPolicy: retain
+# Use Retain for production data
+deletionPolicy: Retain
 ```
 
 ## Verifying the BucketClass
@@ -112,12 +105,12 @@ You can create multiple BucketClasses for different object stores or configurati
 kubectl get bucketclass
 
 # NAME                        DRIVER                              AGE
-# rook-ceph-bucketclass       rook-ceph.ceph.rook.io             5m
-# rook-ceph-archive           rook-ceph.ceph.rook.io             2m
+# rook-ceph-bucketclass       rook-ceph.ceph.objectstorage.k8s.io             5m
+# rook-ceph-archive           rook-ceph.ceph.objectstorage.k8s.io             2m
 ```
 
 Different teams or applications can reference different classes based on their storage tier requirements.
 
 ## Summary
 
-BucketClass is the COSI equivalent of a Kubernetes StorageClass, defining provisioning parameters and deletion policies for object storage buckets. In Rook-Ceph, you configure BucketClasses to point at specific CephObjectStores with optional quota constraints. Creating well-named BucketClasses for different tiers (standard, archive, dev) makes self-service bucket provisioning safe and governed across your Kubernetes platform.
+BucketClass is the COSI equivalent of a Kubernetes StorageClass, defining provisioning parameters and deletion policies for object storage buckets. In Rook-Ceph, you configure BucketClasses to reference CephObjectStoreUser secrets and set appropriate deletion policies. Creating well-named BucketClasses for different tiers (standard, archive, dev) makes self-service bucket provisioning safe and governed across your Kubernetes platform.
