@@ -66,7 +66,7 @@ mount -t ceph mon1:6789,mon2:6789,mon3:6789:${SUBVOL_PATH} \
 # Create with specific data pool and mode
 ceph fs subvolume create cephfs analytics \
   --size 53687091200 \
-  --data_pool cephfs.data.fast \
+  --pool_layout cephfs.data.fast \
   --mode 0755 \
   --uid 1000 \
   --gid 1000
