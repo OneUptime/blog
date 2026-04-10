@@ -33,7 +33,7 @@ Get the current monitor addresses:
 
 ```bash
 kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
-  ceph mon dump | grep -E "^\d"
+  ceph mon dump | grep -E "^[0-9]"
 ```
 
 ## Testing Monitor Reachability
