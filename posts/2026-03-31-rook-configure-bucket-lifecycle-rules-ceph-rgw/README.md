@@ -103,10 +103,10 @@ rgw_lifecycle_work_time = 00:00-06:00
 rgw_lc_max_objs = 32
 ```
 
-Reload the config after changes:
+Restart the daemon after changes:
 
 ```bash
-systemctl reload ceph-radosgw@rgw.myzone
+systemctl restart ceph-radosgw@rgw.myzone
 ```
 
 ## Summary
