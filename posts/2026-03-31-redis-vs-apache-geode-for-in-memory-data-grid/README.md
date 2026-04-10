@@ -8,7 +8,7 @@ Description: Compare Redis and Apache Geode for in-memory data grid use cases - 
 
 ---
 
-An in-memory data grid (IMDG) is a distributed cluster of nodes that stores data in memory and provides services like distributed queries, event listeners, and write-behind caching. Redis is often used as a simple IMDG, but Apache Geode was built specifically for this purpose - it originated inside VMware (formerly Pivotal) as GemFire, the backbone of high-frequency trading systems.
+An in-memory data grid (IMDG) is a distributed cluster of nodes that stores data in memory and provides services like distributed queries, event listeners, and write-behind caching. Redis is often used as a simple IMDG, but Apache Geode was built specifically for this purpose - it originated at GemStone Systems as GemFire, later becoming part of Pivotal and then VMware, and has been used as the backbone of trading and financial systems.
 
 ## Redis as an IMDG
 
@@ -80,6 +80,11 @@ cqf.addCqListener(new CqListener() {
         Order updated = (Order) event.getNewValue();
         System.out.println("Order updated: " + updated.getId());
     }
+
+    @Override
+    public void onError(CqEvent event) {
+        System.err.println("CQ error: " + event);
+    }
 });
 
 CqQuery cq = qs.newCq(
@@ -99,7 +104,7 @@ cq.execute();
 | Read-through | No | Yes (cache loader) |
 | WAN replication | Manual / Redis Cloud | Built-in WAN gateway |
 | Transactions | Single-node MULTI | Distributed transactions |
-| Persistence | RDB/AOF | Disk store (HDStore) |
+| Persistence | RDB/AOF | Disk Store |
 | Language | Polyglot | Java-first |
 | Ops complexity | Low | High |
 | Best for | Caching, queues, sessions | Enterprise IMDG, financial |
