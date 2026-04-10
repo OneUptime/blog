@@ -67,13 +67,7 @@ ceph osd pool application enable my-ec-pool rbd
 
 ## Creating a CRUSH Rule for the EC Pool
 
-By default, Ceph uses the `erasure-code` rule. To target a specific device class or topology, create a dedicated CRUSH rule:
-
-```bash
-ceph osd crush rule create-erasure my-ec-rule default host ssd
-```
-
-Then update the profile to use this rule:
+By default, Ceph creates a CRUSH rule from the erasure code profile when the pool is created. To target a specific device class or topology, include CRUSH parameters in the profile:
 
 ```bash
 ceph osd erasure-code-profile set my-ec-profile \
@@ -83,6 +77,12 @@ ceph osd erasure-code-profile set my-ec-profile \
   crush-failure-domain=host \
   crush-root=default \
   crush-device-class=ssd
+```
+
+Then create a dedicated CRUSH rule from the profile:
+
+```bash
+ceph osd crush rule create-erasure my-ec-rule my-ec-profile
 ```
 
 ## Creating an EC Pool in Rook
