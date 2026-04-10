@@ -42,18 +42,19 @@ kubectl apply -f cluster.yaml
 
 ## Using a KMS for Key Storage
 
-By default, Rook stores encryption keys in a Kubernetes Secret. For production, use a KMS like HashiCorp Vault:
+By default, Rook stores encryption keys in the Ceph mon store. For production, use a KMS like HashiCorp Vault to centralize key management:
 
 ```yaml
 spec:
   security:
-    keyManagementService:
-      enable: true
+    kms:
       connectionDetails:
         KMS_PROVIDER: "vault"
         VAULT_ADDR: "https://vault.example.com:8200"
-        VAULT_BACKEND_PATH: "rook/osd"
-        VAULT_CACERT: "/etc/ceph/vault.ca"
+        VAULT_BACKEND_PATH: "rook"
+        VAULT_SECRET_ENGINE: "kv"
+        VAULT_AUTH_METHOD: "token"
+        VAULT_CACERT: "vault-ca-cert"
       tokenSecretName: rook-vault-token
 ```
 
@@ -77,17 +78,18 @@ You should see entries like:
 ceph-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx-sdb-block-dmcrypt
 ```
 
-## Inspecting Encryption Key Secrets
+## Inspecting Encryption Keys
+
+Encryption keys for `encryptedDevice`-based OSDs are stored in the Ceph mon store. Retrieve a key from the Rook toolbox:
 
 ```bash
-kubectl -n rook-ceph get secrets | grep encryption
-kubectl -n rook-ceph get secret rook-ceph-osd-encryption-key-osd-0 -o jsonpath='{.data.dmcrypt-key}' | base64 -d
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config-key get dm-crypt/osd/<osd-uuid>/luks
 ```
 
 ## Understanding the Key Flow
 
 1. Rook generates a unique per-OSD encryption key
-2. The key is stored in a Kubernetes Secret (or KMS)
+2. The key is stored in the Ceph mon store (or a KMS if configured)
 3. At OSD startup, Rook retrieves the key and opens the dm-crypt device
 4. All writes go through the encryption layer before reaching the physical disk
 
@@ -103,4 +105,4 @@ On modern CPUs with AES-NI hardware acceleration, the overhead is typically less
 
 ## Summary
 
-At-rest encryption with BlueStore and dmcrypt is configured via `encryptedDevice: "true"` in the Rook CephCluster spec and must be set before OSD creation. For production clusters, integrate with a KMS like HashiCorp Vault to centralize key management. Verify encryption by checking for dm-crypt devices on OSD nodes and reviewing Kubernetes secrets holding OSD keys.
+At-rest encryption with BlueStore and dmcrypt is configured via `encryptedDevice: "true"` in the Rook CephCluster spec and must be set before OSD creation. For production clusters, integrate with a KMS like HashiCorp Vault to centralize key management. Verify encryption by checking for dm-crypt devices on OSD nodes and inspecting keys in the Ceph mon store.
