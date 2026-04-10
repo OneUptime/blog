@@ -47,7 +47,8 @@ Create the RBD provisioner user:
 
 ```bash
 ceph auth get-or-create client.csi-rbd-provisioner \
-  mon 'profile rbd' \
+  mon 'profile rbd, allow command "osd blocklist"' \
+  mgr 'allow rw' \
   osd 'profile rbd pool=replicapool' \
   > /etc/ceph/ceph.client.csi-rbd-provisioner.keyring
 ```
@@ -56,7 +57,7 @@ Create the RBD node user:
 
 ```bash
 ceph auth get-or-create client.csi-rbd-node \
-  mon 'profile rbd' \
+  mon 'profile rbd, allow command "osd blocklist"' \
   osd 'profile rbd pool=replicapool' \
   > /etc/ceph/ceph.client.csi-rbd-node.keyring
 ```
@@ -65,9 +66,10 @@ For CephFS, create the CephFS provisioner user:
 
 ```bash
 ceph auth get-or-create client.csi-cephfs-provisioner \
-  mon 'allow r' \
+  mon 'allow r, allow command "osd blocklist"' \
   mgr 'allow rw' \
   osd 'allow rw tag cephfs metadata=myfs' \
+  mds 'allow *' \
   > /etc/ceph/ceph.client.csi-cephfs-provisioner.keyring
 ```
 
@@ -75,10 +77,10 @@ Create the CephFS node user:
 
 ```bash
 ceph auth get-or-create client.csi-cephfs-node \
-  mon 'allow r' \
+  mon 'allow r, allow command "osd blocklist"' \
   mgr 'allow rw' \
   osd 'allow rw tag cephfs *=myfs' \
-  mds 'allow rw fsname=myfs' \
+  mds 'allow rw' \
   > /etc/ceph/ceph.client.csi-cephfs-node.keyring
 ```
 
@@ -140,8 +142,8 @@ Create the CephFS CSI provisioner secret:
 ```bash
 kubectl -n rook-ceph create secret generic rook-csi-cephfs-provisioner \
   --type="kubernetes.io/rook" \
-  --from-literal=adminID=csi-cephfs-provisioner \
-  --from-literal=adminKey="$(ceph auth get-key client.csi-cephfs-provisioner)"
+  --from-literal=userID=csi-cephfs-provisioner \
+  --from-literal=userKey="$(ceph auth get-key client.csi-cephfs-provisioner)"
 ```
 
 Create the CephFS CSI node secret:
@@ -149,8 +151,8 @@ Create the CephFS CSI node secret:
 ```bash
 kubectl -n rook-ceph create secret generic rook-csi-cephfs-node \
   --type="kubernetes.io/rook" \
-  --from-literal=adminID=csi-cephfs-node \
-  --from-literal=adminKey="$(ceph auth get-key client.csi-cephfs-node)"
+  --from-literal=userID=csi-cephfs-node \
+  --from-literal=userKey="$(ceph auth get-key client.csi-cephfs-node)"
 ```
 
 ## Step 5 - Deploy the External CephCluster Resource
