@@ -70,7 +70,7 @@ ZRANGE scores 0 -1 WITHSCORES
 ZADD scores 100 "alice" 200 "bob" 300 "charlie" 400 "diana"
 
 -- Remove scores strictly between 100 and 400 (excluding endpoints)
-ZREMRANGEBYSCORE scores "(100" "(400"
+ZREMRANGEBYSCORE scores (100 (400
 -- (integer) 2
 
 ZRANGE scores 0 -1 WITHSCORES
@@ -110,7 +110,7 @@ ZREMRANGEBYSCORE jobs:delayed -inf 1743000000
 ZADD search:cache 0.1 "doc:stale-1" 0.2 "doc:stale-2" 0.8 "doc:relevant" 0.9 "doc:top"
 
 -- Remove results with relevance score below 0.5
-ZREMRANGEBYSCORE search:cache -inf "(0.5"
+ZREMRANGEBYSCORE search:cache -inf (0.5
 -- (integer) 2
 ```
 
