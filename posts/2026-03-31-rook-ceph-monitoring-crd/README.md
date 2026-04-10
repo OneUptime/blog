@@ -82,13 +82,13 @@ kubectl -n rook-ceph get servicemonitor rook-ceph-mgr -o yaml
 
 ## Disabling Certain Metrics
 
-To reduce cardinality in large clusters, disable high-cardinality metrics:
+To reduce cardinality in large clusters, disable Prometheus metrics collection from the MGR module and Ceph exporter:
 
 ```yaml
 spec:
   monitoring:
     enabled: true
-    metricsDisabled: false
+    metricsDisabled: true
 ```
 
 To disable all Prometheus metrics from the dashboard (but keep the dashboard itself):
@@ -117,15 +117,15 @@ You should see `ceph_health_status` with a value of `0` (OK), `1` (WARN), or `2`
 Rook provides ready-to-use alerting rules:
 
 ```bash
-kubectl apply -f rook/deploy/examples/monitoring/prometheus-ceph-rules.yaml
+kubectl apply -f rook/deploy/examples/monitoring/localrules.yaml
 ```
 
 This creates PrometheusRule resources with alerts like:
 
 - `CephHealthError` - Cluster health is ERROR
 - `CephOSDDown` - One or more OSDs are down
-- `CephMonQuorumAtRisk` - Only 1 Mon remaining in quorum
-- `CephNearFull` - Cluster is above nearFullRatio
+- `CephMonDownQuorumAtRisk` - Monitor quorum is at risk due to monitors being down
+- `CephOSDNearFull` - One or more OSDs are approaching full capacity
 
 View created rules:
 
@@ -144,19 +144,22 @@ Import Ceph Grafana dashboards using the official dashboard IDs:
 # 5342 - Ceph Pool
 ```
 
-Or apply the pre-built ConfigMaps from the Rook repository:
+The pre-built dashboard JSON files are available in the Rook repository:
 
 ```bash
-kubectl apply -f rook/deploy/examples/monitoring/grafana-dashboards.yaml
+ls rook/deploy/examples/monitoring/grafana/
+# Ceph Cluster Dashboard.json
+# Ceph OSD Single Dashboard.json
+# Ceph Pools Dashboard.json
 ```
 
 ## Monitoring Rook Operator Metrics
 
-The Rook operator also exposes its own metrics:
+The Rook operator can expose its own controller-runtime metrics, but this is disabled by default. To enable it, set `ROOK_OPERATOR_METRICS_BIND_ADDRESS` to `:8080` in the operator ConfigMap. Once enabled:
 
 ```bash
-kubectl -n rook-ceph port-forward svc/rook-ceph-operator-metrics 9443:9443 &
-curl -k https://localhost:9443/metrics | grep rook_
+kubectl -n rook-ceph port-forward deploy/rook-ceph-operator 8080:8080 &
+curl -s http://localhost:8080/metrics | grep rook_
 ```
 
 ## Summary
