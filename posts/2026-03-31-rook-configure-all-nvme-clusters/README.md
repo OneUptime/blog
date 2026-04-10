@@ -61,11 +61,8 @@ ceph config set osd bluestore_cache_size_ssd 8589934592
 # Small minimum allocation size for NVMe (benefits small I/O)
 ceph config set osd bluestore_min_alloc_size_ssd 4096
 
-# Enable write-combining for NVMe (groups small writes)
+# Disable deferred writes for NVMe (write directly to device, avoiding WAL double-write overhead)
 ceph config set osd bluestore_prefer_deferred_size_ssd 0
-
-# Larger spill-over buffer for write coalescing
-ceph config set osd bluestore_max_bytes_per_device_hint 107374182400  # 100 GB
 ```
 
 ## Recovery Settings for NVMe
@@ -125,6 +122,8 @@ rados -p nvme-pool bench 60 rand
 # Compare with raw NVMe device
 fio --name=nvme-raw \
     --filename=/dev/nvme0n1 \
+    --ioengine=libaio \
+    --direct=1 \
     --rw=randread \
     --bs=4k \
     --numjobs=8 \
