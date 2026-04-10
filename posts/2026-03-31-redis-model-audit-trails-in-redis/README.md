@@ -64,7 +64,6 @@ XRANGE audit:resource:order:5001 - +
 ```python
 import redis
 import time
-import json
 
 r = redis.Redis(decode_responses=True)
 
