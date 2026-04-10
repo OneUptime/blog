@@ -24,9 +24,6 @@ Ceph daemons have varying sensitivity to network interruptions:
 Increase heartbeat and OSD timeouts to tolerate flapping links:
 
 ```bash
-# Seconds before OSD is declared down
-ceph config set mon osd_down_out_interval 300
-
 # Grace period for OSD heartbeats
 ceph config set osd osd_heartbeat_grace 60
 
@@ -40,16 +37,16 @@ ceph config set mon mon_lease_renew_interval_factor 0.6
 
 ## Preventing OSD Mark-Out on Short Outages
 
-By default, OSDs are marked out after 5 minutes. For edge sites with unreliable power:
+By default, OSDs are marked out after 10 minutes (600 seconds). For edge sites with unreliable power, increase this significantly:
 
 ```bash
-ceph config set mon mon_osd_down_out_interval 600
+ceph config set mon mon_osd_down_out_interval 1800
 ```
 
 Disable automatic OSD removal entirely for single-site edge:
 
 ```bash
-ceph config set mon osd_down_out_subtree_limit host
+ceph config set mon mon_osd_down_out_subtree_limit host
 ```
 
 ## Configuring RGW for Offline Resilience
