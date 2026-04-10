@@ -83,7 +83,7 @@ parameters:
 | Random IOPS | Good | Excellent (ARC cache) |
 | Latency | ~0.5-2ms | Sub-millisecond (local) |
 | Compression | LZ4 at pool level | Per-dataset |
-| Deduplication | No (removed) | Yes (memory-intensive) |
+| Deduplication | Experimental | Yes (memory-intensive) |
 
 ZFS is faster for local workloads because it eliminates network I/O. Ceph provides higher availability at the cost of network overhead.
 
@@ -93,7 +93,7 @@ Both systems provide strong data integrity:
 
 - Both use checksums on all data and metadata
 - Both support scrubbing to detect bit rot
-- ZFS uses SHA-256 by default; Ceph uses CRC32C for data and SHA-256 for metadata
+- ZFS uses fletcher4 by default; Ceph uses CRC32C for data and metadata checksums
 
 ```bash
 # Ceph scrub
