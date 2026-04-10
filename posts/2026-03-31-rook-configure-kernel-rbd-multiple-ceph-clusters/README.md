@@ -97,17 +97,15 @@ rbd-nbd list-mapped
 
 ## Configuring Automatic Remapping at Boot
 
-Use a systemd unit or rbdmap configuration for each cluster:
+Add entries for all clusters to the single `/etc/ceph/rbdmap` file, specifying `cluster` and `conf` for each entry:
 
 ```bash
-# /etc/ceph/prod.rbdmap
-mypool/prod-image id=admin,keyring=/etc/ceph/prod.client.admin.keyring
-
-# /etc/ceph/dr.rbdmap
-mypool/dr-image id=admin,keyring=/etc/ceph/dr.client.admin.keyring
+# /etc/ceph/rbdmap
+mypool/prod-image id=admin,keyring=/etc/ceph/prod.client.admin.keyring,cluster=prod,conf=/etc/ceph/prod.conf
+mypool/dr-image   id=admin,keyring=/etc/ceph/dr.client.admin.keyring,cluster=dr,conf=/etc/ceph/dr.conf
 ```
 
-Enable the rbdmap service per cluster:
+Enable the rbdmap service:
 
 ```bash
 sudo systemctl enable rbdmap
