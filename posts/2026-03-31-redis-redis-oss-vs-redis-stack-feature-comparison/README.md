@@ -31,7 +31,7 @@ LRANGE queue:jobs 0 -1
 
 # Sorted Sets
 ZADD leaderboard 1500 "player:alice"
-ZREVRANGE leaderboard 0 9 WITHSCORES
+ZRANGE leaderboard 0 9 REV WITHSCORES
 
 # Streams
 XADD events * action "purchase" user "alice" amount "29.99"
@@ -58,7 +58,7 @@ FT.AGGREGATE idx:products "*" GROUPBY 1 @category REDUCE COUNT 0 AS count
 SET config:app '{"theme":"dark","notifications":true}'
 
 # Redis Stack: native JSON with path queries
-JSON.SET user:123 $ '{"name":"Alice","address":{"city":"NYC"},"tags":["admin"]}'
+JSON.SET user:123 $ '{"name":"Alice","address":{"city":"NYC"},"tags":["admin"],"score":0}'
 JSON.GET user:123 $.address.city
 JSON.ARRAPPEND user:123 $.tags '"moderator"'
 JSON.NUMINCRBY user:123 $.score 10
