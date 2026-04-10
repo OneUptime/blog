@@ -21,9 +21,10 @@ Scenario B: Minority Sentinel partition
   [S1] | [S2, S3, Primary, Replicas]
   S1 cannot form quorum, cannot initiate failover
 
-Scenario C: Majority Sentinel partition
+Scenario C: Majority Sentinels with Primary
   [S1, S2, Primary] | [S3, Replicas]
-  S1+S2 can form quorum, may initiate failover
+  S1+S2 can reach Primary, no failover triggered
+  Replicas are cut off, replication stalls
 ```
 
 ## What Quorum Guarantees
@@ -43,8 +44,8 @@ But in the majority partition, failover can proceed:
 Partition: [S1, S2] | [S3, Primary, Replicas]
   - S1 and S2 cannot reach Primary -> S-DOWN
   - S1 + S2 reach quorum=2 -> O-DOWN
-  - Failover initiated on a replica in [S3, Replicas] partition
-  - But S3 is in the wrong partition! Failover may fail or elect incorrectly
+  - Leader elected (S1 or S2) attempts failover
+  - But leader cannot reach any replica to promote -> failover fails
 ```
 
 ## Protecting Against Stale Primary Writes
@@ -57,7 +58,7 @@ min-replicas-to-write 1
 min-replicas-max-lag 10
 ```
 
-This configuration stops the primary from accepting writes if it cannot confirm at least 1 replica is caught up within 10 seconds. After the partition heals, writes made after this threshold are lost when the old primary becomes a replica.
+This configuration stops the primary from accepting writes if it cannot confirm at least 1 replica is caught up within 10 seconds. Any writes accepted on the isolated primary before the protection kicks in (up to 10 seconds) will be lost when the old primary becomes a replica after the partition heals.
 
 ## Sentinel TILT Mode During Partition
 
@@ -76,8 +77,8 @@ When the partition heals:
 
 ```text
 1. Old primary reconnects to the cluster
-2. It discovers a new primary exists
-3. It demotes itself: REPLICAOF new-primary-ip new-primary-port
+2. Sentinels detect the old primary is back
+3. Sentinels send REPLICAOF new-primary-ip new-primary-port to the old primary
 4. Any writes made during the partition are discarded
 5. Old primary syncs from the new primary
 ```
