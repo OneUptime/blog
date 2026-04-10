@@ -91,7 +91,7 @@ metadata:
   name: my-bucket
   namespace: default
   labels:
-    notifications.rook.io/http-notification: "true"
+    bucket-notification-http-notification: http-notification
 spec:
   bucketName: my-events-bucket
   storageClassName: rook-ceph-bucket
@@ -202,9 +202,9 @@ Event: ObjectCreated:Put, Bucket: my-events-bucket, Key: data.json, Size: 1024
 ## Troubleshooting
 
 ```bash
-# Check notification config on the bucket
+# List topics to verify notification setup
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin notification list --bucket=my-events-bucket
+  radosgw-admin topic list
 
 # Check RGW logs for delivery failures
 kubectl logs -n rook-ceph -l app=rook-ceph-rgw --tail=50 | grep "notification"
