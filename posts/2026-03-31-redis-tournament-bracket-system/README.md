@@ -14,7 +14,6 @@ Tournament brackets require tracking participants, match pairings, results, and 
 
 ```python
 import redis
-import json
 import math
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -89,6 +88,11 @@ def advance_winners_if_round_complete(tournament_id: str, round_num: int):
         if match.get("status") != "completed":
             return  # Round not done yet
         winners.append(match["winner"])
+
+    # Check if tournament is complete
+    if len(winners) == 1:
+        r.hset(f"tournament:{tournament_id}:meta", "status", "completed")
+        return
 
     # Create next round
     next_round = round_num + 1
