@@ -106,12 +106,15 @@ spec:
 ## Configure cgroups for I/O Isolation
 
 ```bash
-# Set I/O weight for Ceph processes (higher = more I/O priority)
-# Ceph OSD needs higher I/O priority than background apps
-echo 500 > /sys/fs/cgroup/blkio/kubepods/besteffort/blkio.weight
+# Lower I/O weight for BestEffort pods so Ceph OSDs get relative I/O priority
+# blkio.weight range: 10-1000 (cgroups v1), default is 500
+echo 100 > /sys/fs/cgroup/blkio/kubepods/besteffort/blkio.weight
 
-# OSD pods should be guaranteed QoS (not burstable or BestEffort)
-# This happens automatically when requests == limits
+# On cgroups v2 (default in modern Kubernetes), use io.weight instead:
+# echo 1 > /sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/io.weight
+
+# OSD pods should be Guaranteed QoS (not Burstable or BestEffort)
+# This requires requests == limits for all containers in the pod
 ```
 
 ## Monitor Resource Contention
