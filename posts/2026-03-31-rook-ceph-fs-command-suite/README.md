@@ -32,9 +32,9 @@ myfs - 3 clients
 RANK  STATE             MDS       ACTIVITY     DNS    INOS   DIRS   CAPS
  0    active            myfs-a    Reqs:    0   10.2k  10.5k  4.00k   191
 
-POOL        TYPE     USED  AVAIL
-myfs-meta   metadata 41.9M   865G
-myfs-data   data     19.2G   865G
+POOL           TYPE     USED  AVAIL
+myfs-metadata  metadata 41.9M   865G
+myfs-data      data     19.2G   865G
 ```
 
 ## Getting Filesystem Details
