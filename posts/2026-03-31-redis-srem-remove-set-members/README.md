@@ -152,7 +152,6 @@ SMEMBERS role:editor
 
 ```redis
 SADD online:users "user:1" "user:2" "user:3"
--- User 2 logs out
 SREM online:users "user:2"
 SMEMBERS online:users
 ```
@@ -166,7 +165,6 @@ SMEMBERS online:users
 
 ```redis
 SADD blocklist "ip:10.0.0.1" "ip:10.0.0.2"
--- Unblock ip
 SREM blocklist "ip:10.0.0.1"
 SISMEMBER blocklist "ip:10.0.0.1"
 ```
