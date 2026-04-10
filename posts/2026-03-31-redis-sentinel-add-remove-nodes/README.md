@@ -68,14 +68,12 @@ Removing a Sentinel requires telling other Sentinels to forget about it.
 ### Step 1 - Stop the Sentinel Process
 
 ```bash
-redis-cli -h sentinel-to-remove -p 26379 SENTINEL SHUTDOWN
-# or
 redis-cli -h sentinel-to-remove -p 26379 SHUTDOWN
 ```
 
 ### Step 2 - Remove from Other Sentinels' State
 
-Other Sentinels remember the removed Sentinel for 30 days by default. Force them to forget it:
+Other Sentinels never automatically forget a Sentinel they have seen, even if it becomes unreachable. Force them to forget it:
 
 ```bash
 # Get the removed Sentinel's runid
