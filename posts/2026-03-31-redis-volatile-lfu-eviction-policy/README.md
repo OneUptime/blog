@@ -100,7 +100,7 @@ OBJECT FREQ cache:product:obscure
 |----------|-------------|-------------|
 | Popular item not accessed in last 10s | May evict | Protects (high counter) |
 | Rarely accessed item with long TTL | May keep | Evicts (low counter) |
-| New item with no access history | Protects (just set) | May evict (counter = 0) |
+| New item with no access history | Protects (just set) | May evict (counter starts at 5) |
 
 `volatile-lfu` is ideal when you want Redis to learn which cached items are genuinely popular and protect them even during brief gaps in access.
 
