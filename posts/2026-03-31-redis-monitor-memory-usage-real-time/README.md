@@ -20,7 +20,7 @@ Key fields to watch:
 
 ```text
 used_memory:9126456832
-used_memory_human:8.50G           <- RSS-equivalent, actual data
+used_memory_human:8.50G           <- total bytes allocated by Redis
 used_memory_rss:10737418240
 used_memory_rss_human:10.00G      <- OS-level memory (includes fragmentation)
 used_memory_peak_human:11.20G     <- Highest ever reached
