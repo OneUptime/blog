@@ -32,7 +32,7 @@ NetApp ONTAP has broader legacy protocol support including Fibre Channel (FC) an
 | SMB/CIFS | No (use Samba over CephFS) | Yes (native) |
 | iSCSI | Yes (RBD) | Yes |
 | Fibre Channel | No | Yes |
-| S3 | Yes (RGW) | Yes (StorageGRID) |
+| S3 | Yes (RGW) | Yes (native, ONTAP 9.8+) |
 | NVMe-oF | Limited | Yes |
 
 ## Kubernetes Integration
