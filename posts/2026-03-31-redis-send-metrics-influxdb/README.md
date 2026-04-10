@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, InfluxDB, Metric, Monitoring, Telegraf
 
-Description: Learn how to send Redis metrics to InfluxDB using Telegraf - covering plugin configuration, key metrics, retention policies, and building queries for Redis monitoring.
+Description: Learn how to send Redis metrics to InfluxDB using Telegraf - covering plugin configuration, key metrics, and building queries for Redis monitoring.
 
 ---
 
@@ -30,8 +30,8 @@ sudo apt-get update && sudo apt-get install telegraf
   # servers = ["tcp://:password@localhost:6379"]
 
   # Collect keyspace metrics per database
-  # fieldpass = ["keyspace_hits", "keyspace_misses", "connected_clients",
-  #              "used_memory", "evicted_keys", "rejected_connections"]
+  # fieldinclude = ["keyspace_hits", "keyspace_misses", "connected_clients",
+  #                  "used_memory", "evicted_keys", "rejected_connections"]
 ```
 
 ## Configure the InfluxDB Output
@@ -93,8 +93,8 @@ from(bucket: "redis-metrics")
   |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> map(fn: (r) => ({
       _time: r._time,
-      hit_rate: if (r.keyspace_hits + r.keyspace_misses) > 0.0
-                then r.keyspace_hits / (r.keyspace_hits + r.keyspace_misses) * 100.0
+      hit_rate: if float(v: r.keyspace_hits + r.keyspace_misses) > 0.0
+                then float(v: r.keyspace_hits) / float(v: r.keyspace_hits + r.keyspace_misses) * 100.0
                 else 0.0
   }))
 ```
