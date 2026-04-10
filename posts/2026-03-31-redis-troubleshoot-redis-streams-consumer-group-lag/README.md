@@ -41,9 +41,12 @@ Messages that were delivered but not acknowledged pile up as pending entries:
 
 ```bash
 # Show pending summary
+redis-cli XPENDING my-stream my-group
+
+# Show up to 10 pending entries with details
 redis-cli XPENDING my-stream my-group - + 10
 
-# Detailed pending list
+# Detailed pending list filtered by consumer
 redis-cli XPENDING my-stream my-group - + 100 consumer-1
 ```
 
