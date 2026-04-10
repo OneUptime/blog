@@ -135,7 +135,7 @@ curl -X PUT "https://elasticsearch:9200/_ilm/policy/ceph-metrics-policy" \
 
 ## Step 5 - Build Kibana Dashboards
 
-Use Kibana Lens to create visualizations with KQL queries:
+Use Kibana Lens to create visualizations. Here is an example Elasticsearch query in the Dev Tools Console:
 
 ```bash
 # In Kibana Dev Tools console
@@ -144,7 +144,7 @@ GET metricbeat-ceph-*/_search
   "query": {
     "bool": {
       "must": [
-        {"match": {"labels.name": "ceph_health_status"}},
+        {"exists": {"field": "prometheus.metrics.ceph_health_status"}},
         {"range": {"@timestamp": {"gte": "now-1h"}}}
       ]
     }
@@ -156,7 +156,7 @@ GET metricbeat-ceph-*/_search
         "fixed_interval": "5m"
       },
       "aggs": {
-        "avg_health": {"avg": {"field": "prometheus.labels.value"}}
+        "avg_health": {"avg": {"field": "prometheus.metrics.ceph_health_status"}}
       }
     }
   }
@@ -174,7 +174,7 @@ curl -X POST "https://kibana:5601/api/alerting/rule" \
   -d '{
     "name": "Ceph Health Degraded",
     "rule_type_id": ".index-threshold",
-    "consumer": "alerts",
+    "consumer": "stackAlerts",
     "schedule": {"interval": "5m"},
     "params": {
       "index": "metricbeat-ceph-*",
