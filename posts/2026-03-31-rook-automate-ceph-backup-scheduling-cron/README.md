@@ -36,7 +36,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SNAPSHOT_NAME="backup-$TIMESTAMP"
 
 rbd_cmd() {
-  kubectl -n "$NAMESPACE" exec -it deploy/rook-ceph-tools -- rbd "$@"
+  kubectl -n "$NAMESPACE" exec deploy/rook-ceph-tools -- rbd "$@"
 }
 
 # Create snapshot
