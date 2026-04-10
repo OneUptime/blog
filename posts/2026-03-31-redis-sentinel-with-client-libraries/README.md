@@ -111,11 +111,10 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 
-RedisURI sentinelUri = RedisURI.builder()
-    .withSentinel("sentinel-1", 26379)
+RedisURI sentinelUri = RedisURI.Builder
+    .sentinel("sentinel-1", 26379, "mymaster")
     .withSentinel("sentinel-2", 26380)
     .withSentinel("sentinel-3", 26381)
-    .withSentinelMasterId("mymaster")
     .withPassword("your-redis-password".toCharArray())
     .build();
 
