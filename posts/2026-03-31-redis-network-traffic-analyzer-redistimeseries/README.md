@@ -133,7 +133,7 @@ def get_bandwidth_history(host: str, interface: str,
     }
 
 def get_peak_bandwidth(host: str, interface: str,
-                        hours: int = 24) -> dict:
+                        hours: int = 24):
     now = int(time.time() * 1000)
     from_ts = now - hours * 3600 * 1000
 
