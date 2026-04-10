@@ -125,7 +125,7 @@ def check_with_blocklist(ip: str, limit: int = 60) -> dict:
 # Find IPs with highest current rate limit counts
 redis-cli --scan --pattern "ratelimit:ip:*" | \
   xargs -I{} sh -c 'echo "{}: $(redis-cli GET {})"' | \
-  sort -t: -k4 -rn | head -20
+  sort -t: -k5 -rn | head -20
 ```
 
 ## Summary
