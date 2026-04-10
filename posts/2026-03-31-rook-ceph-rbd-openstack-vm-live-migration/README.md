@@ -27,9 +27,10 @@ On each compute node, check nova.conf includes the correct live migration flags:
 
 ```ini
 [libvirt]
-live_migration_flag = "VIR_MIGRATE_UNDEFINE_SOURCE,VIR_MIGRATE_PEER2PEER,VIR_MIGRATE_LIVE,VIR_MIGRATE_PERSIST_DEST,VIR_MIGRATE_TUNNELLED"
+live_migration_scheme = tcp
+live_migration_tunnelled = false
 live_migration_completion_timeout = 800
-live_migration_progress_timeout = 150
+live_migration_timeout_action = abort
 ```
 
 ## Step 2: Configure libvirtd for TCP Migration
@@ -37,16 +38,13 @@ live_migration_progress_timeout = 150
 On each compute node, enable libvirt remote connections:
 
 ```bash
-# Edit /etc/libvirt/libvirtd.conf
+# Set authentication for TCP connections
 cat >> /etc/libvirt/libvirtd.conf <<EOF
-listen_tls = 0
-listen_tcp = 1
 auth_tcp = "none"
 EOF
 
-# Edit /etc/default/libvirtd
-echo 'LIBVIRTD_ARGS="--listen"' >> /etc/default/libvirtd
-
+# Enable libvirtd TCP socket for live migration (uses systemd socket activation)
+systemctl enable --now libvirtd-tcp.socket
 systemctl restart libvirtd
 ```
 
@@ -101,10 +99,13 @@ journalctl -u nova-compute --since "10 minutes ago" | grep -i migration
 # Check libvirt connectivity from source to destination
 virsh -c qemu+tcp://compute2/system list
 
-# Force abort a stuck migration
-openstack server migrate --abort my-instance
+# List active migrations to get the migration ID
+openstack server migration list my-instance
+
+# Abort a stuck migration using its ID
+openstack server migration abort my-instance <migration-id>
 ```
 
 ## Summary
 
-Ceph RBD is the key enabler for efficient OpenStack live migration because the VM disk never moves - only the in-memory state is transferred between compute nodes. After configuring libvirt migration ports, firewall rules, and the correct nova.conf live_migration_flag settings, migrations complete in seconds and are limited only by RAM size, not disk size. This dramatically improves cluster maintenance flexibility and VM availability during node maintenance.
+Ceph RBD is the key enabler for efficient OpenStack live migration because the VM disk never moves - only the in-memory state is transferred between compute nodes. After configuring libvirt migration ports, firewall rules, and the correct nova.conf live migration settings, migrations complete in seconds and are limited only by RAM size, not disk size. This dramatically improves cluster maintenance flexibility and VM availability during node maintenance.
