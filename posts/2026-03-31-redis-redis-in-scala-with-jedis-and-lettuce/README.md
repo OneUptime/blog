@@ -83,8 +83,8 @@ val connection = client.connect()
 val async: RedisAsyncCommands[String, String] = connection.async()
 
 val program: Future[Unit] = for {
-  _ <- async.set("scala:key", "lettuce value").toScala
-  value <- async.get("scala:key").toScala
+  _ <- async.set("scala:key", "lettuce value").asScala
+  value <- async.get("scala:key").asScala
   _ = println(s"Got: $value")
 } yield ()
 
@@ -126,4 +126,4 @@ def getUser(jedis: Jedis, id: String): Task[Option[String]] =
 
 ## Summary
 
-Jedis works naturally in Scala with `Using` blocks for safe resource management, and its pipelining and transaction APIs map well to Scala idioms. For async code, Lettuce's `CompletableFuture` return types convert cleanly to Scala `Future` via `toScala`. Use Jedis for simple scripts and batch jobs, Lettuce for reactive or ZIO-based services.
+Jedis works naturally in Scala with `Using` blocks for safe resource management, and its pipelining and transaction APIs map well to Scala idioms. For async code, Lettuce's `RedisFuture` return types (which extend `CompletionStage`) convert cleanly to Scala `Future` via `asScala`. Use Jedis for simple scripts and batch jobs, Lettuce for reactive or ZIO-based services.
