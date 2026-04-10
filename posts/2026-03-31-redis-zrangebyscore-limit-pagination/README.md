@@ -117,18 +117,20 @@ ZRANGEBYSCORE products 0 +inf WITHSCORES LIMIT 6 3
 
 ### Filter by price range with pagination
 
-Show products priced between $50 and $200, page 1 of 2:
+Show products priced above $49.99 and up to $200, page 1 of 2:
 
 ```redis
-ZRANGEBYSCORE products 50 200 WITHSCORES LIMIT 0 2
+ZRANGEBYSCORE products 49.99 200 WITHSCORES LIMIT 0 2
 ```
 
 ```text
 1) "mouse-pad"
 2) "49.99"
+3) "headphones"
+4) "79.99"
 ```
 
-Wait - 49.99 is below 50. Use exclusive boundaries with `(`:
+The boundary 49.99 is inclusive, so mouse-pad is included. Use exclusive boundaries with `(` to exclude the exact score:
 
 ```redis
 ZRANGEBYSCORE products (49.99 200 WITHSCORES LIMIT 0 2
@@ -168,9 +170,9 @@ ZRANGEBYSCORE products -inf +inf WITHSCORES LIMIT 0 3
 # Page 2 - start just after the last score
 ZRANGEBYSCORE products (49.99 +inf WITHSCORES LIMIT 0 3
 
-# Record the last score returned: 99.99
+# Record the last score returned: 129.99
 # Page 3 - start just after that score
-ZRANGEBYSCORE products (99.99 +inf WITHSCORES LIMIT 0 3
+ZRANGEBYSCORE products (129.99 +inf WITHSCORES LIMIT 0 3
 ```
 
 This approach performs better at scale because it uses score-based filtering rather than skipping.
