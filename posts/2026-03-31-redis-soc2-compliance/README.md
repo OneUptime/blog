@@ -45,7 +45,7 @@ redis-cli --tls \
 
 ## 2. Enforce Authentication with ACLs
 
-Replace the single `requirepass` with user-level ACLs (Redis 6+):
+Replace the single `requirepass` with user-level ACLs (Redis 6.2+):
 
 ```bash
 # Create application user with minimal permissions
@@ -95,13 +95,13 @@ protected-mode yes
 Verify Redis is not listening on public interfaces:
 
 ```bash
-ss -tlnp | grep 6379
+ss -tlnp | grep 6380
 ```
 
 Expected output:
 
 ```text
-LISTEN  0  128  10.0.1.50:6379  0.0.0.0:*  users:(("redis-server",pid=1234))
+LISTEN  0  128  10.0.1.50:6380  0.0.0.0:*  users:(("redis-server",pid=1234))
 ```
 
 ## 5. Enable Redis Keyspace Notifications for Audit Trail
@@ -144,7 +144,7 @@ echo -n "Protected mode: "
 redis-cli config get protected-mode | grep -q "yes" && echo "PASS" || echo "FAIL"
 
 echo -n "Slowlog configured: "
-redis-cli config get slowlog-log-slower-than | grep -qv "^0$" && echo "PASS" || echo "FAIL"
+redis-cli config get slowlog-log-slower-than | tail -1 | grep -qv "^0$" && echo "PASS" || echo "FAIL"
 ```
 
 ## Summary
