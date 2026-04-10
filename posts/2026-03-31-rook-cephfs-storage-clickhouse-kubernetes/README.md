@@ -70,6 +70,10 @@ metadata:
   name: clickhouse
   namespace: analytics
 spec:
+  defaults:
+    templates:
+      dataVolumeClaimTemplate: clickhouse-storage
+      podTemplate: pod-template
   configuration:
     clusters:
       - name: cluster1
@@ -121,9 +125,20 @@ Tune ClickHouse for shared filesystem storage:
       </default>
     </policies>
   </storage_configuration>
-  <!-- Increase max_memory_usage for analytical queries -->
-  <max_memory_usage>10000000000</max_memory_usage>
-  <max_bytes_before_external_group_by>5000000000</max_bytes_before_external_group_by>
+</clickhouse>
+```
+
+Configure memory settings for analytical queries in `users.d/profiles.xml`:
+
+```xml
+<!-- users.d/profiles.xml -->
+<clickhouse>
+  <profiles>
+    <default>
+      <max_memory_usage>10000000000</max_memory_usage>
+      <max_bytes_before_external_group_by>5000000000</max_bytes_before_external_group_by>
+    </default>
+  </profiles>
 </clickhouse>
 ```
 
