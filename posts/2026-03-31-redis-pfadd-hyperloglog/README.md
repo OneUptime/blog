@@ -26,7 +26,7 @@ flowchart LR
 ## Syntax
 
 ```redis
-PFADD key element [element ...]
+PFADD key [element [element ...]]
 ```
 
 - `key` - HyperLogLog key
@@ -56,7 +56,7 @@ Track unique page views per day:
 
 ```redis
 PFADD pageviews:2026-03-31 user:1001 user:1002 user:1003
-PFADD pageviews:2026-03-31 user:1001   # duplicate - still returns 0 or 1 based on internal state
+PFADD pageviews:2026-03-31 user:1001   # duplicate - returns 0 since no registers are altered
 PFADD pageviews:2026-03-31 user:1004 user:1005
 ```
 
