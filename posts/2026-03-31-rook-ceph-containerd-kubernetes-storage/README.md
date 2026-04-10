@@ -23,7 +23,7 @@ kubectl get nodes -o wide | grep -i container-runtime
 
 # Or check directly on a node
 kubectl debug node/node1 -it --image=ubuntu -- \
-  crictl version
+  chroot /host crictl version
 ```
 
 ## Install the Ceph CSI Drivers
@@ -108,7 +108,13 @@ kind: DaemonSet
 metadata:
   name: rbd-module-loader
 spec:
+  selector:
+    matchLabels:
+      name: rbd-module-loader
   template:
+    metadata:
+      labels:
+        name: rbd-module-loader
     spec:
       initContainers:
       - name: modprobe
@@ -116,6 +122,9 @@ spec:
         command: ["modprobe", "rbd"]
         securityContext:
           privileged: true
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.9
 ```
 
 ## Troubleshoot CSI with containerd
