@@ -16,7 +16,7 @@ Multiple Traefik replicas each connect to the same Redis instance. When a reques
 
 ## Running Redis and Traefik
 
-```bash
+```yaml
 version: "3.8"
 services:
   redis:
@@ -46,31 +46,36 @@ If a plugin is not available, you can implement rate limiting at the service lev
 const redis = require('redis');
 const express = require('express');
 
-const client = redis.createClient({ url: 'redis://redis:6379' });
-await client.connect();
+async function main() {
+  const client = redis.createClient({ url: 'redis://redis:6379' });
+  await client.connect();
 
-async function rateLimitMiddleware(req, res, next) {
-  const ip = req.headers['x-forwarded-for'] || req.ip;
-  const key = `rate:${ip}`;
-  const limit = 60;
-  const window = 60;
+  async function rateLimitMiddleware(req, res, next) {
+    const ip = req.headers['x-forwarded-for'] || req.ip;
+    const key = `rate:${ip}`;
+    const limit = 60;
+    const window = 60;
 
-  const count = await client.incr(key);
-  if (count === 1) {
-    await client.expire(key, window);
+    const count = await client.incr(key);
+    if (count === 1) {
+      await client.expire(key, window);
+    }
+
+    res.setHeader('X-RateLimit-Limit', limit);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - count));
+
+    if (count > limit) {
+      return res.status(429).json({ error: 'Too many requests' });
+    }
+    next();
   }
 
-  res.setHeader('X-RateLimit-Limit', limit);
-  res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - count));
-
-  if (count > limit) {
-    return res.status(429).json({ error: 'Too many requests' });
-  }
-  next();
+  const app = express();
+  app.use(rateLimitMiddleware);
+  app.listen(3000);
 }
 
-const app = express();
-app.use(rateLimitMiddleware);
+main();
 ```
 
 ## Traefik Labels for Service Routing
@@ -90,7 +95,7 @@ For plugin-based rate limiting, create a `traefik.yml` config:
 experimental:
   plugins:
     redis-rate-limit:
-      modulename: github.com/yourorg/traefik-redis-ratelimit
+      moduleName: github.com/yourorg/traefik-redis-ratelimit
       version: v1.0.0
 
 http:
