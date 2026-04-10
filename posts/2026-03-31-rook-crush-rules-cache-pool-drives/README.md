@@ -124,7 +124,7 @@ spec:
   deviceClass: ssd   # Rook creates a CRUSH rule targeting SSD OSDs
 ```
 
-Rook automatically creates a CRUSH rule named `replicated_ruleset_ssd` and applies it to the pool.
+Rook automatically creates a CRUSH rule named after the pool and device class (e.g., `ssd-cache-pool-ssd`) and applies it to the pool.
 
 ## Confirming No HDD Data in Cache Pool
 
