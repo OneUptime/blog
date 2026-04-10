@@ -10,7 +10,7 @@ Description: Model e-commerce product catalogs in Redis using hashes, sorted set
 
 ## Overview
 
-Product catalogs require fast reads across multiple access patterns: lookup by ID, filter by category, sort by price, and full-text search. Redis provides the ideal building blocks for caching and serving catalog data with sub-millisecond response times.
+Product catalogs require fast reads across multiple access patterns: lookup by ID, filter by category, sort by price, and faceted search. Redis provides the ideal building blocks for caching and serving catalog data with sub-millisecond response times.
 
 ## Storing Products as Hashes
 
@@ -107,7 +107,6 @@ SINTER category:electronics brand:SoundCo
 
 ```python
 import redis
-import json
 
 r = redis.Redis(decode_responses=True)
 
