@@ -40,21 +40,20 @@ def subscriber():
         if msg['type'] == 'message':
             print(f"Received: {msg['data']}")
 
+# Publish BEFORE subscriber connects - this message is LOST
+r_pub.publish('alerts', 'message 1 - LOST')
+# returns 0 - no subscribers
+
 # Start subscriber
 t = threading.Thread(target=subscriber, daemon=True)
 t.start()
 time.sleep(0.1)
 
 # Publish while subscriber is connected - delivered
-r_pub.publish('alerts', 'message 1')
+r_pub.publish('alerts', 'message 2 - DELIVERED')
+time.sleep(0.1)
 
-# Stop subscriber, publish while disconnected
-t.join(timeout=0)
-
-# This message is LOST - no subscriber connected
-r_pub.publish('alerts', 'message 2 - LOST')
-
-# message 2 never arrives even if subscriber reconnects
+# Only message 2 is received; message 1 was permanently lost
 ```
 
 ## The At-Most-Once Problem
@@ -81,7 +80,7 @@ def publish_reliable(channel, data):
 
     return stream_id
 
-def subscribe_reliable(channel, last_seen_id='$'):
+def subscribe_reliable(channel, last_seen_id='0-0'):
     pubsub = r_sub.pubsub()
     pubsub.subscribe(channel)
 
@@ -109,7 +108,7 @@ After reconnecting, catch up on missed messages by reading from the stream:
 class ReliableSubscriber:
     def __init__(self, channel):
         self.channel = channel
-        self.last_id = '$'
+        self.last_id = '0-0'
         self.r = redis.Redis(decode_responses=True)
 
     def on_reconnect(self):
