@@ -42,7 +42,7 @@ containers:
 
 ## OSD Container Security Context
 
-OSD pods require block device access, which requires specific capabilities. Configure the minimum required set:
+OSD pods require block device access. When using raw devices, OSDs typically need `privileged: true`, which grants all Linux capabilities (any `capabilities` add/drop fields are functionally overridden in privileged mode):
 
 ```yaml
 containers:
@@ -50,16 +50,9 @@ containers:
     securityContext:
       privileged: true
       runAsUser: 0
-      capabilities:
-        add:
-          - SYS_ADMIN
-          - MKNOD
-        drop:
-          - NET_ADMIN
-          - SYS_PTRACE
 ```
 
-When using deviceFilter in Rook with PVC-based OSDs, reduce OSD privileges further:
+When using PVC-based OSDs via `storageClassDeviceSets`, the OSD containers do not need direct host device access, which may allow running without privileged mode depending on your environment and SELinux configuration:
 
 ```yaml
 spec:
@@ -67,7 +60,6 @@ spec:
     storageClassDeviceSets:
       - name: set1
         count: 3
-        preparePlacement: {}
         volumeClaimTemplates:
           - metadata:
               name: data
@@ -75,7 +67,9 @@ spec:
 
 ## CSI Plugin Security Context
 
-The CSI node plugin needs elevated access to mount devices. Configure its security context via Rook Helm values:
+The CSI node plugin needs elevated access to mount devices. The CSI plugin containers run with `privileged: true` to perform mount syscalls, which is unavoidable for the node plugin.
+
+You can provide additional host volumes to the CSI plugin DaemonSets via the Rook Helm chart. These are volume configurations (not security context settings) that give the plugins access to host paths:
 
 ```yaml
 csi:
@@ -91,8 +85,6 @@ csi:
         type: ""
 ```
 
-The CSI plugin containers use `privileged: true` to call mount syscalls. This is unavoidable for the node plugin.
-
 ## Seccomp Profiles
 
 Apply a seccomp profile to non-privileged Ceph components:
@@ -106,15 +98,17 @@ spec:
           type: RuntimeDefault
 ```
 
-For OSD pods, use a custom seccomp profile that allows only the required syscalls:
+For OSD pods, you can create a custom seccomp profile that allows only the required syscalls. The following is an abbreviated example showing the structure. A production profile requires comprehensive syscall auditing (e.g., using `strace` or tools like `oci-seccomp-bpf-hook`) because Ceph OSDs use many syscalls beyond these:
 
 ```json
 {
   "defaultAction": "SCMP_ACT_ERRNO",
   "syscalls": [
-    {"names": ["open", "read", "write", "close", "stat", "fstat"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["openat", "read", "write", "close", "newfstatat", "fstat"], "action": "SCMP_ACT_ALLOW"},
     {"names": ["ioctl", "mmap", "munmap", "mprotect"], "action": "SCMP_ACT_ALLOW"},
-    {"names": ["io_setup", "io_submit", "io_getevents", "io_destroy"], "action": "SCMP_ACT_ALLOW"}
+    {"names": ["io_setup", "io_submit", "io_getevents", "io_destroy"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["socket", "connect", "bind", "sendmsg", "recvmsg"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["clone3", "futex", "epoll_ctl", "epoll_wait", "prctl"], "action": "SCMP_ACT_ALLOW"}
   ]
 }
 ```
@@ -143,7 +137,7 @@ Use kube-bench or Trivy to verify security context compliance:
 ```bash
 kubectl run trivy-scan --image=aquasec/trivy:latest \
   --restart=Never \
-  -- k8s --report summary namespace rook-ceph
+  -- k8s --report summary --namespace rook-ceph
 ```
 
 ## Summary
