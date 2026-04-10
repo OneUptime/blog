@@ -24,22 +24,20 @@ spec:
     ssl: true
 ```
 
-Rook creates a self-signed certificate automatically. To use a custom certificate:
+Rook creates a self-signed certificate automatically. To use a custom certificate, set it via the Ceph CLI through the toolbox pod:
 
 ```bash
-kubectl -n rook-ceph create secret tls rook-ceph-mgr-dashboard-tls \
-  --cert=dashboard.crt \
-  --key=dashboard.key
+kubectl -n rook-ceph cp dashboard.crt deploy/rook-ceph-tools:/tmp/dashboard.crt
+kubectl -n rook-ceph cp dashboard.key deploy/rook-ceph-tools:/tmp/dashboard.key
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph dashboard set-ssl-certificate -i /tmp/dashboard.crt
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph dashboard set-ssl-certificate-key -i /tmp/dashboard.key
 ```
 
-Reference in CephCluster:
-
-```yaml
-spec:
-  dashboard:
-    ssl: true
-    urlPrefix: /
-```
+Alternatively, use Ingress-based TLS termination with cert-manager for automated certificate management (see the Ingress section below).
 
 ## TLS for RGW (S3 API)
 
@@ -118,21 +116,24 @@ spec:
 
 ## TLS for Ceph Monitors
 
-For encrypted monitor connections (msgr2 protocol), enable:
+For encrypted inter-daemon communication (msgr2 protocol), enable encryption in the CephCluster CRD:
 
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mon ms_cluster_mode secure
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd ms_cluster_mode secure
+```yaml
+spec:
+  network:
+    connections:
+      encryption:
+        enabled: true
+      requireMsgr2: true
 ```
+
+This configures Rook to set `ms_cluster_mode`, `ms_service_mode`, and `ms_client_mode` to `secure` across all daemons.
 
 Verify msgr2 encryption status:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mon dump | grep secure
+  ceph config dump | grep ms_cluster_mode
 ```
 
 ## Verifying TLS Configuration
@@ -152,4 +153,4 @@ curl -vk https://ceph.example.com:8443/
 
 ## Summary
 
-TLS for Rook-Ceph services is configured either natively in Ceph using the `sslCertificateRef` for RGW and `ssl: true` for the dashboard, or at the Ingress layer for centralized certificate management. Use cert-manager to automate certificate provisioning and renewal, and enable msgr2 secure mode for encrypted cluster-internal communication.
+TLS for Rook-Ceph services is configured either natively in Ceph using the `sslCertificateRef` for RGW and `ssl: true` for the dashboard, or at the Ingress layer for centralized certificate management. Use cert-manager to automate certificate provisioning and renewal, and enable `network.connections.encryption` in the CephCluster CRD for encrypted cluster-internal communication via msgr2.
