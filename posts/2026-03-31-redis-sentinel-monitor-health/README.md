@@ -30,7 +30,7 @@ redis-cli -p 26380 PING
 redis-cli -p 26381 PING
 ```
 
-## Primary and Replica Status via INFO
+## Primary and Replica Status via SENTINEL
 
 ```bash
 redis-cli -p 26379 SENTINEL masters
@@ -39,12 +39,11 @@ redis-cli -p 26379 SENTINEL masters
 Key fields in the output:
 
 ```text
-"status"              -> ok (should always be ok)
+"flags"               -> should be "master" when healthy
+                         watch for "s_down", "o_down", "disconnected"
 "num-slaves"          -> number of known replicas
 "num-other-sentinels" -> number of peer Sentinels (should be N-1)
 "quorum"              -> configured quorum value
-"flags"               -> should be "master" when healthy
-                         watch for "s_down", "o_down", "disconnected"
 ```
 
 ## Checking Replica Health
@@ -81,7 +80,7 @@ for host in "${SENTINEL_HOSTS[@]}"; do
   H=$(echo $host | cut -d: -f1)
   P=$(echo $host | cut -d: -f2)
 
-  STATUS=$(redis-cli -h $H -p $P SENTINEL masters 2>/dev/null | \
+  STATUS=$(redis-cli -h $H -p $P SENTINEL master $MASTER_NAME 2>/dev/null | \
     awk '/^flags$/{getline; print}')
 
   if [[ "$STATUS" != "master" ]]; then
@@ -128,8 +127,7 @@ Set up alerts for:
 Use OneUptime or Prometheus to scrape Sentinel status. The redis_exporter tool exposes Sentinel metrics:
 
 ```bash
-redis_exporter --sentinel.addr redis://sentinel-1:26379 \
-               --sentinel.master-name mymaster
+redis_exporter --redis.addr redis://sentinel-1:26379
 ```
 
 ## Summary
