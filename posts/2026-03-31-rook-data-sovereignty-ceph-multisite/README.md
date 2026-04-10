@@ -102,11 +102,11 @@ spec:
 # Check sync status
 radosgw-admin sync status
 
-# Verify no EU data is syncing to US zones
-radosgw-admin bucket sync status --bucket=eu-customer-data --source-zone=eu-primary
+# Verify sync status for the EU bucket
+radosgw-admin bucket sync status --bucket=eu-customer-data
 
-# List all objects in the EU zone
-radosgw-admin object list --bucket=eu-customer-data
+# List all objects in the EU bucket
+radosgw-admin bucket list --bucket=eu-customer-data
 ```
 
 ## Summary
