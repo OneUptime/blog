@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Set, Social Graph, Recommendation
 
-Description: Use Redis SINTER to find mutual friends between users in O(N) time - enable people you may know features, connection counts, and batch mutual-friend lookups.
+Description: Use Redis SINTER to find mutual friends between users in O(N*M) time - enable people you may know features, connection counts, and batch mutual-friend lookups.
 
 ---
 
@@ -27,7 +27,7 @@ def get_mutual_friends(user_a, user_b):
     return r.sinter(f"friends:{user_a}", f"friends:{user_b}")
 
 def count_mutual_friends(user_a, user_b):
-    return r.sintercard(2, f"friends:{user_a}", f"friends:{user_b}")
+    return r.sintercard(2, [f"friends:{user_a}", f"friends:{user_b}"])
 ```
 
 SINTERCARD is available from Redis 7.0 and returns the count directly without transferring member data - ideal when you only need the number.
@@ -40,7 +40,7 @@ When displaying a list of suggested connections, you need mutual friend counts f
 def batch_mutual_counts(user_id, candidate_ids):
     pipe = r.pipeline()
     for candidate in candidate_ids:
-        pipe.sintercard(2, f"friends:{user_id}", f"friends:{candidate}")
+        pipe.sintercard(2, [f"friends:{user_id}", f"friends:{candidate}"])
     counts = pipe.execute()
     return dict(zip(candidate_ids, counts))
 ```
@@ -87,7 +87,7 @@ def people_you_may_know(user_id, limit=10):
     pipe = r.pipeline()
     candidate_list = list(candidates)
     for candidate in candidate_list:
-        pipe.sintercard(2, f"friends:{user_id}", f"friends:{candidate}")
+        pipe.sintercard(2, [f"friends:{user_id}", f"friends:{candidate}"])
     counts = pipe.execute()
 
     ranked = sorted(zip(candidate_list, counts), key=lambda x: x[1], reverse=True)
