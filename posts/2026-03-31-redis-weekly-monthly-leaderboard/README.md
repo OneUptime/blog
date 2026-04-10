@@ -21,14 +21,14 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 def get_period_key(period: str) -> str:
     now = time.gmtime()
     if period == "weekly":
-        # ISO week number
-        week = time.strftime("%Y-W%W")
+        # Week number (Monday as first day)
+        week = time.strftime("%Y-W%W", now)
         return f"leaderboard:{period}:{week}"
     elif period == "monthly":
-        month = time.strftime("%Y-%m")
+        month = time.strftime("%Y-%m", now)
         return f"leaderboard:{period}:{month}"
     elif period == "daily":
-        day = time.strftime("%Y-%m-%d")
+        day = time.strftime("%Y-%m-%d", now)
         return f"leaderboard:{period}:{day}"
     return f"leaderboard:{period}"
 ```
