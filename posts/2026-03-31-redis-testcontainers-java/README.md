@@ -31,8 +31,11 @@ Testcontainers starts Docker containers during test execution, giving you a real
 
 ```java
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
 import redis.clients.jedis.UnifiedJedis;
 
 @Testcontainers
@@ -136,7 +139,7 @@ Spring Boot's `@ServiceConnection` annotation works with Testcontainers:
 class SpringRedisTest {
 
     @Container
-    @ServiceConnection
+    @ServiceConnection(name = "redis")
     static GenericContainer<?> redis = new GenericContainer<>(
         DockerImageName.parse("redis:7.2"))
         .withExposedPorts(6379);
