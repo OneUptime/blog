@@ -32,14 +32,15 @@ Cache tiering provides the greatest benefit when:
 Before implementing cache tiering, analyze your access patterns:
 
 ```bash
-# Run a trace of object access frequency on the backing pool
+# Check aggregate I/O statistics (read/write ops and bandwidth) for the pool
 ceph osd pool stats backing-pool
 
-# Use rados bench to simulate read patterns
-rados -p backing-pool bench 300 rand -t 16 --no-cleanup
+# Run a synthetic random read benchmark (first create test objects, then read them randomly)
+rados -p backing-pool bench 300 write -t 16 --no-cleanup
+rados -p backing-pool bench 300 rand -t 16
 ```
 
-If the access pattern shows that top-N objects account for most reads, cache tiering may help.
+If the read/write ratio is heavily skewed toward reads and the working set fits in a cache tier, cache tiering may help.
 
 ## Bad Workload Examples
 
