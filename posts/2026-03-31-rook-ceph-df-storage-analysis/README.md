@@ -93,7 +93,7 @@ THRESHOLD=80
 USED_PCT=$(kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph df --format json | \
   python3 -c "import sys,json; d=json.load(sys.stdin); \
-  print(round(d['stats']['num_bytes_used']*100/d['stats']['total_bytes'],1))")
+  print(round(d['stats']['total_used_raw_bytes']*100/d['stats']['total_bytes'],1))")
 
 if (( $(echo "$USED_PCT > $THRESHOLD" | bc -l) )); then
   echo "ALERT: Ceph cluster is ${USED_PCT}% full"
@@ -103,7 +103,7 @@ fi
 ## Key Metrics to Track
 
 - When `%RAW USED` exceeds 70%, begin capacity planning
-- When `%RAW USED` exceeds 85%, Ceph may start refusing writes
+- When `%RAW USED` exceeds 85%, Ceph triggers a nearfull warning (`HEALTH_WARN`); writes are blocked when individual OSDs reach the `full_ratio` (default 95%)
 - Pool-level `%USED` reflects effective space, not raw overhead
 
 ## Summary
