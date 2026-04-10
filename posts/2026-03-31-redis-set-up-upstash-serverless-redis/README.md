@@ -20,8 +20,8 @@ Upstash is a serverless Redis service that bills per request rather than per hou
 Or via the Upstash CLI:
 
 ```bash
-npm install -g @upstash/cli
-upstash login
+brew install upstash/tap/upstash
+upstash auth login
 upstash redis create --name my-db --region us-east-1
 ```
 
