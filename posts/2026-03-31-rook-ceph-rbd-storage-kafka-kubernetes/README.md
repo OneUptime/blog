@@ -105,21 +105,56 @@ spec:
 
 ## Kafka KRaft Mode (No ZooKeeper)
 
-For Kafka 3.6+ with KRaft mode:
+For Kafka 3.6+ with KRaft mode, Strimzi requires `KafkaNodePool` resources and annotations on the `Kafka` resource:
 
 ```yaml
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: combined
+  labels:
+    strimzi.io/cluster: my-kafka
+spec:
+  replicas: 3
+  roles:
+    - broker
+    - controller
+  storage:
+    type: persistent-claim
+    size: 200Gi
+    class: rook-ceph-kafka
+    deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: my-kafka
+  namespace: messaging
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
 spec:
   kafka:
     version: 3.6.1
     metadataVersion: 3.6-IV2
-    replicas: 3
-    roles:
-      - broker
-      - controller
-    storage:
-      type: persistent-claim
-      size: 200Gi
-      class: rook-ceph-kafka
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 ```
 
 ## Tuning Kafka for RBD Storage
@@ -131,9 +166,9 @@ config:
   # Flush settings (RBD handles durability at block level)
   log.flush.interval.messages: "9223372036854775807"
   log.flush.interval.ms: "9223372036854775807"
-  # Allow dirty ratio before flush
+  # Disable periodic flush check (let OS handle flushing)
   log.flush.scheduler.interval.ms: "9223372036854775807"
-  # Use page cache efficiently
+  # Thread pool sizes for request handling and network I/O
   num.io.threads: 8
   num.network.threads: 4
 ```
@@ -150,4 +185,4 @@ kubectl -n messaging exec -it my-kafka-kafka-0 -- \
 
 ## Summary
 
-Rook-Ceph RBD provides per-broker persistent storage for Apache Kafka on Kubernetes. Strimzi operator deploys Kafka with `storageClass` and `size` settings that Rook CSI provisions automatically. Disabling Kafka-level flush settings (letting the OS handle flushing) is safe with RBD's block-level durability, and improves throughput significantly for high-volume topics.
+Rook-Ceph RBD provides per-broker persistent storage for Apache Kafka on Kubernetes. Strimzi operator deploys Kafka with `class` and `size` storage settings that Rook CSI provisions automatically. Disabling Kafka-level flush settings (letting the OS handle flushing) is safe with RBD's block-level durability, and improves throughput significantly for high-volume topics.
