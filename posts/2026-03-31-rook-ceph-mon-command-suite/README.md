@@ -36,15 +36,21 @@ e5: 3 mons at {a=[v2:10.0.0.1:3300/0,v1:10.0.0.1:6789/0],...}, election epoch 12
 ## Listing Monitor Members
 
 ```bash
-ceph mon ls
+ceph mon dump
 ```
 
-Output:
+Output includes the full monmap with monitor names, ranks, and addresses:
 
-```json
-[{"name": "a", "rank": 0, "public_addr": "10.0.0.1:6789"},
- {"name": "b", "rank": 1, "public_addr": "10.0.0.2:6789"},
- {"name": "c", "rank": 2, "public_addr": "10.0.0.3:6789"}]
+```
+epoch 5
+fsid 12345678-abcd-efgh-ijkl-123456789abc
+last_changed 2025-01-01T00:00:00.000000+0000
+created 2024-01-01T00:00:00.000000+0000
+min_mon_release 18 (reef)
+election_strategy: 1
+0: [v2:10.0.0.1:3300/0,v1:10.0.0.1:6789/0] mon.a
+1: [v2:10.0.0.2:3300/0,v1:10.0.0.2:6789/0] mon.b
+2: [v2:10.0.0.3:3300/0,v1:10.0.0.3:6789/0] mon.c
 ```
 
 ## Checking Quorum Members
@@ -79,7 +85,7 @@ ceph mon add d 10.0.0.4:6789
 
 ```bash
 # Remove a specific monitor
-ceph mon remove b
+ceph mon rm b
 ```
 
 In Rook, scale down:
@@ -103,18 +109,20 @@ ceph config get mon mon_osd_down_out_interval
 ceph config get mon mon_clock_drift_allowed
 ```
 
-## Forcing Quorum Election
+## Triggering a Monitor Election
 
-Trigger a new election if the leader is suspected to be unhealthy:
+If a monitor needs to temporarily leave and rejoin the quorum (for example, if the leader is suspected to be unhealthy):
 
 ```bash
-ceph mon election
+# Force a specific monitor to leave and rejoin quorum
+ceph tell mon.a quorum exit
+ceph tell mon.a quorum enter
 ```
 
 ## Checking Monitor Log
 
 ```bash
-ceph log last 20 mon
+ceph log last 20 cluster
 ```
 
 Or from Kubernetes:
