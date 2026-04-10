@@ -18,8 +18,8 @@ DragonflyDB is a modern in-memory database designed to be a drop-in replacement 
 Redis:
 - Single-threaded command processing (I/O threading added in 6.0)
 - Scales vertically on a single core for commands
-- Global lock-free data structures
-- Proven 20+ years of production use
+- Single-threaded event loop (no locking needed)
+- Proven 15+ years of production use
 
 DragonflyDB:
 - Fully multi-threaded (uses all CPU cores)
@@ -169,7 +169,7 @@ REPLICAOF dragonflydb-primary.example.com 6379
 - Some Redis Cluster-specific commands differ
 - Smaller community and ecosystem
 - Less tooling and monitoring integrations
-- BSFL license (not fully open source in some versions)
+- BSL license (Business Source License, not fully open source)
 ```
 
 ## When to Choose Redis vs DragonflyDB
