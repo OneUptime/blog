@@ -52,10 +52,11 @@ XADD {orders}.events-2 * order_id 1003
 Without hash tags, each stream lives on whatever shard Redis assigns it to:
 
 ```python
-import rediscluster
+from redis.cluster import RedisCluster
 
-rc = rediscluster.RedisCluster(
-    startup_nodes=[{'host': 'redis-cluster', 'port': '6379'}],
+rc = RedisCluster(
+    host='redis-cluster',
+    port=6379,
     decode_responses=True,
     skip_full_coverage_check=True
 )
