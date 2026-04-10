@@ -97,8 +97,8 @@ ceph osd out osd.4
 # Wait for recovery to complete
 watch -n 5 ceph -s
 
-# Stop and remove the OSD
-ceph osd stop osd.4
+# Stop the OSD daemon
+sudo systemctl stop ceph-osd@4
 ceph osd crush remove osd.4
 ceph auth del osd.4
 ceph osd rm osd.4
