@@ -55,10 +55,13 @@ helm repo add vm https://victoriametrics.github.io/helm-charts
 helm install victoria-metrics vm/victoria-metrics-cluster \
   --namespace monitoring \
   --create-namespace \
-  --set vmbackupmanager.enable=true \
-  --set vmbackupmanager.credentials.customS3Endpoint=http://rook-ceph-rgw-vm-store.rook-ceph:80 \
-  --set vmbackupmanager.credentials.accessKeyID=vmaccesskey \
-  --set vmbackupmanager.credentials.secretAccessKey=vmsecretkey
+  --set vmstorage.vmbackupmanager.enabled=true \
+  --set vmstorage.vmbackupmanager.destination="s3://vm-backups" \
+  --set vmstorage.vmbackupmanager.extraArgs.customS3Endpoint=http://rook-ceph-rgw-vm-store.rook-ceph:80 \
+  --set vmstorage.vmbackupmanager.env[0].name=AWS_ACCESS_KEY_ID \
+  --set vmstorage.vmbackupmanager.env[0].value=vmaccesskey \
+  --set vmstorage.vmbackupmanager.env[1].name=AWS_SECRET_ACCESS_KEY \
+  --set vmstorage.vmbackupmanager.env[1].value=vmsecretkey
 ```
 
 ## Configure vmbackup
@@ -109,10 +112,18 @@ spec:
           containers:
             - name: vmbackup
               image: victoriametrics/vmbackup:latest
+              command: ["/bin/sh", "-c"]
               args:
-                - -storageDataPath=/vmdata
-                - -dst=s3://vm-backups/daily/$(date +%Y-%m-%d)
-                - -customS3Endpoint=http://rook-ceph-rgw-vm-store.rook-ceph:80
+                - |
+                  /vmbackup-prod \
+                    -storageDataPath=/vmdata \
+                    -dst=s3://vm-backups/daily/$(date +%Y-%m-%d) \
+                    -customS3Endpoint=http://rook-ceph-rgw-vm-store.rook-ceph:80
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  value: "vmaccesskey"
+                - name: AWS_SECRET_ACCESS_KEY
+                  value: "vmsecretkey"
           restartPolicy: OnFailure
 ```
 
