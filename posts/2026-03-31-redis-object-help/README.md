@@ -86,7 +86,7 @@ OBJECT REFCOUNT counter
 
 ### OBJECT IDLETIME
 
-Returns the number of seconds since the key was last read or written. Only accurate with LRU eviction policies.
+Returns the number of seconds since the key was last read or written. This command is not available when an LFU eviction policy is active.
 
 ```redis
 OBJECT IDLETIME mykey
@@ -125,13 +125,11 @@ Many Redis command families support a HELP subcommand following the same pattern
 ```redis
 CLIENT HELP
 COMMAND HELP
-DEBUG HELP
 FUNCTION HELP
 LATENCY HELP
 MEMORY HELP
 MODULE HELP
 SLOWLOG HELP
-XADD HELP
 ```
 
 ## Summary
