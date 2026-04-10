@@ -65,7 +65,6 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -73,7 +72,7 @@ spec:
     - host: k8s.example.com
       http:
         paths:
-          - path: /ceph-dashboard(/|$)(.*)
+          - path: /ceph-dashboard
             pathType: Prefix
             backend:
               service:
@@ -138,6 +137,7 @@ spec:
   type: NodePort
   selector:
     app: rook-ceph-mgr
+    mgr_role: active
     rook_cluster: rook-ceph
   ports:
     - name: dashboard
