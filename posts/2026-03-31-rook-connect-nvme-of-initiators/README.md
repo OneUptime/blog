@@ -96,11 +96,7 @@ Create an nvme-cli configuration file for automatic reconnect on boot:
 mkdir -p /etc/nvme
 
 cat > /etc/nvme/discovery.conf << 'EOF'
---transport=tcp
---traddr=10.0.1.10
---trsvcid=4420
---reconnect-delay=10
---ctrl-loss-tmo=600
+--transport=tcp --traddr=10.0.1.10 --trsvcid=4420 --reconnect-delay=10 --ctrl-loss-tmo=600
 EOF
 
 # Enable nvmf-autoconnect service
