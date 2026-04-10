@@ -114,7 +114,7 @@ Size the oplog appropriately for replication window requirements:
 
 ```bash
 # Connect to the replica set primary
-kubectl -n databases exec -it mongodb-rs-0 -- mongo -u admin -p
+kubectl -n databases exec -it mongodb-rs-0 -- mongosh -u admin -p
 
 # In mongosh - resize oplog to 10GB
 use local
