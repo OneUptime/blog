@@ -118,7 +118,7 @@ def get_user(user_id):
     return r.get(f"user:{user_id}")
 ```
 
-In Node.js with ioredis, connection pooling is built in per client instance:
+In Node.js with ioredis, a single client instance maintains one persistent connection and handles command pipelining automatically:
 
 ```javascript
 const Redis = require('ioredis');
@@ -153,7 +153,7 @@ redis-cli CONFIG SET timeout 60
 
 ```bash
 # Kill all connections idle for more than 3600 seconds
-redis-cli CLIENT KILL ID $(redis-cli CLIENT LIST | awk -F'[ =]' '$0 ~ /idle=[0-9]{4,}/ {for(i=1;i<=NF;i++) if($i=="id") print $(i+1)}' | tr '\n' ' ')
+redis-cli CLIENT LIST | awk '{id="";idle=0;for(i=1;i<=NF;i++){split($i,kv,"=");if(kv[1]=="id")id=kv[2];if(kv[1]=="idle")idle=kv[2]+0}if(idle>3600&&id!="")print id}' | xargs -I{} redis-cli CLIENT KILL ID {}
 ```
 
 ### 6. Monitor Connected Clients in Prometheus
