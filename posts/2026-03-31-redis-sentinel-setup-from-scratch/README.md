@@ -38,7 +38,7 @@ bind 0.0.0.0
 port 6379
 daemonize yes
 logfile /var/log/redis/primary.log
-dir /var/lib/redis
+dir /var/lib/redis/primary
 ```
 
 Start the primary:
@@ -55,7 +55,7 @@ bind 0.0.0.0
 port 6380
 daemonize yes
 logfile /var/log/redis/replica-1.log
-dir /var/lib/redis
+dir /var/lib/redis/replica-1
 replicaof 127.0.0.1 6379
 ```
 
@@ -65,7 +65,7 @@ bind 0.0.0.0
 port 6381
 daemonize yes
 logfile /var/log/redis/replica-2.log
-dir /var/lib/redis
+dir /var/lib/redis/replica-2
 replicaof 127.0.0.1 6379
 ```
 
