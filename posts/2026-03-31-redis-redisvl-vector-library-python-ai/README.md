@@ -52,8 +52,7 @@ fields:
 ```python
 from redisvl.index import SearchIndex
 
-index = SearchIndex.from_yaml("schema.yaml")
-index.connect("redis://localhost:6379")
+index = SearchIndex.from_yaml("schema.yaml", redis_url="redis://localhost:6379")
 index.create(overwrite=True)
 ```
 
@@ -122,7 +121,7 @@ results = index.query(query)
 RedisVL includes built-in vectorizers so you don't need to manage embedding calls manually:
 
 ```python
-from redisvl.extensions.llmcache import SemanticCache
+from redisvl.extensions.cache.llm.semantic import SemanticCache
 
 cache = SemanticCache(
     name="llm_cache",
