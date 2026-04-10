@@ -12,13 +12,11 @@ Prefect manages workflow orchestration state in its own database, but Redis inte
 
 ## Configure Prefect to Use Redis for Task Results
 
-Prefect 2.x supports persistent result storage. Use a custom block with Redis:
+Prefect supports persistent result storage. Use a custom block with Redis:
 
 ```python
 from prefect import task, flow
-from prefect.results import PersistedResult
 import redis
-import pickle
 import hashlib
 
 cache_client = redis.Redis(host="localhost", port=6379)
@@ -67,9 +65,8 @@ def fetch_exchange_rates(base_currency: str) -> dict:
 ## Publish Flow Progress to Redis
 
 ```python
-from prefect import task, flow, get_run_logger
+from prefect import task, flow
 import redis
-import json
 import time
 
 progress_store = redis.Redis(host="localhost", port=6379, decode_responses=True)
