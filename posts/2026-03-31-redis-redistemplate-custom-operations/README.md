@@ -113,7 +113,7 @@ static {
 public Long incrementWithExpiry(String key, int ttlSeconds) {
     return template.execute(INCR_LIMIT_SCRIPT,
         List.of(key),
-        String.valueOf(ttlSeconds));
+        ttlSeconds);
 }
 ```
 
