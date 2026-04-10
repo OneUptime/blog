@@ -25,7 +25,7 @@ def increment_rolling(identifier: str, window_seconds: int = 60,
                        num_buckets: int = 6) -> int:
     """
     Increment counter for the current sub-bucket.
-    Returns the approximate count in the rolling window.
+    Returns the count in the current sub-bucket.
     """
     bucket_size = window_seconds / num_buckets
     current_bucket = math.floor(time.time() / bucket_size)
