@@ -23,7 +23,7 @@ The main heartbeat settings are:
 | `osd_heartbeat_interval` | 6s | How often OSDs send heartbeats to peers |
 | `osd_heartbeat_grace` | 20s | Grace period before marking an OSD down |
 | `osd_mon_heartbeat_interval` | 30s | How often OSDs send heartbeats to monitors |
-| `osd_mon_report_interval` | 5s | How often OSDs report statistics to monitors |
+| `osd_mon_report_interval` | 5s | Minimum interval between OSD reports to monitors on reportable events |
 
 ## Configuring Heartbeat Settings
 
@@ -47,7 +47,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephConfig:
-    osd:
+    "osd.*":
       osd_heartbeat_interval: "6"
       osd_heartbeat_grace: "20"
       osd_mon_heartbeat_interval: "30"
@@ -71,10 +71,10 @@ Monitors also have parameters that govern how they react to missed OSD heartbeat
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mon mon_osd_report_timeout 300
+  ceph config set mon mon_osd_report_timeout 1800
 ```
 
-This gives OSDs 5 minutes to report in before monitors mark them as failed. Useful in environments where OSDs may be temporarily unreachable due to planned maintenance.
+This gives OSDs 30 minutes to report in before monitors mark them as failed. The default is 900 seconds (15 minutes). Increasing this value is useful in environments where OSDs may be temporarily unreachable due to planned maintenance.
 
 ## Verifying Heartbeat Configuration
 
