@@ -57,10 +57,10 @@ tail -f /var/log/redis/redis-server.log
 
 ```text
 # Partial sync succeeded:
-Partial resynchronization request from 192.168.1.10:6380 accepted. Sending 2048 bytes of backlog.
+Partial resynchronization request from 192.168.1.10:6380 accepted. Sending 2048 bytes of backlog starting from offset 54321.
 
 # Backlog too small - full sync required:
-Unable to partial resync with replica 192.168.1.10:6380 for lack of backlog (Replica request was: 12345, Master offset: 9999999).
+Unable to partial resync with replica 192.168.1.10:6380 for lack of backlog (Replica request was: 12345).
 ```
 
 Monitor the INFO stats:
@@ -106,14 +106,14 @@ For most production systems, `repl-backlog-size 100mb` to `500mb` covers brief n
 Measure your current write throughput:
 
 ```bash
-redis-cli INFO stats | grep instantaneous_output_kbps
+redis-cli INFO stats | grep instantaneous_input_kbps
 ```
 
 ```text
-instantaneous_output_kbps:51200
+instantaneous_input_kbps:51200
 ```
 
-This shows 50 MB/s of output. If replicas could disconnect for up to 10 seconds, you need at least a 500 MB backlog.
+This shows roughly 50 MB/s of incoming write traffic. If replicas could disconnect for up to 10 seconds, you need at least a 500 MB backlog.
 
 ## Summary
 
