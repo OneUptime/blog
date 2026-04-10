@@ -33,7 +33,7 @@ rados bench -p benchmark-pool 60 seq -t 16 > rados-seq-read.txt 2>&1
 rados bench -p benchmark-pool 60 rand -t 16 > rados-rand-read.txt 2>&1
 
 # Clean up
-rados bench -p benchmark-pool 60 write --cleanup > /dev/null 2>&1
+rados -p benchmark-pool cleanup > /dev/null 2>&1
 ```
 
 ## Creating a Dedicated Benchmark Pool
@@ -102,7 +102,6 @@ Extract key metrics from JSON output:
 #!/usr/bin/env python3
 import json
 import sys
-import os
 
 def parse_fio_result(filepath):
     with open(filepath) as f:
@@ -127,7 +126,12 @@ for test in tests:
     print(f"\n{test}:")
     for metric, pre_val in pre.items():
         post_val = post[metric]
-        change = ((post_val - pre_val) / pre_val) * 100
+        if pre_val == 0 and post_val == 0:
+            continue
+        if pre_val == 0:
+            change = float('inf')
+        else:
+            change = ((post_val - pre_val) / pre_val) * 100
         status = "OK" if change > -10 else "REGRESSION"
         print(f"  {metric}: {pre_val:.1f} -> {post_val:.1f} ({change:+.1f}%) [{status}]")
 ```
