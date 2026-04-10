@@ -29,10 +29,10 @@ ceph-dencoder list_types | grep -i "osdmap\|monmap\|pgmap\|auth"
 ceph mon getmap -o /tmp/monmap.bin
 
 # Decode to human-readable JSON
-ceph-dencoder type MonMap decode dump_json < /tmp/monmap.bin
+ceph-dencoder type MonMap import /tmp/monmap.bin decode dump_json
 
 # Or decode to text format
-ceph-dencoder type MonMap decode dump < /tmp/monmap.bin
+ceph-dencoder type MonMap import /tmp/monmap.bin decode dump
 ```
 
 ## Decode an OSD Map
@@ -42,50 +42,48 @@ ceph-dencoder type MonMap decode dump < /tmp/monmap.bin
 ceph osd getmap -o /tmp/osdmap.bin
 
 # Decode and inspect
-ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap.bin | python3 -m json.tool | head -100
+ceph-dencoder type OSDMap import /tmp/osdmap.bin decode dump_json | python3 -m json.tool | head -100
 
 # Get a specific epoch
 ceph osd getmap 100 -o /tmp/osdmap-epoch100.bin
-ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap-epoch100.bin
+ceph-dencoder type OSDMap import /tmp/osdmap-epoch100.bin decode dump_json
 ```
 
 ## Decode PG Map
 
 ```bash
 ceph pg getmap -o /tmp/pgmap.bin
-ceph-dencoder type PGMap decode dump_json < /tmp/pgmap.bin | python3 -m json.tool
+ceph-dencoder type PGMap import /tmp/pgmap.bin decode dump_json | python3 -m json.tool
 ```
 
 ## Inspect Auth Data
 
 ```bash
-# Export auth keys
-ceph auth export > /tmp/auth.txt
+# Export auth keys (already human-readable text format)
+ceph auth export client.admin -o /tmp/client.admin.keyring
 
-# Decode a keyring entry
-echo -n "<base64-encoded-key>" | base64 -d | \
-  ceph-dencoder type AuthMonClientHandler decode dump_json
+# To decode binary auth data extracted from the monitor store:
+ceph-dencoder type EntityAuth import /tmp/auth_entity.bin decode dump_json
 ```
 
 ## Encode a Modified Structure
 
 ```bash
-# Decode, modify, and re-encode (advanced use case)
-# 1. Decode to JSON
-ceph-dencoder type MonMap decode dump_json < /tmp/monmap.bin > /tmp/monmap.json
+# Decode to JSON for inspection
+ceph-dencoder type MonMap import /tmp/monmap.bin decode dump_json > /tmp/monmap.json
 
-# 2. Edit the JSON
-vim /tmp/monmap.json
-
-# 3. Re-encode (only if you know exactly what you're doing)
-# This is typically not needed in normal operations
+# Note: ceph-dencoder cannot re-import modified JSON.
+# To modify maps, use the dedicated tools instead:
+#   monmaptool  - modify monitor maps
+#   osdmaptool  - modify OSD maps
+#   crushtool   - modify CRUSH maps
 ```
 
 ## Identify Data Structure Version
 
 ```bash
 # Check the version encoding of a binary blob
-ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap.bin | \
+ceph-dencoder type OSDMap import /tmp/osdmap.bin decode dump_json | \
   python3 -c "import json, sys; d=json.load(sys.stdin); print(d.get('epoch', 'N/A'))"
 ```
 
@@ -96,8 +94,8 @@ ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap.bin | \
 ceph osd getmap 150 -o /tmp/osdmap-150.bin
 ceph osd getmap 151 -o /tmp/osdmap-151.bin
 
-ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap-150.bin | python3 -m json.tool > /tmp/epoch-150.json
-ceph-dencoder type OSDMap decode dump_json < /tmp/osdmap-151.bin | python3 -m json.tool > /tmp/epoch-151.json
+ceph-dencoder type OSDMap import /tmp/osdmap-150.bin decode dump_json | python3 -m json.tool > /tmp/epoch-150.json
+ceph-dencoder type OSDMap import /tmp/osdmap-151.bin decode dump_json | python3 -m json.tool > /tmp/epoch-151.json
 
 diff /tmp/epoch-150.json /tmp/epoch-151.json
 ```
