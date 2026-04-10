@@ -12,7 +12,7 @@ Ceph daemons produce detailed logs at multiple verbosity levels. Raising log lev
 
 ## Understanding Ceph Log Subsystems
 
-Ceph uses subsystem-based logging with levels from 0 (silent) to 20 (maximum verbosity). Common subsystems include:
+Ceph uses subsystem-based logging with debug levels from 0 (no debug output, errors still logged) to 20 (maximum verbosity). Common subsystems include:
 
 - `ms` - messaging layer
 - `osd` - OSD operations
@@ -43,7 +43,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set global debug_osd 0/3
 ```
 
-The format `x/y` sets in-memory level to `x` and disk log level to `y`.
+The format `x/y` sets the log-to-disk level to `x` and the in-memory level to `y`.
 
 ## Configure Log Levels in Rook CephCluster
 
@@ -61,7 +61,7 @@ spec:
       debug_filestore: "0/1"
     mds:
       debug_mds: "0/5"
-    rgw:
+    "client.rgw":
       debug_rgw: "0/5"
 ```
 
