@@ -100,6 +100,7 @@ spec:
   parallelism: 4
   template:
     spec:
+      restartPolicy: Never
       containers:
         - name: trainer
           image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
@@ -141,6 +142,7 @@ spec:
     spec:
       template:
         spec:
+          restartPolicy: OnFailure
           containers:
             - name: rotator
               image: alpine
