@@ -103,8 +103,6 @@ cassandraYaml:
   concurrent_compactors: 2
   # Disable disk failure policy that could kill the node
   disk_failure_policy: best_effort
-  # Set disk access mode to mmap for RBD
-  disk_access_mode: auto
 ```
 
 ## Monitoring Cassandra Storage Metrics
