@@ -85,14 +85,15 @@ ceph fs snap-schedule list / --fs myfs --format json | python3 -m json.tool
 After snapshots are taken, check that they are being replicated:
 
 ```bash
-# Check mirroring status for the filesystem
-ceph fs snapshot mirror dirmap status myfs /
-
 # Check overall mirror daemon status
-ceph fs snapshot mirror status myfs
+ceph fs snapshot mirror daemon status
 ```
 
-Output will show sync state, last snapshot time, and byte counts transferred. Look for `state: idle` after sync completes.
+Output will show sync state and per-filesystem details. You can get more detailed per-filesystem mirror status via the admin socket on the mirror daemon host:
+
+```bash
+ceph --admin-daemon /var/run/ceph/ceph-client.cephfs-mirror.<id>.asok fs mirror status myfs@<fsid>
+```
 
 ## Snapshot Directory Layout
 
@@ -106,4 +107,4 @@ Each snapshot appears as a timestamped directory. These are read-only and can be
 
 ## Summary
 
-Snapshot schedules for CephFS mirroring in Rook are managed through the `snap_schedule` Ceph manager module. Enable the module, then use `ceph fs snap-schedule add` to create schedules per directory path. Pair schedules with retention policies to manage storage. Verify that the mirror daemon is picking up new snapshots and syncing them to the remote cluster by checking `ceph fs snapshot mirror status`.
+Snapshot schedules for CephFS mirroring in Rook are managed through the `snap_schedule` Ceph manager module. Enable the module, then use `ceph fs snap-schedule add` to create schedules per directory path. Pair schedules with retention policies to manage storage. Verify that the mirror daemon is picking up new snapshots and syncing them to the remote cluster by checking `ceph fs snapshot mirror daemon status`.
