@@ -29,7 +29,6 @@ When multiple instances of a Spring Boot app run behind a load balancer, in-memo
 # application.yml
 spring:
   session:
-    store-type: redis
     redis:
       namespace: myapp:sessions
       flush-mode: on-save
@@ -39,7 +38,7 @@ spring:
       port: 6379
 ```
 
-No additional Java configuration is required - Spring Boot auto-configures `RedisSessionRepository` when `spring-session-data-redis` is on the classpath.
+No additional Java configuration is required - Spring Boot auto-configures `RedisSessionRepository` when `spring-session-data-redis` is on the classpath. The session store type is automatically detected from the classpath dependency.
 
 ## Customise Session Timeout
 
