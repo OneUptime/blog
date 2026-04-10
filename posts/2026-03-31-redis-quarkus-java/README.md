@@ -38,7 +38,8 @@ quarkus.redis.max-pool-size=10
 package com.example;
 
 import io.quarkus.redis.datasource.RedisDataSource;
-import io.quarkus.redis.datasource.string.StringCommands;
+import io.quarkus.redis.datasource.value.ValueCommands;
+import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -50,11 +51,11 @@ public class ProductCacheResource {
     @Inject
     RedisDataSource redis;
 
-    StringCommands<String, String> strings;
+    ValueCommands<String, String> strings;
 
     @PostConstruct
     void init() {
-        strings = redis.string(String.class);
+        strings = redis.value(String.class);
     }
 
     @GET
@@ -100,13 +101,13 @@ public class ReactiveCounterResource {
     @POST
     @Path("/{name}/increment")
     public Uni<Long> increment(@PathParam("name") String name) {
-        return redis.string(Long.class).incr("counter:" + name);
+        return redis.value(Long.class).incr("counter:" + name);
     }
 
     @GET
     @Path("/{name}")
     public Uni<Long> get(@PathParam("name") String name) {
-        return redis.string(Long.class).get("counter:" + name);
+        return redis.value(Long.class).get("counter:" + name);
     }
 }
 ```
@@ -117,7 +118,6 @@ public class ReactiveCounterResource {
 // src/main/java/com/example/UserSessionResource.java
 package com.example;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.RedisDataSource;
 import io.quarkus.redis.datasource.hash.HashCommands;
 import jakarta.inject.Inject;
