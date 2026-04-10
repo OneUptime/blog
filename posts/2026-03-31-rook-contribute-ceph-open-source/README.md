@@ -19,6 +19,9 @@ Start by building Ceph from source:
 git clone https://github.com/ceph/ceph.git
 cd ceph
 
+# Initialize submodules (required — Ceph has many vendored dependencies)
+git submodule update --init --recursive
+
 # Install build dependencies
 ./install-deps.sh
 
@@ -87,7 +90,7 @@ The `-s` flag adds a `Signed-off-by` line required by Ceph's developer certifica
 
 ## Code Review Process
 
-Ceph uses a +2 review system via GitHub. Your PR needs two approvals before merging. The review process typically takes 1-2 weeks for small changes.
+Ceph uses GitHub pull requests for code review. After review and testing, a project lead merges your PR. The review process typically takes 1-2 weeks for small changes.
 
 Respond to all review comments promptly and push fixup commits rather than amending the original commit during review.
 
