@@ -36,7 +36,7 @@ XGROUP CREATE key groupname id | $ [MKSTREAM] [ENTRIESREAD entries-read]
 - `$` - special ID meaning "only deliver new messages from now on"
 - `0` - process all existing messages from the beginning
 - `MKSTREAM` - create the stream if it does not exist
-- `ENTRIESREAD` - set the acknowledged count for lag calculation (Redis 7.0+)
+- `ENTRIESREAD` - set the logical read counter for lag calculation (Redis 7.0+)
 
 ## Examples
 
@@ -194,7 +194,7 @@ Returns the number of pending messages that were owned by this consumer.
 
 ## Use Cases
 
-**Work queue processing** - Distribute jobs across multiple worker processes where each job must be processed exactly once.
+**Work queue processing** - Distribute jobs across multiple worker processes where each job is delivered to exactly one consumer, with at-least-once delivery guarantees.
 
 **Microservice event consumption** - Each microservice creates its own consumer group on a shared event stream, ensuring each service processes all events independently.
 
