@@ -84,7 +84,9 @@ ceph osd pool get cache-pool min_read_recency_for_promote
 ceph pg 2.0 query | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-print('Hit sets:', len(d.get('hit_set_history', [])))
+info = d.get('info', {})
+hs = info.get('hit_set_history', {})
+print('Hit sets:', len(hs.get('history', [])))
 "
 ```
 
