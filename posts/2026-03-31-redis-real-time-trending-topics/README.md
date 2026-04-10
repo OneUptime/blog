@@ -23,12 +23,18 @@ DECAY_FACTOR = 0.1  # Controls how fast scores decay
 
 def record_mention(topic: str):
     now = time.time()
-    # Score decays exponentially over time
-    decay_score = math.exp(-DECAY_FACTOR * (now % 86400) / 3600)
-    r.zincrby("trending:topics", decay_score, topic)
+    day_bucket = int(now // 86400)
+    key = f"trending:topics:{day_bucket}"
+    # Weight by position in the day — a simple daily decay cycle
+    hours_elapsed = (now % 86400) / 3600
+    decay_score = math.exp(-DECAY_FACTOR * hours_elapsed)
+    r.zincrby(key, decay_score, topic)
+    r.expire(key, 86400 * 2)  # Auto-cleanup after 2 days
 
 def get_trending(n: int = 10) -> list:
-    return r.zrevrange("trending:topics", 0, n - 1, withscores=True)
+    day_bucket = int(time.time() // 86400)
+    key = f"trending:topics:{day_bucket}"
+    return r.zrevrange(key, 0, n - 1, withscores=True)
 ```
 
 ## Windowed Trending
