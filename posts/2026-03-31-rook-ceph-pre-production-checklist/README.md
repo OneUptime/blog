@@ -15,10 +15,10 @@ A pre-production checklist ensures nothing critical is overlooked before a Ceph 
 ```json
 [ ] Minimum 3 MON nodes on separate physical hosts
 [ ] Minimum 3 OSD nodes with dedicated OSD disks (no OS co-location)
-[ ] NTP synchronized across all nodes (max 1 second skew)
+[ ] NTP synchronized across all nodes (max 50 ms skew)
 [ ] OS and kernel versions tested and supported for your Ceph version
 [ ] All disks are new or thoroughly tested (no pre-existing SMART errors)
-[ ] Sufficient RAM: at least 16 GB per OSD node, 8 GB per MON
+[ ] Sufficient RAM: at least 5 GB per OSD daemon (osd_memory_target defaults to 4 GB), 32 GB per MON
 ```
 
 Verify NTP:
@@ -65,7 +65,7 @@ ceph osd crush rule dump
 [ ] Default pools removed or renamed if not needed
 [ ] Replication size = 3 for all production pools
 [ ] min_size = 2 to prevent writes with only 1 replica
-[ ] PG count set appropriately: (OSDs * 100) / replica_count
+[ ] PG autoscaler enabled (default since Nautilus), or PG count set manually: (OSDs * 100) / replica_count
 [ ] Quotas set on pools where applicable
 ```
 
