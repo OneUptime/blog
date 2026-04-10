@@ -47,8 +47,10 @@ Multiple `save` rules are evaluated as OR conditions. Any matching rule triggers
 
 ### Disable automatic RDB saves
 
+At runtime via CLI:
+
 ```redis
-save ""
+CONFIG SET save ""
 ```
 
 Or in `redis.conf`:
@@ -120,10 +122,10 @@ appendonly no
 
 ## RDB on Restart
 
-On startup, if `appendonly` is `no`, Redis loads the `dump.rdb` file from the configured `dir`. If the file is corrupt, Redis exits with an error. You can force Redis to ignore a corrupt RDB:
+On startup, if `appendonly` is `no`, Redis loads the `dump.rdb` file from the configured `dir`. If the file is corrupt, Redis exits with an error. You can check and repair a corrupt RDB file using the built-in tool:
 
-```redis
-redis-server --rdb-del-sync-files no
+```bash
+redis-check-rdb --fix /var/lib/redis/dump.rdb
 ```
 
 ## Monitoring RDB Save Status
