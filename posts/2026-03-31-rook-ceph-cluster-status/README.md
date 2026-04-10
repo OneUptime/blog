@@ -72,7 +72,10 @@ import json, sys
 s = json.load(sys.stdin)
 print('Status:', s['health']['status'])
 print('OSDs up:', s['osdmap']['num_up_osds'])
-print('PGs active+clean:', s['pgmap'].get('num_active_clean', 0))
+print('PGs active+clean:', sum(
+    item['count'] for item in s['pgmap'].get('pgs_by_state', [])
+    if item['state_name'] == 'active+clean'
+))
 print('Usage:', s['pgmap']['bytes_used'] // (1024**3), 'GiB used')
 "
 ```
