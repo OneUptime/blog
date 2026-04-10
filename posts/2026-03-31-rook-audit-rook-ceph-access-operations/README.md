@@ -28,10 +28,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set global log_file /var/log/ceph/ceph.log
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global auth_debug false
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global audit_log true
+  ceph config set global mon_cluster_log_to_file true
 ```
 
 Enable detailed auth logging to track key-based access:
@@ -57,7 +54,6 @@ rules:
       - group: ceph.rook.io
         resources:
           - cephclusters
-          - cephpools
           - cephfilesystems
           - cephobjectstores
           - cephblockpools
@@ -103,7 +99,7 @@ data:
 
 ## Dashboard Access Audit
 
-Check dashboard login history:
+List dashboard user accounts and their roles:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -114,27 +110,27 @@ Enable enhanced access logging:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mgr mgr/dashboard/audit_api_enabled true
+  ceph dashboard set-audit-api-enabled true
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mgr mgr/dashboard/audit_api_log_payload false
+  ceph dashboard set-audit-api-log-payload false
 ```
 
 ## Prometheus Alerting for Suspicious Activity
 
-Alert on unusually high operation rates that may indicate abuse:
+Alert on unusually high write operation rates that may indicate abuse:
 
 ```yaml
 groups:
   - name: ceph-audit
     rules:
-      - alert: CephUnexpectedAdminOps
-        expr: rate(ceph_mgr_module_ops_total{module="dashboard"}[5m]) > 100
+      - alert: CephUnexpectedHighWriteRate
+        expr: sum(rate(ceph_pool_wr[5m])) > 10000
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "High rate of Ceph dashboard operations detected"
+          summary: "Unusually high write operation rate detected across Ceph pools"
 ```
 
 ## Compliance Reporting
