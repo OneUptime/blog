@@ -28,18 +28,17 @@ serde_json = "1.0"
 // src/redis_pool.rs
 use redis::Client;
 use r2d2::{Pool, PooledConnection};
-use r2d2_redis::RedisConnectionManager;
 
-pub type RedisPool = Pool<RedisConnectionManager>;
-pub type RedisConn = PooledConnection<RedisConnectionManager>;
+pub type RedisPool = Pool<Client>;
+pub type RedisConn = PooledConnection<Client>;
 
 pub fn create_pool(redis_url: &str) -> RedisPool {
-    let manager = RedisConnectionManager::new(redis_url)
-        .expect("Failed to create Redis connection manager");
+    let client = Client::open(redis_url)
+        .expect("Failed to create Redis client");
 
     Pool::builder()
         .max_size(20)
-        .build(manager)
+        .build(client)
         .expect("Failed to build Redis connection pool")
 }
 ```
