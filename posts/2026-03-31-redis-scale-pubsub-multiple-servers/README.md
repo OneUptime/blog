@@ -38,11 +38,11 @@ Each subscriber connection occupies a Redis client slot and uses memory for outp
 
 ```python
 import asyncio
-import aioredis
+from redis.asyncio import Redis
 
 async def pubsub_fanout(channels, local_handlers):
     """Single Redis connection fans out to many local handlers"""
-    r = aioredis.from_url('redis://redis-broker:6379')
+    r = Redis.from_url('redis://redis-broker:6379')
     pubsub = r.pubsub()
     await pubsub.subscribe(*channels)
 
@@ -62,10 +62,11 @@ This pattern means one Redis subscriber per application server, not one per WebS
 In Redis Cluster, pub/sub messages are propagated to all cluster nodes, but subscribers connected to any node receive messages published to any other node. This works correctly but involves internal node-to-node message propagation:
 
 ```python
-from rediscluster import RedisCluster
+from redis.cluster import RedisCluster
 
 rc = RedisCluster(
-    startup_nodes=[{'host': 'redis-cluster', 'port': '6379'}],
+    host='redis-cluster',
+    port=6379,
     decode_responses=True
 )
 
@@ -102,24 +103,27 @@ Sharded pub/sub is more efficient in cluster environments because published mess
 
 ## Load Balancing Subscribers
 
-For high-throughput channels, distribute subscribers across multiple Redis replicas for reads:
+Redis Pub/Sub is node-local: subscribers only receive messages published on the same Redis instance they are connected to. Publishing on the primary does **not** propagate messages to replicas. All subscribers must connect to the same instance as the publishers:
 
 ```python
-import random
+import redis
 
-# Connect to read replicas for subscribing
-read_replicas = [
-    redis.Redis(host='redis-replica-0'),
-    redis.Redis(host='redis-replica-1'),
-]
-
-def get_subscriber_connection():
-    return random.choice(read_replicas).pubsub()
-
-# Publish always goes to primary
+# Pub/Sub is node-local - replicas do NOT receive messages published on the primary
+# All subscribers must connect to the same instance where PUBLISH is called
 primary = redis.Redis(host='redis-primary')
+
+# Publish goes to primary
 primary.publish('high-volume-channel', 'data')
+
+# Subscribe must also connect to primary
+pubsub = primary.pubsub()
+pubsub.subscribe('high-volume-channel')
+for msg in pubsub.listen():
+    if msg['type'] == 'message':
+        print(msg['data'])
 ```
+
+To handle high subscriber counts on a single instance, use the application-level fan-out pattern described above, or use Redis Cluster with sharded pub/sub.
 
 ## Monitoring Pub/Sub Scale
 
