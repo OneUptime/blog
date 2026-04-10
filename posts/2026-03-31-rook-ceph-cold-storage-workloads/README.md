@@ -57,10 +57,9 @@ Configure RGW to use the cold pool for the GLACIER storage class:
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin zone placement add \
   --rgw-zone default \
-  --placement-id cold-archive \
-  --data-pool rook-ceph.cold-storage-pool.data \
-  --index-pool rook-ceph.cold.index \
-  --storage-class GLACIER
+  --placement-id default-placement \
+  --storage-class GLACIER \
+  --data-pool cold-storage-pool
 
 # Reload RGW config
 kubectl rollout restart deployment -n rook-ceph -l app=rook-ceph-rgw
@@ -109,8 +108,8 @@ Cold pools with large capacity need appropriate PG counts:
 
 ```bash
 # Calculate recommended PGs
-# Formula: (OSDs * 100) / replica_count
-# For EC 6+2 on 24 OSDs: 24 * 100 / 8 = 300 -> round to 256
+# Formula: (OSDs * 100) / pool_size
+# For EC 6+2 pool_size is k+m = 8. On 24 OSDs: 24 * 100 / 8 = 300 -> round to 256
 
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd pool set cold-storage-pool pg_num 256
@@ -133,4 +132,4 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Cold storage in Ceph leverages high-capacity HDD nodes with erasure coding (6+2 or 8+2) and aggressive compression to achieve 70-75% storage efficiency at low cost. By exposing the cold pool as a GLACIER storage class in RGW, applications can write directly to cold storage and lifecycle rules can automatically migrate aging data. Tuning OSD memory targets and BlueStore settings for cold access patterns ensures the cluster doesn't waste RAM on caching data that is accessed only occasionally.
+Cold storage in Ceph leverages high-capacity HDD nodes with erasure coding (6+2 or 8+3) and aggressive compression to achieve 70-75% storage efficiency at low cost. By exposing the cold pool as a GLACIER storage class in RGW, applications can write directly to cold storage and lifecycle rules can automatically migrate aging data. Tuning OSD memory targets and BlueStore settings for cold access patterns ensures the cluster doesn't waste RAM on caching data that is accessed only occasionally.
