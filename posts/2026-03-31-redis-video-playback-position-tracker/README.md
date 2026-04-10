@@ -18,7 +18,6 @@ Playback position is written to Redis on a heartbeat (every 10 seconds while pla
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
