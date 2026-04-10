@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Vault, Secret Management, Security, HashiCorp
 
-Description: Integrate HashiCorp Vault with Redis to securely manage Redis passwords, TLS certificates, and application encryption keys using dynamic secrets and lease renewal.
+Description: Integrate HashiCorp Vault with Redis to securely manage Redis passwords and application encryption keys using the KV v2 secrets engine, AppRole authentication, and Transit encryption as a service.
 
 ---
 
@@ -111,7 +111,7 @@ def get_encryption_key() -> bytes:
     return bytes.fromhex(secret["data"]["data"]["aes_key"])
 ```
 
-## Using Vault Transit for Envelope Encryption
+## Using Vault Transit for Encryption as a Service
 
 Vault Transit engine encrypts your Redis values server-side without exposing the key to your app:
 
@@ -152,7 +152,7 @@ vault kv put redis/config/app \
   host="redis.internal" \
   port="6379"
 
-# Applications re-read from Vault on next restart or lease renewal
+# Applications re-read from Vault on next restart or credential refresh
 ```
 
 ## Summary
