@@ -39,9 +39,10 @@ class OrderSubject:
             "ts": time.time()
         })
 
-    def ship_order(self, order_id, tracking_number):
+    def ship_order(self, order_id, user_id, tracking_number):
         self._notify("order.shipped", {
             "order_id": order_id,
+            "user_id": user_id,
             "tracking": tracking_number,
             "ts": time.time()
         })
