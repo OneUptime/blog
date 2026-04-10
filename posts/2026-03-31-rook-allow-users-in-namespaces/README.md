@@ -55,7 +55,7 @@ spec:
   displayName: "Alpha App S3 User"
   capabilities:
     bucket: "*"
-    object: "*"
+    user: "*"
 ```
 
 Rook will provision the user in Ceph and create a Kubernetes Secret named `rook-ceph-object-user-my-store-alpha-app-user` in the `team-alpha` namespace containing the access key and secret key.
