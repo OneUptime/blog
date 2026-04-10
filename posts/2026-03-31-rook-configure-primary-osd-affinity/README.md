@@ -75,20 +75,21 @@ for osd in $hdd_osds; do
   ceph osd primary-affinity osd.$osd 0.3
 done
 
-# Verify the distribution of primaries
-ceph pg dump | grep primary | awk '{print $14}' | sort | uniq -c | sort -nr | head -20
+# Verify the distribution of primaries (ACTING_PRIMARY is column 6 in brief output)
+ceph pg dump pgs_brief 2>/dev/null | tail -n +2 | awk '{print "osd." $6}' | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Read Affinity (Balancing Reads Across Replicas)
 
-In addition to primary affinity, Ceph supports read affinity to direct reads to replica OSDs:
+In addition to primary affinity, Ceph supports read balancing to optimize primary distribution across OSDs:
 
 ```bash
-# Enable read balancing (distributes reads to any replica, not just primary)
-ceph osd pool set mypool read_balance_score 1
+# Enable the balancer with read optimization (Squid+)
+ceph balancer on
+ceph balancer mode upmap-read
 
-# Check read balance configuration
-ceph osd pool get mypool read_balance_score
+# Check read balance score for a pool (read-only metric, not settable)
+ceph osd pool ls detail | grep read_balance_score
 ```
 
 ## Monitoring Primary Distribution
@@ -96,12 +97,11 @@ ceph osd pool get mypool read_balance_score
 After adjusting primary affinity, verify the primaries are distributed as expected:
 
 ```bash
-# Count how many PGs each OSD is primary for
-ceph pg dump pgs | awk '{print $14}' | tr ',' '\n' | \
-  awk 'NR==1 || (NR%3==1)' | sort | uniq -c | sort -nr | head -20
+# Count how many PGs each OSD is primary for (ACTING_PRIMARY is column 6 in brief output)
+ceph pg dump pgs_brief 2>/dev/null | tail -n +2 | awk '{print "osd." $6}' | sort | uniq -c | sort -rn | head -20
 
-# Check utilization to see if read load has shifted
-ceph osd stats | sort -k 3 -nr | head -10
+# Check OSD performance to see if read load has shifted
+ceph osd perf
 ```
 
 ## Summary
