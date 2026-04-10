@@ -97,7 +97,7 @@ MAX_VALUE_SIZE_BYTES = 100 * 1024  # 100 KB
 def safe_cache_set(key: str, value: str, ttl: int = 3600) -> bool:
     if len(value.encode()) > MAX_VALUE_SIZE_BYTES:
         # Log and skip - don't cache oversized values
-        print(f"WARNING: Skipping cache for '{key}': value too large ({len(value)} bytes)")
+        print(f"WARNING: Skipping cache for '{key}': value too large ({len(value.encode())} bytes)")
         return False
     r.setex(key, ttl, value)
     return True
@@ -111,9 +111,9 @@ Audit your keyspace for large values:
 # Use redis-cli --bigkeys for a non-blocking scan
 redis-cli --bigkeys
 
-# Or use DEBUG OBJECT to check a specific key's size
-DEBUG OBJECT my:large:key
-# Value at: ... serializedlength:5242880
+# Or use MEMORY USAGE to check a specific key's memory consumption
+MEMORY USAGE my:large:key
+# (integer) 5242880
 ```
 
 ## Summary
