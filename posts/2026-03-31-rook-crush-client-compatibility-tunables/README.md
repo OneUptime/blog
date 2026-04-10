@@ -21,8 +21,8 @@ ceph osd dump | grep "require_min_compat_client"
 # Example output:
 # require_min_compat_client luminous
 
-# Show all monitor settings including client version requirements
-ceph mon dump | grep min_compat
+# Show monitor map including minimum monitor release version
+ceph mon dump | grep min_mon_release
 
 # Check the feature set requirement
 ceph features
@@ -34,9 +34,9 @@ Different CRUSH tunable improvements require specific feature flags in clients:
 
 ```text
 CRUSH_TUNABLES:   legacy/argonaut tunables
-CRUSH_TUNABLES2:  bobtail tunables (straw_calc_version=1)
-CRUSH_TUNABLES3:  firefly tunables (chooseleaf_descend_once)
-CRUSH_TUNABLES5:  hammer/jewel tunables (vary_r, chooseleaf_stable)
+CRUSH_TUNABLES2:  bobtail tunables (chooseleaf_descend_once)
+CRUSH_TUNABLES3:  firefly tunables (straw_calc_version=1)
+CRUSH_TUNABLES5:  jewel tunables (chooseleaf_stable)
 CRUSH_CHOOSE_ARGS: per-pool weight sets
 ```
 
@@ -44,7 +44,7 @@ CRUSH_CHOOSE_ARGS: per-pool weight sets
 # Show numeric feature flags
 ceph features
 
-# Show active monitor connections and their features
+# Show monitor quorum status
 ceph mon stat
 ```
 
@@ -71,7 +71,7 @@ ceph tell mon.* sessions 2>/dev/null | grep -v "^$"
 | firefly | Firefly (0.80) |
 | hammer | Hammer (0.94) |
 | jewel | Jewel (10.x) |
-| optimal | Hammer (0.94) or later |
+| optimal | Jewel (10.2.x) or later |
 
 ## Testing Before Applying
 
