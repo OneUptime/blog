@@ -105,7 +105,7 @@ def get_dashboard_kpis() -> dict:
     recent_calls = 0
     for i in range(5):
         ts = now - (i * 60)
-        bucket = time.strftime("%Y%m%d%H%M", time.gmtime(ts))
+        bucket = time.strftime("%Y%m%d%H%M", time.localtime(ts))
         val = r.hget(f"{METRICS_PREFIX}:calls:m:{bucket}", "total")
         recent_calls += int(val or 0)
 
@@ -160,7 +160,7 @@ def get_hourly_call_trend(hours: int = 24) -> list:
     trend = []
     for i in range(hours):
         ts = now - (i * 3600)
-        bucket = time.strftime("%Y%m%d%H", time.gmtime(ts))
+        bucket = time.strftime("%Y%m%d%H", time.localtime(ts))
         stats = r.hgetall(f"{METRICS_PREFIX}:stats:h:{bucket}")
         total = int(stats.get("total_calls", 0))
         answered = int(stats.get("answered", 0))
