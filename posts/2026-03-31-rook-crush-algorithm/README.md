@@ -38,7 +38,7 @@ A CRUSH map consists of:
 View the current CRUSH map in Rook:
 
 ```bash
-kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- bash
 ceph osd crush dump
 ```
 
