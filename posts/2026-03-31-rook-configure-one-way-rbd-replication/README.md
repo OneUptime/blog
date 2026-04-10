@@ -110,4 +110,4 @@ images: 5 total
 
 ## Summary
 
-One-way RBD replication in Rook-Ceph replicates images from primary to secondary using the `--direction rx-only` bootstrap token. The secondary receives writes but cannot promote images without manual intervention during failover. This mode is the recommended starting point for DR configurations, providing a clean replica at the secondary site with minimal operational complexity.
+One-way RBD replication in Rook-Ceph replicates images from primary to secondary using the `--direction rx-only` bootstrap token. The secondary holds a read-only replica and images cannot be promoted without manual intervention during failover. This mode is the recommended starting point for DR configurations, providing a clean replica at the secondary site with minimal operational complexity.
