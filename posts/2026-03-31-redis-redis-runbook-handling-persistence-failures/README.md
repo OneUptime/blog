@@ -149,7 +149,7 @@ redis-cli CONFIG SET save "3600 1 300 100 60 10000"
 
 ```bash
 redis-cli SET test_key test_value
-# Error: "MISCONF Redis is configured to save RDB snapshots, but is currently not able to persist on disk"
+# Error: "MISCONF Errors writing to the AOF file: <error details>"
 ```
 
 ### Step 2 - Check disk space and AOF file
