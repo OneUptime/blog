@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, AOF, Persistence, Durability, Configuration
 
-Description: Learn how Redis 7.0's multi-part AOF format works, how to configure it, and how it improves persistence reliability by eliminating blocking AOF rewrites.
+Description: Learn how Redis 7.0's multi-part AOF format works, how to configure it, and how it improves persistence reliability by reducing rewrite overhead.
 
 ---
 
@@ -12,7 +12,7 @@ Redis 7.0 replaced the single-file AOF (Append Only File) with a multi-part AOF 
 
 ## How Multi-Part AOF Works
 
-The old single-file AOF had a problem: `BGREWRITEAOF` blocked I/O while creating a compacted version of the log. Redis 7.0 splits the AOF into:
+The old single-file AOF had a problem: during `BGREWRITEAOF`, Redis had to buffer all new writes in an `aof_rewrite_buf` (doubling memory usage), write every command to disk twice, and briefly freeze the main process at the end of the rewrite to drain and fsync the buffer. Redis 7.0 splits the AOF into:
 
 1. **Base file**: A snapshot of data at a point in time (RDB or AOF format)
 2. **Incremental files**: Sequential AOF logs of commands since the last base
@@ -39,7 +39,7 @@ appenddirname "appendonlydir"
 appendfilename "appendonly.aof"
 ```
 
-Redis 7.0+ automatically uses the multi-part format when `appenddirname` is set.
+Redis 7.0+ always uses the multi-part format when AOF is enabled. The `appenddirname` directive controls the directory name (default: `appendonlydir`).
 
 ## Checking AOF Status
 
@@ -117,9 +117,11 @@ The manifest is the authoritative record of which files are part of the current 
 If Redis fails to load a corrupted incremental file:
 
 ```bash
-redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.2.incr.aof
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
+
+This checks all component files (base and incremental) in order via the manifest. You can also pass an individual AOF file path, but using the manifest is recommended in Redis 7.0+ for holistic validation.
 
 ## Summary
 
-Redis 7.0's multi-part AOF eliminates the blocking rewrite problem by splitting persistence into a base snapshot and incremental files managed by a manifest. This makes AOF rewrites non-blocking, faster, and safer - all without changing the durability guarantees or the `BGREWRITEAOF` command interface.
+Redis 7.0's multi-part AOF eliminates the rewrite-related overhead by splitting persistence into a base snapshot and incremental files managed by a manifest. This removes the extra memory consumption from the rewrite buffer, avoids the brief freeze at the end of a rewrite, and eliminates double disk I/O during rewrites - all without changing the durability guarantees or the `BGREWRITEAOF` command interface.
