@@ -72,14 +72,34 @@ kubectl create secret docker-registry my-registry-creds \
   -n rook-ceph
 ```
 
-Then add the pull secret reference to the operator ConfigMap:
+Then add the pull secret to the CSI service accounts so that CSI pods can pull from your private registry:
+
+```bash
+kubectl patch serviceaccount rook-csi-rbd-plugin-sa -n rook-ceph \
+  --type=json \
+  -p='[{"op":"add","path":"/imagePullSecrets","value":[{"name":"my-registry-creds"}]}]'
+
+kubectl patch serviceaccount rook-csi-rbd-provisioner-sa -n rook-ceph \
+  --type=json \
+  -p='[{"op":"add","path":"/imagePullSecrets","value":[{"name":"my-registry-creds"}]}]'
+
+kubectl patch serviceaccount rook-csi-cephfs-plugin-sa -n rook-ceph \
+  --type=json \
+  -p='[{"op":"add","path":"/imagePullSecrets","value":[{"name":"my-registry-creds"}]}]'
+
+kubectl patch serviceaccount rook-csi-cephfs-provisioner-sa -n rook-ceph \
+  --type=json \
+  -p='[{"op":"add","path":"/imagePullSecrets","value":[{"name":"my-registry-creds"}]}]'
+```
+
+You can also set the image pull policy in the operator ConfigMap if needed:
 
 ```yaml
 data:
-  CSI_IMAGE_PULL_POLICY: "IfNotPresent"
+  ROOK_CSI_IMAGE_PULL_POLICY: "IfNotPresent"
 ```
 
-For the operator itself, add `imagePullSecrets` to the operator Deployment if needed:
+For the operator itself, add `imagePullSecrets` to the operator Deployment:
 
 ```bash
 kubectl patch deployment rook-ceph-operator -n rook-ceph \
@@ -87,9 +107,11 @@ kubectl patch deployment rook-ceph-operator -n rook-ceph \
   -p='[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"my-registry-creds"}]}]'
 ```
 
-## Restart CSI Pods to Apply Changes
+## Verify CSI Pods Are Updated
 
-After updating the ConfigMap, restart the CSI pods:
+The Rook operator watches the `rook-ceph-operator-config` ConfigMap and automatically reconciles the CSI deployments and daemonsets when changes are detected. After applying your ConfigMap changes, the operator will roll out updated CSI pods with the new images.
+
+If the pods are not updated automatically, you can trigger a manual restart:
 
 ```bash
 kubectl rollout restart deployment/csi-rbdplugin-provisioner -n rook-ceph
