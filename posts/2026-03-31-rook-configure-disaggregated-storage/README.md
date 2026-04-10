@@ -71,13 +71,15 @@ spec:
 ## Network Configuration for Disaggregated Setup
 
 ```yaml
-# Use dedicated storage network
+# Use dedicated storage network with CIDR-based separation
 spec:
   network:
     provider: host
-    selectors:
-      public: "eth1"    # Client network (connects to compute nodes)
-      cluster: "eth2"   # Storage cluster network (internal)
+    addressRanges:
+      public:
+        - "10.10.1.0/24"   # Client network (connects to compute nodes)
+      cluster:
+        - "10.10.2.0/24"   # Storage cluster network (internal replication)
 ```
 
 ## Monitor Network Latency Between Storage and Compute
