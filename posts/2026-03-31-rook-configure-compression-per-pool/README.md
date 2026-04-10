@@ -93,13 +93,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph df detail
 ```
 
-Look at the `COMPRESS_BYTES_USED` and `COMPRESS_UNDER_BYTES` columns. The ratio between them indicates compression effectiveness.
+Look at the `USED COMPR` and `UNDER COMPR` columns. The ratio between them indicates compression effectiveness.
 
 For per-OSD compression statistics:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd perf dump | grep compress
+  ceph tell osd.0 perf dump | grep compress
 ```
 
 ## Recommended Settings by Workload
