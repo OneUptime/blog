@@ -39,6 +39,8 @@ kubectl get svc rook-ceph-mgr-dashboard -n rook-ceph
 
 The dashboard will be accessible at `https://<node-ip>:<nodeport>`.
 
+**Note:** The Rook operator reconciles this service periodically and will revert the type back to ClusterIP. This approach is useful for quick testing but will not persist. For a durable solution, use Option 2.
+
 ## Option 2 - Create a Dedicated NodePort Service
 
 For more control, create a separate NodePort service that maps to the dashboard pods:
@@ -53,6 +55,7 @@ spec:
   type: NodePort
   selector:
     app: rook-ceph-mgr
+    mgr_role: active
     rook_cluster: rook-ceph
   ports:
   - name: https-dashboard
