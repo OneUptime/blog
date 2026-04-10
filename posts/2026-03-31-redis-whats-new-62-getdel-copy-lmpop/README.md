@@ -1,14 +1,14 @@
-# What Is New in Redis 6.2 (GETDEL, COPY, LMPOP)
+# What Is New in Redis 6.2 and 7.0 (GETDEL, COPY, LMPOP)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Command, Feature, COPY, GETDEL
 
-Description: Redis 6.2 added practical new commands including GETDEL, GETEX, COPY, LMPOP, ZMPOP, and improvements to EXPIRE and OBJECT ENCODING.
+Description: Redis 6.2 added practical new commands including GETDEL, GETEX, and COPY. Redis 7.0 followed with LMPOP, ZMPOP, conditional EXPIRE flags, and the listpack encoding.
 
 ---
 
-Redis 6.2, released in February 2021, focused on filling gaps in the command API with new atomic operations and quality-of-life improvements for common patterns.
+Redis 6.2, released in February 2021, focused on filling gaps in the command API with new atomic operations and quality-of-life improvements for common patterns. Redis 7.0, released in April 2022, continued this effort with additional commands and encoding improvements.
 
 ## GETDEL - Atomic Get and Delete
 
@@ -75,9 +75,9 @@ By default, `COPY` fails if the destination exists. Use `REPLACE` to overwrite:
 redis-cli COPY original backup REPLACE
 ```
 
-## LMPOP / ZMPOP - Pop from Multiple Keys
+## LMPOP / ZMPOP - Pop from Multiple Keys (Redis 7.0)
 
-`LMPOP` pops elements from the first non-empty list in a list of keys:
+`LMPOP` was introduced in Redis 7.0 (not 6.2). It pops elements from the first non-empty list in a list of keys:
 
 ```bash
 redis-cli LPUSH queue:high "urgent-task"
@@ -89,7 +89,7 @@ redis-cli LMPOP 2 queue:high queue:low LEFT COUNT 1
 # 2) 1) "urgent-task"
 ```
 
-`ZMPOP` does the same for sorted sets:
+`ZMPOP` (also Redis 7.0) does the same for sorted sets:
 
 ```bash
 redis-cli ZADD jobs:priority 100 "job-A" 50 "job-B"
@@ -99,9 +99,9 @@ redis-cli ZMPOP 1 jobs:priority MIN COUNT 1
 #    2) "50"
 ```
 
-## New EXPIRE Options (NX, XX, GT, LT)
+## New EXPIRE Options (NX, XX, GT, LT) (Redis 7.0)
 
-Redis 6.2 extended `EXPIRE`, `PEXPIRE`, `EXPIREAT`, and `PEXPIREAT` with condition flags:
+Redis 7.0 extended `EXPIRE`, `PEXPIRE`, `EXPIREAT`, and `PEXPIREAT` with condition flags:
 
 ```bash
 # Set TTL only if no TTL exists (NX)
@@ -117,15 +117,15 @@ redis-cli EXPIRE mykey 9000 GT
 redis-cli EXPIRE mykey 60 LT
 ```
 
-## OBJECT ENCODING Improvements
+## OBJECT ENCODING Improvements (Redis 7.0)
 
-Redis 6.2 added `listpack` as the new compact encoding for small hashes, sets, and sorted sets, replacing `ziplist`. This reduced memory usage and improved CPU cache efficiency.
+Redis 7.0 introduced `listpack` as the new compact encoding for small hashes, sorted sets, and lists, replacing `ziplist`. Redis 7.2 extended listpack to sets as well. This reduced memory usage and improved CPU cache efficiency.
 
 ```bash
 redis-cli OBJECT ENCODING myhash
-# "listpack"  (was "ziplist" in Redis < 6.2)
+# "listpack"  (was "ziplist" in Redis < 7.0)
 ```
 
 ## Summary
 
-Redis 6.2 delivered practical improvements including `GETDEL` and `GETEX` for atomic token patterns, `COPY` for non-destructive key duplication, `LMPOP`/`ZMPOP` for priority queue patterns, and conditional `EXPIRE` flags. These commands eliminate many common Lua script workarounds.
+Redis 6.2 delivered practical improvements including `GETDEL` and `GETEX` for atomic token patterns and `COPY` for non-destructive key duplication. Redis 7.0 followed with `LMPOP`/`ZMPOP` for priority queue patterns, conditional `EXPIRE` flags, and the `listpack` encoding. Together, these commands eliminate many common Lua script workarounds.
