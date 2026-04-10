@@ -75,7 +75,9 @@ Suggest accounts that a user's friends follow but the user does not yet follow:
 ```python
 def suggested_users(user_id, friend_id):
     # Who friend follows minus who user already follows
-    return r.sdiff(f"following:{friend_id}", f"following:{user_id}")
+    suggestions = r.sdiff(f"following:{friend_id}", f"following:{user_id}")
+    suggestions.discard(user_id)  # Don't suggest following yourself
+    return suggestions
 ```
 
 ## Paginating Followers
