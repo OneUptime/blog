@@ -13,42 +13,29 @@ Ceph Squid (v19) is the release that followed Reef (v18), continuing the traditi
 ## Squid Release Overview
 
 Ceph Squid (v19.x) highlights include:
-- SMB gateway graduated from technology preview
+- SMB gateway improvements (continued development from Reef technology preview)
 - NVMe-oF gateway improvements
 - RGW S3 Select improvements
 - Enhanced RADOS namespace support
 - Improved Rook operator integration
 - BlueStore performance tuning improvements
 
-## SMB Gateway Graduation
+## SMB Gateway Improvements
 
-The SMB/CIFS gateway for CephFS graduated from technology preview to supported in Squid:
-
-```yaml
-# Rook now supports SMB gateway as a CRD
-apiVersion: ceph.rook.io/v1
-kind: CephSMB
-metadata:
-  name: my-smb
-  namespace: rook-ceph
-spec:
-  gateway:
-    instances: 2
-    port: 445
-  security:
-    kerberos:
-      enabled: false
-  shares:
-    - name: data
-      cephfs:
-        filesystem: myfs
-        path: /smb-share
-      readOnly: false
-```
+The SMB/CIFS gateway for CephFS continued development in Squid, with the Ceph SMB manager module providing native SMB share management. Note that SMB support in Squid remains under active development, with full production support targeted for a future release:
 
 ```bash
-# Verify SMB service is running
-kubectl -n rook-ceph get pods -l app=rook-ceph-smb
+# Configure SMB via Ceph's built-in SMB manager module
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
+# Create an SMB cluster
+ceph smb cluster create my-smb-cluster user --define-user-pass=ceph-user%password
+
+# Create an SMB share on a CephFS filesystem
+ceph smb share create my-smb-cluster data myfs /smb-share
+
+# List SMB shares
+ceph smb share ls my-smb-cluster
+"
 
 # Test SMB connectivity
 smbclient //ceph-smb.example.com/data -U ceph-user
@@ -60,12 +47,12 @@ Squid graduated the NVMe-oF gateway with improved Rook integration:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gw
   namespace: rook-ceph
 spec:
-  gatewayGroup:
+  group:
     name: my-gateway-group
   placement:
     nodeAffinity:
@@ -83,7 +70,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   nvme list-subsys
 
 # Check gateway status
-kubectl -n rook-ceph get CephNVMEofGateway nvmeof-gw -o yaml
+kubectl -n rook-ceph get CephNVMeOFGateway nvmeof-gw -o yaml
 ```
 
 ## Enhanced RADOS Namespace Support
@@ -99,9 +86,6 @@ rados -p mypool --namespace tenant-b put myobj /tmp/testfile
 # List objects per namespace
 rados -p mypool --namespace tenant-a ls
 rados -p mypool --namespace tenant-b ls
-
-# Namespace-aware quota
-ceph osd pool set-quota mypool max_bytes 10737418240 --namespace tenant-a
 "
 ```
 
@@ -116,27 +100,20 @@ aws s3api select-object-content \
   --expression-type SQL \
   --input-serialization '{"CSV": {"FileHeaderInfo": "USE"}}' \
   --output-serialization '{"CSV": {}}' \
-  /dev/stdout \
-  --endpoint-url http://rgw.example.com
+  --endpoint-url http://rgw.example.com \
+  /dev/stdout
 ```
 
 ## BlueStore Improvements in Squid
 
 ```bash
-# New BlueStore allocation statistics
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-# Check allocation efficiency
-ceph osd df style=terse --format json | python3 -c \"
-import sys, json
-data = json.load(sys.stdin)
-for node in data['nodes']:
-    if node['type'] == 'osd':
-        print(f'OSD {node[\\\"id\\\"]}: {node.get(\\\"utilization\\\", 0):.1f}% used')
-\"
-"
+# Check OSD allocation efficiency
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd df -f json-pretty
 
-# Enable new BlueStore fragmentation handling
-ceph config set osd bluestore_fragmentation_check_interval 3600
+# Enable BlueStore fragmentation checking (new in Squid)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set osd bluestore_fragmentation_check_period 3600
 ```
 
 ## Upgrading to Squid via Rook
@@ -166,4 +143,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Ceph Squid (v19) graduates SMB and NVMe-oF gateways from technology preview to supported features, expanding Ceph's protocol coverage beyond S3 and CephFS. The improvements to RADOS namespaces, S3 Select, and BlueStore performance tuning make Squid a compelling upgrade for organizations looking to expand their Ceph cluster's capabilities and improve multi-tenant isolation.
+Ceph Squid (v19) advances SMB and NVMe-oF gateway development, expanding Ceph's protocol coverage beyond S3 and CephFS. The improvements to RADOS namespaces, S3 Select, and BlueStore performance tuning make Squid a compelling upgrade for organizations looking to expand their Ceph cluster's capabilities and improve multi-tenant isolation.
