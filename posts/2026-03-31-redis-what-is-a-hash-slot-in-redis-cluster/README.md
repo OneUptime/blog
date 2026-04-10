@@ -39,9 +39,13 @@ redis-cli CLUSTER KEYSLOT mykey
 By default, the entire key is used for slot computation. But sometimes you want multiple keys to land on the same slot (for MULTI/EXEC or Lua scripts). Use hash tags - curly braces - to force specific parts of the key to determine the slot:
 
 ```bash
-# Both keys hash on "user:123" part
-redis-cli CLUSTER KEYSLOT "user:123:profile"    # hashes {user:123}
-redis-cli CLUSTER KEYSLOT "user:123:settings"   # hashes {user:123}
+# Without hash tags, the full key is hashed - these likely land in different slots
+redis-cli CLUSTER KEYSLOT "user:123:profile"    # hashes full key
+redis-cli CLUSTER KEYSLOT "user:123:settings"   # hashes full key
+
+# With hash tags, only the part inside {} is hashed - these go to the same slot
+redis-cli CLUSTER KEYSLOT "{user:123}:profile"  # hashes "user:123"
+redis-cli CLUSTER KEYSLOT "{user:123}:settings"  # hashes "user:123"
 ```
 
 Keys with the same content inside `{}` go to the same slot:
@@ -67,7 +71,7 @@ redis-cli --cluster check <node-ip>:6379
 When you create a cluster, slots are assigned to nodes:
 
 ```bash
-redis-cli --cluster create node1:6379 node2:6379 node3:6379 --cluster-replicas 1
+redis-cli --cluster create node1:6379 node2:6379 node3:6379 node4:6379 node5:6379 node6:6379 --cluster-replicas 1
 ```
 
 You can also assign slots manually:
