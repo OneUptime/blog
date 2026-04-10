@@ -62,8 +62,8 @@ Response: Add more OSDs, increase cluster capacity, or move data to other pools.
 ### PG_DEGRADED
 
 ```text
-[WRN] PG_DEGRADED: Degraded data redundancy
-    pg 1.5 is active+degraded, acting [0,1] want 3
+[WRN] PG_DEGRADED: Degraded data redundancy: 1 pg degraded
+    pg 1.5 is active+degraded, acting [0,1]
 ```
 
 Response: Wait for recovery, or investigate failed OSDs.
