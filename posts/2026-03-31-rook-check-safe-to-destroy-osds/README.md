@@ -27,10 +27,10 @@ If the OSD is safe to remove, you will see:
 OSD(s) 5 are safe to destroy without reducing data durability.
 ```
 
-If it is not safe, you will see details about why:
+If it is not safe, you will see an error explaining why:
 
 ```text
-OSD(s) 5 are not safe to destroy: at least 1 PG would have insufficient copies
+Error EBUSY: OSD(s) 5 have 24 pgs currently mapped to them
 ```
 
 ## Checking Multiple OSDs
@@ -48,15 +48,15 @@ This is useful when replacing a node with multiple OSDs to verify the entire nod
 
 An OSD is not safe to destroy when:
 
-1. Removing it would reduce the number of copies of some PGs below `min_size`
-2. The OSD is currently the only copy of some objects
-3. The cluster is already degraded - removing another OSD would worsen the situation
+1. The OSD still has PGs mapped to it (it is part of the acting or up set for some PGs)
+2. The OSD still stores PG data and not all PGs are active+clean
+3. The cluster is already degraded - removing another OSD would reduce data durability
 
 If the check fails, you need to wait for the cluster to fully recover before removing the OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  watch ceph status
+  ceph -w
 ```
 
 ## Pre-Removal Workflow
@@ -70,15 +70,18 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Step 2 - wait for recovery to complete
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  watch ceph status
+  ceph -w
 
 # Step 3 - verify safe to destroy
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd safe-to-destroy osd.5
 
-# Step 4 - proceed with removal only if safe
+# Step 4 - stop the OSD daemon (scale down in Rook)
+kubectl -n rook-ceph scale deploy rook-ceph-osd-5 --replicas=0
+
+# Step 5 - purge the OSD from the cluster (removes from CRUSH map and OSD map)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd destroy osd.5 --yes-i-really-mean-it
+  ceph osd purge osd.5 --yes-i-really-mean-it
 ```
 
 ## Checking ok-to-stop for Minimal Disruption
@@ -94,4 +97,4 @@ Use `safe-to-destroy` for permanent removal and `ok-to-stop` for temporary maint
 
 ## Summary
 
-The `ceph osd safe-to-destroy` command is a critical safety check before removing any OSD permanently. Always mark the OSD out first, wait for full recovery, then confirm with `safe-to-destroy` before proceeding. This prevents accidental data loss in pools that depend on specific replication factors.
+The `ceph osd safe-to-destroy` command is a critical safety check before removing any OSD permanently. Always mark the OSD out first, wait for full recovery, confirm with `safe-to-destroy`, then stop the OSD daemon before purging it from the cluster. This prevents accidental data loss in pools that depend on specific replication factors.
