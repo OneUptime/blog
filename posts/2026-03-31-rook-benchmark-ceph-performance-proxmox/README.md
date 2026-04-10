@@ -55,7 +55,7 @@ rbd create --size 10G benchpool/testimage
 rbd bench --io-type write --io-size 4096 --io-threads 16 --io-total 1G benchpool/testimage
 
 # Run random read benchmark
-rbd bench --io-type read --io-size 4096 --io-threads 16 --io-total 1G benchpool/testimage
+rbd bench --io-type read --io-size 4096 --io-threads 16 --io-total 1G --io-pattern rand benchpool/testimage
 ```
 
 ## Using fio for Advanced Benchmarks
@@ -66,6 +66,8 @@ rbd bench --io-type read --io-size 4096 --io-threads 16 --io-total 1G benchpool/
 # Random 4K read/write mix (70/30) - typical database workload
 fio --name=ceph-bench \
     --filename=/mnt/ceph-test/testfile \
+    --ioengine=libaio \
+    --direct=1 \
     --rw=randrw \
     --rwmixread=70 \
     --bs=4k \
