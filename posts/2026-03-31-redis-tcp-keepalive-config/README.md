@@ -54,18 +54,30 @@ Azure Load Balancer: 4 minutes (240s)
 
 If Redis keepalive is set to 300s, the OS sends keepalive probes before the NLB's 350s timeout fires, keeping the connection alive.
 
-## Configuring OS Keepalive Parameters
+## How Redis Sets Keepalive Parameters
 
-Redis's `tcp-keepalive` sets `SO_KEEPALIVE` on each socket, but the probe frequency and retry count are controlled by OS parameters:
+Since Redis 3.2, on Linux, Redis sets per-socket keepalive parameters that override the OS-level defaults:
+
+- `TCP_KEEPIDLE` = the `tcp-keepalive` value (idle time before first probe)
+- `TCP_KEEPINTVL` = `tcp-keepalive / 3` (interval between probes)
+- `TCP_KEEPCNT` = 3 (number of probes before giving up)
+
+So with `tcp-keepalive 60`, Redis configures each socket with: idle time 60s, probe interval 20s (60/3), and 3 retries. A dead connection is detected in about 60 + (20 * 3) = 120 seconds.
+
+With the default `tcp-keepalive 300`: idle time 300s, probe interval 100s, 3 retries, giving about 300 + (100 * 3) = 600 seconds for detection.
+
+## OS-Level Keepalive Defaults
+
+The OS provides global keepalive defaults that apply to sockets without per-socket overrides. Since Redis sets per-socket values, these defaults do not affect Redis connections, but they are useful context:
 
 ```bash
-# Linux: view current keepalive settings
+# Linux: view default keepalive settings
 cat /proc/sys/net/ipv4/tcp_keepalive_time    # Idle time before first probe (default: 7200s)
 cat /proc/sys/net/ipv4/tcp_keepalive_intvl   # Interval between probes (default: 75s)
 cat /proc/sys/net/ipv4/tcp_keepalive_probes  # Number of probes before giving up (default: 9)
 ```
 
-For Redis deployments, tuning these to more aggressive values speeds up dead connection detection:
+For non-Redis applications or older Redis versions (< 3.2) that only set `SO_KEEPALIVE`, tuning these values speeds up dead connection detection:
 
 ```bash
 # More aggressive keepalive (seconds)
