@@ -50,11 +50,13 @@ def join_lobby(lobby_id: str, player_id: str, player_name: str) -> bool:
         return False
     pipe = r.pipeline()
     pipe.sadd(f"lobby:{lobby_id}:players", player_id)
+    pipe.expire(f"lobby:{lobby_id}:players", LOBBY_TTL)
     pipe.hset(f"lobby:{lobby_id}:player:{player_id}", mapping={
         "name": player_name,
         "ready": "0",
         "joined_at": str(time.time()),
     })
+    pipe.expire(f"lobby:{lobby_id}:player:{player_id}", LOBBY_TTL)
     pipe.execute()
     r.publish(f"lobby:{lobby_id}:events", f"join:{player_id}:{player_name}")
     return True
@@ -83,7 +85,6 @@ def check_all_ready(lobby_id: str):
         r.hget(f"lobby:{lobby_id}:player:{p}", "ready") == "1"
         for p in players
     )
-    lobby = r.hgetall(f"lobby:{lobby_id}")
     if all_ready and len(players) >= 2:
         r.hset(f"lobby:{lobby_id}", "status", "starting")
         r.zrem("lobbies:open", lobby_id)
