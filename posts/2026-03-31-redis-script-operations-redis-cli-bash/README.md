@@ -68,16 +68,14 @@ done
 
 ```bash
 #!/bin/bash
-redis-cli SCAN 0 MATCH "temp:*" COUNT 200 | \
-  tail -n +2 | \
+redis-cli --scan --pattern "temp:*" | \
   xargs -I {} redis-cli DEL {}
 ```
 
 For large-scale deletion, use pipe mode:
 
 ```bash
-redis-cli SCAN 0 MATCH "temp:*" COUNT 1000 | \
-  tail -n +2 | \
+redis-cli --scan --pattern "temp:*" | \
   awk '{print "DEL " $1}' | \
   redis-cli --pipe
 ```
