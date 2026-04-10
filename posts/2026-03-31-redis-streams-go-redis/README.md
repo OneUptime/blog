@@ -19,6 +19,7 @@ import (
     "context"
     "fmt"
     "log"
+    "time"
 
     "github.com/redis/go-redis/v9"
 )
@@ -75,7 +76,7 @@ func consumeWithGroup(ctx context.Context, rdb *redis.Client, consumer string) {
             Consumer: consumer,
             Streams:  []string{"orders", ">"},
             Count:    10,
-            Block:    2000, // block 2 seconds waiting for new messages
+            Block:    2 * time.Second, // block 2 seconds waiting for new messages
         }).Result()
         if err == redis.Nil {
             continue // no new messages
