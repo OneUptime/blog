@@ -39,7 +39,7 @@ The simplest backend stores encryption keys in Kubernetes Secrets within a speci
 ```json
 {
   "secrets-metadata-kms": {
-    "encryptionKMSType": "secrets-metadata",
+    "encryptionKMSType": "metadata",
     "secretName": "ceph-csi-encryption-keys",
     "secretNamespace": "rook-ceph"
   }
