@@ -26,15 +26,17 @@ cluster_network = 10.0.0.0/24
 
 The public network carries client I/O; the cluster network carries replication and heartbeat traffic. Separating them prevents client traffic from affecting replication.
 
-Apply in Rook:
+Apply in Rook with host networking using `addressRanges`:
 
 ```yaml
 spec:
   network:
     provider: host
-    selectors:
-      public: eth0
-      cluster: eth1
+    addressRanges:
+      public:
+        - "192.168.1.0/24"
+      cluster:
+        - "10.0.0.0/24"
 ```
 
 ## Capacity and Ratio Settings
@@ -62,7 +64,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mon mon_allow_pool_delete false
 ```
 
-Set minimum number of OSDs that must be in before the cluster operates:
+Set the minimum ratio of OSDs that must remain `in` to prevent automatic OSD out-marking:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
