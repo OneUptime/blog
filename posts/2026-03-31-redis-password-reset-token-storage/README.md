@@ -8,7 +8,7 @@ Description: Store secure password reset tokens in Redis with automatic expiry, 
 
 ---
 
-Password reset tokens must be secure, short-lived, and single-use. Redis provides all three capabilities: cryptographic token generation, automatic TTL-based expiry, and atomic deletion on use.
+Password reset tokens must be secure, short-lived, and single-use. Redis pairs well with cryptographic token generation (via Python's `secrets` module) by providing automatic TTL-based expiry and atomic deletion on use.
 
 ## Data Model
 
