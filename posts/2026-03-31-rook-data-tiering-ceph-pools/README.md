@@ -27,6 +27,9 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd tree | grep -E "osd|class"
 
 # Manually set a device class if auto-detection is wrong
+# First remove the existing (incorrect) class, then set the correct one
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  ceph osd crush rm-device-class osd.0 osd.1 osd.2
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd crush set-device-class nvme osd.0 osd.1 osd.2
 ```
