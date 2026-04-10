@@ -102,7 +102,7 @@ Once Redis handles 100% of reads without errors, switch writes to Redis only:
 ```python
 def save_user_redis_only(user: dict):
     user_id = user["id"]
-    r.set(f"user:{user_id}", json.dumps(user), ex=7200)
+    r.set(f"user:{user_id}", json.dumps(user))
     # Legacy write removed
 
 def get_user_redis_only(user_id):
@@ -117,7 +117,7 @@ def get_user_redis_only(user_id):
 If Redis issues are detected, flip the feature flag back to 0% instantly:
 
 ```bash
-HSET feature_flags read_users_from_redis rollout_pct 0
+redis-cli HSET feature_flags read_users_from_redis rollout_pct 0
 ```
 
 ## Summary
