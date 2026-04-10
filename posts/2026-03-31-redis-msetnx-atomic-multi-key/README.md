@@ -78,7 +78,7 @@ Because `user:2:name` already existed, no keys were written. `user:2:email` and 
 Use `MSETNX` to safely initialize a new object only when it has not been created before.
 
 ```redis
-DEL config:app
+DEL config:app:timeout config:app:retries config:app:debug
 MSETNX config:app:timeout 30 config:app:retries 3 config:app:debug "false"
 ```
 
