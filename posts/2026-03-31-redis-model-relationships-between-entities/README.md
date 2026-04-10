@@ -26,7 +26,7 @@ Store the related entity ID as a hash field:
 
 ```bash
 # User has one profile
-HSET user:1 name "Alice" email "alice@example.com" profile_id "prof:1"
+HSET user:1 name "Alice" email "alice@example.com" profile_id "profile:1"
 HSET profile:1 bio "Engineer" avatar "alice.jpg" user_id "1"
 
 # Look up profile for user
@@ -144,9 +144,10 @@ def delete_user(user_id):
     post_ids = r.smembers(f"user:{user_id}:posts")
     pipe = r.pipeline()
     for pid in post_ids:
+        pid = pid.decode()
         tags = r.smembers(f"post:{pid}:tags")
         for tag in tags:
-            pipe.srem(f"tag:{tag}:posts", pid)
+            pipe.srem(f"tag:{tag.decode()}:posts", pid)
         pipe.delete(f"post:{pid}:tags")
         pipe.delete(f"post:{pid}")
     pipe.delete(f"user:{user_id}:posts")
