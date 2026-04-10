@@ -22,7 +22,7 @@ Three reasons:
 
 1. **In-memory storage** - No disk I/O for reads or writes
 2. **Single-threaded event loop** - No thread synchronization overhead
-3. **Simple data structures** - Operations are O(1) or O(log N), never O(N) scans
+3. **Simple data structures** - Most per-key operations are O(1) or O(log N)
 
 Redis can handle over 1 million operations per second on commodity hardware.
 
