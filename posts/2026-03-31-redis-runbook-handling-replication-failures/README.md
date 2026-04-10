@@ -42,7 +42,7 @@ If the replication backlog is too small, replicas fall out of sync and trigger f
 
 ```bash
 redis-cli INFO replication | grep "repl_backlog_size"
-redis-cli INFO stats | grep "rdb_bgsave_in_progress"
+redis-cli INFO persistence | grep "rdb_bgsave_in_progress"
 ```
 
 Increase the backlog size:
