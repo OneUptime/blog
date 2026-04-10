@@ -139,7 +139,7 @@ TDIGEST.MAX service:latency
 
 ## TDIGEST.MAX / TDIGEST.MIN vs TDIGEST.BYRANK
 
-`TDIGEST.BYRANK` at rank 0 also returns the minimum, and at rank N-1 returns the maximum, but as approximations. `TDIGEST.MIN` and `TDIGEST.MAX` are always exact.
+`TDIGEST.BYRANK` at rank 0 also returns the minimum, and at rank N-1 returns the maximum. Per the Redis documentation, these edge ranks return accurate results, just like `TDIGEST.MIN` and `TDIGEST.MAX`. However, for intermediate ranks, `TDIGEST.BYRANK` returns approximations. `TDIGEST.MIN` and `TDIGEST.MAX` are preferred for clarity of intent when you only need the boundary values.
 
 ```redis
 TDIGEST.ADD demo 10 20 30 40 50
@@ -151,12 +151,12 @@ TDIGEST.MIN demo
 TDIGEST.MAX demo
 -- Returns: "50"
 
--- Approximate (same values here due to small dataset)
+-- Also exact at edge ranks (rank 0 and rank N-1)
 TDIGEST.BYRANK demo 0
--- Returns: ~10
+-- Returns: 10
 
 TDIGEST.BYRANK demo 4
--- Returns: ~50
+-- Returns: 50
 ```
 
 For large datasets with many centroids, prefer `TDIGEST.MIN` and `TDIGEST.MAX` when you need the true boundary values.
@@ -164,9 +164,9 @@ For large datasets with many centroids, prefer `TDIGEST.MIN` and `TDIGEST.MAX` w
 ## TDIGEST.MAX / TDIGEST.MIN vs TDIGEST.QUANTILE
 
 ```redis
--- QUANTILE 0.0 approximates the minimum
+-- QUANTILE 0.0 returns the exact minimum
 TDIGEST.QUANTILE demo 0.0
--- QUANTILE 1.0 approximates the maximum
+-- QUANTILE 1.0 returns the exact maximum
 TDIGEST.QUANTILE demo 1.0
 
 -- MIN and MAX return exact values
