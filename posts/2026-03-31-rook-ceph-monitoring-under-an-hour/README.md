@@ -81,7 +81,7 @@ Rook provides pre-built dashboards. Apply them from the Rook examples:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/rbac.yaml
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/prometheus-ceph-v15-rules.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/monitoring/localrules.yaml
 ```
 
 Import the official Ceph dashboard from Grafana.com (ID: 2842) via the Grafana UI.
