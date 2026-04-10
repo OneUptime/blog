@@ -37,26 +37,9 @@ kubectl label node worker-1 topology.rook.io/rack=rack-01
 kubectl label node worker-1 topology.rook.io/chassis=chassis-a
 ```
 
-## Configuring CSI Read Affinity in the Operator ConfigMap
+## Configuring CSI Read Affinity in the CephCluster CR
 
-Enable read affinity and specify which node labels map to CRUSH topology keys:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-ceph-operator-config
-  namespace: rook-ceph
-data:
-  CSI_ENABLE_READ_AFFINITY: "true"
-  CSI_CRUSH_LOCATION_LABELS: "topology.kubernetes.io/region,topology.kubernetes.io/zone,topology.rook.io/rack"
-```
-
-The order of labels in `CSI_CRUSH_LOCATION_LABELS` determines the CRUSH topology depth - from broadest (region) to narrowest (rack).
-
-## Configuring the CephCluster to Match
-
-Ensure the CephCluster's OSD placement matches the same topology labels so Ceph OSD buckets align with your node labels:
+Enable read affinity and specify which node labels map to CRUSH topology keys in the CephCluster resource:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -65,15 +48,22 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  storage:
-    nodes:
-      - name: "worker-1"
-        config:
-          crushLocations:
-            region: us-east
-            zone: us-east-1a
-            rack: rack-01
+  csi:
+    readAffinity:
+      enabled: true
+      crushLocationLabels:
+        - topology.kubernetes.io/region
+        - topology.kubernetes.io/zone
+        - topology.rook.io/rack
 ```
+
+The `crushLocationLabels` list specifies which Kubernetes node labels the CSI driver reads to determine the CRUSH topology position of each node.
+
+## How Rook Maps Node Labels to the CRUSH Hierarchy
+
+Rook automatically detects topology labels on Kubernetes nodes during OSD deployment. When a node has labels like `topology.kubernetes.io/zone=us-east-1a` or `topology.rook.io/rack=rack-01`, Rook places the OSD into the corresponding CRUSH map bucket. No additional CephCluster CR configuration is needed for CRUSH placement — the node labels are the source of truth.
+
+Make sure to label your nodes before deploying OSDs, so Rook places them in the correct CRUSH buckets from the start.
 
 ## Verifying CRUSH Location Assignment
 
@@ -97,4 +87,4 @@ Read affinity is most impactful when cross-zone bandwidth is limited or metered.
 
 ## Summary
 
-CRUSH location labels for CSI connect Kubernetes node topology labels to Ceph's CRUSH hierarchy, enabling read affinity. Properly labeling nodes and configuring the operator ConfigMap ensures the CSI driver routes reads to the nearest OSD replica, reducing latency and cross-zone network cost in multi-zone Rook-Ceph deployments.
+CRUSH location labels for CSI connect Kubernetes node topology labels to Ceph's CRUSH hierarchy, enabling read affinity. Properly labeling nodes and configuring `spec.csi.readAffinity` in the CephCluster CR ensures the CSI driver routes reads to the nearest OSD replica, reducing latency and cross-zone network cost in multi-zone Rook-Ceph deployments.
