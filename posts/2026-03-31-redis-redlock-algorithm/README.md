@@ -21,7 +21,7 @@ Redlock uses N independent Redis instances (not a cluster) to address this.
 
 ## The Redlock Algorithm Steps
 
-Redlock requires an odd number of Redis instances (typically 5) that are completely independent (no replication between them).
+Redlock is typically deployed with an odd number of Redis instances (commonly 5) that are completely independent (no replication between them). An odd number is not strictly required, but it is more efficient since even numbers provide the same fault tolerance as the odd number below them.
 
 ### Step 1: Record Start Time
 
@@ -70,13 +70,13 @@ def acquire_redlock(nodes: list, resource: str, ttl_ms: int) -> tuple[bool, str,
     if len(acquired) >= quorum and validity_time > 0:
         return True, token, validity_time
     else:
-        # Release on all nodes
-        for node in acquired:
+        # Release on all nodes (even ones we believe we failed to lock)
+        for node in nodes:
             release_lock_on_node(node, resource, token)
         return False, "", 0
 
 def drift_ms(ttl_ms: int) -> int:
-    """Clock drift factor: 0.01 * TTL + 2ms"""
+    """Clock drift compensation (common implementation choice: 0.01 * TTL + 2ms)"""
     return int(ttl_ms * 0.01) + 2
 ```
 
