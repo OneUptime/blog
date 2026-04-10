@@ -82,6 +82,7 @@ Offload read traffic to replicas using `MasterReplica`:
 
 ```java
 import io.lettuce.core.ReadFrom;
+import io.lettuce.core.codec.StringCodec;
 import io.lettuce.core.masterreplica.MasterReplica;
 import io.lettuce.core.masterreplica.StatefulRedisMasterReplicaConnection;
 
@@ -111,7 +112,6 @@ async.set("order:1", "shipped")
 Lettuce emits connection events during failover. Attach a listener to react:
 
 ```java
-import io.lettuce.core.event.connection.ReconnectFailedEvent;
 import io.lettuce.core.event.connection.ConnectedEvent;
 
 client.getResources().eventBus().get()
@@ -129,9 +129,9 @@ client.getResources().eventBus().get()
 String pong = commands.ping();
 System.out.println(pong); // PONG
 
-// Check role
-String role = commands.role().toString();
-System.out.println("Role: " + role); // Should be primary
+// Check role — role() returns a List<Object>, e.g. [master, 0, []]
+List<Object> role = commands.role();
+System.out.println("Role: " + role.get(0)); // master
 ```
 
 ## Shutdown
