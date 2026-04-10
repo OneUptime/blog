@@ -14,9 +14,9 @@ Ceph supports exposing RBD images as NVMe namespaces using the NVMe over TCP (NV
 
 ## Prerequisites
 
-- Ceph 18.x (Reef) or later with nvmeof gateway support
+- Ceph v20 (Tentacle) or later with nvmeof gateway support
 - Linux kernel 5.0+ on initiator nodes (for NVMe/TCP driver)
-- Rook v1.13+ with NVMe-oF gateway CRD support
+- Rook v1.19+ with NVMe-oF gateway CRD support
 
 ## Deploying the NVMe-oF Gateway
 
@@ -24,18 +24,15 @@ Enable the NVMe-oF gateway in your Rook CephCluster:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEoFGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gateway
   namespace: rook-ceph
 spec:
-  cephCluster:
-    name: rook-ceph
+  image: quay.io/ceph/nvmeof:1.5
   pool: nvmeof-pool
-  gatewaySpec:
-    serviceType: NodePort
-    port: 4420
-    instances: 2
+  group: group-a
+  instances: 2
   resources:
     requests:
       memory: "512Mi"
@@ -55,21 +52,21 @@ rbd pool init nvmeof-pool
 
 ## Creating NVMe Subsystems and Namespaces
 
-Use the `nvmeof` CLI to create a subsystem:
+Use the `ceph-nvmeof` CLI to create a subsystem:
 
 ```bash
 # Access the nvmeof gateway pod
 kubectl exec -it -n rook-ceph deploy/rook-ceph-nvmeof-gateway -- bash
 
 # Create a subsystem
-nvmeof-cli subsystem create --subsystem-nqn nqn.2024-01.io.ceph:nvmeof-subsystem-1
+ceph-nvmeof subsystem add --subsystem nqn.2024-01.io.ceph:nvmeof-subsystem-1
 
 # Create an RBD image
 rbd create nvmeof-pool/nvmeof-image-1 --size 100G
 
 # Add the image as a namespace
-nvmeof-cli namespace add \
-  --subsystem-nqn nqn.2024-01.io.ceph:nvmeof-subsystem-1 \
+ceph-nvmeof namespace add \
+  --subsystem nqn.2024-01.io.ceph:nvmeof-subsystem-1 \
   --rbd-pool nvmeof-pool \
   --rbd-image nvmeof-image-1
 ```
@@ -77,8 +74,8 @@ nvmeof-cli namespace add \
 List configured subsystems:
 
 ```bash
-nvmeof-cli subsystem list
-nvmeof-cli namespace list --subsystem-nqn nqn.2024-01.io.ceph:nvmeof-subsystem-1
+ceph-nvmeof subsystem list
+ceph-nvmeof namespace list --subsystem nqn.2024-01.io.ceph:nvmeof-subsystem-1
 ```
 
 ## Connecting from an Initiator
@@ -130,7 +127,7 @@ sysctl -w net.core.wmem_max=67108864
 sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864"
 sysctl -w net.ipv4.tcp_wmem="4096 87380 67108864"
 
-# Disable TCP Nagle for lower latency
+# Configure XPS transmit queue CPU affinity for better throughput
 echo 1 > /sys/class/net/eth0/queues/tx-0/xps_cpus
 ```
 
@@ -145,4 +142,4 @@ net.ipv4.tcp_wmem = 4096 87380 67108864
 
 ## Summary
 
-Ceph's NVMe-oF gateway allows exposing RBD images as NVMe namespaces over standard TCP networks, providing high-performance block storage access without specialized hardware. Rook's CephNVMEoFGateway CRD simplifies deployment in Kubernetes environments. Tuning TCP socket buffers on initiator nodes ensures the TCP transport overhead does not limit throughput.
+Ceph's NVMe-oF gateway allows exposing RBD images as NVMe namespaces over standard TCP networks, providing high-performance block storage access without specialized hardware. Rook's CephNVMeOFGateway CRD simplifies deployment in Kubernetes environments. Tuning TCP socket buffers on initiator nodes ensures the TCP transport overhead does not limit throughput.
