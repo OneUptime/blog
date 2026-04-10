@@ -19,7 +19,7 @@ GET key                 # returns "hello"
 
 # Set with expiration
 SET key "value" EX 60          # expire in 60 seconds
-SET key "value" PX 60000       # expire in 60 milliseconds
+SET key "value" PX 60000       # expire in 60000 milliseconds
 SET key "value" EXAT 1800000000  # expire at Unix timestamp
 
 # Conditional set
