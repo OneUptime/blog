@@ -26,7 +26,7 @@ rbd mirror pool enable replicapool image
 rbd mirror image enable replicapool/myimage snapshot
 
 # Verify mirroring mode
-rbd mirror image info replicapool/myimage
+rbd info replicapool/myimage
 ```
 
 ## Creating a Mirror Snapshot Manually
@@ -83,11 +83,13 @@ After creating a snapshot, monitor replication progress on the secondary cluster
 # On the secondary cluster
 rbd mirror image status replicapool/myimage
 
-# Look for "replaying" state and snapshot_id progression
+# Look for "replaying" state and snapshot sync progression
 # Example output:
 # global_id:   <uuid>
 # state:       up+replaying
-# description: replaying, master_position=[...], mirror_position=[...]
+# description: replaying, {"bytes_per_second":0.0,"bytes_per_snapshot":0.0,
+#   "local_snapshot_timestamp":...,"remote_snapshot_timestamp":...,
+#   "replay_state":"idle"}
 ```
 
 ## Rook: Triggering Snapshots via Toolbox
