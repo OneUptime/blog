@@ -17,7 +17,7 @@ Ceph RGW's sync module framework allows developers to create custom data sync ha
 A sync module must implement two main classes:
 
 ```cpp
-// The module factory - registered at startup
+// The instantiated module - created by the factory
 class RGWSyncModuleInstance {
 public:
   virtual ~RGWSyncModuleInstance() {}
@@ -40,6 +40,12 @@ public:
                                        RGWDataSyncCtx *sc,
                                        rgw_bucket_sync_pipe& sync_pipe,
                                        rgw_obj_key& key, ...) = 0;
+
+  // Called when a delete marker is created (versioned buckets)
+  virtual RGWCoroutine *create_delete_marker(const DoutPrefixProvider *dpp,
+                                              RGWDataSyncCtx *sc,
+                                              rgw_bucket_sync_pipe& sync_pipe,
+                                              rgw_obj_key& key, ...) = 0;
 };
 ```
 
@@ -56,7 +62,6 @@ git checkout v18.2.0  # Use your Ceph version
 
 # Configure the build
 cmake -DCMAKE_BUILD_TYPE=Debug \
-  -DWITH_PYTHON3=ON \
   -DWITH_MGR_DASHBOARD_FRONTEND=OFF \
   -B build .
 ```
@@ -65,12 +70,12 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 
 ```bash
 # Create module files
-touch src/rgw/rgw_sync_module_custom.h
-touch src/rgw/rgw_sync_module_custom.cc
+touch src/rgw/driver/rados/rgw_sync_module_custom.h
+touch src/rgw/driver/rados/rgw_sync_module_custom.cc
 ```
 
 ```cpp
-// src/rgw/rgw_sync_module_custom.h
+// src/rgw/driver/rados/rgw_sync_module_custom.h
 #pragma once
 #include "rgw_sync_module.h"
 
@@ -95,7 +100,7 @@ public:
 ```
 
 ```cpp
-// src/rgw/rgw_sync_module_custom.cc - simplified example
+// src/rgw/driver/rados/rgw_sync_module_custom.cc - simplified example
 #include "rgw_sync_module_custom.h"
 #include "rgw_cr_rest.h"
 
@@ -108,28 +113,30 @@ public:
   RGWCoroutine *sync_object(const DoutPrefixProvider *dpp,
                               RGWDataSyncCtx *sc, ...) override {
     // Return a coroutine that POSTs object metadata to webhook_url
-    return new RGWPostHTTPDataCR(sc->env->cct, webhook_url,
-                                  object_metadata_json);
+    return new RGWPostRESTResourceCR(sc->env->cct, sc->conn,
+                                      sc->env->http_manager,
+                                      webhook_url, nullptr,
+                                      object_metadata_json);
   }
+
+  // Must also override remove_object() and create_delete_marker()
 };
 ```
 
 ## Step 3 - Register the Module
 
 ```cpp
-// In src/rgw/rgw_sync_modules.cc, add:
+// In src/rgw/driver/rados/rgw_sync_module.cc, add:
 #include "rgw_sync_module_custom.h"
 
-// In RGWSyncModulesManager::create_module():
-if (tier_type == "custom") {
-  *module = std::make_shared<RGWCustomSyncModule>();
-  return 0;
-}
+// In rgw_register_sync_modules(), add:
+RGWSyncModuleRef custom_module(std::make_shared<RGWCustomSyncModule>());
+modules_manager->register_module("custom", custom_module);
 ```
 
 ```cmake
 # In src/rgw/CMakeLists.txt, add:
-# rgw_sync_module_custom.cc to the rgw_op library sources
+# driver/rados/rgw_sync_module_custom.cc to the librgw_common_srcs list
 ```
 
 ## Step 4 - Build and Test
