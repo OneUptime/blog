@@ -29,13 +29,13 @@ kubectl -n rook-ceph scale deployment rook-ceph-mon-a --replicas=0
 ## Inspect the Monitor Store Contents
 
 ```bash
-# List all keys in the monitor store
+# Back up the monitor store
 ceph-monstore-tool /var/lib/ceph/mon/ceph-a \
-  -- store-copy /tmp/mon-backup
+  store-copy /tmp/mon-backup
 
 # Get the current monitor map
 ceph-monstore-tool /var/lib/ceph/mon/ceph-a \
-  -- get monmap > /tmp/monmap.bin
+  get monmap -- --out /tmp/monmap.bin
 
 # Decode the monitor map
 monmaptool --print /tmp/monmap.bin
@@ -45,7 +45,7 @@ monmaptool --print /tmp/monmap.bin
 
 ```bash
 ceph-monstore-tool /var/lib/ceph/mon/ceph-a \
-  -- get osdmap > /tmp/osdmap.bin
+  get osdmap -- --out /tmp/osdmap.bin
 
 # Decode the OSD map
 osdmaptool --print /tmp/osdmap.bin
@@ -58,14 +58,11 @@ If the monitor store is corrupt, rebuild it from a known good monitor or from th
 ```bash
 # Copy store from a healthy monitor
 kubectl -n rook-ceph exec rook-ceph-mon-b-xxxxx -- \
-  tar czf - /var/lib/ceph/mon/ceph-b/store.db > /tmp/mon-b-store.tar.gz
+  tar czf - -C /var/lib/ceph/mon/ceph-b store.db > /tmp/mon-b-store.tar.gz
 
-# Restore to the failed monitor's data directory
+# Remove the corrupt store and restore from backup
+rm -rf /var/lib/ceph/mon/ceph-a/store.db
 tar xzf /tmp/mon-b-store.tar.gz -C /var/lib/ceph/mon/ceph-a/
-
-# Rename to match the failed monitor
-mv /var/lib/ceph/mon/ceph-a/ceph-b/store.db \
-   /var/lib/ceph/mon/ceph-a/store.db
 ```
 
 ## Trim the Monitor Store
@@ -75,7 +72,7 @@ A growing monitor store can cause OOM issues. Compact it:
 ```bash
 # Compact the RocksDB store
 ceph-monstore-tool /var/lib/ceph/mon/ceph-a \
-  -- compact
+  compact
 
 # Check store size after compaction
 du -sh /var/lib/ceph/mon/ceph-a/store.db
@@ -90,11 +87,10 @@ If a monitor cannot be recovered, remove it from the monmap:
 ceph mon getmap -o /tmp/monmap
 
 # Remove the failed monitor
-monmaptool --rm mon-a /tmp/monmap
+monmaptool --rm a /tmp/monmap
 
-# Inject the new monmap
-ceph-monstore-tool /var/lib/ceph/mon/ceph-b \
-  -- update-monmap /tmp/monmap
+# Inject the new monmap into the remaining monitor's store
+ceph-mon -i b --inject-monmap /tmp/monmap
 ```
 
 ## Verify Recovery
