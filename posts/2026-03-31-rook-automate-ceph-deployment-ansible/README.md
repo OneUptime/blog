@@ -57,6 +57,7 @@ ceph-ansible-rook/
     kubectl label node {{ item }} storage=ceph --overwrite
   loop: "{{ groups['ceph_nodes'] }}"
   delegate_to: "{{ groups['k8s_master'][0] }}"
+  run_once: true
 ```
 
 ## Deploy Rook Operator Role
@@ -133,10 +134,14 @@ spec:
 
 ```yaml
 # playbooks/deploy.yml
+- hosts: ceph_nodes
+  become: true
+  roles:
+  - k8s-prereqs
+
 - hosts: localhost
   gather_facts: false
   roles:
-  - k8s-prereqs
   - rook-operator
   - ceph-cluster
   - ceph-pool
@@ -148,6 +153,7 @@ spec:
 # Deploy to staging
 ansible-playbook playbooks/deploy.yml \
   -i inventory/staging \
+  -e rook_version=v1.16.0 \
   -e ceph_version=v18.2.0 \
   -e ceph_mon_count=3 \
   -e ceph_data_device=sdb
