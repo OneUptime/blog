@@ -17,7 +17,6 @@ Parameterize resolution rather than hard-coding it:
 ```python
 import redis
 import time
-import math
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
