@@ -87,11 +87,11 @@ redis-cli LASTSAVE
 redis-cli INFO persistence | grep rdb_last_bgsave
 ```
 
-To monitor BGSAVE progress with DEBUG:
+To monitor BGSAVE progress:
 
 ```bash
-redis-cli DEBUG SLEEP 0  # force config flush
-redis-cli INFO stats | grep rdb
+redis-cli INFO persistence | grep rdb_bgsave_in_progress
+redis-cli INFO persistence | grep rdb_current_bgsave_time_sec
 ```
 
 ## Prevent Future Failures
