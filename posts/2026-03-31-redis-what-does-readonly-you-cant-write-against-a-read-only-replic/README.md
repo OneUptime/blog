@@ -36,7 +36,7 @@ Common causes:
 redis-cli ROLE
 ```
 
-If the output starts with `slave` (or `replica` in newer Redis), this node is a replica:
+If the output starts with `slave`, this node is a replica (the ROLE command returns `slave` even in newer Redis versions):
 
 ```text
 1) "slave"
