@@ -26,7 +26,7 @@ Lifecycle rules require the RGW lifecycle processor to be running. Verify it is 
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph config get client.rgw rgw_lc_max_objs
 
-# Set lifecycle check interval (default 60 seconds)
+# Set the time-of-day window for lifecycle processing (default "00:00-06:00")
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_lifecycle_work_time "00:00-06:00"
 ```
@@ -58,6 +58,7 @@ aws s3api put-bucket-lifecycle-configuration \
       {
         "ID": "abort-incomplete-multipart",
         "Status": "Enabled",
+        "Filter": {},
         "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 3}
       }
     ]
@@ -66,23 +67,38 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Configuring Storage Classes in RGW
 
-To enable tiered storage classes, configure placement targets in the zone:
+Lifecycle transitions move objects between storage classes within the same placement target. Add storage classes to the default placement:
 
 ```bash
-# Add a cold storage placement
+# Add STANDARD_IA storage class to the default placement in the zonegroup
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin zonegroup placement add \
   --rgw-zonegroup default \
-  --placement-id cold-storage
+  --placement-id default-placement \
+  --storage-class STANDARD_IA
 
-# Set the cold storage pool (slower HDD pool)
+# Configure the STANDARD_IA data pool in the zone
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin zone placement add \
   --rgw-zone default \
-  --placement-id cold-storage \
-  --data-pool rook-ceph.cold.data \
-  --index-pool rook-ceph.cold.index \
-  --data-extra-pool rook-ceph.cold.non-ec
+  --placement-id default-placement \
+  --storage-class STANDARD_IA \
+  --data-pool rook-ceph.rgw.cold.data
+
+# Add GLACIER storage class to the default placement in the zonegroup
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin zonegroup placement add \
+  --rgw-zonegroup default \
+  --placement-id default-placement \
+  --storage-class GLACIER
+
+# Configure the GLACIER data pool in the zone (slower HDD pool)
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin zone placement add \
+  --rgw-zone default \
+  --placement-id default-placement \
+  --storage-class GLACIER \
+  --data-pool rook-ceph.rgw.archive.data
 ```
 
 ## Applying a Policy with Python (boto3)
