@@ -40,7 +40,7 @@ Key fields:
 
 ```text
 used_memory:1073741824
-used_memory_human:1024.00M
+used_memory_human:1.00G
 used_memory_rss:1200000000
 used_memory_peak:1073741824
 maxmemory:1073741824
@@ -73,7 +73,7 @@ redis-cli CONFIG SET maxmemory 2gb
 maxmemory 2gb
 ```
 
-Use units: `b` (bytes), `kb`, `mb`, `gb`. Leave some headroom for RSS overhead (typically 10-20% above logical memory).
+Use units: `kb`, `mb`, `gb` (or `k`, `m`, `g` for SI units), or specify the value in bytes without a suffix. Leave some headroom for RSS overhead (typically 10-20% above logical memory).
 
 ### Option 2 - Change the Eviction Policy
 
