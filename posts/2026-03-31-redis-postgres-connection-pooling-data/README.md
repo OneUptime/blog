@@ -21,7 +21,6 @@ PgBouncer --> Stats Collector Script --> Redis Hash --> Dashboard / Alert System
 ```python
 import redis
 import psycopg2
-import json
 import time
 import threading
 
