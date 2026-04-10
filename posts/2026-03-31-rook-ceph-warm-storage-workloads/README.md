@@ -32,7 +32,7 @@ spec:
   deviceClass: ssd
   parameters:
     pg_autoscale_mode: "on"
-    compression_mode: passive  # Compress compressible data but skip already-compressed
+    compression_mode: passive  # Compress only when client sends a compressible hint
     min_size: "2"
 ```
 
@@ -101,7 +101,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 # Moderate op thread count for SSD parallelism
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph config set osd osd_op_num_threads_per_shard 2
+  ceph config set osd osd_op_num_threads_per_shard_ssd 2
 ```
 
 ## Analytics Use Case: ClickHouse on Warm Storage
