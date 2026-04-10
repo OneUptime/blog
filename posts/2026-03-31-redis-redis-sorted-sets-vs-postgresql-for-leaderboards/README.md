@@ -32,7 +32,7 @@ ZREVRANGE leaderboard:global 0 9 WITHSCORES
 # Get player rank (0-indexed, highest = rank 0)
 ZREVRANK leaderboard:global "player:bob"
 
-# Get rank range (players ranked 50-100)
+# Get rank range (0-indexed, returns players ranked 51st-101st)
 ZREVRANGE leaderboard:global 50 100 WITHSCORES
 
 # Get players in score range
@@ -143,20 +143,20 @@ Redis supports multiple leaderboards cheaply:
 ```python
 from datetime import datetime
 
-def add_score(player_id: str, score: int, increment: int):
+def add_score(player_id: str, increment: int):
     now = datetime.utcnow()
     pipe = r.pipeline()
 
     # Update multiple time-window leaderboards atomically
     pipe.zincrby("leaderboard:alltime", increment, player_id)
     pipe.zincrby(f"leaderboard:monthly:{now.year}:{now.month}", increment, player_id)
-    pipe.zincrby(f"leaderboard:weekly:{now.isocalendar().week}", increment, player_id)
+    pipe.zincrby(f"leaderboard:weekly:{now.isocalendar().year}:{now.isocalendar().week}", increment, player_id)
     pipe.zincrby(f"leaderboard:daily:{now.date()}", increment, player_id)
     pipe.execute()
 
     # Set expiry on time-windowed boards
     r.expire(f"leaderboard:daily:{now.date()}", 86400 * 2)
-    r.expire(f"leaderboard:weekly:{now.isocalendar().week}", 86400 * 14)
+    r.expire(f"leaderboard:weekly:{now.isocalendar().year}:{now.isocalendar().week}", 86400 * 14)
 ```
 
 PostgreSQL equivalent needs a score history table:
