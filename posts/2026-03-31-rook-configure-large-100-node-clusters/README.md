@@ -84,8 +84,8 @@ spec:
       containers:
         - name: rook-ceph-operator
           env:
-            - name: ROOK_OPERATOR_TIMEOUT
-              value: "15m"
+            - name: ROOK_CEPH_COMMANDS_TIMEOUT_SECONDS
+              value: "300"
             - name: ROOK_LOG_LEVEL
               value: "INFO"  # Not DEBUG in production
 ```
@@ -96,7 +96,7 @@ spec:
 # Enable Prometheus metrics module
 ceph mgr module enable prometheus
 
-# Adjust MGR module thread count for large clusters
+# Adjust stats collection interval for large clusters
 ceph config set mgr mgr_stats_period 5  # Seconds between stats updates
 
 # Disable unused modules to reduce MGR load
@@ -111,13 +111,13 @@ ceph mgr module disable dashboard  # If using external Grafana only
 ceph status
 
 # Monitor slow operations (common at scale)
-ceph health detail | grep "slow requests"
+ceph health detail | grep "slow ops"
 
-# Check PG distribution across OSDs
-ceph osd df | awk 'NR>1 {print $2}' | sort -n | uniq -c
+# Check PG distribution across OSDs (inspect the PGS column)
+ceph osd df tree
 
 # Verify no OSD is responsible for too many PGs
-ceph osd df | sort -k2 -n | tail -10
+ceph osd df -f json | jq -r '[.nodes[] | select(.type == "osd")] | sort_by(-.pgs)[:10][] | "osd.\(.id): \(.pgs) PGs"'
 ```
 
 ## Summary
