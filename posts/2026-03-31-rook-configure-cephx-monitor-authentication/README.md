@@ -42,7 +42,6 @@ spec:
       auth_cluster_required: cephx
       auth_service_required: cephx
       auth_client_required: cephx
-      auth_supported: cephx
 ```
 
 ## Monitor-Specific Capabilities
