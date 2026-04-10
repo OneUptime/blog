@@ -112,7 +112,7 @@ Some commands cannot be used inside Lua scripts:
 
 - `SUBSCRIBE`, `UNSUBSCRIBE`, `PSUBSCRIBE` - blocking pub/sub
 - `WAIT` - waits for replica acknowledgment
-- `DEBUG SLEEP` - only allowed in debug mode
+- `DEBUG SLEEP` - administrative debug command
 
 Trying to use them will raise:
 
