@@ -102,7 +102,7 @@ def reclaim_stale_messages(min_idle_ms=30000):
             r.xclaim(
                 "payments:queue", "payment-processors",
                 "recovery-worker", min_idle_ms,
-                entry["message_id"]
+                [entry["message_id"]]
             )
 ```
 
