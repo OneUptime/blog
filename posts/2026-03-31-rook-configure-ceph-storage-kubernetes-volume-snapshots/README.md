@@ -114,7 +114,7 @@ kubectl get volumesnapshotcontent
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd snap ls replicapool/csi-vol-$(kubectl get pv $(kubectl get pvc test-pvc -o jsonpath='{.spec.volumeName}') -o jsonpath='{.spec.csi.volumeHandle}' | cut -d'-' -f3-)
+  rbd snap ls replicapool/$(kubectl get pv $(kubectl get pvc test-pvc -o jsonpath='{.spec.volumeName}') -o jsonpath='{.spec.csi.volumeAttributes.imageName}')
 ```
 
 ## Summary
