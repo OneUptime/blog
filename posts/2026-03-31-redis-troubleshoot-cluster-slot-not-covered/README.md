@@ -107,7 +107,8 @@ A stalled resharding operation can leave slots in an intermediate state:
 
 ```bash
 # Check for slots in migration state
-redis-cli -c CLUSTER NODES | grep -E "migrating|importing"
+# Migrating slots show as [slot->-nodeId], importing as [slot-<-nodeId]
+redis-cli -c CLUSTER NODES | grep -E "\[.*->-|\[.*-<-"
 
 # Fix a slot stuck in MIGRATING state on source node
 redis-cli -h <source-node> -p 6381 CLUSTER SETSLOT <slot-number> STABLE
@@ -120,13 +121,13 @@ redis-cli -h <target-node> -p 6382 CLUSTER SETSLOT <slot-number> STABLE
 
 ```bash
 # Assign uncovered slots to an existing primary
-# First, find a healthy primary node ID
+# First, find a healthy primary node's IP and port
 redis-cli -c CLUSTER NODES | grep "master" | head -1
 
-# Assign each uncovered slot
-HEALTHY_NODE_ID="abc123def456..."
+# CLUSTER ADDSLOTS assigns slots to the node you connect to,
+# so connect directly to the healthy primary
 for SLOT in $(seq 5500 5999); do
-  redis-cli -h <any-node> -p 6379 CLUSTER ADDSLOTS $SLOT
+  redis-cli -h <healthy-primary-node> -p 6379 CLUSTER ADDSLOTS $SLOT
 done
 
 # Verify coverage
