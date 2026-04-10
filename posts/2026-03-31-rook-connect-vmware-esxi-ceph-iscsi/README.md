@@ -108,8 +108,8 @@ Once the iSCSI LUN appears as a device, create a VMFS datastore:
 # List available storage devices
 esxcli storage core device list | grep iSCSI
 
-# Create VMFS datastore (replace naa.XXXX with actual device ID)
-vmkfstools -C vmfs6 -S CephDatastore /vmfs/devices/disks/naa.XXXX
+# Create VMFS datastore (replace naa.XXXX with actual device NAA identifier)
+vmkfstools -C vmfs6 -S CephDatastore /vmfs/devices/disks/naa.XXXX:1
 ```
 
 Or through the vSphere Client: Storage > New Datastore > VMFS > select the iSCSI LUN.
