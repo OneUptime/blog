@@ -83,11 +83,11 @@ redis-cli FUNCTION DELETE payment_v2
 Dump all functions before a deployment for rollback capability:
 
 ```bash
-# Backup current functions
-redis-cli FUNCTION DUMP > functions_backup.rdb
+# Backup current functions (--raw outputs the binary payload)
+redis-cli --raw FUNCTION DUMP > functions_backup.bin
 
-# Restore if needed
-redis-cli FUNCTION RESTORE < functions_backup.rdb
+# Restore if needed (-x reads the last argument from stdin)
+redis-cli -x FUNCTION RESTORE REPLACE < functions_backup.bin
 ```
 
 ## Listing and Inspecting Deployed Functions
