@@ -8,14 +8,14 @@ Description: Step-by-step guide to provisioning and connecting to an Aiven for R
 
 ---
 
-Aiven for Redis is a fully managed Redis service available across AWS, GCP, Azure, and DigitalOcean. It handles backups, upgrades, and failover while giving you a standard Redis endpoint. This guide walks through provisioning a service and connecting to it securely.
+Aiven for Valkey (formerly Aiven for Redis) is a fully managed, Redis-compatible service available across AWS, GCP, Azure, and DigitalOcean. It handles backups, upgrades, and failover while giving you a standard Redis-protocol endpoint. This guide walks through provisioning a service and connecting to it securely.
 
-## Provisioning an Aiven for Redis Service
+## Provisioning an Aiven for Valkey Service
 
 1. Sign up at [aiven.io](https://aiven.io) and create a project.
-2. Click **Create Service** and choose **Redis**.
+2. Click **Create Service** and choose **Valkey**.
 3. Select your cloud provider and region.
-4. Choose a plan (the `Hobbyist` plan is free and suitable for development).
+4. Choose a plan (the `Free` plan is suitable for development).
 5. Set a service name and click **Create Service**.
 
 Within a few minutes the service status changes to **Running**.
@@ -51,11 +51,11 @@ redis-cli --tls \
 Run a quick test:
 
 ```bash
-127.0.0.1:port> PING
+<host>:<port>> PING
 PONG
-127.0.0.1:port> SET hello "aiven"
+<host>:<port>> SET hello "aiven"
 OK
-127.0.0.1:port> GET hello
+<host>:<port>> GET hello
 "aiven"
 ```
 
@@ -92,7 +92,6 @@ pip install redis
 
 ```python
 import redis
-import ssl
 
 client = redis.Redis(
     host="<host>",
@@ -132,4 +131,4 @@ avn service update my-redis-service \
 
 ## Summary
 
-Aiven for Redis provides a cloud-agnostic managed Redis instance with mandatory TLS and automatic failover. Provisioning takes under five minutes via the console or CLI. Use the downloaded CA certificate for all client connections and configure eviction policies through the Advanced Configuration panel.
+Aiven for Valkey provides a cloud-agnostic managed Redis-compatible instance with mandatory TLS and automatic failover. Provisioning takes under five minutes via the console or CLI. Use the downloaded CA certificate for all client connections and configure eviction policies through the Advanced Configuration panel.
