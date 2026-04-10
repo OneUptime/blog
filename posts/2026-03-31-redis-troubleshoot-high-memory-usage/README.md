@@ -42,7 +42,7 @@ redis-cli CONFIG GET maxmemory-policy
 Large keys are often the root cause of unexpected memory usage:
 
 ```bash
-# Find the biggest keys (Redis 4.0+)
+# Find the biggest keys
 redis-cli --bigkeys
 
 # Sample output:
@@ -157,7 +157,9 @@ redis-cli CONFIG SET hash-max-listpack-entries 128
 redis-cli CONFIG SET hash-max-listpack-value 64
 
 # Same for lists, sets, sorted sets
-redis-cli CONFIG SET list-max-listpack-size 128
+# Note: list-max-listpack-size uses negative values for byte limits
+# (-1=4KB, -2=8KB default, -3=16KB, -4=32KB, -5=64KB)
+redis-cli CONFIG SET list-max-listpack-size -2
 redis-cli CONFIG SET set-max-intset-entries 512
 redis-cli CONFIG SET zset-max-listpack-entries 128
 ```
