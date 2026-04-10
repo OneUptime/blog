@@ -26,11 +26,11 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
   name: rook-ceph-access-class
-driverName: rook-ceph.ceph.rook.io
-authenticationType: Key
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+authenticationType: KEY
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ```bash
@@ -39,7 +39,7 @@ kubectl apply -f bucketaccessclass.yaml
 
 ## Authentication Types
 
-Rook-Ceph supports two authentication types:
+The COSI specification defines two authentication types: `KEY` and `IAM`. Rook-Ceph currently supports `KEY`-based authentication.
 
 ### Key-based Authentication (AWS-style)
 
@@ -48,28 +48,14 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
   name: rook-key-access
-driverName: rook-ceph.ceph.rook.io
-authenticationType: Key
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+authenticationType: KEY
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
-The driver will create an S3 access key and secret key pair and store them in a Kubernetes Secret.
-
-### IAM Role-style (IAM Authentication)
-
-```yaml
-apiVersion: objectstorage.k8s.io/v1alpha1
-kind: BucketAccessClass
-metadata:
-  name: rook-iam-access
-driverName: rook-ceph.ceph.rook.io
-authenticationType: IAM
-parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-```
+The driver will generate S3 credentials (access key and secret key) and store them in a Kubernetes Secret.
 
 ## Verifying a BucketAccessClass
 
@@ -82,10 +68,10 @@ kubectl describe bucketaccessclass rook-ceph-access-class
 
 When a `BucketAccess` object references a `BucketAccessClass`, Rook:
 
-1. Creates a new Ceph RGW user (or reuses an existing one)
-2. Generates S3 credentials for that user
+1. Uses the CephObjectStoreUser referenced by the secret in the parameters
+2. Generates S3 credentials (access key ID and secret access key)
 3. Stores the credentials in a Kubernetes Secret in the requesting namespace
-4. Grants the user access to the specified bucket
+4. Grants the application access to the specified bucket
 
 ```bash
 # After creating a BucketAccess, find the credential secret
@@ -94,40 +80,40 @@ kubectl get secrets -n my-app | grep bucket-access
 
 ## Role-Based Access Patterns
 
-Create separate BucketAccessClasses for different access levels:
+Create separate BucketAccessClasses backed by different CephObjectStoreUsers with different permission levels:
 
 ```yaml
-# Read-only access class
+# Read-only access class (backed by a restricted CephObjectStoreUser)
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
   name: rook-readonly-access
-driverName: rook-ceph.ceph.rook.io
-authenticationType: Key
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+authenticationType: KEY
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-  userCaps: "buckets=read;objects=read"
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-readonly
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ```yaml
-# Full access class
+# Full access class (backed by a CephObjectStoreUser with full permissions)
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
   name: rook-full-access
-driverName: rook-ceph.ceph.rook.io
-authenticationType: Key
+driverName: rook-ceph.ceph.objectstorage.k8s.io
+authenticationType: KEY
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-  userCaps: "buckets=*;objects=*"
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-admin
+  objectStoreUserSecretNamespace: rook-ceph
 ```
+
+To enforce different permission levels, create separate `CephObjectStoreUser` resources with appropriate capabilities, then reference their secrets in the corresponding BucketAccessClass.
 
 ## Listing All Access Classes
 
 ```bash
-kubectl get bucketaccessclass -A
+kubectl get bucketaccessclass
 ```
 
 ## Summary
