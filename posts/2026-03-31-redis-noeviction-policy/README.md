@@ -36,7 +36,7 @@ Common scenarios:
 - Job queues (losing a job is unacceptable)
 - Session stores where all sessions must be preserved
 - Counters and analytics that cannot be recomputed
-- Pub/Sub message buffers
+- Stream-based message buffers
 
 ## Handling OOM Errors in Application Code
 
@@ -82,7 +82,7 @@ r = redis.Redis()
 def check_memory_pressure():
     info = r.info("memory")
     used = info["used_memory"]
-    max_mem = r.config_get("maxmemory")["maxmemory"]
+    max_mem = int(r.config_get("maxmemory")["maxmemory"])
 
     if max_mem == 0:
         return 0.0  # No limit set
@@ -98,11 +98,11 @@ pressure = check_memory_pressure()
 
 ```bash
 # Check memory usage
-INFO memory | grep used_memory_human
-INFO memory | grep maxmemory_human
+redis-cli INFO memory | grep used_memory_human
+redis-cli INFO memory | grep maxmemory_human
 
 # Check eviction count (should always be 0 with noeviction)
-INFO stats | grep evicted_keys
+redis-cli INFO stats | grep evicted_keys
 ```
 
 ## Combining noeviction with TTLs
@@ -136,7 +136,7 @@ def setup_memory_alert(threshold=0.85):
     """Alert when Redis reaches threshold of maxmemory."""
     info = r.info("memory")
     used = info["used_memory"]
-    max_mem_cfg = r.config_get("maxmemory")["maxmemory"]
+    max_mem_cfg = int(r.config_get("maxmemory")["maxmemory"])
 
     if max_mem_cfg and used / max_mem_cfg > threshold:
         # Trigger alert (PagerDuty, Slack, etc.)
