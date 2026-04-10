@@ -17,11 +17,11 @@ Object classes log via the Ceph logging framework. To see class log output, incr
 ```bash
 # Increase log level for a specific OSD at runtime (no restart needed)
 ceph tell osd.0 config set debug_osd 20
-ceph tell osd.0 config set debug_class 20
+ceph tell osd.0 config set debug_objclass 20
 
 # Or increase on all OSDs
 ceph tell 'osd.*' config set debug_osd 10
-ceph tell 'osd.*' config set debug_class 20
+ceph tell 'osd.*' config set debug_objclass 20
 
 # Watch the OSD log
 tail -f /var/log/ceph/ceph-osd.0.log | grep -i "myclass\|error\|class"
@@ -90,8 +90,8 @@ cluster.connect()
 ioctx = cluster.open_ioctx("mypool")
 
 try:
-    result = ioctx.execute("test-obj", "myclass", "my_method", b"bad input")
-    print(f"Success: {result}")
+    ret, output = ioctx.execute("test-obj", "myclass", "my_method", b"bad input")
+    print(f"Success: ret={ret}, output={output}")
 except rados.Error as e:
     print(f"Error code: {e.errno}")
     print(f"Error message: {str(e)}")
@@ -117,23 +117,33 @@ file /usr/lib/rados-classes/cls_myclass.so
 ldd /usr/lib/rados-classes/cls_myclass.so
 ```
 
-## Using RADOS `cls-call` for Ad-Hoc Testing
+## Ad-Hoc Testing with a Python Script
 
-```bash
+The `rados` CLI does not have a subcommand for invoking object class methods. Use a Python script with librados instead:
+
+```python
+import rados
+
+cluster = rados.Rados(conffile="/etc/ceph/ceph.conf")
+cluster.connect()
+ioctx = cluster.open_ioctx("mypool")
+
 # Create a test object
-echo "test content for debugging" | rados -p mypool put debug-obj -
+ioctx.write_full("debug-obj", b"test content for debugging")
 
-# Call the class method directly from CLI (no args)
-rados -p mypool cls-call debug-obj myclass count_words
+# Call the class method with no input
+ret, output = ioctx.execute("debug-obj", "myclass", "count_words", b"")
+print(f"count_words returned: ret={ret}, output={output}")
 
-# Call with base64-encoded input
-ARGS=$(python3 -c "
-import struct, base64
-s = 'test arg'.encode('utf-8')
-data = struct.pack('<I', len(s)) + s
-print(base64.b64encode(data).decode())
-")
-rados -p mypool cls-call debug-obj myclass my_method --input-base64=${ARGS}
+# Call with encoded input
+import struct
+s = b"test arg"
+data = struct.pack("<I", len(s)) + s
+ret, output = ioctx.execute("debug-obj", "myclass", "my_method", data)
+print(f"my_method returned: ret={ret}, output={output}")
+
+ioctx.close()
+cluster.shutdown()
 ```
 
 ## Common Errors and Fixes
@@ -142,9 +152,9 @@ rados -p mypool cls-call debug-obj myclass my_method --input-base64=${ARGS}
 |-------|-------------|-----|
 | -EINVAL (22) | Input buffer decode failed | Check argument encoding matches C++ decode |
 | -ENOENT (2) | Object does not exist before exec | Create the object before calling exec |
-| -38 (ENOSYS) | Class or method not found | Verify .so is on all OSD nodes, check method name |
+| -95 (EOPNOTSUPP) | Class or method not found | Verify .so is on all OSD nodes, check method name |
 | OSD crashes | Null pointer, buffer overflow | Add bounds checks, use valgrind in test env |
 
 ## Summary
 
-Debugging Ceph object classes requires combining CLS_LOG statements in the class code with elevated OSD log levels to see execution traces. Client-side, check error codes from `exec` calls and map them to errno values. For systematic testing, use the `rados cls-call` CLI for ad-hoc invocation and verify library loading via `journalctl` on the OSD nodes. Always test with known-good inputs and known-bad inputs to verify both success and error paths before deploying to production.
+Debugging Ceph object classes requires combining CLS_LOG statements in the class code with elevated OSD log levels to see execution traces. Client-side, check error codes from `exec` calls and map them to errno values. For systematic testing, use Python scripts with `ioctx.execute()` for ad-hoc invocation and verify library loading via `journalctl` on the OSD nodes. Always test with known-good inputs and known-bad inputs to verify both success and error paths before deploying to production.
