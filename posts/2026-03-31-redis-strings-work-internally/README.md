@@ -41,9 +41,9 @@ OBJECT ENCODING long_key
 Redis does not use C's null-terminated strings. Instead, it uses its own SDS (Simple Dynamic String) structure:
 
 ```text
-+--------+------+--------+----------+------+
-| flags  | len  | alloc  | buf[]... | \0   |
-+--------+------+--------+----------+------+
++------+--------+--------+----------+------+
+| len  | alloc  | flags  | buf[]... | \0   |
++------+--------+--------+----------+------+
 ```
 
 Key properties of SDS:
