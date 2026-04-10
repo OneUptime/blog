@@ -19,7 +19,7 @@ Medical imaging (DICOM) data has unique storage requirements:
 
 ## Architecture Overview
 
-Ceph RGW (S3-compatible object storage) is ideal for DICOM archival. DICOM servers like Orthanc, dcm4chee, and Horos can use S3-compatible backends.
+Ceph RGW (S3-compatible object storage) is ideal for DICOM archival. DICOM servers like Orthanc and dcm4chee can use S3-compatible backends.
 
 ## Configuring an Encrypted Pool for DICOM Data
 
@@ -83,6 +83,9 @@ spec:
     securePort: 443
     instances: 2
     sslCertificateRef: dicom-tls-cert
+  security:
+    objectLock:
+      enabled: true
 ```
 
 ## Configuring Object Lock for Compliance
@@ -99,9 +102,18 @@ spec:
   generateBucketName: dicom-archive
   storageClassName: rook-ceph-bucket
   additionalConfig:
-    objectLockEnabled: "true"
-    defaultRetentionMode: COMPLIANCE
-    defaultRetentionDays: "3650"  # 10 years
+    maxObjects: "0"
+    maxSize: "0"
+```
+
+After the bucket is created, configure Object Lock retention via the S3 API:
+
+```bash
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  aws --endpoint-url http://rook-ceph-rgw-dicom-store.rook-ceph.svc \
+  s3api put-object-lock-configuration \
+  --bucket dicom-archive \
+  --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Days":3650}}}'
 ```
 
 ## Setting Up Orthanc with Ceph S3
@@ -119,7 +131,7 @@ Configure Orthanc to use the Ceph RGW endpoint:
     "VirtualAddressing": false,
     "StorageEncryption": {
       "Enable": true,
-      "MasterKey": "base64-encoded-key"
+      "MasterKey": [1, "/path/to/master.key"]
     }
   }
 }
@@ -127,12 +139,13 @@ Configure Orthanc to use the Ceph RGW endpoint:
 
 ## Auditing Access
 
-Enable RGW ops logging for HIPAA audit trails:
+Enable RGW usage logging for HIPAA audit trails:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin log show --bucket=dicom-archive \
-  --date=2026-03-31 --bucket-id=<bucket-id>
+  radosgw-admin usage show --uid=<uid> \
+  --start-date=2026-03-01 --end-date=2026-03-31 \
+  --show-log-entries=true
 ```
 
 ## Summary
