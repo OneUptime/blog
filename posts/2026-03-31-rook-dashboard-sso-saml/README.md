@@ -47,17 +47,16 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph dashboard sso setup saml2 \
   "https://dashboard.example.com:8443" \
   "https://idp.example.com/sso/saml/metadata" \
-  "email" \
-  "username" \
-  "false"
+  "username"
 ```
 
 Parameters:
 1. Service Provider base URL (your Dashboard URL)
 2. IdP metadata URL
-3. Username attribute in SAML assertion
-4. IdP entity ID (optional)
-5. SSL verify (true/false)
+3. Username attribute in SAML assertion (optional, defaults to `uid`)
+4. IdP entity ID (optional, auto-detected from metadata)
+5. SP X.509 certificate path (optional, for signed assertions)
+6. SP private key path (optional, for signed assertions)
 
 ## Configure Attribute Mapping
 
@@ -103,9 +102,11 @@ SSO users must exist in the Dashboard with assigned roles:
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph dashboard ac-user-create \
-  --enabled \
   alice@example.com \
-  administrator
+  "" \
+  administrator \
+  --enabled \
+  --force-password
 
 # Users without local passwords can still log in via SSO
 ```
