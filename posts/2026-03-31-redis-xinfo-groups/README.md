@@ -12,7 +12,7 @@ When running multiple consumer groups on a Redis Stream, you need visibility int
 
 ## How XINFO GROUPS Works
 
-`XINFO GROUPS` queries the stream's internal group metadata and returns one record per group. Each record shows the group's last acknowledged ID (its current read position), how many messages are pending across all consumers, and how many consumers are registered.
+`XINFO GROUPS` queries the stream's internal group metadata and returns one record per group. Each record shows the group's last delivered ID (its current read position), how many messages are pending across all consumers, and how many consumers are registered.
 
 ## Syntax
 
@@ -61,11 +61,11 @@ Example output:
 
 Key fields explained:
 - `name` - consumer group name
-- `consumers` - number of active consumers in this group
+- `consumers` - number of consumers in this group
 - `pending` - total pending (unacknowledged) messages across all consumers
 - `last-delivered-id` - the ID of the last message delivered to this group
-- `entries-read` - total messages consumed since group creation
-- `lag` - number of messages in the stream that have not yet been delivered to this group
+- `entries-read` - logical read counter of the last entry delivered to the group's consumers
+- `lag` - number of entries in the stream still waiting to be delivered to this group, or NULL when it cannot be determined (e.g., when entries have been deleted or the group was created with an arbitrary ID)
 
 ### Monitoring Group Lag
 
@@ -91,9 +91,9 @@ The `last-delivered-id` represents where the group's read position is. If you ne
 
 ```mermaid
 flowchart LR
-    A[Stream messages: 1..1250] --> B[workers group last-delivered-id = 980]
-    B --> C[lag = 270 unread messages]
-    A --> D[analytics group last-delivered-id = 1250]
+    A[Stream messages: 1..1250] --> B[workers group entries-read = 980]
+    B --> C[lag = 270 undelivered messages]
+    A --> D[analytics group entries-read = 1250]
     D --> E[lag = 0 fully caught up]
 ```
 
