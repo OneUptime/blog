@@ -140,8 +140,12 @@ kubectl -n rook-ceph wait CephCluster/rook-ceph \
   --for=jsonpath='{.status.phase}'=Ready \
   --timeout=300s
 
+echo "Deploying toolbox for Ceph CLI access..."
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/toolbox.yaml
+kubectl -n rook-ceph rollout status deploy/rook-ceph-tools --timeout=60s
+
 echo "Single-node Ceph cluster ready!"
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
 ```
 
 ## Checking Health on Single Node
@@ -155,9 +159,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 ceph health detail
 # HEALTH_WARN: too few PGs per OSD; mon-election leader changes...
 
-# Suppress known single-node warnings
-ceph config set global mon_warn_on_insecure_global_id_reclaim false
-ceph config set global auth_allow_insecure_global_id_reclaim false
+# Suppress expected single-node warning about pool redundancy
+ceph config set global mon_warn_on_pool_no_redundancy false
 ```
 
 ## Summary
