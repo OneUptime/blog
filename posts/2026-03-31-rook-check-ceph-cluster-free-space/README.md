@@ -63,10 +63,10 @@ ceph osd df
 
 Output per OSD includes utilization percentage and variance. OSDs over 85% are highlighted.
 
-For a sorted view:
+For a tree view showing utilization by host:
 
 ```bash
-ceph osd df | sort -k7 -n -r | head -20
+ceph osd df tree
 ```
 
 ## Threshold Configuration
