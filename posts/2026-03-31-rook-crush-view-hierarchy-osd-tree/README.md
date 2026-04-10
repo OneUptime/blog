@@ -22,20 +22,20 @@ Example output:
 
 ```text
 ID  CLASS  WEIGHT   TYPE NAME             STATUS  REWEIGHT  PRI-AFF
--1          30.000  root default
--5          15.000      datacenter dc1
--3          10.000          rack rack1
--2           5.000              host node-01
+-1           6.000  root default
+-5           6.000      datacenter dc1
+-3           6.000          rack rack1
+-2           3.000              host node-01
  0  hdd      1.000                  osd.0   up    1.00000   1.00000
  1  hdd      1.000                  osd.1   up    1.00000   1.00000
  2  ssd      1.000                  osd.2   up    1.00000   1.00000
--4           5.000              host node-02
+-4           3.000              host node-02
  3  hdd      1.000                  osd.3   up    1.00000   1.00000
  4  hdd      2.000                  osd.4   up    1.00000   1.00000
 ```
 
 Column meanings:
-- **ID** - negative IDs are buckets; positive IDs are OSDs
+- **ID** - negative IDs are buckets; non-negative IDs (0 and above) are OSDs
 - **CLASS** - device class (hdd, ssd, nvme)
 - **WEIGHT** - CRUSH weight (typically TB of capacity)
 - **TYPE NAME** - bucket type and name
@@ -97,9 +97,9 @@ ceph osd map mypool myobject
 # OSDs 2, 5, 8 should be in different failure domains
 
 # Verify those OSDs are on different hosts
-ceph osd find osd.2
-ceph osd find osd.5
-ceph osd find osd.8
+ceph osd find 2
+ceph osd find 5
+ceph osd find 8
 ```
 
 ## Exporting the Tree for Documentation
