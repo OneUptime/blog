@@ -10,11 +10,11 @@ Description: Learn how to configure the maximum file size limit in CephFS to pre
 
 ## Overview
 
-CephFS allows administrators to set a maximum file size limit on a filesystem. This is useful when you need to prevent clients from writing extremely large files that could exhaust storage capacity or degrade performance. The limit is enforced at the MDS level when clients attempt to extend file sizes beyond the configured threshold.
+CephFS allows administrators to set a maximum file size limit on a filesystem. This is useful when you need to prevent clients from writing extremely large files that could exhaust storage capacity or degrade performance. The limit is published by the MDS via the MDSMap and enforced at the client level when clients attempt to extend file sizes beyond the configured threshold.
 
 ## Default Behavior
 
-By default, CephFS does not enforce a maximum file size. Files can grow to any size as long as storage capacity allows. Setting a hard cap protects the cluster from runaway writes.
+By default, CephFS enforces a maximum file size of 1 TiB (1099511627776 bytes). You can lower this limit to further restrict file sizes or increase it if your workloads require larger files. The minimum allowed value is 65536 bytes (64 KiB).
 
 ## Check Current Max File Size
 
@@ -25,7 +25,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph fs get cephfs
 ```
 
-Look for the `max_file_size` field in the output. A value of `0` means unlimited.
+Look for the `max_file_size` field in the output. The default value is `1099511627776` (1 TiB).
 
 ## Set Maximum File Size
 
@@ -72,14 +72,16 @@ except OSError as e:
         raise
 ```
 
-## Resetting to Unlimited
+## Resetting to Default
 
-To remove the limit and allow files of any size again, set `max_file_size` back to `0`:
+To restore the default 1 TiB limit, set `max_file_size` back to `1099511627776`:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs max_file_size 0
+  ceph fs set cephfs max_file_size 1099511627776
 ```
+
+Note that `max_file_size` cannot be set below 65536 bytes (64 KiB). There is no way to fully disable the limit; set it to a sufficiently large value for your workloads.
 
 ## Considerations
 
@@ -89,4 +91,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Configuring a maximum file size in CephFS using `ceph fs set max_file_size` is a simple but effective safeguard against unbounded file growth. By enforcing this limit at the MDS level, you protect your Rook-Ceph cluster from storage exhaustion caused by oversized files, while applications receive a clear `EFBIG` error that can be handled gracefully.
+Configuring a maximum file size in CephFS using `ceph fs set max_file_size` is a simple but effective safeguard against unbounded file growth. By enforcing this limit at the client level through the MDSMap configuration, you protect your Rook-Ceph cluster from storage exhaustion caused by oversized files, while applications receive a clear `EFBIG` error that can be handled gracefully.
