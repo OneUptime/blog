@@ -110,13 +110,18 @@ tls-ca-cert-file /etc/redis/tls/ca.crt
 Check that TLS is active:
 
 ```bash
-redis-cli -p 6380 --tls --cacert /etc/redis/tls/ca.crt INFO server | grep tls
+redis-cli -p 6380 --tls \
+  --cert /etc/redis/tls/redis.crt \
+  --key /etc/redis/tls/redis.key \
+  --cacert /etc/redis/tls/ca.crt \
+  INFO server | grep tcp_port
 ```
 
 ```text
-tls_mode:standalone
-tls_enabled:1
+tcp_port:0
 ```
+
+A successful connection confirms TLS is working. The `tcp_port:0` output confirms the plaintext port is disabled.
 
 Test the certificate directly with OpenSSL:
 
