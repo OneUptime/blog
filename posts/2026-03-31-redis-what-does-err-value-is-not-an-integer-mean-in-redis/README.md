@@ -16,7 +16,7 @@ When you run an integer arithmetic command on a key that does not hold a valid i
 (error) ERR value is not an integer or out of range
 ```
 
-This error occurs with commands like `INCR`, `INCRBY`, `DECRBY`, `SETRANGE`, `GETRANGE`, `EXPIRE`, `EXPIREAT`, `LINSERT`, and others that require integer values.
+This error occurs with commands like `INCR`, `INCRBY`, `DECRBY`, `SETRANGE`, `GETRANGE`, `EXPIRE`, `EXPIREAT`, and others that require integer values.
 
 ## Commands That Produce This Error
 
