@@ -38,7 +38,7 @@ All OSDs created before Nautilus (14.x) will have the legacy format. After upgra
 
 ## Fixing via OSD Restart
 
-For OSDs running on Nautilus or later that still show legacy statfs, the fix is to restart each OSD with BlueStore's migration enabled. BlueStore migrates to per-pool statfs automatically on startup if the Ceph version supports it.
+For OSDs running on Nautilus v14.2.5 or later that still show legacy statfs, the fix is to restart each OSD with BlueStore's migration enabled. BlueStore migrates to per-pool statfs automatically on startup if the Ceph version supports it (Nautilus v14.2.5+ introduced auto-repair on mount; earlier Nautilus releases require manual repair with `ceph-bluestore-tool`).
 
 In Rook, restart OSD pods:
 
@@ -70,16 +70,18 @@ systemctl start ceph-osd@0
 
 ## Performing a Deep Scrub
 
-A deep scrub forces BlueStore to recalculate object stats, which can trigger statfs migration:
+After migrating OSDs to per-pool statfs (via restart or `ceph-bluestore-tool repair`), a deep scrub forces BlueStore to recalculate and verify object stats:
 
 ```bash
 # Scrub all PGs on the affected OSDs
 ceph pg deep-scrub <pg-id>
 
-# Or scrub all PGs at once (may be slow)
-ceph osd deep-scrub 0
-ceph osd deep-scrub 1
+# Or scrub all PGs on a specific OSD (may be slow)
+ceph osd deep-scrub osd.0
+ceph osd deep-scrub osd.1
 ```
+
+Note: Deep scrub does not trigger the statfs format migration itself — it only recalculates stats within the current format. The migration must be done via OSD restart or `ceph-bluestore-tool repair`.
 
 ## Verifying the Fix
 
