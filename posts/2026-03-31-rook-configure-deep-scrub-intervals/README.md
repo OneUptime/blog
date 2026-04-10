@@ -20,7 +20,7 @@ Deep scrubbing is significantly more I/O intensive than shallow scrubbing becaus
 |---|---|---|
 | `osd_deep_scrub_interval` | 604800 (7 days) | Target interval between deep scrubs |
 | `osd_scrub_min_interval` | 86400 (1 day) | Minimum wait before any scrub |
-| `osd_deep_scrub_randomize_ratio` | 0.5 | Randomization to prevent thundering herd |
+| `osd_deep_scrub_randomize_ratio` | 0.15 | Ratio of shallow scrubs randomly promoted to deep scrubs |
 
 ## Checking Deep Scrub Status
 
@@ -61,9 +61,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Deep scrubs can significantly impact cluster performance. Throttle them:
 
 ```bash
-# Add sleep between object reads during deep scrub
+# Add sleep between scrub chunk operations (applies to both shallow and deep scrubs)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_deep_scrub_sleep 0.5
+  ceph config set osd osd_scrub_sleep 0.5
 
 # Set a maximum I/O rate for scrubbing
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -93,7 +93,7 @@ Force a deep scrub on a specific pool:
 ```bash
 # Deep scrub a specific pool immediately
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool scrub my-pool --deep
+  ceph osd pool deep-scrub my-pool
 
 # Or scrub a specific PG
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -114,4 +114,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Deep scrubbing is essential for catching silent data corruption in Ceph clusters, but its full-data-read approach creates significant I/O pressure. Configure intervals based on your compliance requirements and hardware capabilities - typically weekly for production clusters. Use `osd_deep_scrub_sleep` to throttle impact, restrict scrubbing to off-peak hours, and monitor that PGs complete deep scrubs within the configured maximum interval to avoid health warnings.
+Deep scrubbing is essential for catching silent data corruption in Ceph clusters, but its full-data-read approach creates significant I/O pressure. Configure intervals based on your compliance requirements and hardware capabilities - typically weekly for production clusters. Use `osd_scrub_sleep` to throttle impact, restrict scrubbing to off-peak hours, and monitor that PGs complete deep scrubs within the configured maximum interval to avoid health warnings.
