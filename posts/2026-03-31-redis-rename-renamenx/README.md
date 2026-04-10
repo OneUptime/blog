@@ -177,9 +177,9 @@ HGETALL user:42
 
 **Versioned replacement** - Build a new version of cached data (e.g., `cache:v2`) and rename it to `cache:current` when ready, ensuring clients always see a complete dataset.
 
-## Atomic Swap Pattern
+## Atomic Replacement Pattern
 
-To swap two keys atomically, use Lua or GETDEL in combination with RENAME:
+To atomically replace a key with new data, build the replacement under a staging key and rename it:
 
 ```redis
 # Build new data under staging key
