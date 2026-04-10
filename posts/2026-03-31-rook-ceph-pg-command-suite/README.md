@@ -33,7 +33,7 @@ Example `pg stat` output:
 ## Listing Non-Clean PGs
 
 ```bash
-ceph pg dump | awk '{print $1,$10}' | grep -v "active+clean" | grep -v "^$"
+ceph pg dump pgs_brief | grep -v "active+clean" | grep -v "^$"
 ```
 
 Or use the faster method:
@@ -99,9 +99,12 @@ When cluster size changes, adjust PG count for optimal performance:
 # Get current PG count
 ceph osd pool get mypool pg_num
 
-# Increase PG count (must be done incrementally)
+# Increase PG count
 ceph osd pool set mypool pg_num 256
-ceph osd pool set mypool pgp_num 256
+
+# Note: since Nautilus, pgp_num auto-adjusts to match pg_num.
+# Only set pgp_num manually on pre-Nautilus clusters:
+# ceph osd pool set mypool pgp_num 256
 
 # Enable autoscaling (recommended)
 ceph osd pool set mypool pg_autoscale_mode on
