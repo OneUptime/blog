@@ -60,7 +60,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 # Check migration status
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  rbd migration status warm-ssd-pool/my-volume
+  rbd status warm-ssd-pool/my-volume
 
 # Execute the migration (data copy happens here)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
