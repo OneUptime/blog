@@ -90,7 +90,7 @@ aws s3api put-bucket-lifecycle-configuration \
         "Status": "Enabled",
         "Filter": {"Prefix": ""},
         "NoncurrentVersionExpiration": {"NoncurrentDays": 30},
-        "ExpiredObjectDeleteMarker": true
+        "Expiration": {"ExpiredObjectDeleteMarker": true}
       }
     ]
   }'
