@@ -58,7 +58,6 @@ Configure TLS for the RGW endpoint:
 ```yaml
 spec:
   gateway:
-    type: s3
     securePort: 443
     sslCertificateRef: rgw-tls-cert
     instances: 2
@@ -122,9 +121,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## 5. Set Data Retention Policies
 
-Configure object lock for immutable audit logs:
+Create the audit logs bucket with object lock enabled, then configure a default retention policy:
 
 ```bash
+aws s3api create-bucket \
+  --bucket phi-audit-logs \
+  --endpoint-url https://rgw.example.com \
+  --object-lock-enabled-for-bucket
+
 aws s3api put-object-lock-configuration \
   --bucket phi-audit-logs \
   --endpoint-url https://rgw.example.com \
