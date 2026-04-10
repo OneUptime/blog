@@ -13,7 +13,7 @@ Application-level cache invalidation requires every code path that modifies MySQ
 ## Architecture
 
 ```text
-MySQL binlog --> Debezium --> Kafka topic (db.myapp.users) --> CDC Consumer --> Redis
+MySQL binlog --> Debezium --> Kafka topic (myapp.myapp.users) --> CDC Consumer --> Redis
 ```
 
 ## Setting Up MySQL for Binlog
@@ -41,11 +41,11 @@ SHOW VARIABLES LIKE 'binlog_format';
     "database.user": "debezium",
     "database.password": "dbz",
     "database.server.id": "1",
-    "database.server.name": "myapp",
+    "topic.prefix": "myapp",
     "database.include.list": "myapp",
     "table.include.list": "myapp.users,myapp.products",
-    "database.history.kafka.bootstrap.servers": "kafka:9092",
-    "database.history.kafka.topic": "dbhistory.myapp"
+    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
+    "schema.history.internal.kafka.topic": "dbhistory.myapp"
   }
 }
 ```
