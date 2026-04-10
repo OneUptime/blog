@@ -91,9 +91,9 @@ def resize_image(image_path, width, height):
 
 ## Flask Routes Dispatching Tasks
 
+Add these routes to `app.py`:
+
 ```python
-from flask import Flask, jsonify, request
-from app import app, celery
 from tasks import send_email, resize_image
 
 @app.route("/send-email", methods=["POST"])
