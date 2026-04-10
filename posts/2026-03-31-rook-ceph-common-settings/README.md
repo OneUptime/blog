@@ -10,7 +10,7 @@ Description: Learn how to configure commonly needed Ceph settings for pool defau
 
 ## Runtime vs File-Based Configuration
 
-Modern Ceph (Nautilus+) supports two ways to configure settings:
+Modern Ceph (Mimic+) supports two ways to configure settings:
 - **Runtime**: `ceph config set` - changes take effect immediately and persist in the monitor config database
 - **File-based**: `ceph.conf` - settings applied at daemon startup
 
@@ -71,7 +71,7 @@ ceph config set osd osd_recovery_max_active 3
 # Max backfill operations (rebalancing new OSDs)
 ceph config set osd osd_max_backfills 2
 
-# Recovery sleep between operations (ms)
+# Recovery sleep between operations (seconds, float)
 ceph config set osd osd_recovery_sleep 0
 
 # Priority for client I/O vs recovery
@@ -102,8 +102,8 @@ ceph config set osd osd_heartbeat_grace 20
 # Heartbeat interval (default 6s)
 ceph config set osd osd_heartbeat_interval 6
 
-# Number of failed heartbeats before reporting down
-ceph config set osd osd_heartbeat_min_peers 3
+# Minimum number of peer OSDs to heartbeat with (default 10)
+ceph config set osd osd_heartbeat_min_peers 10
 ```
 
 ## Logging Configuration
@@ -119,7 +119,7 @@ ceph config set global debug_osd 0
 ceph config set global debug_mon 0
 
 # Temporarily increase verbosity for debugging
-ceph tell osd.5 injectargs --debug_osd 10
+ceph tell osd.5 config set debug_osd 10
 ```
 
 ## Checking Effective Configuration
