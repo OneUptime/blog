@@ -69,7 +69,7 @@ radosgw-admin user create --uid=auditor --display-name="Audit User" \
 
 # Application user with limited scope
 radosgw-admin user create --uid=app-user --display-name="Application"
-radosgw-admin caps add --uid=app-user --caps="buckets=read,write"
+radosgw-admin caps add --uid=app-user --caps="buckets=*"
 ```
 
 ## Audit Logging Configuration
@@ -77,8 +77,8 @@ radosgw-admin caps add --uid=app-user --caps="buckets=read,write"
 Enable comprehensive logging required for SOC2 audit trails:
 
 ```bash
-ceph config set global rgw_enable_ops_log true
-ceph config set global rgw_enable_usage_log true
+ceph config set client.rgw rgw_enable_ops_log true
+ceph config set client.rgw rgw_enable_usage_log true
 ceph config set global log_to_file true
 ceph config set global log_file /var/log/ceph/ceph.log
 ```
