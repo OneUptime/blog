@@ -99,8 +99,17 @@ public class NotificationService
 
 ## Checking Backplane Health
 
+The SignalR Redis backplane does not register `IConnectionMultiplexer` in the DI container, so register it separately:
+
 ```csharp
-// Middleware to expose Redis backplane status
+// Register IConnectionMultiplexer for use outside the SignalR backplane
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    ConnectionMultiplexer.Connect("localhost:6379"));
+```
+
+Then expose a health endpoint:
+
+```csharp
 app.MapGet("/health/redis", async (IConnectionMultiplexer mux) =>
 {
     try
