@@ -98,7 +98,7 @@ OBJECT FREQ some:key
 ```
 
 ```text
-(error) ERR object freq is not allowed when maxmemory-policy is not set to an LFU policy.
+(error) An LFU maxmemory policy is not selected, access frequency not tracked. Please note that when switching between policies at runtime LRU and LFU data will take some time to adjust.
 ```
 
 ### Initial frequency of a new key
@@ -114,21 +114,21 @@ OBJECT FREQ brand:new:key
 (integer) 5
 ```
 
-The initial value is configurable via `lfu-log-factor`.
+The initial value of 5 is a hardcoded constant (`LFU_INIT_VAL`) in Redis and is not configurable at runtime.
 
 ## LFU Counter Mechanics
 
 The LFU counter is a logarithmic approximation, not a raw hit count:
 
-- The counter increments by 1 with probability `1 / (counter * lfu_log_factor + 1)`. This means the counter grows slower as it gets higher.
+- The counter increments by 1 with probability `1 / ((counter - LFU_INIT_VAL) * lfu_log_factor + 1)`, where `LFU_INIT_VAL` is 5. This means a new key at counter 5 has probability 1.0 (guaranteed increment), and the counter grows slower as it gets higher.
 - The counter decays over time based on `lfu-decay-time` (minutes between decrement ticks).
 
 The maximum counter value is 255. With `lfu-log-factor 10` (default), the counter reaches ~255 after approximately 1 million accesses.
 
 | lfu-log-factor | Approximate hits to reach counter 255 |
 |----------------|---------------------------------------|
-| 0 | ~18,000 |
-| 1 | ~90,000 |
+| 0 | ~1,000 |
+| 1 | ~100,000 |
 | 10 | ~1,000,000 |
 | 100 | ~10,000,000 |
 
