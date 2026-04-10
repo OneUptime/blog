@@ -66,7 +66,7 @@ HGET order:3 status
 ...
 ```
 
-Replace `KEYS` with `SCAN`. Replace N+1 patterns with `HMGET` or pipelining.
+Replace `KEYS` with `SCAN`. Replace N+1 patterns across different keys with pipelining or a Lua script. Use `HMGET` when you need multiple fields from the same hash key.
 
 ## Capturing to a Log File
 
