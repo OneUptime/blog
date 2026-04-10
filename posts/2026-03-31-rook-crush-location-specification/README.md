@@ -12,7 +12,7 @@ Description: Learn how to specify CRUSH locations for OSDs in Ceph using the ful
 
 A CRUSH location is a key-value representation of where an OSD sits in the physical topology hierarchy. It tells Ceph which host, rack, row, datacenter, and root the OSD belongs to. Accurate CRUSH locations are essential for ensuring replicas are spread across real failure boundaries.
 
-The location uses the format `type=name` pairs from most specific (osd) to least specific (root):
+The location uses the format `type=name` pairs (the order of pairs does not matter):
 
 ```text
 root=default datacenter=dc1 room=room1 row=row2 rack=rack3 chassis=chassis1 host=node-01
@@ -25,13 +25,13 @@ root=default datacenter=dc1 room=room1 row=row2 rack=rack3 chassis=chassis1 host
 ceph osd tree
 
 # Show CRUSH location for a specific OSD
-ceph osd find osd.0
+ceph osd find 0
 
 # Get full topology dump
 ceph osd crush dump | python3 -m json.tool | grep -A5 '"name": "osd.0"'
 ```
 
-Example output from `ceph osd find osd.0`:
+Example output from `ceph osd find 0`:
 
 ```json
 {
@@ -114,8 +114,8 @@ ceph osd map mypool myobject
 # Simulate PG placement and verify distribution
 ceph pg map 1.a
 
-# Show PG distribution across OSDs
-ceph pg dump | awk '{print $1, $14}' | head -20
+# Show brief PG distribution across OSDs
+ceph pg dump pgs_brief
 ```
 
 ## Summary
