@@ -65,7 +65,7 @@ Sample output:
 
 ```text
 user default on nopass ~* &* +@all
-user appuser on >password ~app:* &* +@read +@write -@dangerous
+user appuser on #5e884898da2804... ~app:* &* +@read +@write -@dangerous
 ```
 
 The format is: `user <name> <status> <password> <key-patterns> <channel-patterns> <commands>`
