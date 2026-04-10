@@ -25,7 +25,7 @@ Output shows all entities with their capabilities:
 ```text
 client.admin
     key: AQBxyz...
-    caps: [mds] allow *
+    caps: [mds] allow
     caps: [mgr] allow *
     caps: [mon] allow *
     caps: [osd] allow *
