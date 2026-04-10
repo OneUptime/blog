@@ -47,10 +47,13 @@ If `dir` points to `/root/.ssh/` or `/var/spool/cron/`, your system may be compr
 
 ## Step 3: Contain the Incident
 
-Immediately bind Redis to localhost if it is currently exposed:
+Immediately bind Redis to localhost if it is currently exposed. The `bind` directive cannot be changed at runtime, so edit the configuration file and restart:
 
 ```bash
-redis-cli CONFIG SET bind "127.0.0.1"
+# Edit redis.conf
+# bind 127.0.0.1
+
+sudo systemctl restart redis-server
 ```
 
 Enable authentication immediately:
@@ -67,10 +70,11 @@ sudo ufw deny 6379
 
 ## Step 4: Kill Suspicious Clients
 
-Kill all external connections:
+Identify and kill external connections. The `ADDR` filter requires the exact `ip:port` from `CLIENT LIST` output:
 
 ```bash
-redis-cli CLIENT KILL ADDR <suspicious-ip>:0 SKIPME no
+redis-cli CLIENT LIST
+redis-cli CLIENT KILL ADDR <suspicious-ip>:<port>
 ```
 
 ## Step 5: Audit ACLs
@@ -103,7 +107,7 @@ Rename or disable dangerous commands:
 rename-command CONFIG ""
 rename-command FLUSHALL ""
 rename-command DEBUG ""
-rename-command SLAVEOF ""
+rename-command REPLICAOF ""
 ```
 
 ## Step 7: Post-Incident Review
@@ -117,4 +121,4 @@ redis-cli CONFIG SET loglevel verbose
 
 ## Summary
 
-Redis security incidents often involve unauthorized writes to system files via an exposed Redis instance. Immediate containment involves binding to localhost, enabling authentication, and blocking the port. Long-term remediation requires ACL configuration, dangerous command renaming, and enabling TLS.
+Redis security incidents often involve unauthorized writes to system files via an exposed Redis instance. Immediate containment involves blocking the port, enabling authentication, and binding to localhost via configuration. Long-term remediation requires ACL configuration, dangerous command renaming, and enabling TLS.
