@@ -48,12 +48,12 @@ data sync: syncing
 
 ## Configuring Data Sync on a Secondary Zone
 
-The secondary zone must be configured with the source zone endpoint and credentials:
+The secondary zone must be configured with its own endpoint and the shared system user credentials:
 
 ```bash
 radosgw-admin zone modify \
   --rgw-zone=zone2 \
-  --endpoints=http://zone1-rgw.example.com \
+  --endpoints=http://zone2-rgw.example.com \
   --access-key=SYNC_ACCESS_KEY \
   --secret=SYNC_SECRET_KEY
 
@@ -68,14 +68,14 @@ Increase sync concurrency to speed up replication of large bucket inventories:
 ```bash
 # Set in ceph.conf
 [client.rgw.zone2]
-rgw_data_sync_concurrency = 20
+rgw_data_sync_spawn_window = 20
 rgw_bucket_sync_spawn_window = 25
 ```
 
 Apply the changes:
 
 ```bash
-ceph config set client.rgw rgw_data_sync_concurrency 20
+ceph config set client.rgw rgw_data_sync_spawn_window 20
 ceph config set client.rgw rgw_bucket_sync_spawn_window 25
 ```
 
@@ -90,10 +90,10 @@ for i in $(seq 0 127); do
 done | awk '{sum+=$1} END {print "Pending sync entries:", sum}'
 ```
 
-Set up a Prometheus scrape or use the built-in metrics endpoint:
+Query metrics via the Ceph MGR Prometheus module (default port 9283):
 
 ```bash
-curl http://zone2-rgw.example.com/admin/metrics | grep rgw_data_sync
+curl http://ceph-mgr.example.com:9283/metrics | grep rgw_data_sync
 ```
 
 ## Handling Sync Errors
@@ -111,11 +111,11 @@ radosgw-admin sync error trim --start-date=2026-01-01
 radosgw-admin bucket sync run --bucket=my-bucket --source-zone=zone1
 ```
 
-Force a full resync for a specific bucket:
+Force a full resync for a specific bucket by disabling and re-enabling sync:
 
 ```bash
-radosgw-admin bucket sync init --bucket=my-bucket
-radosgw-admin bucket sync run --bucket=my-bucket
+radosgw-admin bucket sync disable --bucket=my-bucket
+radosgw-admin bucket sync enable --bucket=my-bucket
 ```
 
 ## Summary
