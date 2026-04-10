@@ -57,13 +57,17 @@ This command takes all OSDs under the `default` root and assigns them the `hdd` 
 For clusters with both HDDs and SSDs that were deployed without classes:
 
 ```bash
-# First, check which OSDs are rotational
-for i in $(seq 0 9); do
-  rotational=$(cat /sys/block/sd$(chr $((97+i)))/queue/rotational 2>/dev/null)
-  echo "osd.$i rotational=$rotational"
+# First, check which OSDs are rotational via Ceph OSD metadata
+for osd in $(ceph osd ls); do
+  rotational=$(ceph osd metadata osd.$osd | jq -r '.rotational')
+  echo "osd.$osd rotational=$rotational"
 done
 
-# Step 1: Assign classes to OSDs using ceph osd crush set-device-class
+# Note: Using set-device-class directly WILL trigger data movement.
+# For a zero-movement approach with mixed media, organize OSDs into
+# separate subtrees and use --reclassify-bucket (see next section).
+
+# Assign classes to OSDs using ceph osd crush set-device-class
 for osd in 0 1 2 3; do
   ceph osd crush set-device-class hdd osd.$osd
 done
@@ -83,8 +87,8 @@ crushtool -d crush.bin -o crush.txt
 
 # Reclassify specific buckets
 crushtool -i crush.bin \
-  --reclassify-bucket row-ssd ssd \
-  --reclassify-bucket row-hdd hdd \
+  --reclassify-bucket row-ssd ssd default \
+  --reclassify-bucket row-hdd hdd default \
   -o crush-reclassified.bin
 
 # Test the reclassified map
