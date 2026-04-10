@@ -18,16 +18,12 @@ When you add a required feature to a CephFS filesystem, existing connected clien
 
 ## Enable Automatic Eviction
 
-The `session_timeout` and `client_eviction_policy` settings control how the MDS handles incompatible clients:
+The `session_timeout` setting controls how long the MDS waits before marking a client session as stale. When you add required client features (see next section), the MDS automatically evicts clients that do not support those features:
 
 ```bash
-# Set the client session timeout (seconds before idle clients are evicted)
+# Set the client session timeout (seconds before a client session is marked stale)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_session_timeout 60
-
-# Enable eviction for clients lacking required features
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_evict_clients_without_required_features true
+  ceph fs set cephfs session_timeout 60
 ```
 
 ## Configure Required Features First
@@ -39,7 +35,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph fs required_client_features cephfs add reply_encoding
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs required_client_features cephfs add lazy_caps
+  ceph fs required_client_features cephfs add lazy_caps_wanted
 ```
 
 ## Verify Current Client Feature Support
@@ -53,16 +49,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 Clients that do not list required features in their `features` bitmask will be candidates for eviction.
 
-## Manually Evict Incompatible Clients
+## Manually Evict a Specific Client
 
-To immediately evict all clients lacking required features without waiting for the automatic timeout:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell mds.cephfs:0 evict_incompatible_clients
-```
-
-Or evict a specific client by session ID:
+You can evict a specific client by session ID:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -84,11 +73,11 @@ Rather than managing individual features, you can enforce a minimum Ceph client 
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs require_min_compat_client nautilus
+  ceph fs set cephfs min_compat_client nautilus
 ```
 
 This automatically maps to the appropriate feature bitmask for that release.
 
 ## Summary
 
-Automatic client eviction in CephFS ensures that as you require new features on your filesystem, incompatible clients are cleanly removed rather than left in limbo. By combining `required_client_features` with `mds_evict_clients_without_required_features` and `require_min_compat_client`, you can maintain a consistent compatibility baseline in your Rook-Ceph cluster while minimizing manual intervention during upgrades.
+Automatic client eviction in CephFS ensures that as you require new features on your filesystem, incompatible clients are cleanly removed rather than left in limbo. By combining `required_client_features` with `min_compat_client`, you can maintain a consistent compatibility baseline in your Rook-Ceph cluster while minimizing manual intervention during upgrades.
