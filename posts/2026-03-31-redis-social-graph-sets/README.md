@@ -86,7 +86,7 @@ def mutual_friends(user_a, user_b):
     return r.sinter(f"friends:{user_a}", f"friends:{user_b}")
 
 def mutual_friend_count(user_a, user_b):
-    return r.sintercard(2, f"friends:{user_a}", f"friends:{user_b}")
+    return r.sintercard(2, [f"friends:{user_a}", f"friends:{user_b}"])
 ```
 
 ## People You May Know
@@ -98,7 +98,7 @@ def people_you_may_know(user_id, limit=10):
     candidates = friends_of_friends(user_id)
     scores = []
     for candidate in candidates:
-        shared = r.sintercard(2, f"friends:{user_id}", f"friends:{candidate}")
+        shared = r.sintercard(2, [f"friends:{user_id}", f"friends:{candidate}"])
         scores.append((candidate, shared))
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores[:limit]
