@@ -54,8 +54,7 @@ The recommended approach is to delete all volumes before removing the cluster:
 ```bash
 # Get all PVCs using Rook storage classes
 ROOK_PVC_LIST=$(kubectl get pvc -A \
-  --field-selector=spec.storageClassName=rook-ceph-block \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+  -o jsonpath='{range .items[?(@.spec.storageClassName=="rook-ceph-block")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
 
 echo "PVCs to delete:"
 echo "$ROOK_PVC_LIST"
@@ -91,7 +90,8 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
-  allowUninstallWithVolumes: true
+  cleanupPolicy:
+    allowUninstallWithVolumes: true
 ```
 
 Apply the change:
@@ -99,7 +99,7 @@ Apply the change:
 ```bash
 kubectl -n rook-ceph patch cephcluster rook-ceph \
   --type merge \
-  -p '{"spec":{"allowUninstallWithVolumes": true}}'
+  -p '{"spec":{"cleanupPolicy":{"allowUninstallWithVolumes": true}}}'
 ```
 
 Then delete the cluster:
@@ -143,7 +143,8 @@ If using Helm, set this value in your cluster values file:
 ```yaml
 # rook-ceph-cluster-values.yaml
 cephClusterSpec:
-  allowUninstallWithVolumes: false  # default: safe behavior
+  cleanupPolicy:
+    allowUninstallWithVolumes: false  # default: safe behavior
 ```
 
 Override for decommissioning:
@@ -152,7 +153,7 @@ Override for decommissioning:
 helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
   --namespace rook-ceph \
   --reuse-values \
-  --set cephClusterSpec.allowUninstallWithVolumes=true
+  --set cephClusterSpec.cleanupPolicy.allowUninstallWithVolumes=true
 ```
 
 ## Summary
