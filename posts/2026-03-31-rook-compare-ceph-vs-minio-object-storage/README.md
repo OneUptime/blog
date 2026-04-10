@@ -19,7 +19,7 @@ Both Ceph and MinIO provide S3-compatible object storage, but they take fundamen
 | Storage type | Unified (block/file/object) | Object only |
 | Protocol | S3, Swift | S3 |
 | Backend | RADOS (distributed) | Direct POSIX |
-| Metadata | RADOS itself | etcd / embedded |
+| Metadata | RADOS itself | Inline on local disk |
 | Kubernetes operator | Rook | MinIO Operator |
 
 ## Deployment Comparison
