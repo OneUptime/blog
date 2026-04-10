@@ -40,11 +40,7 @@ After a Redis Sentinel or Cluster failover, DNS may still point to the old prima
 dig myredis.example.com | grep -i ttl
 
 # Flush local DNS cache (Linux)
-sudo systemd-resolve --flush-caches
-
-# Check if your Redis Sentinel updates DNS
-sentinel resolve-hostnames yes
-sentinel announce-hostnames yes
+sudo resolvectl flush-caches
 ```
 
 In `sentinel.conf`:
@@ -93,25 +89,23 @@ redis-cli CONFIG SET cluster-announce-hostname redis-node1.example.com
 Java applications using the JVM cache DNS indefinitely by default. Configure TTL:
 
 ```text
-# In jvm.security or networkaddress.cache.ttl
+# In java.security (e.g. $JAVA_HOME/conf/security/java.security)
 networkaddress.cache.ttl=60
 networkaddress.cache.negative.ttl=10
 ```
 
-For Node.js with `ioredis`, configure DNS lookup to avoid stale caches:
+For Node.js with `ioredis` in Cluster mode, configure the `dnsLookup` option to control DNS resolution:
 
 ```javascript
-const Redis = require("ioredis");
+const { Cluster } = require("ioredis");
 const dns = require("dns");
 
-const redis = new Redis({
-  host: "myredis.example.com",
-  port: 6379,
-  // Force fresh DNS lookup on reconnect
-  lookup: (hostname, options, callback) => {
-    dns.lookup(hostname, options, callback);
+const cluster = new Cluster(
+  [{ host: "myredis.example.com", port: 6379 }],
+  {
+    dnsLookup: (address, callback) => dns.lookup(address, callback),
   }
-});
+);
 ```
 
 ## Summary
