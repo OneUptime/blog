@@ -24,7 +24,6 @@ sms:verified:{phone}         -> String: verified status with TTL
 ```python
 import redis
 import secrets
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
