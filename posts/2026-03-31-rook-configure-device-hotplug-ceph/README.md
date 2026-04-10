@@ -52,20 +52,24 @@ spec:
       osdsPerDevice: "1"
 ```
 
-## Step 3: Verify udev Rules on the Host
+## Step 3: Verify the Discovery Daemon is Running
 
-The discover DaemonSet installs udev rules. Verify they are present:
+Confirm that the discover pods are running on all nodes:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
-  chroot /host cat /etc/udev/rules.d/99-rook.rules
+kubectl -n rook-ceph get pods -l app=rook-discover
 ```
 
-If missing, restart the discover pod on the node:
+Check the discover daemon logs for device detection activity:
 
 ```bash
-kubectl -n rook-ceph delete pod -l app=rook-discover \
-  --field-selector spec.nodeName=worker-1
+kubectl -n rook-ceph logs -l app=rook-discover --tail=50
+```
+
+If discover pods are not running, restart the operator to reconcile:
+
+```bash
+kubectl -n rook-ceph rollout restart deployment/rook-ceph-operator
 ```
 
 ## Step 4: Test Hotplug
