@@ -55,7 +55,7 @@ The `--system` flag sets the user's `system` property to `true`. Verify:
 
 ```bash
 radosgw-admin user info --uid system-user | jq '.system'
-# Output: "true"
+# Output: true
 ```
 
 ## When System Users Are Used
@@ -76,7 +76,7 @@ radosgw-admin user list | grep "sync"
 | Feature | Regular User | Admin-Capable User | System User |
 |---------|-------------|-------------------|-------------|
 | S3/Swift access | Own buckets | Own buckets | Any bucket |
-| Admin API access | None | Based on caps | Full |
+| Admin API access | None | Based on caps | Requires caps |
 | Cross-user access | No | Via admin API only | Yes (S3 too) |
 | Use case | Applications | Operators | Internal/automation |
 | Risk level | Low | Medium | High |
@@ -100,8 +100,8 @@ radosgw-admin user modify \
 
 ```bash
 # Find all system users
-radosgw-admin user list | xargs -I{} sh -c \
-  'radosgw-admin user info --uid {} | jq -r "select(.system==\"true\") | .user_id"'
+radosgw-admin user list | jq -r '.[]' | xargs -I{} sh -c \
+  'radosgw-admin user info --uid {} | jq -r "select(.system) | .user_id"'
 ```
 
 ## Summary
