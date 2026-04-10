@@ -8,7 +8,7 @@ Description: Implement a two-phase commit coordinator with Redis hashes and Lua 
 
 ---
 
-Two-phase commit (2PC) coordinates a distributed transaction across multiple participants. Phase 1 (prepare) collects votes; Phase 2 (commit or abort) broadcasts the outcome. Redis provides the durable coordination store with atomic operations.
+Two-phase commit (2PC) coordinates a distributed transaction across multiple participants. Phase 1 (prepare) collects votes; Phase 2 (commit or abort) broadcasts the outcome. Redis provides the coordination store with atomic operations.
 
 ## Data Model
 
@@ -17,7 +17,6 @@ Each transaction has a hash that tracks participants and their votes:
 ```bash
 HSET txn:TX-001 status "voting"
 HSET txn:TX-001 participants "payments,inventory,notifications"
-HSET txn:TX-001 votes ""
 HSET txn:TX-001 created_at "1711900000"
 ```
 
@@ -27,7 +26,6 @@ The coordinator initiates the transaction and each participant votes:
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
