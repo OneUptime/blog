@@ -12,49 +12,47 @@ Description: Configure CSI read affinity in Rook-Ceph so that RBD and CephFS rea
 
 By default, Ceph serves reads from the primary OSD regardless of where the client pod is running. CSI read affinity is a feature that instructs the Ceph CSI driver to prefer reading from a replica OSD that is local to the Kubernetes node running the workload. This reduces cross-node network traffic for read-heavy workloads without affecting data durability or write behavior.
 
-Read affinity is configured at the CSI driver level through a ConfigMap that the Rook operator manages.
+Read affinity is configured at the CSI driver level through the `CephCluster` custom resource, and the Rook operator propagates the setting to the CSI driver.
 
 ## Prerequisites
 
-- Rook-Ceph v1.10 or later
+- Rook-Ceph v1.11 or later
 - Ceph Pacific (v16) or later
+- Linux kernel 5.8 or higher on all nodes (required for the `read_from_replica` and `crush_location` kernel RBD options)
 - The Ceph RBD or CephFS CSI driver deployed by Rook
 
-## Enabling Read Affinity via the Rook ConfigMap
+## Enabling Read Affinity via the CephCluster CR
 
-Rook exposes CSI configuration through the `rook-ceph-csi-config` ConfigMap in the `rook-ceph` namespace. To enable read affinity, edit or patch this ConfigMap:
+Read affinity is configured in the `CephCluster` custom resource under `spec.csi.readAffinity`. The Rook operator reads this setting and propagates it to the `rook-ceph-csi-config` ConfigMap automatically. Do not edit the `rook-ceph-csi-config` ConfigMap directly, as the operator manages it and will overwrite manual changes.
+
+Add the `readAffinity` section to your `CephCluster` CR:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
 metadata:
-  name: rook-ceph-csi-config
+  name: rook-ceph
   namespace: rook-ceph
-data:
-  config.json: |
-    [
-      {
-        "clusterID": "<your-cluster-fsid>",
-        "monitors": [
-          "10.0.0.1:6789",
-          "10.0.0.2:6789",
-          "10.0.0.3:6789"
-        ],
-        "readAffinity": {
-          "enabled": true,
-          "crushLocationLabels": [
-            "topology.kubernetes.io/zone",
-            "kubernetes.io/hostname"
-          ]
-        }
-      }
-    ]
+spec:
+  csi:
+    readAffinity:
+      enabled: true
+      crushLocationLabels:
+        - topology.kubernetes.io/zone
+        - kubernetes.io/hostname
 ```
 
-Replace `<your-cluster-fsid>` with the output of:
+Apply the change:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fsid
+kubectl apply -f cephcluster.yaml
+```
+
+Or patch an existing cluster:
+
+```bash
+kubectl patch cephclusters.ceph.rook.io rook-ceph -n rook-ceph --type=merge \
+  -p '{"spec":{"csi":{"readAffinity":{"enabled":true,"crushLocationLabels":["topology.kubernetes.io/zone","kubernetes.io/hostname"]}}}}'
 ```
 
 ## Understanding crushLocationLabels
@@ -78,14 +76,13 @@ kubectl label node worker-02 topology.kubernetes.io/zone=zone-b
 
 ## Applying the Configuration
 
-After editing the ConfigMap, restart the CSI node plugins to pick up the new configuration:
+After updating the `CephCluster` CR, the Rook operator reconciles the change and updates the CSI configuration. If the CSI pods do not pick up the change automatically, restart the Rook operator pod to trigger CSI pod recreation:
 
 ```bash
-kubectl -n rook-ceph rollout restart daemonset/csi-rbdplugin
-kubectl -n rook-ceph rollout restart daemonset/csi-cephfsplugin
+kubectl -n rook-ceph delete pod -l app=rook-ceph-operator
 ```
 
-Wait for the rollout to complete:
+Wait for the CSI daemonsets to be recreated:
 
 ```bash
 kubectl -n rook-ceph rollout status daemonset/csi-rbdplugin
@@ -104,9 +101,9 @@ You can also run a benchmark pod on a specific node and use `ceph tell` to obser
 ## Limitations and Considerations
 
 - Read affinity only applies when a local replica exists. If the primary is local, reads are already optimal.
-- For erasure-coded pools, read affinity applies to the primary shard only; EC reads always involve multiple OSDs.
+- Read affinity does not apply to erasure-coded pools. EC pools require reading from multiple OSDs to reconstruct data, so local-replica optimization is not applicable.
 - Enabling read affinity adds a small latency overhead for OSD selection during the read path. For write-heavy workloads the benefit is negligible.
 
 ## Summary
 
-CSI read affinity in Rook-Ceph routes reads to the OSD closest to the consuming pod by mapping Kubernetes node topology labels to Ceph CRUSH locations. Configure it through the `rook-ceph-csi-config` ConfigMap, restart the CSI node daemonsets, and verify that node topology labels are present. This is a low-risk optimization that meaningfully reduces cross-node read traffic in multi-zone or large single-site clusters.
+CSI read affinity in Rook-Ceph routes reads to the OSD closest to the consuming pod by mapping Kubernetes node topology labels to Ceph CRUSH locations. Configure it through the `CephCluster` CR at `spec.csi.readAffinity` and verify that node topology labels are present. This is a low-risk optimization that meaningfully reduces cross-node read traffic in multi-zone or large single-site clusters.
