@@ -23,7 +23,7 @@ This means the Redis instance has a password set via `requirepass` or ACL config
 1. Redis has `requirepass yourpassword` set in `redis.conf`
 2. Redis uses ACL-based authentication (Redis 6+)
 3. Your application is connecting without providing credentials
-4. The AUTH command was sent but with an incorrect password
+4. The AUTH command was sent with an incorrect password, so subsequent commands still trigger NOAUTH
 5. A new connection was established but AUTH was not called before the first command
 
 ## How to Authenticate
@@ -45,7 +45,7 @@ PONG
 For Redis 6+ ACL with username:
 
 ```bash
-redis-cli -h localhost -p 6379 -u redis://username:password@localhost:6379 PING
+redis-cli -u redis://username:password@localhost:6379 PING
 # Or
 redis-cli -h localhost -p 6379
 127.0.0.1:6379> AUTH username password
