@@ -103,7 +103,7 @@ You can provision dashboards with variables pre-configured:
       {
         "name": "datasource",
         "type": "datasource",
-        "pluginId": "prometheus",
+        "query": "prometheus",
         "regex": "/^ceph-.*/"
       },
       {
@@ -111,7 +111,7 @@ You can provision dashboards with variables pre-configured:
         "type": "query",
         "datasource": "${datasource}",
         "query": "label_values(ceph_health_status, namespace)",
-        "refresh": 2
+        "refresh": 1
       }
     ]
   }
