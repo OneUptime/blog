@@ -73,9 +73,9 @@ active_defrag_key_misses:210
 ## Configuration Options
 
 ```bash
-# Minimum fragmentation ratio to start defragmentation (default: 1.1)
+# Configure active defragmentation thresholds and CPU usage
 redis-cli CONFIG SET active-defrag-ignore-bytes 100mb
-redis-cli CONFIG SET active-defrag-enabled yes
+redis-cli CONFIG SET activedefrag yes
 redis-cli CONFIG SET active-defrag-threshold-lower 10
 redis-cli CONFIG SET active-defrag-threshold-upper 100
 redis-cli CONFIG SET active-defrag-cycle-min 1
