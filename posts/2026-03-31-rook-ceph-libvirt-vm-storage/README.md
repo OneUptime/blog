@@ -82,13 +82,22 @@ virsh vol-list ceph-vms
 ## Step 4 - Attach to a Virtual Machine
 
 ```bash
-virsh attach-disk myvm \
-  --source ceph-vms/myvm-disk \
-  --target vdb \
-  --driver qemu \
-  --subdriver raw \
-  --type disk \
-  --persistent
+cat > /tmp/rbd-disk.xml << 'EOF'
+<disk type='network' device='disk'>
+  <driver name='qemu' type='raw'/>
+  <auth username='libvirt-pool'>
+    <secret type='ceph' uuid='a5d0dd94-57c4-4fa5-ab77-369f4234c41b'/>
+  </auth>
+  <source protocol='rbd' name='vms/myvm-disk'>
+    <host name='rook-ceph-mon-a.rook-ceph.svc' port='6789'/>
+    <host name='rook-ceph-mon-b.rook-ceph.svc' port='6789'/>
+    <host name='rook-ceph-mon-c.rook-ceph.svc' port='6789'/>
+  </source>
+  <target dev='vdb' bus='virtio'/>
+</disk>
+EOF
+
+virsh attach-device myvm /tmp/rbd-disk.xml --persistent
 ```
 
 ## Step 5 - Use virt-manager with Ceph Pool
@@ -96,7 +105,7 @@ virsh attach-disk myvm \
 In virt-manager:
 1. Edit -> Connection Details -> Storage
 2. Click the "+" button to add a new pool
-3. Select type "rados" (RBD)
+3. Select type "RADOS Block Device/Ceph" (rbd)
 4. Enter the pool name and monitor addresses
 5. Set authentication to the secret UUID
 
@@ -104,16 +113,19 @@ Now you can create VMs in virt-manager using Ceph storage.
 
 ## Step 6 - Create VM Snapshots via libvirt
 
+For raw RBD disks, use Ceph's native RBD snapshot commands rather than libvirt's snapshot mechanism, which has limited support for network-backed disks:
+
 ```bash
-# External snapshot (recommended for Ceph)
-virsh snapshot-create-as myvm snap1 \
-  --disk-only --atomic
+# Create an RBD snapshot (pause or fsfreeze the VM first for consistency)
+rbd snap create vms/myvm-disk@snap1
 
 # List snapshots
-virsh snapshot-list myvm
+rbd snap ls vms/myvm-disk
 
-# Revert to snapshot
-virsh snapshot-revert myvm snap1
+# Rollback to snapshot (VM must be stopped first)
+virsh shutdown myvm
+rbd snap rollback vms/myvm-disk@snap1
+virsh start myvm
 ```
 
 ## Step 7 - Monitor Pool Status
