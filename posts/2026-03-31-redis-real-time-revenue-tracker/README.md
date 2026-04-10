@@ -109,4 +109,4 @@ redis-cli HGETALL "revenue:$(date +%Y-%m-%d)"
 
 ## Summary
 
-HINCRBYFLOAT enables atomic floating-point revenue accumulation across multiple dimensions (daily, hourly, per-product) in a single pipeline call. The daily Hash structure makes all revenue breakdowns available in one O(1) HGETALL. Combine with hourly buckets for time-series charts and an all-time GMV counter for executive dashboards.
+HINCRBYFLOAT enables atomic floating-point revenue accumulation across multiple dimensions (daily, hourly, per-product) in a single pipeline call. The daily Hash structure makes all revenue breakdowns available in one HGETALL call, which runs in O(N) where N is the number of fields in the hash. Combine with hourly buckets for time-series charts and an all-time GMV counter for executive dashboards.
