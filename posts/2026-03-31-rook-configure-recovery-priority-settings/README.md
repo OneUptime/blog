@@ -45,11 +45,18 @@ ceph config set osd osd_recovery_op_priority 10
 ceph config set osd osd_recovery_op_priority 3
 ```
 
+### Apply to running OSDs immediately
+
+The `ceph config set` command persists the value but may not take effect on already-running OSDs until they restart. To apply immediately:
+
+```bash
+ceph tell osd.* injectargs '--osd-recovery-op-priority=10'
+```
+
 ### Verify change took effect
 
 ```bash
 ceph config get osd osd_recovery_op_priority
-ceph tell osd.* injectargs '--osd-recovery-op-priority=10'
 ```
 
 ## Per-Pool Recovery Priority
@@ -120,7 +127,7 @@ Use Prometheus queries (if Ceph metrics are scraped):
 
 ```text
 ceph_osd_op_w_latency_sum / ceph_osd_op_w_latency_count
-ceph_pg_recovering_bytes_per_sec
+rate(ceph_osd_recovery_bytes[5m])
 ```
 
 ## Summary
