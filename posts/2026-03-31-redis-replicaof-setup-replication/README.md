@@ -116,7 +116,7 @@ CONFIG SET repl-backlog-size 10485760
 # On replica: make it read-only (default)
 CONFIG SET replica-read-only yes
 
-# On primary: require ACK from replicas before responding
+# On primary: reject writes if fewer than N replicas are reachable within max-lag seconds
 CONFIG SET min-replicas-to-write 1
 CONFIG SET min-replicas-max-lag 10
 
