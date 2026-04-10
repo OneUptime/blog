@@ -19,8 +19,8 @@ Ceph and GlusterFS are both distributed file storage systems but differ signific
 | Storage type | Unified (block/file/object) | File only |
 | Metadata service | MDS (dedicated) | DHT (distributed) |
 | Protocol | CephFS (FUSE/kernel), NFS | FUSE, NFS, SMB |
-| Kubernetes operator | Rook | Heketi (deprecated) |
-| Community status | Active (CNCF) | Limited maintenance |
+| Kubernetes integration | Rook (operator) | Heketi (deprecated) |
+| Community status | Active (Ceph Foundation, Linux Foundation) | Limited maintenance |
 
 ## GlusterFS Status Warning
 
