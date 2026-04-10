@@ -12,7 +12,7 @@ Within a Redis Stream consumer group, individual consumers are tracked with thei
 
 ## How XINFO CONSUMERS Works
 
-`XINFO CONSUMERS` returns one record per consumer registered in a specific consumer group. Each record includes the consumer's name, how many messages are in their PEL (pending entries list), when they last interacted with the stream, and when they were created.
+`XINFO CONSUMERS` returns one record per consumer registered in a specific consumer group. Each record includes the consumer's name, how many messages are in their PEL (pending entries list), and timing information about their last interactions with the stream.
 
 ## Syntax
 
@@ -63,8 +63,8 @@ Example output:
 Key fields:
 - `name` - consumer identifier (set when calling XREADGROUP)
 - `pending` - number of messages delivered but not yet acknowledged
-- `idle` - milliseconds since the consumer last interacted with the stream
-- `inactive` - milliseconds since the consumer was last active (Redis 7.2+)
+- `idle` - milliseconds since the consumer's last attempted interaction (including unsuccessful ones like an XREADGROUP that returns nothing)
+- `inactive` - milliseconds since the consumer's last successful interaction where entries were actually read or claimed (Redis 7.2+)
 
 ### Identifying Crashed Consumers
 
