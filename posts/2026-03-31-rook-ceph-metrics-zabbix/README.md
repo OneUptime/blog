@@ -22,6 +22,8 @@ ceph mgr module enable prometheus
 curl http://localhost:9283/metrics | grep -c "^ceph_"
 
 # For Rook-managed clusters, expose the service externally
+# Note: the Rook operator may revert this patch during reconciliation.
+# For production, create a separate NodePort service or use a ServiceMonitor.
 kubectl -n rook-ceph patch svc rook-ceph-mgr \
   -p '{"spec":{"type":"NodePort"}}'
 ```
@@ -44,8 +46,8 @@ curl -s -X POST "http://zabbix-server/zabbix/api_jsonrpc.php" \
       "type": 19,
       "url": "http://ceph-mgr-host:9283/metrics",
       "preprocessing": [{
-        "type": 23,
-        "params": "ceph_health_status\n\n\\1"
+        "type": 22,
+        "params": "ceph_health_status\nvalue"
       }],
       "value_type": 3,
       "delay": "60s"
@@ -94,13 +96,15 @@ Create a template in Zabbix for reusable Ceph monitoring:
     <items>
       <item>
         <name>Ceph health status</name>
-        <key>external["/usr/lib/zabbix/externalscripts/ceph_metrics.sh","health"]</key>
+        <type>EXTERNAL_CHECK</type>
+        <key>ceph_metrics.sh[health]</key>
         <delay>60</delay>
         <value_type>CHAR</value_type>
       </item>
       <item>
         <name>Ceph OSDs up</name>
-        <key>external["/usr/lib/zabbix/externalscripts/ceph_metrics.sh","osd_up"]</key>
+        <type>EXTERNAL_CHECK</type>
+        <key>ceph_metrics.sh[osd_up]</key>
         <delay>60</delay>
         <value_type>UNSIGNED</value_type>
       </item>
@@ -108,7 +112,7 @@ Create a template in Zabbix for reusable Ceph monitoring:
     <triggers>
       <trigger>
         <name>Ceph health is not OK</name>
-        <expression>{Ceph Cluster:external["/usr/lib/zabbix/externalscripts/ceph_metrics.sh","health"].str(HEALTH_OK)}=0</expression>
+        <expression>{Ceph Cluster:ceph_metrics.sh[health].str(HEALTH_OK)}=0</expression>
         <priority>HIGH</priority>
       </trigger>
     </triggers>
@@ -118,7 +122,7 @@ Create a template in Zabbix for reusable Ceph monitoring:
 
 ## Step 5 - Configure Prometheus HTTP Agent for Bulk Metrics
 
-Zabbix 6.0+ supports native Prometheus scraping:
+Zabbix 4.2+ supports Prometheus preprocessing (enhanced in 6.0):
 
 ```bash
 # Create an HTTP agent item with Prometheus preprocessing
