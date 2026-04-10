@@ -13,7 +13,7 @@ Description: Learn how to configure storage devices for Ceph OSDs using BlueStor
 Ceph's BlueStore OSD backend divides storage into three logical components:
 
 - **Data device**: Stores the main object data. Typically an HDD or NVMe.
-- **DB device** (optional): Stores RocksDB metadata (OSD state, WAL journal). Using an SSD/NVMe for DB dramatically improves IOPS.
+- **DB device** (optional): Stores RocksDB metadata (SST files containing object metadata and OSD state). Using an SSD/NVMe for DB dramatically improves IOPS.
 - **WAL device** (optional): Stores the RocksDB write-ahead log. Fastest device available (NVMe preferred).
 
 Using separate devices for DB and WAL allows you to co-locate the performance-critical metadata on fast flash storage while keeping bulk data on cheaper HDDs.
@@ -85,8 +85,6 @@ spec:
           - name: "sdb"
             config:
               osdsPerDevice: "1"
-          - name: "nvme0n1"
-            config:
               metadataDevice: "nvme0n1"
       - name: "worker2"
         devices:
@@ -138,8 +136,7 @@ placement:
 data_devices:
   paths:
     - /dev/nvme0n1
-config:
-  osdsPerDevice: "4"
+osds_per_device: 4
 ```
 
 ## Verifying OSD Deployment
