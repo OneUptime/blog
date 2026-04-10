@@ -12,12 +12,12 @@ CephFS subvolume quotas enforce hard limits on how much data each subvolume can 
 
 ## How CephFS Quotas Work
 
-CephFS enforces quotas using extended attributes on directory inodes. When a subvolume's quota is reached:
+CephFS enforces quotas using extended attributes on directory inodes. Quota enforcement is cooperative and performed by the client (kernel client or FUSE/libcephfs), not the MDS. When a subvolume's quota is reached:
 - Write operations return EDQUOT (disk quota exceeded)
 - Existing data is not affected
 - Reads and directory listings continue to work
 
-Quotas apply to the bytes stored in the directory tree rooted at the subvolume path.
+Because enforcement is client-side, quotas are imprecise — writers may slightly exceed the limit before being stopped. Quotas apply to the bytes stored in the directory tree rooted at the subvolume path.
 
 ## Setting a Quota at Creation
 
@@ -50,19 +50,19 @@ ceph fs subvolume info cephfs webapp
 # Expand quota to 50 GB
 ceph fs subvolume resize cephfs webapp 53687091200
 
-# Shrink quota - this will fail if current usage exceeds new size
+# Shrink quota - by default this succeeds even if usage exceeds new size
+# (the tenant will immediately be over-quota and new writes will be blocked)
 ceph fs subvolume resize cephfs webapp 10737418240
-# ERROR: New size is smaller than current bytes used
 
-# Force shrink (may cause EDQUOT immediately for the tenant)
-ceph fs subvolume resize cephfs webapp 10737418240 --no_shrink_check
+# Prevent shrink if current usage exceeds the new size
+ceph fs subvolume resize cephfs webapp 10737418240 --no_shrink
 ```
 
 ## Removing a Quota (Unlimited)
 
 ```bash
-# Set quota to "infinite" by setting size to 0
-ceph fs subvolume resize cephfs webapp 0
+# Set quota to "infinite" to remove the limit
+ceph fs subvolume resize cephfs webapp inf
 # This removes the quota limit
 ```
 
@@ -94,8 +94,8 @@ FS="cephfs"
 echo "Subvolume Quota Report - $(date)"
 echo "=================================="
 
-for sv in $(ceph fs subvolume ls ${FS} --format json | python3 -c "import sys,json; [print(s['name']) for s in json.load(sys.stdin)]"); do
-  INFO=$(ceph fs subvolume info ${FS} ${sv} --format json)
+for sv in $(ceph fs subvolume ls ${FS} | python3 -c "import sys,json; [print(s['name']) for s in json.load(sys.stdin)]"); do
+  INFO=$(ceph fs subvolume info ${FS} ${sv})
   USED=$(echo "${INFO}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('bytes_used',0))")
   QUOTA=$(echo "${INFO}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('bytes_quota','unlimited'))")
   PCT=$(echo "${INFO}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('bytes_pcent','N/A'))")
@@ -105,4 +105,4 @@ done
 
 ## Summary
 
-CephFS subvolume quotas are configured at creation with `--size` or adjusted later with `ceph fs subvolume resize`. Quotas are hard limits enforced by the MDS - once a tenant reaches their limit, writes return EDQUOT. The `ceph fs subvolume info` command shows current usage and percentage, making it straightforward to build monitoring scripts that alert before tenants hit their limits. Setting size to 0 removes the quota entirely for subvolumes that should have unrestricted access.
+CephFS subvolume quotas are configured at creation with `--size` or adjusted later with `ceph fs subvolume resize`. Quotas are enforced cooperatively by the client - once a tenant reaches their limit, writes return EDQUOT. The `ceph fs subvolume info` command shows current usage and percentage, making it straightforward to build monitoring scripts that alert before tenants hit their limits. Passing `inf` to the resize command removes the quota entirely for subvolumes that should have unrestricted access.
