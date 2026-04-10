@@ -36,7 +36,7 @@ RECOVERY_TIMEOUT="${RECOVERY_TIMEOUT:-3600}"  # 1 hour
 CHECK_INTERVAL=30
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- ceph "$@"
 }
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
@@ -75,15 +75,16 @@ mark_osd_out() {
 
   local elapsed=0
   while true; do
-    local pg_status
-    pg_status=$(ceph_cmd pg stat --format json)
+    local cluster_status
+    cluster_status=$(ceph_cmd status --format json)
     local degraded
-    degraded=$(echo "$pg_status" | python3 -c "
+    degraded=$(echo "$cluster_status" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-print(d.get('num_pg_degraded', d.get('pg_summary', {}).get('num_pg_degraded', 0)))
+pgmap = d.get('pgmap', {})
+print(pgmap.get('degraded_objects', 0) + pgmap.get('misplaced_objects', 0))
 ")
-    log "Degraded PGs: $degraded (elapsed: ${elapsed}s)"
+    log "Degraded/misplaced objects: $degraded (elapsed: ${elapsed}s)"
     [[ "$degraded" -eq 0 ]] && break
     sleep "$CHECK_INTERVAL"
     elapsed=$((elapsed + CHECK_INTERVAL))
@@ -131,14 +132,24 @@ remove_osd() {
 prepare_for_new_osd() {
   log "Preparing node for new OSD..."
 
-  # Find and delete the OSD PVC
-  local osd_pvc
-  osd_pvc=$(kubectl -n "$NAMESPACE" get pvc -l "ceph-osd-id=$OSD_ID" \
+  # Find the OSD deployment and its PVC
+  local osd_deploy
+  osd_deploy=$(kubectl -n "$NAMESPACE" get deploy -l "ceph-osd-id=$OSD_ID" \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
-  if [[ -n "$osd_pvc" ]]; then
-    log "Deleting OSD PVC: $osd_pvc"
-    kubectl -n "$NAMESPACE" delete pvc "$osd_pvc"
+  if [[ -n "$osd_deploy" ]]; then
+    local osd_pvc
+    osd_pvc=$(kubectl -n "$NAMESPACE" get deploy "$osd_deploy" \
+      -o jsonpath='{.spec.template.spec.volumes[?(@.persistentVolumeClaim)].persistentVolumeClaim.claimName}' \
+      2>/dev/null || echo "")
+
+    log "Deleting OSD deployment: $osd_deploy"
+    kubectl -n "$NAMESPACE" delete deploy "$osd_deploy"
+
+    if [[ -n "$osd_pvc" ]]; then
+      log "Deleting OSD PVC: $osd_pvc"
+      kubectl -n "$NAMESPACE" delete pvc "$osd_pvc"
+    fi
   fi
 
   log "When the new drive is inserted, Rook will automatically detect"
