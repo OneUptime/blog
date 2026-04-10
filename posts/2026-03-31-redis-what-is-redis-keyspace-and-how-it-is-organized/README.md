@@ -41,12 +41,11 @@ db1:keys=100,expires=0,avg_ttl=0
 
 ## How Keys Are Stored Internally
 
-Redis stores keys in a hash table (C hashtable). Each entry in the hashtable contains:
-- The key (a string)
-- The value (a Redis object of any type)
-- The expiration timestamp (if set)
+Redis stores keys in a hash table (C dict structure). Each database maintains two hash tables:
+- A main dictionary that maps keys (strings) to values (Redis objects of any type)
+- A separate expires dictionary that maps keys to their expiration timestamps (if set)
 
-The hashtable rehashes automatically as keys are added or removed, maintaining O(1) average access time.
+The hash table rehashes automatically as keys are added or removed, maintaining O(1) average access time.
 
 ## Key Naming Conventions
 
@@ -98,10 +97,10 @@ Check total key count:
 redis-cli DBSIZE
 ```
 
-Check memory per key type:
+Find the biggest keys and key type distribution:
 
 ```bash
-redis-cli --bigkeys --sleep 0.05
+redis-cli --bigkeys -i 0.05
 ```
 
 ## Summary
