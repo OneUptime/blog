@@ -43,11 +43,11 @@ tunable allowed_bucket_algs 54
 
 | Profile | Key Changes |
 |---|---|
-| legacy | Original CRUSH with all bugs |
-| argonaut | Fixed indep mode, choose_local_tries=2 |
-| bobtail | Improved straw calculation, straw_calc_version=1 |
-| firefly | chooseleaf_descend_once=1 (reduces unnecessary attempts) |
-| hammer | chooseleaf_vary_r=1 (better distribution with failures) |
+| legacy | Original CRUSH with all bugs, choose_total_tries=19 |
+| argonaut | Minor internal fixes, choose_local_tries=2 |
+| bobtail | choose_local_tries=0, choose_total_tries=50, chooseleaf_descend_once=1 |
+| firefly | chooseleaf_vary_r=1, straw_calc_version=1 |
+| hammer | Added straw2 bucket type (expanded allowed_bucket_algs) |
 | jewel | chooseleaf_stable=1 (prevents remapping on OSD failure) |
 | optimal | All improvements enabled (current best practice) |
 
@@ -55,7 +55,7 @@ tunable allowed_bucket_algs 54
 
 ```text
 choose_local_tries:
-  Number of retries using local fallback before giving up
+  Number of local retries before re-descent
   Legacy=2, Modern=0
 
 choose_total_tries:
@@ -65,11 +65,11 @@ choose_total_tries:
 
 chooseleaf_descend_once:
   Only descend into each subtree once during chooseleaf
-  Firefly+ sets to 1, reducing unnecessary I/O
+  Bobtail+ sets to 1, reducing unnecessary retries
 
 chooseleaf_vary_r:
   Vary the starting position in chooseleaf based on replica number
-  Hammer+ sets to 1, improving distribution when OSDs fail
+  Firefly+ sets to 1, improving distribution when OSDs fail
 
 chooseleaf_stable:
   Avoid remapping chooseleaf results when parent bucket changes
@@ -77,7 +77,7 @@ chooseleaf_stable:
 
 straw_calc_version:
   Algorithm version for straw bucket weights
-  Version 1 (Bobtail+) fixes a distribution bug in version 0
+  Version 1 (Firefly+) fixes a distribution bug in version 0
 ```
 
 ## The chooseleaf_stable Improvement
@@ -104,4 +104,4 @@ ceph health detail | grep CRUSH
 
 ## Summary
 
-CRUSH tunables control the CRUSH algorithm's behavior and have evolved through Ceph's history from the buggy `legacy` profile to the current `optimal` profile. The most important improvements are in `chooseleaf_stable` (Jewel) which reduces unnecessary data movement, and `chooseleaf_vary_r` (Hammer) which improves distribution under failure. Modern clusters should use the `optimal` profile, which enables all fixes introduced through the Jewel release and beyond.
+CRUSH tunables control the CRUSH algorithm's behavior and have evolved through Ceph's history from the buggy `legacy` profile to the current `optimal` profile. The most important improvements are in `chooseleaf_stable` (Jewel) which reduces unnecessary data movement, and `chooseleaf_vary_r` (Firefly) which improves distribution under failure. Modern clusters should use the `optimal` profile, which enables all fixes introduced through the Jewel release and beyond.
