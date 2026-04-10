@@ -28,9 +28,9 @@ Returns an integer: the number of members in the vector set, or `0` if the key d
 ## Basic Usage
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 item1
-VADD products 0.8 0.2 0.6 0.4 item2
-VADD products 0.4 0.5 0.5 0.6 item3
+VADD products VALUES 4 0.1 0.9 0.3 0.7 item1
+VADD products VALUES 4 0.8 0.2 0.6 0.4 item2
+VADD products VALUES 4 0.4 0.5 0.5 0.6 item3
 
 VCARD products
 ```
@@ -70,7 +70,7 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 # Add some vectors
 for i in range(10):
     vec = [str(i * 0.1), str(i * 0.05), str(i * 0.2), str(i * 0.15)]
-    r.execute_command("VADD", "products", *vec, f"item{i}")
+    r.execute_command("VADD", "products", "VALUES", "4", *vec, f"item{i}")
 
 count = r.execute_command("VCARD", "products")
 print(f"Vector set has {count} members")  # 10
@@ -89,7 +89,7 @@ async function getVectorCount(key) {
 // Seed data
 for (let i = 0; i < 5; i++) {
   const vec = [i * 0.1, i * 0.2, i * 0.3, i * 0.4].map(String);
-  await redis.call("VADD", "products", ...vec, `item${i}`);
+  await redis.call("VADD", "products", "VALUES", "4", ...vec, `item${i}`);
 }
 
 const count = await getVectorCount("products");
@@ -108,7 +108,7 @@ def safe_add_vector(r, key, member, vector):
     if count >= MAX_VECTORS:
         raise RuntimeError(f"Vector set {key} is full ({count} members)")
     vec_args = [str(v) for v in vector]
-    r.execute_command("VADD", key, *vec_args, member)
+    r.execute_command("VADD", key, "VALUES", str(len(vector)), *vec_args, member)
 ```
 
 ## Monitoring Ingestion Progress
@@ -120,7 +120,7 @@ total_documents = 50_000
 
 for i, (member, vector) in enumerate(document_stream):
     vec_args = [str(v) for v in vector]
-    r.execute_command("VADD", "embeddings", *vec_args, member)
+    r.execute_command("VADD", "embeddings", "VALUES", str(len(vector)), *vec_args, member)
 
     if i % 1000 == 0:
         current_count = r.execute_command("VCARD", "embeddings")
