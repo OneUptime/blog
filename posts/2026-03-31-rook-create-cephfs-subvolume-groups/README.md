@@ -15,7 +15,7 @@ CephFS subvolume groups are containers that organize subvolumes with a shared co
 A subvolume group:
 - Acts as a namespace/directory above individual subvolumes
 - Allows setting default pool layouts that apply to all subvolumes in the group
-- Makes it easier to list, snapshot, and manage related subvolumes
+- Makes it easier to list and manage related subvolumes
 - Corresponds to a directory under `/volumes/` in the CephFS root
 
 The default group is `_nogroup` - subvolumes created without specifying a group go here.
@@ -71,19 +71,28 @@ ceph fs subvolume getpath cephfs app1 --group_name production
 # Output: /volumes/production/app1/<uuid>
 ```
 
-## Snapshotting an Entire Group
+## Snapshotting Subvolumes in a Group
 
-You can create snapshots at the subvolume group level to capture all subvolumes at once:
+Subvolume group-level snapshots are no longer supported in mainline CephFS. Instead, create snapshots at the individual subvolume level:
 
 ```bash
-# Create a group snapshot
-ceph fs subvolumegroup snapshot create cephfs production daily-backup
+# Create a snapshot for a subvolume in the group
+ceph fs subvolume snapshot create cephfs app1 daily-backup --group_name production
 
-# List group snapshots
-ceph fs subvolumegroup snapshot ls cephfs production
+# List snapshots for a subvolume in the group
+ceph fs subvolume snapshot ls cephfs app1 --group_name production
 
-# Remove a group snapshot
-ceph fs subvolumegroup snapshot rm cephfs production daily-backup
+# Remove a subvolume snapshot
+ceph fs subvolume snapshot rm cephfs app1 daily-backup --group_name production
+```
+
+To snapshot all subvolumes in a group, iterate over them:
+
+```bash
+# Snapshot all subvolumes in the production group
+for subvol in $(ceph fs subvolume ls cephfs --group_name production --format json | jq -r '.[].name'); do
+  ceph fs subvolume snapshot create cephfs ${subvol} daily-backup --group_name production
+done
 ```
 
 ## Example: Setting Up a Multi-Team Structure
@@ -108,4 +117,4 @@ done
 
 ## Summary
 
-CephFS subvolume groups provide a layer of organization above individual subvolumes, making it easier to manage multi-team or multi-application storage within a single CephFS filesystem. Groups can have default pool layouts, size limits, and ownership settings that apply to all contained subvolumes. Combined with group-level snapshots, they offer a practical way to organize and protect related filesystem namespaces.
+CephFS subvolume groups provide a layer of organization above individual subvolumes, making it easier to manage multi-team or multi-application storage within a single CephFS filesystem. Groups can have default pool layouts, size limits, and ownership settings that apply to all contained subvolumes. Combined with per-subvolume snapshots, they offer a practical way to organize and protect related filesystem namespaces.
