@@ -20,7 +20,7 @@ Redis vector sets, introduced as a new data type in Redis 8, store floating-poin
 VSETATTR key member json_string
 ```
 
-If the member does not exist in the vector set the command returns an error. The attribute replaces any previously stored attribute for that member.
+If the member does not exist in the vector set the command returns `0` (RESP2) or `false` (RESP3). The attribute replaces any previously stored attribute for that member.
 
 ## How VGETATTR Works
 
@@ -42,9 +42,9 @@ It returns the raw JSON string, or `nil` if no attribute has been set.
 First add vectors to a vector set using `VADD`, then attach metadata.
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 shoes123
-VADD products 0.8 0.2 0.6 0.4 bag456
-VADD products 0.4 0.5 0.5 0.6 hat789
+VADD products VALUES 4 0.1 0.9 0.3 0.7 shoes123
+VADD products VALUES 4 0.8 0.2 0.6 0.4 bag456
+VADD products VALUES 4 0.4 0.5 0.5 0.6 hat789
 
 VSETATTR products shoes123 '{"name":"Running Shoes","category":"footwear","price":89.99}'
 VSETATTR products bag456   '{"name":"Tote Bag","category":"accessories","price":34.99}'
@@ -64,7 +64,7 @@ Expected output for `VGETATTR products shoes123`:
 
 ```mermaid
 flowchart TD
-    A[Generate embedding vector] --> B[VADD key member vector]
+    A[Generate embedding vector] --> B[VADD key vector member]
     B --> C{Attribute needed?}
     C -- Yes --> D[VSETATTR key member json]
     C -- No --> E[Vector stored without metadata]
@@ -91,7 +91,7 @@ import json
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 # Add a vector (4-dimensional example)
-r.execute_command("VADD", "products", "0.1", "0.9", "0.3", "0.7", "shoes123")
+r.execute_command("VADD", "products", "VALUES", "4", "0.1", "0.9", "0.3", "0.7", "shoes123")
 
 # Set metadata
 attr = json.dumps({"name": "Running Shoes", "category": "footwear", "price": 89.99})
@@ -111,7 +111,7 @@ const Redis = require("ioredis");
 const redis = new Redis();
 
 async function run() {
-  await redis.call("VADD", "products", "0.1", "0.9", "0.3", "0.7", "shoes123");
+  await redis.call("VADD", "products", "VALUES", "4", "0.1", "0.9", "0.3", "0.7", "shoes123");
 
   const attr = JSON.stringify({ name: "Running Shoes", category: "footwear", price: 89.99 });
   await redis.call("VSETATTR", "products", "shoes123", attr);
