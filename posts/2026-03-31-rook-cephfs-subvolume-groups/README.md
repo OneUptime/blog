@@ -21,7 +21,7 @@ flowchart TD
     C --> F[Production PVCs]
     C --> G[Quota: 10Ti]
     D --> H[Dev PVCs]
-    D --> I[Quota: 1Ti]
+    D --> I[Quota: 512Gi]
     F --> J[Data Pool: replicated]
     H --> K[Data Pool: erasure-coded]
 ```
@@ -64,9 +64,7 @@ spec:
   filesystemName: myfs
   name: production
   dataPoolName: myfs-replicated
-  quota:
-    maxBytes: 10995116277760   # 10 TiB
-    maxFiles: 1000000
+  quota: 10Ti
 ```
 
 Apply and verify:
@@ -89,8 +87,7 @@ spec:
   filesystemName: myfs
   name: production
   dataPoolName: myfs-replicated
-  quota:
-    maxBytes: 10995116277760
+  quota: 10Ti
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephFilesystemSubVolumeGroup
@@ -101,8 +98,7 @@ spec:
   filesystemName: myfs
   name: staging
   dataPoolName: myfs-replicated
-  quota:
-    maxBytes: 2199023255552   # 2 TiB
+  quota: 2Ti
 ---
 apiVersion: ceph.rook.io/v1
 kind: CephFilesystemSubVolumeGroup
@@ -113,8 +109,7 @@ spec:
   filesystemName: myfs
   name: dev
   dataPoolName: myfs-erasure
-  quota:
-    maxBytes: 549755813888   # 512 GiB
+  quota: 512Gi
 ```
 
 ## StorageClasses Per Group
@@ -167,7 +162,7 @@ allowVolumeExpansion: true
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph fs subvolumegroup ls myfs
 
-# Get quota info for a group
+# Get path of a group
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph fs subvolumegroup getpath myfs production
 
