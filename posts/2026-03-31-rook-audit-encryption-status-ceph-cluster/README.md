@@ -37,7 +37,7 @@ Run this on each node to verify dm-crypt devices exist:
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== Node: $node ==="
   kubectl debug node/$node -it --image=busybox -- \
-    ls /dev/mapper/ 2>/dev/null | grep ceph || echo "No ceph dm-crypt devices found"
+    chroot /host ls /dev/mapper/ 2>/dev/null | grep dmcrypt || echo "No dm-crypt devices found"
 done
 ```
 
@@ -47,7 +47,7 @@ For each OSD device, confirm LUKS is active:
 
 ```bash
 kubectl -n rook-ceph exec -it rook-ceph-osd-0-<suffix> -- bash -c \
-  "cryptsetup status /dev/mapper/*ceph*block*dmcrypt* 2>/dev/null"
+  "cryptsetup status /dev/mapper/*dmcrypt* 2>/dev/null"
 ```
 
 Expected output includes:
@@ -69,7 +69,7 @@ kubectl -n rook-ceph get secrets | grep "encryption-key"
 Compare the count with the number of OSDs:
 
 ```bash
-OSD_COUNT=$(ceph osd stat | grep -oP '\d+ osds')
+OSD_COUNT=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd stat | awk '{print $1}')
 KEY_COUNT=$(kubectl -n rook-ceph get secrets | grep "encryption-key" | wc -l)
 echo "OSDs: $OSD_COUNT, Keys: $KEY_COUNT"
 ```
@@ -86,10 +86,16 @@ for osd_pod in $(kubectl -n rook-ceph get pods -l app=rook-ceph-osd -o name); do
   osd_id=$(kubectl -n rook-ceph get $osd_pod -o jsonpath='{.metadata.labels.ceph-osd-id}')
   node=$(kubectl -n rook-ceph get $osd_pod -o jsonpath='{.spec.nodeName}')
 
-  secret_exists=$(kubectl -n rook-ceph get secret "rook-ceph-osd-encryption-key-osd-${osd_id}" 2>/dev/null && echo "YES" || echo "NO")
+  encrypted=$(kubectl -n rook-ceph exec $osd_pod -- \
+    bash -c "ls /dev/mapper/*dmcrypt* &>/dev/null && echo YES || echo NO" 2>/dev/null | tail -1)
 
-  echo "OSD ${osd_id} | Node: ${node} | Key Secret: ${secret_exists}"
+  echo "OSD ${osd_id} | Node: ${node} | Encrypted: ${encrypted}"
 done
+
+echo ""
+echo "--- Key Secret Summary ---"
+KEY_COUNT=$(kubectl -n rook-ceph get secrets --no-headers | grep -c "rook-ceph-osd-encryption-key")
+echo "Total encryption key secrets: $KEY_COUNT"
 ```
 
 ## Step 7: Vault Audit (if using Vault)
