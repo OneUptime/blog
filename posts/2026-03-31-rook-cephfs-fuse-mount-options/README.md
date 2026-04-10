@@ -29,14 +29,10 @@ metadata:
 spec:
   csi:
     cephfs:
-      fuseMountOptions:
-        - "default_permissions"
-        - "allow_other"
-        - "kernel_cache"
-        - "max_write=16777216"
+      fuseMountOptions: "default_permissions,allow_other,kernel_cache,max_write=16777216"
 ```
 
-Alternatively, control FUSE mount behavior through the operator ConfigMap:
+You must also ensure the FUSE client is selected instead of the kernel client. Set this in the operator ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -46,10 +42,9 @@ metadata:
   namespace: rook-ceph
 data:
   CSI_FORCE_CEPHFS_KERNEL_CLIENT: "false"
-  CSI_CEPHFS_FUSEMOUNT_OPTIONS: "default_permissions,allow_other,kernel_cache"
 ```
 
-Setting `CSI_FORCE_CEPHFS_KERNEL_CLIENT` to `false` allows the CSI driver to fall back to FUSE on nodes where the kernel module is unavailable.
+Setting `CSI_FORCE_CEPHFS_KERNEL_CLIENT` to `false` tells the CSI driver to use the FUSE client (`ceph-fuse`) instead of the kernel client for CephFS mounts.
 
 ## Common FUSE Mount Options
 
@@ -59,10 +54,9 @@ Option                  | Effect
 default_permissions     | Enforce kernel-level permission checks
 allow_other             | Allow users other than the mounter to access files
 kernel_cache            | Use the kernel page cache (improves read performance)
-max_write=N             | Maximum write size in bytes (default 65536)
+max_write=N             | Maximum write size in bytes
 max_read=N              | Maximum read size in bytes
 auto_cache              | Enable attribute caching for mtime-based invalidation
-big_writes              | Allow write sizes larger than 4096 bytes
 ```
 
 ## Tuning for Performance
@@ -70,14 +64,10 @@ big_writes              | Allow write sizes larger than 4096 bytes
 FUSE is inherently slower than the kernel client due to context switches between userspace and kernel. Mitigate this with these options:
 
 ```yaml
-fuseMountOptions:
-  - "kernel_cache"
-  - "big_writes"
-  - "max_write=16777216"
-  - "max_read=16777216"
+fuseMountOptions: "kernel_cache,max_write=16777216,max_read=16777216"
 ```
 
-`kernel_cache` is the most impactful single option - it routes reads through the Linux page cache rather than going to userspace on every access.
+`kernel_cache` is the most impactful single option - it routes reads through the Linux page cache rather than going to userspace on every access. Note that `big_writes` is no longer needed as a manual option: ceph-fuse automatically enables it when linked against libfuse2, and libfuse3 enables it by default.
 
 ## StorageClass Level FUSE Options
 
@@ -93,6 +83,7 @@ parameters:
   clusterID: rook-ceph
   fsName: myfs
   pool: myfs-replicated
+  mounter: "fuse"
   fuseMountOptions: "kernel_cache,allow_other,default_permissions"
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
@@ -119,4 +110,4 @@ Kernel mounts use `type ceph` instead.
 
 ## Summary
 
-FUSE mount options in Rook offer flexibility for environments where the CephFS kernel client is unavailable or insufficient. While FUSE has higher CPU overhead, tuning with `kernel_cache`, `big_writes`, and large `max_write` values closes much of the performance gap. Use FUSE selectively for specific workloads or nodes that require it, keeping the kernel client as the default for performance-sensitive deployments.
+FUSE mount options in Rook offer flexibility for environments where the CephFS kernel client is unavailable or insufficient. While FUSE has higher CPU overhead, tuning with `kernel_cache` and large `max_write` values closes much of the performance gap. Use FUSE selectively for specific workloads or nodes that require it, keeping the kernel client as the default for performance-sensitive deployments.
