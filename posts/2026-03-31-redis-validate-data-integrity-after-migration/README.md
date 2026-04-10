@@ -16,8 +16,8 @@ Start with fast checks that take seconds:
 
 ```bash
 # Compare total key counts
-SOURCE_KEYS=$(redis-cli -h source-host -a "source-pwd" DBSIZE)
-TARGET_KEYS=$(redis-cli -h target-host -a "target-pwd" DBSIZE)
+SOURCE_KEYS=$(redis-cli -h source-host -a "source-pwd" --raw DBSIZE)
+TARGET_KEYS=$(redis-cli -h target-host -a "target-pwd" --raw DBSIZE)
 echo "Source: $SOURCE_KEYS keys"
 echo "Target: $TARGET_KEYS keys"
 
@@ -34,8 +34,8 @@ redis-cli -h source-host -a "source-pwd" INFO keyspace
 redis-cli -h target-host -a "target-pwd" INFO keyspace
 
 # Compare memory usage (rough indicator)
-redis-cli -h source-host INFO memory | grep used_memory_human
-redis-cli -h target-host INFO memory | grep used_memory_human
+redis-cli -h source-host -a "source-pwd" INFO memory | grep used_memory_human
+redis-cli -h target-host -a "target-pwd" INFO memory | grep used_memory_human
 ```
 
 ## Level 2: Key Type Distribution
@@ -160,9 +160,11 @@ TTLs can differ after migration, especially if time elapsed during transfer:
 ```python
 def validate_ttls(sample_size=500, tolerance_seconds=60):
     issues = 0
+    checked = 0
     for key in src.scan_iter("*", count=200):
-        if issues + (sample_size - 1) == 0:
+        if checked >= sample_size:
             break
+        checked += 1
 
         src_ttl = src.ttl(key)
         tgt_ttl = tgt.ttl(key)
@@ -188,10 +190,8 @@ def validate_ttls(sample_size=500, tolerance_seconds=60):
 If you used RIOT for migration, use its built-in compare command:
 
 ```bash
-riot compare \
-  --source-uri redis://:src-password@source-host:6379 \
-  --target-uri redis://:tgt-password@target-host:6379 \
-  --key-pattern "*"
+riot -u redis://:src-password@source-host:6379 compare \
+  -u redis://:tgt-password@target-host:6379
 
 # Output:
 # Keys matched: 124530
