@@ -16,6 +16,7 @@ Redis Pub/Sub lets you broadcast messages to multiple subscribers over named cha
 [dependencies]
 redis = { version = "0.25", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
 ```
 
 ## Subscribing to a Channel
@@ -84,7 +85,6 @@ loop {
 For non-blocking operation, use the async API:
 
 ```rust
-use redis::aio::PubSub;
 use futures_util::StreamExt;
 
 #[tokio::main]
@@ -113,7 +113,7 @@ async fn main() -> redis::RedisResult<()> {
     redis::cmd("PUBLISH")
         .arg("chat")
         .arg("Hello, world!")
-        .query_async::<()>(&mut pub_con)
+        .query_async::<_, ()>(&mut pub_con)
         .await?;
 
     subscriber.await.ok();
