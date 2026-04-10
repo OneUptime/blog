@@ -67,6 +67,8 @@ Add to `crush.txt`:
 rule hybrid-ssd-primary {
     id 15
     type replicated
+    min_size 1
+    max_size 10
     step take default class ssd
     step chooseleaf firstn 1 type host
     step emit
