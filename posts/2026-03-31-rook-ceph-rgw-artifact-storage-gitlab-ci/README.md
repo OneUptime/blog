@@ -47,24 +47,30 @@ gitlab_rails['artifacts_object_store_connection'] = {
   'endpoint' => 'http://rook-ceph-rgw-my-store.rook-ceph:80',
   'path_style' => true
 }
-
-# Cache
-gitlab_rails['cache_object_store_enabled'] = true
-gitlab_rails['cache_object_store_remote_directory'] = "gitlab-cache"
-gitlab_rails['cache_object_store_connection'] = {
-  'provider' => 'AWS',
-  'region' => 'us-east-1',
-  'aws_access_key_id' => 'gitlabakey',
-  'aws_secret_access_key' => 'gitlabskey',
-  'endpoint' => 'http://rook-ceph-rgw-my-store.rook-ceph:80',
-  'path_style' => true
-}
 ```
 
 Apply the configuration:
 
 ```bash
 gitlab-ctl reconfigure
+```
+
+## Configure GitLab Runner Cache with S3
+
+CI/CD cache is configured on the GitLab Runner, not the GitLab server. Edit the runner's `config.toml`:
+
+```toml
+[[runners]]
+  [runners.cache]
+    Type = "s3"
+    Path = "runner-cache"
+    Shared = true
+    [runners.cache.s3]
+      ServerAddress = "rook-ceph-rgw-my-store.rook-ceph:80"
+      AccessKey = "gitlabakey"
+      SecretKey = "gitlabskey"
+      BucketName = "gitlab-cache"
+      Insecure = true
 ```
 
 ## Use Artifacts in .gitlab-ci.yml
@@ -74,6 +80,9 @@ stages:
   - build
   - test
 
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
 build:
   stage: build
   script:
@@ -82,6 +91,10 @@ build:
     paths:
       - target/*.jar
     expire_in: 7 days
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .m2/repository
 
 test:
   stage: test
