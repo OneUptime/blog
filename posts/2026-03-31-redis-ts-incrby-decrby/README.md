@@ -15,34 +15,34 @@ Description: Learn how to use TS.INCRBY and TS.DECRBY in Redis Time Series to in
 ```mermaid
 graph TD
     A["Last value in series: 100"]
-    A --> B["TS.INCRBY counter * 10"]
+    A --> B["TS.INCRBY counter 10"]
     B --> C["New value: 110 stored at current time"]
-    C --> D["TS.INCRBY counter * 5"]
+    C --> D["TS.INCRBY counter 5"]
     D --> E["New value: 115 stored at current time"]
-    E --> F["TS.DECRBY counter * 20"]
+    E --> F["TS.DECRBY counter 20"]
     F --> G["New value: 95 stored at current time"]
 ```
 
 ## Syntax
 
 ```redis
-TS.INCRBY key value
+TS.INCRBY key addend
   [TIMESTAMP timestamp]
   [RETENTION retentionPeriod]
-  [UNCOMPRESSED]
-  [CHUNK_SIZE chunkSize]
+  [ENCODING <COMPRESSED|UNCOMPRESSED>]
+  [CHUNK_SIZE size]
   [LABELS {label value}...]
 
-TS.DECRBY key value
+TS.DECRBY key subtrahend
   [TIMESTAMP timestamp]
   [RETENTION retentionPeriod]
-  [UNCOMPRESSED]
-  [CHUNK_SIZE chunkSize]
+  [ENCODING <COMPRESSED|UNCOMPRESSED>]
+  [CHUNK_SIZE size]
   [LABELS {label value}...]
 ```
 
 - `key` - the time series key (auto-created if it does not exist)
-- `value` - the delta to add (INCRBY) or subtract (DECRBY)
+- `addend`/`subtrahend` - the delta to add (INCRBY) or subtract (DECRBY)
 - `TIMESTAMP` - explicit timestamp; defaults to current server time
 - Returns the timestamp of the new sample
 
@@ -52,9 +52,9 @@ TS.DECRBY key value
 
 ```redis
 TS.CREATE requests
-TS.INCRBY requests * 1
-TS.INCRBY requests * 1
-TS.INCRBY requests * 1
+TS.INCRBY requests 1
+TS.INCRBY requests 1
+TS.INCRBY requests 1
 TS.GET requests
 ```
 
@@ -67,8 +67,8 @@ TS.GET requests
 
 ```redis
 TS.CREATE bytes-received
-TS.INCRBY bytes-received * 1024
-TS.INCRBY bytes-received * 2048
+TS.INCRBY bytes-received 1024
+TS.INCRBY bytes-received 2048
 TS.GET bytes-received
 ```
 
@@ -82,7 +82,7 @@ TS.GET bytes-received
 ```redis
 TS.CREATE inventory
 TS.ADD inventory * 1000
-TS.DECRBY inventory * 5
+TS.DECRBY inventory 5
 TS.GET inventory
 ```
 
@@ -97,13 +97,13 @@ TS.GET inventory
 TS.INCRBY page-views 1 TIMESTAMP 1711900800000
 TS.INCRBY page-views 1 TIMESTAMP 1711900860000
 TS.INCRBY page-views 1 TIMESTAMP 1711900920000
-TS.RANGE page-views 0 -1
+TS.RANGE page-views - +
 ```
 
 ### Auto-Create with Labels
 
 ```redis
-TS.INCRBY errors:api * 1 RETENTION 86400000 LABELS service api env production
+TS.INCRBY errors:api 1 RETENTION 86400000 LABELS service api env production
 ```
 
 If `errors:api` does not exist, it is created automatically.
@@ -116,13 +116,14 @@ Count HTTP requests per endpoint over time:
 
 ```redis
 -- Called on each request
-TS.INCRBY requests:api:checkout * 1
+TS.INCRBY requests:api:checkout 1
 ```
 
 Query the rate over the last hour:
 
 ```redis
-TS.RANGE requests:api:checkout -1h + AGGREGATION sum 60000
+-- fromTimestamp is one hour ago in milliseconds (computed by client)
+TS.RANGE requests:api:checkout 1711897200000 + AGGREGATION sum 60000
 ```
 
 ### Error Rate Tracking
@@ -131,10 +132,10 @@ Increment on each error, decrement when errors are resolved:
 
 ```redis
 -- On error
-TS.INCRBY active-errors:service * 1
+TS.INCRBY active-errors:service 1
 
 -- On resolution
-TS.DECRBY active-errors:service * 1
+TS.DECRBY active-errors:service 1
 ```
 
 ### Cumulative Byte Counter
@@ -143,17 +144,17 @@ Track cumulative network bytes transferred:
 
 ```redis
 -- After each packet
-TS.INCRBY network:bytes-out * 1500
+TS.INCRBY network:bytes-out 1500
 ```
 
 ### Inventory Level Tracking
 
 ```redis
 -- Stock added
-TS.INCRBY inventory:product-42 * 100
+TS.INCRBY inventory:product-42 100
 
 -- Stock sold
-TS.DECRBY inventory:product-42 * 3
+TS.DECRBY inventory:product-42 3
 ```
 
 ### Event Scoring
@@ -161,9 +162,9 @@ TS.DECRBY inventory:product-42 * 3
 Add weight-based increments for scored events:
 
 ```redis
-TS.INCRBY score:user-1 * 10
-TS.INCRBY score:user-1 * 5
-TS.INCRBY score:user-1 * 25
+TS.INCRBY score:user-1 10
+TS.INCRBY score:user-1 5
+TS.INCRBY score:user-1 25
 TS.GET score:user-1
 ```
 
@@ -179,7 +180,7 @@ TS.GET score:user-1
 TS.ADD counter * 42
 
 -- TS.INCRBY adds a delta to the last value
-TS.INCRBY counter * 1
+TS.INCRBY counter 1
 -- If last value was 42, new value is 43
 ```
 
@@ -190,8 +191,8 @@ Use `TS.INCRBY/DECRBY` when you are tracking cumulative changes and do not want 
 When the series is empty, `TS.INCRBY` uses 0 as the starting value:
 
 ```redis
-TSCREATE new-counter
-TS.INCRBY new-counter * 5
+TS.CREATE new-counter
+TS.INCRBY new-counter 5
 TS.GET new-counter
 ```
 
