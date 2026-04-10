@@ -15,6 +15,7 @@ Redis Pub/Sub allows one process to publish messages to a channel and other proc
 ```ruby
 # publisher.rb
 require 'redis'
+require 'json'
 
 redis = Redis.new
 
