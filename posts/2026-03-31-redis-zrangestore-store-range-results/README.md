@@ -73,12 +73,12 @@ ZRANGE top3_rev 0 -1 WITHSCORES
 ```text
 (integer) 3
 ---
-1) "bob"
-2) "200"
-3) "charlie"
-4) "150"
-5) "alice"
-6) "100"
+1) "charlie"
+2) "150"
+3) "bob"
+4) "200"
+5) "diana"
+6) "300"
 ```
 
 REV means the range is taken from the highest end; the stored result is still in ascending score order.
@@ -105,7 +105,7 @@ ZRANGE scored 0 -1 WITHSCORES
 
 ### Store by Score with Pagination (LIMIT)
 
-Store the second page (skip 1, take 2) of the score range.
+Store the second page (skip 2, take 2) of the score range.
 
 ```redis
 ZRANGESTORE page2 leaderboard 0 +inf BYSCORE LIMIT 2 2
