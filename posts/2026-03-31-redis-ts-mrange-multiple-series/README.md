@@ -18,7 +18,7 @@ graph TD
     A --> B["server-1:cpu | production"]
     A --> C["server-2:cpu | production"]
     A --> D["server-3:cpu | production"]
-    E["TS.MRANGE -3600000 + FILTER env=production metric=cpu"]
+    E["TS.MRANGE - + FILTER env=production metric=cpu"]
     B --> E
     C --> E
     D --> E
@@ -34,10 +34,9 @@ TS.MRANGE fromTimestamp toTimestamp
   [FILTER_BY_VALUE min max]
   [WITHLABELS | SELECTED_LABELS label...]
   [COUNT count]
-  [ALIGN align]
-  [AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
-  [GROUPBY label REDUCE reducer]
+  [[ALIGN align] AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
   FILTER filter...
+  [GROUPBY label REDUCE reducer]
 ```
 
 - `FILTER` is required; at least one filter expression must match a label value (not empty)
@@ -71,13 +70,13 @@ TS.MRANGE - + FILTER env=production metric=cpu
 Get average CPU per 1-minute bucket for all production servers:
 
 ```redis
-TS.MRANGE -3600000 + AGGREGATION avg 60000 FILTER env=production metric=cpu
+TS.MRANGE 1711897200000 1711900800000 AGGREGATION avg 60000 FILTER env=production metric=cpu
 ```
 
 ### With Labels in Response
 
 ```redis
-TS.MRANGE -3600000 + WITHLABELS AGGREGATION avg 60000 FILTER env=production metric=cpu
+TS.MRANGE 1711897200000 1711900800000 WITHLABELS AGGREGATION avg 60000 FILTER env=production metric=cpu
 ```
 
 ### GROUPBY - Merge Series by Label
@@ -85,7 +84,7 @@ TS.MRANGE -3600000 + WITHLABELS AGGREGATION avg 60000 FILTER env=production metr
 Average CPU across all servers in each region:
 
 ```redis
-TS.MRANGE -3600000 + AGGREGATION avg 60000 FILTER metric=cpu GROUPBY region REDUCE avg
+TS.MRANGE 1711897200000 1711900800000 AGGREGATION avg 60000 FILTER metric=cpu GROUPBY region REDUCE avg
 ```
 
 Each unique value of the `region` label produces one output series.
@@ -95,13 +94,13 @@ Each unique value of the `region` label produces one output series.
 Only return samples where CPU is above 80%:
 
 ```redis
-TS.MRANGE -3600000 + FILTER_BY_VALUE 80 100 FILTER env=production metric=cpu
+TS.MRANGE 1711897200000 1711900800000 FILTER_BY_VALUE 80 100 FILTER env=production metric=cpu
 ```
 
 ### Count Events Per Minute Across Services
 
 ```redis
-TS.MRANGE -3600000 + AGGREGATION count 60000 FILTER env=production metric=requests GROUPBY service REDUCE sum
+TS.MRANGE 1711897200000 1711900800000 AGGREGATION count 60000 FILTER env=production metric=requests GROUPBY service REDUCE sum
 ```
 
 ## Use Cases
@@ -111,7 +110,7 @@ TS.MRANGE -3600000 + AGGREGATION count 60000 FILTER env=production metric=reques
 Query all servers' CPU in one call for a Grafana panel:
 
 ```redis
-TS.MRANGE -3600000 + WITHLABELS AGGREGATION avg 60000 FILTER env=production metric=cpu-usage
+TS.MRANGE 1711897200000 1711900800000 WITHLABELS AGGREGATION avg 60000 FILTER env=production metric=cpu-usage
 ```
 
 ### Multi-Region Latency Comparison
@@ -119,7 +118,7 @@ TS.MRANGE -3600000 + WITHLABELS AGGREGATION avg 60000 FILTER env=production metr
 Compare p95 latency across regions:
 
 ```redis
-TS.MRANGE -86400000 + WITHLABELS AGGREGATION avg 3600000 FILTER service=api metric=latency-p95
+TS.MRANGE 1711814400000 1711900800000 WITHLABELS AGGREGATION avg 3600000 FILTER service=api metric=latency-p95
 ```
 
 ### Incident Correlation
@@ -142,10 +141,10 @@ TS.MRANGE 1711900800000 1711904400000 WITHLABELS FILTER experiment=checkout-rede
 
 ```redis
 -- Single series, specific key
-TS.RANGE cpu:server-1 -3600000 +
+TS.RANGE cpu:server-1 1711897200000 1711900800000
 
 -- Multiple series, label-based
-TS.MRANGE -3600000 + FILTER env=production metric=cpu
+TS.MRANGE 1711897200000 1711900800000 FILTER env=production metric=cpu
 ```
 
 Use `TS.RANGE` for a single known key. Use `TS.MRANGE` for group-based queries.
@@ -157,7 +156,7 @@ Use `TS.RANGE` for a single known key. Use `TS.MRANGE` for group-based queries.
 TS.MGET FILTER env=production metric=cpu
 
 -- Time range, multiple series
-TS.MRANGE -3600000 + FILTER env=production metric=cpu
+TS.MRANGE 1711897200000 1711900800000 FILTER env=production metric=cpu
 ```
 
 ## Performance Considerations
