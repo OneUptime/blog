@@ -132,7 +132,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 | Scenario | capacity | refill_rate | Behavior |
 |----------|----------|-------------|---------|
-| Strict limit | 10 | 10 | No real burst - same as fixed window |
+| Strict limit | 10 | 10 | Minimal burst - only 1 second of burst capacity |
 | Small burst | 20 | 10 | Brief 2x burst, then 10/s sustained |
 | Generous burst | 100 | 10 | Large initial burst, 10/s sustained |
 
