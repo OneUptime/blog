@@ -32,7 +32,7 @@ Every Sentinel subscribes to the `__sentinel__:hello` channel on every monitored
 SUBSCRIBE __sentinel__:hello
 ```
 
-Every two seconds, each Sentinel publishes a hello message to this channel on the primary:
+Every two seconds, each Sentinel publishes a hello message to this channel on every monitored primary and replica:
 
 ```text
 <sentinel-ip>,<sentinel-port>,<sentinel-runid>,<epoch>,
@@ -85,7 +85,7 @@ The leader then selects the best replica and runs the failover.
 ```text
 1. Leader sends REPLICAOF NO ONE to the chosen replica
 2. Replica promotes itself to primary
-3. Leader sends SENTINEL set mymaster to other Sentinels with new primary address
+3. Other Sentinels learn the new primary via Pub/Sub hello messages with the updated config epoch
 4. Leader reconfigures old replicas: REPLICAOF <new-primary> <port>
 5. If old primary recovers, it becomes a replica of the new primary
 ```
