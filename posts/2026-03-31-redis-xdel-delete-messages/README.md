@@ -69,7 +69,7 @@ The count reflects deletions.
 
 ## Behavior with Consumer Groups
 
-If you delete a message that is still pending in a consumer group's PEL, the message is removed from the stream but the PEL entry remains. When the consumer tries to acknowledge it, `XACK` succeeds (it removes the PEL entry), but the message data is gone. `XAUTOCLAIM` will return deleted PEL entries in its third return value.
+If you delete a message that is still pending in a consumer group's PEL, the message is removed from the stream but the PEL entry remains. When the consumer tries to acknowledge it, `XACK` succeeds (it removes the PEL entry), but the message data is gone. In Redis 7.0+, `XAUTOCLAIM` will return deleted PEL entries in its third return value and automatically remove them from the PEL.
 
 ```redis
 # Message 1711900000000-0 is pending for consumer1
@@ -81,12 +81,14 @@ XACK mystream workers 1711900000000-0
 
 ## Memory Considerations
 
-Deleted entries become tombstones in the stream's internal radix tree. The memory is not immediately reclaimed. To fully compact memory, follow `XDEL` with `XTRIM`:
+Deleted entries become tombstones in the stream's internal radix tree. Redis Streams pack multiple entries into macro-nodes, and the memory for a macro-node is only reclaimed when all entries within it are deleted. This means scattered `XDEL` operations may not immediately free memory. `XTRIM` can help reclaim memory if the deleted entries are near the head of the stream, since it evicts entries from the beginning:
 
 ```redis
 XDEL mystream 1711900000000-0
 XTRIM mystream MAXLEN ~ 1000
 ```
+
+However, `XTRIM` does not target tombstones from `XDEL` in the middle of the stream.
 
 ## Use Cases
 
@@ -97,4 +99,4 @@ XTRIM mystream MAXLEN ~ 1000
 
 ## Summary
 
-`XDEL` provides surgical removal of specific messages from a Redis Stream. It is the right tool when you need to target individual entries by ID, while `XTRIM` is better for bulk trimming by length or time. Be aware that deleted entries leave tombstones until the stream is trimmed, and that pending PEL references to deleted messages require explicit `XACK` cleanup.
+`XDEL` provides surgical removal of specific messages from a Redis Stream. It is the right tool when you need to target individual entries by ID, while `XTRIM` is better for bulk trimming by length or time. Be aware that deleted entries leave tombstones until all entries in the same macro-node are removed, and that pending PEL references to deleted messages require explicit `XACK` cleanup.
