@@ -91,7 +91,7 @@ redis-cli INFO stats | grep evicted_keys
 CONFIG SET slowlog-log-slower-than 0  # log everything
 # Run some commands
 KEYS *  # intentionally slow
-CONFIG SET slowlog-log-slower-than 0
+CONFIG SET slowlog-log-slower-than 10000  # reset to default (10ms)
 SLOWLOG GET 10
 ```
 
