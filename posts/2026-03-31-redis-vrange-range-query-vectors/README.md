@@ -4,85 +4,96 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Vector, VRANGE, Vector Set, Search
 
-Description: Learn how to use VRANGE in Redis to retrieve vector elements in rank order from a vector set, with examples for pagination and top-N retrieval.
+Description: Learn how to use VRANGE in Redis to retrieve vector elements in lexicographic order from a vector set, with examples for pagination and sampling.
 
 ---
 
-Redis vector sets store elements indexed by their similarity connections in a hierarchical navigable small world (HNSW) graph. The `VRANGE` command lets you retrieve elements ranked by their internal ordering - useful for paginating through vector sets or fetching a subset of entries.
+Redis vector sets store elements indexed by their similarity connections in a hierarchical navigable small world (HNSW) graph. The `VRANGE` command lets you retrieve elements in lexicographic order by name - useful for iterating through vector sets, paginating with cursors, or fetching a subset of entries.
 
 ## Basic Syntax
 
 ```text
-VRANGE key start stop [WITHSCORES]
+VRANGE key start end [count]
 ```
 
-- `start` and `stop` are zero-based indexes (0 = first element)
-- Negative indexes count from the end (-1 = last element)
-- `WITHSCORES` returns similarity scores alongside element names
+- `start` and `end` define a lexicographic range using prefix notation:
+  - `-` means the minimum (first) element
+  - `+` means the maximum (last) element
+  - `[value` means inclusive of `value`
+  - `(value` means exclusive of `value`
+- `count` limits the number of elements returned. A negative count returns all matching elements.
 
 ## Adding Vectors and Using VRANGE
 
 ```bash
 # Build a small product vector set
-VADD products 0.1 0.2 0.9 laptop
-VADD products 0.8 0.1 0.3 phone
-VADD products 0.4 0.6 0.5 tablet
-VADD products 0.2 0.8 0.4 monitor
-VADD products 0.7 0.3 0.6 keyboard
+VADD products VALUES 3 0.1 0.2 0.9 laptop
+VADD products VALUES 3 0.8 0.1 0.3 phone
+VADD products VALUES 3 0.4 0.6 0.5 tablet
+VADD products VALUES 3 0.2 0.8 0.4 monitor
+VADD products VALUES 3 0.7 0.3 0.6 keyboard
 
-# Retrieve all elements
-VRANGE products 0 -1
+# Retrieve all elements in lexicographic order
+VRANGE products - +
 
-# Retrieve first 3 elements
-VRANGE products 0 2
+# Retrieve first 3 elements lexicographically
+VRANGE products - + 3
 
-# Retrieve last 2 elements
-VRANGE products -2 -1
-```
+# Retrieve all elements starting from "monitor" (inclusive)
+VRANGE products [monitor +
 
-## Retrieving with Scores
-
-```bash
-# Get elements with their internal scores
-VRANGE products 0 -1 WITHSCORES
-# Returns interleaved: element, score, element, score, ...
+# Retrieve all elements after "monitor" (exclusive)
+VRANGE products (monitor +
 ```
 
 ## Practical Example: Paginating Through a Vector Set
+
+Since `VRANGE` uses lexicographic cursors, you paginate by remembering the last element returned and using it as the exclusive start of the next page:
 
 ```python
 import redis
 
 r = redis.Redis(host="localhost", port=6379)
 
-def paginate_vector_set(key, page=0, page_size=10):
-    start = page * page_size
-    stop = start + page_size - 1
-    results = r.execute_command("VRANGE", key, start, stop)
+def paginate_vector_set(key, cursor=None, page_size=3):
+    if cursor is None:
+        start = "-"
+    else:
+        start = f"({cursor}"
+    results = r.execute_command("VRANGE", key, start, "+", page_size)
     return [item.decode() for item in results]
 
-# Page 0: items 0-9
-page_0 = paginate_vector_set("products", page=0, page_size=3)
+# First page: first 3 elements lexicographically
+page_0 = paginate_vector_set("products", cursor=None, page_size=3)
 print("Page 0:", page_0)
 
-# Page 1: items 3-5
-page_1 = paginate_vector_set("products", page=1, page_size=3)
-print("Page 1:", page_1)
+# Next page: use last element from previous page as cursor
+if page_0:
+    page_1 = paginate_vector_set("products", cursor=page_0[-1], page_size=3)
+    print("Page 1:", page_1)
 ```
 
 ## Counting Elements Before Ranging
 
-Use `VCARD` to get total count so you can build proper pagination:
+Use `VCARD` to get total count so you can track pagination progress:
 
 ```python
-def get_all_pages(key, page_size=10):
+def iterate_all(key, page_size=10):
     total = r.execute_command("VCARD", key)
-    pages = []
-    for page in range(0, total, page_size):
-        stop = min(page + page_size - 1, total - 1)
-        batch = r.execute_command("VRANGE", key, page, stop)
-        pages.append([item.decode() for item in batch])
-    return pages
+    all_elements = []
+    cursor = None
+    while True:
+        if cursor is None:
+            start = "-"
+        else:
+            start = f"({cursor}"
+        batch = r.execute_command("VRANGE", key, start, "+", page_size)
+        if not batch:
+            break
+        decoded = [item.decode() for item in batch]
+        all_elements.extend(decoded)
+        cursor = decoded[-1]
+    return all_elements
 ```
 
 ## Combining VRANGE with VSIM
@@ -92,7 +103,7 @@ A common pattern is to use `VRANGE` to sample elements and then run `VSIM` again
 ```python
 def find_cluster_representatives(key, sample_size=5):
     # Get a sample of elements
-    samples = r.execute_command("VRANGE", key, 0, sample_size - 1)
+    samples = r.execute_command("VRANGE", key, "-", "+", sample_size)
     representatives = []
     for elem in samples:
         name = elem.decode()
@@ -109,14 +120,14 @@ def find_cluster_representatives(key, sample_size=5):
 
 ```bash
 # VRANGE on a non-existent key returns empty list
-VRANGE nonexistent 0 -1
+VRANGE nonexistent - +
 # Returns: (empty array)
 
-# Out-of-range indexes are clamped silently
-VRANGE products 0 1000
-# Returns all elements without error
+# If no elements match the range, an empty list is returned
+VRANGE products [zzz +
+# Returns: (empty array)
 ```
 
 ## Summary
 
-`VRANGE` provides index-based access to elements in a Redis vector set, complementing similarity-based queries with ordered retrieval. It is ideal for building paginated APIs, sampling subsets for inspection, or bridging vector sets with traditional list-style navigation patterns.
+`VRANGE` provides lexicographic iteration over elements in a Redis vector set, complementing similarity-based queries like `VSIM` with ordered retrieval. It is ideal for building cursor-based paginated APIs, sampling subsets for inspection, or iterating through all entries in a vector set.
