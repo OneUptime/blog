@@ -16,7 +16,7 @@ When you pass a non-numeric or improperly formatted value to a Redis command tha
 (error) ERR value is not a valid float
 ```
 
-This error occurs with commands that operate on float values, such as `INCRBYFLOAT`, `ZADD`, `ZINCRBY`, `GEODIST`, and others.
+This error occurs with commands that operate on float values, such as `INCRBYFLOAT`, `HINCRBYFLOAT`, `ZADD`, `ZINCRBY`, `GEOADD`, and others.
 
 ## Commands That Produce This Error
 
@@ -52,7 +52,7 @@ Redis does NOT accept:
 - Numeric strings with non-numeric content: `"3.14abc"`, `"1,000"`
 - `NaN` (not-a-number)
 - Empty strings
-- Strings with whitespace (some versions may trim, but best to avoid)
+- Strings with leading or trailing whitespace: `" 3.14"`, `"3.14 "`
 
 ## Common Causes
 
@@ -85,7 +85,7 @@ r.zadd('rankings', {member: float(score.replace(',', '.'))})  # Fix
 ```python
 # Accidentally converting float to string with formatting
 score = f"{3.14:.2f}"  # This is fine: "3.14"
-score = f"{3.14:,}"    # This is wrong: "3.14" but with thousands separator in some formats
+score = f"{1234.56:,}"  # This produces "1,234.56" which Redis rejects
 ```
 
 ## How to Fix
