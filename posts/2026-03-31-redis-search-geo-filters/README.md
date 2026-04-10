@@ -120,23 +120,23 @@ RediSearch geo filters do not natively sort by distance. To sort by proximity, u
 ```redis
 FT.AGGREGATE places "@location:[-73.9857 40.7580 5 km]"
   LOAD 4 @name @type @rating @location
-  APPLY "geodist(@location, -73.9857, 40.7580)" AS distance_km
-  SORTBY 2 @distance_km ASC
+  APPLY "geodistance(@location, -73.9857, 40.7580)" AS distance_m
+  SORTBY 2 @distance_m ASC
 ```
 
 ```text
 1) 1) "name"
    2) "Times Square Diner"
-   3) "distance_km"
-   4) "0.01"
+   3) "distance_m"
+   4) "0.00"
 2) 1) "name"
    2) "Midtown Library"
-   3) "distance_km"
-   4) "0.62"
+   3) "distance_m"
+   4) "644.25"
 ...
 ```
 
-The `GEODISTANCE` function returns the distance in kilometers between the stored coordinate and the given point.
+The `geodistance` function returns the distance in meters between the stored coordinate and the given point.
 
 ## Practical Use Cases
 
@@ -147,8 +147,8 @@ Find the nearest stores to a user's location:
 ```redis
 FT.AGGREGATE stores "@location:[-122.4194 37.7749 10 km]"
   LOAD 3 @name @address @hours
-  APPLY "geodist(@location, -122.4194, 37.7749)" AS distance_km
-  SORTBY 2 @distance_km ASC
+  APPLY "geodistance(@location, -122.4194, 37.7749)" AS distance_m
+  SORTBY 2 @distance_m ASC
   LIMIT 0 5
 ```
 
@@ -197,8 +197,8 @@ The filter query uses the same lon/lat order: `@location:[lon lat radius unit]`.
 
 - Radius-based only: ellipse, polygon, and bounding-box shapes are not supported
 - Maximum supported radius is approximately 6000 km
-- GEO does not support `SORTABLE` (use `GEODISTANCE` in aggregations instead)
+- To sort results by distance, use `geodistance` in `FT.AGGREGATE` aggregations
 
 ## Summary
 
-Geo filters in RediSearch use the `@field:[lon lat radius unit]` syntax to find documents within a circular radius. Store coordinates as `"lon,lat"` strings in hash fields indexed as `GEO`. Combine geo filters with TEXT, TAG, and NUMERIC filters for location-aware queries. To sort by distance, use `FT.AGGREGATE` with the `GEODISTANCE` apply function.
+Geo filters in RediSearch use the `@field:[lon lat radius unit]` syntax to find documents within a circular radius. Store coordinates as `"lon,lat"` strings in hash fields indexed as `GEO`. Combine geo filters with TEXT, TAG, and NUMERIC filters for location-aware queries. To sort by distance, use `FT.AGGREGATE` with the `geodistance` apply function.
