@@ -112,8 +112,8 @@ From an EC2 instance in the application subnet:
 # Test TCP connectivity
 nc -zv <redis-primary-endpoint> 6379
 
-# Test Redis connectivity
-redis-cli -h <redis-primary-endpoint> -p 6379 -a your-auth-token ping
+# Test Redis connectivity (--tls required because transit encryption is enabled)
+redis-cli -h <redis-primary-endpoint> -p 6379 --tls -a your-auth-token ping
 ```
 
 Expected output:
@@ -137,6 +137,12 @@ resource "aws_vpc_peering_connection" "app_to_redis" {
 resource "aws_route" "app_to_redis" {
   route_table_id            = aws_route_table.app_private.id
   destination_cidr_block    = var.redis_vpc_cidr
+  vpc_peering_connection_id = aws_vpc_peering_connection.app_to_redis.id
+}
+
+resource "aws_route" "redis_to_app" {
+  route_table_id            = aws_route_table.redis_private.id
+  destination_cidr_block    = var.app_vpc_cidr
   vpc_peering_connection_id = aws_vpc_peering_connection.app_to_redis.id
 }
 ```
