@@ -98,7 +98,7 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 
 # Get the current leader
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph mon dump | grep -A1 "leader"
+  ceph quorum_status --format json-pretty | grep quorum_leader_name
 
 # Check monitor clock skew (important for quorum)
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
@@ -107,7 +107,7 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Handling Clock Skew
 
-Monitors reject connections if clocks are skewed more than 0.05 seconds:
+Ceph raises a `MON_CLOCK_SKEW` health warning if clocks are skewed more than 0.05 seconds (the default `mon_clock_drift_allowed` threshold):
 
 ```bash
 # Install chrony or ntpd on all nodes
@@ -131,8 +131,8 @@ spec:
 
 When a monitor fails:
 
-1. Remaining monitors detect absence via heartbeat timeout (default: 5 minutes)
-2. Rook operator detects the failed MON pod and reschedules it
+1. Remaining monitors detect absence via heartbeat and remove the failed mon from quorum
+2. Rook operator detects the failed MON pod and waits for the failover timeout (default: 10 minutes) before replacing it
 3. The new monitor syncs from the remaining quorum members
 
 ```bash
@@ -177,4 +177,4 @@ spec:
 
 ## Summary
 
-Multi-monitor HA in Rook-Ceph requires configuring an odd number of monitors (3 or 5) with strict anti-affinity rules to ensure they land on separate nodes. The key operational concern is clock synchronization - NTP skew beyond 50ms breaks quorum. Monitor failover is automatic through Rook's operator, which reschedules failed MON pods and the new monitor resyncs from remaining quorum members without manual intervention.
+Multi-monitor HA in Rook-Ceph requires configuring an odd number of monitors (3 or 5) with strict anti-affinity rules to ensure they land on separate nodes. The key operational concern is clock synchronization - NTP skew beyond 50ms triggers a `MON_CLOCK_SKEW` health warning. Monitor failover is automatic through Rook's operator, which reschedules failed MON pods and the new monitor resyncs from remaining quorum members without manual intervention.
