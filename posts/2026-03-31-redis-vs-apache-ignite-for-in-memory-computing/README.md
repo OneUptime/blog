@@ -15,6 +15,7 @@ Redis is a specialized in-memory data store. Apache Ignite is a full in-memory c
 Redis handles caching, queues, and leaderboards exceptionally well:
 
 ```python
+import json
 import redis
 
 r = redis.Redis(decode_responses=True)
@@ -37,7 +38,7 @@ r.zadd("scores", {"alice": 1500, "bob": 1200, "carol": 1800})
 top3 = r.zrevrange("scores", 0, 2, withscores=True)
 ```
 
-Redis does not support SQL queries or multi-key ACID transactions (MULTI/EXEC is optimistic, not true ACID).
+Redis does not support SQL queries or multi-key ACID transactions (MULTI/EXEC provides atomic command batching but not full ACID with rollback support).
 
 ## Apache Ignite for In-Memory Computing
 
@@ -89,7 +90,7 @@ IgniteCompute compute = ignite.compute();
 
 // Execute a closure where the data lives
 String result = compute.affinityCall("accounts", accountId, () -> {
-    IgniteCache<Long, Account> cache = Ignite.localIgnite().cache("accounts");
+    IgniteCache<Long, Account> cache = Ignition.localIgnite().cache("accounts");
     return cache.localPeek(accountId).summarize();
 });
 ```
