@@ -61,14 +61,14 @@ sudo datadog-agent check redisdb
 | `redis.stats.keyspace_hits` | Cache hit count |
 | `redis.stats.keyspace_misses` | Cache miss count |
 | `redis.replication.master_link_down_since_seconds` | Replication lag |
-| `redis.net.latency_p99` | p99 command latency |
+| `redis.info.latency_ms` | Latest fork latency in milliseconds |
 
 ## Building a Dashboard
 
 Create a dashboard in Datadog with these widgets:
 
 - Timeseries: `redis.net.instantaneous_ops_per_sec` grouped by host
-- Query Value: `redis.mem.used` / `redis.config.maxmemory` as a percentage
+- Query Value: `redis.mem.used` / `redis.mem.maxmemory` as a percentage
 - Timeseries: cache hit ratio = `redis.stats.keyspace_hits / (redis.stats.keyspace_hits + redis.stats.keyspace_misses)`
 
 ## Setting Up Monitors
@@ -81,7 +81,7 @@ datadog.initialize(api_key="YOUR_API_KEY", app_key="YOUR_APP_KEY")
 
 datadog.api.Monitor.create(
     type="metric alert",
-    query="avg(last_5m):avg:redis.mem.used{*} / avg:redis.config.maxmemory{*} * 100 > 85",
+    query="avg(last_5m):avg:redis.mem.used{*} / avg:redis.mem.maxmemory{*} * 100 > 85",
     name="Redis Memory Usage > 85%",
     message="Redis memory usage is above 85%. @pagerduty-on-call",
     tags=["service:redis", "env:production"],
