@@ -23,7 +23,6 @@ import boto3
 dynamo_client = boto3.client('dynamodb', region_name='us-east-1')
 
 # DAX client - drop-in replacement
-import amazon.ion.simpleion as ion
 from amazondax import AmazonDaxClient
 
 dax_client = AmazonDaxClient(
@@ -126,10 +125,13 @@ def write_through(user_id: str, item: dict):
 DAX does not cache certain DynamoDB operations:
 
 ```python
-# DAX does NOT cache Scan operations
-# Use Redis for scan result caching
-def cached_scan(filter_key: str, filter_value: str) -> list:
-    cache_key = f"scan:{filter_key}:{filter_value}"
+# DAX does NOT cache TransactGetItems or TransactWriteItems
+# These are passed through to DynamoDB without caching
+
+# DAX does NOT support arbitrary data caching (only DynamoDB results)
+# Use Redis for caching computed results or data from non-DynamoDB sources
+def cached_computed_result(filter_key: str, filter_value: str) -> list:
+    cache_key = f"computed:{filter_key}:{filter_value}"
     cached = r.get(cache_key)
     if cached:
         return json.loads(cached)
@@ -140,9 +142,6 @@ def cached_scan(filter_key: str, filter_value: str) -> list:
     items = response['Items']
     r.setex(cache_key, 60, json.dumps(items))
     return items
-
-# DAX does NOT cache TransactGetItems with more than 25 items
-# DAX does NOT support arbitrary data caching (only DynamoDB results)
 ```
 
 ## Cost Comparison
