@@ -10,7 +10,7 @@ Description: Configure Ceph RBD mirroring between two Rook-Ceph clusters to repl
 
 ## Overview
 
-Ceph RBD mirroring replicates RBD images between two Ceph clusters, providing asynchronous cross-cluster backup. In Rook, this is configured using the CephBlockPoolRadosNamespace and CephRBDMirror resources. This enables disaster recovery with RPO in the minutes range.
+Ceph RBD mirroring replicates RBD images between two Ceph clusters, providing asynchronous cross-cluster backup. In Rook, this is configured using the CephBlockPool and CephRBDMirror resources. This enables disaster recovery with RPO bounded by your snapshot schedule interval.
 
 ## Architecture
 
