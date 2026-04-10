@@ -62,6 +62,10 @@ spec:
       app: myapp
       version: green
   template:
+    metadata:
+      labels:
+        app: myapp
+        version: green
     spec:
       volumes:
         - name: db-storage
@@ -128,7 +132,7 @@ kubectl get pods -l app=myapp -w
 
 # Monitor Ceph storage operations during clone
 ceph status
-watch -n2 "ceph df | grep green"
+ceph -w  # Watch cluster events during clone operations
 
 # Check that green PVC is fully materialized
 kubectl describe pvc data-green-db-0 | grep -E "Status|Capacity"
