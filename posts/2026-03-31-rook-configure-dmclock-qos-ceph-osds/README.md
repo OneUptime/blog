@@ -37,7 +37,7 @@ ceph config get osd osd_op_queue
 Ceph provides built-in mClock profiles that set sensible defaults:
 
 ```bash
-# List available profiles
+# Check current profile
 ceph config get osd osd_mclock_profile
 ```
 
@@ -54,9 +54,13 @@ ceph config set osd osd_mclock_profile balanced
 
 ## Configuring Custom mClock Parameters
 
-For precise control, set individual parameters. Each parameter is set per OSD class:
+For precise control, first switch to the `custom` profile, then set individual parameters. Built-in profiles lock mClock parameters and silently revert manual changes, so the `custom` profile must be active:
 
 ```bash
+# Enable custom profile to allow manual parameter tuning
+ceph config set osd osd_mclock_profile custom
+
+
 # Set reservations (IOPS guaranteed minimum)
 ceph config set osd osd_mclock_scheduler_client_res 500
 ceph config set osd osd_mclock_scheduler_background_recovery_res 100
@@ -98,7 +102,7 @@ ceph daemon osd.0 config show | grep mclock
 Dump the current scheduler state:
 
 ```bash
-ceph daemon osd.0 dump_mclock_queue
+ceph daemon osd.0 dump_op_pq_state
 ```
 
 ## Benchmarking QoS Effectiveness
@@ -106,15 +110,15 @@ ceph daemon osd.0 dump_mclock_queue
 Test QoS by running competing workloads and measuring allocation:
 
 ```bash
-# Background load simulating recovery
+# Competing client workload in one pool
 rados bench -p test-pool 60 write --no-cleanup &
 
-# Foreground client workload
+# Primary client workload in another pool
 rados bench -p prod-pool 60 write --no-cleanup
 
-# Compare IOPS - client should get priority
+# Compare IOPS - observe how mClock distributes capacity between clients
 ```
 
 ## Summary
 
-DmClock QoS scheduling in Ceph ensures fair and predictable I/O distribution across OSDs using a three-parameter model of reservation, weight, and limit. Enabling the `mclock_scheduler` and choosing an appropriate profile provides immediate improvements over the default FIFO queue, while custom parameter tuning allows precise control over how available IOPS are allocated between client and background workloads.
+DmClock QoS scheduling in Ceph ensures fair and predictable I/O distribution across OSDs using a three-parameter model of reservation, weight, and limit. Enabling the `mclock_scheduler` and choosing an appropriate profile provides immediate improvements over the default `wpq` (WeightedPriorityQueue), while custom parameter tuning allows precise control over how available IOPS are allocated between client and background workloads.
