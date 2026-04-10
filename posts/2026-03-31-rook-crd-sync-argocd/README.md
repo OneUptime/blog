@@ -36,7 +36,6 @@ spec:
   syncPolicy:
     syncOptions:
     - ServerSideApply=true
-    - Replace=true
 ```
 
 ## Issue 2: Separate CRD Application
