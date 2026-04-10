@@ -70,11 +70,11 @@ replica = sentinel.slave_for('mymaster', socket_timeout=0.1)
 def safe_write(key, value):
     for attempt in range(3):
         try:
-            master.set(key, value)
+            conn = sentinel.master_for('mymaster', socket_timeout=0.1)
+            conn.set(key, value)
             return
         except Exception as e:
             print(f"Write failed (attempt {attempt+1}): {e}")
-            master = sentinel.master_for('mymaster', socket_timeout=0.1)
     raise Exception("Failed after 3 attempts")
 ```
 
@@ -89,7 +89,7 @@ pubsub.psubscribe('*')
 
 for message in pubsub.listen():
     if message['type'] == 'pmessage':
-        if b'+switch-master' in message['data']:
+        if message['channel'] == b'+switch-master':
             print(f"Failover occurred: {message['data']}")
             # Trigger your alerting/automation here
 ```
@@ -106,8 +106,9 @@ redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 redis-cli -p 26379 SENTINEL replicas mymaster
 
 # Check new primary replication state
-NEW_PRIMARY=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | head -1)
-redis-cli -h $NEW_PRIMARY INFO replication
+NEW_PRIMARY_HOST=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | head -1)
+NEW_PRIMARY_PORT=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | tail -1)
+redis-cli -h $NEW_PRIMARY_HOST -p $NEW_PRIMARY_PORT INFO replication
 ```
 
 ## Post-Failover Checklist
