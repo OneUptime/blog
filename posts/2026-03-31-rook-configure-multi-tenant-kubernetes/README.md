@@ -26,7 +26,7 @@ spec:
   replicated:
     size: 3
   quotas:
-    maxBytes: 10995116277760   # 10 TB quota for tenant A
+    maxSize: "10Ti"   # 10 TiB quota for tenant A
 ---
 # Tenant B pool
 apiVersion: ceph.rook.io/v1
@@ -39,7 +39,7 @@ spec:
   replicated:
     size: 3
   quotas:
-    maxBytes: 5497558138880    # 5 TB quota for tenant B
+    maxSize: "5Ti"    # 5 TiB quota for tenant B
 ```
 
 ## Create Per-Tenant Storage Classes
@@ -64,7 +64,7 @@ allowVolumeExpansion: true
 ## Restrict Storage Class Access via RBAC
 
 ```yaml
-# Allow only tenant-a namespace to use tenant-a storage class
+# Restrict visibility of tenant-a storage class (use with ResourceQuota or an admission controller like OPA Gatekeeper to enforce usage)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -115,9 +115,7 @@ metadata:
   namespace: rook-ceph
 spec:
   filesystemName: cephfs
-  quota:
-    maxBytes: 1073741824000   # 1 TB
-    maxFiles: 1000000
+  quota: "1Ti"
 ```
 
 ## Audit Cross-Tenant Access Attempts
@@ -126,9 +124,12 @@ spec:
 # Monitor which namespaces are creating PVCs
 kubectl get pvc --all-namespaces | grep tenant
 
-# Check Ceph audit logs for unauthorized access
-ceph config set global debug_rgw_access 1
-kubectl -n rook-ceph logs deploy/rook-ceph-rgw-my-store | grep "denied\|unauthorized"
+# Check per-tenant pool usage and quota enforcement
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd pool get-quota tenant-a-pool
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd pool stats tenant-a-pool
+
+# Review Ceph auth capabilities for tenant isolation
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph auth ls | grep -A 5 tenant
 ```
 
 ## Summary
