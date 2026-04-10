@@ -35,17 +35,33 @@ Operations that benefit most from a fast DB device:
 ### With cephadm
 
 ```bash
-# Add OSD with separate DB on SSD and WAL on NVMe
-ceph orch daemon add osd \
-  myhost:/dev/sdb:data \
-  /dev/ssd0:/dev/nvme0n1:block_db:block_wal
+# Add OSD with separate DB on SSD
+ceph orch daemon add osd myhost:data_devices=/dev/sdb,db_devices=/dev/ssd0
 ```
 
-Or specify separately:
+For more complex setups with separate DB and WAL devices, use a service specification:
+
+```yaml
+# osd_spec.yaml
+service_type: osd
+service_id: osd_with_db_wal
+placement:
+  hosts:
+    - myhost
+spec:
+  data_devices:
+    paths:
+      - /dev/sdb
+  db_devices:
+    paths:
+      - /dev/ssd0
+  wal_devices:
+    paths:
+      - /dev/nvme0n1
+```
 
 ```bash
-ceph orch daemon add osd \
-  myhost:/dev/sdb:data:/dev/ssd0:db
+ceph orch apply -i osd_spec.yaml
 ```
 
 ### With ceph-volume
@@ -92,20 +108,27 @@ spec:
 The DB device needs to be large enough to hold RocksDB without spillover to the main device. If the DB device fills up, BlueStore falls back to the main block device (which is slower).
 
 ```bash
-# Rule of thumb: 1-2% of OSD data size
-# For a 1TB OSD: 10-20 GB DB device
+# Rule of thumb: 1-4% of OSD data size depending on workload
+# RBD-only workloads: 1-2%
+# RGW, CephFS, or mixed workloads: at least 4%
 
-# Check current RocksDB size
-du -sh /var/lib/ceph/osd/ceph-0/block.db
+# Check current DB usage via BlueFS perf counters
+ceph daemon osd.0 perf dump bluefs | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+bluefs = data.get('bluefs', {})
+print('DB total:', bluefs.get('db_total_bytes', 'N/A'))
+print('DB used:', bluefs.get('db_used_bytes', 'N/A'))
+"
 ```
 
 Recommended sizing per OSD:
 
-| OSD Size | Minimum DB Size | Recommended DB Size |
+| OSD Size | RBD Workloads (1-2%) | RGW/CephFS/Mixed (4%) |
 |---|---|---|
-| 1 TB | 5 GB | 10 GB |
-| 4 TB | 20 GB | 40 GB |
-| 10 TB | 50 GB | 100 GB |
+| 1 TB | 10-20 GB | 40 GB |
+| 4 TB | 40-80 GB | 160 GB |
+| 10 TB | 100-200 GB | 400 GB |
 
 ## Verifying DB Device Usage
 
@@ -125,8 +148,8 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 rocksdb = data.get('rocksdb', {})
-print('Compactions:', rocksdb.get('compact_range_count', 0))
-print('L0 files:', rocksdb.get('l0_file_count_limit_slowdowns', 0))
+print('Compactions:', rocksdb.get('compact', 0))
+print('Compaction queue:', rocksdb.get('compact_queue_len', 0))
 "
 ```
 
@@ -141,8 +164,18 @@ iostat -x /dev/ssd0 5
 If the DB device fills up:
 
 ```bash
-# Check DB space usage
-ceph daemon osd.0 perf dump | grep bluestore_db
+# Check DB space usage via BlueFS counters
+ceph daemon osd.0 perf dump bluefs | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+bluefs = data.get('bluefs', {})
+db_total = bluefs.get('db_total_bytes', 0)
+db_used = bluefs.get('db_used_bytes', 0)
+slow_used = bluefs.get('slow_used_bytes', 0)
+print(f'DB total: {db_total}')
+print(f'DB used: {db_used}')
+print(f'Spilled to slow device: {slow_used}')
+"
 
 # If overflowing, increase DB size or move RocksDB back
 # Option: compact RocksDB to reduce size
@@ -151,4 +184,4 @@ ceph daemon osd.0 compact
 
 ## Summary
 
-Moving BlueStore's RocksDB metadata database to a dedicated SSD or NVMe device reduces metadata operation latency, which is critical for workloads with high omap usage or many small objects. Size the DB device at 1-2% of the OSD data size to prevent DB spillover to the slower main device. Monitor RocksDB compaction rates and L0 file counts to identify when the DB device is under pressure.
+Moving BlueStore's RocksDB metadata database to a dedicated SSD or NVMe device reduces metadata operation latency, which is critical for workloads with high omap usage or many small objects. Size the DB device at 1-4% of the OSD data size (1-2% for RBD, 4% for RGW/CephFS/mixed workloads) to prevent DB spillover to the slower main device. Monitor RocksDB compaction rates and L0 file counts to identify when the DB device is under pressure.
