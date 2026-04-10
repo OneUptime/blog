@@ -112,10 +112,10 @@ spec:
 Check that connections from application pods to RGW use mTLS:
 
 ```bash
-# Using istioctl to verify mTLS status
+# Check that the sidecar proxy is injected
 istioctl x check-inject -n my-app deployment/my-app
 
-# Verify connection between app and RGW
+# Verify listener configuration for RGW connectivity
 istioctl proxy-config listeners deploy/my-app -n my-app | grep rgw
 ```
 
