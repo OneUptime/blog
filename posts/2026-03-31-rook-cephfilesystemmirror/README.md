@@ -29,8 +29,7 @@ kind: CephFilesystemMirror
 metadata:
   name: my-fs-mirror
   namespace: rook-ceph
-spec:
-  count: 1
+spec: {}
 ```
 
 ```bash
@@ -48,9 +47,6 @@ metadata:
   name: my-fs-mirror
   namespace: rook-ceph
 spec:
-  # Number of mirror daemon instances
-  count: 2
-
   resources:
     requests:
       cpu: "500m"
@@ -109,30 +105,14 @@ kubectl logs -n rook-ceph -l app=rook-ceph-fs-mirror --tail=50
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph fs snapshot mirror daemon status
 
-# Overall mirror status for a filesystem
+# List mirrored directories for a filesystem
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs
-
-# Per-directory sync status
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs /
+  ceph fs snapshot mirror ls myfs
 
 # Peer information
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer list myfs
+  ceph fs snapshot mirror peer_list myfs
 ```
-
-## Scaling Mirror Daemons
-
-For high-volume replication, increase `count`:
-
-```bash
-kubectl patch cephfilesystemmirror my-fs-mirror -n rook-ceph \
-  --type merge \
-  -p '{"spec":{"count":3}}'
-```
-
-Each daemon instance handles a subset of directories in the filesystem.
 
 ## Enabling Mirroring on the CephFilesystem
 
@@ -169,4 +149,4 @@ kubectl delete cephfilesystemmirror my-fs-mirror -n rook-ceph
 
 ## Summary
 
-The `CephFilesystemMirror` CRD deploys the `cephfs-mirror` daemon in Rook. Configure `count` for the number of daemon replicas, use `resources` for CPU/memory limits, and `placement` to control scheduling. The daemon is passive until a `CephFilesystem` has `mirroring.enabled: true` and a peer secret. Scale `count` horizontally for higher replication throughput.
+The `CephFilesystemMirror` CRD deploys the `cephfs-mirror` daemon in Rook. Use `resources` for CPU/memory limits and `placement` to control scheduling. The daemon is passive until a `CephFilesystem` has `mirroring.enabled: true` and a peer secret configured.
