@@ -28,12 +28,12 @@ Journal-based mirroring enables the `journaling` RBD feature on the image. Every
 rbd feature enable replicapool/myimage journaling
 ```
 
-The `exclusive-lock` and `object-map` features must also be enabled.
+The `exclusive-lock` feature must also be enabled as a dependency of `journaling`.
 
 ### Performance Impact
 
 Journal-based mirroring has measurable write overhead:
-- All writes must be journaled before acknowledgment (or after, with `writethrough` mode)
+- All writes must be journaled before acknowledgment, introducing a double-write penalty
 - Additional network bandwidth for continuous journal streaming
 - Higher CPU usage on both primary and secondary cluster
 
@@ -111,7 +111,7 @@ spec:
     - interval: 24h
 ```
 
-For journal-based, enable the journaling feature on the image and set the pool mirroring mode to `pool`.
+For journal-based mirroring, enable the `journaling` feature on each image. The `mode` field (`pool` or `image`) controls whether mirroring applies to all images automatically or per-image, and works with both journal-based and snapshot-based mirroring.
 
 ## Summary
 
