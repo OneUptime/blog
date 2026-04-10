@@ -129,7 +129,7 @@ spec:
     app: rook-ceph-rgw
   ports:
   - port: 80
-    targetPort: 7480
+    targetPort: 8080
 ```
 
 ## Monitoring DNS Latency
