@@ -14,7 +14,7 @@ Carmine is the most feature-complete Redis client for Clojure. It uses a connect
 
 ```clojure
 ;; project.clj or deps.edn
-[com.taoensso/carmine "3.3.2"]
+[com.taoensso/carmine "3.5.0"]
 ```
 
 ## Connection Spec
