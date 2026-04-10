@@ -39,10 +39,10 @@ VSIM key (ELE member | VALUES dim v1 v2 ... vN)
 ### Search by Existing Element
 
 ```redis
-VADD docs 0.1 0.9 0.3 0.7 article1
-VADD docs 0.2 0.8 0.4 0.6 article2
-VADD docs 0.9 0.1 0.7 0.3 article3
-VADD docs 0.8 0.2 0.6 0.4 article4
+VADD docs VALUES 4 0.1 0.9 0.3 0.7 article1
+VADD docs VALUES 4 0.2 0.8 0.4 0.6 article2
+VADD docs VALUES 4 0.9 0.1 0.7 0.3 article3
+VADD docs VALUES 4 0.8 0.2 0.6 0.4 article4
 
 VSIM docs ELE article1 COUNT 3
 ```
@@ -58,10 +58,10 @@ VSIM docs VALUES 4 0.15 0.85 0.35 0.65 COUNT 3 WITHSCORES
 ## Full Response with Scores and Attributes
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 shoes
+VADD products VALUES 4 0.1 0.9 0.3 0.7 shoes
 VSETATTR products shoes '{"name":"Running Shoes","price":89.99,"category":"footwear"}'
 
-VADD products 0.2 0.8 0.4 0.6 boots
+VADD products VALUES 4 0.2 0.8 0.4 0.6 boots
 VSETATTR products boots '{"name":"Hiking Boots","price":129.99,"category":"footwear"}'
 
 VSIM products VALUES 4 0.12 0.88 0.32 0.68 COUNT 2 WITHSCORES WITHATTRIBS
@@ -160,7 +160,7 @@ results.forEach(r => console.log(r.member, r.score.toFixed(4)));
 
 ## Attribute Filtering with FILTER
 
-The `FILTER` option accepts a JSONPath-like filter expression to narrow results by attribute values:
+The `FILTER` option accepts a JavaScript-like filter expression to narrow results by attribute values:
 
 ```redis
 # Only return products in the footwear category
@@ -182,7 +182,7 @@ VSIM docs VALUES 4 0.1 0.2 0.3 0.4 COUNT 10 EF 50
 VSIM docs VALUES 4 0.1 0.2 0.3 0.4 COUNT 10 EF 500
 ```
 
-The default EF is 10 x COUNT (so 100 for COUNT 10).
+Typical EF values range from 50 to 1000. Higher values improve recall but increase latency.
 
 ## Semantic Search Pipeline
 
