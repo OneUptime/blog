@@ -81,7 +81,8 @@ def record_usage(subscriber_id: str, bytes_up: int, bytes_down: int, segment_id:
 
 ```python
 def _check_data_cap(subscriber_id: str, bytes_added: int):
-    month_bucket = time.strftime("%Y%m")
+    now = time.gmtime()
+    month_bucket = time.strftime("%Y%m", now)
     sub_month_key = f"{USAGE_PREFIX}:{subscriber_id}:m:{month_bucket}"
 
     total_bytes = int(r.hget(sub_month_key, "total") or 0)
@@ -102,7 +103,7 @@ def _check_data_cap(subscriber_id: str, bytes_added: int):
         }))
     elif usage_pct >= 80:
         # Only alert once per day for 80% threshold
-        alert_key = f"alert:80pct:{subscriber_id}:{time.strftime('%Y%m%d')}"
+        alert_key = f"alert:80pct:{subscriber_id}:{time.strftime('%Y%m%d', now)}"
         if r.set(alert_key, 1, ex=86400, nx=True):
             r.publish(ALERT_CHANNEL, json.dumps({
                 "type": "cap_warning_80pct",
@@ -115,7 +116,7 @@ def _check_data_cap(subscriber_id: str, bytes_added: int):
 
 ```python
 def get_current_month_usage(subscriber_id: str) -> dict:
-    month_bucket = time.strftime("%Y%m")
+    month_bucket = time.strftime("%Y%m", time.gmtime())
     key = f"{USAGE_PREFIX}:{subscriber_id}:m:{month_bucket}"
     total = int(r.hget(key, "total") or 0)
     return {
