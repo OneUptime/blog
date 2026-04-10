@@ -138,7 +138,7 @@ ZDIFF 3 zset:a zset:b
 
 ## Time Complexity
 
-**O(L + (N-K) log(N-K))** where L is the total number of elements across all input sets, N is the size of the first set, and K is the number of elements removed. For small exclusion sets this is close to O(N).
+**O(L + (N-K) log(N))** where L is the total number of elements across all input sets, N is the size of the first set, and K is the size of the result set. For small exclusion sets this is close to O(N).
 
 ## ZDIFF vs ZDIFFSTORE
 
