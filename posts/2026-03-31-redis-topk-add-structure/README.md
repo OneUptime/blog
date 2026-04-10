@@ -10,7 +10,7 @@ Description: Learn how to use TOPK.ADD in Redis to add elements to a TopK data s
 
 ## What Is the TopK Structure?
 
-The TopK data structure in Redis maintains a list of the K most frequently occurring items in a data stream. It uses the Heavy Hitters algorithm internally (a combination of a Count-Min Sketch and a min-heap), allowing it to track the top K items using far less memory than exact approaches. Items that do not make it into the top K are discarded.
+The TopK data structure in Redis maintains a list of the K most frequently occurring items in a data stream. It uses the HeavyKeeper algorithm internally (a combination of a hash-based counting structure and a min-heap with exponential decay), allowing it to track the top K items using far less memory than exact approaches. Items that do not make it into the top K are discarded.
 
 ```mermaid
 graph TD
@@ -32,26 +32,26 @@ graph TD
 TOPK.ADD key item [item ...]
 ```
 
-- `key` - the TopK structure key (auto-created with defaults if not present)
+- `key` - the TopK structure key (must be created first with `TOPK.RESERVE`)
 - `item [item ...]` - one or more elements to add
 
 Returns an array, one entry per item. Each entry is either `nil` (item was added/updated without eviction) or the name of the item that was evicted from the top-K list to make room.
 
-## Default Structure Settings
+## TOPK.RESERVE Default Parameters
 
-When auto-created by `TOPK.ADD`, the default parameters are:
-- K = 50 (maintains top 50 items)
-- Width = 8
-- Depth = 7
-- Decay = 0.9
+`TOPK.RESERVE` requires a `topk` (K) value. The remaining parameters are optional:
+- Width = 8 (default)
+- Depth = 7 (default)
+- Decay = 0.9 (default)
 
-Use `TOPK.RESERVE` to specify custom parameters.
+Example: `TOPK.RESERVE mykey 50` creates a top-50 structure with the default width, depth, and decay.
 
 ## Examples
 
 ### Add a Single Item
 
 ```redis
+TOPK.RESERVE trending 50
 TOPK.ADD trending "redis"
 ```
 
@@ -64,6 +64,7 @@ No eviction occurred.
 ### Add Multiple Items
 
 ```redis
+TOPK.RESERVE search_terms 50
 TOPK.ADD search_terms "redis" "docker" "kubernetes" "postgres"
 ```
 
@@ -165,6 +166,7 @@ TOPK.ADD active_users "user:42"
 The return value tells you which item was removed from the top-K list. Use it for monitoring:
 
 ```redis
+TOPK.RESERVE trending 10 2000 7 0.9
 TOPK.ADD trending "new_item"
 -- If returns a non-nil value, log the evicted item
 -- e.g., "old_trending_item" was removed from top-K
