@@ -76,6 +76,22 @@ spec:
     compression_mode: "aggressive"
 ```
 
+## Creating a Metadata Pool for the Cold EC Pool
+
+RBD requires a replicated pool for image metadata, even when the data itself is stored in an erasure-coded pool. Create a small replicated metadata pool on HDDs:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: cold-pool-metadata
+  namespace: rook-ceph
+spec:
+  replicated:
+    size: 3
+  deviceClass: hdd
+```
+
 ## Creating StorageClasses for Each Tier
 
 ```yaml
@@ -87,6 +103,14 @@ provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
   pool: hot-pool
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 ```
@@ -99,7 +123,16 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  pool: cold-pool
+  pool: cold-pool-metadata
+  dataPool: cold-pool
+  imageFormat: "2"
+  imageFeatures: layering
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 ```
