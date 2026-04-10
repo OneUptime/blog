@@ -24,11 +24,12 @@ metadata:
   namespace: my-app
 spec:
   schedule: "0 2 * * 0"
-  jobSpec:
-    target:
-      persistentVolumeClaim: my-rbd-pvc
-    backOffLimit: 6
-    retryDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      target:
+        persistentVolumeClaim: my-rbd-pvc
+      backOffLimit: 6
+      retryDeadlineSeconds: 1800
   failedJobsHistoryLimit: 3
   successfulJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
@@ -98,11 +99,12 @@ metadata:
   namespace: my-app
 spec:
   schedule: "0 3 * * 0"
-  jobSpec:
-    target:
-      persistentVolumeClaim: ${pvc}
-    backOffLimit: 3
-    retryDeadlineSeconds: 1800
+  jobTemplate:
+    spec:
+      target:
+        persistentVolumeClaim: ${pvc}
+      backOffLimit: 3
+      retryDeadlineSeconds: 1800
   successfulJobsHistoryLimit: 2
   failedJobsHistoryLimit: 2
 EOF
