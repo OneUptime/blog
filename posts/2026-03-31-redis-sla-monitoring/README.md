@@ -85,9 +85,9 @@ avg_over_time(redis_up[30d]) * 100
 # P99 command latency
 histogram_quantile(0.99, rate(redis_commands_duration_seconds_bucket[5m]))
 
-# Error rate
-rate(redis_commands_total{status="failed"}[5m]) /
-rate(redis_commands_total[5m]) * 100
+# Error rate (requires Redis 6.2+)
+rate(redis_total_error_replies[5m]) /
+rate(redis_commands_processed_total[5m]) * 100
 ```
 
 ## Grafana Alert Rules
@@ -126,7 +126,7 @@ PROMETHEUS_URL="${PROMETHEUS_URL:-http://prometheus:9090}"
 MONTH=$(date -d "last month" +%Y-%m)
 
 query_prometheus() {
-  curl -s "$PROMETHEUS_URL/api/v1/query?query=$1" | \
+  curl -s -G "$PROMETHEUS_URL/api/v1/query" --data-urlencode "query=$1" | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['result'][0]['value'][1])"
 }
 
