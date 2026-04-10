@@ -111,10 +111,10 @@ ZADD results:relevance 95 "doc:1" 80 "doc:2" 70 "doc:3"
 ZADD results:recency   50 "doc:1" 90 "doc:2"
 
 ZINTER 2 results:relevance results:recency WEIGHTS 0.7 0.3 WITHSCORES
--- 1) "doc:2"
--- 2) "83"   (80*0.7 + 90*0.3)
--- 3) "doc:1"
--- 4) "81.5" (95*0.7 + 50*0.3)
+-- 1) "doc:1"
+-- 2) "81.5" (95*0.7 + 50*0.3)
+-- 3) "doc:2"
+-- 4) "83"   (80*0.7 + 90*0.3)
 ```
 
 ### Common Tags Across Articles
