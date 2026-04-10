@@ -13,7 +13,7 @@ A single-region Redis deployment is a latency and availability risk for global a
 ## Architecture Options
 
 **Active-Passive**: One primary region accepts all writes; secondary regions replicate and serve reads.
-**Active-Active** (Redis Enterprise / Valkey): All regions accept reads and writes with conflict resolution via CRDTs.
+**Active-Active** (Redis Enterprise): All regions accept reads and writes with conflict resolution via CRDTs.
 
 This guide covers active-passive with local read routing as it works with open-source Redis.
 
@@ -65,10 +65,10 @@ Check replication offset to detect lag:
 
 ```python
 def get_replication_lag(region: str) -> int:
-    client = REDIS_REGIONS[region]
-    info = client.info("replication")
-    master_offset = info.get("master_repl_offset", 0)
-    replica_offset = info.get("slave_repl_offset", 0)  # When run on replica
+    master_info = WRITE_REGION.info("replication")
+    replica_info = REDIS_REGIONS[region].info("replication")
+    master_offset = master_info.get("master_repl_offset", 0)
+    replica_offset = replica_info.get("master_repl_offset", 0)
     return master_offset - replica_offset
 
 def warn_if_lagging(region: str, max_lag_bytes: int = 1048576):
