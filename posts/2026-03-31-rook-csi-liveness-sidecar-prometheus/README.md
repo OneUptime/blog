@@ -10,7 +10,7 @@ Description: Learn how to enable and configure the CSI liveness sidecar in Rook 
 
 ## What Is the CSI Liveness Sidecar
 
-Each Rook CSI driver pod (RBD, CephFS, NFS) can run a liveness sidecar container that continuously checks the health of the CSI plugin and exposes a Prometheus metrics endpoint. The sidecar calls the CSI `Probe` RPC to verify the plugin is responsive and increments counters for health checks. This allows Prometheus to alert on CSI plugin failures before they cause workload disruptions.
+Each Rook CSI driver pod (RBD, CephFS) can run a liveness sidecar container that continuously checks the health of the CSI plugin and exposes a Prometheus metrics endpoint. The sidecar calls the CSI `Probe` RPC to verify the plugin is responsive and exposes a gauge metric indicating health status. This allows Prometheus to alert on CSI plugin failures before they cause workload disruptions.
 
 ## Enabling Liveness Metrics via Helm
 
@@ -19,9 +19,8 @@ Enable the liveness sidecar and specify its port via Helm values:
 ```yaml
 csi:
   enableLiveness: true
-  rbdLivenessPort: 9080
-  cephfsLivenessPort: 9081
-  nfsLivenessPort: 9082
+  rbdLivenessMetricsPort: 9080
+  cephfsLivenessMetricsPort: 9081
   provisionerReplicas: 2
 ```
 
@@ -54,10 +53,9 @@ kubectl -n rook-ceph exec -it \
 Expected output includes:
 
 ```text
-# HELP csi_liveness_probe_total Total number of liveness probes
-# TYPE csi_liveness_probe_total counter
-csi_liveness_probe_total{driver_name="rbd.csi.ceph.com"} 42
-csi_liveness_probe_failures_total{driver_name="rbd.csi.ceph.com"} 0
+# HELP csi_liveness Liveness Probe
+# TYPE csi_liveness gauge
+csi_liveness 1
 ```
 
 ## Creating a ServiceMonitor for Prometheus Operator
@@ -80,16 +78,16 @@ spec:
     matchNames:
       - rook-ceph
   endpoints:
-    - port: liveness-port
+    - port: csi-http-metrics
       interval: 60s
       path: /metrics
 ```
 
-The `port: liveness-port` name must match the port name in the CSI DaemonSet Service.
+The `port: csi-http-metrics` name must match the port name in the CSI DaemonSet Service.
 
 ## Setting Up Alerts
 
-Create a PrometheusRule to alert when the CSI liveness probe detects failures:
+Create a PrometheusRule to alert when the CSI liveness probe indicates the driver is unhealthy:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -102,7 +100,7 @@ spec:
     - name: rook-csi
       rules:
         - alert: RookCSIRBDLivenessFailure
-          expr: rate(csi_liveness_probe_failures_total{driver_name="rbd.csi.ceph.com"}[5m]) > 0
+          expr: csi_liveness == 0
           for: 2m
           labels:
             severity: critical
@@ -112,4 +110,4 @@ spec:
 
 ## Summary
 
-The CSI liveness sidecar in Rook exposes Prometheus metrics about CSI plugin health via configurable ports. Enable it via `csi.enableLiveness: true` in Helm values along with per-driver port settings. Create ServiceMonitors to scrape the liveness endpoints and PrometheusRules to alert on failures. Early detection of CSI driver health issues prevents silent storage problems from reaching running workloads.
+The CSI liveness sidecar in Rook exposes a Prometheus gauge metric (`csi_liveness`) about CSI plugin health via configurable ports. Enable it via `csi.enableLiveness: true` in Helm values along with per-driver port settings (`rbdLivenessMetricsPort`, `cephfsLivenessMetricsPort`). Create ServiceMonitors to scrape the liveness endpoints and PrometheusRules to alert on failures. Early detection of CSI driver health issues prevents silent storage problems from reaching running workloads.
