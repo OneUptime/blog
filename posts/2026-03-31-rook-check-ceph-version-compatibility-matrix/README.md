@@ -38,7 +38,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph version
 Check Kubernetes version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ## CSI Driver Compatibility
@@ -90,7 +90,7 @@ A shell script to validate key version constraints:
 ROOK_IMG=$(kubectl -n rook-ceph get deployment rook-ceph-operator \
   -o jsonpath='{.spec.template.spec.containers[0].image}')
 CEPH_VER=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph version 2>/dev/null | awk '{print $3}')
-K8S_VER=$(kubectl version --short 2>/dev/null | grep "Server Version" | awk '{print $3}')
+K8S_VER=$(kubectl version 2>/dev/null | grep "Server Version" | awk '{print $3}')
 
 echo "Rook: $ROOK_IMG"
 echo "Ceph: $CEPH_VER"
