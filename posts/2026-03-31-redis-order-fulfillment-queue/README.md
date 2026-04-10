@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Queue, Order
 
-Description: Build a reliable order fulfillment queue with Redis lists and sorted sets, with priority handling and at-least-once delivery guarantees.
+Description: Build a reliable order fulfillment queue with Redis sorted sets, with priority handling and at-least-once delivery guarantees.
 
 ---
 
-Order fulfillment requires a queue that is fast, supports priority (expedited vs. standard shipping), and does not lose orders if a worker crashes. Redis lists and sorted sets give you exactly this.
+Order fulfillment requires a queue that is fast, supports priority (expedited vs. standard shipping), and does not lose orders if a worker crashes. Redis sorted sets give you exactly this.
 
 ## Queue Design
 
@@ -54,18 +54,15 @@ Use a "processing" sorted set for at-least-once delivery. If a worker crashes, t
 VISIBILITY_TIMEOUT = 300  # seconds
 
 def dequeue_order() -> dict | None:
-    # Get the highest-priority item (lowest score)
-    items = r.zrange("queue:fulfillment", 0, 0, withscores=True)
-    if not items:
+    # Atomically pop the highest-priority item (lowest score)
+    result = r.zpopmin("queue:fulfillment", 1)
+    if not result:
         return None
 
-    order_json, score = items[0]
+    order_json, score = result[0]
 
-    pipe = r.pipeline()
-    # Move from pending to processing (score = deadline timestamp)
-    pipe.zrem("queue:fulfillment", order_json)
-    pipe.zadd("queue:processing", {order_json: time.time() + VISIBILITY_TIMEOUT})
-    pipe.execute()
+    # Add to processing set with deadline timestamp
+    r.zadd("queue:processing", {order_json: time.time() + VISIBILITY_TIMEOUT})
 
     order = json.loads(order_json)
     # Update status
