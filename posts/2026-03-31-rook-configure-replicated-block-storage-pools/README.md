@@ -114,7 +114,7 @@ spec:
   replicated:
     size: 3
   quotas:
-    maxBytes: 500Gi
+    maxSize: "500Gi"
     maxObjects: 5000000
 ```
 
