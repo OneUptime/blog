@@ -92,12 +92,43 @@ PROXY_PORT = 6381
 REDIS_HOST = '127.0.0.1'
 REDIS_PORT = 6379
 
-# Shared connection pool
+# Shared connection pool — all clients multiplex over these connections
 pool = aioredis.ConnectionPool.from_url(
     f"redis://{REDIS_HOST}:{REDIS_PORT}",
     max_connections=20,
     decode_responses=False
 )
+
+def parse_resp(data: bytes):
+    """Parse a RESP protocol message into command arguments."""
+    lines = data.split(b"\r\n")
+    if not lines[0].startswith(b"*"):
+        # Inline command (e.g., PING)
+        return data.strip().split()
+    count = int(lines[0][1:])
+    args, idx = [], 1
+    for _ in range(count):
+        idx += 1  # skip $<length>
+        args.append(lines[idx])
+        idx += 1
+    return args
+
+def encode_resp(value):
+    """Encode a Python value as a RESP protocol response."""
+    if value is None:
+        return b"$-1\r\n"
+    if isinstance(value, bool):
+        return b"+OK\r\n" if value else b"$-1\r\n"
+    if isinstance(value, int):
+        return b":" + str(value).encode() + b"\r\n"
+    if isinstance(value, bytes):
+        return b"$" + str(len(value)).encode() + b"\r\n" + value + b"\r\n"
+    if isinstance(value, list):
+        parts = [b"*" + str(len(value)).encode() + b"\r\n"]
+        for item in value:
+            parts.append(encode_resp(item))
+        return b"".join(parts)
+    return b"+" + str(value).encode() + b"\r\n"
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     redis_client = aioredis.Redis(connection_pool=pool)
@@ -106,9 +137,15 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             data = await reader.read(4096)
             if not data:
                 break
-            # Forward raw RESP data to Redis
-            response = await redis_client.execute_command('PING')
-            writer.write(b"+PONG\r\n")
+            # Parse the RESP command and forward to Redis via shared pool
+            args = parse_resp(data)
+            if not args:
+                continue
+            try:
+                result = await redis_client.execute_command(*args)
+                writer.write(encode_resp(result))
+            except Exception as e:
+                writer.write(b"-ERR " + str(e).encode() + b"\r\n")
             await writer.drain()
     finally:
         writer.close()
