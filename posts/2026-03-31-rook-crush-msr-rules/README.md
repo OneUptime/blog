@@ -4,19 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, CRUSH, Rule, Storage
 
-Description: Learn how to use Ceph CRUSH Multi-Step Replication (MSR) rules to implement complex multi-level placement strategies for advanced topology requirements.
+Description: Learn how to use Ceph CRUSH multi-step rules to implement complex multi-level placement strategies for advanced topology requirements.
 
 ---
 
-## What are CRUSH MSR Rules
+## What are CRUSH Multi-Step Rules
 
-CRUSH Multi-Step Replication (MSR) rules allow you to define complex placement policies that go beyond single-level chooseleaf operations. MSR rules use multiple `choose` and `chooseleaf` steps to build a placement path through multiple hierarchy levels, enabling sophisticated strategies like "2 replicas in datacenter A and 1 replica in datacenter B" or "primary on SSD, secondaries on HDD."
+CRUSH multi-step rules allow you to define complex placement policies that go beyond single-level chooseleaf operations. These rules use multiple `take...chooseleaf...emit` sequences to place replicas across different parts of the CRUSH hierarchy, enabling sophisticated strategies like "2 replicas in datacenter A and 1 replica in datacenter B" or "primary on SSD, secondaries on HDD."
 
-MSR rules are type `replicated` rules but use multiple steps to achieve multi-level selection.
+Note: These multi-step rules should not be confused with the Ceph CRUSH MSR (Multi-Step Retry) algorithm, which is a different feature that uses `choosemsr` steps for retry logic on failed OSDs.
 
-## Basic MSR Rule Structure
+Multi-step rules are type `replicated` rules that use multiple `take...emit` sequences to achieve multi-level selection.
 
-An MSR rule in the CRUSH map uses a sequence of `choose` and `chooseleaf` steps:
+## Basic Multi-Step Rule Structure
+
+A multi-step rule in the CRUSH map uses a sequence of `take`, `chooseleaf`, and `emit` steps:
 
 ```text
 rule msr-two-plus-one {
@@ -33,18 +35,7 @@ rule msr-two-plus-one {
 }
 ```
 
-Wait - the above uses multiple `emit` steps which is not standard. Standard MSR uses a more sequential approach:
-
-```text
-rule dc-spread-rule {
-    id 10
-    type replicated
-    step take default
-    step choose firstn 2 type datacenter
-    step chooseleaf firstn 2 type host
-    step emit
-}
-```
+The multiple `take...chooseleaf...emit` sequences are the key to multi-step rules. The first sequence selects 2 datacenters and picks one host from each (2 replicas). The second sequence selects 1 datacenter and picks one host (1 replica), for a total of 3 replicas. For guaranteed datacenter separation, use named CRUSH buckets as shown in the stretched cluster example below.
 
 ## Step-by-Step Rule Construction
 
@@ -83,7 +74,7 @@ crushtool -i crush-new.bin --test \
   --show-statistics
 ```
 
-## MSR for Stretched Clusters
+## Multi-Step Rules for Stretched Clusters
 
 A common use case is a 2+1 stretched cluster rule:
 
@@ -102,7 +93,7 @@ rule stretched-2-1 {
 }
 ```
 
-## Applying MSR Rules to Pools
+## Applying Multi-Step Rules to Pools
 
 ```bash
 crushtool -c crush.txt -o crush-new.bin
@@ -118,7 +109,7 @@ ceph osd pool get critical-pool crush_rule
 ceph osd map critical-pool testobject
 ```
 
-## Testing MSR Rule Distribution
+## Testing Multi-Step Rule Distribution
 
 ```bash
 # Simulate placement and review statistics
@@ -134,4 +125,4 @@ crushtool -i crush-new.bin \
 
 ## Summary
 
-CRUSH MSR rules enable sophisticated multi-level placement strategies by using multiple `take...chooseleaf...emit` sequences within a single rule. Common use cases include placing replicas across different device classes (SSD primary, HDD secondaries) or across specific CRUSH roots (primary datacenter plus secondary datacenter). Always test MSR rules with `crushtool --test` before applying them to production pools to verify the intended distribution behavior.
+CRUSH multi-step rules enable sophisticated multi-level placement strategies by using multiple `take...chooseleaf...emit` sequences within a single rule. Common use cases include placing replicas across different device classes (SSD primary, HDD secondaries) or across specific CRUSH roots (primary datacenter plus secondary datacenter). Always test multi-step rules with `crushtool --test` before applying them to production pools to verify the intended distribution behavior.
