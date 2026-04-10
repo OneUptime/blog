@@ -118,7 +118,7 @@ users = list(db.cache.find({
 # Avoid a separate cache layer for infrequently read data
 product = db.products.find_one(
     {"_id": product_id},
-    hint="cache_index"  # Use in-memory WiredTiger cache
+    hint="cache_index"  # Hint MongoDB to use a specific index
 )
 ```
 
@@ -129,7 +129,7 @@ product = db.products.find_one(
 r.hset(f"session:{token}", mapping={"user_id": "42", "role": "admin"})
 r.expire(f"session:{token}", 1800)
 
-# 2. Rate limiting - atomic INCR is impossible in MongoDB
+# 2. Rate limiting - atomic INCR is simpler and faster than MongoDB's $inc
 count = r.incr(f"rate:{user_id}:{minute}")
 r.expire(f"rate:{user_id}:{minute}", 120)
 
