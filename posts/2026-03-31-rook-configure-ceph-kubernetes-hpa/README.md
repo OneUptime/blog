@@ -14,9 +14,9 @@ Horizontal Pod Autoscaling (HPA) scales the number of pod replicas based on CPU,
 
 ## Understanding Access Modes
 
-- `ReadWriteOnce` (RWO) - One pod can read/write at a time (RBD)
-- `ReadOnlyMany` (ROX) - Many pods can read simultaneously (RBD)
-- `ReadWriteMany` (RWX) - Many pods can read/write (CephFS)
+- `ReadWriteOnce` (RWO) - Volume can be mounted read/write by a single node (RBD)
+- `ReadOnlyMany` (ROX) - Volume can be mounted read-only by many nodes (RBD)
+- `ReadWriteMany` (RWX) - Volume can be mounted read/write by many nodes (CephFS)
 
 For HPA workloads that need shared writable storage, use CephFS with `ReadWriteMany`.
 
