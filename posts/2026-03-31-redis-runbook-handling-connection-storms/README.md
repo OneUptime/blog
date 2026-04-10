@@ -55,7 +55,7 @@ redis-cli CLIENT KILL ID <client-id>
 Kill all clients from a specific IP:
 
 ```bash
-redis-cli CLIENT KILL ADDR <ip>:0 SKIPME no
+redis-cli CLIENT LIST | grep "addr=<ip>:" | awk '{print $1}' | cut -d= -f2 | xargs -I{} redis-cli CLIENT KILL ID {}
 ```
 
 Set a timeout for idle clients to prevent accumulation:
@@ -98,6 +98,7 @@ r = redis.Redis(connection_pool=pool)
 Applications should not reconnect immediately after a Redis restart. Implement exponential backoff with jitter:
 
 ```python
+import redis
 import time
 import random
 
