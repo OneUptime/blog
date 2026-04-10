@@ -36,7 +36,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 
 # This tells Ceph to migrate the OSD's data to other OSDs
 # Watch migration progress
-watch -n10 "ceph status"
+watch -n10 "kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status"
 ```
 
 ### Step 2 - Wait for Data Migration
