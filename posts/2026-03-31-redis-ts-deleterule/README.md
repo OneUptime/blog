@@ -167,7 +167,7 @@ DEL raw:latency
 
 ## Performance Considerations
 
-- `TS.DELETERULE` is O(N) where N is the number of rules on the source series.
+- `TS.DELETERULE` is O(1).
 - After deletion, `TS.ADD` operations on the source no longer incur the overhead of the removed rule.
 - Removing unused rules reduces write amplification for the source series.
 
