@@ -13,7 +13,7 @@ NestJS supports multiple transport strategies for microservices. The Redis trans
 ## Install Dependencies
 
 ```bash
-npm install @nestjs/microservices redis ioredis
+npm install @nestjs/microservices ioredis
 ```
 
 ## Create a Microservice
