@@ -25,8 +25,8 @@ rsize=16777216,wsize=16777216,rasize=8388608
 Common kernel mount options:
 
 ```text
-rsize=N       - Read size in bytes (default: 4MB, max: 64MB)
-wsize=N       - Write size in bytes (default: 4MB, max: 64MB)
+rsize=N       - Read size in bytes (default: 16MB, max: 64MB)
+wsize=N       - Write size in bytes (default: 16MB, max: 64MB)
 rasize=N      - Readahead size in bytes
 noatime       - Do not update access time on reads
 nodiratime    - Do not update directory access time
@@ -64,11 +64,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ### Timeout Settings
 
 ```bash
-# Time before a client reconnects after losing contact with MDS
+# Timeout for the CephFS mount operation (seconds)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client client_mount_timeout 300
 
-# Time before stale sessions are reclaimed
+# Whether to reconnect automatically when the session becomes stale
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client client_reconnect_stale true
 ```
@@ -83,7 +83,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Apply Settings Per-Mount with Rook CSI
 
-In Rook, client mount settings are passed through StorageClass parameters or PVC annotations:
+In Rook, client mount settings are passed through StorageClass `mountOptions` or ceph-csi-specific parameters:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -91,11 +91,14 @@ kind: StorageClass
 metadata:
   name: rook-cephfs-fast
 provisioner: rook-ceph.cephfs.csi.ceph.com
+mountOptions:
+  - noatime
+  - rsize=16777216
+  - wsize=16777216
 parameters:
   clusterID: rook-ceph
   fsName: cephfs
   pool: cephfs-data0
-  mountOptions: "noatime,rsize=16777216,wsize=16777216"
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
