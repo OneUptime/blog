@@ -18,21 +18,21 @@ Sync policies can be configured at three levels:
 
 1. **Zone group policy** - default policy for all zones
 2. **Bucket policy** - overrides zone group policy for a specific bucket
-3. **Tag-based policy** - filters sync based on object tags
+3. **Pipe-level filters** - filters sync based on object tags or prefixes within a pipe
 
 ## Understanding Sync Flow
 
 A sync policy consists of:
 - **Groups** - named collections of sync rules
-- **Pipes** - define data flow between zones (source and destination)
-- **Flows** - specify which zones participate in sync
+- **Flows** - define data movement patterns between zones (symmetrical or directional)
+- **Pipes** - specify which buckets participate and their filtering criteria (source/dest zones, tags, prefixes)
 
 ```bash
 # View current sync policy
 radosgw-admin sync policy get
 
 # View bucket-level policy
-radosgw-admin sync policy get --bucket-name mybucket
+radosgw-admin sync policy get --bucket=mybucket
 ```
 
 ## Creating a Zone Group Sync Policy
@@ -68,13 +68,13 @@ Restrict sync for a sensitive bucket to only the us-east zone:
 ```bash
 # Create a local-only group for the bucket
 radosgw-admin sync group create \
-  --bucket-name confidential-bucket \
+  --bucket=confidential-bucket \
   --group-id=local-only \
   --status=enabled
 
 # Create a directional flow - only east to east (no sync out)
 radosgw-admin sync group flow create \
-  --bucket-name confidential-bucket \
+  --bucket=confidential-bucket \
   --group-id=local-only \
   --flow-id=no-outbound \
   --flow-type=directional \
@@ -99,7 +99,7 @@ radosgw-admin sync group pipe create \
   --pipe-id=backup-tagged \
   --source-zones=us-east \
   --dest-zones=us-west \
-  --source-tags="backup=true"
+  --tags-add="backup=true"
 
 radosgw-admin period update --commit
 ```
@@ -110,8 +110,8 @@ radosgw-admin period update --commit
 # Check which objects are syncing under the policy
 radosgw-admin bucket sync status --bucket mybucket
 
-# Check sync logs
-radosgw-admin log show --log-type=data --bucket mybucket
+# Check overall sync status
+radosgw-admin sync status
 ```
 
 ## Summary
