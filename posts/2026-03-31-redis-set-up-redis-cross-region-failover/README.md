@@ -43,7 +43,8 @@ aws elasticache create-replication-group \
   --replication-group-id my-redis-west \
   --global-replication-group-id ldgnf-my-app \
   --replication-group-description "West replica" \
-  --num-cache-clusters 1
+  --num-cache-clusters 1 \
+  --region us-west-2
 ```
 
 Replication lag is typically 1-2 seconds over inter-region links.
@@ -65,7 +66,6 @@ Use a Redis client that supports multiple endpoints with health checking:
 
 ```python
 import redis
-from redis.sentinel import Sentinel
 
 # Multi-region connection with fallback
 def get_redis_connection():
@@ -95,13 +95,15 @@ Use Route 53 health checks to automatically redirect traffic:
 aws route53 create-health-check \
   --caller-reference "redis-primary-$(date +%s)" \
   --health-check-config '{
-    "IPAddress": "10.0.1.50",
+    "IPAddress": "203.0.113.50",
     "Port": 6379,
     "Type": "TCP",
     "RequestInterval": 10,
     "FailureThreshold": 3
   }'
 ```
+
+Route 53 health checkers run from public AWS infrastructure, so the `IPAddress` must be a public IP that the health checkers can reach. For endpoints inside a VPC, use a CloudWatch alarm-based health check instead.
 
 Then create a failover routing policy in Route 53 with PRIMARY (us-east-1) and SECONDARY (us-west-2) records tied to the health check.
 
@@ -118,7 +120,7 @@ redis-cli INFO replication | grep role
 # role:master
 ```
 
-For ElastiCache Global Datastore, AWS promotes the secondary automatically when it detects primary failure, or you can trigger it manually:
+For ElastiCache Global Datastore, cross-region failover must be triggered manually:
 
 ```bash
 aws elasticache failover-global-replication-group \
