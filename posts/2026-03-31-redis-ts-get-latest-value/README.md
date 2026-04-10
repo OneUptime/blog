@@ -153,8 +153,8 @@ TS.MGET FILTER building=hq metric=temperature
 -- Last data point only (fast)
 TS.GET latency:api
 
--- Last 60 seconds of data points
-TS.RANGE latency:api -60000 +
+-- Last 60 seconds of data points (compute start timestamp in your application)
+TS.RANGE latency:api 1711900752000 +
 ```
 
 Use `TS.GET` when you need only the current value. Use `TS.RANGE` when you need a history.
