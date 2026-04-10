@@ -20,8 +20,8 @@ Calling `RESET` on a connection performs all of the following:
 - Unsubscribes from all channels and patterns (like `UNSUBSCRIBE` + `PUNSUBSCRIBE`)
 - Clears all `WATCH`ed keys (like `UNWATCH`)
 - Resets the connection protocol to RESP2
-- Removes the client name set by `CLIENT SETNAME`
 - Resets the selected database to 0
+- Deauthenticates the connection, requiring a call to `AUTH` to reauthenticate when authentication is enabled
 
 ## Basic Usage
 
