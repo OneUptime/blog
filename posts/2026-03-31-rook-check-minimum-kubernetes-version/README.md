@@ -30,13 +30,16 @@ Always check the exact requirement for your target Rook version - do not rely on
 ## Checking Current Kubernetes Version
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ```text
 Client Version: v1.28.4
+Kustomize Version: v5.0.4-0.20230601165947-6ce0bf390ce3
 Server Version: v1.27.8
 ```
+
+Note: The `--short` flag was deprecated in kubectl v1.28 and removed in v1.29. Running `kubectl version` without flags now produces the short format by default in modern kubectl versions.
 
 Or for more detail:
 
@@ -165,4 +168,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 
 ## Summary
 
-Before upgrading Rook, always check that your Kubernetes server version meets the minimum requirement for the target Rook release. Use `kubectl version --short` to get the current version, check all node kubelet versions with `kubectl get nodes`, and verify required API groups are present. If the Kubernetes version is too old, upgrade Kubernetes first and verify Rook is healthy before proceeding with the Rook upgrade.
+Before upgrading Rook, always check that your Kubernetes server version meets the minimum requirement for the target Rook release. Use `kubectl version` to get the current version, check all node kubelet versions with `kubectl get nodes`, and verify required API groups are present. If the Kubernetes version is too old, upgrade Kubernetes first and verify Rook is healthy before proceeding with the Rook upgrade.
