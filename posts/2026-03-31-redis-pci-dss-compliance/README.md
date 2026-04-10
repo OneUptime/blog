@@ -130,21 +130,23 @@ output.elasticsearch:
 #!/bin/bash
 echo "=== PCI DSS Redis Compliance Validation ==="
 
+REDIS_CLI="redis-cli --tls -p 6380 --cert /etc/ssl/redis/client.crt --key /etc/ssl/redis/client.key --cacert /etc/ssl/redis/ca.crt"
+
 # Check TLS
 echo -n "TLS port configured: "
-redis-cli config get tls-port | grep -q "[1-9]" && echo "PASS" || echo "FAIL"
+$REDIS_CLI config get tls-port | grep -q "[1-9]" && echo "PASS" || echo "FAIL"
 
 # Check default user
 echo -n "Default user disabled: "
-redis-cli -u redis://:adminpass@localhost:6380 ACL LIST | grep "default" | grep -q "off" && echo "PASS" || echo "FAIL"
+$REDIS_CLI ACL LIST | grep "default" | grep -q "off" && echo "PASS" || echo "FAIL"
 
 # Check logging
 echo -n "Verbose logging enabled: "
-redis-cli config get loglevel | grep -q "verbose\|debug" && echo "PASS" || echo "FAIL"
+$REDIS_CLI config get loglevel | grep -q "verbose\|debug" && echo "PASS" || echo "FAIL"
 
 # Check dangerous commands renamed
 echo -n "FLUSHALL disabled: "
-redis-cli FLUSHALL 2>&1 | grep -q "ERR" && echo "PASS" || echo "FAIL"
+$REDIS_CLI FLUSHALL 2>&1 | grep -q "ERR" && echo "PASS" || echo "FAIL"
 ```
 
 ## Summary
