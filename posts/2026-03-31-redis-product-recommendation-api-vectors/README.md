@@ -21,7 +21,6 @@ pip install redis fastapi uvicorn sentence-transformers numpy pydantic
 ```text
 recommendation_api/
   main.py
-  embedder.py
   redis_client.py
 ```
 
@@ -34,7 +33,6 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=False)
-r_text = redis.Redis(host='localhost', port=6379, decode_responses=True)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 INDEX_NAME = 'rec_idx'
@@ -67,9 +65,7 @@ def embed(text: str) -> bytes:
 # main.py
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 import redis_client as rc
-import json
 
 app = FastAPI(title="Product Recommendation API")
 
