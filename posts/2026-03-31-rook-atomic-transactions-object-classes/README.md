@@ -149,21 +149,21 @@ ioctx = cluster.open_ioctx("mypool")
 ioctx.write_full("counters", b"")
 
 # Atomically increment "page_views" counter by 1
-result = ioctx.execute("counters", "counter", "increment",
-                        encode_args("page_views"))
+ret, result = ioctx.execute("counters", "counter", "increment",
+                             encode_args("page_views"))
 new_count = struct.unpack("<q", result)[0]
 print(f"New page_views count: {new_count}")
 
 # Atomically increment by 5
-result = ioctx.execute("counters", "counter", "increment",
-                        encode_args("page_views", 5))
+ret, result = ioctx.execute("counters", "counter", "increment",
+                             encode_args("page_views", 5))
 new_count = struct.unpack("<q", result)[0]
 print(f"After +5: {new_count}")
 
 # Compare-and-swap: set to 100 only if current == new_count
 try:
-    result = ioctx.execute("counters", "counter", "cas_xattr",
-                            encode_args("page_views", new_count, 100))
+    ret, result = ioctx.execute("counters", "counter", "cas_xattr",
+                                 encode_args("page_views", new_count, 100))
     print(f"CAS succeeded, new value: {struct.unpack('<q', result)[0]}")
 except rados.Error as e:
     print(f"CAS failed: {e}")
