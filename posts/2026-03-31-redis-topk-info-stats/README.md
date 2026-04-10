@@ -36,9 +36,9 @@ Returns a flat array of field-value pairs. Returns an error if the key does not 
 ### Default Structure Parameters
 
 ```redis
--- Auto-created by first TOPK.ADD call
-TOPK.ADD auto_created "item"
-TOPK.INFO auto_created
+-- Created with only the k parameter; width, depth, and decay use defaults
+TOPK.RESERVE default_topk 50
+TOPK.INFO default_topk
 ```
 
 ```text
@@ -77,7 +77,7 @@ After deployment, verify your TopK was configured correctly:
 ```redis
 TOPK.INFO production_trending
 -- Confirm: k=100, width=5000, depth=7, decay=0.9
--- If different, the structure may have been auto-created with defaults
+-- If different, the structure may have been recreated with default parameters
 ```
 
 ## Understanding the Parameters
@@ -94,7 +94,7 @@ These are the dimensions of the internal Count-Min Sketch used to estimate frequ
 
 ### decay
 
-The decay factor (0 to 1) reduces old counter values over time. A decay of `0.9` means each time a counter is "bumped" in the cuckoo eviction process, competing counters are multiplied by 0.9, gradually aging out items that are no longer frequent. Lower decay ages items out faster, making the structure more responsive to recent trends.
+The decay factor (0 to 1) controls the probability of reducing a counter in an occupied bucket. A decay of `0.9` means when a new item hashes to an occupied bucket, the existing counter is probabilistically reduced (with probability `decay ^ counter`), gradually aging out items that are no longer frequent. Lower decay ages items out faster, making the structure more responsive to recent trends.
 
 ## Using TOPK.INFO in Monitoring
 
@@ -111,12 +111,12 @@ TOPK.INFO heavy_api_clients
 
 ### Configuration Drift Detection
 
-If a TopK structure was accidentally deleted and auto-recreated by a `TOPK.ADD` call, the default parameters (`k=50, width=8, depth=7`) would be very different from your intended configuration. `TOPK.INFO` reveals this:
+If a TopK structure was accidentally deleted and recreated with `TOPK.RESERVE` using only the k parameter, the remaining parameters would fall back to defaults (`width=8, depth=7, decay=0.9`), which may be very different from your intended configuration. `TOPK.INFO` reveals this:
 
 ```redis
 TOPK.INFO my_topk
 -- Expected: k=200, width=5000, depth=10
--- Actual: k=50, width=8, depth=7  <- auto-created with defaults!
+-- Actual: k=200, width=8, depth=7  <- recreated with default width/depth/decay!
 -- Action: recreate with TOPK.RESERVE
 ```
 
@@ -127,7 +127,7 @@ All probabilistic data structures have an INFO command for inspecting their conf
 ```redis
 -- Bloom filter info
 BF.INFO mybloom
--- Shows: capacity, size, number of filters, error rate
+-- Shows: capacity, size, number of filters, items inserted, expansion rate
 
 -- Count-Min Sketch info
 CMS.INFO mysketch
@@ -140,4 +140,4 @@ TOPK.INFO mytopk
 
 ## Summary
 
-`TOPK.INFO` returns the configuration parameters of a Redis TopK structure: `k` (the ranking depth), `width` and `depth` (internal sketch dimensions), and `decay` (the aging factor for older counts). Use it to verify that production structures were created with the intended settings, detect accidental auto-creation with default parameters, and document TopK configurations for operational runbooks.
+`TOPK.INFO` returns the configuration parameters of a Redis TopK structure: `k` (the ranking depth), `width` and `depth` (internal sketch dimensions), and `decay` (the aging factor for older counts). Use it to verify that production structures were created with the intended settings, detect cases where a structure was recreated with default parameters, and document TopK configurations for operational runbooks.
