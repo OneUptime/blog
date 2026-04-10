@@ -55,7 +55,7 @@ The number `6` after `FLAT` is the count of additional attribute parameters that
 
 ### FLAT Parameters
 
-- `TYPE` - vector element type: `FLOAT32` or `FLOAT64`
+- `TYPE` - vector element type: `FLOAT32`, `FLOAT64`, `FLOAT16`, or `BFLOAT16`
 - `DIM` - number of dimensions (must match your embedding model)
 - `DISTANCE_METRIC` - `COSINE`, `L2`, or `IP`
 - `BLOCK_SIZE` - optional, number of vectors per memory block (default 1024)
@@ -86,7 +86,7 @@ import redis
 
 r = redis.Redis()
 
--- Simulate a 384-dim text embedding
+# Simulate a 384-dim text embedding
 embedding = np.random.rand(384).astype(np.float32)
 
 r.hset("doc:1", mapping={
@@ -149,13 +149,13 @@ FT.CREATE image_docs ON HASH PREFIX 1 img:
 
 ### IP (Inner Product)
 
-For pre-normalized vectors where you want maximum dot product (higher = more similar):
+For pre-normalized vectors where you want maximum dot product. Redis computes IP distance as `1 - dot(u,v)`, so lower values mean more similar vectors:
 
 ```redis
 FT.CREATE recs ON HASH PREFIX 1 rec:
   SCHEMA user_id TAG
          vec VECTOR FLAT 6 TYPE FLOAT32 DIM 64 DISTANCE_METRIC IP
--- Sort DESCENDING for inner product (higher is more similar)
+-- Sort ASCENDING (lower distance = higher dot product = more similar)
 ```
 
 ## Practical Use Cases for FLAT
@@ -210,7 +210,7 @@ graph TD
 ```redis
 -- Create HNSW index
 FT.CREATE docs_hnsw ON HASH PREFIX 1 doc:
-  SCHEMA title TEXT embedding VECTOR HNSW 10
+  SCHEMA title TEXT embedding VECTOR HNSW 12
     TYPE FLOAT32 DIM 384 DISTANCE_METRIC COSINE
     M 16 EF_CONSTRUCTION 200 EF_RUNTIME 10
 
