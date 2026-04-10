@@ -220,7 +220,7 @@ spec:
 
 ## Scheduling Regular Snapshots
 
-Use a CronJob to take application-consistent snapshots on a schedule:
+Use a CronJob to take crash-consistent snapshots on a schedule. Note that CSI snapshots are crash-consistent by default. For application-consistent snapshots, your application must flush buffers and quiesce I/O before the snapshot is taken:
 
 ```yaml
 apiVersion: batch/v1
