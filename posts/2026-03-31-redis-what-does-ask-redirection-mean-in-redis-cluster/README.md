@@ -111,7 +111,7 @@ redis-cli -h 10.0.0.1 -p 6379 GET some-key-in-migrating-slot
 # (error) ASK 3999 10.0.0.2:6379
 ```
 
-With `redis-cli -c`, ASK redirections are handled automatically with `--` notation:
+With `redis-cli -c`, ASK redirections are handled automatically with `->` notation:
 
 ```bash
 redis-cli -c -h 10.0.0.1 -p 6379 GET some-key
@@ -123,10 +123,11 @@ redis-cli -c -h 10.0.0.1 -p 6379 GET some-key
 
 ```bash
 # Check if any slots are in MIGRATING or IMPORTING state
-redis-cli -h 10.0.0.1 -p 6379 CLUSTER NODES | grep -E "(migrating|importing)"
+# CLUSTER NODES shows migrating as [slot->-nodeID] and importing as [slot-<-nodeID]
+redis-cli -h 10.0.0.1 -p 6379 CLUSTER NODES | grep "\["
 
-# Or check slot state directly
-redis-cli -h 10.0.0.1 -p 6379 CLUSTER INFO | grep -E "slot"
+# Check overall slot assignment counts
+redis-cli -h 10.0.0.1 -p 6379 CLUSTER INFO | grep -E "cluster_slots"
 ```
 
 ## Troubleshooting Stuck Migrations
@@ -148,10 +149,10 @@ The `--cluster fix` command detects partially migrated keys and completes or rol
 ASK redirections during resharding add a round trip for affected keys (the ASKING command + retry). This typically causes a minor, temporary latency increase for keys in migrating slots. For most workloads, the impact is small. If you observe significant latency during resharding, reduce the migration speed:
 
 ```bash
-# Migrate keys in batches with a pause between batches
+# Reduce the number of keys migrated per batch to lower impact
 redis-cli --cluster reshard 10.0.0.1:6379 \
-  --cluster-pipeline 10 \
-  --cluster-throttle 100
+  --cluster-pipeline 5 \
+  --cluster-timeout 5000
 ```
 
 ## Summary
