@@ -37,7 +37,7 @@ A client retrieves the current cluster map from monitors, then computes which OS
 Use the Rook toolbox to explore RADOS internals:
 
 ```bash
-kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- bash
 ```
 
 View the OSD map:
@@ -80,9 +80,9 @@ rados -p replicapool getxattr <object-name> <attr-key>
 When a client writes an object:
 
 1. The primary OSD receives the write.
-2. The primary forwards the write to all replica OSDs in the acting set.
-3. Once all replicas acknowledge the write, the primary replies to the client.
-4. The write is considered durable (committed to journal or BlueStore WAL).
+2. The primary writes to its local BlueStore WAL and forwards the write to all replica OSDs in the acting set.
+3. Each replica writes to its BlueStore WAL and acknowledges to the primary.
+4. Once the primary and all replicas have committed the write durably, the primary replies to the client.
 
 ```bash
 # Check acting set for a specific PG
