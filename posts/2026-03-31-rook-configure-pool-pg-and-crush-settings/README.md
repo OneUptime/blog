@@ -27,7 +27,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool create mypool 64 64 replicated
 ```
 
-The two `64` values are the PG count and PGP count. They should be equal for replicated pools.
+The two `64` values are the PG count and PGP count. They should always be equal.
 
 Set the replication factor:
 
