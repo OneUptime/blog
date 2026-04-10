@@ -10,7 +10,7 @@ Description: Learn how to configure Ceph authentication settings including CephX
 
 ## Ceph Authentication Modes
 
-Ceph supports three authentication modes configured per communication path:
+Ceph supports two authentication modes configured per communication path:
 
 - `cephx`: Full mutual authentication (default, required for production)
 - `none`: No authentication (only for development/testing)
