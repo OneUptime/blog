@@ -70,12 +70,12 @@ Look for the `flags` field changing:
 Also subscribe to Sentinel events on a separate connection:
 
 ```redis
-SUBSCRIBE +failover-triggered +promoted-slave +failover-end +failover-end-for-timeout
+SUBSCRIBE +try-failover +promoted-slave +failover-end +failover-end-for-timeout
 ```
 
 ```text
 1) "message"
-2) "+failover-triggered"
+2) "+try-failover"
 3) "master mymaster 192.168.1.10 6379"
 
 1) "message"
