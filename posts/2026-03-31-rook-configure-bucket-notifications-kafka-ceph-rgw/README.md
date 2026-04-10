@@ -10,7 +10,7 @@ Description: Set up Ceph RGW bucket notifications to publish S3 object events to
 
 ## Overview
 
-Ceph RGW supports SNS-compatible bucket notifications that publish events (object created, deleted, etc.) to endpoints including Kafka, RabbitMQ, and HTTP. This enables event-driven architectures where downstream services react to object storage changes in real time.
+Ceph RGW supports SNS-compatible bucket notifications that publish events (object created, deleted, etc.) to endpoints including Kafka, AMQP (e.g., RabbitMQ), and HTTP. This enables event-driven architectures where downstream services react to object storage changes in real time.
 
 ## Prerequisites
 
@@ -91,7 +91,7 @@ You should see a JSON event message containing object metadata, event type, and 
 
 ## Kafka Authentication (SASL)
 
-For secured Kafka, include credentials in the endpoint URL:
+For secured Kafka, include credentials in the topic attributes:
 
 ```bash
 aws sns create-topic \
