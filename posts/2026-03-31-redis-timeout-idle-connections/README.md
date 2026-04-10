@@ -134,7 +134,7 @@ def kill_idle_clients(max_idle_seconds=300):
     for c in clients:
         if c.get("idle", 0) > max_idle_seconds:
             try:
-                r.client_kill_filter(id=c["id"])
+                r.client_kill_filter(_id=c["id"])
                 killed += 1
             except redis.ResponseError:
                 pass  # Client may have disconnected already
