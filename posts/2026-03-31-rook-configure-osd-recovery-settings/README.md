@@ -20,7 +20,7 @@ The most important knobs for OSD recovery are:
 - `osd_recovery_max_active_hdd` / `osd_recovery_max_active_ssd` - per-device-class limits
 - `osd_recovery_sleep` - sleep time between recovery operations
 - `osd_max_backfills` - maximum concurrent backfill operations per OSD
-- `osd_recovery_priority` - priority relative to client I/O
+- `osd_recovery_op_priority` - priority relative to client I/O
 
 ## Viewing Current Settings
 
@@ -73,7 +73,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephConfig:
-    osd:
+    "osd.*":
       osd_recovery_max_active_hdd: "2"
       osd_recovery_sleep_hdd: "0.05"
       osd_max_backfills: "2"
