@@ -37,7 +37,6 @@ spec:
     replicated:
       size: 3
   gateway:
-    type: s3
     port: 80
     instances: 2
     resources:
@@ -92,7 +91,7 @@ kubectl -n rook-ceph get events | grep -i "oom\|OOMKilled" | grep rgw
 
 # Monitor request queue depth via perf counters
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph daemon rgw.my-store.a perf dump | python3 -m json.tool | grep "qlen\|qactive"
+    ceph tell rgw.my-store.a perf dump | python3 -m json.tool | grep "qlen\|qactive"
 ```
 
 ## Tuning for SSL/TLS Workloads
