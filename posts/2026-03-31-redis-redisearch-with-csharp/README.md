@@ -23,6 +23,7 @@ docker run -d -p 6379:6379 redis/redis-stack-server:latest
 using NRedisStack;
 using NRedisStack.RedisStackCommands;
 using NRedisStack.Search;
+using NRedisStack.Search.Aggregation;
 using NRedisStack.Search.Literals.Enums;
 using StackExchange.Redis;
 
@@ -118,8 +119,11 @@ var aggRequest = new AggregationRequest("*")
     .SortBy(new SortedField("@book_count", SortedField.SortOrder.DESC));
 
 var aggResult = ft.Aggregate("books-idx", aggRequest);
-foreach (var row in aggResult.GetResults())
+for (var i = 0; i < aggResult.TotalResults; i++)
+{
+    var row = aggResult.GetRow(i);
     Console.WriteLine($"{row["author"]}: {row["book_count"]} books");
+}
 ```
 
 ## Dropping an Index
