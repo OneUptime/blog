@@ -54,7 +54,6 @@ data:
     auth_cluster_required = cephx
     auth_service_required = cephx
     auth_client_required = cephx
-    auth_supported = cephx
 ```
 
 Apply the ConfigMap and restart relevant daemons:
@@ -118,9 +117,12 @@ spec:
 Rotate keys periodically to limit exposure:
 
 ```bash
-# Rotate an existing key
+# Rotate a key by deleting and recreating with the same permissions
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth caps client.myapp \
+  ceph auth del client.myapp
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph auth get-or-create client.myapp \
     mon 'allow r' \
     osd 'allow rw pool=mypool'
 
