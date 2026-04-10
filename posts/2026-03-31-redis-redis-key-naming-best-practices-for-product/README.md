@@ -61,13 +61,13 @@ Or better, use separate Redis instances per environment and omit the environment
 Redis stores keys in memory. Verbose keys waste memory at scale:
 
 ```bash
-# Too verbose (49 chars)
+# Too verbose (42 chars)
 SET user_profile_data_for_user_id_42_version_3 "..."
 
 # Too cryptic (hard to understand)
 SET u:42:p:3 "..."
 
-# Good balance (18 chars)
+# Good balance (15 chars)
 SET user:42:profile "..."
 ```
 
@@ -112,8 +112,8 @@ SET cache:v2:user:42:profile "..."
 # When schema changes, bump to v3
 SET cache:v3:user:42:profile "..."
 
-# Delete all v2 keys safely
-redis-cli SCAN 0 MATCH "cache:v2:*" COUNT 100
+# Find all v2 keys, then delete them
+redis-cli --scan --pattern "cache:v2:*" | xargs redis-cli DEL
 ```
 
 ## Key Naming for Different Data Types
