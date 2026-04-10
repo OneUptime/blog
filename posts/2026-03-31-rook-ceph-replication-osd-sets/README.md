@@ -69,21 +69,22 @@ The `p4` indicates OSD 4 is the primary.
 
 Secondary OSDs receive write forwarded by the primary. They write to their local BlueStore and acknowledge back to the primary. They do not communicate directly with the client.
 
-On reads with `read_balance_score` enabled, secondaries can serve reads to distribute load:
+With read balancing enabled (Ceph Reef+), the balancer can assign different OSDs as primary for different PGs to distribute read load:
 
 ```bash
 # Enable read balancing (Ceph Reef+)
-ceph osd pool set replicapool read_balance_score 1
+ceph balancer on
+ceph balancer mode upmap-read
 ```
 
 ## Write Acknowledgment Modes
 
-Ceph supports two write acknowledgment levels:
+Ceph historically supported two write acknowledgment levels:
 
-- **ack**: Client receives acknowledgment when the primary has written to journal/WAL (not necessarily flushed to disk)
-- **safe/ondisk**: Client receives acknowledgment when all replicas have committed to persistent storage
+- **ack**: Client receives acknowledgment when the primary and a sufficient number of replicas (based on `min_size`) have written to journal/WAL
+- **safe/ondisk**: Client receives acknowledgment when all replicas have flushed data from journal/WAL to the main data store
 
-Most Kubernetes workloads using RBD operate in `ack` mode by default, which optimizes throughput while relying on replication for durability.
+With BlueStore (default since Luminous and the only production store in modern Ceph), WAL writes are themselves durable, so `ack` and `ondisk` occur at the same time. The `ondisk` callback was deprecated in Nautilus. Modern Kubernetes workloads using RBD receive full durability at the `ack` level.
 
 ## Acting Set Changes and Peering
 
