@@ -31,8 +31,7 @@ metadata:
 spec:
   replicated:
     size: 3
-  parameters:
-    compression_mode: none
+  compressionMode: none
 ```
 
 Then create a StorageClass that references the pool:
@@ -80,6 +79,7 @@ kind: StatefulSet
 metadata:
   name: redis-streams
 spec:
+  serviceName: redis-streams
   replicas: 1
   selector:
     matchLabels:
