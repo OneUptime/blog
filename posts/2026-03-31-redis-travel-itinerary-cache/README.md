@@ -143,7 +143,7 @@ def get_upcoming_segments(itin_id: str, hours_ahead: int = 48) -> list:
     now = int(time.time())
     future = now + (hours_ahead * 3600)
 
-    comp_ids = r.zrangebyscore(components_key, now, future)
+    comp_ids = r.zrange(components_key, now, future, byscore=True)
     if not comp_ids:
         return []
 
