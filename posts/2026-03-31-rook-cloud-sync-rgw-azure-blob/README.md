@@ -10,7 +10,7 @@ Description: Learn how to configure the Ceph RGW cloud sync module to replicate 
 
 ## Overview
 
-Azure Blob Storage supports an S3-compatible API through Azure Blob's S3 compatibility layer or via a proxy. The Ceph RGW cloud sync module can replicate objects to Azure by targeting this compatible endpoint. This guide covers the configuration of the Azure sync target and verification of object replication.
+Azure Blob Storage does not natively support the S3 API. To use the Ceph RGW cloud sync module with Azure, you need an S3-compatible proxy such as rclone to bridge between RGW and Azure Blob. This guide covers the configuration of the Azure sync target via a proxy and verification of object replication.
 
 ## Step 1 - Enable Azure Blob S3 Compatibility
 
@@ -24,14 +24,12 @@ curl https://rclone.org/install.sh | bash
 # Configure rclone for Azure Blob
 rclone config create azureblob azureblob \
   account=my-storage-account \
-  key=my-storage-account-key \
-  endpoint=myaccount.blob.core.windows.net
+  key=my-storage-account-key
 
 # Start rclone as an S3 proxy
 rclone serve s3 azureblob: \
   --addr 0.0.0.0:9000 \
-  --s3-authkey-id fake-access-key \
-  --s3-authkey-secret fake-secret-key \
+  --auth-key fake-access-key,fake-secret-key \
   --no-modtime &
 ```
 
@@ -49,7 +47,7 @@ SYNC_SECRET=$(radosgw-admin user info --uid=azure-sync | jq -r '.keys[0].secret_
 radosgw-admin zone create \
   --rgw-zonegroup=default \
   --rgw-zone=azure-zone \
-  --tier-type=cloud \
+  --tier-type=cloud-s3 \
   --access-key="${SYNC_ACCESS}" \
   --secret="${SYNC_SECRET}"
 
@@ -72,6 +70,11 @@ radosgw-admin period update --commit
 For a direct approach using Azure Blob's native REST API, use a custom sync module or the pubsub module with an Azure Function consumer:
 
 ```bash
+# First create the SNS topic with the Azure Function push endpoint
+aws --endpoint-url http://rgw.example.com:7480 \
+  sns create-topic --name rgw-azure-topic \
+  --attributes '{"push-endpoint":"https://your-azure-function.azurewebsites.net/api/sync"}'
+
 # Configure bucket notifications to an Azure Function
 aws --endpoint-url http://rgw.example.com:7480 \
   s3api put-bucket-notification-configuration \
@@ -94,7 +97,6 @@ aws --endpoint-url http://rgw.example.com:7480 \
 # Azure Function that receives RGW notifications and copies to Azure Blob
 
 import azure.functions as func
-import json
 import boto3
 from azure.storage.blob import BlobServiceClient
 
@@ -123,6 +125,12 @@ def copy_to_azure(bucket, key):
         "DefaultEndpointsProtocol=https;AccountName=myaccount;..."
     ).get_blob_client(container="ceph-backup", blob=f"{bucket}/{key}")
     blob_client.upload_blob(obj["Body"].read(), overwrite=True)
+
+def delete_from_azure(bucket, key):
+    blob_client = BlobServiceClient.from_connection_string(
+        "DefaultEndpointsProtocol=https;AccountName=myaccount;..."
+    ).get_blob_client(container="ceph-backup", blob=f"{bucket}/{key}")
+    blob_client.delete_blob()
 ```
 
 ## Step 5 - Monitor the Sync
