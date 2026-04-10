@@ -21,7 +21,7 @@ redis-cli CLUSTER INFO | grep cluster_state
 A `cluster_state:fail` means the cluster cannot serve requests. Check which nodes are down:
 
 ```bash
-redis-cli CLUSTER NODES | grep -v connected
+redis-cli CLUSTER NODES | grep fail
 ```
 
 ## Step 2: Identify Affected Hash Slots
@@ -63,7 +63,7 @@ redis-cli -h <replica-ip> -p 6379 CLUSTER FAILOVER FORCE
 Start a new Redis instance, then add it as a replica:
 
 ```bash
-redis-cli --cluster add-node <new-node-ip>:6379 <existing-node-ip>:6379 --cluster-slave
+redis-cli --cluster add-node <new-node-ip>:6379 <existing-node-ip>:6379 --cluster-replica
 ```
 
 ## Step 6: Rebalance the Cluster
@@ -88,7 +88,7 @@ Once the cluster is healthy, remove the dead node entry:
 redis-cli CLUSTER FORGET <failed-node-id>
 ```
 
-Repeat this command on all cluster nodes within the node timeout period.
+Repeat this command on all cluster nodes within 60 seconds to prevent gossip from re-adding the forgotten node.
 
 ## Step 8: Verify Recovery
 
