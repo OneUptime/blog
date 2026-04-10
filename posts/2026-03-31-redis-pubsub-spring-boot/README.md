@@ -91,6 +91,10 @@ public class OrderController {
 
     private final OrderPublisher publisher;
 
+    public OrderController(OrderPublisher publisher) {
+        this.publisher = publisher;
+    }
+
     @PostMapping("/orders/{id}/status")
     public ResponseEntity<String> updateStatus(
             @PathVariable String id, @RequestParam String status) {
@@ -116,7 +120,10 @@ public void unsubscribe(MessageListenerAdapter adapter) {
 ```bash
 redis-cli pubsub channels "orders:*"
 redis-cli pubsub numsub orders:123
+redis-cli pubsub numpat
 ```
+
+`channels` and `numsub` only count exact (`SUBSCRIBE`) subscribers. Since `PatternTopic` uses `PSUBSCRIBE`, use `numpat` to see the total number of active pattern subscriptions.
 
 ## Summary
 
