@@ -62,6 +62,9 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   cephfs-data-scan scan_inodes --filesystem myfs
 
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
+  cephfs-data-scan scan_links --filesystem myfs
+
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   cephfs-data-scan cleanup --filesystem myfs
 ```
 
@@ -71,7 +74,7 @@ If snapshots were configured, restore from the most recent clean snapshot:
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  ceph fs subvolume snapshot ls myfs <subvolume> <group>
+  ceph fs subvolume snapshot ls myfs <subvolume> --group_name <group>
 ```
 
 Apply the snapshot to the Kubernetes VolumeSnapshot API:
