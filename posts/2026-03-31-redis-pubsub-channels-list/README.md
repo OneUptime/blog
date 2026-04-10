@@ -92,9 +92,9 @@ Use `PUBSUB CHANNELS` to discover what is active, then `PUBSUB NUMSUB` to see ho
 
 ## Important Notes
 
-- Channels created by `PSUBSCRIBE` pattern subscriptions do NOT appear in `PUBSUB CHANNELS`
-- A channel only appears if it has at least one direct subscriber (via `SUBSCRIBE`)
-- `PUBSUB CHANNELS` scans the entire subscription dictionary - on busy systems with thousands of channels, prefer using a pattern to narrow results
+- Pattern subscribers (via `PSUBSCRIBE`) are not counted - a channel only appears if it has at least one direct subscriber (via `SUBSCRIBE`)
+- If a channel's only subscribers are pattern subscribers, it will NOT appear in the output
+- `PUBSUB CHANNELS` is O(N) where N is the number of active channels - using a pattern filters the output but does not reduce the scan cost
 
 ## Use Cases
 
@@ -105,4 +105,4 @@ Use `PUBSUB CHANNELS` to discover what is active, then `PUBSUB NUMSUB` to see ho
 
 ## Summary
 
-`PUBSUB CHANNELS` is the primary discovery command for Redis Pub/Sub channels. Use it with a pattern to filter results in systems with many channels, and combine it with `PUBSUB NUMSUB` to get subscriber counts for the channels you care about. It does not show pattern subscriptions - use `PUBSUB NUMPAT` for those.
+`PUBSUB CHANNELS` is the primary discovery command for Redis Pub/Sub channels. Use it with a pattern to filter results in systems with many channels, and combine it with `PUBSUB NUMSUB` to get subscriber counts for the channels you care about. It does not show pattern subscriptions - use `PUBSUB NUMPAT` to get the count of active pattern subscriptions.
