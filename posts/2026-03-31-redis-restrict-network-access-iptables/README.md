@@ -36,14 +36,20 @@ sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 
 ## Allow Replica Connections
 
-If you run replicas, allow them to connect to the primary:
+If you run replicas, allow them to connect to the primary. These rules must be placed before the DROP rule. If the DROP rule is already in place, remove it first, add the new rules, then re-add it:
 
 ```bash
+# Remove the existing DROP rule
+sudo iptables -D INPUT -p tcp --dport 6379 -j DROP
+
 # Allow replica 1
 sudo iptables -A INPUT -s 10.0.3.1/32 -p tcp --dport 6379 -j ACCEPT
 
 # Allow replica 2
 sudo iptables -A INPUT -s 10.0.3.2/32 -p tcp --dport 6379 -j ACCEPT
+
+# Re-add the DROP rule at the end
+sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 ```
 
 ## Verifying Rules
@@ -95,10 +101,17 @@ redis-cli -h <redis-server-ip> PING
 
 ## Logging Dropped Connections
 
-Add a logging rule before the DROP rule for visibility:
+Add a logging rule immediately before the DROP rule so only blocked connections are logged:
 
 ```bash
-sudo iptables -I INPUT -p tcp --dport 6379 -j LOG --log-prefix "REDIS-BLOCKED: " --log-level 4
+# Remove the existing DROP rule
+sudo iptables -D INPUT -p tcp --dport 6379 -j DROP
+
+# Add the LOG rule
+sudo iptables -A INPUT -p tcp --dport 6379 -j LOG --log-prefix "REDIS-BLOCKED: " --log-level 4
+
+# Re-add the DROP rule after the LOG rule
+sudo iptables -A INPUT -p tcp --dport 6379 -j DROP
 ```
 
 View blocked attempts:
