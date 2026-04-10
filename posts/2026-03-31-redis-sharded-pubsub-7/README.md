@@ -14,7 +14,7 @@ Classic Redis Pub/Sub in a cluster broadcasts every published message to all clu
 
 - Redis 7.0 or later
 - Redis Cluster mode enabled
-- Cluster-aware client (redis-py >= 4.3.2, ioredis >= 5.0)
+- Cluster-aware client (redis-py >= 4.3.2, ioredis >= 5.9.0)
 
 ## Classic vs Sharded Pub/Sub Comparison
 
@@ -45,14 +45,13 @@ The `-c` flag enables cluster-aware redirection in `redis-cli`.
 ## Python: Sharded Pub/Sub with redis-py
 
 ```python
-import redis
 import json
 
-# ClusterRedis is required for sharded pub/sub
 from redis.cluster import RedisCluster
 
 rc = RedisCluster(
-    startup_nodes=[{"host": "127.0.0.1", "port": "7001"}],
+    host="127.0.0.1",
+    port=7001,
     decode_responses=True,
 )
 
@@ -72,10 +71,13 @@ for message in pubsub.listen():
 ## Python: Publish to Sharded Channel
 
 ```python
+import json
+
 from redis.cluster import RedisCluster
 
 rc = RedisCluster(
-    startup_nodes=[{"host": "127.0.0.1", "port": "7001"}],
+    host="127.0.0.1",
+    port=7001,
     decode_responses=True,
 )
 
@@ -90,7 +92,9 @@ print(f"Message delivered to {receivers} subscriber(s)")
 const { Cluster } = require('ioredis');
 
 const pub = new Cluster([{ host: '127.0.0.1', port: 7001 }]);
-const sub = new Cluster([{ host: '127.0.0.1', port: 7001 }]);
+const sub = new Cluster([{ host: '127.0.0.1', port: 7001 }], {
+  shardedSubscribers: true,
+});
 
 // Subscribe using sharded pub/sub
 sub.ssubscribe('orders', 'inventory', (err, count) => {
