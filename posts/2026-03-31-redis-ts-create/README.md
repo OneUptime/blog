@@ -38,6 +38,7 @@ TS.CREATE key
 - `ENCODING` - COMPRESSED (default) uses Gorilla encoding; UNCOMPRESSED stores raw doubles
 - `CHUNK_SIZE` - bytes per memory chunk (default: 4096)
 - `DUPLICATE_POLICY` - behavior when a duplicate timestamp is added: BLOCK, FIRST, LAST, MIN, MAX, SUM
+- `IGNORE` - deduplication filter; a new sample is ignored if the time difference from the last sample is within `ignoreMaxTimediff` (ms) and the absolute value difference is within `ignoreMaxValDiff`, provided the duplicate policy is LAST and the sample is in-order
 - `LABELS` - key-value metadata pairs for filtering with `TS.MRANGE` and `TS.QUERYINDEX`
 
 ## Examples
