@@ -61,7 +61,7 @@ def distributed_lock(resource: str, ttl_ms: int = 5000, retry_times: int = 3, re
         token = acquire_lock(resource, ttl_ms)
         if token:
             break
-        time.sleep(retry_delay * (attempt + 1))  # exponential backoff
+        time.sleep(retry_delay * (2 ** attempt))  # exponential backoff
 
     if not token:
         raise TimeoutError(f"Could not acquire lock on '{resource}' after {retry_times} attempts")
@@ -103,8 +103,8 @@ def run_cron_job(job_name: str):
 If your operation might outlast the TTL, extend the lock:
 
 ```python
-def extend_lock(resource: str, token: str, additional_ms: int) -> bool:
-    """Extend the TTL of an owned lock."""
+def extend_lock(resource: str, token: str, ttl_ms: int) -> bool:
+    """Set a new TTL on an owned lock."""
     script = """
     if redis.call('GET', KEYS[1]) == ARGV[1] then
         return redis.call('PEXPIRE', KEYS[1], ARGV[2])
@@ -112,7 +112,7 @@ def extend_lock(resource: str, token: str, additional_ms: int) -> bool:
         return 0
     end
     """
-    result = r.eval(script, 1, f"lock:{resource}", token, additional_ms)
+    result = r.eval(script, 1, f"lock:{resource}", token, ttl_ms)
     return bool(result)
 ```
 
