@@ -30,7 +30,7 @@ sequenceDiagram
     C->>R: EXEC
     R->>C: 1) OK
     R->>C: 2) 70
-    R->>C: 3) 130
+    R->>C: 3) 30
 ```
 
 ## Syntax
