@@ -76,8 +76,8 @@ ORDER BY bucket;
 Redis (RedisTimeSeries) can handle hundreds of thousands of writes per second in memory with microsecond latency. TimescaleDB targets tens of thousands of rows per second with compression and disk persistence.
 
 ```bash
-# Redis benchmark for TS.ADD
-redis-benchmark -t set -n 100000 -P 16
+# Redis benchmark for TS.ADD (requires RedisTimeSeries module loaded)
+redis-benchmark -n 100000 -P 16 TS.ADD testkey "*" 23.5
 # Approximate: 200k+ ops/sec in-memory
 
 # TimescaleDB typically achieves 50k-150k inserts/sec
