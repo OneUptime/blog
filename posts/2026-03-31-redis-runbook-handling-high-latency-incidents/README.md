@@ -46,7 +46,7 @@ Check for currently running slow operations:
 
 ```bash
 redis-cli COMMAND INFO keys scan
-redis-cli DEBUG SLEEP 0
+redis-cli LATENCY LATEST
 ```
 
 Watch for clients blocked on slow commands:
@@ -64,7 +64,7 @@ redis-cli INFO persistence | grep -E "rdb_bgsave_in_progress|aof_rewrite_in_prog
 redis-cli INFO stats | grep "latest_fork_usec"
 ```
 
-Fork time over 200ms indicates memory pressure or slow disk.
+Fork time over 200ms indicates a large memory footprint or Transparent Huge Pages (THP) being enabled.
 
 ## Step 5: Check Memory Fragmentation
 
@@ -99,7 +99,7 @@ redis-cli INFO server | grep "hz"
 redis-cli INFO cpu
 ```
 
-Reduce `hz` from 100 to 10 to reduce background task CPU overhead:
+If `hz` has been raised above the default of 10, lower it back to reduce background task CPU overhead:
 
 ```bash
 redis-cli CONFIG SET hz 10
