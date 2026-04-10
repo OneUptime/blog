@@ -76,11 +76,8 @@ ceph config set osd osd_scrub_end_hour 5
 
 ```bash
 # HDDs saturate with fewer threads than SSDs
-ceph config set osd osd_op_num_shards 8
-ceph config set osd osd_op_num_threads_per_shard 1
-
-# Limit max ops to avoid HDD queue depth saturation
-ceph config set osd osd_max_ops 64
+ceph config set osd osd_op_num_shards_hdd 5
+ceph config set osd osd_op_num_threads_per_shard_hdd 1
 ```
 
 ## Sequential I/O Optimization
@@ -123,8 +120,8 @@ ceph health detail | grep "slow requests"
 # Get per-OSD latency
 ceph osd perf | sort -k3 -n | tail -10  # Sort by apply latency
 
-# Check for HDD fragmentation
-ceph daemon osd.0 dump_op_pq_state | grep -c "in_progress"
+# Check OSD operation queue depth (indicator of HDD saturation)
+ceph daemon osd.0 dump_ops_in_flight
 ```
 
 ## Summary
