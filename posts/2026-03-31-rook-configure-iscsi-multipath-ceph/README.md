@@ -72,6 +72,13 @@ systemctl restart multipathd
 
 ## Configuring Multiple iSCSI Sessions
 
+Discover the targets on each gateway portal:
+
+```bash
+iscsiadm -m discovery -t sendtargets -p 10.0.1.10:3260
+iscsiadm -m discovery -t sendtargets -p 10.0.1.11:3260
+```
+
 Connect to the same target through both gateway portals to create two sessions:
 
 ```bash
@@ -92,7 +99,7 @@ iscsiadm -m session
 
 Expected output:
 
-```yaml
+```text
 tcp: [1] 10.0.1.10:3260,1 iqn.2024-01.com.example:storage
 tcp: [2] 10.0.1.11:3260,1 iqn.2024-01.com.example:storage
 ```
