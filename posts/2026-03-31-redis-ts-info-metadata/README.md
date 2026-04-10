@@ -41,7 +41,7 @@ TS.INFO key [DEBUG]
 | retentionTime | Retention period in milliseconds (0 = no expiry) |
 | chunkCount | Number of memory chunks allocated |
 | chunkSize | Bytes per memory chunk |
-| chunkType | COMPRESSED or UNCOMPRESSED |
+| chunkType | compressed or uncompressed |
 | duplicatePolicy | How duplicate timestamps are handled |
 | labels | List of key-value label pairs |
 | sourceKey | If this is a compaction target, the source series key |
@@ -101,12 +101,9 @@ The `rules` field shows:
 
 ```text
 23) "rules"
-24) 1) 1) "compactionKey"
-      2) "hourly-avg"
-   2) 1) "bucketDuration"
+24) 1) 1) "hourly-avg"
       2) (integer) 3600000
-   3) 1) "aggregationType"
-      2) "avg"
+      3) "avg"
 ```
 
 ### Series with Duplicate Policy
@@ -190,7 +187,7 @@ TS.QUERYINDEX metric=temperature
 
 ## Performance Considerations
 
-- `TS.INFO` is O(N) where N is the number of compaction rules; typically O(1) for simple series.
+- `TS.INFO` is O(1).
 - The `DEBUG` option adds chunk-level detail and is more expensive; use only for diagnostics.
 - Call `TS.INFO` sparingly in hot paths; it is a diagnostic tool, not a data retrieval command.
 
