@@ -15,6 +15,9 @@ Many teams configure Redis persistence but never verify it actually works. A few
 Use a dedicated test instance with the same configuration as production:
 
 ```bash
+# Create test directory first
+mkdir -p /tmp/redis-test
+
 # Start a test Redis instance
 redis-server \
   --port 6399 \
@@ -27,8 +30,6 @@ redis-server \
   --save "60 1" \
   --daemonize yes \
   --logfile /tmp/redis-test.log
-
-mkdir -p /tmp/redis-test
 ```
 
 ## Test 1: Basic RDB Recovery
@@ -115,9 +116,10 @@ dd if=/dev/urandom of=/tmp/redis-test/test-dump.rdb bs=1 count=100 seek=100 conv
 # Verify corruption is detected
 redis-check-rdb /tmp/redis-test/test-dump.rdb; echo "Exit code: $?"
 
-# Test the fix
+# redis-check-rdb is diagnostic only and cannot repair files.
+# If the RDB file is corrupt, restore from your most recent valid backup.
 cp /tmp/redis-test/test-dump.rdb /tmp/redis-test/test-dump-corrupt.rdb
-redis-check-rdb --fix /tmp/redis-test/test-dump-corrupt.rdb
+redis-check-rdb /tmp/redis-test/test-dump-corrupt.rdb; echo "Exit code: $?"
 ```
 
 ## Test 4: Measure Recovery Time
