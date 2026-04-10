@@ -67,15 +67,15 @@ rdb := redis.NewFailoverClient(&redis.FailoverOptions{
 ## Routing Reads to Replicas
 
 ```go
-rdb := redis.NewFailoverClient(&redis.FailoverOptions{
+rdb := redis.NewFailoverClusterClient(&redis.FailoverOptions{
     MasterName:    "mymaster",
     SentinelAddrs: []string{"sentinel1:26379", "sentinel2:26379", "sentinel3:26379"},
-    SlaveOnly:     false,       // false = reads from master by default
-    RouteByLatency: true,       // route reads to lowest-latency replica
+    ReplicaOnly:    false,       // false = reads from master by default
+    RouteByLatency: true,        // route reads to lowest-latency node
 })
 ```
 
-For replica reads with `RouteByLatency`, go-redis selects the lowest-latency available replica.
+`RouteByLatency` only works with `NewFailoverClusterClient` (using it with `NewFailoverClient` causes a panic). When enabled, go-redis selects the lowest-latency node among both the master and replicas for read-only commands.
 
 ## Sentinel Cluster Client
 
@@ -151,4 +151,4 @@ func execWithFailoverRetry(ctx context.Context, rdb *redis.Client, fn func() err
 
 ## Summary
 
-`redis.NewFailoverClient` connects to Redis through Sentinel, automatically discovering the current primary and reconnecting after failover. Provide all Sentinel addresses so the client can find a working Sentinel even if one is down. The `RouteByLatency` option distributes reads to replicas. Retry logic with small delays handles the brief unavailability window during a failover event.
+`redis.NewFailoverClient` connects to Redis through Sentinel, automatically discovering the current primary and reconnecting after failover. Provide all Sentinel addresses so the client can find a working Sentinel even if one is down. The `RouteByLatency` option (with `NewFailoverClusterClient`) distributes read-only commands to the lowest-latency node. Retry logic with small delays handles the brief unavailability window during a failover event.
