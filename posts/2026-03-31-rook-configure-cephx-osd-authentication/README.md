@@ -15,7 +15,7 @@ OSD authentication in CephX controls which clients can read and write data, and 
 OSD capabilities follow this format:
 
 ```text
-allow [rwx] [pool=<pool>] [object_prefix=<prefix>] [namespace=<ns>]
+allow [rwx] [pool=<pool>] [object_prefix <prefix>] [namespace=<ns>]
 ```
 
 Common capability combinations:
@@ -54,9 +54,9 @@ Enforce OSD authentication cluster-wide:
 ```yaml
 spec:
   cephConfig:
-    osd:
-      auth_cluster_required: cephx
-      auth_service_required: cephx
+    global:
+      auth_cluster_required: "cephx"
+      auth_service_required: "cephx"
 ```
 
 ## OSD Key Rotation
@@ -70,7 +70,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## RBD-Specific OSD Capabilities
 
-For RBD block storage clients, use the class-read capability:
+For RBD block storage clients, use the `profile rbd` capability:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
