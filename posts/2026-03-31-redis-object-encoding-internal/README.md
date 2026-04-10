@@ -86,7 +86,7 @@ OBJECT ENCODING small:list
 
 Small lists use the compact `listpack` encoding.
 
-Once the list exceeds the threshold (128 elements or 64-byte values by default):
+Once the list grows beyond the listpack node size limit (8 KB by default, controlled by `list-max-listpack-size -2`):
 
 ```redis
 OBJECT ENCODING large:list
@@ -171,7 +171,7 @@ OBJECT ENCODING large:zset
 You can control when Redis upgrades from compact to general encodings in `redis.conf`:
 
 ```text
-hash-max-listpack-entries 128
+hash-max-listpack-entries 512
 hash-max-listpack-value 64
 list-max-listpack-size -2
 zset-max-listpack-entries 128
