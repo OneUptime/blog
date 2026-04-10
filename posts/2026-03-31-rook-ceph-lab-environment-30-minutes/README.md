@@ -86,6 +86,7 @@ spec:
     count: 1
   dashboard:
     enabled: true
+    ssl: false
   storage:
     useAllNodes: true
     useAllDevices: false
@@ -113,7 +114,7 @@ kubectl port-forward svc/rook-ceph-mgr-dashboard 7000:7000 -n rook-ceph
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/pool.yaml
-kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/storageclass.yaml
+kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/csi/rbd/storageclass.yaml
 ```
 
 ## Summary
