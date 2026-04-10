@@ -54,10 +54,10 @@ ZRANGE result 0 -1 WITHSCORES
 ---
 1) "alice"
 2) "100"
-3) "charlie"
-4) "300"
-5) "bob"
-6) "250"
+3) "bob"
+4) "250"
+5) "charlie"
+6) "300"
 ```
 
 bob appears in both sets; his scores are summed (200 + 50 = 250).
@@ -70,10 +70,10 @@ ZRANGE result_min 0 -1 WITHSCORES
 ```
 
 ```text
-1) "alice"
-2) "100"
-3) "bob"
-4) "50"
+1) "bob"
+2) "50"
+3) "alice"
+4) "100"
 5) "charlie"
 6) "300"
 ```
@@ -108,10 +108,10 @@ ZRANGE weighted 0 -1 WITHSCORES
 ```
 
 ```text
-1) "alice"
-2) "200"
-3) "charlie"
-4) "150"
+1) "charlie"
+2) "150"
+3) "alice"
+4) "200"
 5) "bob"
 6) "425"
 ```
@@ -127,14 +127,14 @@ ZRANGE out3 0 -1 WITHSCORES
 ```
 
 ```text
-1) "diana"
-2) "150"
-3) "charlie"
-4) "300"
-5) "alice"
-6) "110"
-7) "bob"
-8) "250"
+1) "alice"
+2) "110"
+3) "diana"
+4) "150"
+5) "bob"
+6) "250"
+7) "charlie"
+8) "300"
 ```
 
 alice: 100 (setA) + 10 (setC) = 110.
@@ -168,10 +168,10 @@ ZREVRANGE game:total 0 -1 WITHSCORES
 ```
 
 ```text
-1) "bob"
-2) "700"
-3) "alice"
-4) "800"
+1) "alice"
+2) "800"
+3) "bob"
+4) "700"
 5) "charlie"
 6) "200"
 ```
@@ -223,7 +223,7 @@ Use ZUNIONSTORE when you need to cache the result, perform ZRANGE on it, or use 
 
 ## Performance Considerations
 
-- ZUNIONSTORE is O(N log N) where N is the total number of members across all input sets.
+- ZUNIONSTORE is O(N)+O(M log(M)) where N is the sum of sizes of the input sorted sets and M is the number of elements in the resulting sorted set.
 - Weighting and aggregation are computed in-memory during the operation.
 - The result is written once to the destination key.
 
