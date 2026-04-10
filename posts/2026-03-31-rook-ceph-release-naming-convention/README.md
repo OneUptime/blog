@@ -35,15 +35,16 @@ Ceph releases are named alphabetically after sea creatures. Each major release g
 | Quincy    | 17.2         | LTS |
 | Reef      | 18.2         | LTS |
 | Squid     | 19.2         | |
+| Tentacle  | 20.2         | |
 
 ## Checking Your Current Version
 
 ```bash
 ceph version
-# ceph version 18.2.2 (reef)
+# ceph version 18.2.2 (e9fe820e7fffd1b7cde143a9f77653b73fcec748) reef (stable)
 ```
 
-The format is: `MAJOR.MINOR.PATCH (codename)`
+The format is: `ceph version MAJOR.MINOR.PATCH (commit-hash) codename (status)`
 
 ## Long-Term Stable Releases
 
