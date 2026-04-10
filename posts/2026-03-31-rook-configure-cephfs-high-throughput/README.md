@@ -86,9 +86,11 @@ Use a dedicated 25 GbE or 100 GbE network for the Ceph cluster:
 spec:
   network:
     provider: host
-    selectors:
-      public: "eth1"
-      cluster: "eth2"
+    addressRanges:
+      public:
+        - "192.168.1.0/24"
+      cluster:
+        - "10.0.0.0/24"
 ```
 
 Enable jumbo frames on the Ceph network interfaces to reduce CPU overhead:
@@ -104,10 +106,10 @@ Increase client write buffer size for high-throughput writes:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client client_write_size 67108864
+  ceph config set client client_oc_max_dirty 268435456
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client client_oc_size 134217728
+  ceph config set client client_oc_size 536870912
 ```
 
 ## Measuring Throughput
