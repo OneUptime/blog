@@ -67,7 +67,7 @@ Real-time help is available on:
 
 - IRC: `#ceph` on OFTC (irc.oftc.net)
 - Slack: https://ceph-storage.slack.com (invitation at ceph.io)
-- Rook Slack: `#rook` channel in the CNCF Slack workspace
+- Rook Slack: `#rook-ceph` channel in the Kubernetes Slack workspace
 
 ## Stack Overflow
 
