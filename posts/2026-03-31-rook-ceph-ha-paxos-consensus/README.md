@@ -86,12 +86,12 @@ The Paxos leader handles all write proposals. Other monitors (peons) can serve r
 
 ```bash
 # View which monitor is the current leader
-ceph mon dump | grep leader
+ceph mon stat
 ```
 
 ## Diagnosing Monitor Issues
 
-When fewer than quorum monitors are available, the cluster becomes read-only:
+When fewer than quorum monitors are available, the monitor service becomes unavailable. Existing client I/O may continue based on cached OSD maps, but no new map updates, authentication, or configuration changes can occur:
 
 ```bash
 # Check for monitor warnings
@@ -106,14 +106,14 @@ kubectl rollout restart deployment rook-ceph-mon-a -n rook-ceph
 
 ## Clock Skew
 
-Paxos relies on synchronized clocks to determine message ordering. Excessive clock skew between monitors causes `clock skew detected` health warnings and can trigger unnecessary leader re-elections.
+Ceph monitors rely on synchronized clocks for lease management and timeout handling. Excessive clock skew between monitors causes `clock skew detected` health warnings and can trigger unnecessary leader re-elections.
 
 ```bash
 # Check for clock skew warnings
 ceph health detail | grep clock
 
-# Verify NTP sync on Kubernetes nodes
-kubectl get pods -n rook-ceph | grep mon
+# List monitor pods to identify which nodes to check for NTP sync
+kubectl get pods -n rook-ceph -o wide | grep mon
 ```
 
 ## Summary
