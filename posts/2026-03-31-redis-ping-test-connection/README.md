@@ -139,8 +139,8 @@ PING "keepalive"
 | `PING` | Quick connectivity check, minimal overhead |
 | `PING message` | Verify message round-trip with unique token |
 | `redis-cli --latency` | Continuous latency monitoring |
-| `INFO server` | Full server status including memory and replication |
-| `DEBUG SLEEP 0` | Test command processing without network overhead |
+| `INFO` | Full server status including memory, replication, and more |
+| `TIME` | Verify command processing and check server clock |
 
 ## Use Cases
 
