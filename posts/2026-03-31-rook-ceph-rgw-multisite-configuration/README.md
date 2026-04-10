@@ -28,6 +28,7 @@ radosgw-admin realm create --rgw-realm=production --default
 # Create the master zone group
 radosgw-admin zonegroup create \
   --rgw-zonegroup=us \
+  --endpoints=http://master-rgw-host:80 \
   --master \
   --default
 
@@ -35,6 +36,7 @@ radosgw-admin zonegroup create \
 radosgw-admin zone create \
   --rgw-zonegroup=us \
   --rgw-zone=us-east \
+  --endpoints=http://master-rgw-host:80 \
   --master \
   --default
 
@@ -53,7 +55,14 @@ radosgw-admin user create \
   --secret=zone-sync-secret \
   --system
 
-# Save the access and secret keys for the secondary zone
+# Update the master zone with the sync user credentials
+radosgw-admin zone modify \
+  --rgw-zone=us-east \
+  --access-key=zone-sync-key \
+  --secret=zone-sync-secret
+
+# Commit the updated configuration
+radosgw-admin period update --commit
 ```
 
 ## Step 3: Configure the Secondary Zone
