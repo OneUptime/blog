@@ -10,7 +10,7 @@ Description: Configure jumbo frames (MTU 9000) on Ceph cluster networks to reduc
 
 ## Benefits of Jumbo Frames for Ceph
 
-Standard Ethernet MTU (1500 bytes) results in approximately 730 packets per second for each 1 Gbps of Ceph replication traffic. Jumbo frames with MTU 9000 reduce packet count by ~6x, significantly lowering CPU interrupts, NIC driver overhead, and per-packet processing costs.
+Standard Ethernet MTU (1500 bytes) results in approximately 83,000 packets per second for each 1 Gbps of Ceph replication traffic. Jumbo frames with MTU 9000 reduce packet count by ~6x, significantly lowering CPU interrupts, NIC driver overhead, and per-packet processing costs.
 
 Expected benefits:
 - CPU utilization for network processing reduced by 40-60%
