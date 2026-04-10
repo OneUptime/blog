@@ -64,14 +64,19 @@ Output lists all monitored masters:
 
 ```text
 1) name -> auth
-   status -> ok
-   address -> 192.168.1.10:6379
+   ip -> 192.168.1.10
+   port -> 6379
+   flags -> master
    ...
 2) name -> cache
-   status -> ok
+   ip -> 192.168.1.20
+   port -> 6379
+   flags -> master
    ...
 3) name -> sessions
-   status -> ok
+   ip -> 192.168.1.30
+   port -> 6379
+   flags -> master
    ...
 ```
 
