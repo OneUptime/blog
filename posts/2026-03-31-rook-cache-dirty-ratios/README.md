@@ -33,7 +33,7 @@ ceph osd pool set cache-pool cache_target_dirty_high_ratio 0.6
 
 The two thresholds create a graduated response:
 - Below `cache_target_dirty_ratio`: No flushing pressure, normal operation
-- Between the two ratios: Flush begins at normal pace
+- Between the two ratios: Flush begins at a reduced rate
 - Above `cache_target_dirty_high_ratio`: Flush at maximum rate, new writes may be throttled
 
 ## Viewing Current Dirty Object Count
@@ -43,11 +43,11 @@ ceph df detail | grep cache-pool
 ```
 
 ```text
-POOL        STORED   DIRTY   USED
-cache-pool  400 GiB  160 GiB 480 GiB
+POOL        STORED   USED     OBJECTS  DIRTY
+cache-pool  400 GiB  480 GiB  102400   40960
 ```
 
-The `DIRTY` column shows unflushed objects. If it approaches `cache_target_dirty_high_ratio * target_max_bytes`, expect write throttling.
+The `DIRTY` column shows the count of unflushed objects. If the number of dirty objects relative to total objects approaches `cache_target_dirty_high_ratio`, expect write throttling.
 
 ## Calculating Safe Dirty Ratio Values
 
@@ -88,7 +88,9 @@ ceph osd pool stats cache-pool
 ```
 
 ```text
-cache tier io 500 MiB/s flush, 100 MiB/s evict, 200 MiB/s promote
+pool cache-pool id 10
+  client io 200 MiB/s wr, 50 op/s rd, 5.12k op/s wr
+  cache tier io 500 MiB/s flush, 100 op/s evict, 200 op/s promote
 ```
 
 High flush rates indicate the cache is above `cache_target_dirty_ratio` and working to catch up. If flush rate cannot keep pace with write rate, the dirty ratio climbs and eventually causes write throttling.
