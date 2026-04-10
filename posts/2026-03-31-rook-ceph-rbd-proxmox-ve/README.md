@@ -38,9 +38,8 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 Copy the Ceph config and keyring to each Proxmox node:
 
 ```bash
-# Get ceph.conf content
-kubectl -n rook-ceph get secret rook-ceph-config -o jsonpath='{.data.ceph\.conf}' | \
-  base64 -d > /etc/ceph/ceph.conf
+# Get ceph.conf from the toolbox
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- cat /etc/ceph/ceph.conf > /etc/ceph/ceph.conf
 
 # Get client keyring
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
