@@ -46,10 +46,6 @@ Update `config/config.exs` (or `config/runtime.exs` for runtime config):
 ```elixir
 config :my_app, MyAppWeb.Endpoint,
   pubsub_server: MyApp.PubSub
-
-config :my_app, MyApp.PubSub,
-  adapter: Phoenix.PubSub.Redis,
-  url: System.get_env("REDIS_URL") || "redis://localhost:6379"
 ```
 
 Update your `Application` supervisor to start PubSub:
@@ -63,7 +59,7 @@ defmodule MyApp.Application do
     children = [
       {Phoenix.PubSub, name: MyApp.PubSub,
                        adapter: Phoenix.PubSub.Redis,
-                       url: System.get_env("REDIS_URL", "redis://localhost:6379")},
+                       redis_opts: System.get_env("REDIS_URL", "redis://localhost:6379")},
       MyAppWeb.Endpoint
     ]
 
