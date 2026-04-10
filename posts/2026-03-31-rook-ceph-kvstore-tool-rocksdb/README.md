@@ -23,7 +23,7 @@ kubectl -n rook-ceph scale deployment rook-ceph-osd-0 --replicas=0
 # The BlueStore DB can be at a separate device or embedded
 # Check the OSD's kv_backend
 ceph-kvstore-tool bluestore-kv \
-  --osd-data /var/lib/ceph/osd/ceph-0 \
+  /var/lib/ceph/osd/ceph-0 \
   list
 ```
 
@@ -48,7 +48,7 @@ ceph-kvstore-tool rocksdb \
 ceph-kvstore-tool rocksdb \
   /var/lib/ceph/mon/ceph-a/store.db \
   get monmap 1 \
-  > /tmp/monmap-version1.bin
+  out /tmp/monmap-version1.bin
 
 # Decode the monmap
 monmaptool --print /tmp/monmap-version1.bin
@@ -82,10 +82,10 @@ grep "osdmap" /tmp/kvstore-dump.txt | head -20
 ## Repair a Corrupt RocksDB Store
 
 ```bash
-# Attempt RocksDB repair (repairs WAL and SST file corruption)
+# Attempt RocksDB repair (potentially destructive — use as last resort)
 ceph-kvstore-tool rocksdb \
   /var/lib/ceph/mon/ceph-a/store.db \
-  repair
+  destructive-repair
 
 # Verify repair worked by listing keys
 ceph-kvstore-tool rocksdb \
