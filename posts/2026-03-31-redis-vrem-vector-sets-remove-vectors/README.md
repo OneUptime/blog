@@ -10,15 +10,15 @@ Description: Learn how to use the VREM command in Redis vector sets to remove on
 
 ## Introduction
 
-When documents are deleted, products are discontinued, or embeddings need to be refreshed, you need to remove vectors from a Redis vector set. The `VREM` command removes one or more members from a vector set, cleaning up their associated vector data, attributes, and HNSW graph edges. After removal, the deleted members no longer appear in similarity search results.
+When documents are deleted, products are discontinued, or embeddings need to be refreshed, you need to remove vectors from a Redis vector set. The `VREM` command removes a single member from a vector set, cleaning up its associated vector data, attributes, and HNSW graph edges. After removal, the deleted member no longer appears in similarity search results.
 
 ## VREM Syntax
 
 ```redis
-VREM key member [member ...]
+VREM key element
 ```
 
-Returns an integer: the number of members actually removed (members that did not exist are not counted).
+Returns an integer: `1` if the element was removed, or `0` if the element does not exist in the vector set.
 
 ## Prerequisites
 
@@ -28,14 +28,15 @@ Returns an integer: the number of members actually removed (members that did not
 ## Basic Usage
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 product:1
-VADD products 0.8 0.2 0.6 0.4 product:2
-VADD products 0.4 0.5 0.5 0.6 product:3
+VADD products VALUES 4 0.1 0.9 0.3 0.7 product:1
+VADD products VALUES 4 0.8 0.2 0.6 0.4 product:2
+VADD products VALUES 4 0.4 0.5 0.5 0.6 product:3
 
 VCARD products
 # 3
 
 VREM products product:2
+# (integer) 1
 
 VCARD products
 # 2
@@ -43,22 +44,26 @@ VCARD products
 
 ## Removing Multiple Members
 
+Since `VREM` accepts only one element at a time, remove multiple members with separate calls:
+
 ```redis
-VREM products product:1 product:3
-# (integer) 2
+VREM products product:1
+# (integer) 1
+VREM products product:3
+# (integer) 1
 ```
 
 ## Workflow Diagram
 
 ```mermaid
 flowchart TD
-    A[VREM key member...] --> B[Remove vector data]
-    B --> C[Remove JSON attribute if set]
-    C --> D[Update HNSW graph edges]
-    D --> E{Any members removed?}
-    E -- Yes --> F[Return count removed]
-    E -- No members found --> G[Return 0]
-    F --> H[Members no longer appear in VSIM]
+    A[VREM key element] --> B{Element exists?}
+    B -- Yes --> C[Remove vector data]
+    C --> D[Remove JSON attribute if set]
+    D --> E[Update HNSW graph edges]
+    E --> F[Return 1]
+    F --> G[Element no longer appears in VSIM]
+    B -- No --> H[Return 0]
 ```
 
 ## Using VREM in Python
@@ -71,17 +76,18 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 # Setup
 for i in range(5):
     vec = [str(i * 0.1 + 0.05 * j) for j in range(4)]
-    r.execute_command("VADD", "products", *vec, f"product:{i}")
+    r.execute_command("VADD", "products", "VALUES", "4", *vec, f"product:{i}")
 
 print("Before:", r.execute_command("VCARD", "products"))  # 5
 
 # Remove a single member
 removed = r.execute_command("VREM", "products", "product:2")
-print(f"Removed {removed} member(s)")
+print(f"Removed: {removed}")  # 1
 
-# Remove multiple members
-removed = r.execute_command("VREM", "products", "product:0", "product:4")
-print(f"Removed {removed} member(s)")
+# Remove multiple members one at a time
+for member in ["product:0", "product:4"]:
+    removed = r.execute_command("VREM", "products", member)
+    print(f"Removed {member}: {removed}")
 
 print("After:", r.execute_command("VCARD", "products"))  # 2
 ```
@@ -92,18 +98,21 @@ print("After:", r.execute_command("VCARD", "products"))  # 2
 const Redis = require("ioredis");
 const redis = new Redis();
 
-async function removeVectors(key, ...members) {
-  return redis.call("VREM", key, ...members);
+async function removeVector(key, member) {
+  return redis.call("VREM", key, member);
 }
 
 // Setup
 for (let i = 0; i < 5; i++) {
   const vec = [i * 0.1, i * 0.2, i * 0.3, i * 0.4].map(String);
-  await redis.call("VADD", "products", ...vec, `product:${i}`);
+  await redis.call("VADD", "products", "VALUES", "4", ...vec, `product:${i}`);
 }
 
-const removed = await removeVectors("products", "product:1", "product:3");
-console.log(`Removed: ${removed}`);  // 2
+// Remove multiple members one at a time
+for (const member of ["product:1", "product:3"]) {
+  const removed = await removeVector("products", member);
+  console.log(`Removed ${member}: ${removed}`);  // 1
+}
 
 const remaining = await redis.call("VCARD", "products");
 console.log(`Remaining: ${remaining}`);  // 3
@@ -118,7 +127,11 @@ def batch_remove(r, key, members, batch_size=500):
     total_removed = 0
     for i in range(0, len(members), batch_size):
         batch = members[i:i + batch_size]
-        removed = r.execute_command("VREM", key, *batch)
+        pipe = r.pipeline()
+        for member in batch:
+            pipe.execute_command("VREM", key, member)
+        results = pipe.execute()
+        removed = sum(results)
         total_removed += removed
         print(f"Batch {i // batch_size + 1}: removed {removed}")
     return total_removed
@@ -136,11 +149,11 @@ To update a vector (e.g. re-encode a document with a new embedding model), remov
 def update_vector(r, key, member, new_vector, new_attrs=None):
     r.execute_command("VREM", key, member)
     vec_args = [str(v) for v in new_vector]
-    cmd = ["VADD", key]
+    cmd = ["VADD", key, "VALUES", str(len(new_vector))]
+    cmd += vec_args + [member]
     if new_attrs:
         import json
         cmd += ["SETATTR", json.dumps(new_attrs)]
-    cmd += vec_args + [member]
     r.execute_command(*cmd)
 ```
 
@@ -152,8 +165,7 @@ Alternatively, calling `VADD` on an existing member updates its vector in place 
 # Confirm removed member no longer appears in results
 query_vec = ["0.8", "0.2", "0.6", "0.4"]
 results = r.execute_command("VSIM", "products", "VALUES", "4", *query_vec, "COUNT", 10)
-members_in_results = results[::2]
-assert "product:2" not in members_in_results, "Deleted member still appearing in search!"
+assert "product:2" not in results, "Deleted member still appearing in search!"
 print("Removal verified -- deleted member not in search results")
 ```
 
@@ -171,8 +183,6 @@ No error is returned. The count reflects only the members that actually existed.
 When syncing deletes from a primary database:
 
 ```python
-import time
-
 def sync_deletes(r, key, deleted_ids):
     # Group by batch for efficiency
     pipe = r.pipeline()
@@ -186,4 +196,4 @@ def sync_deletes(r, key, deleted_ids):
 
 ## Summary
 
-`VREM` removes one or more members from a Redis vector set, cleaning up their vector data, attributes, and HNSW graph edges. It returns the count of successfully removed members (0 for non-existent members without error). Use batch processing for large-scale deletions, and either `VREM` + `VADD` or a direct `VADD` for updates. After removal, the member is immediately excluded from all subsequent `VSIM` search results.
+`VREM` removes a single member from a Redis vector set, cleaning up its vector data, attributes, and HNSW graph edges. It returns `1` if the member was removed, or `0` if it did not exist (without error). Use pipelines with batch processing for large-scale deletions, and either `VREM` + `VADD` or a direct `VADD` for updates. After removal, the member is immediately excluded from all subsequent `VSIM` search results.
