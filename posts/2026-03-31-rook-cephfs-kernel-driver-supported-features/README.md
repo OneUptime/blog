@@ -73,12 +73,15 @@ kubectl -n rook-ceph logs -l app=rook-ceph-mds --tail=50 | \
 Ceph Nautilus introduced msgr2 (messenger v2 protocol) with encryption support. To check if your kernel supports it:
 
 ```bash
+# Extract the raw key from the keyring into a secret file
+ceph-authtool --name client.admin /etc/ceph/ceph.client.admin.keyring --print-key > /etc/ceph/admin.secret
+
 # Try mounting with msgr2
 mount -t ceph 192.168.1.10:3300:/ /mnt/cephfs \
-  -o name=admin,secretfile=/etc/ceph/ceph.client.admin.keyring,ms_mode=prefer-crc
+  -o name=admin,secretfile=/etc/ceph/admin.secret,ms_mode=prefer-crc
 ```
 
-Port 3300 is the msgr2 port. If the mount fails, your kernel may not support msgr2.
+Port 3300 is the msgr2 port. The `secretfile` option requires a file containing only the raw base64-encoded key, not a full keyring file. If the mount fails, your kernel may not support msgr2.
 
 ## Use FUSE as a Fallback
 
