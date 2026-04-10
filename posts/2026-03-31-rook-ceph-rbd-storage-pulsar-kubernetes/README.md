@@ -73,46 +73,74 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Deploying Pulsar with the StreamNative Operator
 
+The StreamNative Pulsar Operator uses separate CRDs for each component:
+
 ```yaml
-apiVersion: pulsar.streamnative.io/v1alpha1
-kind: PulsarCluster
+apiVersion: zookeeper.streamnative.io/v1alpha1
+kind: ZooKeeperCluster
 metadata:
-  name: pulsar
+  name: pulsar-zk
   namespace: messaging
 spec:
-  zookeeper:
-    replicas: 3
-    storageClassName: rook-ceph-pulsar-zookeeper
-    dataVolumeClaimSpec:
+  replicas: 3
+  persistence:
+    reclaimPolicy: Retain
+    data:
+      accessModes: [ReadWriteOnce]
+      storageClassName: rook-ceph-pulsar-zookeeper
       resources:
         requests:
           storage: 20Gi
-  bookkeeper:
-    replicas: 3
-    storageClassName: rook-ceph-pulsar-bookkeeper
-    journalVolumeClaimSpec:
-      resources:
-        requests:
-          storage: 50Gi
-    ledgersVolumeClaimSpec:
-      resources:
-        requests:
-          storage: 200Gi
-  broker:
-    replicas: 3
-    config:
-      managedLedgerDefaultEnsembleSize: 3
-      managedLedgerDefaultWriteQuorum: 3
-      managedLedgerDefaultAckQuorum: 2
+---
+apiVersion: bookkeeper.streamnative.io/v1alpha1
+kind: BookKeeperCluster
+metadata:
+  name: pulsar-bk
+  namespace: messaging
+spec:
+  replicas: 3
+  storage:
+    reclaimPolicy: Retain
+    journal:
+      numDirsPerVolume: 1
+      numVolumes: 1
+      volumeClaimTemplate:
+        accessModes: [ReadWriteOnce]
+        storageClassName: rook-ceph-pulsar-bookkeeper
+        resources:
+          requests:
+            storage: 50Gi
+    ledger:
+      numDirsPerVolume: 1
+      numVolumes: 1
+      volumeClaimTemplate:
+        accessModes: [ReadWriteOnce]
+        storageClassName: rook-ceph-pulsar-bookkeeper
+        resources:
+          requests:
+            storage: 200Gi
+---
+apiVersion: pulsar.streamnative.io/v1alpha1
+kind: PulsarBroker
+metadata:
+  name: pulsar-broker
+  namespace: messaging
+spec:
+  replicas: 3
+  config:
+    managedLedgerDefaultEnsembleSize: "3"
+    managedLedgerDefaultWriteQuorum: "3"
+    managedLedgerDefaultAckQuorum: "2"
 ```
 
 ## Setting Up Tiered Storage with Ceph RGW
 
-Configure Pulsar to offload old ledgers to Ceph S3:
+Configure Pulsar to offload old ledgers to Ceph S3. S3 credentials must be provided via environment variables (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) on the broker pods, not through broker config properties:
 
 ```yaml
 broker:
@@ -120,10 +148,8 @@ broker:
     managedLedgerOffloadDriver: aws-s3
     s3ManagedLedgerOffloadBucket: pulsar-offload
     s3ManagedLedgerOffloadRegion: us-east-1
-    s3ManagedLedgerOffloadServiceEndpoint: http://rook-ceph-rgw.rook-ceph.svc.cluster.local
-    s3ManagedLedgerOffloadCredentialId: pulsar-access-key
-    s3ManagedLedgerOffloadCredentialSecret: pulsar-secret-key
-    managedLedgerOffloadThresholdInBytes: 10737418240
+    s3ManagedLedgerOffloadServiceEndpoint: http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
+    managedLedgerOffloadAutoTriggerSizeThresholdBytes: 10737418240
     managedLedgerOffloadDeletionLagMs: 14400000
 ```
 
