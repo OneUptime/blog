@@ -10,7 +10,7 @@ Description: Configure NFS security options in Rook including Kerberos authentic
 
 ## NFS Security in Rook-Ceph
 
-Rook exposes Ceph NFS (via NFS-Ganesha) through the `CephNFS` CRD. By default, NFS exports use IP-based access control with `no_root_squash` disabled. For production environments, you should configure proper security: restrict client access by IP or hostname, apply user ID mapping (squash), and optionally enable Kerberos for encrypted and authenticated sessions.
+Rook exposes Ceph NFS (via NFS-Ganesha) through the `CephNFS` CRD. By default, NFS exports use IP-based access control and root squash is not applied (`no_root_squash`). For production environments, you should configure proper security: restrict client access by IP or hostname, apply user ID mapping (squash), and optionally enable Kerberos for encrypted and authenticated sessions.
 
 ## Configuring Export-Level Access Control
 
@@ -25,7 +25,7 @@ kubectl -n rook-ceph exec -it <toolbox-pod> -- \
     --pseudo-path /exports/secure \
     --fsname myfs \
     --path / \
-    --client-addr 10.0.1.0/24
+    --client_addr 10.0.1.0/24
 ```
 
 Only clients in the `10.0.1.0/24` subnet will be allowed to mount that export.
@@ -85,16 +85,29 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: nfs-ganesha
-    namespace: nfs-ns
   server:
     active: 2
     logLevel: NIV_EVENT
   security:
-    kerberosPrincipalName: nfs/nfs.example.com@EXAMPLE.COM
+    kerberos:
+      principalName: nfs
+      configFiles:
+        volumeSource:
+          configMap:
+            name: krb5-config
+      keytabFile:
+        volumeSource:
+          secret:
+            secretName: nfs-keytab
+            defaultMode: 0600
     sssd:
-      enabled: true
+      sidecar:
+        image: registry.access.redhat.com/rhel7/sssd:latest
+        sssdConfigFile:
+          volumeSource:
+            configMap:
+              name: sssd-config
+              defaultMode: 0600
 ```
 
 ## Restricting Transport and Protocol Versions
