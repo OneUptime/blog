@@ -43,8 +43,7 @@ radosgw-admin zone create \
 # Configure AWS S3 as the cloud endpoint
 radosgw-admin zone modify \
   --rgw-zone=aws-s3-zone \
-  --tier-config=connection.id=aws-main,\
-connection.endpoint=https://s3.amazonaws.com,\
+  --tier-config=connection.endpoint=https://s3.amazonaws.com,\
 connection.access_key=AWS_ACCESS_KEY_ID,\
 connection.secret=AWS_SECRET_ACCESS_KEY,\
 connection.region=us-east-1,\
@@ -66,11 +65,10 @@ radosgw-admin zone modify \
   --tier-config=multipart_sync_threshold=33554432,\
 multipart_min_part_size=33554432
 
-# Restrict sync to specific buckets
+# Set the S3 storage class for synced objects
 radosgw-admin zone modify \
   --rgw-zone=aws-s3-zone \
-  --tier-config=retain_head_object=false,\
-target_storage_class=STANDARD_IA
+  --tier-config=connection.storage_class=STANDARD_IA
 ```
 
 ## Step 4 - Set Up the Cloud Sync Zone RGW Instance
@@ -120,12 +118,10 @@ radosgw-admin datalog list --max-entries=10 \
 ## Step 6 - Configure Storage Class Mapping
 
 ```bash
-# Map Ceph storage classes to S3 storage classes
+# Set the S3 storage class for synced objects to Glacier
 radosgw-admin zone modify \
   --rgw-zone=aws-s3-zone \
-  --tier-config=\
-"connections[].access_key=AWS_ACCESS_KEY_ID,\
-connections[].target_storage_class=GLACIER"
+  --tier-config=connection.storage_class=GLACIER
 
 # Verify the zone tier config
 radosgw-admin zone get --rgw-zone=aws-s3-zone | jq '.tier_config'
