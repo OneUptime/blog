@@ -188,7 +188,7 @@ For a million data points:
 - Storing all values: ~4 MB (float32)
 - T-Digest (default): ~6 KB
 
-That is 700x less memory with accuracy within 1% at P99.
+That is roughly 667x less memory with accuracy within 1% at P99.
 
 ## Summary
 
