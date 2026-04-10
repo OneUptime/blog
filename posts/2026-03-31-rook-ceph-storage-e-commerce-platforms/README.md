@@ -163,4 +163,4 @@ rate(ceph_rgw_failed_req[1m]) / rate(ceph_rgw_req[1m]) * 100 > 0.1
 
 ## Summary
 
-Ceph on Rook provides a unified storage platform for e-commerce applications: RGW S3 for product image hosting with public bucket policies and CDN integration, RBD block storage for order databases and session caches, and lifecycle policies for automated management of order archives. During high-traffic events, scaling up RGW instances and monitoring request rates ensures storage keeps pace with demand.
+Ceph on Rook provides a unified storage platform for e-commerce applications: RGW S3 for product image hosting with public bucket policies and CDN integration, and RBD block storage for order databases and session caches. During high-traffic events, scaling up RGW instances and monitoring request rates ensures storage keeps pace with demand.
