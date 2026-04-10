@@ -46,7 +46,7 @@ check_redis() {
 
 check_memory() {
   local used max
-  used=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INFO memory | grep "used_memory:" | cut -d: -f2 | tr -d '\r')
+  used=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" INFO memory | grep "^used_memory:" | cut -d: -f2 | tr -d '\r')
   max=$(redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" CONFIG GET maxmemory | tail -1)
   echo "Memory used: $((used / 1024 / 1024))MB, max: $((max / 1024 / 1024))MB"
 }
@@ -64,14 +64,13 @@ DATE=$(date +%Y%m%d-%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
-# Trigger background save
+# Record last save time and trigger background save
+BEFORE=$(redis-cli LASTSAVE)
 redis-cli BGSAVE
 sleep 2
 
 # Wait for save to complete
-while [ "$(redis-cli LASTSAVE)" = "$(redis-cli LASTSAVE)" ]; do
-  STATUS=$(redis-cli INFO persistence | grep "rdb_bgsave_in_progress" | cut -d: -f2 | tr -d '\r')
-  [ "$STATUS" = "0" ] && break
+while [ "$(redis-cli LASTSAVE)" = "$BEFORE" ]; do
   sleep 1
 done
 
@@ -94,11 +93,11 @@ PATTERN="${1:-temp:*}"
 BATCH_SIZE=1000
 COUNT=0
 
-redis-cli --scan --pattern "$PATTERN" | while IFS= read -r key; do
+while IFS= read -r key; do
   redis-cli DEL "$key" > /dev/null
   COUNT=$((COUNT + 1))
   [ $((COUNT % BATCH_SIZE)) -eq 0 ] && echo "Deleted $COUNT keys..."
-done
+done < <(redis-cli --scan --pattern "$PATTERN")
 
 echo "Done. Total deleted: $COUNT keys matching '$PATTERN'"
 ```
