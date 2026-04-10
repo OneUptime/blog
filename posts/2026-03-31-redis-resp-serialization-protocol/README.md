@@ -119,7 +119,7 @@ def parse_resp(data):
         if count == -1:
             return None                    # Null array
         # Parse sub-elements (simplified)
-        return [lines[i*2+1].decode() for i in range(count)]
+        return [lines[i*2+2].decode() for i in range(count)]
 
 def send_command(host, port, *args):
     cmd = f"*{len(args)}\r\n"
@@ -139,7 +139,7 @@ print(parse_resp(response))
 RESP3 adds new data types for richer communication:
 
 ```text
-| Map          (dictionary responses, used by HGETALL in RESP3)
+% Map          (dictionary responses, used by HGETALL in RESP3)
 ~ Set          (set responses)
 > Push         (server-pushed data, used by CLIENT TRACKING)
 , Double
