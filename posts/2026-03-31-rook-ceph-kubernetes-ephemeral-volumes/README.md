@@ -14,7 +14,7 @@ Kubernetes supports several types of ephemeral volumes. Generic ephemeral volume
 
 ## How Generic Ephemeral Volumes Work
 
-Unlike `emptyDir`, generic ephemeral volumes are backed by real persistent storage (in this case, Ceph). The kubelet creates a PVC named `<pod-name>-<volume-name>` automatically when scheduling the Pod.
+Unlike `emptyDir`, generic ephemeral volumes are backed by real persistent storage (in this case, Ceph). The kube-controller-manager creates a PVC named `<pod-name>-<volume-name>` automatically when the Pod is created.
 
 ## Using Ceph RBD for Ephemeral Volumes
 
@@ -71,8 +71,8 @@ spec:
             volumeClaimTemplate:
               spec:
                 accessModes:
-                  - ReadWriteOnce
-                storageClassName: rook-ceph-block
+                  - ReadWriteMany
+                storageClassName: rook-ceph-filesystem
                 resources:
                   requests:
                     storage: 200Gi
@@ -120,4 +120,4 @@ CSI ephemeral  - Driver-specific, not all drivers support it
 
 ## Summary
 
-Kubernetes generic ephemeral volumes backed by Ceph combine the convenience of automatically managed storage with the durability and capacity of a distributed storage system. The kubelet handles PVC creation and deletion transparently, making ephemeral Ceph volumes ideal for batch jobs, ML training pipelines, and any workload needing significant scratch space without manual PVC lifecycle management.
+Kubernetes generic ephemeral volumes backed by Ceph combine the convenience of automatically managed storage with the durability and capacity of a distributed storage system. The kube-controller-manager handles PVC creation and deletion transparently, making ephemeral Ceph volumes ideal for batch jobs, ML training pipelines, and any workload needing significant scratch space without manual PVC lifecycle management.
