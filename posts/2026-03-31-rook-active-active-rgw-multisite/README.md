@@ -53,11 +53,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --secret=sync-secret
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin realm default --rgw-realm=mycompany
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zone create \
   --rgw-zonegroup=us \
   --rgw-zone=us-west \
   --access-key=sync-key \
-  --secret-key=sync-secret \
+  --secret=sync-secret \
   --endpoints=http://rgw-us-west:80
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
