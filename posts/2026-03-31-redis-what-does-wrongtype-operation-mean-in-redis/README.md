@@ -113,9 +113,9 @@ r = redis.Redis()
 def safe_lpush(key, value):
     key_type = r.type(key)
     if key_type == b'none':
-        r.rpush(key, value)
+        r.lpush(key, value)
     elif key_type == b'list':
-        r.rpush(key, value)
+        r.lpush(key, value)
     else:
         raise ValueError(f"Key {key} is type {key_type}, expected list")
 ```
