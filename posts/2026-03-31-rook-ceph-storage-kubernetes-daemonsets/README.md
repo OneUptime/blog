@@ -53,7 +53,7 @@ spec:
     spec:
       containers:
       - name: collector
-        image: fluentbit:latest
+        image: fluent/fluent-bit:latest
         volumeMounts:
         - name: shared-logs
           mountPath: /output
@@ -124,9 +124,9 @@ spec:
 # Check all DaemonSet pods
 kubectl get pods -l app=log-collector -o wide
 
-# Verify volume usage
+# Verify CephFS volume usage
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph df detail | grep agent-shared
+  ceph fs status
 ```
 
 ## Summary
