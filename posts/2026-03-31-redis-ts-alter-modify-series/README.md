@@ -31,7 +31,6 @@ TS.ALTER key
   [RETENTION retentionPeriod]
   [CHUNK_SIZE chunkSize]
   [DUPLICATE_POLICY policy]
-  [IGNORE ignoreMaxTimediff ignoreMaxValDiff]
   [LABELS {label value}...]
 ```
 
@@ -136,7 +135,7 @@ Trim retention when memory is constrained:
 TS.ALTER verbose:metrics RETENTION 3600000
 ```
 
-This immediately causes Redis to purge data older than 1 hour.
+Data older than 1 hour will be purged on the next write operation to this series.
 
 ### Fixing a Misconfigured Duplicate Policy
 
@@ -182,7 +181,7 @@ Always prefer `TS.ALTER` when modifying configuration on a series that already c
 
 ## Performance Considerations
 
-- `TS.ALTER` with a shorter retention period immediately triggers deletion of expired chunks.
+- `TS.ALTER` with a shorter retention period does not immediately delete expired chunks; they are pruned on the next write operation to the series.
 - Label updates are O(number of labels) and do not affect stored data.
 - Chunk size changes take effect for new chunks only; existing chunks retain their original size.
 
