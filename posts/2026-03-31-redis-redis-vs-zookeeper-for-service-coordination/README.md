@@ -52,6 +52,7 @@ class ServiceRegistry:
         self.key = f"service:{service_name}:{address}"
         self.address = address
         self.ttl = ttl
+        self._stop_event = threading.Event()
         self._heartbeat_thread = None
 
     def register(self):
@@ -62,14 +63,13 @@ class ServiceRegistry:
     def deregister(self):
         r.delete(self.key)
         r.publish("service:deregistered", self.key)
-        if self._heartbeat_thread:
-            self._heartbeat_thread.cancel()
+        self._stop_event.set()
 
     def _start_heartbeat(self):
         def refresh():
-            while True:
+            while not self._stop_event.is_set():
                 r.expire(self.key, self.ttl)
-                time.sleep(self.ttl // 2)
+                self._stop_event.wait(self.ttl // 2)
         t = threading.Thread(target=refresh, daemon=True)
         t.start()
         self._heartbeat_thread = t
@@ -167,7 +167,7 @@ pubsub.psubscribe('__keyevent@0__:*')
 
 for message in pubsub.listen():
     if message['type'] == 'pmessage':
-        event = message['channel'].decode().split(':')[2]
+        event = message['channel'].decode().split(':')[1]
         key = message['data'].decode()
         print(f"Event: {event} on key: {key}")
 ```
