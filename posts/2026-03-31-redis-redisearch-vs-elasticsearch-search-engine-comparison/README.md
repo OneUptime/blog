@@ -42,7 +42,7 @@ FT.CREATE idx:articles_json ON JSON PREFIX 1 "article:" \
 curl -X PUT "localhost:9200/articles" -H 'Content-Type: application/json' -d '{
   "mappings": {
     "properties": {
-      "title":   { "type": "text", "boost": 3.0 },
+      "title":   { "type": "text" },
       "body":    { "type": "text" },
       "author":  { "type": "keyword" },
       "tags":    { "type": "keyword" },
@@ -169,6 +169,7 @@ Elasticsearch has more advanced text analysis with custom analyzers, language-sp
         }
       },
       "filter": {
+        "english_stop": { "type": "stop", "stopwords": "_english_" },
         "my_synonyms": {
           "type": "synonym",
           "synonyms": ["redis, redis db", "elastic, elasticsearch"]
@@ -186,7 +187,8 @@ RediSearch supports stemming and stopwords but with fewer built-in options:
 # Create index with language-specific stemming
 FT.CREATE idx:en ON HASH PREFIX 1 "doc:" \
   LANGUAGE english \
-  SCHEMA body TEXT LANGUAGE_FIELD lang
+  LANGUAGE_FIELD lang \
+  SCHEMA body TEXT
 ```
 
 ## Operational Comparison
@@ -209,7 +211,7 @@ RediSearch benchmarks typically show sub-millisecond latency for cached datasets
 ```bash
 # RediSearch benchmark
 redis-benchmark -n 50000 -c 20 \
-  --command "FT.SEARCH idx:articles 'redis' LIMIT 0 10"
+  FT.SEARCH idx:articles "redis" LIMIT 0 10
 # p99: 1-3ms for ~1M documents in memory
 ```
 
