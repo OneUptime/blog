@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Elixir, Redix, Connection Pooling, OTP
 
-Description: Connect to Redis from Elixir using Redix, manage connection pools with Redix.ConnectionPool, and run commands in a supervised OTP application.
+Description: Connect to Redis from Elixir using Redix, manage connection pools with multiple named connections, and run commands in a supervised OTP application.
 
 ---
 
 ## Introduction
 
-`Redix` is a low-level, fast Redis client for Elixir. It provides direct Redis protocol support and integrates naturally with OTP supervision trees. For production use, `Redix.ConnectionPool` manages a pool of connections so concurrent processes do not contend for a single connection. This guide covers single connections, pooling, and pipeline commands.
+`Redix` is a low-level, fast Redis client for Elixir. It provides direct Redis protocol support and integrates naturally with OTP supervision trees. For production use, you can start multiple named Redix connections to form a pool so concurrent processes do not contend for a single connection. This guide covers single connections, pooling, and pipeline commands.
 
 ## Adding Dependencies
 
@@ -79,22 +79,34 @@ Redix.command(:redix, ["GET", "greeting"])
 
 ## Connection Pooling
 
-Use a pool of connections for concurrent workloads:
+Redix does not include a built-in pool module. The recommended approach is to start multiple named Redix connections and select one at random:
 
 ```elixir
-children = [
-  {Redix.ConnectionPool, [
-    url: "redis://localhost:6379",
-    name: :redix_pool,
-    pool_size: 10,
-  ]},
-]
+# lib/my_app/application.ex
+pool_size = 5
+
+children =
+  for i <- 0..(pool_size - 1) do
+    {Redix, {"redis://localhost:6379", [name: :"redix_#{i}"]}}
+  end
+
+opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+Supervisor.start_link(children, opts)
 ```
 
 ```elixir
-# Use the pool from any process
-Redix.ConnectionPool.command(:redix_pool, ["SET", "key", "value"])
-{:ok, val} = Redix.ConnectionPool.command(:redix_pool, ["GET", "key"])
+# Pick a random connection from the pool
+defmodule MyApp.Redix do
+  @pool_size 5
+
+  def command(command) do
+    Redix.command(:"redix_#{Enum.random(0..(@pool_size - 1))}", command)
+  end
+
+  def pipeline(commands) do
+    Redix.pipeline(:"redix_#{Enum.random(0..(@pool_size - 1))}", commands)
+  end
+end
 ```
 
 ## Pipelining Commands
@@ -167,4 +179,4 @@ end
 
 ## Summary
 
-Redix is a lightweight, protocol-compliant Redis client for Elixir that integrates with OTP supervision trees. Starting Redix as a named child process allows any module in the application to issue commands via `Redix.command/3`. For concurrent applications, `Redix.ConnectionPool` manages multiple connections transparently. Pipeline commands with `Redix.pipeline/3` reduce round-trip latency when multiple operations must execute in sequence.
+Redix is a lightweight, protocol-compliant Redis client for Elixir that integrates with OTP supervision trees. Starting Redix as a named child process allows any module in the application to issue commands via `Redix.command/3`. For concurrent applications, start multiple named Redix connections and select one at random to distribute load. Pipeline commands with `Redix.pipeline/3` reduce round-trip latency when multiple operations must execute in sequence.
