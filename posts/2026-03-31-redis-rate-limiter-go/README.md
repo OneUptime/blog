@@ -99,7 +99,7 @@ func (l *SlidingWindowLimiter) Allow(ctx context.Context, clientID string) (bool
 func RateLimitMiddleware(limiter *SlidingWindowLimiter) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            clientIP := r.RemoteAddr
+            clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
 
             allowed, err := limiter.Allow(r.Context(), clientIP)
             if err != nil {
