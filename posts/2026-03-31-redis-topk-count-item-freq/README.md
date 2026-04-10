@@ -16,7 +16,7 @@ Description: Learn how to use TOPK.COUNT in Redis to retrieve the estimated freq
 TOPK.COUNT key item [item ...]
 ```
 
-Returns an array of estimated counts. The count is an approximation - the Top-K structure uses probabilistic algorithms, so counts may be slightly over-estimated but will never be under-estimated.
+Returns an array of estimated counts. The count is an approximation - the Top-K structure uses probabilistic algorithms, so counts may be slightly under-estimated but will never be higher than the real count.
 
 ## Basic Example
 
@@ -122,4 +122,4 @@ Use `TOPK.COUNT` when you need to query specific items by name, especially items
 
 ## Summary
 
-`TOPK.COUNT` provides estimated frequency lookups for individual items in a Redis Top-K structure. It's useful for spot-checking item frequencies, building comparison dashboards, and verifying how close an item is to entering or re-entering the top K. Since the counts are probabilistic estimates, they may be slightly over-estimated but provide a reliable lower bound on actual frequencies.
+`TOPK.COUNT` provides estimated frequency lookups for individual items in a Redis Top-K structure. It's useful for spot-checking item frequencies, building comparison dashboards, and verifying how close an item is to entering or re-entering the top K. Since the counts are probabilistic estimates, they will never exceed the actual count but may be slightly lower, providing a reliable lower bound on actual frequencies.
