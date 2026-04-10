@@ -55,10 +55,14 @@ producer.send(new ProducerRecord<>("orders", "user-42",
 
 ```java
 // Consumer
-props.put("group.id", "fulfillment");
-props.put("enable.auto.commit", "false");
+Properties consumerProps = new Properties();
+consumerProps.put("bootstrap.servers", "localhost:9092");
+consumerProps.put("group.id", "fulfillment");
+consumerProps.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+consumerProps.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+consumerProps.put("enable.auto.commit", "false");
 
-Consumer<String, String> consumer = new KafkaConsumer<>(props);
+Consumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
 consumer.subscribe(Collections.singletonList("orders"));
 
 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(5000));
@@ -119,7 +123,7 @@ def process_with_dlq(client, stream, group, worker, dlq_stream):
                 client.xack(stream, group, msg_id)
 ```
 
-Kafka - configure `dead.letter.queue.topic.name` via Kafka Connect or handle in consumer logic.
+Kafka - configure `errors.deadletterqueue.topic.name` via Kafka Connect or handle in consumer logic.
 
 ## When to Choose Redis Streams
 
