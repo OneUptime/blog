@@ -57,6 +57,7 @@ In `config/database.php`, add a dedicated Redis connection to isolate session da
     'default' => [
         'url'      => env('REDIS_URL'),
         'host'     => env('REDIS_HOST', '127.0.0.1'),
+        'password' => env('REDIS_PASSWORD'),
         'port'     => env('REDIS_PORT', '6379'),
         'database' => env('REDIS_DB', '0'),
     ],
@@ -64,6 +65,7 @@ In `config/database.php`, add a dedicated Redis connection to isolate session da
     'session' => [
         'url'      => env('REDIS_URL'),
         'host'     => env('REDIS_HOST', '127.0.0.1'),
+        'password' => env('REDIS_PASSWORD'),
         'port'     => env('REDIS_PORT', '6379'),
         'database' => env('REDIS_SESSION_DB', '1'), // Separate DB for sessions
     ],
@@ -125,22 +127,27 @@ class CheckoutController extends Controller
 ## Inspecting Sessions in Redis
 
 ```bash
-# List all session keys
-redis-cli keys "laravel:*"
+# List all session keys (use -n 1 to select the session database)
+redis-cli -n 1 keys "*"
 
-# Get a specific session value
-redis-cli get "laravel:<session-id>"
+# Get a specific session value (prefix depends on REDIS_PREFIX config)
+redis-cli -n 1 get "laravel_database_<session-id>"
 
 # Check session TTL
-redis-cli ttl "laravel:<session-id>"
+redis-cli -n 1 ttl "laravel_database_<session-id>"
 ```
 
 ## Configuring Session Prefix
 
-In `config/cache.php`, set the Redis prefix to separate session keys from cache keys:
+In `config/database.php`, set the Redis prefix inside the `redis.options` block:
 
 ```php
-'prefix' => env('REDIS_PREFIX', 'laravel_session:'),
+'redis' => [
+    'options' => [
+        'prefix' => env('REDIS_PREFIX', 'laravel_database_'),
+    ],
+    // ...connections
+],
 ```
 
 ## Clearing All Sessions
@@ -152,13 +159,8 @@ class AdminController extends Controller
 {
     public function clearAllSessions()
     {
-        // Get all session keys and delete them
-        $prefix = config('database.redis.options.prefix', 'laravel_session:');
-        $keys = Redis::connection('session')->keys("{$prefix}*");
-
-        if ($keys) {
-            Redis::connection('session')->del($keys);
-        }
+        // Flush the dedicated session database (DB 1)
+        Redis::connection('session')->flushdb();
 
         return response()->json(['message' => 'All sessions cleared']);
     }
