@@ -44,8 +44,8 @@ On the OpenNebula frontend and all compute hosts:
 apt-get install -y ceph-common
 
 # Copy ceph.conf from Rook cluster
-kubectl -n rook-ceph get secret rook-ceph-config \
-  -o jsonpath='{.data.ceph\.conf}' | base64 -d > /etc/ceph/ceph.conf
+kubectl -n rook-ceph get configmap rook-ceph-config \
+  -o jsonpath='{.data.ceph\.conf}' > /etc/ceph/ceph.conf
 
 # Copy keyring
 scp ceph.client.oneadmin.keyring each-host:/etc/ceph/
@@ -68,7 +68,7 @@ DISK_TYPE = "RBD"
 POOL_NAME = "one"
 CEPH_HOST = "mon-a:6789 mon-b:6789 mon-c:6789"
 CEPH_USER = "oneadmin"
-CEPH_KEY  = "/etc/ceph/ceph.client.oneadmin.keyring"
+CEPH_SECRET = "<libvirt-secret-uuid>"
 RESTRICTED_DIRS = "/"
 SAFE_DIRS       = "/tmp"
 BRIDGE_LIST = "compute-node-1 compute-node-2"
@@ -122,8 +122,8 @@ onevm migrate --live 5 compute-node-2
 # Create disk snapshot
 onevm disk-snapshot-create 5 0 "before-update"
 
-# List snapshots
-onevm disk-snapshot-list 5 0
+# List snapshots (shown under each disk's snapshot section)
+onevm show 5
 
 # Revert to snapshot
 onevm disk-snapshot-revert 5 0 0
@@ -131,4 +131,4 @@ onevm disk-snapshot-revert 5 0 0
 
 ## Summary
 
-OpenNebula's RBD datastore driver leverages Ceph's native capabilities for VM storage, providing instant image cloning from templates, live migration without data movement, and persistent disk snapshots. Configuring the `ceph` transport manager ensures that disk operations stay efficient and cluster-wide resources are managed through a familiar OpenNebula workflow.
+OpenNebula's RBD datastore driver leverages Ceph's native capabilities for VM storage, providing instant image cloning from templates, live migration without data movement, and persistent disk snapshots. Configuring the `ceph` transfer manager ensures that disk operations stay efficient and cluster-wide resources are managed through a familiar OpenNebula workflow.
