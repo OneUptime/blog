@@ -10,7 +10,7 @@ Description: Learn how to calculate the correct number of Placement Groups for a
 
 ## Why PG Count Matters
 
-Placement Groups (PGs) are the fundamental unit of data distribution in Ceph. Each pool is divided into a fixed number of PGs, and each PG maps to a set of OSDs. Too few PGs causes uneven data distribution and slow recovery. Too many PGs wastes memory (each PG consumes roughly 10 KB of RAM per OSD) and increases CPU overhead.
+Placement Groups (PGs) are the fundamental unit of data distribution in Ceph. Each pool is divided into a fixed number of PGs, and each PG maps to a set of OSDs. Too few PGs causes uneven data distribution and slow recovery. Too many PGs wastes memory (each PG consumes roughly 100 KB or more of RAM per OSD, depending on workload) and increases CPU overhead.
 
 The ideal PG count depends on the number of OSDs, the replication factor, and the number of pools sharing those OSDs.
 
@@ -96,14 +96,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Checking PGs Per OSD
 
-Verify you stay within the recommended 100-250 PGs per OSD:
+Verify you stay near the target of 100 PGs per OSD (Ceph issues a health warning above 250):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd df | awk '{print $1, $14}' | head -20
+  ceph osd df
 ```
 
-If any OSD is above 250, reduce PG count or add more OSDs.
+Check the `PGS` column in the output. If any OSD is well above 200, consider reducing PG counts or adding more OSDs.
 
 ## Summary
 
