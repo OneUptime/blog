@@ -18,7 +18,7 @@ Important: The metadata pool must always be replicated. Only the data pool suppo
 
 ## Creating an Erasure Coding Profile
 
-Before creating the CephFS, create an EC profile using the Rook toolbox or by defining it in the CephBlockPool manifest:
+When using the CephFilesystem CRD (shown below), Rook automatically creates and manages the EC profile from the `erasureCoded` settings. Manual profile creation is only needed if you require a custom profile with specific plugin or technique settings. To create one manually via the Rook toolbox:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
@@ -26,34 +26,9 @@ ceph osd erasure-code-profile set myec-profile k=4 m=2 plugin=jerasure technique
 ceph osd erasure-code-profile get myec-profile
 ```
 
-## Defining the CephBlockPool for EC Data Pool
-
-Create a CephBlockPool with erasure coding enabled:
-
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephBlockPool
-metadata:
-  name: cephfs-ec-data
-  namespace: rook-ceph
-spec:
-  failureDomain: host
-  erasureCoded:
-    dataChunks: 4
-    codingChunks: 2
-  parameters:
-    compression_mode: none
-```
-
-Apply it:
-
-```bash
-kubectl apply -f cephfs-ec-data-pool.yaml
-```
-
 ## Creating CephFS with an EC Data Pool
 
-Reference the EC pool in the CephFilesystem CRD as a data pool:
+For CephFS, the EC data pool is defined inline in the CephFilesystem CRD's `dataPools` field. Note that `CephBlockPool` is a separate resource type used for RBD block storage and is not needed for CephFS data pools.
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -111,4 +86,4 @@ allowVolumeExpansion: true
 
 ## Summary
 
-Erasure coded data pools for CephFS in Rook provide storage efficiency gains over replicated pools - typically 40-50% less raw capacity for comparable fault tolerance. The metadata pool must remain replicated. Define the EC pool via CephBlockPool with `erasureCoded` settings, then reference it in the CephFilesystem `dataPools` field. Ensure your cluster has enough OSDs to satisfy the `k+m` requirement before enabling EC.
+Erasure coded data pools for CephFS in Rook provide storage efficiency gains over replicated pools - typically 40-50% less raw capacity for comparable fault tolerance. The metadata pool must remain replicated. Define the EC data pool inline in the CephFilesystem CRD's `dataPools` field with `erasureCoded` settings. Rook automatically creates the underlying Ceph pool and EC profile. Ensure your cluster has enough OSDs to satisfy the `k+m` requirement before enabling EC.
