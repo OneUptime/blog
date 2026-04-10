@@ -63,20 +63,21 @@ aws s3api get-object-retention \
   --endpoint-url http://rook-ceph-rgw-store.rook-ceph:80
 ```
 
-## Configuring Versioning for Audit Trails
+## Versioning for Audit Trails
 
-Enable versioning alongside Object Lock to preserve every version:
+When you create a bucket with `--object-lock-enabled-for-bucket`, versioning is automatically enabled on that bucket. You can verify this with:
 
 ```bash
-aws s3api put-bucket-versioning \
+aws s3api get-bucket-versioning \
   --bucket compliance-archive \
-  --endpoint-url http://rook-ceph-rgw-store.rook-ceph:80 \
-  --versioning-configuration Status=Enabled
+  --endpoint-url http://rook-ceph-rgw-store.rook-ceph:80
 ```
+
+This ensures every version of an object is preserved for audit trails.
 
 ## Setting Lifecycle Policies for Cost Management
 
-After the compliance period expires, transition objects to erasure-coded pools:
+After the compliance period expires, transition objects to erasure-coded pools. Ceph RGW uses operator-defined storage classes rather than AWS built-in classes like GLACIER. You must first define a storage class (e.g., `COLD`) in your zone/zonegroup configuration and map it to an erasure-coded pool. Then apply the lifecycle rule:
 
 ```bash
 aws s3api put-bucket-lifecycle-configuration \
@@ -88,7 +89,7 @@ aws s3api put-bucket-lifecycle-configuration \
       "Status": "Enabled",
       "Filter": {"Prefix": "records/"},
       "Transitions": [
-        {"Days": 365, "StorageClass": "GLACIER"}
+        {"Days": 365, "StorageClass": "COLD"}
       ]
     }]
   }'
@@ -96,18 +97,24 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Enabling Access Logging for Audits
 
-Configure bucket logging to capture every access event:
+Configure bucket logging to capture every access event using the S3 API:
 
 ```bash
-radosgw-admin bucket logging enable \
+aws s3api put-bucket-logging \
   --bucket compliance-archive \
-  --target-bucket compliance-logs
+  --endpoint-url http://rook-ceph-rgw-store.rook-ceph:80 \
+  --bucket-logging-status '{
+    "LoggingEnabled": {
+      "TargetBucket": "compliance-logs",
+      "TargetPrefix": "compliance-archive-logs/"
+    }
+  }'
 ```
 
 Review logs:
 
 ```bash
-aws s3 ls s3://compliance-logs/ \
+aws s3 ls s3://compliance-logs/compliance-archive-logs/ \
   --endpoint-url http://rook-ceph-rgw-store.rook-ceph:80 \
   --recursive
 ```
