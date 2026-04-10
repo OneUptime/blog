@@ -57,11 +57,11 @@ metadata:
   namespace: rook-ceph
 spec:
   security:
-    keyManagementService:
-      enable: true
+    kms:
       connectionDetails:
         KMS_PROVIDER: "vault"
         VAULT_ADDR: "https://vault.example.com:8200"
+        VAULT_SECRET_ENGINE: "kv"
         VAULT_BACKEND_PATH: "rook/osd"
         VAULT_AUTH_METHOD: "token"
         VAULT_CACERT: "vault-ca-cert"
