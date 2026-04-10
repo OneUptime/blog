@@ -60,7 +60,6 @@ For internal drop-box style shares where anyone can write:
     comment = Anonymous Upload
     path = /mnt/cephfs/volumes/dropbox
     guest ok = yes
-    read only = no
     writable = yes
     create mask = 0600
     directory mask = 0700
