@@ -95,4 +95,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your experiment service uptime
 
 ## Summary
 
-Redis counters give you sub-millisecond impression and conversion tracking that scales to millions of events per second. Hash-based dashboards read all variant data in a single PIPELINE call, keeping the dashboard API fast regardless of experiment count. Deterministic hash-based variant assignment guarantees consistent user experiences.
+Redis counters give you sub-millisecond impression and conversion tracking that scales to millions of events per second. PIPELINE calls batch reads per variant, keeping the dashboard API fast. Deterministic hash-based variant assignment guarantees consistent user experiences.
