@@ -17,7 +17,7 @@ Ceph tracks which application is using each storage pool through pool applicatio
 - Access controls and monitoring can target specific applications
 - Certain features are only available for pools tagged with specific applications
 
-Every pool should have exactly one application tag set. The three built-in applications are `rbd`, `rgw`, and `cephfs`. Custom tags are also allowed.
+Every pool should typically have one application tag set. While Ceph allows multiple tags per pool, it will warn and require `--yes-i-really-mean-it` if you try to add a second tag, since one application per pool is the only tested configuration. The three built-in applications are `rbd`, `rgw`, and `cephfs`. Custom tags are also allowed.
 
 ## Enabling an Application on a Pool
 
