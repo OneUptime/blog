@@ -69,13 +69,13 @@ TS.RANGE temperature 1711900800000 1711904400000
 
 Returns points between two Unix millisecond timestamps.
 
-### Last 60 Seconds (Relative)
+### Last 60 Seconds
 
 ```redis
-TS.RANGE temperature -60000 +
+TS.RANGE temperature 1711904340000 1711904400000
 ```
 
-Subtract from the end using negative offsets relative to the latest timestamp.
+Compute `fromTimestamp` as the current time minus 60000 milliseconds in your application code. TS.RANGE does not support relative time offsets.
 
 ### With Aggregation (1-Minute Buckets)
 
@@ -120,7 +120,7 @@ TS.RANGE api:latency 1711900800000 + AGGREGATION count 300000
 TS.RANGE sensor:readings 1711900800000 1711908000000 AGGREGATION avg 60000 EMPTY
 ```
 
-Buckets with no data return `NaN` instead of being skipped.
+Empty buckets are included instead of being skipped. Most aggregators (`avg`, `min`, `max`, `range`, `first`, `std.p`, `std.s`, `var.p`, `var.s`) return `NaN`, while `sum` and `count` return `0`.
 
 ## Use Cases
 
@@ -134,26 +134,26 @@ TS.RANGE api:latency 1711296000000 1711900800000 AGGREGATION avg 3600000
 
 ### Anomaly Detection Window
 
-Get the last 5 minutes of raw samples to detect spikes:
+Get the last 5 minutes of raw samples to detect spikes (compute `fromTimestamp` as current time minus 300000 in your application):
 
 ```redis
-TS.RANGE cpu:server-1 -300000 + COUNT 300
+TS.RANGE cpu:server-1 1711900500000 1711900800000 COUNT 300
 ```
 
 ### SLO Compliance Report
 
-Count requests exceeding 500ms threshold in the last 24 hours:
+Count requests exceeding 500ms threshold in the last 24 hours (compute `fromTimestamp` as current time minus 86400000 in your application):
 
 ```redis
-TS.RANGE api:latency -86400000 + FILTER_BY_VALUE 500 999999 AGGREGATION count 3600000
+TS.RANGE api:latency 1711814400000 1711900800000 FILTER_BY_VALUE 500 999999 AGGREGATION count 3600000
 ```
 
 ### Billing Meter Aggregation
 
-Sum bytes transferred per hour for the last day:
+Sum bytes transferred per hour for the last day (compute `fromTimestamp` as current time minus 86400000 in your application):
 
 ```redis
-TS.RANGE bytes:user-42 -86400000 + AGGREGATION sum 3600000
+TS.RANGE bytes:user-42 1711814400000 1711900800000 AGGREGATION sum 3600000
 ```
 
 ## TS.RANGE vs TS.REVRANGE
@@ -162,8 +162,8 @@ TS.RANGE bytes:user-42 -86400000 + AGGREGATION sum 3600000
 -- Oldest to newest
 TS.RANGE temperature 0 1711904400000
 
--- Newest to oldest
-TS.REVRANGE temperature 1711904400000 0
+-- Newest to oldest (same argument order, reversed result order)
+TS.REVRANGE temperature 0 1711904400000
 ```
 
 Use `TS.REVRANGE` when you want the most recent data first, such as fetching the last N samples.
