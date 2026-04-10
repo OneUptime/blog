@@ -45,25 +45,20 @@ spec:
 ## Tune BlueStore for SSD
 
 ```bash
-# Larger BlueStore cache for SSDs (default is 1 GB for HDDs)
+# Larger BlueStore cache for SSDs (default is 3 GB for SSDs, 1 GB for HDDs)
 ceph config set osd bluestore_cache_size_ssd 4294967296   # 4 GB
 
 # Reduce minimum allocation size for better space efficiency on SSDs
+# Default is 4 KB since Octopus; set explicitly for older releases
 ceph config set osd bluestore_min_alloc_size_ssd 4096     # 4 KB
-
-# Disable SSD-specific rotational hints
-ceph config set osd osd_class_update_on_start true
 ```
 
 ## Increase OSD Thread Counts
 
 ```bash
 # SSDs can handle more concurrent operations
-ceph config set osd osd_op_num_threads_per_shard 2
-ceph config set osd osd_op_num_shards 8
-
-# Increase client operations queue depth
-ceph config set osd osd_max_ops 512
+ceph config set osd osd_op_num_threads_per_shard_ssd 2
+ceph config set osd osd_op_num_shards_ssd 8
 ```
 
 ## Optimize Recovery for SSDs
@@ -75,7 +70,6 @@ ceph config set osd osd_max_backfills 4
 
 # Reduce recovery sleep time (0 for SSDs, non-zero for HDDs)
 ceph config set osd osd_recovery_sleep_ssd 0
-ceph config set osd osd_backfill_scan_max 256
 ```
 
 ## Create SSD-Optimized CRUSH Rule
@@ -112,8 +106,12 @@ ceph daemon osd.0 perf dump | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 ops = d.get('osd', {})
-print('Read lat (ms):', ops.get('op_r_latency', {}).get('avgcount', 0))
-print('Write lat (ms):', ops.get('op_w_latency', {}).get('avgcount', 0))
+r = ops.get('op_r_latency', {})
+w = ops.get('op_w_latency', {})
+if r.get('avgcount', 0) > 0:
+    print(f'Read lat (ms): {r[\"sum\"] / r[\"avgcount\"] * 1000:.2f}')
+if w.get('avgcount', 0) > 0:
+    print(f'Write lat (ms): {w[\"sum\"] / w[\"avgcount\"] * 1000:.2f}')
 "
 
 # Monitor BlueStore SSD cache hit rate
