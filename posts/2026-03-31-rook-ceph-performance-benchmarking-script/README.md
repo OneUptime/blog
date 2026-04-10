@@ -30,11 +30,11 @@ RBD_SIZE="${RBD_SIZE:-10G}"
 mkdir -p "$OUTPUT_DIR"
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- ceph "$@"
 }
 
 rados_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- rados "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- rados "$@"
 }
 
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$OUTPUT_DIR/benchmark.log"; }
@@ -88,11 +88,11 @@ bench_rados() {
 ```bash
 bench_rbd() {
   log "Setting up RBD image for benchmarking..."
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- \
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- \
     rbd create --size "$RBD_SIZE" --pool "$BENCH_POOL" "$RBD_IMAGE" || true
 
   log "Running fio benchmark on RBD..."
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- bash -c "
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- bash -c "
     rbd map $BENCH_POOL/$RBD_IMAGE || true
     DEV=\$(rbd showmapped --format json | python3 -c \
       \"import sys,json; d=json.load(sys.stdin); \
@@ -120,7 +120,6 @@ bench_rbd() {
 #!/usr/bin/env python3
 # parse-bench-results.py
 
-import json
 import re
 import sys
 
@@ -174,4 +173,4 @@ log "Benchmarks complete. Results in: $OUTPUT_DIR"
 
 ## Summary
 
-A scripted Ceph benchmark suite covers RADOS object storage, RBD block storage, and CephFS in a reproducible way. By capturing pre-benchmark cluster state alongside results and parsing outputs into structured summaries, you create a benchmark history that's useful for comparing performance across Ceph upgrades and configuration changes.
+A scripted Ceph benchmark suite covers RADOS object storage and RBD block storage in a reproducible way. By capturing pre-benchmark cluster state alongside results and parsing outputs into structured summaries, you create a benchmark history that's useful for comparing performance across Ceph upgrades and configuration changes.
