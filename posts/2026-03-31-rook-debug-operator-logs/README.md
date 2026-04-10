@@ -40,12 +40,11 @@ helm upgrade rook-ceph rook-release/rook-ceph \
   --set logLevel=DEBUG
 ```
 
-Or patch the operator deployment directly for immediate effect:
+Or patch the operator ConfigMap directly for immediate effect (the operator watches this ConfigMap and picks up changes dynamically without a restart):
 
 ```bash
-kubectl set env deployment/rook-ceph-operator \
-  -n rook-ceph \
-  ROOK_LOG_LEVEL=DEBUG
+kubectl -n rook-ceph patch configmap rook-ceph-operator-config \
+  --type merge -p '{"data":{"ROOK_LOG_LEVEL":"DEBUG"}}'
 ```
 
 ## Key Log Patterns to Search For
@@ -57,7 +56,7 @@ kubectl logs -n rook-ceph -l app=rook-ceph-operator | \
   grep -i "reconcil"
 ```
 
-Successful reconciliation shows `reconciliation succeeded`. Failures show the error.
+Successful reconciliation shows messages like `done reconciling ceph cluster in namespace`. Failures show the error along with the resource that failed.
 
 ### OSD Provisioning
 
@@ -82,21 +81,21 @@ kubectl logs -n rook-ceph -l app=rook-ceph-operator | \
 
 ## Interpreting Common Log Messages
 
-**OSD not found on device:**
+**OSD skipping a device:**
 ```text
-skipping device "sdb": no valid OSD found or the partition table is not GPT
+skipping device "sdb" because it contains a filesystem "ext4"
 ```
-This means the disk has existing partitions or a filesystem. Wipe the device.
+This means the disk has an existing filesystem. Wipe the device before it can be used by an OSD.
 
 **Monitor quorum lost:**
 ```text
-failed to get mon quorum, retrying: ...
+failed to check mon health. failed to get mon quorum status: mon quorum status failed
 ```
 One or more monitor pods are not running. Check `kubectl get pods -n rook-ceph -l app=rook-ceph-mon`.
 
-**Controller rate limiting:**
+**Controller requeueing:**
 ```text
-Reconciler rate limited, wait time: 10s
+Reconciler error, requeueing after backoff
 ```
 Expected during rapid state changes. If persistent, the operator may be in a retry loop due to a persistent error.
 
