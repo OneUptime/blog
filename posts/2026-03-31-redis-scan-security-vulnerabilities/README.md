@@ -38,11 +38,13 @@ redis-cli -h target-redis CONFIG GET dir
 
 ## Using redis-audit
 
-`redis-audit` checks common misconfigurations:
+`redis-audit` analyzes key patterns and memory usage:
 
 ```bash
-gem install redis-audit
-redis-audit --host localhost --port 6379 --password yourpassword
+git clone https://github.com/snmaynard/redis-audit.git
+cd redis-audit
+bundle install
+ruby redis-audit.rb -h localhost -p 6379 -a yourpassword
 ```
 
 It reports:
@@ -50,29 +52,20 @@ It reports:
 - Large key detection
 - Memory per key type
 
-## Using redis-flaw-check
-
-```bash
-git clone https://github.com/dstotijn/redis-flaw-check.git
-cd redis-flaw-check
-python3 redis_flaw_check.py --host localhost --port 6379
-```
-
 ## Checking for Exposed Redis with nmap
 
 ```bash
 # Scan for open Redis ports on your network
 nmap -p 6379 --script redis-info 10.0.0.0/24
 
-# Check if authentication is required
-nmap -p 6379 --script redis-info --script-args redis-info.noauth=true 10.0.0.0/24
+# Brute-force check for weak passwords
+nmap -p 6379 --script redis-brute 10.0.0.0/24
 ```
 
 ## Automated Vulnerability Scan Script
 
 ```python
 import redis
-import socket
 
 def audit_redis(host: str, port: int = 6379, password: str = None):
     findings = []
@@ -132,7 +125,7 @@ redis-cli INFO server | grep redis_version
 
 Key CVEs to check by version:
 - Redis < 7.0.9: CVE-2023-25155 (integer overflow)
-- Redis < 6.2.9: CVE-2022-35977 (LMPOP crash)
+- Redis < 6.2.8: CVE-2022-35977 (integer overflow via SETRANGE/SORT)
 - Redis < 5.0.14: CVE-2021-32675 (denial of service)
 
 ## Summary
