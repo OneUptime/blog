@@ -94,12 +94,13 @@ def subscribe_ticker(symbols: list[str]):
 
 ```python
 def get_price_history(symbol: str, start_ms: int, end_ms: int) -> list:
-    raw = r.zrangebyscore(
+    raw = r.zrange(
         f"{PRICE_HISTORY_PREFIX}{symbol}",
         start_ms,
-        end_ms
+        end_ms,
+        byscore=True
     )
-    return [json.loads(r) for r in raw]
+    return [json.loads(item) for item in raw]
 
 def get_latest_price(symbol: str) -> dict | None:
     raw = r.zrange(f"{PRICE_HISTORY_PREFIX}{symbol}", -1, -1)
