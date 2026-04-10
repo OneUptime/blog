@@ -45,7 +45,7 @@ spec:
           deviceClass: "hdd"
 ```
 
-Rook passes the root name to `ceph-volume` when provisioning the OSD. Ceph creates the root bucket if it does not already exist.
+Rook passes the root name via `--crush-location` when starting the OSD daemon. Ceph creates the root bucket if it does not already exist.
 
 ## Creating Pools Tied to a CRUSH Root
 
@@ -88,7 +88,7 @@ If you leave some nodes at the default root and reassign others, the default poo
 
 ```bash
 ceph osd crush set-device-class ssd osd.3
-ceph osd crush move osd.3 host=ssd-node-1 root=ssd-root
+ceph osd crush set osd.3 5.0 host=ssd-node-1 root=ssd-root
 ```
 
 ## Verifying Pool Placement
