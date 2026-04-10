@@ -24,7 +24,7 @@ Use `XADD` to append messages:
 
 ```rust
 use redis::Commands;
-use redis::streams::StreamAddOptions;
+use redis::streams::StreamMaxlen;
 
 fn main() -> redis::RedisResult<()> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
@@ -39,10 +39,10 @@ fn main() -> redis::RedisResult<()> {
     println!("Added entry: {id}");
 
     // Capped stream - keep last 1000 entries
-    con.xadd_options(
+    con.xadd_maxlen(
         "orders",
+        StreamMaxlen::Approx(1000),
         "*",
-        &StreamAddOptions::default().max_len(redis::streams::StreamMaxlen::Approx(1000)),
         &[("order_id", "1002"), ("amount", "19.99"), ("user", "bob")],
     )?;
 
@@ -105,10 +105,17 @@ Check for unacknowledged messages (e.g., after a crash):
 use redis::streams::StreamPendingReply;
 
 let pending: StreamPendingReply = con.xpending("orders", "processors")?;
-println!(
-    "Pending: {} messages between {} and {}",
-    pending.count, pending.start_id, pending.end_id
-);
+match pending {
+    StreamPendingReply::Data(data) => {
+        println!(
+            "Pending: {} messages between {} and {}",
+            data.count, data.start_id, data.end_id
+        );
+    }
+    StreamPendingReply::Empty => {
+        println!("No pending messages");
+    }
+}
 ```
 
 ## Async Reading Loop
