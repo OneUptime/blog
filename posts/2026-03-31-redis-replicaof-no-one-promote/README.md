@@ -121,11 +121,11 @@ REPLICAOF 192.168.1.11 6380
 ```redis
 # On primary (if reachable)
 INFO replication
-# master_repl_offset: 100500
+# master_repl_offset:100500
 
 # On replica
 INFO replication
-# slave_repl_offset: 100480
+# slave_repl_offset:100480
 # Lag = 100500 - 100480 = 20 bytes potentially lost
 ```
 
