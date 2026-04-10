@@ -18,7 +18,7 @@ Rook exposes Ceph metrics via the Prometheus exporter. Verify it is running:
 
 ```bash
 kubectl -n rook-ceph get svc | grep prometheus
-# Expected output: rook-ceph-mgr-dashboard-external-https or similar
+# Expected output: rook-ceph-mgr or rook-ceph-mgr-metrics with port 9283
 
 # Check the mgr Prometheus module is active
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- ceph mgr module ls | grep prometheus
@@ -104,10 +104,10 @@ curl -X GET "https://api.datadoghq.com/api/v1/metrics?from=$(date -d '1 hour ago
 ```
 
 Key metrics to include in your dashboard:
-- `ceph.health_status` - Overall cluster health
-- `ceph.osd_up` vs `ceph.osd_in` - OSD availability
-- `ceph.pool_bytes_used` / `ceph.pool_max_avail` - Capacity utilization
-- `ceph.osd_apply_latency_ms` - Write latency
+- `ceph.ceph_health_status` - Overall cluster health
+- `ceph.ceph_osd_up` vs `ceph.ceph_osd_in` - OSD availability
+- `ceph.ceph_pool_bytes_used` / `ceph.ceph_pool_max_avail` - Capacity utilization
+- `ceph.ceph_osd_apply_latency_ms` - Write latency
 
 ## Step 6 - Set Up Alerts
 
@@ -117,10 +117,12 @@ Create a Datadog monitor for critical Ceph conditions:
 # Use Datadog API to create a monitor
 curl -X POST "https://api.datadoghq.com/api/v1/monitor" \
   -H "Content-Type: application/json" \
+  -H "DD-API-KEY: ${DD_API_KEY}" \
+  -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
   -d '{
     "name": "Ceph Health Warning",
     "type": "metric alert",
-    "query": "avg(last_5m):avg:ceph.health_status{*} > 1",
+    "query": "avg(last_5m):avg:ceph.ceph_health_status{*} > 0",
     "message": "Ceph cluster health is degraded. @oncall-storage",
     "tags": ["env:prod", "service:ceph"]
   }'
