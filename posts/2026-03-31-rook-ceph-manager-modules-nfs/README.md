@@ -17,7 +17,7 @@ Ceph NFS-Ganesha in a Rook cluster is orchestrated through the Ceph Manager daem
 The NFS feature in Ceph requires two Manager modules to be enabled:
 
 1. `nfs` - Manages NFS export configuration stored in RADOS objects
-2. `orchestrator` - Allows the Manager to interact with Rook to create NFS pods
+2. `rook` - The Rook orchestrator backend that allows the Manager to interact with Rook to create NFS pods
 
 Check which modules are currently enabled:
 
@@ -53,18 +53,18 @@ Available: Yes
 Paused: No
 ```
 
-## Configuring NFS Pool via Manager
+## Creating an NFS Cluster
 
-After enabling the NFS module, configure which Ceph pool it uses to store export configs:
+In a Rook-managed environment, NFS clusters are created declaratively via the `CephNFS` custom resource rather than the CLI. Rook handles creating NFS-Ganesha server pods and configuring RADOS storage automatically.
+
+If you need to create an NFS cluster via the CLI (for example, in a non-Rook or testing environment), the command in Ceph Pacific and later is:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph nfs cluster create my-nfs \
-  --pool my-fs-data0 \
-  --namespace nfs-ns
+  ceph nfs cluster create my-nfs
 ```
 
-This creates the NFS cluster context in the Manager, which aligns with the `rados` config in the `CephNFS` CR.
+In Ceph Pacific 16.2.6 and later, NFS configuration is automatically stored in a `.nfs` RADOS pool managed by the NFS module. You do not need to specify a pool or namespace manually.
 
 ## Verifying Module Status
 
