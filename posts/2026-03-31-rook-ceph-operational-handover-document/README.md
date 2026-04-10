@@ -23,8 +23,8 @@ Start with a one-page summary that answers the key questions:
 - Kubernetes Cluster: eks-prod-us-east-1
 - MON Count: 3
 - OSD Count: 18 (NVMe, 2 TB each)
-- Total Usable: ~18 TB (replica 3)
-- Current Usage: 8.2 TB (45%)
+- Total Usable: ~12 TB (replica 3)
+- Current Usage: 8.2 TB (68%)
 - Networking: Public 10.0.1.0/24, Cluster 10.0.2.0/24
 ```
 
