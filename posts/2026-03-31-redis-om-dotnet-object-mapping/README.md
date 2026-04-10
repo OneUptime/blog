@@ -85,7 +85,7 @@ var adults = customers
     .Where(c => c.Age >= 18 && c.Age <= 65)
     .ToList();
 
-// Full-text search
+// Exact match on last name
 var smiths = customers
     .Where(c => c.LastName == "Smith")
     .ToList();
@@ -136,11 +136,11 @@ builder.Services.AddHostedService<IndexCreationService>();
 // Use in a controller
 public class CustomerController : ControllerBase
 {
-    private readonly RedisCollection<Customer> _customers;
+    private readonly IRedisCollection<Customer> _customers;
 
     public CustomerController(RedisConnectionProvider provider)
     {
-        _customers = (RedisCollection<Customer>)provider.RedisCollection<Customer>();
+        _customers = provider.RedisCollection<Customer>();
     }
 }
 ```
