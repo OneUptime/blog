@@ -76,7 +76,6 @@ Key fields to inspect:
 "num-slaves" -> "2"
 "num-other-sentinels" -> "2"
 "quorum"     -> "2"
-"status"     -> "ok"
 ...
 ```
 
@@ -87,8 +86,7 @@ Key fields to inspect:
 | `master` | Normal operation |
 | `s_down` | Subjectively down (this Sentinel thinks it's down) |
 | `o_down` | Objectively down (quorum agrees it's down) |
-| `odown,failover_in_progress` | Failover is happening |
-| `no-auth-warning` | Primary has no password set |
+| `master,o_down,failover_in_progress` | Failover is happening |
 
 ## Checking Replica Status
 
@@ -127,7 +125,7 @@ OK 3 usable Sentinels. Quorum and failover authorization can be reached
 If quorum is not reachable:
 
 ```text
-NOQUORUM 1 usable Sentinels. Quorum and failover authorization cannot be reached
+NOQUORUM 1 usable Sentinels. Not enough available Sentinels to reach the specified quorum for this master
 ```
 
 ## Checking TILT Mode
@@ -173,7 +171,7 @@ redis-cli -p $SENTINEL_PORT SENTINEL replicas $MASTER_NAME
 Sentinel publishes events to Pub/Sub channels. Subscribe to monitor failovers:
 
 ```redis
-SUBSCRIBE +sdown +odown +failover-triggered +reboot
+SUBSCRIBE +sdown +odown +try-failover +reboot
 ```
 
 ```text
@@ -194,10 +192,10 @@ Key event channels:
 | `+sdown` | Sentinel marks a node subjectively down |
 | `-sdown` | Sentinel clears subjective down state |
 | `+odown` | Node marked objectively down |
-| `+failover-triggered` | Failover started |
+| `+try-failover` | Failover started |
 | `+promoted-slave` | New primary elected |
 | `+reboot` | Node restarted |
 
 ## Summary
 
-Monitor Redis Sentinel status using `INFO sentinel` for server-level stats and sentinel section data, `SENTINEL masters` for primary health and flags, `SENTINEL replicas mymaster` for replica states, and `SENTINEL ckquorum mymaster` to verify quorum is intact. Watch for `s_down` and `o_down` flags in master and replica output. Subscribe to Sentinel's Pub/Sub channels (`+sdown`, `+odown`, `+failover-triggered`) to receive real-time event notifications. Check `sentinel_tilt` in `INFO sentinel` to detect when Sentinels have entered TILT mode.
+Monitor Redis Sentinel status using `INFO sentinel` for server-level stats and sentinel section data, `SENTINEL masters` for primary health and flags, `SENTINEL replicas mymaster` for replica states, and `SENTINEL ckquorum mymaster` to verify quorum is intact. Watch for `s_down` and `o_down` flags in master and replica output. Subscribe to Sentinel's Pub/Sub channels (`+sdown`, `+odown`, `+try-failover`) to receive real-time event notifications. Check `sentinel_tilt` in `INFO sentinel` to detect when Sentinels have entered TILT mode.
