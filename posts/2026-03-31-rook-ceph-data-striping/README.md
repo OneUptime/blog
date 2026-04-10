@@ -1,10 +1,10 @@
-# How to Understand Ceph Data Striping (Object Size, Stripe Width, Stripe Count)
+# How to Understand Ceph Data Striping (Object Size, Stripe Unit, Stripe Count)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Striping, Performance, Storage, Kubernetes
 
-Description: Learn how Ceph stripes large files across multiple objects using object size, stripe width, and stripe count parameters to maximize parallelism and throughput.
+Description: Learn how Ceph stripes large files across multiple objects using object size, stripe unit, and stripe count parameters to maximize parallelism and throughput.
 
 ---
 
@@ -98,7 +98,7 @@ rbd image 'myimage':
 For database workloads with random I/O, small stripe units (64 KB) with low stripe counts (1-2) minimize write amplification. For video streaming or bulk data, large stripe units (1 MB+) with higher stripe counts (4-8) maximize sequential throughput.
 
 ```bash
-# Pool default stripe size
+# Pool stripe width (erasure-coded pools only)
 ceph osd pool get cephfs-data stripe_width
 ```
 
