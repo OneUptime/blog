@@ -20,7 +20,7 @@ DmClock operates at the OSD level and controls how requests from different clien
 
 ## Enabling mClock Scheduler
 
-The mClock scheduler is the default in Ceph Pacific and later. Verify it is active:
+The mClock scheduler is the default in Ceph Quincy and later (for BlueStore OSDs). Verify it is active:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
