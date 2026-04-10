@@ -10,7 +10,7 @@ Description: Learn how to create Ceph authentication users using ceph auth add, 
 
 ## Overview of ceph auth add
 
-`ceph auth add` creates a new Ceph authentication entity with specified capabilities. If the entity already exists, the command returns the existing entry without modifying it. This makes it safe to run repeatedly in automation scripts.
+`ceph auth add` creates a new Ceph authentication entity with specified capabilities. If the entity already exists with the same key and capabilities, the command succeeds silently as a no-op. If the entity exists with different capabilities or a different key, the command returns an error. Note that unlike `ceph auth get-or-create`, `ceph auth add` does not output the key or keyring on success.
 
 Access the Ceph CLI from the Rook toolbox:
 
@@ -101,11 +101,11 @@ kubectl create secret generic ceph-myapp-keyring \
 
 | Command | Behavior if entity exists |
 |---|---|
-| `auth add` | Returns existing entry, no modification |
-| `auth get-or-create` | Returns existing entry, no modification |
-| `auth get-or-create-key` | Returns only the key |
+| `auth add` | Succeeds silently if caps and key match; returns error if they differ. Does not output the key. |
+| `auth get-or-create` | Returns existing key in keyring format if caps match; returns error if caps differ. |
+| `auth get-or-create-key` | Returns only the key if caps match; returns error if caps differ. |
 
-Both `auth add` and `auth get-or-create` behave similarly when an entity already exists. The key difference is that `auth get-or-create` is more commonly used in scripts because it explicitly communicates the idempotent intent. Use `auth add` when you are performing initial user setup interactively.
+The key difference is that `auth get-or-create` outputs the keyring (user name and key) on both creation and when the entity already exists, making it the preferred choice for automation scripts. `auth add` does not output the key on success, so you must follow it with `ceph auth get` to retrieve the keyring. Use `auth add` when you are performing initial user setup interactively.
 
 ## Verifying the Created User
 
@@ -124,7 +124,7 @@ ceph auth print-key client.myapp
 
 ## Automation Script Example
 
-Create multiple application users in a loop:
+Create multiple application users in a loop. Note that `ceph auth get-or-create` is preferred here because it is truly idempotent and outputs the keyring, whereas `ceph auth add` will error on re-runs if the entities already exist with different capabilities:
 
 ```bash
 #!/bin/bash
@@ -132,7 +132,7 @@ USERS=("client.app1" "client.app2" "client.app3")
 POOLS=("pool1" "pool2" "pool3")
 
 for i in "${!USERS[@]}"; do
-  ceph auth add "${USERS[$i]}" \
+  ceph auth get-or-create "${USERS[$i]}" \
     mon 'allow r' \
     osd "allow rw pool=${POOLS[$i]}"
   echo "Created ${USERS[$i]} for ${POOLS[$i]}"
@@ -141,4 +141,4 @@ done
 
 ## Summary
 
-`ceph auth add` creates a Ceph authentication entity with specified capabilities and a randomly generated key. It is idempotent - if the entity already exists, it returns the existing entry. Use `ceph auth get` after creation to verify the user and its capabilities, and export the keyring with `ceph auth get -o` for distribution to applications or Kubernetes Secrets in Rook environments.
+`ceph auth add` creates a Ceph authentication entity with specified capabilities and a randomly generated key. If the entity already exists with matching capabilities and key, the command succeeds silently; if the capabilities or key differ, it returns an error. Unlike `ceph auth get-or-create`, it does not output the key on success, so use `ceph auth get` after creation to retrieve the keyring. Export the keyring with `ceph auth get -o` for distribution to applications or Kubernetes Secrets in Rook environments. For idempotent automation scripts, prefer `ceph auth get-or-create` instead.
