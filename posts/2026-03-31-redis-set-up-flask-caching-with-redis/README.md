@@ -118,8 +118,9 @@ def update_product(product_id):
     product.name = data.get("name", product.name)
     db.session.commit()
 
-    # Invalidate cached views
-    cache.delete(f"product_detail_{product_id}")
+    # Invalidate cached product detail view
+    # Default @cache.cached() key is "view/" + request.path
+    cache.delete(f"view//product/{product_id}")
     cache.delete_memoized(get_user_stats, product.user_id)
 
     return jsonify(product.to_dict())
