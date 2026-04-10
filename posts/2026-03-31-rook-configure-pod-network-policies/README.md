@@ -80,8 +80,7 @@ spec:
     ports:
     - protocol: TCP
       port: 6800
-    - protocol: TCP
-      port: 6801
+      endPort: 7300
   egress:
   - to: []
     ports:
@@ -89,6 +88,9 @@ spec:
       port: 3300
     - protocol: TCP
       port: 6789
+    - protocol: TCP
+      port: 6800
+      endPort: 7300
 ```
 
 ## Step 3: Allow Client Namespace Access
