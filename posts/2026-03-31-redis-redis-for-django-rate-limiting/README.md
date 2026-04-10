@@ -22,7 +22,6 @@ Add Redis as the cache backend first, then use `@ratelimit`:
 from django_ratelimit.decorators import ratelimit
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.http import HttpResponseTooManyRequests
 
 @api_view(["GET"])
 @ratelimit(key="ip", rate="60/m", block=True)
@@ -98,6 +97,8 @@ Add to `settings.py`:
 
 ```python
 MIDDLEWARE = [
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     "myapp.middleware.RateLimitMiddleware",
     ...
 ]
@@ -121,6 +122,9 @@ def get_rate_limit_info(identifier: str, limit: int, window: int) -> dict:
     return {"limit": limit, "remaining": remaining, "reset": int(now) + window}
 
 class RateLimitMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
     def __call__(self, request):
         info = get_rate_limit_info(f"ip:{request.META['REMOTE_ADDR']}", 100, 3600)
         response = self.get_response(request)
