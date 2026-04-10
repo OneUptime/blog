@@ -123,7 +123,7 @@ After sync, the primary continuously sends every write command to connected repl
 The primary also sends periodic `PING` commands to verify replicas are alive:
 
 ```text
-repl_ping_replica_period 10
+repl-ping-replica-period 10
 ```
 
 ## Phase 6: Partial Resynchronization (Reconnect)
