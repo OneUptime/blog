@@ -60,7 +60,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 In a Rook-managed cluster, client keys should be stored as Kubernetes Secrets so applications can mount them:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth get-key client.myapp | \
   kubectl create secret generic ceph-client-key \
     --from-literal=key="$(cat -)" \
