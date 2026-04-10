@@ -27,6 +27,7 @@ OSD=3 MON=1 MGR=1 ../src/vstart.sh -n -x
 # Use the cluster
 export CEPH_CONF=./ceph.conf
 ./bin/ceph status
+./bin/ceph osd pool create test
 ./bin/rados -p test put myobject /etc/hosts
 ```
 
@@ -44,6 +45,7 @@ For Kubernetes-based testing:
 minikube start --cpus=4 --memory=8192 --disk-size=40g
 
 # Deploy Rook with test cluster settings
+helm repo add rook-release https://charts.rook.io/release
 helm install rook-ceph rook-release/rook-ceph -n rook-ceph --create-namespace
 
 kubectl apply -f - <<'EOF'
@@ -120,7 +122,7 @@ Create a pool with single replica for dev:
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd pool create dev-pool 8 8 replicated
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd pool set dev-pool size 1
+  ceph osd pool set dev-pool size 1 --yes-i-really-mean-it
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd pool set dev-pool min_size 1
 ```
