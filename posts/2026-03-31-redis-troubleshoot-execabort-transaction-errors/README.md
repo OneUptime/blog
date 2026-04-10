@@ -42,7 +42,7 @@ redis-cli EXEC
 ```bash
 # 1. Typo in command name
 redis-cli MULTI
-SSET key value  # typo - should be SET
+redis-cli SSET key value  # typo - should be SET
 redis-cli EXEC
 # EXECABORT
 
@@ -104,9 +104,6 @@ def safe_transaction(operations):
         if "EXECABORT" in str(e):
             print(f"Transaction aborted due to command error: {e}")
             return None
-        elif "EXECERR" in str(e):
-            print(f"Transaction execution error: {e}")
-            return None
         raise
 
 # Usage - valid transaction
@@ -115,7 +112,7 @@ results = safe_transaction([
     ("set", "user:1:email", "alice@example.com"),
     ("incr", "stats:registrations")
 ])
-print(results)  # ['OK', 'OK', 1]
+print(results)  # [True, True, 1]
 ```
 
 ## Using DISCARD to Cancel a Bad Transaction
@@ -175,13 +172,13 @@ def check_transaction_safe(commands):
 ## Monitoring for EXECABORT in Production
 
 ```bash
-# Check if EXECABORT errors are occurring
-redis-cli INFO stats | grep -E "total_commands_processed|rejected_connections"
+# Check error stats for EXECABORT occurrences (Redis 6.2+)
+redis-cli INFO errorstats | grep EXECABORT
 
-# Use MONITOR to trace transactions
-redis-cli MONITOR | grep -E "MULTI|EXEC|DISCARD|EXECABORT"
+# Use MONITOR to trace transaction commands
+redis-cli MONITOR | grep -E "MULTI|EXEC|DISCARD"
 
-# Check command stats for error rates
+# Check command stats for EXEC failure rates (Redis 7.0+ shows failed_calls)
 redis-cli INFO commandstats | grep exec
 ```
 
