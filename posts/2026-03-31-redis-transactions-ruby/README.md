@@ -25,7 +25,7 @@ results = redis.multi do |tx|
 end
 
 p results
-# [true, true, 400, 400]
+# ["OK", "OK", 400, 400]
 ```
 
 All commands inside `multi` are queued and executed together. No other client can interleave between them.
@@ -72,11 +72,17 @@ end
 
 ## Discarding a Transaction
 
+In redis-rb v5+, `multi` must be called with a block. To discard a transaction, raise an exception inside the block — redis-rb sends DISCARD automatically:
+
 ```ruby
-# Manually queue without the block form
-redis.multi
-redis.set('key', 'value')
-redis.discard  # Cancel before exec
+begin
+  redis.multi do |tx|
+    tx.set('key', 'value')
+    raise "Abort transaction"  # triggers DISCARD instead of EXEC
+  end
+rescue RuntimeError
+  puts "Transaction discarded"
+end
 ```
 
 ## Watching Multiple Keys
@@ -100,19 +106,23 @@ end
 
 ## Error Behavior
 
-Redis does not roll back commands that fail at execution time. If one command errors (e.g., calling INCR on a non-numeric value), the others still run:
+Redis does not roll back commands that fail at execution time. If one command errors (e.g., calling INCR on a non-numeric value), the others still run. In redis-rb v5+, a `Redis::CommandError` is raised, but the successful commands have already been applied:
 
 ```ruby
 redis.set('str_key', 'hello')
 
-results = redis.multi do |tx|
-  tx.set('counter', 0)   # succeeds
-  tx.incr('str_key')     # fails - not numeric
-  tx.incr('counter')     # still runs - returns 1
+begin
+  redis.multi do |tx|
+    tx.set('counter', 0)   # succeeds
+    tx.incr('str_key')     # fails - value is not numeric
+    tx.incr('counter')     # still runs
+  end
+rescue Redis::CommandError => e
+  puts e.message
 end
 
-p results
-# [true, Redis::CommandError, 1]
+# Despite the error, successful commands were applied
+p redis.get('counter')  # "1"
 ```
 
 ## Using Transactions with Connection Pool
