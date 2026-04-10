@@ -172,7 +172,7 @@ from rq import Queue
 from rq.job import Job
 
 def get_failed_jobs(redis_conn):
-    from rq import FailedJobRegistry
+    from rq.registry import FailedJobRegistry
     registry = FailedJobRegistry("default", redis_conn)
     failed = []
     for job_id in registry.get_job_ids():
