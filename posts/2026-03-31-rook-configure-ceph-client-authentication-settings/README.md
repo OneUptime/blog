@@ -12,7 +12,7 @@ Ceph uses CephX, a shared-secret authentication protocol, to authenticate all cl
 
 ## CephX Overview
 
-CephX uses HMAC-SHA1 challenge-response authentication. Each entity (client, OSD, monitor) has a keyring containing a secret key. When a client connects to a monitor, it proves knowledge of the secret without transmitting it directly.
+CephX uses shared-secret, ticket-based authentication modeled on Kerberos. Each entity (client, OSD, monitor) has a keyring containing a secret key. When a client connects to a monitor, it proves knowledge of the secret without transmitting it directly.
 
 ## Creating a Client Keyring
 
@@ -81,19 +81,14 @@ chmod 600 /etc/ceph/ceph.client.myapp.keyring
 
 ```bash
 # On the client node
-ceph --user myapp --keyring /etc/ceph/ceph.client.myapp.keyring status
-rbd --user myapp -p myapp-pool ls
+ceph --id myapp --keyring /etc/ceph/ceph.client.myapp.keyring status
+rbd --id myapp -p myapp-pool ls
 ```
 
 ## Rotating a Client Key
 
 ```bash
-# Generate a new key for the client
-ceph auth caps client.myapp \
-  mon 'allow r' \
-  osd 'allow rw pool=myapp-pool'
-
-# Or delete and recreate
+# Delete and recreate to generate a new key
 ceph auth del client.myapp
 ceph auth get-or-create client.myapp \
   mon 'allow r' \
@@ -109,8 +104,8 @@ journalctl -u ceph-mon@$(hostname) | grep -i "auth"
 # Verify keyring on client
 ceph auth print-key client.myapp
 
-# Check cluster-wide auth debug
-ceph config set global auth_debug true
+# Enable auth debug logging on monitors
+ceph config set mon debug_auth 10
 ceph config set global auth_cluster_required cephx
 ```
 
