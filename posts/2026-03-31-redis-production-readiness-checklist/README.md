@@ -22,8 +22,9 @@ redis-cli CONFIG GET bind
 # 3. Verify protected-mode is on
 redis-cli CONFIG GET protected-mode
 
-# 4. Check dangerous commands are disabled
-redis-cli CONFIG GET rename-command
+# 4. Check dangerous commands are disabled (rename-command is not available via CONFIG GET)
+# Inspect redis.conf directly, or use ACLs in Redis 6+:
+redis-cli ACL LIST
 ```
 
 Security checklist:
