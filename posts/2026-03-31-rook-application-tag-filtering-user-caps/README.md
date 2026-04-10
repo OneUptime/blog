@@ -53,7 +53,7 @@ Use the `tag` keyword in OSD capability strings:
 ```bash
 ceph auth get-or-create client.rbd-user \
   mon 'allow r' \
-  osd 'allow rw tag rbd *'
+  osd 'allow rw tag rbd *=*'
 ```
 
 This grants read-write access to all pools tagged with the `rbd` application.
@@ -84,7 +84,7 @@ You can combine tag-based and explicit pool restrictions:
 ```bash
 ceph auth get-or-create client.hybrid \
   mon 'allow r' \
-  osd 'allow rw tag rbd *, allow r pool=monitoring-data'
+  osd 'allow rw tag rbd *=*, allow r pool=monitoring-data'
 ```
 
 ## Why Tags Are Better Than Listing Pools
@@ -96,7 +96,7 @@ If you list pools explicitly in a capability string, you must update the capabil
 osd 'allow rw pool=rbd-pool1, allow rw pool=rbd-pool2'
 
 # Automatically covers future rbd pools
-osd 'allow rw tag rbd *'
+osd 'allow rw tag rbd *=*'
 ```
 
 ## Rook CSI Driver and Tag-Based Access
@@ -112,7 +112,7 @@ Sample output:
 ```text
 [client.csi-cephfs-provisioner]
     key = AQA...==
-    caps mon = "allow r, allow command 'osd blacklist'"
+    caps mon = "allow r, allow command 'osd blocklist'"
     caps mgr = "allow rw"
     caps osd = "allow rw tag cephfs metadata=*, allow rw tag cephfs data=*"
 ```
