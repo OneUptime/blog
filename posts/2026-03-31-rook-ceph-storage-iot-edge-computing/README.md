@@ -147,16 +147,22 @@ Aggregate and reduce edge data before syncing to cloud:
 
 ```bash
 #!/bin/bash
-# Sync compressed hourly aggregates to cloud S3
+# Sync sensor data from edge Ceph to cloud S3
 BUCKET="iot-telemetry"
-CLOUD_BUCKET="s3://cloud-iot-archive"
+CLOUD_BUCKET="cloud-iot-archive"
+TMPDIR="/tmp/edge-sync"
 
-# List objects from last hour
+mkdir -p "${TMPDIR}"
+
+# Download from edge Ceph RGW to local staging
 aws --endpoint-url http://edge-ceph-rgw.local:8080 \
-  s3 ls s3://${BUCKET}/sensors/ --recursive \
-  | awk '{print $4}' \
-  | xargs -I{} aws --endpoint-url http://edge-ceph-rgw.local:8080 \
-    s3 cp s3://${BUCKET}/{} ${CLOUD_BUCKET}/{}
+  s3 sync s3://${BUCKET}/sensors/ ${TMPDIR}/sensors/
+
+# Upload to cloud S3 (uses default AWS endpoint)
+aws s3 sync ${TMPDIR}/sensors/ s3://${CLOUD_BUCKET}/sensors/
+
+# Cleanup temp files
+rm -rf "${TMPDIR}"
 ```
 
 ## Lifecycle Policy for Local Data Retention
