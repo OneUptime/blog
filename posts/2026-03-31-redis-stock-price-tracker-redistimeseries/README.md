@@ -41,7 +41,7 @@ def create_ticker_series(symbol: str, exchange: str = "NYSE"):
     except Exception:
         pass
 
-    # Create compaction rules for OHLC-like summaries
+    # Create compaction rules for aggregated price summaries
     for resolution, agg, retention in [
         ('1min', 'avg', 30 * 86400000),
         ('1hour', 'avg', 365 * 86400000)
@@ -152,4 +152,4 @@ def get_latest_price(symbol: str) -> dict:
 
 ## Summary
 
-RedisTimeSeries provides an efficient foundation for stock price tracking with native support for tick ingestion, compaction rules for OHLC bars, and range queries with built-in aggregations. Use TS.CREATERULE to automatically maintain minute and hourly price bars from raw tick data, and TS.RANGE with AGGREGATION for computing moving averages on demand.
+RedisTimeSeries provides an efficient foundation for stock price tracking with native support for tick ingestion, compaction rules for aggregated price bars, and range queries with built-in aggregations. Use TS.CREATERULE to automatically maintain minute and hourly price bars from raw tick data, and TS.RANGE with AGGREGATION for computing moving averages on demand.
