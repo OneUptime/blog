@@ -30,10 +30,9 @@ Redis 6+ supports multi-threaded network I/O (command processing stays single-th
 ```text
 # /etc/redis/redis.conf
 io-threads 4
-io-threads-do-reads yes
 ```
 
-Set `io-threads` to the number of physical CPU cores minus 1 (keep 1 for main thread).
+For a 4-core machine, use 2-3 I/O threads. For an 8-core machine, use up to 6. Redis recommends not exceeding 8 I/O threads regardless of core count.
 
 ## Disable Persistence
 
@@ -76,15 +75,17 @@ pipe.execute()
 Match connection pool size to concurrency:
 
 ```python
+import socket
+
 pool = redis.ConnectionPool(
     host="127.0.0.1",
     port=6379,
     max_connections=200,
     socket_keepalive=True,
     socket_keepalive_options={
-        "TCP_KEEPIDLE": 60,
-        "TCP_KEEPINTVL": 10,
-        "TCP_KEEPCNT": 5
+        socket.TCP_KEEPIDLE: 60,
+        socket.TCP_KEEPINTVL: 10,
+        socket.TCP_KEEPCNT: 5
     }
 )
 ```
