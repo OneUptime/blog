@@ -26,7 +26,8 @@ CSI-Addons requires the CSI-Addons sidecar to be running in the Rook CSI provisi
 csi:
   csiAddons:
     enabled: true
-    image: quay.io/csiaddons/k8s-sidecar:latest
+    repository: quay.io/csiaddons/k8s-sidecar
+    tag: v0.14.0
 ```
 
 Apply via Helm upgrade:
@@ -47,10 +48,12 @@ kubectl apply -f https://raw.githubusercontent.com/csi-addons/kubernetes-csi-add
 kubectl apply -f https://raw.githubusercontent.com/csi-addons/kubernetes-csi-addons/main/deploy/controller/setup-controller.yaml
 ```
 
-Or use the Rook Helm chart operator values if CSI-Addons is bundled:
+Or enable it directly in the Rook Helm chart values:
 
 ```yaml
-enableCSIAddonsSideCar: true
+csi:
+  csiAddons:
+    enabled: true
 ```
 
 ## Verifying the CSI-Addons Controller
@@ -71,7 +74,7 @@ csi-addons-controller-manager-xxx          2/2     Running
 Verify the CRDs are installed:
 
 ```bash
-kubectl get crd | grep csiaddons
+kubectl get crd | grep -E "csiaddons|replication"
 ```
 
 Expected CRDs:
