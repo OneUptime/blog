@@ -51,9 +51,9 @@ Result: System instability, swap thrashing, eventual crash
 When Redis starts using swap space, latency jumps from microseconds to milliseconds:
 
 ```bash
-# Check if Redis is swapping
-redis-cli INFO memory | grep mem_allocator
-redis-cli INFO memory | grep used_memory_rss
+# Check if Redis is swapping (compare used_memory vs RSS)
+redis-cli INFO memory | grep used_memory_human
+redis-cli INFO memory | grep used_memory_rss_human
 
 # Check system swap
 free -m
