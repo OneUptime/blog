@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Reef, Release, Feature, Upgrade
 
-Description: Explore the key new features and improvements in Ceph Reef (v18), including SMB support, RGW enhancements, BlueStore improvements, and CSI changes.
+Description: Explore the key new features and improvements in Ceph Reef (v18), including SMB support, RGW enhancements, BlueStore improvements, and the NVMe-oF gateway.
 
 ---
 
@@ -13,15 +13,15 @@ Ceph Reef (v18) is the major release that followed Pacific and Quincy. It introd
 ## Reef Release Overview
 
 Ceph Reef (v18.x) was released in August 2023 as a major stable release with improvements across:
-- New SMB CephFS gateway
+- SMB/CIFS access to CephFS via Samba integration
 - RGW topic and notification improvements
 - BlueStore performance enhancements
 - Improved telemetry and dashboard
 - NVMe-oF gateway (technology preview)
 
-## SMB Gateway (New in Reef)
+## SMB/CIFS Access to CephFS
 
-Reef introduces native SMB/CIFS access to CephFS via a new `CephNFS`-like gateway:
+Reef supports SMB/CIFS access to CephFS through Samba container integration using the `vfs_ceph` module. First, create a CephFS filesystem:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -58,10 +58,11 @@ mount -t cifs //ceph-smb.example.com/myshare /mnt/ceph \
 Reef significantly improved the S3 bucket notification system:
 
 ```bash
-# Create an SNS-compatible topic pointing to Kafka
-radosgw-admin topic create \
-  --topic=object-events \
-  --attributes="push-endpoint=kafka://kafka.example.com:9092;kafka-ack-level=broker"
+# Create an SNS-compatible topic pointing to Kafka via S3 SNS API
+aws sns create-topic \
+  --name object-events \
+  --attributes '{"push-endpoint":"kafka://kafka.example.com:9092","kafka-ack-level":"broker"}' \
+  --endpoint-url http://rgw.example.com
 
 # Create a notification on a bucket
 cat > notification.json << 'EOF'
@@ -95,7 +96,7 @@ for osd in $(ceph osd ls); do
 done
 "
 
-# New BlueStore cache tuning in Reef
+# BlueStore cache tuning options
 ceph config set osd bluestore_cache_autotune true
 ceph config set osd bluestore_cache_size_hdd 1073741824  # 1GB for HDD
 ceph config set osd bluestore_cache_size_ssd 3221225472  # 3GB for SSD
@@ -103,24 +104,13 @@ ceph config set osd bluestore_cache_size_ssd 3221225472  # 3GB for SSD
 
 ## NVMe-oF Gateway (Technology Preview)
 
-Reef introduced the Ceph NVMe-oF gateway as a technology preview:
+Reef introduced the Ceph NVMe-oF gateway as a technology preview. In the Reef era, the gateway was deployed as a standalone container outside of Rook (Rook CRD support for NVMe-oF was added in later versions):
 
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
-metadata:
-  name: my-nvmeof
-  namespace: rook-ceph
-spec:
-  serviceAccountName: rook-ceph-default
-  placement:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: role
-                operator: In
-                values: [storage]
+```bash
+# The ceph-nvmeof gateway is deployed as a standalone container
+# See https://github.com/ceph/ceph-nvmeof for deployment details
+# Example: verify NVMe-oF gateway status
+ceph dashboard nvmeof-gateway-list
 ```
 
 ## Dashboard Enhancements
@@ -132,7 +122,7 @@ ceph mgr module enable dashboard
 # Access the dashboard
 kubectl -n rook-ceph get service rook-ceph-mgr-dashboard
 
-# New in Reef: Multi-cluster dashboard support
+# Configure standby manager dashboard behavior (redirect to active mgr)
 ceph config set mgr mgr/dashboard/standby_behaviour "redirect"
 ```
 
@@ -156,4 +146,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Ceph Reef (v18) brings meaningful improvements including native SMB access to CephFS, enhanced RGW S3 bucket notifications with Kafka integration, BlueStore cache auto-tuning, and the NVMe-oF gateway technology preview. For organizations still on Quincy or Pacific, Reef offers better performance and expanded protocol support worth planning an upgrade for.
+Ceph Reef (v18) brings meaningful improvements including SMB/CIFS access to CephFS via Samba integration, enhanced RGW S3 bucket notifications with Kafka integration, BlueStore performance tuning, and the NVMe-oF gateway technology preview. For organizations still on Quincy or Pacific, Reef offers better performance and expanded protocol support worth planning an upgrade for.
