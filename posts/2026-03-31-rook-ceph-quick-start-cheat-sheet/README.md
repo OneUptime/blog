@@ -16,7 +16,7 @@ A well-organized Ceph cheat sheet reduces the cognitive load on engineers handli
 ceph status                    # Overall cluster status
 ceph health detail             # Detailed health warnings/errors
 ceph -w                        # Watch live cluster events
-ceph log last 50               # Last 50 audit log entries
+ceph log last 50               # Last 50 cluster log entries
 ```
 
 ## OSD Management
