@@ -55,12 +55,21 @@ The `bulk: "true"` parameter optimizes the pool for large object storage.
 After transcoding, upload HLS segments to Ceph RGW:
 
 ```bash
-# Upload HLS playlist and segments
+# Upload HLS playlists (.m3u8) with correct content type
 aws s3 sync ./hls-output/video-123/ \
   s3://video-content/hls/video-123/ \
   --endpoint-url http://rook-ceph-rgw-video-store.rook-ceph.svc.cluster.local \
   --cache-control "max-age=31536000" \
+  --exclude "*" --include "*.m3u8" \
   --content-type "application/vnd.apple.mpegurl"
+
+# Upload HLS segments (.ts) with correct content type
+aws s3 sync ./hls-output/video-123/ \
+  s3://video-content/hls/video-123/ \
+  --endpoint-url http://rook-ceph-rgw-video-store.rook-ceph.svc.cluster.local \
+  --cache-control "max-age=31536000" \
+  --exclude "*" --include "*.ts" \
+  --content-type "video/MP2T"
 ```
 
 ## Transcoding Jobs with CephFS Working Storage
@@ -76,6 +85,7 @@ metadata:
 spec:
   template:
     spec:
+      restartPolicy: Never
       containers:
         - name: ffmpeg
           image: jrottenberg/ffmpeg:4.4-alpine
