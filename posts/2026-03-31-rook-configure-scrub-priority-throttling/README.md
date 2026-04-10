@@ -18,24 +18,19 @@ Key parameters that control scrub I/O impact:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `osd_scrub_sleep` | 0 | Sleep between object scrubs (seconds) |
+| `osd_scrub_sleep` | 0 | Sleep between scrub chunk reads in seconds (applies to both shallow and deep scrubs) |
 | `osd_max_scrubs` | 1 | Maximum simultaneous scrubs per OSD |
 | `osd_scrub_chunk_min` | 5 | Minimum objects per scrub iteration |
 | `osd_scrub_chunk_max` | 25 | Maximum objects per scrub iteration |
-| `osd_deep_scrub_sleep` | 0 | Sleep between deep scrub object reads |
 
 ## Setting Scrub Sleep to Throttle I/O
 
 Add sleep intervals between scrub object reads to reduce I/O pressure:
 
 ```bash
-# Add 0.1 second pause between each object during shallow scrubs
+# Add 0.1 second pause between each scrub chunk read (applies to both shallow and deep scrubs)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_scrub_sleep 0.1
-
-# Add 0.5 second pause for deep scrubs (more I/O intensive)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_deep_scrub_sleep 0.5
 
 # Verify current settings
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -71,11 +66,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Setting Scrub Priority
 
-When both client I/O and scrubbing compete for OSD resources, control the priority:
+When both client I/O and scrubbing compete for OSD resources, control the priority of the OSD disk thread (which handles scrubs and other background operations like snap trimming):
 
 ```bash
-# Set scrub I/O priority (class_id 0=idle, 2=best-effort, 6=high)
-# This uses the Linux I/O scheduler priority when available
+# Set the OSD disk thread I/O priority class (idle, be, or rt)
+# This uses the Linux ioprio classes: 1=realtime, 2=best-effort, 3=idle
+# Requires the CFQ I/O scheduler (may not apply with mq-deadline or none)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_disk_thread_ioprio_class idle
 
@@ -90,9 +86,7 @@ For production clusters with sensitive workloads:
 ```bash
 # Conservative: minimal scrub impact
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_scrub_sleep 0.2
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_deep_scrub_sleep 1.0
+  ceph config set osd osd_scrub_sleep 0.5
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_scrub_chunk_max 5
 ```
@@ -104,8 +98,6 @@ For dev/test clusters where speed is preferred:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_scrub_sleep 0
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd osd_deep_scrub_sleep 0
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_scrub_chunk_max 25
 ```
 
@@ -114,9 +106,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ```bash
 # Watch OSD performance during scrubbing
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  watch -n 2 "ceph osd perf | sort -k4 -rn | head -10"
+  watch -n 2 "ceph osd perf | sort -k3 -rn | head -10"
 ```
 
 ## Summary
 
-Ceph scrub throttling controls the balance between data integrity verification speed and production workload impact. The most effective throttle is `osd_scrub_sleep` and `osd_deep_scrub_sleep`, which add pauses between object reads. Combine sleep settings with smaller chunk sizes for the least bursty scrub behavior. For production clusters, use conservative throttling during business hours and remove throttling during maintenance windows when scrubs can run at full speed.
+Ceph scrub throttling controls the balance between data integrity verification speed and production workload impact. The most effective throttle is `osd_scrub_sleep`, which adds pauses between scrub chunk reads for both shallow and deep scrubs. Combine sleep settings with smaller chunk sizes for the least bursty scrub behavior. For production clusters, use conservative throttling during business hours and remove throttling during maintenance windows when scrubs can run at full speed.
