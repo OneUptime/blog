@@ -88,11 +88,12 @@ OK
 > SLOWLOG GET 10
 ...
 
-> DEBUG SLEEP 0
-OK
+> CLIENT LIST
+id=1 addr=127.0.0.1:6379 ...
+...
 ```
 
-## Pipelining Multiple Commands
+## Running Multiple Commands
 
 Type multiple commands separated by newlines or run them in sequence - each runs immediately. For batch operations, use the Workbench tab instead.
 
