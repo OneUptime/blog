@@ -12,18 +12,20 @@ Ceph RGW supports Lua scripting at request processing stages, making it possible
 
 ## Prerequisites
 
-- Ceph cluster running Octopus (15.2+) or newer
-- Lua scripting enabled on the RGW (see `rgw_lua_scripting = true` in ceph.conf)
+- Ceph cluster running Pacific (16.2+) or newer
 - Admin access to upload Lua scripts via `radosgw-admin`
 
 ## Understanding RGW Lua Hooks
 
-RGW exposes two hook points for Lua scripts:
+RGW exposes several hook points for Lua scripts, including:
 
-- **preRequest** - runs before the request is processed; can reject requests
-- **postRequest** - runs after the response is generated; useful for logging
+- **prerequest** - runs before the request is processed; can reject requests
+- **postrequest** - runs after the response is generated; useful for logging
+- **background** - runs at timed intervals (default every 5 seconds)
+- **getdata** - runs on object data during downloads
+- **putdata** - runs on object data during uploads
 
-For access control, use the `preRequest` hook. Scripts that call `RGWError` will abort the request and return an HTTP error to the client.
+For access control, use the `prerequest` hook. Scripts can abort a request by returning `RGW_ABORT_REQUEST` after setting the desired HTTP status code and message on the response.
 
 ## Writing an Access Control Script
 
@@ -35,13 +37,15 @@ The following example restricts DELETE operations to requests coming from a spec
 
 local bucket = Request.Bucket.Name or ""
 local op = Request.RGWOp or ""
-local user = Request.UserId or ""
+local user = Request.User.Id or ""
 
 -- Protect buckets with "prod-" prefix
 if string.find(bucket, "^prod%-") then
   if op == "delete_obj" or op == "delete_bucket" then
     if user ~= "svc-admin" then
-      RGWError(403, "Access denied: DELETE on production buckets requires admin account")
+      Request.Response.HTTPStatusCode = 403
+      Request.Response.Message = "Access denied: DELETE on production buckets requires admin account"
+      return RGW_ABORT_REQUEST
     end
   end
 end
@@ -49,7 +53,9 @@ end
 -- Block anonymous access to any bucket starting with "internal-"
 if string.find(bucket, "^internal%-") then
   if user == "" or user == "anonymous" then
-    RGWError(401, "Authentication required for internal buckets")
+    Request.Response.HTTPStatusCode = 401
+    Request.Response.Message = "Authentication required for internal buckets"
+    return RGW_ABORT_REQUEST
   end
 end
 ```
@@ -59,11 +65,11 @@ end
 Scripts are stored in RADOS and uploaded via `radosgw-admin`:
 
 ```bash
-# Upload the preRequest script
-radosgw-admin script put --infile=acl_policy.lua --context=preRequest
+# Upload the prerequest script
+radosgw-admin script put --infile=acl_policy.lua --context=prerequest
 
 # Verify it was stored
-radosgw-admin script get --context=preRequest
+radosgw-admin script get --context=prerequest
 ```
 
 ## Testing Access Control
@@ -85,7 +91,7 @@ You can also restrict access by source IP using the `Request.Env` table:
 
 ```lua
 -- ip_restriction.lua
-local remote_addr = Request.Env["REMOTE_ADDR"] or ""
+local remote_addr = Request.Environment["REMOTE_ADDR"] or ""
 local bucket = Request.Bucket.Name or ""
 
 -- Only allow writes to "finance-" buckets from internal network
@@ -94,7 +100,9 @@ if string.find(bucket, "^finance%-") then
   if op == "put_obj" or op == "copy_obj" then
     -- Check if IP starts with 10.0.
     if not string.find(remote_addr, "^10%.0%.") then
-      RGWError(403, "Write access to finance buckets restricted to internal network")
+      Request.Response.HTTPStatusCode = 403
+      Request.Response.Message = "Write access to finance buckets restricted to internal network"
+      return RGW_ABORT_REQUEST
     end
   end
 end
@@ -109,28 +117,35 @@ RGW only supports one Lua script per hook context. Combine all your access contr
 local function check_prod_policy()
   local bucket = Request.Bucket.Name or ""
   local op = Request.RGWOp or ""
-  local user = Request.UserId or ""
+  local user = Request.User.Id or ""
   if string.find(bucket, "^prod%-") and (op == "delete_obj") then
     if user ~= "svc-admin" then
-      RGWError(403, "DELETE restricted on prod buckets")
+      Request.Response.HTTPStatusCode = 403
+      Request.Response.Message = "DELETE restricted on prod buckets"
+      return true
     end
   end
+  return false
 end
 
 local function check_ip_policy()
-  local addr = Request.Env["REMOTE_ADDR"] or ""
+  local addr = Request.Environment["REMOTE_ADDR"] or ""
   local bucket = Request.Bucket.Name or ""
   if string.find(bucket, "^finance%-") then
     if not string.find(addr, "^10%.") then
-      RGWError(403, "IP restricted bucket")
+      Request.Response.HTTPStatusCode = 403
+      Request.Response.Message = "IP restricted bucket"
+      return true
     end
   end
+  return false
 end
 
-check_prod_policy()
-check_ip_policy()
+if check_prod_policy() or check_ip_policy() then
+  return RGW_ABORT_REQUEST
+end
 ```
 
 ## Summary
 
-Lua scripting in Ceph RGW enables flexible, code-free access control without patching RGW. By uploading scripts to the `preRequest` hook, you can enforce bucket-level, operation-level, and IP-based policies. Combine all rules into a single script and test thoroughly with both allowed and denied scenarios before deploying to production.
+Lua scripting in Ceph RGW enables flexible, code-free access control without patching RGW. By uploading scripts to the `prerequest` hook, you can enforce bucket-level, operation-level, and IP-based policies. Combine all rules into a single script and test thoroughly with both allowed and denied scenarios before deploying to production.
