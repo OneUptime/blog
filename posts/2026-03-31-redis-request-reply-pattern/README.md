@@ -14,9 +14,9 @@ The request-reply pattern lets a service make a synchronous-looking call to a re
 
 ```text
 Caller --> RPUSH requests queue (with reply_to key)
-Caller --> BLPOP reply-{correlation_id} (blocks waiting)
+Caller --> BLPOP reply:{correlation_id} (blocks waiting)
 Worker --> BLPOP requests queue
-Worker --> RPUSH reply-{correlation_id} result
+Worker --> RPUSH reply:{correlation_id} result
 ```
 
 ## Caller Code
