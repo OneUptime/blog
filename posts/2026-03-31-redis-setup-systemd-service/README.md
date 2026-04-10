@@ -45,7 +45,7 @@ Type=notify
 User=redis
 Group=redis
 ExecStart=/usr/local/bin/redis-server /etc/redis/redis.conf --supervised systemd
-ExecStop=/bin/kill -s QUIT $MAINPID
+ExecStop=/usr/local/bin/redis-cli shutdown
 TimeoutStopSec=30
 Restart=on-failure
 RestartSec=5
@@ -108,11 +108,13 @@ journalctl -u redis -n 20
 For a high-availability deployment, use aggressive restart settings:
 
 ```text
+[Unit]
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
 [Service]
 Restart=always
 RestartSec=3
-StartLimitIntervalSec=60
-StartLimitBurst=5
 ```
 
 This allows up to 5 restart attempts within 60 seconds before systemd stops trying.
