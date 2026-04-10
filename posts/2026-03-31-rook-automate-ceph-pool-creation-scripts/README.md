@@ -30,7 +30,7 @@ MIN_REPLICA_SIZE="${MIN_REPLICA_SIZE:-2}"
 APP_TAG="${APP_TAG:-rbd}"
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- ceph "$@"
 }
 
 echo "Creating pool: $POOL_NAME (type=$POOL_TYPE, pgs=$PG_COUNT)"
@@ -81,7 +81,7 @@ create_erasure_pool() {
     ceph_cmd osd pool set "$POOL_NAME" compression_algorithm snappy
   fi
 
-  ceph_cmd osd pool application enable "$POOL_NAME" rgw
+  ceph_cmd osd pool application enable "$POOL_NAME" "$APP_TAG"
 
   echo "Erasure pool '$POOL_NAME' created with k=$k m=$m"
 }
@@ -136,6 +136,7 @@ pools:
 #!/usr/bin/env python3
 """Create Ceph pools from YAML config."""
 
+import os
 import subprocess
 import yaml
 import sys
@@ -147,15 +148,19 @@ def create_pools(config_file: str) -> None:
     for pool in config.get("pools", []):
         name = pool["name"]
         print(f"Creating pool: {name}")
+        env = os.environ.copy()
+        env.update({
+            "REPLICA_SIZE": str(pool.get("size", 3)),
+            "APP_TAG": pool.get("app", "rbd"),
+            "QUOTA_MAX_BYTES": str(pool.get("quota_bytes", 0)),
+            "EC_K": str(pool.get("ec_k", 4)),
+            "EC_M": str(pool.get("ec_m", 2)),
+        })
         subprocess.run([
             "./create-ceph-pool.sh", name,
             pool.get("type", "replicated"),
             str(pool.get("pgs", 32))
-        ], env={
-            "REPLICA_SIZE": str(pool.get("size", 3)),
-            "APP_TAG": pool.get("app", "rbd"),
-            "QUOTA_MAX_BYTES": str(pool.get("quota_bytes", 0)),
-        }, check=True)
+        ], env=env, check=True)
 
 if __name__ == "__main__":
     create_pools(sys.argv[1] if len(sys.argv) > 1 else "pools.yaml")
