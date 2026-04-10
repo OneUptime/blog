@@ -131,10 +131,10 @@ redis-cli INFO clients | grep client_recent_max_input_buffer
 # Check Redis CPU usage
 redis-cli INFO cpu | grep -E "used_cpu_sys|used_cpu_user"
 
-# Check if system is under memory swap pressure (causes huge latency)
+# Check which memory allocator Redis is using (jemalloc recommended)
 redis-cli INFO memory | grep mem_allocator
 
-# On the server - check if Redis is swapping
+# On the server - check if Redis is swapping (causes huge latency)
 cat /proc/$(pgrep redis-server)/status | grep VmSwap
 # If VmSwap is > 0, Redis is swapping to disk - critical issue
 
@@ -165,7 +165,7 @@ Set up an alert that fires when Redis latency exceeds your SLO threshold. Measur
 ```bash
 # Script to measure and report Redis latency
 while true; do
-  LATENCY=$(redis-cli --latency-history -i 1 2>&1 | tail -1 | awk '{print $NF}')
+  LATENCY=$(timeout 2 redis-cli --latency-history -i 1 2>&1 | tail -1 | awk '{print $6}')
   echo "$(date -u +%FT%T) latency_avg=${LATENCY}ms"
   sleep 10
 done
