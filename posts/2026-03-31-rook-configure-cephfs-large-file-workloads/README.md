@@ -14,18 +14,15 @@ Large file workloads - media transcoding, HPC data pipelines, database backups, 
 
 ## Striping for Throughput
 
-CephFS can stripe files across multiple OSD objects. Configure default striping at the filesystem or directory level:
+CephFS can stripe files across multiple OSD objects. Configure default striping at the directory level using extended attributes. Set the layout on the root directory to apply defaults filesystem-wide:
 
 ```bash
 # Set stripe unit to 4 MB and stripe count to 8 for new files
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs default_stripe_unit 4194304
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs default_stripe_count 8
+setfattr -n ceph.dir.layout.stripe_unit -v 4194304 /mnt/cephfs/
+setfattr -n ceph.dir.layout.stripe_count -v 8 /mnt/cephfs/
 ```
 
-For a specific directory, use xattrs via the kernel mount:
+For a specific subdirectory:
 
 ```bash
 setfattr -n ceph.dir.layout.stripe_unit -v 4194304 /mnt/cephfs/large-files
@@ -59,7 +56,7 @@ spec:
   metadataPool:
     replicated:
       size: 3
-      deviceClass: ssd
+    deviceClass: ssd
   dataPools:
     - name: ec-data
       erasureCoded:
