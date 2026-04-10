@@ -68,7 +68,7 @@ kubectl -n rook-ceph logs -l app=rook-ceph-rgw --tail=100 \
 ## Step 4 - Validate Credentials
 
 ```bash
-# Verify the access key exists in RGW
+# Verify the user exists in RGW (lists user UIDs)
 radosgw-admin user list | grep -i "expected-user"
 
 # Get user details and check keys
@@ -101,9 +101,10 @@ EOF
 ## Step 5 - Debug STS and OIDC Authentication
 
 ```bash
-# Enable additional STS debug logging
+# STS auth is logged under the general debug_rgw subsystem
+# Ensure debug_rgw is set to 20 (as in Step 1) to capture STS details
 kubectl -n rook-ceph exec deploy/rook-ceph-mgr-a -- \
-  ceph config set client.rgw.my-store debug_rgw_sts 20
+  ceph config set client.rgw.my-store debug_rgw 20
 
 # Check OIDC provider configuration
 aws --endpoint-url http://rgw.example.com:7480 \
@@ -136,13 +137,11 @@ aws --endpoint-url http://rgw.example.com:7480 \
 aws --endpoint-url http://rgw.example.com:7480 \
   s3api get-object-acl --bucket mybucket --key myobject.txt
 
-# Simulate policy evaluation
-aws --endpoint-url http://rgw.example.com:7480 \
-  --profile rgw-iam \
-  iam simulate-principal-policy \
-  --policy-source-arn "arn:aws:iam:::user/myuser" \
-  --action-names "s3:GetObject" \
-  --resource-arns "arn:aws:s3:::mybucket/myobject.txt"
+# Test access directly with a specific user's credentials
+AWS_ACCESS_KEY_ID=ABCDEFGHIJ1234567890 \
+  AWS_SECRET_ACCESS_KEY=mysecretkey \
+  aws --endpoint-url http://rgw.example.com:7480 \
+  s3api get-object --bucket mybucket --key myobject.txt /dev/null
 ```
 
 ## Summary
