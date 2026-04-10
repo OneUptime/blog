@@ -28,20 +28,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_log_max_segments 128
 ```
 
-Set MDS to prioritize metadata operations:
-
-```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_op_memory_check 0
-```
-
 ## Directory Fragmentation
 
-Directories with more than 10,000 entries benefit from fragmentation. Enable it at the filesystem level:
+Directories with more than 10,000 entries benefit from fragmentation. Directory fragmentation is enabled by default in modern Ceph. You can tune the split threshold:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs allow_dirfrags true
+  ceph config set mds mds_bal_split_size 10000
 ```
 
 You can also pin specific large directories to a second MDS:
@@ -58,7 +51,7 @@ When mounting CephFS via kernel client, reduce metadata lookup overhead:
 ```bash
 mount -t ceph mon-ip:6789:/ /mnt/cephfs \
   -o name=admin,secretfile=/etc/ceph/admin.secret,\
-dcache_timeout=60,\
+dcache,\
 caps_max=65536
 ```
 
@@ -79,13 +72,13 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 mountOptions:
-  - dcache_timeout=60
+  - dcache
   - caps_max=65536
 ```
 
 ## Filesystem Configuration
 
-Set the object size for the data pool to match small file sizes to reduce wasted space:
+Set the minimum number of active replicas required for the data pool to accept I/O:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
