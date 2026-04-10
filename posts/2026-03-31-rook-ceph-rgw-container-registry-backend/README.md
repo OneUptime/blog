@@ -48,7 +48,7 @@ stringData:
         region: us-east-1
         secure: false
         v4auth: true
-        pathstyle: true
+        forcepathstyle: true
     http:
       addr: :5000
       secret: a-random-secret-string
