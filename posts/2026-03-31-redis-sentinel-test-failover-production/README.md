@@ -87,14 +87,22 @@ The primary will restart (if configured to do so), then rejoin as a replica.
 #!/bin/bash
 START=$(date +%s%N)
 
+# Record current primary address
+OLD_MASTER=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster 2>/dev/null | xargs)
+
 # Trigger failover
 redis-cli -p 26379 SENTINEL failover mymaster
 
-# Wait until new primary is writable
+# Wait until a new primary is promoted and writable
 while true; do
-  ROLE=$(redis-cli -p 6379 ROLE 2>/dev/null | head -1)
-  if [ "$ROLE" = "master" ]; then
-    break
+  MASTER_HOST=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster 2>/dev/null | sed -n '1p')
+  MASTER_PORT=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster 2>/dev/null | sed -n '2p')
+  CURRENT="$MASTER_HOST $MASTER_PORT"
+  if [ "$CURRENT" != "$OLD_MASTER" ] && [ -n "$MASTER_HOST" ]; then
+    ROLE=$(redis-cli -h "$MASTER_HOST" -p "$MASTER_PORT" ROLE 2>/dev/null | head -1)
+    if [ "$ROLE" = "master" ]; then
+      break
+    fi
   fi
   sleep 0.1
 done
