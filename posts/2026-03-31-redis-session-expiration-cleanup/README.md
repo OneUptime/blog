@@ -100,7 +100,7 @@ def logout(session_id: str):
 ## Monitoring Session Count
 
 ```bash
-# Count active session keys
+# Count total keys in the current database
 redis-cli DBSIZE
 
 # Count sessions matching pattern
