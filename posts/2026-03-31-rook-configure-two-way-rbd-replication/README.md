@@ -32,47 +32,48 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph-secondary -- \
   rbd mirror pool enable replicapool pool
 ```
 
-## Step 2 - Generate Bootstrap Tokens from Both Sites
+## Step 2 - Generate Bootstrap Token
 
-Generate a token from the primary:
+Generate a bootstrap token on site-a (primary):
 
 ```bash
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd mirror pool peer bootstrap create \
-  --site-name site-a replicapool > /tmp/site-a-token.txt
+  --site-name site-a replicapool > /tmp/bootstrap-token.txt
 ```
 
-Generate a token from the secondary:
+## Step 3 - Import Token on the Peer Site
+
+Import the token on site-b. The default `--direction rx-tx` establishes bidirectional peering with a single import:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph-secondary -- \
-  rbd mirror pool peer bootstrap create \
-  --site-name site-b replicapool > /tmp/site-b-token.txt
-```
-
-## Step 3 - Import Tokens in Both Directions
-
-Import site-b token into site-a (for bidirectional):
-
-```bash
-SITE_B_TOKEN=$(cat /tmp/site-b-token.txt)
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  rbd mirror pool peer bootstrap import \
-  --site-name site-a \
-  replicapool "${SITE_B_TOKEN}"
-```
-
-Import site-a token into site-b:
-
-```bash
-SITE_A_TOKEN=$(cat /tmp/site-a-token.txt)
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph-secondary -- \
+cat /tmp/bootstrap-token.txt | kubectl exec -i deploy/rook-ceph-tools -n rook-ceph-secondary -- \
   rbd mirror pool peer bootstrap import \
   --site-name site-b \
-  replicapool "${SITE_A_TOKEN}"
+  --direction rx-tx \
+  replicapool -
 ```
 
+The `-` at the end tells the command to read the token from stdin.
+
 ## Step 4 - Deploy rbd-mirror Daemons on Both Sites
+
+Configure the CephBlockPool with mirroring peers on both clusters:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool
+  namespace: rook-ceph
+spec:
+  mirroring:
+    enabled: true
+    mode: pool
+    peers:
+      secretNames:
+        - rbd-peer-token
+```
 
 Deploy the mirror daemon on both clusters:
 
@@ -84,12 +85,9 @@ metadata:
   namespace: rook-ceph
 spec:
   count: 1
-  peers:
-    secretNames:
-    - rbd-peer-token
 ```
 
-Apply on both clusters.
+Apply both resources on each cluster.
 
 ## Step 5 - Assign Images to Specific Primary Sites
 
@@ -129,9 +127,10 @@ images: 10 total
 Enforce that each image has only one primary at a time. Use application-level coordination to ensure only the primary site's application is writing to a given image. Monitor with:
 
 ```bash
-rbd mirror image status replicapool/myimage | grep primary
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
+  rbd mirror image status replicapool/myimage | grep primary
 ```
 
 ## Summary
 
-Two-way RBD mirroring in Rook-Ceph enables bidirectional replication by importing bootstrap tokens in both directions and deploying `rbd-mirror` on both clusters. Each image has a designated primary site, with the other site holding a read-only replica. This setup supports both active-active workload distribution and seamless failover without re-seeding, but requires careful application-level coordination to prevent split-brain.
+Two-way RBD mirroring in Rook-Ceph enables bidirectional replication by importing a bootstrap token with `rx-tx` direction and deploying `rbd-mirror` on both clusters. Each image has a designated primary site, with the other site holding a read-only replica. This setup supports both active-active workload distribution and seamless failover without re-seeding, but requires careful application-level coordination to prevent split-brain.
