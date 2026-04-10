@@ -46,10 +46,10 @@ For persistent configuration, add these to a file:
 
 ```bash
 cat > ~/.restic-env << 'EOF'
-export AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY
-export AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY
-export RESTIC_REPOSITORY=s3:http://ceph-rgw.example.com:7480/restic-repo
-export RESTIC_PASSWORD=your-strong-repo-password
+AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY
+RESTIC_REPOSITORY=s3:http://ceph-rgw.example.com:7480/restic-repo
+RESTIC_PASSWORD=your-strong-repo-password
 EOF
 chmod 600 ~/.restic-env
 ```
@@ -57,7 +57,9 @@ chmod 600 ~/.restic-env
 ## Step 3 - Initialize the Restic Repository
 
 ```bash
+set -a
 source ~/.restic-env
+set +a
 restic init
 ```
 
