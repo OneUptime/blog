@@ -69,15 +69,18 @@ ceph config set osd osd_scrub_end_hour 5
 ceph config set osd osd_scrub_sleep 0.5
 ```
 
-## Compressing RGW Sync Traffic
+## Compressing RGW Data at Edge Sites
 
-For RGW multi-site sync between edge and core, enable compression:
+For RGW deployments at edge sites, enable placement-level compression to reduce the stored data volume:
 
 ```bash
-radosgw-admin zone modify --rgw-zone=edge-zone \
-  --sync-from=core-zone \
-  --tier-config=connection.host=core-rgw.example.com,compression=snappy
+radosgw-admin zone placement modify --rgw-zone=edge-zone \
+  --placement-id=default-placement \
+  --storage-class=STANDARD \
+  --compression=snappy
 ```
+
+Note that this compresses data at rest within the zone, not sync traffic on the wire. To compress inter-site replication traffic, use a WAN optimization layer or reverse proxy with compression in front of your RGW endpoints.
 
 ## Monitoring Bandwidth Usage
 
@@ -96,10 +99,11 @@ ceph dashboard set-grafana-api-url http://grafana:3000
 
 ## Disabling Non-Essential Services
 
-On constrained links, disable telemetry and reduce beacon frequency:
+On constrained links, disable telemetry and reduce heartbeat and beacon frequency:
 
 ```bash
-ceph config set global mon_compact_on_trim false
+ceph config set osd osd_heartbeat_interval 10
+ceph config set osd mon_osd_beacon_interval 120
 ceph mgr module disable telemetry
 ceph config set mon mon_osd_min_up_ratio 0.5
 ```
