@@ -38,7 +38,7 @@ sudo nano /etc/zabbix/zabbix_agentd.conf
 
 ```text
 UserParameter=redis.ping[*],redis-cli -h $1 -p $2 PING
-UserParameter=redis.info[*],redis-cli -h $1 -p $2 INFO $3
+UserParameter=redis.info[*],redis-cli -h $1 -p $2 INFO ALL | grep "^$3:" | cut -d: -f2 | tr -d '\r'
 UserParameter=redis.config[*],redis-cli -h $1 -p $2 CONFIG GET $3
 ```
 
@@ -59,22 +59,22 @@ sudo systemctl restart zabbix-agent
 
 | Item Key | Description |
 |---|---|
-| `redis.info[connected_clients]` | Current connections |
-| `redis.info[used_memory]` | Memory in bytes |
-| `redis.info[instantaneous_ops_per_sec]` | Commands/sec |
-| `redis.info[evicted_keys]` | Evicted keys count |
-| `redis.info[replication,role]` | Master or replica |
-| `redis.info[rdb_last_bgsave_status]` | Last save status |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},connected_clients]` | Current connections |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},used_memory]` | Memory in bytes |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},instantaneous_ops_per_sec]` | Commands/sec |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},evicted_keys]` | Evicted keys count |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},role]` | Master or replica |
+| `redis.info[{$REDIS.HOST},{$REDIS.PORT},rdb_last_bgsave_status]` | Last save status |
 
 ## Built-in Triggers
 
 The template includes triggers such as:
 
 ```text
-{Template DB Redis:redis.info[connected_clients].last()} > {$REDIS.CLIENTS.MAX}
+last(/Template DB Redis/redis.info[{$REDIS.HOST},{$REDIS.PORT},connected_clients]) > {$REDIS.CLIENTS.MAX}
 - High severity: Too many connected clients
 
-{Template DB Redis:redis.info[used_memory].last()} > {$REDIS.MEM.MAX}
+last(/Template DB Redis/redis.info[{$REDIS.HOST},{$REDIS.PORT},used_memory]) > {$REDIS.MEM.MAX}
 - Average severity: Memory usage is high
 ```
 
@@ -83,7 +83,7 @@ The template includes triggers such as:
 Add a custom parameter to track command latency:
 
 ```bash
-UserParameter=redis.latency[*],redis-cli -h $1 -p $2 --latency-history -i 1 2>&1 | tail -1 | awk '{print $3}'
+UserParameter=redis.latency[*],timeout 2 redis-cli -h $1 -p $2 --latency-history -i 1 2>&1 | tail -1 | awk '{print $6}'
 ```
 
 Then create a Zabbix item with key `redis.latency[localhost,6379]` and set the update interval to 60 seconds.
