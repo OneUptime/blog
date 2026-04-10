@@ -97,7 +97,7 @@ print(r.ping())
 Try connecting without a client certificate - Redis should refuse:
 
 ```bash
-redis-cli -h 127.0.0.1 -p 6380 --tls --cacert ca.crt PING
+redis-cli -h 127.0.0.1 -p 6380 --tls --cacert /etc/redis/tls/ca.crt PING
 # Expected: Error: SSL_connect failed: ...
 ```
 
