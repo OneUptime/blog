@@ -28,8 +28,8 @@ Returns a list of floating-point values representing the vector. If quantization
 ## Basic Usage
 
 ```redis
-VADD docs 0.10 0.25 0.50 0.75 article1
-VADD docs 0.80 0.15 0.40 0.65 article2
+VADD docs VALUES 4 0.10 0.25 0.50 0.75 article1
+VADD docs VALUES 4 0.80 0.15 0.40 0.65 article2
 
 VEMB docs article1
 ```
@@ -49,7 +49,7 @@ Minor floating-point differences may appear due to quantization rounding.
 
 ```mermaid
 flowchart LR
-    A[VADD key vector member] --> B[HNSW graph stores vector]
+    A[VADD key VALUES dim vector member] --> B[HNSW graph stores vector]
     B --> C[VEMB key member]
     C --> D{Quantization used?}
     D -- NOQUANT --> E[Return exact float32 values]
@@ -68,7 +68,7 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 # Insert a known vector
 original = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 vec_args = [str(v) for v in original]
-r.execute_command("VADD", "docs", *vec_args, "article1")
+r.execute_command("VADD", "docs", "VALUES", len(original), *vec_args, "article1")
 
 # Retrieve the stored vector
 raw = r.execute_command("VEMB", "docs", "article1")
@@ -109,7 +109,7 @@ async function getEmbedding(key, member) {
 }
 
 async function run() {
-  await redis.call("VADD", "docs", "0.1", "0.2", "0.3", "0.4", "article1");
+  await redis.call("VADD", "docs", "VALUES", "4", "0.1", "0.2", "0.3", "0.4", "article1");
   const vec = await getEmbedding("docs", "article1");
   console.log("Stored embedding:", vec);
 }
@@ -121,15 +121,15 @@ run();
 
 ```redis
 # Store with full precision
-VADD docs_noquant NOQUANT 0.123456789 0.987654321 0.555555555 0.111111111 a
+VADD docs_noquant VALUES 4 0.123456789 0.987654321 0.555555555 0.111111111 a NOQUANT
 VEMB docs_noquant a
 
 # Store with Q8 quantization
-VADD docs_q8 Q8 0.123456789 0.987654321 0.555555555 0.111111111 a
+VADD docs_q8 VALUES 4 0.123456789 0.987654321 0.555555555 0.111111111 a Q8
 VEMB docs_q8 a
 
 # Store with binary quantization
-VADD docs_bin BIN 0.123456789 0.987654321 0.555555555 0.111111111 a
+VADD docs_bin VALUES 4 0.123456789 0.987654321 0.555555555 0.111111111 a BIN
 VEMB docs_bin a
 ```
 
