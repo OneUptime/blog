@@ -53,13 +53,12 @@ NAMESPACE="rook-ceph"
 TOOLBOX=$(kubectl -n $NAMESPACE get pods -l app=rook-ceph-tools \
   -o jsonpath='{.items[0].metadata.name}')
 
-# Find OSDs that are down and have been out for > 10 minutes
+# Find OSDs that are down and out
 DOWN_OSDS=$(kubectl -n $NAMESPACE exec $TOOLBOX -- \
   ceph osd dump --format json | \
   python3 -c "
-import json, sys, time
+import json, sys
 d = json.load(sys.stdin)
-now = time.time()
 failed = []
 for osd in d.get('osds', []):
     if osd.get('in') == 0 and osd.get('up') == 0:
@@ -134,7 +133,7 @@ Always use `ceph osd safe-to-destroy` before removing:
 
 ```bash
 ceph osd safe-to-destroy osd.5
-# Output: OSDs 5 are safe to destroy without reducing data durability.
+# Output: OSD(s) 5 are safe to destroy without reducing data durability.
 ```
 
 ## Summary
