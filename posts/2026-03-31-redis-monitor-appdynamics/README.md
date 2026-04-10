@@ -109,7 +109,7 @@ Name: Redis Memory Warning
 Condition:
   Custom Metric: Custom Metrics|Redis|used_memory
   Operator: greater than
-  Value: 3000000000  (3GB in bytes)
+  Value: 3221225472  (3GB in bytes)
   Duration: 5 minutes
 
 Severity: Warning
