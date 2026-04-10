@@ -18,8 +18,8 @@ Metadata sync is a one-directional process from the master zone to all other zon
 
 Key metadata types that are synced:
 
-- `users` - User accounts and credentials
-- `buckets` - Bucket ownership information
+- `user` - User accounts and credentials
+- `bucket` - Bucket ownership information
 - `bucket.instance` - Bucket configuration and shard layout
 
 ## Checking Metadata Sync Status
@@ -39,10 +39,10 @@ metadata sync: syncing
         metadata is caught up with master
 ```
 
-For detailed shard-level status:
+For detailed shard-level metadata log inspection:
 
 ```bash
-radosgw-admin metadata sync status --shard-id=0
+radosgw-admin mdlog list --shard-id=0
 ```
 
 ## Forcing Metadata Sync
@@ -59,7 +59,7 @@ To trigger a full metadata re-sync for a specific type:
 
 ```bash
 radosgw-admin metadata list bucket
-radosgw-admin metadata sync run --shard-id=5
+radosgw-admin metadata sync run
 ```
 
 ## Configuring Sync Credentials
