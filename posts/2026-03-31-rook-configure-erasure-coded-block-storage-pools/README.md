@@ -58,7 +58,7 @@ Rook automatically creates an associated replicated metadata pool named `ec-bloc
 
 ## StorageClass for the EC Pool
 
-Reference the EC pool in a StorageClass. The `dataPool` parameter points to the EC pool while the provisioner uses it for data:
+Reference the EC pool in a StorageClass. The `pool` parameter points to the replicated metadata pool while `dataPool` points to the EC pool used for data:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -68,7 +68,8 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  pool: ec-block-pool
+  pool: ec-block-pool-metadata
+  dataPool: ec-block-pool
   imageFormat: "2"
   imageFeatures: layering,object-map,fast-diff,deep-flatten
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
