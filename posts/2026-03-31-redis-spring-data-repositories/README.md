@@ -60,6 +60,8 @@ public class User implements Serializable {
     private String email;
 
     private String name;
+
+    @Indexed
     private int age;
 
     // getters and setters
