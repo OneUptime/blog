@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Education, Poll
 
-Description: Build live classroom polls with Redis that let instructors gauge student understanding instantly using Pub/Sub for vote delivery and sorted sets for results.
+Description: Build live classroom polls with Redis that let instructors gauge student understanding instantly using Pub/Sub for vote delivery and hashes for results.
 
 ---
 
@@ -94,7 +94,7 @@ if allow_multiple == 0 and redis.call('SISMEMBER', voters_key, student_id) == 1 
     return redis.error_reply('ALREADY_VOTED')
 end
 
-if not redis.call('HEXISTS', votes_key, option) then
+if redis.call('HEXISTS', votes_key, option) == 0 then
     return redis.error_reply('INVALID_OPTION')
 end
 
@@ -162,8 +162,6 @@ def get_results(room_id: str, poll_id: str) -> dict:
 ## Watching as an Instructor
 
 ```python
-import threading
-
 def instructor_dashboard(room_id: str):
     sub = r.pubsub()
     sub.subscribe(f"{CHANNEL_PREFIX}:{room_id}")
