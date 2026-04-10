@@ -54,7 +54,7 @@ spec:
   replicated:
     # Number of data copies (3 = one primary + two replicas)
     size: 3
-    # Require all replicas to be written before acknowledging writes
+    # Enforce a safe min_size (for size 3, min_size >= 2) to prevent data loss
     requireSafeReplicaSize: true
 ```
 
@@ -115,8 +115,10 @@ spec:
   replicated:
     size: 3
   parameters:
-    # Options: none, snappy, zlib, zstd, lz4
+    # Mode options: none, passive, aggressive, force
     compression_mode: "aggressive"
+    # Algorithm options: snappy, zlib, zstd, lz4 (default: snappy)
+    compression_algorithm: "snappy"
 ```
 
 ## Verifying the Pool Was Created
