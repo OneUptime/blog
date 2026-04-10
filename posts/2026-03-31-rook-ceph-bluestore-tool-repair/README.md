@@ -65,15 +65,9 @@ ceph-bluestore-tool \
 # osd_uuid, ceph_fsid, whoami (OSD ID), and device roles
 ```
 
-## Fix Missing or Mismatched Labels
+## Migrate BlueFS Data Between Devices
 
 ```bash
-# Re-label a device after replacement
-ceph-bluestore-tool \
-  bluefs-bdev-expand \
-  --path /var/lib/ceph/osd/ceph-0 \
-  --dev-target main
-
 # Copy WAL/DB from one device to another
 ceph-bluestore-tool \
   bluefs-bdev-migrate \
@@ -89,13 +83,13 @@ ceph-bluestore-tool \
 ceph-bluestore-tool \
   free-dump \
   --path /var/lib/ceph/osd/ceph-0 \
-  --allocator-type block
+  --allocator block
 
 # Summarize free space
 ceph-bluestore-tool \
   free-score \
   --path /var/lib/ceph/osd/ceph-0 \
-  --allocator-type block
+  --allocator block
 ```
 
 ## Expand BlueFS into Free Space
