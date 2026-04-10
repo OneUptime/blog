@@ -48,8 +48,9 @@ value = replica.get('key')
 ### Failover Flow
 
 ```text
-Normal:   App -> Sentinel -> Primary (reads/writes)
-                          -> Replica (reads)
+Normal:   App asks Sentinel for primary/replica addresses
+          App -> Primary (reads/writes)
+          App -> Replica (reads)
 
 Failover: Primary fails
           Sentinel detects (quorum)
@@ -75,13 +76,13 @@ redis-cli -c -p 7000 cluster nodes
 ```
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 # Cluster-aware client handles redirects automatically
 cluster = RedisCluster(
     startup_nodes=[
-        {"host": "127.0.0.1", "port": 7000},
-        {"host": "127.0.0.1", "port": 7001},
+        ClusterNode("127.0.0.1", 7000),
+        ClusterNode("127.0.0.1", 7001),
     ],
     decode_responses=True
 )
@@ -121,7 +122,7 @@ High availability        | Yes (primary failover)    | Yes (per-shard failover)
 Multi-key operations     | All keys                  | Only same-slot keys
 Lua scripts              | All keys                  | Only same-slot keys
 Client complexity        | Low (sentinel-aware)      | Medium (cluster-aware)
-Minimum nodes            | 1 primary + 2 sentinels   | 3 primaries (6 with HA)
+Minimum nodes            | 1 primary + 3 sentinels   | 3 primaries (6 with HA)
 ```
 
 ## When to Use Sentinel
