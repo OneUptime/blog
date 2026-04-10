@@ -38,14 +38,14 @@ Map the RBD image to a block device on the Docker host:
 MON_ADDRS=$(kubectl -n rook-ceph get svc rook-ceph-mon-a -o jsonpath='{.spec.clusterIP}')
 
 # Get the client key
-CLIENT_KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+CLIENT_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth get-key client.admin)
 
 # Map the RBD image
 rbd map docker-rbd/myvolume \
-  --monitor $MON_ADDRS \
+  -m $MON_ADDRS \
   --id admin \
-  --key $CLIENT_KEY
+  --keyfile <(echo "$CLIENT_KEY")
 
 # Format and mount
 mkfs.ext4 /dev/rbd0
@@ -88,27 +88,16 @@ docker run -d \
   myapp:latest
 ```
 
-## Create a Docker Volume with RBD
+## Automate RBD Mapping with a Helper Script
 
-Configure `/etc/docker/daemon.json` for RBD volume mapping:
-
-```json
-{
-  "storage-driver": "overlay2",
-  "default-address-pools": [
-    {"base": "172.20.0.0/16", "size": 24}
-  ]
-}
-```
-
-Use a helper script to automate RBD mapping before `docker run`:
+Use a helper script to automate RBD device mapping before `docker run`:
 
 ```bash
 #!/bin/bash
 IMAGE_NAME=$1
 POOL=${2:-docker-rbd}
 
-rbd map $POOL/$IMAGE_NAME --id admin --key $CLIENT_KEY
+rbd map $POOL/$IMAGE_NAME --id admin --keyfile <(echo "$CLIENT_KEY")
 DEVICE=$(rbd device list | grep $IMAGE_NAME | awk '{print $5}')
 echo $DEVICE
 ```
