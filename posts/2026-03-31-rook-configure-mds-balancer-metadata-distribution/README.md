@@ -23,16 +23,16 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config get mds mds_bal_mode
 ```
 
-Available modes:
-- `0` - No balancing (manual subtree pinning only)
-- `1` - Greedy load balancing
-- `2` - Fast (default) - heuristic-based balancing
+Available modes (these control how load is calculated, not whether balancing occurs):
+- `0` - Hybrid (default) - combines auth metadata load, request rate, and queue length
+- `1` - Request rate and latency based
+- `2` - CPU load based
 
 Set the balancer mode:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_bal_mode 2
+  ceph config set mds mds_bal_mode 0
 ```
 
 ## Tuning Balancer Intervals
@@ -44,7 +44,7 @@ Configure how frequently the balancer runs:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_bal_interval 10
 
-# Migration interval (how often to trigger migrations)
+# Directory fragment split delay in seconds (delay before splitting large directories)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_bal_fragment_interval 5
 ```
@@ -54,17 +54,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Control when the balancer triggers migrations:
 
 ```bash
-# Minimum load difference to trigger migration (default 0.5)
+# Minimum proportional load above average before exporting subtrees (default 0.1)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_bal_min_rebalance 0.1
 
-# Maximum load before urgent migration
+# Minimum load on an MDS before the balancer considers it for rebalancing (default 0.8)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_bal_max_until 5
-
-# Target load balance tolerance (0 = perfect balance)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_bal_target_decay 0.1
+  ceph config set mds mds_bal_need_min 0.8
 ```
 
 ## Monitoring Balancer Activity
@@ -86,7 +82,7 @@ View balancer-related counters:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph daemon mds.myfs.a perf dump | \
   python3 -c "import json,sys; d=json.load(sys.stdin); \
-  bal=d.get('mds_balancer',{}); [print(k,v) for k,v in bal.items()]"
+  mds=d.get('mds',{}); [print(k,v) for k,v in mds.items() if 'bal' in k or 'export' in k or 'import' in k or 'subtree' in k]"
 ```
 
 ## Overriding the Balancer with Manual Pins
