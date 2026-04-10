@@ -147,7 +147,7 @@ Use `TOPK.QUERY` when you have candidate items to check. Use `TOPK.LIST` to disc
 
 ## Accuracy Notes
 
-`TOPK.QUERY` reflects the current internal state of the Heavy Hitters algorithm. Because TopK is approximate:
+`TOPK.QUERY` reflects the current internal state of the HeavyKeeper algorithm. Because TopK is approximate:
 - A `1` result means the item is in the top K based on current estimates
 - A `0` result means the item is not in the current top K, but it may have been recently
 
