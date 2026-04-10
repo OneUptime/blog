@@ -93,6 +93,7 @@ metadata:
   name: static-site-ingress
   namespace: rook-ceph
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /my-static-site/$2
 spec:
   rules:
@@ -100,7 +101,7 @@ spec:
     http:
       paths:
       - path: /()(.*)
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: rook-ceph-rgw-store
