@@ -8,7 +8,7 @@ Description: Learn how to use Redis logical databases (DB 0-15) to isolate tenan
 
 ---
 
-Redis supports up to 16 logical databases (numbered 0-15) within a single Redis instance. Each database has its own keyspace, making it a simple way to separate tenant data on a shared server without running multiple processes.
+Redis defaults to 16 logical databases (numbered 0-15) within a single Redis instance. You can increase this limit by setting the `databases` directive in `redis.conf`. Each database has its own keyspace, making it a simple way to separate tenant data on a shared server without running multiple processes.
 
 ## How Redis Databases Work
 
@@ -83,7 +83,7 @@ This gives per-tenant key counts at a glance.
 ## Limitations to Know Before Choosing This Approach
 
 ```text
-1. Maximum 16 databases per instance - does not scale beyond 16 tenants
+1. Defaults to 16 databases per instance (configurable via `databases` in redis.conf) - practical limit for most deployments
 2. Redis Cluster does NOT support multiple databases (only db 0 is allowed)
 3. No per-database memory limits - one tenant can exhaust all memory
 4. No per-database rate limiting or connection quotas
@@ -108,7 +108,7 @@ Script to monitor all databases:
 ```bash
 #!/bin/bash
 for db in $(seq 0 15); do
-  KEYCOUNT=$(redis-cli -n "$db" DBSIZE)
+  KEYCOUNT=$(redis-cli --raw -n "$db" DBSIZE)
   if [ "$KEYCOUNT" -gt 0 ]; then
     echo "DB $db: $KEYCOUNT keys"
   fi
