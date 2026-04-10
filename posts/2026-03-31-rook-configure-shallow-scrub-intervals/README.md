@@ -10,7 +10,7 @@ Description: Learn how to configure Ceph shallow scrubbing intervals to balance 
 
 ## Understanding Shallow Scrubbing
 
-Shallow scrubbing (also called just "scrubbing") is Ceph's process of verifying that each placement group's (PG) metadata is consistent across all replicas - that object sizes, checksums, and attributes match. Unlike deep scrubbing, it does not read the full object data from disk.
+Shallow scrubbing (also called just "scrubbing") is Ceph's process of verifying that each placement group's (PG) metadata is consistent across all replicas - that object sizes and attributes match. Unlike deep scrubbing, it does not read the full object data from disk or verify data checksums.
 
 Shallow scrubbing is relatively lightweight and runs frequently (daily by default). It catches metadata inconsistencies but does not verify data block integrity.
 
@@ -49,14 +49,19 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_scrub_max_interval 259200
 ```
 
-Or configure via the Rook CephCluster spec:
+Or configure via the `rook-config-override` ConfigMap:
 
 ```yaml
-spec:
-  storage:
-    config:
-      osd_scrub_min_interval: "86400"
-      osd_scrub_max_interval: "604800"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rook-config-override
+  namespace: rook-ceph
+data:
+  config: |
+    [osd]
+    osd_scrub_min_interval = 43200
+    osd_scrub_max_interval = 259200
 ```
 
 ## Restricting Scrubs to Off-Peak Hours
