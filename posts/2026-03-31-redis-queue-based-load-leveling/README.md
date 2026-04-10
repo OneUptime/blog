@@ -13,7 +13,7 @@ Load leveling decouples producers from consumers by placing a queue between them
 ## Architecture
 
 ```text
-Producers (spiky) --> RPUSH --> Redis List --> BLPOP --> Workers (steady rate)
+Producers (spiky) --> RPUSH --> Redis List --> LPOP --> Workers (steady rate)
 ```
 
 The queue absorbs bursts. Workers never see more load than they can handle.
