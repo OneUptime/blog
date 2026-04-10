@@ -59,14 +59,13 @@ Provisioner pods require specific RBAC permissions and secrets to communicate wi
 
 ```bash
 kubectl get secret rook-csi-rbd-provisioner -n rook-ceph
-kubectl get clusterrolebinding rook-csi-rbd-provisioner-role
+kubectl get clusterrolebinding rbd-csi-provisioner-role
 ```
 
-If secrets are missing, recreate them by triggering a reconciliation of the CephCluster:
+If secrets are missing, recreate them by restarting the Rook operator to trigger a full reconciliation:
 
 ```bash
-kubectl patch cephcluster rook-ceph -n rook-ceph \
-  --type merge -p '{"metadata":{"annotations":{"rook-reconcile":"true"}}}'
+kubectl rollout restart deployment/rook-ceph-operator -n rook-ceph
 ```
 
 ## Step 5 - Check Ceph Cluster Health
