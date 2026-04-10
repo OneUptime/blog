@@ -47,7 +47,7 @@ from redis.commands.timeseries import TimeSeries
 ts = client.ts()
 ts.create("temperature:sensor42", retention_msecs=86400000)
 ts.add("temperature:sensor42", "*", 23.7)
-result = ts.range("temperature:sensor42", 0, -1)
+result = ts.range("temperature:sensor42", "-", "+")
 ```
 
 ## Cassandra for Time-Series Data
