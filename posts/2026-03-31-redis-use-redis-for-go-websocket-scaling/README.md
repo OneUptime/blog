@@ -42,9 +42,6 @@ go get github.com/redis/go-redis/v9
 package main
 
 import (
-    "context"
-    "encoding/json"
-    "log"
     "sync"
 
     "github.com/redis/go-redis/v9"
@@ -88,8 +85,8 @@ func (h *Hub) Unregister(c *Client) {
 }
 
 func (h *Hub) BroadcastLocal(msg []byte) {
-    h.mu.RLock()
-    defer h.mu.RUnlock()
+    h.mu.Lock()
+    defer h.mu.Unlock()
     for c := range h.clients {
         select {
         case c.send <- msg:
