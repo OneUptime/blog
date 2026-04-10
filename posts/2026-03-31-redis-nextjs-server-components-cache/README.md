@@ -8,7 +8,7 @@ Description: Cache expensive data fetches in Next.js App Router Server Component
 
 ---
 
-Next.js App Router Server Components fetch data on the server. By default Next.js caches `fetch` responses, but for database calls, ORM queries, or third-party SDK calls you need to manage caching manually. Redis is an ideal store for this.
+Next.js App Router Server Components fetch data on the server. While Next.js provides built-in caching for `fetch` requests, database calls, ORM queries, and third-party SDK calls require manual caching. Redis is an ideal store for this.
 
 ## Install Redis
 
@@ -59,9 +59,9 @@ import { db } from "../../lib/db";
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: { category?: string };
+  searchParams: Promise<{ category?: string }>;
 }) {
-  const category = searchParams.category ?? "all";
+  const { category = "all" } = await searchParams;
 
   const products = await cachedFetch(
     `products:${category}`,
