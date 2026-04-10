@@ -12,7 +12,7 @@ Description: Understand how Ceph cache tiering works, how to configure it on old
 
 Cache tiering in Ceph allows you to create a two-layer storage architecture where a fast SSD pool sits in front of a slower HDD pool. Hot data is promoted to the fast tier automatically, and cold data is flushed back to the base tier.
 
-**Important:** Cache tiering is deprecated as of Ceph Reef (v18) and is being removed from future releases. For modern clusters, BlueStore's built-in cache and RocksDB WAL placement on NVMe provide better performance without the complexity of tiering.
+**Important:** Cache tiering is deprecated as of Ceph Reef (v18) and may be removed in future releases without much notice. For modern clusters, BlueStore's built-in cache and RocksDB WAL placement on NVMe provide better performance without the complexity of tiering.
 
 ## How Cache Tiering Worked
 
@@ -52,14 +52,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set cache-pool target_max_bytes 107374182400
 
-# Flush and evict when cache is 80% full
+# Start flushing dirty objects when 80% of cache contains modified data
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set cache-pool cache_target_dirty_ratio 0.8
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set cache-pool cache_target_full_ratio 0.9
 
-# Minimum access count before object is promoted
+# Number of hit set periods to retain for tracking promotion
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set cache-pool hit_set_count 12
 
@@ -72,9 +72,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 To remove a cache tier safely:
 
 ```bash
-# Change mode to forward (stop accepting new writes to cache)
+# Change mode to proxy (stop accepting new writes to cache)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd tier cache-mode cache-pool forward
+  ceph osd tier cache-mode cache-pool proxy
 
 # Flush all dirty objects to base pool
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
