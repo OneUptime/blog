@@ -60,9 +60,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Persistent Cache (pwl_cache)
 
-For applications that survive process restarts, use the persistent write log cache backed by a local SSD or PMEM:
+For applications that survive process restarts, use the persistent write log cache backed by a local SSD or PMEM. First enable the cache plugin:
 
 ```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client rbd_plugins pwl_cache
+
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   rbd config image set rbd/my-volume rbd_persistent_cache_mode ssd
 
@@ -75,7 +78,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Cache Configuration in StorageClass
 
-Pass cache parameters via CSI storage class to apply per-PVC:
+RBD caching is configured at the Ceph config level, not through the StorageClass. However, the following StorageClass includes filesystem mount options that complement RBD caching for better performance:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -104,10 +107,10 @@ Check cache hit statistics:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  rbd perf image stats
+  rbd perf image iostat
 ```
 
-Look for `rd_bytes` vs `rd_wr_bytes` ratios to estimate cache hit rates.
+Look for `read_bytes` and `write_bytes` columns to monitor I/O throughput reaching the OSDs. Lower OSD-level I/O relative to application-level I/O indicates effective caching.
 
 ## Summary
 
