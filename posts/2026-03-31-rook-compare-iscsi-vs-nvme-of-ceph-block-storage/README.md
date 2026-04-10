@@ -20,7 +20,7 @@ Both iSCSI and NVMe-oF (NVMe over Fabrics) allow clients to access remote block 
 | Metric | iSCSI | NVMe-oF (TCP) | NVMe-oF (RDMA) |
 |--------|-------|---------------|-----------------|
 | Latency | 100-500 us | 50-150 us | 10-50 us |
-| Queue Depth | 1 (SCSI) | 65535 per namespace | 65535 per namespace |
+| Queue Depth | Configurable (default 32 per LUN) | Up to 65536 per queue (multi-queue) | Up to 65536 per queue (multi-queue) |
 | CPU Overhead | Moderate | Low-Moderate | Very Low |
 | Max IOPS | ~1M | ~5M | ~10M |
 
@@ -97,11 +97,7 @@ placement:
     - gateway2
 spec:
   pool: rbd
-  daemon_hosts:
-    - gateway1
-    - gateway2
-  default_transport: tcp
-  default_addr: 0.0.0.0
+  enable_auth: false
 ```
 
 ```bash
