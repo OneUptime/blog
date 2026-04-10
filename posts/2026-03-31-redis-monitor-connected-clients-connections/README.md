@@ -44,7 +44,7 @@ redis-cli CLIENT LIST
 ```
 
 ```text
-id=12 addr=10.0.1.10:52341 laddr=10.0.1.5:6379 fd=18 name=api-worker age=42 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=32768 argv-mem=10 multi-mem=0 tot-mem=22370 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 events=r cmd=get|1 user=appuser library-name=redis-py library-ver=5.0.0
+id=12 addr=10.0.1.10:52341 laddr=10.0.1.5:6379 fd=18 name=api-worker age=42 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=0 qbuf-free=32768 argv-mem=10 multi-mem=0 tot-mem=22370 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 events=r cmd=get user=appuser library-name=redis-py library-ver=5.0.0
 ```
 
 Focus on:
