@@ -70,6 +70,10 @@ public class CacheService {
 
     private final StringRedisTemplate template;
 
+    public CacheService(StringRedisTemplate template) {
+        this.template = template;
+    }
+
     public void set(String key, String value) {
         template.opsForValue().set(key, value, Duration.ofMinutes(5));
     }
@@ -102,7 +106,7 @@ redis-cli -h sentinel-1 -p 26379 sentinel get-master-addr-by-name mymaster
 redis-cli -h sentinel-1 -p 26379 sentinel masters
 
 # Check replica status
-redis-cli -h sentinel-1 -p 26379 sentinel slaves mymaster
+redis-cli -h sentinel-1 -p 26379 sentinel replicas mymaster
 ```
 
 ## Handle Connection Errors Gracefully
