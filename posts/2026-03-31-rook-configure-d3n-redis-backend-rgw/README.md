@@ -10,98 +10,49 @@ Description: Configure Redis as the distributed cache backend for D3N in Ceph RG
 
 ## Overview
 
-When running multiple RGW instances in a single zone, D3N needs a shared cache index so all instances know which objects are cached locally. Redis serves as this shared coordination layer. Without Redis, each RGW instance maintains an independent local cache, which reduces efficiency.
+D3N (Datacenter-Data-Delivery Network) is a local read-through cache for RGW that uses high-speed storage such as NVMe SSDs or DRAM to cache frequently accessed objects on each RGW node. Each RGW instance maintains its own independent local cache. D3N does not use Redis for cross-instance coordination; that capability belongs to D4N, a newer distributed caching architecture. This guide covers configuring D3N's local SSD cache on RGW instances.
 
 ## Prerequisites
 
 - Ceph cluster with RGW configured
-- Redis 6.x or later installed and accessible from RGW hosts
-- D3N local datacache enabled on RGW instances
+- High-speed local storage (NVMe SSD) available on RGW hosts
 
-## Installing Redis
+## Configuring D3N on RGW
+
+First, create the cache directory on each RGW host:
 
 ```bash
-# On RHEL/CentOS/Rocky
-dnf install redis -y
-systemctl enable --now redis
-
-# On Ubuntu/Debian
-apt-get install redis-server -y
-systemctl enable --now redis-server
-
-# Verify Redis is running
-redis-cli ping
+mkdir -p /var/lib/ceph/rgw/cache
 ```
 
-## Configuring Redis for D3N
-
-Edit the Redis configuration for production use:
+Set the D3N configuration via Ceph config:
 
 ```bash
-# /etc/redis/redis.conf
-bind 0.0.0.0
-port 6379
-maxmemory 4gb
-maxmemory-policy allkeys-lru
-save ""
-appendonly no
-```
-
-Restart Redis after changes:
-
-```bash
-systemctl restart redis
-```
-
-## Configuring RGW to Use Redis Backend
-
-Set the D3N Redis configuration via Ceph config:
-
-```bash
-# Enable D3N with Redis backend
-ceph config set client.rgw.myzone d3n_l1_local_datacache_enabled true
-ceph config set client.rgw.myzone d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
-ceph config set client.rgw.myzone d3n_l1_datacache_size 10737418240
-
-# Configure Redis connection
-ceph config set client.rgw.myzone rgw_d3n_l1_datacache_redis_url "redis://192.168.1.100:6379"
+# Enable D3N local datacache
+ceph config set client.rgw.myzone rgw_d3n_l1_local_datacache_enabled true
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 10737418240
 ```
 
 Or in `ceph.conf`:
 
 ```ini
 [client.rgw.myzone]
-d3n_l1_local_datacache_enabled = true
-d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
-d3n_l1_datacache_size = 10737418240
-rgw_d3n_l1_datacache_redis_url = redis://192.168.1.100:6379
+rgw_d3n_l1_local_datacache_enabled = true
+rgw_d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
+rgw_d3n_l1_datacache_size = 10737418240
 ```
 
-## Using Redis Sentinel for High Availability
+**Note:** D3N will not cache objects compressed by RGW-level compression (OSD-level compression is supported) or objects encrypted by RGW encryption. D3N will also be disabled if `rgw_max_chunk_size` differs from `rgw_obj_stripe_size`.
 
-For production, use Redis Sentinel to avoid a single point of failure:
-
-```bash
-# Sentinel configuration - /etc/redis/sentinel.conf
-sentinel monitor mymaster 192.168.1.100 6379 2
-sentinel down-after-milliseconds mymaster 5000
-sentinel failover-timeout mymaster 10000
-
-# Point RGW to Sentinel
-ceph config set client.rgw.myzone rgw_d3n_l1_datacache_redis_url "redis://192.168.1.100:26379"
-```
-
-## Verifying Redis Coordination
+## Verifying D3N Cache
 
 ```bash
-# Monitor D3N keys in Redis
-redis-cli -h 192.168.1.100 KEYS "d3n*" | head -20
+# Check that the cache directory is being populated
+ls -la /var/lib/ceph/rgw/cache/
 
-# Check Redis memory usage
-redis-cli -h 192.168.1.100 INFO memory | grep used_memory_human
-
-# Watch Redis operations in real time
-redis-cli -h 192.168.1.100 MONITOR | grep d3n
+# Verify D3N configuration is active
+ceph config get client.rgw.myzone rgw_d3n_l1_local_datacache_enabled
 ```
 
 ## Restart RGW After Configuration
@@ -116,4 +67,4 @@ systemctl restart ceph-radosgw@rgw.myzone
 
 ## Summary
 
-Configuring Redis as the D3N backend enables multiple RGW instances to share cache state, preventing redundant fetches from the backend cluster. Use Redis Sentinel for high availability, set an appropriate maxmemory policy, and verify coordination via Redis monitoring commands. This setup significantly improves cache hit rates in multi-RGW deployments.
+D3N provides a local read-through cache on each RGW node using high-speed storage like NVMe SSDs. It improves read performance for frequently accessed objects by avoiding repeated fetches from the backend RADOS cluster. Each RGW instance maintains its own independent cache. For distributed cache coordination across multiple RGW instances using Redis, see the Ceph D4N documentation instead.
