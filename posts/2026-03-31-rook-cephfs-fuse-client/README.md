@@ -10,7 +10,7 @@ Description: Learn how to configure Rook to use the FUSE client instead of the k
 
 ## Why Choose FUSE Over the Kernel Driver
 
-By default, Rook mounts CephFS volumes using the in-kernel CephFS driver (`ceph-common` kernel module). This works well on most modern Linux distributions, but there are scenarios where using the FUSE-based client (`ceph-fuse`) is preferable:
+By default, Rook mounts CephFS volumes using the in-kernel CephFS driver (`ceph` kernel module). This works well on most modern Linux distributions, but there are scenarios where using the FUSE-based client (`ceph-fuse`) is preferable:
 
 - Kernel driver requires a minimum kernel version matching the Ceph release. Older kernels may lack features needed by newer Ceph clusters.
 - FUSE runs entirely in userspace, making it easier to update without kernel changes.
@@ -21,7 +21,7 @@ By default, Rook mounts CephFS volumes using the in-kernel CephFS driver (`ceph-
 
 Rook delegates mounting to the Ceph CSI driver. The CSI driver supports both kernel and FUSE-based mounts. You control the preference via a ConfigMap that the CSI driver reads at startup.
 
-The relevant setting is `csi.cephfs.kernelmountoptions`. When you want FUSE, you configure the CSI driver to skip the kernel client.
+The relevant setting is `CSI_FORCE_CEPHFS_KERNEL_CLIENT`. When you want FUSE, you set this to `"false"` so the CSI driver uses the FUSE client instead of the kernel client.
 
 ## Configuring FUSE Mount in the CSI ConfigMap
 
@@ -35,7 +35,6 @@ metadata:
   namespace: rook-ceph
 data:
   # Force FUSE client for all CephFS mounts
-  CSI_CEPHFS_KERNELMOUNTOPTIONS: "false"
   CSI_FORCE_CEPHFS_KERNEL_CLIENT: "false"
 ```
 
@@ -81,7 +80,7 @@ For workloads that require maximum throughput, prefer the kernel driver on a sup
 
 ## Kernel Driver Requirements
 
-If you want to use the kernel driver instead, ensure your nodes meet the minimum kernel version for your Ceph version. For Ceph Quincy (17.x), kernel 5.4+ is generally sufficient. Check the Ceph release notes for exact requirements:
+If you want to use the kernel driver instead, ensure your nodes meet the minimum kernel version for your Ceph version. For Ceph Quincy (17.x), kernel 4.17+ supports basic CephFS functionality (quotas, snapshots), but features like msgr2 protocol require kernel 5.11+. Check the Ceph release notes for exact per-feature requirements:
 
 ```bash
 # Check node kernel version
