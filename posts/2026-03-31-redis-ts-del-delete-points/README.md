@@ -175,9 +175,9 @@ Retention policy is more efficient for routine data lifecycle management. `TS.DE
 
 ## Performance Considerations
 
-- `TS.DEL` is O(N) where N is the number of deleted samples plus the chunk reorganization cost.
+- `TS.DEL` is O(N) where N is the number of data points that will be removed.
 - Deleting large ranges is slower than automatic retention-based expiry because retention is chunk-based.
-- After deletion, Redis may reorganize the underlying chunk structure.
+- When compaction rules are defined, affected compaction buckets are recalculated based on remaining samples, or removed if all samples in the bucket were deleted.
 - For regular data lifecycle management, prefer the `RETENTION` parameter in `TS.CREATE` or `TS.ALTER`.
 
 ## Summary
