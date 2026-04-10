@@ -26,14 +26,14 @@ Ceph supports three election strategies:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mon election_status
+  ceph mon dump
 ```
 
-Check the configured strategy:
+The output includes the `election_strategy` field showing the current strategy. You can also check quorum status:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config get mon election_strategy
+  ceph quorum_status
 ```
 
 ## Setting the Classic Strategy
@@ -73,7 +73,7 @@ This prevents a monitor in a degraded network segment from becoming leader and c
 
 ## Configuring a Stretch Cluster Monitor Topology
 
-In Rook, configure a stretch cluster with three monitors across two sites:
+In Rook, configure a stretch cluster with five monitors across three zones (two data zones and one arbiter zone):
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -83,18 +83,18 @@ metadata:
   namespace: rook-ceph
 spec:
   mon:
-    count: 3
+    count: 5
     allowMultiplePerNode: false
-  stretchCluster:
-    failureDomainLabel: topology.kubernetes.io/zone
-    subFailureDomain: host
-    zones:
-      - name: zone-a
-        arbiter: false
-      - name: zone-b
-        arbiter: false
-      - name: zone-c
-        arbiter: true
+    stretchCluster:
+      failureDomainLabel: topology.kubernetes.io/zone
+      subFailureDomain: host
+      zones:
+        - name: zone-a
+          arbiter: false
+        - name: zone-b
+          arbiter: false
+        - name: zone-c
+          arbiter: true
 ```
 
 ## Monitor Quorum Requirements
