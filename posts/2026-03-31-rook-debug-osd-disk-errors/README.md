@@ -75,15 +75,15 @@ kubectl logs -n rook-ceph <osd-pod-name> --previous --tail=100
 ## Step 4: Check BlueStore Diagnostics
 
 ```bash
-# Check BlueStore consistency
+# Check BlueFS statistics (device allocation, usage)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph tell osd.<id> bluestore.fsck
+  ceph tell osd.<id> bluefs stats
 
-# Check osd-specific health
+# Check OSD metadata (device details, BlueStore config)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd health osd.<id>
+  ceph osd metadata <id>
 
-# Check BlueStore stats
+# Check BlueStore performance counters
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph tell osd.<id> perf dump | python3 -m json.tool | grep -i "error\|slow\|timeout"
 ```
