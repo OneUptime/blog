@@ -57,7 +57,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --rgw-zonegroup=us \
   --rgw-zone=us-dr \
   --access-key=sync-key \
-  --secret-key=sync-secret \
+  --secret=sync-secret \
   --endpoints=http://rgw-dr:80 \
   --read-only
 
@@ -98,17 +98,16 @@ When the primary fails:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zone modify \
   --rgw-zone=us-dr \
-  --master \
+  --master --default \
   --read-only=false
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zonegroup modify \
   --rgw-zonegroup=us \
-  --master-zone=us-dr
+  --master
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin period update --commit \
-  --yes-i-really-mean-it
+  radosgw-admin period update --commit
 
 # Update DNS to point to DR endpoint
 # Route53 / external-dns update here
