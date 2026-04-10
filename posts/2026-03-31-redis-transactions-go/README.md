@@ -119,7 +119,7 @@ Redis transactions are not the same as database transactions:
 - Use `Watch` + `TxPipelined` for conditional updates, not for rollback behavior
 
 ```go
-// This will execute BOTH commands even if SET fails
+// Both commands execute even though LPush fails (wrong type for key1)
 rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
     pipe.Set(ctx, "key1", "val1", 0)
     pipe.LPush(ctx, "key1", "wrong-type") // will fail at execution, others proceed
