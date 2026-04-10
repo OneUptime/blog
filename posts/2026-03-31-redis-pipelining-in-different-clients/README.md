@@ -17,7 +17,7 @@ import redis
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
-# Create a pipeline (non-transactional by default)
+# Create a pipeline (transaction=True by default, disabled here)
 pipe = r.pipeline(transaction=False)
 
 for i in range(1000):
@@ -52,11 +52,12 @@ for (let i = 0; i < 1000; i++) {
 const results = await pipeline.exec();
 // results: [[null, "OK"], [null, "OK"], ...]
 
-// Auto-pipelining (ioredis specific)
+// Auto-pipelining (ioredis specific, must opt in)
+const autoClient = new Redis({ enableAutoPipelining: true });
 // Commands issued in the same event loop tick are auto-batched
 const [r1, r2] = await Promise.all([
-  client.set("foo", "1"),
-  client.set("bar", "2"),
+  autoClient.set("foo", "1"),
+  autoClient.set("bar", "2"),
 ]);
 ```
 
@@ -66,13 +67,13 @@ const [r1, r2] = await Promise.all([
 import { createClient } from "redis";
 const client = await createClient().connect();
 
-// Multi-exec approach for pipelines
+// Pipeline without MULTI/EXEC using execAsPipeline()
 const results = await client
   .multi()
   .set("key1", "val1")
   .set("key2", "val2")
   .get("key1")
-  .exec();
+  .execAsPipeline();
 
 console.log(results); // ["OK", "OK", "val1"]
 ```
@@ -133,27 +134,26 @@ jedis.close();
 
 ```java
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 
 RedisClient client = RedisClient.create("redis://localhost");
 var conn = client.connect();
 RedisAsyncCommands<String, String> async = conn.async();
-async.setAutoFlushCommands(false);  // manual flush mode
+conn.setAutoFlushCommands(false);  // manual flush mode
 
 for (int i = 0; i < 1000; i++) {
     async.set("key:" + i, "value:" + i);
 }
-async.flushCommands();  // send all buffered commands
+conn.flushCommands();  // send all buffered commands
 ```
 
 ## Client Behavior Differences
 
 ```text
 Client       Auto-pipeline   Batch size   Transaction default
-redis-py     No              Unlimited    No (opt-in)
-ioredis      Yes             Event tick   No
-node-redis   No              Unlimited    Yes (multi)
+redis-py     No              Unlimited    Yes (default)
+ioredis      Yes (opt-in)    Event tick   No
+node-redis   No              Unlimited    No (execAsPipeline)
 go-redis     No              Unlimited    No
 Jedis        No              Unlimited    No
 Lettuce      No (manual)     Manual       No
