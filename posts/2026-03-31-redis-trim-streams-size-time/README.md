@@ -22,7 +22,7 @@ XTRIM mystream MAXLEN 10000
 XTRIM mystream MAXLEN ~ 10000
 ```
 
-The `~` modifier allows Redis to trim at radix tree node boundaries, which is much faster than exact trimming and still keeps the stream close to the target size.
+The `~` modifier allows Redis to trim at macro node boundaries, which is much faster than exact trimming and still keeps the stream close to the target size.
 
 ## Trimming at Write Time with XADD
 
