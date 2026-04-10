@@ -55,19 +55,19 @@ ceph osd tree | grep osd.0
 
 ## Manually Assigning Device Classes
 
-Override or assign device classes explicitly:
+Assign device classes explicitly. An OSD can only have one class at a time — to change an existing class, you must first remove it with `rm-device-class`:
 
 ```bash
-# Assign SSD class to an OSD
+# Assign SSD class to an OSD (fails if the OSD already has a class)
 ceph osd crush set-device-class ssd osd.2
 
 # Assign NVMe class to an OSD
 ceph osd crush set-device-class nvme osd.3
 
-# Remove a device class (resets to auto-detection on next OSD restart)
+# Remove a device class (required before reassigning a new class)
 ceph osd crush rm-device-class osd.2
 
-# Create a custom device class
+# Now assign a custom device class
 ceph osd crush set-device-class fast-ssd osd.2
 ```
 
@@ -122,8 +122,10 @@ spec:
 Confirm data lands on the correct device class:
 
 ```bash
-# Check which OSDs a pool maps to
+# Check pool I/O statistics
 ceph osd pool stats mypool
+
+# View pool configuration including its CRUSH rule
 ceph osd dump | grep mypool
 
 # Map a specific object to see which OSDs it uses
