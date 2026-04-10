@@ -50,7 +50,7 @@ EOF
 
 kubectl create secret generic velero-s3-credentials \
   --namespace velero \
-  --from-file=cloud=./tmp/velero-credentials
+  --from-file=cloud=/tmp/velero-credentials
 ```
 
 ## Step 4 - Install Velero with Ceph RGW Backend
