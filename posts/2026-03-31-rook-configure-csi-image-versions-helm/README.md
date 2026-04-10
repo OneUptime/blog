@@ -23,13 +23,12 @@ The following sidecars are managed through Helm values:
 | attacher | Handles ControllerPublish/Unpublish |
 | resizer | Handles volume expansion |
 | snapshotter | Handles VolumeSnapshot operations |
-| csi-omap-generator | Manages RBD metadata mappings |
 | liveness-prometheus | Exposes health metrics |
 
 ## Viewing Default Image Versions
 
 ```bash
-helm show values rook-release/rook-ceph | grep -A3 "tag:" | head -60
+helm show values rook-release/rook-ceph | grep -A1 "repository:"
 ```
 
 ## Pinning CSI Sidecar Images
@@ -38,30 +37,29 @@ Override individual sidecar images in your values file:
 
 ```yaml
 csi:
-  csiDriverImages:
-    provisioner:
-      image: registry.k8s.io/sig-storage/csi-provisioner
-      tag: v3.6.4
+  provisioner:
+    repository: registry.k8s.io/sig-storage/csi-provisioner
+    tag: v3.6.4
 
-    attacher:
-      image: registry.k8s.io/sig-storage/csi-attacher
-      tag: v4.4.0
+  attacher:
+    repository: registry.k8s.io/sig-storage/csi-attacher
+    tag: v4.4.0
 
-    resizer:
-      image: registry.k8s.io/sig-storage/csi-resizer
-      tag: v1.9.3
+  resizer:
+    repository: registry.k8s.io/sig-storage/csi-resizer
+    tag: v1.9.3
 
-    snapshotter:
-      image: registry.k8s.io/sig-storage/csi-snapshotter
-      tag: v6.3.3
+  snapshotter:
+    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    tag: v6.3.3
 
-    registrar:
-      image: registry.k8s.io/sig-storage/csi-node-driver-registrar
-      tag: v2.9.4
+  registrar:
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+    tag: v2.9.4
 
-    plugin:
-      image: quay.io/cephcsi/cephcsi
-      tag: v3.10.0
+  cephcsi:
+    repository: quay.io/cephcsi/cephcsi
+    tag: v3.10.0
 ```
 
 ## Using a Private Registry
@@ -70,13 +68,12 @@ For air-gapped environments, mirror images to an internal registry and override 
 
 ```yaml
 csi:
-  csiDriverImages:
-    provisioner:
-      image: registry.internal.example.com/csi-provisioner
-      tag: v3.6.4
-    plugin:
-      image: registry.internal.example.com/cephcsi
-      tag: v3.10.0
+  provisioner:
+    repository: registry.internal.example.com/csi-provisioner
+    tag: v3.6.4
+  cephcsi:
+    repository: registry.internal.example.com/cephcsi
+    tag: v3.10.0
 ```
 
 Also configure image pull secrets:
