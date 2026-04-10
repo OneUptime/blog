@@ -16,7 +16,7 @@ Redisson wraps Redis data types as Java objects, making distributed state feel l
 
 ```java
 RBucket<User> bucket = client.getBucket("user:42");
-bucket.set(new User("Alice", 30), 30, TimeUnit.MINUTES);
+bucket.set(new User("Alice", 30), Duration.ofMinutes(30));
 
 User user = bucket.get();
 System.out.println(user.getName()); // Alice
@@ -88,10 +88,10 @@ All distributed objects support expiration:
 
 ```java
 RBucket<String> token = client.getBucket("session:token:abc");
-token.set("jwt-value", 1, TimeUnit.HOURS);
+token.set("jwt-value", Duration.ofHours(1));
 
 long ttl = token.remainTimeToLive(); // milliseconds
-token.expireAt(Instant.now().plusSeconds(3600));
+token.expire(Instant.now().plusSeconds(3600));
 ```
 
 ## Summary
