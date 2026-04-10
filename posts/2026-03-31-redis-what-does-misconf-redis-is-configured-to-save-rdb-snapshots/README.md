@@ -46,7 +46,6 @@ Look for lines like:
 
 ```text
 [12345] 31 Mar 2026 10:00:00.000 # Can't save in background: fork: Cannot allocate memory
-[12345] 31 Mar 2026 10:00:00.000 # SIGTERM calling handler...
 [12345] 31 Mar 2026 10:00:00.000 * Background saving error
 ```
 
@@ -175,7 +174,7 @@ redis-cli CONFIG SET save ""
 ```bash
 # Prometheus alert rule
 - alert: RedisRDBSaveFailed
-  expr: redis_rdb_last_bgsave_status_code == 1
+  expr: redis_rdb_last_bgsave_status == 1
   for: 5m
   labels:
     severity: critical
