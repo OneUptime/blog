@@ -26,16 +26,17 @@ For Ceph backups, verification should check:
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # Check snapshot info - confirms it exists and is readable
-rbd snap info replicapool/myvolume@backup-2026-03-31
+rbd info replicapool/myvolume@backup-2026-03-31
 
 # Map and mount to verify data is readable
 rbd map replicapool/myvolume@backup-2026-03-31 --read-only
-DEVICE=$(rbd showmapped | grep myvolume | awk '{print $5}')
-mount -o ro $DEVICE /mnt/verify
-
-# Check filesystem consistency
+DEVICE=$(rbd showmapped | grep myvolume | awk '{print $NF}')
+# Check filesystem consistency (must run before mounting)
 fsck -n $DEVICE
 
+mount -o ro $DEVICE /mnt/verify
+# Verify data is accessible
+ls /mnt/verify
 umount /mnt/verify
 rbd unmap $DEVICE
 ```
@@ -66,7 +67,7 @@ spec:
               POOL=replicapool
               IMAGE=myvolume
 
-              if rbd snap info ${POOL}/${IMAGE}@${SNAP}; then
+              if rbd info ${POOL}/${IMAGE}@${SNAP}; then
                 echo "PASS: Snapshot ${SNAP} exists"
               else
                 echo "FAIL: Snapshot ${SNAP} not found"
@@ -121,21 +122,25 @@ echo "Restore verification complete"
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   rbd mirror pool status replicapool --verbose --format json | \
-  jq '.images[] | {image: .name, state: .state, lag_seconds: .last_local_snap_push_ms}'
+  jq '.images[] | {image: .name, state: .state, description: .description, last_update: .last_update}'
 ```
 
 Alert if lag exceeds threshold:
 
 ```bash
-LAG=$(rbd mirror image status replicapool/myimage --format json | \
-  jq -r '.last_local_snap_push_ms')
+LAST_UPDATE=$(rbd mirror image status replicapool/myimage --format json | \
+  jq -r '.peer_sites[0].last_update')
 
-if [ "$LAG" -gt 3600000 ]; then
-  echo "ALERT: Mirror lag exceeds 1 hour: ${LAG}ms"
+LAST_EPOCH=$(date -d "$LAST_UPDATE" +%s 2>/dev/null)
+NOW_EPOCH=$(date +%s)
+LAG=$(( NOW_EPOCH - LAST_EPOCH ))
+
+if [ "$LAG" -gt 3600 ]; then
+  echo "ALERT: Mirror lag exceeds 1 hour: ${LAG} seconds"
   # Send alert via curl to alerting system
   curl -X POST https://alerts.example.com/webhook \
     -H 'Content-Type: application/json' \
-    -d "{\"message\": \"Ceph mirror lag critical: ${LAG}ms\"}"
+    -d "{\"message\": \"Ceph mirror lag critical: ${LAG}s\"}"
 fi
 ```
 
