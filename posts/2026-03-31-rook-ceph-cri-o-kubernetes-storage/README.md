@@ -22,14 +22,7 @@ Output will show `cri-o://X.Y.Z` for CRI-O nodes.
 
 ## Install Rook on CRI-O / OpenShift
 
-For OpenShift, add the necessary SCCs before deploying Rook:
-
-```bash
-# Create required security context constraints
-oc create -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/scc.yaml
-```
-
-Deploy the Rook operator:
+For OpenShift, deploy the Rook operator using the OpenShift-specific manifests, which include the required Security Context Constraints:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rook/rook/master/deploy/examples/crds.yaml
@@ -103,7 +96,7 @@ When running on OpenShift, Ceph pods need additional SCC permissions:
 
 ```bash
 oc adm policy add-scc-to-user privileged \
-  system:serviceaccount:rook-ceph:rook-ceph-operator
+  system:serviceaccount:rook-ceph:rook-ceph-system
 
 oc adm policy add-scc-to-user anyuid \
   system:serviceaccount:rook-ceph:rook-ceph-default
