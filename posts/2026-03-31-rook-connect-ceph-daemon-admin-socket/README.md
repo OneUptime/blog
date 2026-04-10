@@ -46,7 +46,7 @@ ceph daemon <socket-path> <command>
 # Or use the daemon type and ID
 ceph daemon osd.0 help
 ceph daemon mon.$(hostname) help
-ceph daemon rgw.myzone help
+ceph daemon client.rgw.myzone help
 ```
 
 ## Direct Socket Access with ceph --admin-daemon
@@ -77,15 +77,15 @@ ls /var/run/ceph/
 ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok help
 ```
 
-Or use ceph daemon from the toolbox pod:
+Note that `ceph daemon` requires local access to the Unix domain socket, so it only works from inside the daemon's own pod. From the Rook toolbox, use `ceph tell` instead, which sends commands over the network via the monitors:
 
 ```bash
 # Get into the Rook toolbox
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
-# Use ceph daemon with the daemon type
-ceph daemon osd.0 help
-ceph daemon rgw.myzone help
+# Use ceph tell to send commands to daemons over the network
+ceph tell osd.0 help
+ceph tell client.rgw.myzone help
 ```
 
 ## Verifying Socket is Responsive
