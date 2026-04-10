@@ -33,7 +33,7 @@ Switching from commercial storage to Ceph - or justifying a Ceph investment to m
 ```bash
 # Ceph hardware for 200 TB usable:
 # 3x replication: 600 TB raw
-# 50 x 12 TB HDDs x 2 = 100 drives
+# 50 x 12 TB HDDs = 50 drives (600 TB raw)
 # 10 nodes x $10,000 each = $100,000 hardware
 
 # 5-year operational costs:
@@ -105,7 +105,7 @@ executive_summary:
   proposed_state: "Ceph on commodity hardware"
   5_year_savings: "$137,000"
   roi: "31.6%"
-  payback_period: "2.1 years"
+  payback_period: "2.8 years"
 
 investment_required:
   hardware: "$100,000"
