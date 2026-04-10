@@ -12,7 +12,7 @@ Rook's operator handles many recovery tasks automatically, but you can tune reco
 
 ## Enable OSD Auto-Recovery
 
-Set the `continueUpgradeAfterChecksEvenIfNotHealthy` flag and configure health checks in the CephCluster spec:
+Configure health checks in the CephCluster spec to control how often the operator verifies daemon health:
 
 ```yaml
 spec:
@@ -52,38 +52,31 @@ Set resource limits so the scheduler can place replacement pods quickly:
 
 ```yaml
 spec:
-  storage:
-    config:
-      resources:
-        osd:
-          limits:
-            cpu: "2"
-            memory: "4Gi"
-          requests:
-            cpu: "500m"
-            memory: "2Gi"
+  resources:
+    osd:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
 ```
 
 ## Auto-Remove Failed OSDs
 
-Enable automatic OSD removal for permanently failed disks using the `cleanupPolicy`:
+Enable automatic OSD removal when an OSD is marked `out` and its data has been safely rebalanced:
 
 ```yaml
 spec:
-  cleanupPolicy:
-    confirmation: ""
-    sanitizeDisks:
-      method: quick
-      dataSource: zero
-      iteration: 1
-    allowUninstallWithVolumes: false
+  removeOSDsIfOutAndSafeToRemove: true
 ```
 
-For OSDs on permanently failed nodes, use the OSD removal job:
+For OSDs on permanently failed nodes, purge the OSD and delete its deployment:
 
 ```bash
-kubectl -n rook-ceph delete deploy/rook-ceph-osd-2
-kubectl -n rook-ceph label node failed-node rook.io/do-not-reconcile=true
+kubectl -n rook-ceph scale deployment rook-ceph-osd-2 --replicas=0
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd purge 2 --yes-i-really-mean-it
+kubectl -n rook-ceph delete deploy rook-ceph-osd-2
 ```
 
 ## Configure Auto-Rebalancing Delays
@@ -92,7 +85,7 @@ Prevent excessive rebalancing during transient failures:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set osd mon_osd_down_out_interval 300
+  ceph config set mon mon_osd_down_out_interval 300
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set osd osd_recovery_delay_start 0
@@ -103,7 +96,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Watch recovery operations in real time:
 
 ```bash
-watch -n 5 "kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+watch -n 5 "kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph -s | grep -E 'health|recovery|rebalance'"
 ```
 
