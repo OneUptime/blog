@@ -93,7 +93,7 @@ XADD events:log MAXLEN ~ 1000 * action "purchase" user "bob" amount "99.99"
 "1748700000002-0"
 ```
 
-The `~` (approximate) flag allows Redis to trim slightly more than needed for efficiency. Use `=` for exact trimming.
+The `~` (approximate) flag allows Redis to leave slightly more entries than the threshold for efficiency, rather than trimming to the exact count. Use `=` for exact trimming.
 
 ### XADD with explicit ID
 
