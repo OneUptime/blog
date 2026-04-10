@@ -32,14 +32,14 @@ ceph health detail | grep -i tunable
 Each profile sets these key tunables:
 
 ```text
-Profile          choose_local_tries  choose_total_tries  chooseleaf_descend_once  chooseleaf_vary_r  chooseleaf_stable  straw_calc_version
-legacy           2                   19                  0                        0                  0                  0
-argonaut         2                   19                  0                        0                  0                  0
-bobtail          2                   50                  0                        0                  0                  1
-firefly          2                   50                  1                        0                  0                  1
-hammer           2                   50                  1                        1                  0                  1
-jewel            2                   50                  1                        1                  1                  1
-optimal          0                   50                  1                        1                  1                  1
+Profile    choose_local_tries  choose_local_fallback_tries  choose_total_tries  chooseleaf_descend_once  chooseleaf_vary_r  chooseleaf_stable  straw_calc_version
+legacy     2                   5                            19                  0                        0                  0                  0
+argonaut   2                   5                            19                  0                        0                  0                  0
+bobtail    0                   0                            50                  1                        0                  0                  0
+firefly    0                   0                            50                  1                        1                  0                  0
+hammer     0                   0                            50                  1                        1                  0                  0
+jewel      0                   0                            50                  1                        1                  1                  0
+optimal    0                   0                            50                  1                        1                  1                  1
 ```
 
 ## Setting a Tunable Profile
@@ -115,11 +115,11 @@ ceph features
 # Check for old client connections
 ceph osd dump | grep "require_min_compat_client"
 
-# View connected clients
-ceph mon dump | grep min_compat_client
+# View required minimum compatible client version
+ceph osd dump | grep require_min_compat_client
 ```
 
-The `optimal` profile requires clients from the Hammer release or later. If older clients connect, use the `jewel` profile instead.
+The `optimal` profile requires clients from the Jewel release or later (v10.0.2+ / kernel v4.5+). If older clients connect, use the `hammer` profile instead.
 
 ## Summary
 
