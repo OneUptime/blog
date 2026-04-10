@@ -10,7 +10,7 @@ Description: Implement server-side session storage in Go using Redis with the go
 
 ## Introduction
 
-Go web applications commonly use cookies for session storage, but this has size limits and requires sending session data on every request. A Redis-backed session store keeps sessions on the server side, sharing them across multiple application instances. This guide implements Redis session storage with `gorilla/sessions` and `redistore`.
+Go web applications commonly use cookies for session storage, but this has size limits and requires sending session data on every request. A Redis-backed session store keeps sessions on the server side, sharing them across multiple application instances. This guide implements Redis session storage with `gorilla/sessions` and `redisstore`.
 
 ## Dependencies
 
@@ -28,7 +28,9 @@ package main
 import (
     "context"
     "log"
+    "net/http"
 
+    "github.com/gorilla/sessions"
     "github.com/rbcervilla/redisstore/v9"
     "github.com/redis/go-redis/v9"
 )
@@ -71,7 +73,6 @@ import (
     "encoding/json"
     "net/http"
 
-    "github.com/gorilla/sessions"
     "github.com/rbcervilla/redisstore/v9"
 )
 
