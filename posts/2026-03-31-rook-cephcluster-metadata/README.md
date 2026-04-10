@@ -91,7 +91,7 @@ metadata:
   namespace: ceph-us-west
 ```
 
-Each namespace needs its own Rook operator deployment, CRD RBAC, and common resources.
+A single Rook operator can manage multiple CephClusters across namespaces when `ROOK_CURRENT_NAMESPACE_ONLY` is set to `false` (the default). Each namespace needs its own RBAC resources (ServiceAccounts, Roles, RoleBindings) and common ConfigMaps, but CRDs are cluster-scoped and only need to be installed once.
 
 ## Impact on CSI StorageClass clusterID
 
