@@ -11,26 +11,27 @@ Description: Configure data deduplication in Ceph to reduce storage consumption 
 ## Ceph Deduplication Overview
 
 Ceph supports deduplication at two levels:
-1. **RGW object-level dedup**: The `rgw_dedup` module deduplicates objects stored in the RADOS Gateway by content fingerprinting
+1. **RGW object-level dedup**: The `radosgw-admin dedup` tool deduplicates objects stored in the RADOS Gateway by scanning for identical tail data across buckets
 2. **Pool-level dedup (experimental)**: Inline deduplication for RADOS pools (still maturing in Ceph Reef/Squid)
 
 RGW-level deduplication is the most stable and widely used approach for object storage workloads.
 
 ## Enabling RGW Object Deduplication
 
-The RGW dedup process runs as a background job. Enable it on the zone:
+The RGW dedup process runs as an offline batch operation. Configure the minimum object size for dedup consideration, then run the dedup tool:
 
 ```bash
-# Enable dedup configuration in the zone
+# Set the minimum RGW object size eligible for dedup (default 64 KB)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin zone modify \
-  --rgw-zone default \
-  --dedup-chunk-algo fixed \
-  --dedup-chunk-size 65536  # 64KB chunks
+  ceph config set client.rgw rgw_dedup_min_obj_size_for_dedup 65536
 
-# Start the dedup process
+# Estimate dedup savings before committing
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin dedup start
+  radosgw-admin dedup estimate
+
+# Execute dedup to remove duplicate tail objects
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin dedup exec --yes-i-really-mean-it
 ```
 
 ## Configuring the Dedup Pool
@@ -53,24 +54,24 @@ spec:
 ```
 
 ```bash
-# Configure RGW to use the chunk pool
+# Set the dedup tier on the pool for pool-level dedup
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin zone modify \
-  --rgw-zone default \
-  --dedup-pool rook-ceph.dedup-chunk-pool.data
+  ceph osd pool set my-data-pool dedup_tier rook-ceph-dedup-chunk-pool
 ```
 
 ## Checking Deduplication Savings
 
 ```bash
-# View dedup statistics
+# View dedup statistics from the last run
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   radosgw-admin dedup stats
 
-# Example output shows:
-# Processed: 1.2 TiB
-# Deduplicated: 340 GiB (28% savings)
-# Unique chunks: 890,234
+# You can also pause, resume, or abort a running dedup operation
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin dedup pause
+
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin dedup resume
 ```
 
 ## Pool-Level Dedup Configuration (Experimental)
@@ -86,7 +87,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph osd pool set mypool dedup_chunk_algorithm fastcdc
 
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph osd pool set mypool dedup_chunk_size 131072  # 128KB
+  ceph osd pool set mypool dedup_cdc_chunk_size 131072  # 128KB
 ```
 
 ## Workloads That Benefit from Dedup
@@ -119,10 +120,10 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ```promql
 # Pool compression ratio (proxy for dedup+compression effectiveness)
-ceph_pool_compress_under_bytes{name="my-pool"} /
-ceph_pool_compress_bytes_used{name="my-pool"}
+ceph_pool_compress_under_bytes{pool_id="2"} /
+(ceph_pool_compress_bytes_used{pool_id="2"} > 0)
 ```
 
 ## Summary
 
-Ceph data deduplication reduces storage consumption for workloads with redundant content. RGW-level dedup via the `rgw_dedup` module is the most production-ready approach, using content fingerprinting to identify and deduplicate identical chunks across objects. Combined with pool-level compression, organizations storing VM images, backups, or document archives can see 50-70% effective storage savings. Encrypted and media workloads see negligible benefit and should not be configured for dedup.
+Ceph data deduplication reduces storage consumption for workloads with redundant content. RGW-level dedup via the `radosgw-admin dedup` tool is the most production-ready approach, scanning for and removing identical tail data across objects. Combined with pool-level compression, organizations storing VM images, backups, or document archives can see 50-70% effective storage savings. Encrypted and media workloads see negligible benefit and should not be configured for dedup.
