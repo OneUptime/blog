@@ -55,7 +55,7 @@ spec:
       size: 3
       requireSafeReplicaSize: true
     parameters:
-      # Use compression for metadata (optional)
+      # Compression mode for metadata (optional: none, passive, aggressive, force)
       compression_mode: none
 
   # Configure one or more data pools
@@ -66,8 +66,8 @@ spec:
         size: 3
         requireSafeReplicaSize: true
 
-  # Preserve pools when the filesystem is deleted
-  preservePoolsOnDelete: true
+  # Preserve filesystem and pools when the CR is deleted
+  preserveFilesystemOnDelete: true
 
   # MDS (Metadata Server) configuration
   metadataServer:
@@ -125,7 +125,7 @@ spec:
       erasureCoded:
         dataChunks: 2
         codingChunks: 1
-  preservePoolsOnDelete: true
+  preserveFilesystemOnDelete: true
   metadataServer:
     activeCount: 1
     activeStandby: true
@@ -153,9 +153,9 @@ RANK  STATE   MDS   ACTIVITY    DNS  INOS  DIRS  CAPS
          STANDBY
        b
 
-POOL         TYPE     USED  AVAIL
-myfs-metadata  metadata   0     0   285G
-myfs-replicated  data       0     0   285G
+POOL              TYPE      USED  AVAIL
+myfs-metadata     metadata     0   285G
+myfs-replicated   data         0   285G
 ```
 
 Check the filesystem was created:
@@ -204,4 +204,4 @@ status:
 
 ## Summary
 
-Creating a CephFilesystem in Rook requires a CephFilesystem CR that defines a metadata pool, at least one data pool, and the MDS configuration. Use `activeStandby: true` for high availability so a warm standby MDS can take over without delay. The `preservePoolsOnDelete: true` flag prevents accidental data loss when the CR is deleted. After the MDS pods are running, verify with `ceph fs status` from the toolbox before creating the associated StorageClass for Kubernetes workloads.
+Creating a CephFilesystem in Rook requires a CephFilesystem CR that defines a metadata pool, at least one data pool, and the MDS configuration. Use `activeStandby: true` for high availability so a warm standby MDS can take over without delay. The `preserveFilesystemOnDelete: true` flag prevents accidental data loss when the CR is deleted. After the MDS pods are running, verify with `ceph fs status` from the toolbox before creating the associated StorageClass for Kubernetes workloads.
