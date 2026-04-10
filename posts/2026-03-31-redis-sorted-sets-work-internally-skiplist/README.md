@@ -28,8 +28,10 @@ OBJECT ENCODING big_lb
 For small sorted sets, Redis stores entries in a flat `listpack` as consecutive pairs: `(member, score)`. The listpack is kept sorted by score, so range queries scan linearly - acceptable for small sets.
 
 ```bash
-CONFIG GET zset-max-listpack-size
-# Default: 128 elements, 64 bytes per element
+CONFIG GET zset-max-listpack-entries
+# Default: 128 entries
+CONFIG GET zset-max-listpack-value
+# Default: 64 bytes per element
 ```
 
 ## Skiplist + Hashtable Encoding
@@ -67,11 +69,11 @@ ZADD leaderboard 250 alice
 
 ```bash
 # Change listpack limits
-CONFIG SET zset-max-listpack-size 64    # element count threshold
+CONFIG SET zset-max-listpack-entries 64  # element count threshold
 CONFIG SET zset-max-listpack-value 32   # per-element byte threshold
 ```
 
-Lowering these thresholds reduces memory per set but increases CPU for range queries on mid-sized sets.
+Lowering these thresholds causes earlier conversion to skiplist, which uses more memory per set but improves CPU performance for range queries on mid-sized sets.
 
 ## Practical Performance Impact
 
@@ -114,4 +116,4 @@ ZCARD rate:user:123  # current count in window
 
 ## Summary
 
-Redis sorted sets use `listpack` for small collections and a combined `skiplist` + `hashtable` for larger ones. The skiplist enables O(log n) score-range queries while the hashtable enables O(1) score lookups. Tune `zset-max-listpack-size` to control when this transition occurs, balancing memory efficiency against performance needs.
+Redis sorted sets use `listpack` for small collections and a combined `skiplist` + `hashtable` for larger ones. The skiplist enables O(log n) score-range queries while the hashtable enables O(1) score lookups. Tune `zset-max-listpack-entries` and `zset-max-listpack-value` to control when this transition occurs, balancing memory efficiency against performance needs.
