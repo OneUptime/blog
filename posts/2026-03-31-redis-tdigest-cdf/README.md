@@ -85,6 +85,7 @@ TDIGEST.CDF latency 999
 ### CDF of Fractional Values
 
 ```redis
+TDIGEST.CREATE temps
 TDIGEST.ADD temps 22.5 23.1 24.8 26.3 28.0
 TDIGEST.CDF temps 25.0
 ```
