@@ -10,7 +10,7 @@ Description: Build accurate real-time viewer count systems with Redis using Hype
 
 Viewer count systems must answer two different questions: "how many concurrent viewers right now?" and "how many unique viewers have watched?" These require different Redis data structures - sets for precision, HyperLogLog for scale.
 
-## Two Approaches
+## Three Approaches
 
 | Approach | Data Structure | Memory | Accuracy |
 |----------|----------------|--------|----------|
@@ -40,7 +40,6 @@ HEARTBEAT_TTL = 35  # seconds
 def viewer_join(content_id: str, session_id: str, user_id: str = None):
     active_key = f"{ACTIVE_PREFIX}:{content_id}"
     unique_key = f"{UNIQUE_PREFIX}:{content_id}"
-    now = int(time.time())
 
     pipe = r.pipeline()
     # Add session to active set
