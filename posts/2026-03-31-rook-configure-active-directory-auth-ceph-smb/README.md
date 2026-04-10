@@ -84,7 +84,6 @@ Replace the Samba global configuration:
     server string = Ceph File Server
     netbios name = SAMBA01
     security = ADS
-    encrypt passwords = yes
 
     winbind use default domain = yes
     winbind offline logon = yes
