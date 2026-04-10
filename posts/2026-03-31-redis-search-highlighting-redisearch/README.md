@@ -67,10 +67,11 @@ def search_with_snippets(query_text: str, snippet_len: int = 80,
         .summarize(
             fields=["body"],
             num_frags=num_frags,
-            frag_len=snippet_len,
-            separator=" ... ",
+            context_len=snippet_len,
+            sep=" ... ",
         )
         .highlight(fields=["title", "body"], tags=["<b>", "</b>"])
+        .with_scores()
         .paging(0, limit)
     )
     results = r.ft("idx:highlight").search(query)
@@ -95,7 +96,7 @@ def search_highlight_html(query_text: str) -> list:
             fields=["title", "body"],
             tags=['<span class="highlight">', "</span>"]
         )
-        .summarize(fields=["body"], num_frags=1, frag_len=150)
+        .summarize(fields=["body"], num_frags=1, context_len=150)
         .paging(0, 10)
     )
     results = r.ft("idx:highlight").search(query)
@@ -114,7 +115,7 @@ def search_highlight_markers(query_text: str) -> list:
     query = (
         Query(query_text)
         .highlight(fields=["title", "body"], tags=["[[", "]]"])
-        .summarize(fields=["body"], num_frags=2, frag_len=80)
+        .summarize(fields=["body"], num_frags=2, context_len=80)
         .paging(0, 10)
     )
     results = r.ft("idx:highlight").search(query)
