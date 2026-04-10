@@ -17,9 +17,9 @@ IoT deployments often involve thousands of devices sending small payloads at hig
 IoT workloads produce many small objects. To avoid metadata bottlenecks, use multiple buckets organized by device type or time partition:
 
 ```yaml
-s3://iot-sensors/temperature/2026/03/31/
-s3://iot-sensors/humidity/2026/03/31/
-s3://iot-gateway/raw-events/device-id/
+s3://iot-temperature/temperature/2026-03-31/device-001/
+s3://iot-humidity/humidity/2026-03-31/device-002/
+s3://iot-pressure/pressure/2026-03-31/device-003/
 ```
 
 Create the object store with enough gateway instances for concurrency:
@@ -49,7 +49,7 @@ radosgw-admin user create \
   --uid=iot-ingest \
   --display-name="IoT Ingest User" \
   --access-key=IOTACCESSKEY \
-  --secret-key=IOTSECRETKEY
+  --secret=IOTSECRETKEY
 
 # Create buckets
 for bucket in temperature humidity pressure motion; do
@@ -63,7 +63,6 @@ done
 ```python
 import boto3
 import json
-import time
 from datetime import datetime
 
 s3 = boto3.client(
@@ -116,7 +115,7 @@ ceph config set client.rgw rgw_op_thread_timeout 600
 Monitor ingestion rate with:
 
 ```bash
-ceph -n client.rgw.iot-store daemon stats | grep -i put
+ceph daemon client.rgw.iot-store perf dump | grep -i put
 ```
 
 ## Summary
