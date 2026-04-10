@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Quincy, Release, Feature, RADOS
 
-Description: Explore the key features introduced in Ceph Quincy (v17) including rados osd snaps, improved scrubbing, RGW multisite improvements, and new RADOS capabilities.
+Description: Explore the key features introduced in Ceph Quincy (v17) including improved scrubbing, BlueStore fragmentation handling, RGW multisite improvements, and new cephadm capabilities.
 
 ---
 
@@ -22,7 +22,7 @@ Ceph Quincy (v17.x) introduced:
 
 ## Messenger v2 as Default
 
-Quincy made `msgr2` the mandatory transport, improving security and performance:
+Quincy made `msgr2` the default transport, improving security and performance:
 
 ```bash
 # Verify msgr2 is active
@@ -70,19 +70,17 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Quincy improved BlueStore's handling of heavily fragmented OSDs:
 
 ```bash
-# Check fragmentation score per OSD
+# Check fragmentation score per OSD (0 = no fragmentation, 1 = fully fragmented)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
 for osd in \$(ceph osd ls); do
-  score=\$(ceph daemon osd.\$osd dump_mempools 2>/dev/null | \
-    python3 -c 'import sys,json; d=json.load(sys.stdin); \
-    print(d.get(\"mempool\",{}).get(\"bluestore_cache\",{}).get(\"items\",\"N/A\"))' \
-    2>/dev/null || echo 'N/A')
-  echo \"OSD \$osd: \$score items in bluestore cache\"
+  echo -n \"OSD \$osd fragmentation score: \"
+  ceph tell osd.\$osd bluestore allocator score block 2>/dev/null || echo 'N/A'
 done
 "
 
-# Trigger manual compaction if fragmentation is high
-kubectl -n rook-ceph exec -it <osd-pod> -- ceph-bluestore-tool bluefs-bdev-expand
+# Trigger RocksDB compaction to reduce metadata fragmentation
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph tell osd.0 compact
 ```
 
 ## RGW Multisite Sync Reliability
@@ -96,10 +94,10 @@ radosgw-admin sync status
 # Per-shard sync status
 radosgw-admin sync error list
 
-# Retry failed sync operations
-radosgw-admin sync error trim --start-date 2026-01-01
+# Trim sync error log entries
+radosgw-admin sync error trim
 
-# Check multisite sync policy (new in Quincy)
+# Check multisite sync policy
 radosgw-admin sync policy get
 ```
 
@@ -135,4 +133,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Summary
 
-Ceph Quincy (v17) brought scrub scheduling flexibility, mandatory Messenger v2, improved BlueStore fragmentation handling, and more reliable RGW multisite sync. These improvements make Quincy significantly more operationally mature than its predecessors, and its features form the foundation that Reef (v18) builds upon.
+Ceph Quincy (v17) brought scrub scheduling flexibility, default Messenger v2, improved BlueStore fragmentation handling, and more reliable RGW multisite sync. These improvements make Quincy significantly more operationally mature than its predecessors, and its features form the foundation that Reef (v18) builds upon.
