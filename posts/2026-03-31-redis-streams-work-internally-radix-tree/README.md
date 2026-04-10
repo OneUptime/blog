@@ -22,20 +22,19 @@ XADD events "*" action "purchase" user "bob"
 # Returns: "1711880000000-1"  (same ms, incremented seq)
 ```
 
-The millisecond timestamp is the key into the radix tree. Multiple entries with the same millisecond share the same radix tree node and are packed into one listpack.
+The full stream ID (milliseconds + sequence) is encoded as a 128-bit big-endian key in the radix tree. Because IDs close in time share a common prefix, the radix tree compresses them efficiently. Consecutive entries are packed into the same listpack node until the configured size or entry-count limit is reached.
 
 ## Radix Tree of Listpack Nodes
 
 ```text
-Radix tree (by ms timestamp prefix):
-  [1711880000] -> listpack:
-                    entry[0]: seq=0, {action:login, user:alice}
-                    entry[1]: seq=1, {action:purchase, user:bob}
-  [1711880001] -> listpack:
-                    entry[0]: seq=0, {action:logout, user:alice}
+Radix tree (key = stream ID of first entry in node):
+  [1711880000000-0] -> listpack:
+                         entry[0]: 1711880000000-0, {action:login, user:alice}
+                         entry[1]: 1711880000000-1, {action:purchase, user:bob}
+                         entry[2]: 1711880001000-0, {action:logout, user:alice}
 ```
 
-Each listpack macro-node stores a batch of entries that share the same millisecond timestamp. This dramatically reduces per-entry overhead compared to storing each entry as a separate node.
+Each listpack macro-node stores a batch of consecutive entries, keyed by the ID of the first entry in the node. A new node is created when the current one exceeds `stream-node-max-bytes` or `stream-node-max-entries`. This dramatically reduces per-entry overhead compared to storing each entry as a separate node.
 
 ## Checking Stream Internals
 
@@ -87,7 +86,7 @@ print("Memory:", r.memory_usage("telemetry"), "bytes")
 | Approach | Memory per entry | Range query | Consumer groups |
 |----------|-----------------|-------------|-----------------|
 | Redis Stream | ~50-100 bytes | O(log N) | Native |
-| Redis List | ~100-200 bytes | O(N) | Manual |
+| Redis List | ~100-200 bytes | O(S+N) | Manual |
 | Redis Sorted Set | ~150-300 bytes | O(log N) | Manual |
 
 ## XTRIM and Radix Tree Pruning
@@ -106,4 +105,4 @@ The `~` operator allows Redis to trim at macro-node boundaries, which is much fa
 
 ## Summary
 
-Redis streams use a radix tree whose leaves are listpack macro-nodes, packing multiple entries with the same millisecond timestamp into a single compact block. This design provides O(log n) range queries by stream ID while keeping per-entry memory overhead low. Tune `stream-node-max-bytes` and `stream-node-max-entries` to control the granularity of packing for your workload.
+Redis streams use a radix tree whose leaves are listpack macro-nodes, packing consecutive entries into compact blocks. Because stream IDs are stored as 128-bit big-endian keys, entries close in time share radix tree prefixes, enabling O(log n) range queries by stream ID while keeping per-entry memory overhead low. Tune `stream-node-max-bytes` and `stream-node-max-entries` to control the granularity of packing for your workload.
