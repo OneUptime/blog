@@ -33,7 +33,7 @@ At the moment of `fork()`, the parent and child share the same physical memory p
 This means:
 - At fork time, memory usage does not immediately double
 - As the parent continues serving writes, modified pages are copied
-- The total memory overhead equals the amount of data written during the snapshot
+- The total memory overhead depends on the number of memory pages modified during the snapshot (COW copies entire pages, typically 4KB each, even if only one byte changes)
 
 ## Memory Impact
 
@@ -53,7 +53,7 @@ The fork call itself copies the page table, which is proportional to the memory 
 redis-cli INFO stats | grep "latest_fork_usec"
 ```
 
-Latency during fork can cause client timeouts. Transparent Huge Pages (THP) makes fork slower because each huge page (2MB) requires copying the entire page if any byte changes. Disable THP:
+Latency during fork can cause client timeouts. Transparent Huge Pages (THP) worsens COW overhead because each huge page (2MB) is copied in full even if only one byte changes, and THP memory compaction can cause additional latency spikes. Disable THP:
 
 ```bash
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
