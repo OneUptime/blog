@@ -57,7 +57,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Create the registry bucket
 aws s3 mb s3://registry-images \
-  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
+  --endpoint-url http://rook-ceph-rgw-registry-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Deploying Harbor with Ceph RGW Backend
@@ -109,6 +109,9 @@ spec:
     matchLabels:
       app: registry
   template:
+    metadata:
+      labels:
+        app: registry
     spec:
       containers:
         - name: registry
