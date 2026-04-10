@@ -10,7 +10,7 @@ Description: Configure Buildkit to use Ceph RGW as an S3-compatible cache backen
 
 ## Overview
 
-Buildkit (the build engine behind `docker build --buildkit`) supports external cache storage via S3-compatible backends. By pointing Buildkit's cache at Ceph RGW, you persist layer caches across ephemeral CI runners, dramatically reducing build times for large images.
+Buildkit (the default build engine behind `docker build` since Docker Engine 23.0) supports external cache storage via S3-compatible backends. By pointing Buildkit's cache at Ceph RGW, you persist layer caches across ephemeral CI runners, dramatically reducing build times for large images.
 
 ## Prepare Ceph RGW Bucket
 
@@ -49,21 +49,22 @@ use_path_style=true \
 
 ## Buildkit Daemon Configuration
 
-When running buildkitd standalone, configure the S3 cache in `buildkitd.toml`:
+When running buildkitd standalone via `buildctl`, specify the S3 cache using the `--export-cache` and `--import-cache` flags:
 
-```toml
-[worker.oci]
-  enabled = true
-
-[worker.oci.cache]
-  enabled = true
-  cacheType = "s3"
-  region = "us-east-1"
-  bucket = "buildkit-cache"
-  endpointUrl = "http://rook-ceph-rgw-my-store.rook-ceph:80"
-  accessKeyID = "buildkitakey"
-  secretAccessKey = "buildkitskey"
-  usePathStyle = true
+```bash
+buildctl build \
+  --frontend dockerfile.v0 \
+  --local context=. \
+  --local dockerfile=. \
+  --output type=image,name=myapp:latest,push=true \
+  --export-cache type=s3,region=us-east-1,bucket=buildkit-cache,name=myapp,\
+endpoint_url=http://rook-ceph-rgw-my-store.rook-ceph:80,\
+access_key_id=buildkitakey,secret_access_key=buildkitskey,\
+use_path_style=true,mode=max \
+  --import-cache type=s3,region=us-east-1,bucket=buildkit-cache,name=myapp,\
+endpoint_url=http://rook-ceph-rgw-my-store.rook-ceph:80,\
+access_key_id=buildkitakey,secret_access_key=buildkitskey,\
+use_path_style=true
 ```
 
 ## Use in a GitHub Actions Workflow
@@ -73,7 +74,7 @@ When running buildkitd standalone, configure the S3 cache in `buildkitd.toml`:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           push: true
           tags: myregistry/myapp:latest
