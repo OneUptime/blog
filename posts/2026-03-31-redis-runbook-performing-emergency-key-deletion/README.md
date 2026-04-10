@@ -50,7 +50,7 @@ Delete in batches of 100 to avoid overwhelming the server:
 redis-cli --scan --pattern "cache:old:*" --count 100 | xargs -L 100 redis-cli UNLINK
 ```
 
-Add a small sleep between batches if needed:
+Add a small sleep between each key deletion if needed:
 
 ```bash
 redis-cli --scan --pattern "cache:old:*" | while IFS= read -r key; do
@@ -59,29 +59,30 @@ redis-cli --scan --pattern "cache:old:*" | while IFS= read -r key; do
 done
 ```
 
-## Step 4: Use a Lua Script for Atomic Batch Deletion
+## Step 4: Use a Lua Script for Batched Deletion
 
-For more control, use a Lua script to scan and delete in one atomic operation:
+For more control, use a Lua script that deletes one batch per invocation. Avoid looping SCAN to completion inside a single Lua script, as Lua scripts block Redis for their entire execution and a full-keyspace scan would stall the server:
 
 ```lua
-local cursor = "0"
-local count = 0
-repeat
-  local result = redis.call("SCAN", cursor, "MATCH", ARGV[1], "COUNT", 100)
-  cursor = result[1]
-  local keys = result[2]
-  for _, key in ipairs(keys) do
-    redis.call("UNLINK", key)
-    count = count + 1
-  end
-until cursor == "0"
-return count
+local result = redis.call("SCAN", ARGV[1], "MATCH", ARGV[2], "COUNT", 100)
+local keys = result[2]
+for _, key in ipairs(keys) do
+  redis.call("UNLINK", key)
+end
+return result[1]
 ```
 
-Run it:
+Call it in a loop from the shell, passing the cursor between invocations:
 
 ```bash
-redis-cli EVAL "$(cat cleanup.lua)" 0 "cache:old:*"
+cursor="0"
+while true; do
+  cursor=$(redis-cli EVAL "$(cat cleanup.lua)" 0 "$cursor" "cache:old:*")
+  if [ "$cursor" = "0" ]; then
+    break
+  fi
+  sleep 0.01
+done
 ```
 
 ## Step 5: Monitor Impact During Deletion
