@@ -62,21 +62,24 @@ This distinguishes Pub/Sub from Streams. Streams persist messages; Pub/Sub does 
 ## Subscriber State Machine
 
 A client connection in subscribe mode enters a special state where it can only send:
-- `SUBSCRIBE`, `UNSUBSCRIBE`, `PSUBSCRIBE`, `PUNSUBSCRIBE`
+- `SUBSCRIBE`, `UNSUBSCRIBE`, `PSUBSCRIBE`, `PUNSUBSCRIBE`, `SSUBSCRIBE`, `SUNSUBSCRIBE`
 - `PING` (with an optional message)
 - `RESET` (to exit subscribe mode)
+- `QUIT`
 
 ```python
-# A subscriber connection is dedicated - cannot mix with normal commands
+import redis
+
+r = redis.Redis(decode_responses=True)
+
+# redis-py creates a separate connection for pubsub
 pubsub = r.pubsub()
 pubsub.subscribe('orders:notifications')
 
-# This would fail - the connection is in subscribe mode
-# r.set('key', 'value')  # Error!
-
-# Use a separate connection for normal commands
-r_normal = redis.Redis()
-r_normal.set('key', 'value')  # OK
+# r.set() still works because redis-py gives the pubsub object its own connection.
+# At the Redis protocol level, the subscribed connection itself is restricted
+# to SUBSCRIBE, UNSUBSCRIBE, PSUBSCRIBE, PUNSUBSCRIBE, PING, RESET, and QUIT.
+r.set('key', 'value')  # OK - r uses a different connection than pubsub
 ```
 
 ## Output Buffers and Slow Consumers
