@@ -29,7 +29,7 @@ client.set("user:1", json.dumps(user))
 data = json.loads(client.get("user:1"))
 ```
 
-JSON drawbacks: verbose encoding wastes memory. The object above encodes to 51 bytes in JSON. Field names are repeated on every value.
+JSON drawbacks: verbose encoding wastes memory. The object above encodes to 53 bytes in JSON. Field names are repeated on every value.
 
 ## MessagePack: Compact Binary Format
 
@@ -50,7 +50,7 @@ client.set("user:1", msgpack.packb(user, use_bin_type=True))
 data = msgpack.unpackb(client.get("user:1"), raw=False)
 ```
 
-The same object encodes to about 36 bytes in MessagePack - a 30% reduction. Field names are still embedded, but values use efficient binary types.
+The same object encodes to about 29 bytes in MessagePack - a 45% reduction. Field names are still embedded, but values use efficient binary types.
 
 ## Protobuf: Maximum Efficiency with Schema
 
@@ -84,7 +84,7 @@ data = User()
 data.ParseFromString(client.get("user:1"))
 ```
 
-Protobuf encodes the same object to about 20 bytes - 60% smaller than JSON. Field names are not stored at all; only field numbers appear in the binary output.
+Protobuf encodes the same object to about 13 bytes - 75% smaller than JSON. Field names are not stored at all; only field numbers appear in the binary output.
 
 ## Benchmark Comparison
 
@@ -93,9 +93,9 @@ Approximate performance for 1 million encode/decode operations on a typical obje
 ```text
 Format      | Encode (ms) | Decode (ms) | Size (bytes)
 ------------|-------------|-------------|-------------
-JSON        | 850         | 1100        | 51
-MessagePack | 420         | 380         | 36
-Protobuf    | 200         | 180         | 20
+JSON        | 850         | 1100        | 53
+MessagePack | 420         | 380         | 29
+Protobuf    | 200         | 180         | 13
 ```
 
 ## Choosing the Right Format
