@@ -63,7 +63,7 @@ if (result != null) {
 
 ```java
 try {
-    jedis.xgroupCreate("orders", "processors", StreamEntryID.LAST_ENTRY, true);
+    jedis.xgroupCreate("orders", "processors", StreamEntryID.XGROUP_LAST_ENTRY, true);
     System.out.println("Consumer group created");
 } catch (Exception e) {
     if (!e.getMessage().contains("BUSYGROUP")) throw new RuntimeException(e);
@@ -77,7 +77,7 @@ try {
 import redis.clients.jedis.params.XReadGroupParams;
 
 Map<String, StreamEntryID> groupOffsets = new HashMap<>();
-groupOffsets.put("orders", StreamEntryID.UNRECEIVED_ENTRY); // ">" = undelivered
+groupOffsets.put("orders", StreamEntryID.XREADGROUP_UNDELIVERED_ENTRY); // ">" = undelivered
 
 List<Map.Entry<String, List<StreamEntry>>> messages = jedis.xreadGroup(
     "processors",
@@ -104,7 +104,7 @@ if (messages != null) {
 import redis.clients.jedis.resps.StreamPendingSummary;
 
 StreamPendingSummary pending = jedis.xpending("orders", "processors");
-System.out.println("Pending messages: " + pending.getCount());
+System.out.println("Pending messages: " + pending.getTotal());
 System.out.println("Min ID: " + pending.getMinId());
 System.out.println("Max ID: " + pending.getMaxId());
 ```
@@ -113,18 +113,17 @@ System.out.println("Max ID: " + pending.getMaxId());
 
 ```java
 import redis.clients.jedis.params.XAutoClaimParams;
-import redis.clients.jedis.resps.StreamAutoClaimResponse;
 
-StreamAutoClaimResponse claimed = jedis.xautoclaim(
+Map.Entry<StreamEntryID, List<StreamEntry>> claimed = jedis.xautoclaim(
     "orders",
     "processors",
     "worker-1",
-    60000,                           // idle time threshold in ms
-    StreamEntryID.XAUTOCLAIM_ENTRY,  // start from beginning
+    60000,                    // idle time threshold in ms
+    new StreamEntryID(),      // start from beginning ("0-0")
     XAutoClaimParams.xAutoClaimParams().count(10)
 );
 
-for (StreamEntry entry : claimed.getEntries()) {
+for (StreamEntry entry : claimed.getValue()) {
     System.out.println("Reclaimed: " + entry.getID());
     jedis.xack("orders", "processors", entry.getID());
 }
