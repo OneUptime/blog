@@ -64,7 +64,7 @@ spec:
 
   # Optional: quota
   quotas:
-    maxBytes: 10Gi
+    maxSize: "10Gi"
     maxObjects: 1000000
 ```
 
@@ -133,7 +133,7 @@ The PVC should reach `Bound` status within a few seconds once the pool is health
 
 ## Deleting a CephBlockPool
 
-Before deleting a CephBlockPool, ensure no PVCs reference it. Rook will reject deletion if active volumes exist unless `allowUninstallWithVolumes` is set:
+Before deleting a CephBlockPool, ensure no PVCs reference it. If active volumes still exist, the resource enters a `Terminating` state and the Rook finalizer prevents actual removal until the pool is clean:
 
 ```bash
 kubectl -n rook-ceph delete cephblockpool replicapool
