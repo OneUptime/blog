@@ -116,16 +116,9 @@ spec:
 
 ## Configuring S3 Multipart Upload for Large Files
 
-Media files benefit from multipart upload. Configure RGW for large object support:
+Media files benefit from multipart upload. Multipart thresholds are configured on the client side via the AWS CLI:
 
 ```bash
-# Set multipart threshold to 100MB
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin zone set \
-  --rgw-zone default \
-  --access-key admin \
-  --secret secret
-
 # Upload a large video file with multipart
 aws s3 cp /media/rawfootage.mov s3://media-archive/ \
   --endpoint-url http://rook-ceph-rgw-media-store:80 \
