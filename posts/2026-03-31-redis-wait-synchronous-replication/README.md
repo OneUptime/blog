@@ -94,7 +94,7 @@ WAIT 1 1000
 (integer) 0
 ```
 
-Returns 0 immediately because there are no replicas to wait for.
+Returns 0 after the timeout expires because there are no replicas to acknowledge the write.
 
 ### Check replication lag before proceeding
 
