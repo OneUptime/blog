@@ -10,7 +10,7 @@ Description: Learn how to expose the Rook-Ceph Dashboard externally using Ingres
 
 ## Why External Dashboard Access Requires Extra Configuration
 
-The Ceph Dashboard service created by Rook is a `ClusterIP` service, accessible only within the cluster. To reach it from a browser outside the cluster, you need to expose it using one of three methods: port-forward (for local development), NodePort (for simple external access), or Ingress (for production with proper DNS and TLS).
+The Ceph Dashboard service created by Rook is a `ClusterIP` service, accessible only within the cluster. To reach it from a browser outside the cluster, you need to expose it using one of four methods: port-forward (for local development), NodePort (for simple external access), LoadBalancer (for cloud or MetalLB environments), or Ingress (for production with proper DNS and TLS).
 
 ```mermaid
 graph TD
@@ -58,6 +58,7 @@ spec:
   type: NodePort
   selector:
     app: rook-ceph-mgr
+    mgr_role: active
     rook_cluster: rook-ceph
   ports:
     - name: https-dashboard
@@ -92,6 +93,7 @@ spec:
   type: LoadBalancer
   selector:
     app: rook-ceph-mgr
+    mgr_role: active
     rook_cluster: rook-ceph
   ports:
     - name: https-dashboard
@@ -119,9 +121,7 @@ metadata:
   name: rook-ceph-dashboard
   namespace: rook-ceph
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -135,11 +135,9 @@ spec:
                 name: rook-ceph-mgr-dashboard
                 port:
                   number: 8443
-  tls:
-    - hosts:
-        - ceph-dashboard.example.com
-      secretName: ceph-dashboard-tls
 ```
+
+Note: With SSL passthrough, no TLS secret is needed on the Ingress — the Ceph dashboard's own certificate is used end-to-end.
 
 ### Option B - TLS Termination at Ingress (HTTP to dashboard backend)
 
@@ -200,18 +198,14 @@ For production, restrict who can access the dashboard:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-password admin --force-password 'StrongPassword!2026'
+  bash -c "echo -n 'StrongPassword!2026' | ceph dashboard ac-user-set-password admin -i - --force-password"
 ```
 
 ### Create a Read-Only User
 
 ```bash
-kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
-  ceph dashboard ac-user-create readonly-viewer \
-    --force-password 'ReadOnlyPass!123' \
-    -i /dev/stdin <<< ''
-  ceph dashboard ac-user-set-roles readonly-viewer read-only
-"
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  bash -c "echo -n 'ReadOnlyPass!123' | ceph dashboard ac-user-create readonly-viewer -i - read-only --force-password"
 ```
 
 ### Restrict by Source IP (Ingress)
