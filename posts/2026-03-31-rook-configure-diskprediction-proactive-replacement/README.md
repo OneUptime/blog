@@ -26,11 +26,11 @@ ceph device ls
 For most environments, local health prediction uses SMART data collected directly from drives:
 
 ```bash
-# Set the SMART data collection frequency (seconds)
+# Set the SMART data collection frequency (seconds, default 86400 = 1 day)
 ceph config set mgr mgr/devicehealth/scrape_frequency 86400
 
-# Set prediction horizon (days to look ahead)
-ceph config set mgr mgr/devicehealth/prediction_mode local
+# Enable local disk failure prediction
+ceph config set global device_failure_prediction_mode local
 ```
 
 Trigger an immediate health check:
@@ -41,7 +41,7 @@ ceph device check-health
 
 ## Configuring DiskPrediction Cloud (Optional)
 
-Ceph supports integration with a DiskPrediction cloud service for enhanced ML-based predictions:
+Ceph previously supported integration with a DiskPrediction cloud service for enhanced ML-based predictions. Note that the `diskprediction_cloud` module was removed after Ceph Octopus (v15) and is not available in Pacific or later releases:
 
 ```bash
 ceph config set mgr mgr/diskprediction_cloud/diskprediction_server "service.endpoint.com"
@@ -56,11 +56,11 @@ ceph mgr module enable diskprediction_cloud
 Configure when Ceph should warn and act on predicted failures:
 
 ```bash
-# Warn about drives predicted to fail within 14 days
-ceph config set mgr mgr/devicehealth/warn_threshold 14
+# Warn about drives predicted to fail within 14 days (1209600 seconds)
+ceph config set mgr mgr/devicehealth/warn_threshold 1209600
 
-# Automatically mark OSDs out when predicted to fail within 7 days
-ceph config set mgr mgr/devicehealth/mark_out_threshold 7
+# Automatically mark OSDs out when predicted to fail within 7 days (604800 seconds)
+ceph config set mgr mgr/devicehealth/mark_out_threshold 604800
 ```
 
 Verify current thresholds:
@@ -101,10 +101,12 @@ for d in devices:
 "
 ```
 
-Prometheus metrics for device health:
+Device health predictions surface as Ceph health checks that can be monitored via alerts:
 
 ```text
-ceph_device_health_forecast_score
+DEVICE_HEALTH
+DEVICE_HEALTH_TOOMANY
+DEVICE_HEALTH_IN_USE
 ```
 
 ## Proactive Replacement Workflow in Rook
