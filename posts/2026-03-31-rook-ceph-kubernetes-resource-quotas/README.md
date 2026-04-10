@@ -55,7 +55,7 @@ This restricts only `rook-ceph-block` PVC usage in `team-b`.
 
 ## Creating Namespace-Scoped LimitRanges
 
-Combine ResourceQuota with LimitRange to set default PVC sizes:
+Combine ResourceQuota with LimitRange to enforce min/max bounds on PVC sizes:
 
 ```yaml
 apiVersion: v1
