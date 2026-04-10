@@ -12,7 +12,7 @@ Description: Learn how Ceph capability profiles simplify user creation by bundli
 
 Capability profiles are pre-defined shorthand strings in Ceph that bundle the correct permissions for well-known roles. Instead of manually specifying every individual permission, you use a profile name and Ceph expands it to the appropriate capability set. This reduces errors and ensures daemon users get exactly the permissions they need.
 
-Profiles are used in the `mon` and `osd` subsystem caps when creating users.
+Profiles are used in the `mon`, `osd`, and `mgr` subsystem caps when creating users.
 
 ## profile osd
 
@@ -119,7 +119,7 @@ Note: Ceph stores the profile string, not the expanded permissions. The actual p
 Rook uses profiles internally when creating its service users. You can verify this:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth ls --format json | jq -r '.auth_dump[] | "\(.entity): mon=\(.caps.mon // "none")"'
 ```
 
