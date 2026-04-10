@@ -57,7 +57,7 @@ Output:
 2) (integer) 0
 ```
 
-A count of `0` means publishing to this channel will be silently dropped.
+A count of `0` means no direct subscribers exist. Messages may still reach clients subscribed via `PSUBSCRIBE` with a matching pattern, since `NUMSUB` does not count pattern subscriptions.
 
 #### Count for a Non-Existent Channel
 
@@ -93,6 +93,11 @@ This means 7 pattern subscriptions (from `PSUBSCRIBE`) are active. Note this is 
 
 ```redis
 PUBSUB NUMPAT
+```
+
+Output:
+
+```text
 (integer) 0
 ```
 
