@@ -104,5 +104,5 @@ def dependency_report(service: str) -> dict:
 
 ## Summary
 
-Redis sets map bidirectional service relationships for O(1) lookups. A graph traversal using `smembers` walks the dependency tree to compute blast radius. Automatically marking dependent services as degraded when a dependency goes down gives your on-call team immediate context for triage without manual investigation.
+Redis sets map bidirectional service relationships with O(1) insertion and O(N) retrieval via `SMEMBERS`. A graph traversal using `smembers` walks the dependency tree to compute blast radius. Automatically marking dependent services as degraded when a dependency goes down gives your on-call team immediate context for triage without manual investigation.
 
