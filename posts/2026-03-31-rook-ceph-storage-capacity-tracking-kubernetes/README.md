@@ -26,10 +26,10 @@ metadata:
   name: rook-ceph-operator-config
   namespace: rook-ceph
 data:
-  CSI_ENABLE_CSIDRIVER_CEPH_RBD: "true"
-  CSI_ENABLE_CSIDRIVER_CEPHFS: "true"
+  ROOK_CSI_ENABLE_RBD: "true"
+  ROOK_CSI_ENABLE_CEPHFS: "true"
   # Enable storage capacity tracking
-  CSI_ENABLE_CAPACITY: "true"
+  CSI_ENABLE_STORAGE_CAPACITY: "true"
 ```
 
 If using the Rook Helm chart:
