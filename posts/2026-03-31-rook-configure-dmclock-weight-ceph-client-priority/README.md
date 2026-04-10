@@ -35,7 +35,7 @@ ceph config set osd osd_mclock_scheduler_background_recovery_wgt 100
 ceph config set osd osd_mclock_scheduler_background_best_effort_wgt 50
 ```
 
-This means when there is spare capacity, client I/O receives 67% of it (400/(400+100+50)), recovery gets 17%, and best-effort gets 8%.
+This means when there is spare capacity, client I/O receives 73% of it (400/(400+100+50)), recovery gets 18%, and best-effort gets 9%.
 
 ## Per-OSD Weight Differentiation
 
