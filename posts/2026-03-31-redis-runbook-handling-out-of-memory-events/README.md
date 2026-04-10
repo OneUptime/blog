@@ -18,10 +18,10 @@ Check current memory usage:
 redis-cli INFO memory | grep -E "used_memory_human|maxmemory_human|mem_fragmentation_ratio"
 ```
 
-Check if Redis is rejecting commands:
+Check the current eviction policy (if set to `noeviction`, Redis will reject writes when memory is full):
 
 ```bash
-redis-cli INFO stats | grep "rejected_connections"
+redis-cli CONFIG GET maxmemory-policy
 ```
 
 Review recent evictions:
@@ -52,16 +52,16 @@ redis-cli MEMORY USAGE mybigkey SAMPLES 0
 
 ## Step 3: Immediate Mitigation
 
-If you need to free memory quickly, delete large or stale keys:
+If you need to free memory quickly, delete large or stale keys. Use `UNLINK` instead of `DEL` to avoid blocking the server (UNLINK reclaims memory asynchronously in a background thread):
 
 ```bash
-redis-cli DEL large-key-1 large-key-2
+redis-cli UNLINK large-key-1 large-key-2
 ```
 
 For many keys matching a pattern, use SCAN to avoid blocking:
 
 ```bash
-redis-cli --scan --pattern "cache:session:*" | xargs redis-cli DEL
+redis-cli --scan --pattern "cache:session:*" | xargs redis-cli UNLINK
 ```
 
 Increase maxmemory temporarily if headroom exists:
@@ -117,7 +117,7 @@ redis-cli MEMORY DOCTOR
 
 Use a monitoring tool to alert before hitting maxmemory. Set an alert at 80% usage:
 
-```bash
+```yaml
 # Prometheus alert example
 - alert: RedisMemoryHigh
   expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
