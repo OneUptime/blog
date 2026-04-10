@@ -57,8 +57,8 @@ spec:
   failureDomain: host
   replicated:
     size: 3
-  compressionMode: aggressive
   parameters:
+    compression_mode: aggressive
     compression_algorithm: zstd
 ```
 
