@@ -103,7 +103,7 @@ def delete_user(r, user_id):
 
 create_user(r, 42, "Alice", "alice@example.com")
 print(find_by_email(r, "alice@example.com"))
-# {"name": "Alice", "email": "alice@example.com"}
+# {'name': 'Alice', 'email': 'alice@example.com'}
 ```
 
 ## One-to-One with Expiry (Session to User)
@@ -153,7 +153,7 @@ def atomic_link(r, user_id, email):
     pipe.execute()
 ```
 
-If the pipeline is interrupted mid-way (power loss), only one side may be written. For strict consistency, use a reconciliation job or accept eventual consistency.
+MULTI/EXEC ensures both commands execute atomically — no other client will see a state where only one side is written. However, if the server crashes before the transaction is persisted to disk, the entire transaction (not just one side) could be lost depending on your AOF fsync policy.
 
 ## Summary
 
