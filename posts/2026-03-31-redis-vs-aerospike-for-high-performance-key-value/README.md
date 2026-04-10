@@ -25,7 +25,6 @@ Typical Redis read/write:
 
 ```python
 import redis
-import time
 
 r = redis.Redis(decode_responses=True)
 
@@ -38,7 +37,7 @@ session = r.get("session:abc")
 
 ## Aerospike Architecture
 
-Aerospike stores the index in RAM and data on SSDs using a custom storage engine (Aerospike Smart Access Memory). 1 TB of data might need only 10-20 GB of RAM for the index:
+Aerospike stores the index in RAM and data on SSDs using its Hybrid Memory Architecture (HMA). 1 TB of data might need only 10-20 GB of RAM for the index:
 
 ```python
 import aerospike
@@ -87,7 +86,7 @@ Aerospike's SSD engine reaches near-RAM latency because it uses raw device acces
 | Dataset size limit | RAM size | SSD size |
 | Cost per GB | High (RAM) | Low (SSD) |
 | Data structures | Rich (Sorted Sets, Streams, etc.) | Basic (bins/records) |
-| ACID transactions | Single-key | Multi-record (strong consistency) |
+| ACID transactions | Multi-key (MULTI/EXEC, no rollback) | Multi-record (strong consistency) |
 | Cross-datacenter | Redis Cluster + manual | Built-in XDR replication |
 | Language support | Excellent | Good |
 | Ops complexity | Low | Medium |
