@@ -51,8 +51,8 @@ ceph osd crush move rack-d datacenter=dc-west
 # Place a datacenter under the root
 ceph osd crush move dc-west root=default
 
-# Move an OSD to a host
-ceph osd crush move osd.8 host=node-05
+# Move an OSD to a host (crush set is preferred for OSDs)
+ceph osd crush set osd.8 1.0 host=node-05
 
 # Verify the hierarchy
 ceph osd tree
@@ -70,12 +70,22 @@ ceph osd crush move node-05 rack=rack-a
 ceph osd crush move rack-d datacenter=dc-east
 
 # Confirm the new location
-ceph osd find osd.8  # verify via an OSD in the moved host
+ceph osd find 8  # verify via an OSD in the moved host
 ```
 
 ## Renaming Buckets
 
 Rename buckets to correct naming mistakes or align with updated naming conventions:
+
+```bash
+# Rename a bucket directly (preferred method)
+ceph osd crush rename-bucket ceph-node-01 storage-node-01
+
+# Verify rename
+ceph osd tree | grep storage-node-01
+```
+
+For more complex renaming (e.g., renaming multiple buckets or editing rules at the same time), you can manually edit the CRUSH map:
 
 ```bash
 # Export and decompile the CRUSH map
@@ -139,4 +149,4 @@ ceph osd tree
 
 ## Summary
 
-CRUSH bucket management in Ceph uses `ceph osd crush add-bucket` to create, `ceph osd crush move` to place or relocate, manual CRUSH map edits to rename, and `ceph osd crush remove` to delete empty buckets. Always verify the hierarchy with `ceph osd tree` after each operation and ensure buckets are empty before attempting removal to avoid errors.
+CRUSH bucket management in Ceph uses `ceph osd crush add-bucket` to create, `ceph osd crush move` to place or relocate, `ceph osd crush rename-bucket` to rename, and `ceph osd crush remove` to delete empty buckets. Always verify the hierarchy with `ceph osd tree` after each operation and ensure buckets are empty before attempting removal to avoid errors.
