@@ -60,11 +60,11 @@ images_rbd_pool = vms
 images_rbd_ceph_conf = /etc/ceph/ceph.conf
 rbd_user = nova
 rbd_secret_uuid = <libvirt-secret-uuid>
-disk_cachemodes = "network=writeback"
+disk_cachemodes = network=writeback
 inject_password = false
 inject_key = false
 inject_partition = -1
-live_migration_flag = "VIR_MIGRATE_UNDEFINE_SOURCE,VIR_MIGRATE_PEER2PEER,VIR_MIGRATE_LIVE,VIR_MIGRATE_PERSIST_DEST,VIR_MIGRATE_TUNNELLED"
+live_migration_tunnelled = true
 hw_disk_discard = unmap
 ```
 
