@@ -8,7 +8,7 @@ Description: Track API response time percentiles (p50, p95, p99) in real-time us
 
 ---
 
-Tracking API latency is essential for SLA compliance. Redis Sorted Sets and Lists give you the building blocks to compute real-time percentiles (p50, p95, p99) without heavy infrastructure.
+Tracking API latency is essential for SLA compliance. Redis Sorted Sets and Hashes give you the building blocks to compute real-time percentiles (p50, p95, p99) without heavy infrastructure.
 
 ## Recording Response Times
 
