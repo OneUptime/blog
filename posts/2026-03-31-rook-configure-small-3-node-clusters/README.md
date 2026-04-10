@@ -60,7 +60,7 @@ spec:
   failureDomain: host
   replicated:
     size: 3
-    requireSafeReplicaSize: true  # Block writes if < 3 replicas available
+    requireSafeReplicaSize: true  # Block writes if < 2 replicas available (min_size=2 for size 3)
 ```
 
 ## Prevent Single Points of Failure
