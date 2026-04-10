@@ -92,10 +92,9 @@ redis-cli INFO replication | grep slave_repl_offset
 ## Forcing a Full Resync
 
 ```bash
-# On replica - disconnect and reconnect triggers resync
-redis-cli DEBUG SLEEP 0
-REPLICAOF NO ONE
-REPLICAOF <primary-ip> <port>
+# On replica - disconnect and reconnect triggers full resync
+redis-cli REPLICAOF NO ONE
+redis-cli REPLICAOF <primary-ip> <port>
 ```
 
 ## Replication Timeout Tuning
