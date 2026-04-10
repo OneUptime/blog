@@ -28,7 +28,7 @@ BlueStore uses three logical storage areas:
 ```text
 +------------------+------------------+------------------+
 | Main Block Dev   | WAL Device       | RocksDB (DB)     |
-| Object data      | Pending writes   | Metadata index   |
+| Object data      | RocksDB WAL      | Metadata index   |
 +------------------+------------------+------------------+
 ```
 
@@ -52,8 +52,7 @@ spec:
       - name: sdb
         config:
           osdsPerDevice: "1"
-          walDevice: nvme0n1
-          databaseDevice: nvme0n1
+          metadataDevice: nvme0n1
 ```
 
 At the ceph level, this maps to:
@@ -82,8 +81,8 @@ ceph tell osd.0 perf dump | python3 -m json.tool | grep -i wal
 ```
 
 Key metrics:
-- `bluestore_wal_ops` - write operations queued in WAL
-- `bluestore_wal_bytes` - bytes written through WAL
+- `bluestore_deferred_write_ops` - deferred write operations
+- `bluestore_deferred_write_bytes` - bytes written through deferred writes
 
 ## Write Safety Configuration
 
@@ -102,7 +101,7 @@ For performance-optimized setups with fast WAL devices, deferred writes can be l
 ## RocksDB Sync Settings
 
 ```bash
-# Sync RocksDB WAL on every write (default: true for safety)
+# Disable periodic background sync in RocksDB (relies on BlueStore's own sync)
 ceph config set osd bluestore_rocksdb_options "wal_bytes_per_sync=0,bytes_per_sync=0"
 ```
 
