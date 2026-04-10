@@ -8,7 +8,7 @@ Description: Scale Redis read throughput horizontally by adding read replicas, c
 
 ---
 
-Redis is single-threaded for writes, but read-heavy workloads can saturate a single instance. Adding read replicas lets you distribute GET operations across multiple nodes, multiplying your effective read throughput without sharding data.
+Redis processes commands on a single thread, so read-heavy workloads can saturate a single instance. Adding read replicas lets you distribute GET operations across multiple nodes, multiplying your effective read throughput without sharding data.
 
 ## Setting Up a Replica
 
@@ -36,11 +36,10 @@ Look for `connected_slaves:1` and the replica's IP address in the output.
 
 ## Routing Reads to Replicas in Python
 
-Use `redis-py` with `ReplicaReadOnlyStrategy` or a custom client pool:
+Use `redis-py` with a custom client pool to distribute reads:
 
 ```python
-import redis
-from redis.client import Redis
+from redis import Redis
 
 primary = Redis(host="192.168.1.10", port=6379, decode_responses=True)
 replica1 = Redis(host="192.168.1.11", port=6379, decode_responses=True)
@@ -90,7 +89,7 @@ redis-cli -h replica-host INFO replication | grep master_repl_offset
 redis-cli -h 192.168.1.10 INFO replication | grep master_repl_offset
 ```
 
-The difference between the primary's and replica's `master_repl_offset` is the replication backlog. Track this in your monitoring system and alert if it exceeds a threshold (e.g., 1 MB).
+The difference between the primary's and replica's `master_repl_offset` is the replication lag in bytes. Track this in your monitoring system and alert if it exceeds a threshold (e.g., 1 MB).
 
 ## Tuning Replica Buffers
 
