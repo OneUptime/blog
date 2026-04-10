@@ -53,17 +53,17 @@ Rack::Attack.cache.store = Rails.cache
 # config/initializers/rack_attack.rb
 
 # Throttle all API requests to 300 per 5 minutes by IP
-throttle("api/ip", limit: 300, period: 5.minutes) do |req|
+Rack::Attack.throttle("api/ip", limit: 300, period: 5.minutes) do |req|
   req.ip if req.path.start_with?("/api/")
 end
 
 # Stricter limit on login endpoint
-throttle("logins/ip", limit: 5, period: 1.minute) do |req|
+Rack::Attack.throttle("logins/ip", limit: 5, period: 1.minute) do |req|
   req.ip if req.path == "/api/v1/sessions" && req.post?
 end
 
 # Per-user rate limit for authenticated requests
-throttle("api/user", limit: 1000, period: 1.hour) do |req|
+Rack::Attack.throttle("api/user", limit: 1000, period: 1.hour) do |req|
   req.env["HTTP_X_USER_ID"] if req.path.start_with?("/api/")
 end
 ```
@@ -71,17 +71,10 @@ end
 ## Blocking Repeated Failed Logins
 
 ```ruby
-# Track failed login attempts
-Rack::Attack.track("failed_logins") do |req|
-  req.path == "/api/v1/sessions" && req.post?
-end
-
-# Block IPs that fail login 20+ times in 15 minutes
-blocklist("block_brute_force") do |req|
-  if req.path == "/api/v1/sessions" && req.post?
-    Rack::Attack::Allow2Ban.filter(req.ip, maxretry: 20, findtime: 15.minutes, bantime: 1.hour) do
-      req.env["rack.attack.match_type"] == :track && req.env["rack.attack.match_data"]&.dig(:count).to_i > 0
-    end
+# Block IPs that hit login 20+ times in 15 minutes
+Rack::Attack.blocklist("block_brute_force") do |req|
+  Rack::Attack::Fail2Ban.filter(req.ip, maxretry: 20, findtime: 15.minutes, bantime: 1.hour) do
+    req.path == "/api/v1/sessions" && req.post?
   end
 end
 ```
@@ -132,7 +125,6 @@ class ApiController < ApplicationController
   def check_rate_limit(action, limit, period)
     key = "rl:#{action}:#{current_user.id}"
     count = Rails.cache.increment(key, 1, expires_in: period)
-    Rails.cache.write(key, count, expires_in: period) if count == 1
 
     if count > limit
       render json: { error: "Rate limit exceeded" }, status: :too_many_requests
