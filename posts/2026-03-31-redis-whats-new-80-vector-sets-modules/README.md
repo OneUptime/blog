@@ -52,7 +52,7 @@ Find similar vectors:
 ```bash
 redis-cli VSIM products:embeddings VALUES 5 \
   0.12 0.22 0.32 0.42 0.52 \
-  COUNT 5
+  WITHSCORES COUNT 5
 # 1) "product:1001"
 # 2) "0.98"
 # 3) "product:1002"
@@ -99,7 +99,7 @@ redis-cli JSON.GET orders $.items[?(@.price > 50)]
 Redis 8.0 added hybrid vector and text search:
 
 ```bash
-FT.SEARCH idx "(laptop) => [KNN 5 @embedding $vec AS score]" \
+FT.SEARCH idx "(laptop)=>[KNN 5 @embedding $vec AS score]" \
   PARAMS 2 vec <binary-vector> \
   DIALECT 2
 ```
@@ -108,7 +108,7 @@ FT.SEARCH idx "(laptop) => [KNN 5 @embedding $vec AS score]" \
 
 When upgrading from Redis 7.x with modules loaded:
 
-- Unload modules before upgrading: `MODULE UNLOAD search`
+- Remove `loadmodule` directives from your Redis config file (the modules are now built-in)
 - The integrated versions use the same commands and data formats
 - RDB files from Redis Stack are compatible
 
