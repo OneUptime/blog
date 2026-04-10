@@ -50,7 +50,7 @@ spec:
       public: rook-ceph/rook-public-network
 ```
 
-In this case, OSD replication traffic uses the primary Kubernetes pod network.
+In this case, OSD replication traffic uses the same public Multus network rather than a separate cluster network.
 
 ## Cluster Network Only Configuration
 
@@ -63,32 +63,6 @@ spec:
     selectors:
       cluster: rook-ceph/rook-cluster-network
 ```
-
-## Using Labels as Selectors
-
-Instead of specifying NAD names directly, Rook also supports selecting NADs by labels. This is useful for multi-cluster setups where NAD names may differ:
-
-```bash
-# Label your NADs
-kubectl -n rook-ceph label network-attachment-definition rook-public-network \
-  network-type=ceph-public
-
-kubectl -n rook-ceph label network-attachment-definition rook-cluster-network \
-  network-type=ceph-cluster
-```
-
-Then use label selectors in the CephCluster:
-
-```yaml
-spec:
-  network:
-    provider: multus
-    selectors:
-      public: "network-type=ceph-public"
-      cluster: "network-type=ceph-cluster"
-```
-
-Note: Label-based selectors require verifying that exactly one NAD matches the label per type.
 
 ## Verifying Selector Configuration
 
