@@ -34,8 +34,6 @@ def update_score(user_id: str, score: float):
 ## Building the Friend Leaderboard
 
 ```python
-import time
-
 def get_friends_leaderboard(user_id: str, n: int = 20) -> list:
     friends = r.smembers(f"friends:{user_id}")
     # Include the user themselves
@@ -43,14 +41,19 @@ def get_friends_leaderboard(user_id: str, n: int = 20) -> list:
 
     # Create a temporary sorted set containing only friends
     temp_key = f"leaderboard:friends:{user_id}:temp"
-    pipe = r.pipeline()
 
-    # Copy scores for each friend from global leaderboard
+    # Fetch all scores in a single pipeline round-trip
+    score_pipe = r.pipeline()
     for member in members:
-        score = r.zscore("leaderboard:global", member)
+        score_pipe.zscore("leaderboard:global", member)
+    scores = score_pipe.execute()
+
+    # Build the temporary sorted set
+    pipe = r.pipeline()
+    pipe.delete(temp_key)  # Remove stale entries from prior calls
+    for member, score in zip(members, scores):
         if score is not None:
             pipe.zadd(temp_key, {member: score})
-
     pipe.expire(temp_key, 60)  # Cache for 1 minute
     pipe.execute()
 
@@ -68,27 +71,27 @@ def get_friends_leaderboard(user_id: str, n: int = 20) -> list:
 
 ## Efficient ZINTERSTORE Approach
 
-For large friend lists, use ZINTERSTORE with a friends bitmap:
+For large friend lists, use ZINTERSTORE to intersect the global leaderboard with the friends Set server-side:
 
 ```python
 def get_friends_leaderboard_v2(user_id: str, n: int = 20) -> list:
     friends_key = f"friends:{user_id}"
-    temp_scores_key = f"lb:friends_scores:{user_id}"
-
-    # Build a temporary sorted set from the friend set
-    friends = r.smembers(friends_key)
-    friends.add(user_id)
+    temp_friends_key = f"lb:friends_set:{user_id}:temp"
+    dest_key = f"lb:friends_scores:{user_id}"
 
     pipe = r.pipeline()
-    # Bulk-fetch scores
-    for f in friends:
-        score = r.zscore("leaderboard:global", f)
-        if score is not None:
-            pipe.zadd(temp_scores_key, {f: score})
-    pipe.expire(temp_scores_key, 120)
-    pipe.execute()
+    # Copy friends set and include the user themselves
+    pipe.sunionstore(temp_friends_key, friends_key)
+    pipe.sadd(temp_friends_key, user_id)
+    # Intersect global leaderboard with friends set, keeping leaderboard scores
+    # Set members are treated as score 1; WEIGHTS 0 zeroes them out
+    pipe.zinterstore(dest_key, {"leaderboard:global": 1, temp_friends_key: 0})
+    pipe.delete(temp_friends_key)
+    pipe.expire(dest_key, 120)
+    pipe.zrevrange(dest_key, 0, n - 1, withscores=True)
+    results = pipe.execute()
 
-    entries = r.zrevrange(temp_scores_key, 0, n - 1, withscores=True)
+    entries = results[-1]  # Result of the last command (zrevrange)
     return [
         {"rank": i + 1, "user_id": uid, "score": s}
         for i, (uid, s) in enumerate(entries)
@@ -99,10 +102,12 @@ def get_friends_leaderboard_v2(user_id: str, n: int = 20) -> list:
 
 ```python
 def get_friend_rank(user_id: str) -> int:
-    board = get_friends_leaderboard(user_id)
-    for entry in board:
-        if entry["is_self"]:
-            return entry["rank"]
+    temp_key = f"leaderboard:friends:{user_id}:temp"
+    # Ensure the friend leaderboard is populated
+    get_friends_leaderboard(user_id)
+    rank = r.zrevrank(temp_key, user_id)
+    if rank is not None:
+        return rank + 1  # Convert 0-based to 1-based
     return -1
 ```
 
