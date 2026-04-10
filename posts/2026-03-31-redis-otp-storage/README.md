@@ -22,7 +22,6 @@ otp:attempts:{purpose}:{identifier} -> String: failed attempt count
 ```python
 import redis
 import secrets
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
