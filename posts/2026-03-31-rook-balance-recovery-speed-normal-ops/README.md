@@ -45,13 +45,10 @@ ceph config set osd osd_max_backfills 1
 
 # Sleep between recovery ops (reduces CPU/IO pressure)
 ceph config set osd osd_recovery_sleep_hdd 0.1
-ceph config set osd osd_recovery_sleep_ssd 0.01
+ceph config set osd osd_recovery_sleep_ssd 0
 
 # Object chunk size for recovery I/O
 ceph config set osd osd_recovery_max_chunk 8388608   # 8 MiB
-
-# Limit recovery bytes/sec per OSD
-ceph config set osd osd_max_recovery_bandwidth 104857600  # 100 MB/s
 ```
 
 ## Defining Profiles for Different Scenarios
@@ -97,12 +94,12 @@ apply_profile "$1"
 Separate client ops from recovery ops with priority queuing:
 
 ```bash
-# Prioritize client ops in the message queue
-ceph config set osd osd_op_queue_mclock_profile high_client_ops
+# Use WPQ (simpler, less granular control)
 ceph config set osd osd_op_queue wpq
 
 # Or use mClock scheduler for fine-grained QoS
 ceph config set osd osd_op_queue mclock_scheduler
+ceph config set osd osd_mclock_profile high_client_ops
 ```
 
 ## Scheduling Recovery Around Business Hours
@@ -136,7 +133,7 @@ Alert when client latency exceeds threshold:
 ```bash
 #!/bin/bash
 THRESHOLD_MS=10
-LATENCY=$(ceph osd perf | awk 'NR>1 {sum+=$3; count++} END {print sum/count}')
+LATENCY=$(ceph osd perf | awk 'NR>1 {sum+=$2; count++} END {print sum/count}')
 if (( $(echo "$LATENCY > $THRESHOLD_MS" | bc -l) )); then
   echo "ALERT: OSD commit latency ${LATENCY}ms exceeds ${THRESHOLD_MS}ms threshold"
   /usr/local/bin/ceph-recovery-profile.sh conservative
