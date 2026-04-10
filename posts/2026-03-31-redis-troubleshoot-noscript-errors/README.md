@@ -28,7 +28,7 @@ Scripts are cached in memory, not persisted to RDB or AOF. When Redis restarts, 
 # Load a script and get its SHA
 SHA=$(redis-cli SCRIPT LOAD "return redis.call('GET', KEYS[1])")
 echo $SHA
-# Output: 4e6d8fc8bb01276962cce5371fa795a7763fe051
+# Output: d3c21d0c2b9ca22f82737626a27bcaf5d288f99f
 
 # Use EVALSHA - works fine
 redis-cli EVALSHA $SHA 1 mykey
@@ -43,7 +43,7 @@ redis-cli EVALSHA $SHA 1 mykey
 
 ## Fix 1: Catch NOSCRIPT and Fall Back to EVAL
 
-The standard pattern is to try `EVALSHA`, catch the NOSCRIPT error, then fall back to `EVAL` with the full script:
+The standard pattern is to try `EVALSHA`, catch the NOSCRIPT error, then reload the script and retry `EVALSHA`:
 
 ```python
 import redis
@@ -144,7 +144,7 @@ allowed = mgr.run("rate_limit", ["rate:user:123"], [100])
 
 ```bash
 # Check if a specific script is cached
-redis-cli SCRIPT EXISTS 4e6d8fc8bb01276962cce5371fa795a7763fe051
+redis-cli SCRIPT EXISTS d3c21d0c2b9ca22f82737626a27bcaf5d288f99f
 # 1 = exists, 0 = not cached
 
 # You cannot list all cached scripts - Redis doesn't expose that
