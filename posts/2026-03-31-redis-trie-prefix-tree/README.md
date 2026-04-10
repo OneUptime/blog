@@ -32,7 +32,7 @@ def trie_insert(word: str, metadata: dict = None):
 def trie_search(prefix: str, limit: int = 10) -> list:
     """Return up to `limit` words starting with `prefix`."""
     # Lexicographic range: [prefix, prefix + \xff] captures all words starting with prefix
-    results = r.zrangebylex(TRIE_KEY, f"[{prefix}", f"[{prefix}\xff", start=0, count=limit)
+    results = r.zrangebylex(TRIE_KEY, f"[{prefix}", f"[{prefix}\xff", start=0, num=limit)
     return results
 
 def trie_delete(word: str):
