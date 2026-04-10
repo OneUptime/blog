@@ -49,11 +49,11 @@ MOVED occurs when:
 ```bash
 # Without -c flag, MOVED is returned as an error
 redis-cli -h 10.0.0.1 -p 6379 GET foo
-# (error) MOVED 12345 10.0.0.3:6379
+# (error) MOVED 12182 10.0.0.3:6379
 
 # With -c flag, redis-cli follows MOVED redirections automatically
 redis-cli -c -h 10.0.0.1 -p 6379 GET foo
-# -> Redirected to slot [12345] located at 10.0.0.3:6379
+# -> Redirected to slot [12182] located at 10.0.0.3:6379
 # "bar"
 ```
 
@@ -137,7 +137,7 @@ def key_hash_slot(key):
             key = key[s+1:e]
     return crc16(key.encode()) % 16384
 
-print(key_hash_slot("foo"))  # 12356
+print(key_hash_slot("foo"))  # 12182
 print(key_hash_slot("bar"))  # 5061
 ```
 
@@ -145,12 +145,12 @@ Or use redis-cli:
 
 ```bash
 redis-cli CLUSTER KEYSLOT foo
-# (integer) 12356
+# (integer) 12182
 ```
 
 ## Hash Tags for Multi-Key Operations
 
-MOVED errors from multi-key operations occur when the keys span multiple slots. Use hash tags to force keys to the same slot:
+Cross-slot errors occur when a multi-key operation spans multiple slots. Redis returns a `CROSSSLOT` error instead of executing the command. Use hash tags to force keys to the same slot:
 
 ```bash
 # These keys will be on different slots
@@ -166,7 +166,7 @@ In practice:
 
 ```python
 # MSET on keys in different slots will fail in cluster mode
-rc.mset({'user:100': 'alice', 'order:100': 'pending'})  # Error
+rc.mset({'user:100': 'alice', 'order:100': 'pending'})  # CROSSSLOT error
 
 # Use hash tags to co-locate
 rc.mset({'{100}.user': 'alice', '{100}.order': 'pending'})  # Works
@@ -184,4 +184,4 @@ redis-cli -h 10.0.0.1 -p 6379 CLUSTER SLOTS
 
 ## Summary
 
-The MOVED redirection in Redis Cluster tells a client that the key belongs to a different node and provides the correct address. Using `redis-cli -c` or a cluster-aware client handles MOVED transparently. For multi-key operations, use hash tags `{tag}` to ensure all related keys map to the same hash slot, avoiding cross-slot MOVED errors entirely.
+The MOVED redirection in Redis Cluster tells a client that the key belongs to a different node and provides the correct address. Using `redis-cli -c` or a cluster-aware client handles MOVED transparently. For multi-key operations, use hash tags `{tag}` to ensure all related keys map to the same hash slot, avoiding CROSSSLOT errors entirely.
