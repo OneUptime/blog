@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, CacheTiering, Storage, Performance
 
-Description: Learn how to configure readproxy cache mode in Ceph, where the cache tier proxies read requests to the backing pool without caching data locally, and writes bypass the cache entirely.
+Description: Learn how to configure readproxy cache mode in Ceph, where the cache tier proxies read requests to the backing pool for objects not already in the cache.
 
 ---
 
-Readproxy is the simplest and safest cache tier mode in Ceph. In this mode, the cache pool acts as a proxy layer - read requests pass through to the backing pool, and no data is actually stored in the cache pool. Writes go directly to the backing pool. This mode is useful as an intermediate step when removing a writeback cache tier.
+**Note:** Cache tiering has been deprecated since the Ceph Reef release. The upstream Ceph community strongly advises against deploying new cache tiers. This guide is provided for operators managing existing cache tier configurations.
+
+Readproxy is a lightweight cache tier mode in Ceph. In this mode, read requests for objects not already in the cache are proxied to the backing pool, while objects already present in the cache tier continue to be served from it. Write operations may still promote objects into the cache tier. This mode can be used as a transitional step when removing a writeback cache tier, though `proxy` mode is generally recommended for fully draining a cache since it forwards both reads and writes to the backing pool.
 
 ## How Readproxy Works
 
@@ -17,9 +19,9 @@ Client Read Request
   |
   v
 Cache Pool (readproxy mode)
-  |  - No promotion
-  |  - No local caching
-  |  - Proxies request to backing pool
+  |  - No read promotion
+  |  - Proxies read misses to backing pool
+  |  - Existing cached objects still served
   v
 Backing Pool (HDD)
   |
@@ -28,20 +30,21 @@ Data returned to client through cache pool
 ```
 
 In readproxy mode:
-- The cache pool routes read requests to the backing pool
-- No objects are stored in or promoted to the cache pool
-- Write operations go directly to the backing pool
+- Read requests for objects not in the cache are proxied to the backing pool
+- Objects already present in the cache tier are still served from it
+- Write operations may still promote objects to the cache tier
 - Dirty objects from a previous writeback phase are still flushed if present
 
 ## Primary Use Case: Writeback Tier Removal
 
-Readproxy is typically used as a transition mode when removing a writeback cache tier:
+When removing a writeback cache tier, `proxy` mode is recommended because it forwards both reads and writes to the backing pool, preventing new objects from being promoted to the cache:
 
-1. Change from `writeback` to `readproxy` - new writes go to backing pool
-2. Wait for all dirty objects in cache to be flushed
-3. Change from `readproxy` to `none` (or remove tier entirely)
+1. Change from `writeback` to `proxy` - all I/O forwards to the backing pool
+2. Flush remaining dirty objects: `rados -p cache-pool cache-flush-evict-all`
+3. Remove the overlay: `ceph osd tier remove-overlay backing-pool`
+4. Remove the tier: `ceph osd tier remove backing-pool cache-pool`
 
-This prevents data loss during cache removal.
+`readproxy` can also be used as a transitional mode, but since writes may still promote objects, `proxy` is generally preferred for a clean drain. Both modes prevent data loss during cache removal.
 
 ## Setting Up Readproxy Mode
 
@@ -81,9 +84,12 @@ pool 2 'cache-pool' replicated ...
 ```bash
 # Change an existing writeback cache to readproxy
 ceph osd tier cache-mode cache-pool readproxy
+
+# Or, for a cleaner drain, use proxy mode instead
+ceph osd tier cache-mode cache-pool proxy
 ```
 
-Immediately after this change, check for remaining dirty objects:
+After this change, check for remaining dirty objects:
 
 ```bash
 rados -p cache-pool ls | head -20
@@ -98,7 +104,7 @@ watch "ceph df | grep cache-pool"
 
 ## Monitoring During Readproxy Phase
 
-Since no new objects are being written to the cache pool, the primary metric to watch is the flush of remaining dirty objects:
+The primary metric to watch is the flush of remaining dirty objects:
 
 ```bash
 ceph osd pool stats cache-pool
@@ -120,4 +126,4 @@ Beyond the removal use case, readproxy can be useful when:
 
 ## Summary
 
-Readproxy cache mode proxies reads through the cache pool to the backing pool without storing any data locally, while writes go directly to the backing pool. It is primarily used as a safe intermediate step when removing a writeback cache tier. Switching to readproxy stops new dirty objects from accumulating and allows existing dirty objects to be flushed before completing the tier removal.
+Readproxy cache mode proxies read requests for objects not already in the cache to the backing pool, while objects already in the cache are still served from it. Write operations may still promote objects to the cache tier. It can be used as a transitional step when removing a writeback cache tier, though `proxy` mode is generally preferred for fully draining a cache since it forwards both reads and writes to the backing pool. Note that cache tiering is deprecated since the Reef release and should not be used for new deployments.
