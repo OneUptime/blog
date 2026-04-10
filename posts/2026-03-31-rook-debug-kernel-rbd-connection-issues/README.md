@@ -69,8 +69,8 @@ sudo chmod 600 /etc/ceph/ceph.client.admin.keyring
 After mapping, if I/O fails, check OSD reachability:
 
 ```bash
-# Get OSD addresses
-ceph osd dump | grep "^osd\." | awk '{print $1, $3}'
+# Find a specific OSD's address
+ceph osd find 0
 
 # Test connectivity to a specific OSD
 nc -zv 10.0.0.20 6800
@@ -84,10 +84,10 @@ For an already-mapped device:
 # List mapped devices and their state
 ls /sys/bus/rbd/devices/
 
-# Check state of device 0
-cat /sys/bus/rbd/devices/0/state
-cat /sys/bus/rbd/devices/0/major
+# Check details of device 0
+cat /sys/bus/rbd/devices/0/pool
 cat /sys/bus/rbd/devices/0/name
+cat /sys/bus/rbd/devices/0/client_id
 ```
 
 ## Step 6: Reproduce with Debug Logging
@@ -110,6 +110,7 @@ Disable debug logging after:
 
 ```bash
 echo "module rbd -p" | sudo tee /sys/kernel/debug/dynamic_debug/control
+echo "module libceph -p" | sudo tee /sys/kernel/debug/dynamic_debug/control
 ```
 
 ## Step 7: Check for Blacklisted Clients
