@@ -13,9 +13,8 @@ Deleting a Redis key that contains millions of elements (a large list, hash, sor
 ## The Problem with DEL on Large Keys
 
 ```bash
-# Measure how long DEL blocks
-redis-cli DEBUG POPULATE 1000000
-LPUSH biglist $(seq 1 100000)
+# Create a large list
+redis-cli LPUSH biglist $(seq 1 100000)
 
 # This blocks Redis for the duration
 time redis-cli DEL biglist
@@ -89,7 +88,7 @@ r.unlink("bighash")
 Identify large keys in advance:
 
 ```bash
-# Find the top 5 biggest keys
+# Find the biggest key per data type
 redis-cli --bigkeys
 
 # Check memory usage of a specific key
@@ -114,7 +113,7 @@ FLUSHALL ASYNC
 Check background thread activity:
 
 ```bash
-redis-cli INFO stats | grep lazyfree
+redis-cli INFO | grep lazyfree
 ```
 
 ```text
@@ -126,4 +125,4 @@ lazyfreed_objects:142857
 
 ## Summary
 
-Optimize large key deletion using `UNLINK` instead of `DEL` for instant non-blocking deletion, enable `lazyfree-*` configuration options for automatic async cleanup, and use `HSCAN`/`SSCAN` to iteratively delete large collections in batches. Monitor `lazyfreed_objects` in `INFO stats` to confirm lazy-free is active and working.
+Optimize large key deletion using `UNLINK` instead of `DEL` for instant non-blocking deletion, enable `lazyfree-*` configuration options for automatic async cleanup, and use `HSCAN`/`SSCAN` to iteratively delete large collections in batches. Monitor `lazyfreed_objects` in `INFO` to confirm lazy-free is active and working.
