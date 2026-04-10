@@ -10,12 +10,12 @@ Description: Understand the Redis license change that led to the Valkey fork, th
 
 ## Background: Why Valkey Exists
 
-In March 2024, Redis Ltd. changed Redis's license from BSD to a dual-license model (RSAL/SSPL). This meant Redis could no longer be used as-is by cloud providers to offer managed Redis services without a commercial agreement with Redis Ltd.
+In March 2024, Redis Ltd. changed Redis's license from BSD to a dual-license model (RSALv2/SSPLv1). Redis 8.0 later added AGPLv3 as a third license option. The original RSAL/SSPL change meant Redis could no longer be used as-is by cloud providers to offer managed Redis services without a commercial agreement with Redis Ltd.
 
 In response, the Linux Foundation, AWS, Google, Oracle, Ericsson, and others created **Valkey** - a true open-source fork of Redis 7.2.4 under the BSD 3-Clause license.
 
 ```text
-Redis 7.2.x (BSD) -> License change -> Redis 8.x (RSAL/SSPL)
+Redis 7.2.x (BSD) -> License change -> Redis 8.x (RSALv2/SSPLv1/AGPLv3)
 Redis 7.2.4 (BSD) -> Fork -> Valkey 7.2 / 8.x (BSD)
 ```
 
@@ -23,10 +23,11 @@ Redis 7.2.4 (BSD) -> Fork -> Valkey 7.2 / 8.x (BSD)
 
 ```text
 Redis (8.x+):
-- Redis Source Available License (RSAL)
-- Server-Side Public License (SSPL)
+- Redis Source Available License (RSALv2)
+- Server-Side Public License (SSPLv1)
+- GNU Affero General Public License v3 (AGPLv3) - added in Redis 8.0
 - Free for most users and businesses
-- Commercial license required for:
+- Commercial license required under RSAL/SSPL for:
   - Cloud providers offering managed Redis
   - Competitive database products
 
@@ -99,7 +100,7 @@ Multi-threaded I/O         | Yes        | Yes (improved)
 RESP3 protocol             | Yes        | Yes
 Cluster support            | Yes        | Yes
 Module API                 | Yes        | Yes (compatible)
-License                    | RSAL/SSPL  | BSD
+License                    | RSALv2/SSPLv1/AGPLv3 | BSD
 Cloud managed offering     | Redis Cloud| AWS MemoryDB, GCP Memorystore
 Active development pace    | Moderate   | Fast (Linux Foundation)
 ```
