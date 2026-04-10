@@ -41,7 +41,7 @@ print("Visits: " .. count)
 client:setex("session:abc", 3600, "user:42")
 
 -- Check existence
-if client:exists("session:abc") == 1 then
+if client:exists("session:abc") then
     print("Session active")
 end
 
@@ -91,9 +91,9 @@ client:zadd("scores", 75,  "bob")
 client:zadd("scores", 90,  "carol")
 
 -- Top 3
-local top = client:zrevrange("scores", 0, 2, "WITHSCORES")
-for i = 1, #top, 2 do
-    print(top[i] .. ": " .. top[i+1])
+local top = client:zrevrange("scores", 0, 2, { withscores = true })
+for _, entry in ipairs(top) do
+    print(entry[1] .. ": " .. entry[2])
 end
 ```
 
@@ -130,12 +130,14 @@ end
 ```lua
 -- Subscriber (blocking loop)
 local subscriber = redis.connect("127.0.0.1", 6379)
-subscriber:subscribe("alerts", function(msg)
-    print("Channel: " .. msg.channel .. " Message: " .. msg.payload)
-    if msg.payload == "quit" then
-        return false  -- stop listening
+for msg, abort in subscriber:pubsub({ subscribe = { "alerts" } }) do
+    if msg.kind == "message" then
+        print("Channel: " .. msg.channel .. " Message: " .. msg.payload)
+        if msg.payload == "quit" then
+            abort()  -- stop listening
+        end
     end
-end)
+end
 
 -- Publisher (separate connection)
 client:publish("alerts", "Deploy started")
