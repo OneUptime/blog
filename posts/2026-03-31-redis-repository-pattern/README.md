@@ -34,7 +34,7 @@ class UserRepository(ABC):
 
 ## Redis Implementation
 
-Implement the interface using Redis hashes:
+Implement the interface using Redis strings with JSON serialization:
 
 ```python
 import redis
