@@ -25,7 +25,6 @@ The sidecar runs as a lightweight HTTP proxy alongside your service:
 from flask import Flask, request, Response
 import redis
 import requests
-import hashlib
 import json
 
 app = Flask(__name__)
@@ -34,9 +33,8 @@ r = redis.Redis()
 ORIGIN_URL = "http://localhost:8080"
 DEFAULT_TTL = 300
 
-def cache_key(method, path, body=None):
-    raw = f"{method}:{path}:{body or ''}"
-    return "sidecar:" + hashlib.sha256(raw.encode()).hexdigest()
+def cache_key(method, path):
+    return f"sidecar:{method}:{path}"
 
 @app.route("/<path:path>", methods=["GET", "POST", "PUT", "DELETE"])
 def proxy(path):
@@ -81,7 +79,7 @@ Invalidate cached GET responses when a mutating request succeeds:
 
 ```python
 def invalidate_by_prefix(path_prefix):
-    pattern = f"sidecar:*{path_prefix}*"
+    pattern = f"sidecar:GET:{path_prefix}*"
     cursor = 0
     while True:
         cursor, keys = r.scan(cursor, match=pattern, count=100)
