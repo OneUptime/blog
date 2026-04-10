@@ -23,7 +23,7 @@ Redis replication is asynchronous. In a Redis Cluster or Sentinel setup, a repli
 etcdctl get /config/db/host
 
 # etcd: serializable read (may be slightly stale, faster)
-etcdctl get /config/db/host --consistency=serializable
+etcdctl get /config/db/host --serializable
 
 # Redis: read from primary (consistent)
 redis-cli GET config:db:host
@@ -41,10 +41,10 @@ etcdctl put /config/db/port "5432"
 
 # etcd: atomic compare-and-swap (CAS)
 etcdctl txn <<EOF
-compares:
-  - value("/config/db/host") = "old.host.example.com"
-success requests:
-  - put /config/db/host "new.host.example.com"
+value("/config/db/host") = "old.host.example.com"
+
+put /config/db/host "new.host.example.com"
+
 EOF
 ```
 
