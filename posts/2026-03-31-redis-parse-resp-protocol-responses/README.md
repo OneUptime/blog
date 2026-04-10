@@ -8,7 +8,7 @@ Description: Learn how to parse all RESP2 and RESP3 response types from Redis, i
 
 ---
 
-Parsing Redis RESP responses correctly requires handling 5 RESP2 types and 9 additional RESP3 types. This guide covers the complete parsing logic with edge cases.
+Parsing Redis RESP responses correctly requires handling 5 RESP2 types and 10 additional RESP3 types. This guide covers the complete parsing logic with edge cases.
 
 ## RESP2 Type Reference
 
@@ -128,11 +128,15 @@ For RESP3, extend the parser:
 
 ```python
 RESP3_TYPES = {
-    "%": "_map",
-    "~": "_set_type",
+    "_": "_null",
     "#": "_boolean",
     ",": "_double",
-    "_": "_null",
+    "(": "_big_number",
+    "!": "_blob_error",
+    "=": "_verbatim_string",
+    "%": "_map",
+    "~": "_set_type",
+    "|": "_attribute",
     ">": "_push",
 }
 
@@ -155,8 +159,33 @@ def _boolean(self, data):
 def _double(self, data):
     return float(data)
 
+def _big_number(self, data):
+    return int(data)
+
 def _null(self, data):
     return None
+
+def _blob_error(self, data):
+    length = int(data)
+    value = self.stream.read(length)
+    self.stream.read(2)  # discard trailing \r\n
+    raise RedisError(value.decode())
+
+def _verbatim_string(self, data):
+    length = int(data)
+    value = self.stream.read(length)
+    self.stream.read(2)  # discard trailing \r\n
+    # Skip the 3-byte encoding prefix and colon (e.g., "txt:")
+    return value[4:].decode()
+
+def _attribute(self, data):
+    count = int(data)
+    # Parse and discard attribute metadata
+    for _ in range(count):
+        self.parse()  # key
+        self.parse()  # value
+    # The actual response follows the attribute
+    return self.parse()
 
 def _push(self, data):
     count = int(data)
@@ -185,4 +214,4 @@ except RedisError as e:
 
 ## Summary
 
-RESP parsing centers on reading the type byte, branching to a handler, and recursing for arrays and maps. The main edge cases are null bulk strings (length -1), null arrays, nested arrays, error code prefixes, and RESP3's 9 additional types. A robust parser handles all of these and raises typed exceptions for error responses to enable cluster redirect handling.
+RESP parsing centers on reading the type byte, branching to a handler, and recursing for arrays and maps. The main edge cases are null bulk strings (length -1), null arrays, nested arrays, error code prefixes, and RESP3's 10 additional types. A robust parser handles all of these and raises typed exceptions for error responses to enable cluster redirect handling.
