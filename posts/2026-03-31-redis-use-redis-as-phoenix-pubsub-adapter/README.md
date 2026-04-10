@@ -10,7 +10,7 @@ Description: Learn how to configure Redis as the Phoenix PubSub adapter to broad
 
 ## What is Phoenix PubSub?
 
-Phoenix PubSub is a distributed publish/subscribe system used internally by Phoenix Channels, LiveView, and Presence. By default it uses a PG2-based adapter that works via Erlang distribution across connected nodes. The Redis adapter replaces this with Redis Pub/Sub, which is easier to set up in environments where Erlang node clustering is not practical.
+Phoenix PubSub is a distributed publish/subscribe system used internally by Phoenix Channels, LiveView, and Presence. By default it uses the PG2 adapter (`Phoenix.PubSub.PG2`), which relies on Erlang's `:pg` module for process group communication across connected nodes. The Redis adapter replaces this with Redis Pub/Sub, which is easier to set up in environments where Erlang node clustering is not practical.
 
 ## When to Use the Redis Adapter
 
@@ -26,8 +26,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:phoenix_pubsub_redis, "~> 3.0"},
-    {:redix, "~> 1.1"}
+    {:phoenix_pubsub_redis, "~> 3.0"}
   ]
 end
 ```
@@ -44,7 +43,7 @@ mix deps.get
 # config/config.exs
 config :my_app, MyApp.PubSub,
   adapter: Phoenix.PubSub.Redis,
-  url: "redis://localhost:6379",
+  redis_opts: "redis://localhost:6379",
   node_name: System.get_env("HOSTNAME", "node1")
 ```
 
@@ -56,7 +55,7 @@ import Config
 
 config :my_app, MyApp.PubSub,
   adapter: Phoenix.PubSub.Redis,
-  url: System.fetch_env!("REDIS_URL"),
+  redis_opts: System.fetch_env!("REDIS_URL"),
   node_name: System.get_env("HOSTNAME", "phoenix-node")
 ```
 
@@ -164,7 +163,7 @@ end
 Node A publishes to "orders:42"
         |
         v
-  Redis Channel: "phx:orders:42"
+  Redis Channel: "phx:Elixir.MyApp.PubSub"
         |
    +----+----+
    |         |
@@ -174,16 +173,16 @@ to local   to local
 subscribers subscribers
 ```
 
-The Redis adapter serializes Phoenix PubSub messages and routes them through a named Redis Pub/Sub channel. Each Phoenix node subscribes to the Redis channel and forwards incoming messages to local process subscribers.
+The Redis adapter serializes Phoenix PubSub messages and routes them through a single Redis Pub/Sub channel per PubSub instance (e.g. `phx:Elixir.MyApp.PubSub`). All topics are multiplexed over this channel. Each Phoenix node subscribes to the Redis channel and forwards incoming messages to the appropriate local process subscribers based on the topic.
 
 ## Channel Naming
 
-By default the adapter prefixes channel names with `phx:` to avoid conflicts. You can customize the node name to distinguish log entries:
+The adapter uses a single Redis channel named `phx:<adapter_name>` (e.g. `phx:Elixir.MyApp.PubSub`) to avoid conflicts with other Redis keys. You can customize the node name to distinguish log entries:
 
 ```elixir
 config :my_app, MyApp.PubSub,
   adapter: Phoenix.PubSub.Redis,
-  url:     System.fetch_env!("REDIS_URL"),
+  redis_opts: System.fetch_env!("REDIS_URL"),
   node_name: System.get_env("FLY_APP_NAME", "local")
 ```
 
@@ -192,10 +191,10 @@ config :my_app, MyApp.PubSub,
 Watch PubSub messages in real time:
 
 ```bash
-redis-cli subscribe "phx:orders:42"
+redis-cli subscribe "phx:Elixir.MyApp.PubSub"
 redis-cli psubscribe "phx:*"
 ```
 
 ## Summary
 
-The Redis PubSub adapter for Phoenix routes all `Phoenix.PubSub.broadcast/3` calls through a Redis Pub/Sub channel instead of Erlang distribution. Configure it by setting `adapter: Phoenix.PubSub.Redis` with a Redis URL, start it in your application supervision tree, and update your endpoint to use the PubSub server name. All Phoenix Channels, LiveView, and Presence features continue working transparently, now broadcasting across multiple nodes through Redis.
+The Redis PubSub adapter for Phoenix routes all `Phoenix.PubSub.broadcast/3` calls through a Redis Pub/Sub channel instead of Erlang distribution. Configure it by setting `adapter: Phoenix.PubSub.Redis` with `redis_opts` pointing to your Redis URL, start it in your application supervision tree, and update your endpoint to use the PubSub server name. All Phoenix Channels, LiveView, and Presence features continue working transparently, now broadcasting across multiple nodes through Redis.
