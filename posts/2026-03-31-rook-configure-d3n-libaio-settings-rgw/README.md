@@ -29,43 +29,49 @@ apt-get install libaio1 -y
 ldconfig -p | grep libaio
 ```
 
-## Key D3N libaio Configuration Options
+## Key D3N Configuration Options
+
+Enable D3N and configure its cache path and size:
 
 ```bash
-# Maximum number of pending async I/O operations per RGW instance
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_threads 8
-
-# Maximum number of libaio events per poll cycle
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_num_events 128
+ceph config set client.rgw.myzone rgw_d3n_l1_local_datacache_enabled true
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 10737418240
 ```
 
 In `ceph.conf`:
 
 ```ini
 [client.rgw.myzone]
-d3n_l1_local_datacache_enabled = true
-d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
-d3n_l1_datacache_size = 10737418240
-rgw_d3n_libaio_aio_threads = 8
-rgw_d3n_libaio_aio_num_events = 128
+rgw_d3n_l1_local_datacache_enabled = true
+rgw_d3n_l1_datacache_persistent_path = /var/lib/ceph/rgw/cache
+rgw_d3n_l1_datacache_size = 10737418240
 ```
 
+D3N uses libaio internally for cache I/O. The libaio behavior is managed automatically by the D3N implementation. The primary tunable that affects libaio performance is the kernel's `aio-max-nr` limit (see below).
+
 ## Tuning libaio for Your Workload
+
+Since D3N manages libaio internally, the main tuning lever is the kernel's `aio-max-nr` limit and the D3N cache size.
 
 For high-concurrency environments (many small objects):
 
 ```bash
-# Increase threads and events for more parallelism
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_threads 16
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_num_events 256
+# Increase kernel AIO limit to support more concurrent operations
+echo 1048576 > /proc/sys/fs/aio-max-nr
+
+# Use a larger cache to reduce evictions under high request rates
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 21474836480
 ```
 
 For large object sequential reads:
 
 ```bash
-# Fewer threads with larger event batches
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_threads 4
-ceph config set client.rgw.myzone rgw_d3n_libaio_aio_num_events 64
+# A moderate AIO limit is sufficient for sequential workloads
+echo 262144 > /proc/sys/fs/aio-max-nr
+
+# Size the cache based on your working set
+ceph config set client.rgw.myzone rgw_d3n_l1_datacache_size 10737418240
 ```
 
 ## Checking System libaio Limits
@@ -103,4 +109,4 @@ journalctl -u ceph-radosgw@rgw.myzone --no-pager | grep -i "aio\|libaio\|async" 
 
 ## Summary
 
-Configuring libaio settings for D3N allows Ceph RGW to handle concurrent cache operations efficiently without blocking request threads. Tune the number of AIO threads and events based on your concurrency profile - more threads for many small objects, fewer threads with larger batch sizes for sequential large object reads. Always ensure the kernel's aio-max-nr limit is set high enough to support your configured thread count.
+D3N uses libaio internally to handle concurrent cache operations efficiently without blocking request threads. While D3N manages its libaio usage automatically, you should ensure the kernel's `aio-max-nr` limit is set high enough for your workload and size the D3N cache appropriately for your access patterns.
