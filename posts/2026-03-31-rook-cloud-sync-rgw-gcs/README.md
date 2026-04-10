@@ -36,8 +36,8 @@ GCS_SECRET="base64-encoded-secret"
 ```bash
 # Create the destination bucket in GCS
 gcloud storage buckets create gs://ceph-sync-backup \
-  --location=US-CENTRAL1 \
-  --storage-class=STANDARD \
+  --location=us-central1 \
+  --default-storage-class=STANDARD \
   --project=my-project
 
 # Grant the service account access to the bucket
@@ -61,11 +61,9 @@ radosgw-admin zone create \
 # GCS S3-compatible endpoint: storage.googleapis.com
 radosgw-admin zone modify \
   --rgw-zone=gcs-zone \
-  --tier-config=connection.id=gcs-main,\
-connection.endpoint=https://storage.googleapis.com,\
+  --tier-config=connection.endpoint=https://storage.googleapis.com,\
 connection.access_key=${GCS_ACCESS_ID},\
 connection.secret=${GCS_SECRET},\
-connection.region=auto,\
 connection.host_style=virtual,\
 target_path=ceph-sync-backup
 
@@ -83,10 +81,8 @@ radosgw-admin zone modify \
   --tier-config=multipart_sync_threshold=104857600,\
 multipart_min_part_size=5242880
 
-# Optionally restrict to specific buckets
-radosgw-admin zone modify \
-  --rgw-zone=gcs-zone \
-  --tier-config=retain_head_object=false
+# Commit the updated thresholds
+radosgw-admin period update --commit
 ```
 
 ## Step 5 - Start the Sync Zone RGW Instance
@@ -96,7 +92,7 @@ radosgw-admin zone modify \
 # In ceph.conf:
 cat >> /etc/ceph/ceph.conf << 'EOF'
 [client.rgw.gcs-sync]
-rgw_frontends = civetweb port=7482
+rgw_frontends = beast port=7482
 rgw_zone = gcs-zone
 rgw_zonegroup = default
 rgw_realm = hybrid-realm
@@ -139,9 +135,9 @@ Monitor ongoing sync health:
 radosgw-admin sync status --rgw-zone=gcs-zone 2>&1 | \
   grep -E "behind|shard|error"
 
-# Prometheus metric for sync lag
+# Prometheus metrics for sync lag
 curl -s http://rgw.example.com:9283/metrics | \
-  grep rgw_sync_full_sync_index_count
+  grep ceph_data_sync_from
 ```
 
 ## Summary
