@@ -91,14 +91,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Get JSON output for scripting:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph status --format json | python3 -m json.tool
 ```
 
 Extract specific fields:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph status --format json | python3 -c "
 import sys, json
 s = json.load(sys.stdin)
