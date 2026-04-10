@@ -42,7 +42,7 @@ Fetch the top N tags with their scores for display:
 
 ```python
 def get_tag_cloud(n: int = 50) -> list:
-    tags = r.zrevrange(TAG_CLOUD_KEY, 0, n - 1, withscores=True)
+    tags = r.zrange(TAG_CLOUD_KEY, 0, n - 1, desc=True, withscores=True)
     return [{"tag": tag, "count": int(score)} for tag, score in tags]
 ```
 
@@ -52,7 +52,7 @@ Scale tag counts into a display weight (1-5) for font sizes in the UI:
 
 ```python
 def get_weighted_tag_cloud(n: int = 50) -> list:
-    tags = r.zrevrange(TAG_CLOUD_KEY, 0, n - 1, withscores=True)
+    tags = r.zrange(TAG_CLOUD_KEY, 0, n - 1, desc=True, withscores=True)
     if not tags:
         return []
     counts = [score for _, score in tags]
@@ -78,7 +78,7 @@ def add_tag_with_category(content_id: str, tag: str, category: str):
     r.zincrby(f"tagcloud:cat:{category}", 1, tag)
 
 def get_category_tag_cloud(category: str, n: int = 20) -> list:
-    return r.zrevrange(f"tagcloud:cat:{category}", 0, n - 1, withscores=True)
+    return r.zrange(f"tagcloud:cat:{category}", 0, n - 1, desc=True, withscores=True)
 ```
 
 ## Trending Tags Over Time
@@ -99,10 +99,10 @@ def get_trending_tags(n: int = 20) -> list:
     # Last 6 hours
     keys = [f"tagcloud:hour:{hour - i}" for i in range(6)]
     r.zunionstore("tagcloud:trending:tmp", keys)
-    return r.zrevrange("tagcloud:trending:tmp", 0, n - 1, withscores=True)
+    return r.zrange("tagcloud:trending:tmp", 0, n - 1, desc=True, withscores=True)
 ```
 
 ## Summary
 
-Redis sorted sets track tag frequency with O(log N) increments and O(log N) range queries. Normalizing scores to display weights lets frontend code render proportional font sizes. Category-specific and time-bucketed sorted sets extend the basic pattern to per-category clouds and real-time trending tags.
+Redis sorted sets track tag frequency with O(log N) increments and O(log N + M) range queries, where M is the number of elements returned. Normalizing scores to display weights lets frontend code render proportional font sizes. Category-specific and time-bucketed sorted sets extend the basic pattern to per-category clouds and real-time trending tags.
 
