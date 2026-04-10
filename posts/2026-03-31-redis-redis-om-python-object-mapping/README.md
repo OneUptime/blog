@@ -26,10 +26,9 @@ docker run -d -p 6379:6379 redis/redis-stack-server:latest
 
 ```python
 from redis_om import HashModel, Field
-from typing import Optional
 
 class Product(HashModel):
-    name: str = Field(index=True)
+    name: str = Field(index=True, full_text_search=True)
     price: float
     category: str = Field(index=True)
     in_stock: bool = True
@@ -84,7 +83,7 @@ for p in keyboards:
     print(p.name, p.price)
 ```
 
-The `%` operator performs a full-text search on indexed fields.
+The `%` operator performs a full-text search on fields that have `full_text_search=True` set.
 
 ## Using JsonModel for Nested Data
 
