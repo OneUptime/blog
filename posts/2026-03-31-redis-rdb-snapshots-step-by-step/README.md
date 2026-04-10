@@ -116,10 +116,9 @@ rdb_last_cow_size:8388608
 When Redis restarts with an existing `dump.rdb`:
 
 1. Opens and validates the file magic header and format version
-2. Verifies the CRC64 checksum
-3. Loads all key-value pairs into memory in bulk
-4. Sets TTLs for keys with expiry times
-5. Begins serving requests
+2. Loads all key-value pairs into memory, including their expiry times (expiry is stored inline with each key in the RDB format)
+3. Verifies the CRC64 checksum at the end of the file (computed incrementally during loading)
+4. Begins serving requests
 
 For a 10 GB dataset, this typically takes 8-15 seconds, far faster than replaying an AOF file.
 
