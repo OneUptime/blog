@@ -68,22 +68,22 @@ Individual files inherit the directory layout at creation time.
 
 ## Striping with RADOS Directly
 
-When writing objects directly via librados:
+When writing objects directly via RADOS, use `libradosstriper` which implements striping on top of librados:
 
 ```c
-// Set striping via librados IoCtx
-rados_ioctx_set_op_flags(io, LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL);
-```
+#include <radosstriper/libradosstriper.h>
 
-Or via the Python bindings:
+// Create a striper from an existing IoCtx
+rados_striper_t striper;
+rados_striper_create(ioctx, &striper);
+rados_striper_set_object_layout_stripe_unit(striper, 1048576);   // 1 MiB
+rados_striper_set_object_layout_stripe_count(striper, 4);
+rados_striper_set_object_layout_object_size(striper, 4194304);   // 4 MiB
 
-```python
-import rados
+// Write data — the striper handles splitting across RADOS objects
+rados_striper_write(striper, "myobject", data, data_len, 0);
 
-cluster = rados.Rados(conffile='/etc/ceph/ceph.conf')
-cluster.connect()
-ioctx = cluster.open_ioctx('mypool')
-ioctx.set_locator_key("key")
+rados_striper_destroy(striper);
 ```
 
 ## Performance Impact
