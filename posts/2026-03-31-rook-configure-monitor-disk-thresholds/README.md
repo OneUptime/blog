@@ -10,7 +10,7 @@ Description: Configure Ceph monitor disk space thresholds MON_DISK_LOW and MON_D
 
 ## Why Monitor Disk Space Thresholds Matter
 
-Ceph monitors store the Paxos database, cluster maps, and transaction logs on disk. If a monitor's data volume fills up, the monitor cannot write new state and will crash, potentially causing quorum loss. Ceph has built-in disk space monitoring for MONs with two configurable thresholds:
+Ceph monitors store the Paxos database, cluster maps, and transaction logs on disk. If a monitor's data volume fills up, the monitor cannot write new state and will crash, potentially causing quorum loss. Ceph has built-in disk space monitoring for MONs with three configurable thresholds:
 
 - `MON_DISK_LOW` - warning threshold. Default: 30% of total disk space remaining. Generates `HEALTH_WARN`.
 - `MON_DISK_CRIT` - critical threshold. Default: 5% remaining. Generates `HEALTH_ERR` and the monitor may stop accepting writes.
