@@ -80,7 +80,7 @@ STRLEN user:1
 
 ```text
 OK
-(integer) 50
+(integer) 51
 ```
 
 ### Monitoring APPEND buffer growth
@@ -153,6 +153,7 @@ APPEND buf " world"
 ```
 
 ```text
+(integer) 0
 (integer) 5
 (integer) 11
 ```
