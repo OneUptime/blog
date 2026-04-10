@@ -22,7 +22,7 @@ CephFS can be mounted using two approaches:
 - Best performance - operates in kernel space, no context switches
 - Lower latency for metadata operations
 - Direct VFS integration, no additional daemon required
-- Supports all standard Linux tools (inotify, sendfile, etc.)
+- Supports standard Linux tools (sendfile, mmap, etc.) through direct VFS integration
 
 ### Disadvantages
 
@@ -60,7 +60,7 @@ sudo mount -t ceph mon1:6789:/ /mnt/cephfs \
 sudo apt-get install ceph-fuse
 sudo ceph-fuse /mnt/cephfs \
   -n client.admin \
-  --keyring /etc/ceph/ceph.client.admin.keyring
+  -k /etc/ceph/ceph.client.admin.keyring
 ```
 
 ## Performance Comparison
