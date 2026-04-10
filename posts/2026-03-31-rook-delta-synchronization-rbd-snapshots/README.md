@@ -50,10 +50,10 @@ rbd snap create replicapool/myimage@snap1
 rbd snap create replicapool/myimage@snap2
 
 # Show diff between snapshots (outputs changed extents)
-rbd diff replicapool/myimage --from-snap snap1 --snap snap2
+rbd diff replicapool/myimage@snap2 --from-snap snap1
 
 # Show diff size
-rbd diff replicapool/myimage --from-snap snap1 --snap snap2 | \
+rbd diff replicapool/myimage@snap2 --from-snap snap1 | \
   awk '{ sum += $2 } END { print sum/1024/1024 " MB changed" }'
 ```
 
@@ -66,8 +66,8 @@ During snapshot-based replication, monitor sync progress:
 rbd mirror image status replicapool/myimage
 
 # During sync:
-# state: up+syncing
-# description: snapshot_copy, 45 / 100 objects complete
+# state: up+replaying
+# description: replaying, {"replay_state":"syncing","syncing_percent":45.0, ...}
 
 # JSON format for scripting
 rbd mirror image status replicapool/myimage --format json | \
@@ -88,7 +88,7 @@ SNAP1=$(echo "$SNAPS" | head -1)
 SNAP2=$(echo "$SNAPS" | tail -1)
 
 echo "Diff between $SNAP1 and $SNAP2:"
-rbd diff $IMAGE --from-snap "$SNAP1" --snap "$SNAP2" | \
+rbd diff "${IMAGE}@${SNAP2}" --from-snap "$SNAP1" | \
   awk '{ sum += $2 } END { printf "%.2f MB\n", sum/1024/1024 }'
 ```
 
@@ -101,14 +101,14 @@ Shorter snapshot intervals mean smaller deltas per sync, reducing burst bandwidt
 rbd mirror snapshot schedule add \
   --pool replicapool \
   --image myimage \
-  --interval 15m
+  15m
 ```
 
-Also ensure the rbd-mirror daemon has sufficient network bandwidth:
+Also control the number of concurrent image syncs to manage bandwidth:
 
 ```bash
-# Configure max bandwidth for the mirror daemon
-ceph config set rbd-mirror rbd_mirror_throttle_bytes_per_second 104857600  # 100 MB/s
+# Limit concurrent image syncs for the mirror daemon (default: 5)
+ceph config set rbd-mirror rbd_mirror_concurrent_image_syncs 3
 ```
 
 ## Summary
