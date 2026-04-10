@@ -64,8 +64,8 @@ Pipelining is a network optimization - it reduces round-trips. MULTI/EXEC is a t
 | Feature | Pipeline | MULTI/EXEC |
 |---|---|---|
 | Atomic | No | Yes |
-| Round-trips | 1 | 2 (MULTI+EXEC) |
-| Error handling | Per command | Whole block |
+| Round-trips | 1 | N+2 (MULTI + N commands + EXEC) |
+| Error handling | Per command | Per command (no rollback) |
 
 You can combine both - a pipeline can contain MULTI/EXEC:
 
