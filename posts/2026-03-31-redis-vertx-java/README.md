@@ -38,6 +38,8 @@ import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisOptions;
 
+import java.util.List;
+
 public class MainVerticle extends AbstractVerticle {
 
     private RedisAPI redis;
@@ -49,10 +51,11 @@ public class MainVerticle extends AbstractVerticle {
             .setMaxPoolSize(10)
             .setMaxPoolWaiting(20);
 
-        Redis.createClient(vertx, options)
-            .connect()
-            .onSuccess(conn -> {
-                redis = RedisAPI.api(conn);
+        Redis client = Redis.createClient(vertx, options);
+        redis = RedisAPI.api(client);
+
+        redis.ping(List.of())
+            .onSuccess(result -> {
                 System.out.println("Connected to Redis");
                 startPromise.complete();
             })
