@@ -49,7 +49,7 @@ The most important control is capping the stream length with `MAXLEN`:
 XADD tasks:queue MAXLEN ~ 100000 * job_type send_email payload '...'
 ```
 
-Approximate trimming (`~`) is faster than exact trimming because Redis only trims when a complete internal node is full, avoiding expensive partial-node operations.
+Approximate trimming (`~`) is faster than exact trimming because Redis only trims when it can remove whole macro nodes (listpacks) entirely, avoiding the cost of partially modifying individual nodes.
 
 ## Producer-Side Rate Limiting
 
