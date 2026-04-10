@@ -83,7 +83,6 @@ Using delta values gives you the current hit rate rather than the all-time avera
 
 ```bash
 # Check TTL distribution
-redis-cli DEBUG SLEEP 0.001  # sample
 redis-cli INFO keyspace
 ```
 
@@ -91,7 +90,7 @@ redis-cli INFO keyspace
 db0:keys=42857,expires=41200,avg_ttl=3542
 ```
 
-High `expires/keys` ratio with short `avg_ttl` means keys are being evicted before they're hit.
+High `expires/keys` ratio with short `avg_ttl` means keys are expiring before they're hit.
 
 **Cause 2: Key namespace mismatch**
 
