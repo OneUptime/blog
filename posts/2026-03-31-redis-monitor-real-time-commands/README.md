@@ -79,7 +79,7 @@ If you see hundreds of `GET user:1`, `GET user:2`, etc. in rapid succession, you
 For production observability, prefer:
 
 - `SLOWLOG` for capturing slow commands
-- `LATENCY HISTORY` for latency percentiles
+- `LATENCY HISTORY` for latency spike tracking
 - Redis keyspace notifications for event-driven monitoring
 
 ## Limiting Duration
