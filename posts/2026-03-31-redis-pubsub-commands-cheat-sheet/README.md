@@ -80,7 +80,6 @@ PUBSUB SHARDNUMSUB channel1 channel2
 ```python
 # Python (redis-py) example
 import redis
-import threading
 
 r = redis.Redis()
 
@@ -115,7 +114,7 @@ pub.publish('notifications', 'User logged in');
 
 ## Important Behavior Notes
 
-- A client in SUBSCRIBE mode can only use: SUBSCRIBE, PSUBSCRIBE, UNSUBSCRIBE, PUNSUBSCRIBE, PING, RESET, QUIT
+- A client in SUBSCRIBE mode can only use: SUBSCRIBE, SSUBSCRIBE, PSUBSCRIBE, UNSUBSCRIBE, SUNSUBSCRIBE, PUNSUBSCRIBE, PING, RESET, QUIT
 - Messages are not persisted - late subscribers miss past messages
 - Use Redis Streams instead when you need persistence or replay
 - In Redis Cluster, PUBLISH broadcasts to all nodes automatically
