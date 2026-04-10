@@ -110,8 +110,11 @@ client = elasticapm.Client(
     secret_token="your-token"
 )
 
+client.begin_transaction("request")
 with elasticapm.capture_span("test-span"):
     print("Hello from Elastic APM on Ceph!")
+client.end_transaction("test-transaction", "success")
+client.close()
 ```
 
 ## Verify Storage
@@ -124,8 +127,9 @@ kubectl -n elastic get pvc
 Check Elasticsearch index health:
 
 ```bash
+PASSWORD=$(kubectl -n elastic get secret apm-elasticsearch-es-elastic-user -o go-template='{{.data.elastic | base64decode}}')
 kubectl -n elastic exec -it apm-elasticsearch-es-default-0 -- \
-  curl -s http://localhost:9200/_cat/indices?v | grep apm
+  curl -s -k -u "elastic:$PASSWORD" https://localhost:9200/_cat/indices?v | grep apm
 ```
 
 ## Summary
