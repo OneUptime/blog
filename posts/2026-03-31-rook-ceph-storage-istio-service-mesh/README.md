@@ -52,7 +52,7 @@ spec:
 
 ## Configuring Istio Traffic Policies for RGW
 
-If you expose Ceph RGW (S3 API) through Istio, create a ServiceEntry and VirtualService:
+If you expose Ceph RGW (S3 API) through Istio, create a VirtualService with appropriate timeout and retry settings:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -114,7 +114,7 @@ spec:
 
 ## Handling mTLS for Application-to-Ceph Traffic
 
-If Istio enforces strict mTLS in the application namespace, pods accessing Ceph via CSI must be in the mesh. Configure a PeerAuthentication exception for the rook-ceph namespace:
+If Istio enforces strict mTLS in the application namespace, non-meshed clients (such as pods in namespaces without Istio injection) accessing Ceph services like RGW over the network will be rejected. Configure a PeerAuthentication exception for the rook-ceph namespace to allow both mTLS and plaintext traffic:
 
 ```yaml
 apiVersion: security.istio.io/v1beta1
@@ -129,4 +129,4 @@ spec:
 
 ## Summary
 
-Running Ceph with Istio requires careful handling of sidecar injection and mTLS policies. The safest approach is to disable Istio injection for the `rook-ceph` namespace to prevent Envoy from interfering with Ceph's storage protocols. For exposing services like RGW externally, use Istio Gateway and VirtualService resources while keeping internal Ceph traffic outside the mesh. Set PeerAuthentication to PERMISSIVE mode to allow unauthenticated traffic from CSI node plugins.
+Running Ceph with Istio requires careful handling of sidecar injection and mTLS policies. The safest approach is to disable Istio injection for the `rook-ceph` namespace to prevent Envoy from interfering with Ceph's storage protocols. For exposing services like RGW externally, use Istio Gateway and VirtualService resources while keeping internal Ceph traffic outside the mesh. Set PeerAuthentication to PERMISSIVE mode to allow non-meshed clients to access Ceph services like RGW over the network.
