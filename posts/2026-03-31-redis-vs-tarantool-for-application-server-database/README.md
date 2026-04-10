@@ -73,7 +73,7 @@ import tarantool
 conn = tarantool.connect("localhost", 3301)
 
 # Call a stored procedure
-result = conn.call("get_or_create_user", [42, "alice@example.com"])
+result = conn.call("get_or_create_user", 42, "alice@example.com")
 print(result)
 
 # Direct space operations
@@ -99,7 +99,7 @@ else
 end
 ```
 
-Redis's MULTI/EXEC is optimistic (no rollback on command failure):
+Redis's MULTI/EXEC batches commands atomically but provides no rollback on individual command failure:
 
 ```bash
 MULTI
@@ -116,9 +116,9 @@ If `DECRBY` fails due to wrong type, `INCRBY` still runs - there is no atomicity
 |---------|-------|-----------|
 | Application server | No (external) | Yes (embedded Lua) |
 | Secondary indexes | Manual (sorted sets) | Built-in |
-| ACID transactions | Optimistic MULTI/EXEC | Full ACID |
+| ACID transactions | MULTI/EXEC (no rollback) | Full ACID |
 | Stored procedures | Limited Lua (EVAL) | Full Lua co-routines |
-| Query language | Commands only | Lua API + SQL (via vshard) |
+| Query language | Commands only | Lua API + SQL (native) |
 | Replication | Master-replica, Cluster | Async + synchronous |
 | Ecosystem | Very large | Smaller (Russia-origin) |
 | Ops complexity | Low | Medium |
