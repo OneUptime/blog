@@ -62,11 +62,11 @@ Type byte values:
 ```text
 0  = String
 1  = List (linked list)
-10 = List (quicklist)
+14 = List (quicklist)
 2  = Set
 11 = Set (intset)
 3  = Sorted Set
-5  = Hash
+4  = Hash
 ```
 
 ## Length Encoding
@@ -101,8 +101,6 @@ redis-check-rdb /var/lib/redis/dump.rdb
 ## Parsing with Python
 
 ```python
-import struct
-
 with open("dump.rdb", "rb") as f:
     magic = f.read(5)
     version = f.read(4)
