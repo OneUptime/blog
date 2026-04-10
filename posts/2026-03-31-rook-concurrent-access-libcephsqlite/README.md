@@ -126,7 +126,7 @@ def write_with_retry(conn, query, params, max_retries=5):
 # Check if a RADOS lock is currently held on the database object
 rados -p mypool lock info shared.db cephsqlite
 
-# List all locks on the pool
+# List all locks on the database object
 rados -p mypool lock list shared.db
 ```
 
