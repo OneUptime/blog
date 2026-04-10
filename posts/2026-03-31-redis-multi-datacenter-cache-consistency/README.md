@@ -93,6 +93,8 @@ def start_invalidation_listener(local_dc: str):
             if message["type"] != "message":
                 continue
             event = json.loads(message["data"])
+            if event["origin"] == local_dc:
+                continue  # Don't evict data we just wrote locally
             key = event["key"]
             # Evict from local cache
             dc_redis[local_dc].delete(key)
@@ -115,16 +117,25 @@ redis-cli -h redis-east.internal INFO replication | grep -E "lag|offset"
 ## Handling Split-Brain (Both DCs Accepting Writes)
 
 ```python
+# Lua script for atomic check-and-set based on timestamp
+WRITE_IF_NEWER = """
+local existing = redis.call('GET', KEYS[1])
+if existing then
+    local current = cjson.decode(existing)
+    if current['ts'] and tonumber(current['ts']) > tonumber(ARGV[1]) then
+        return 0
+    end
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+return 1
+"""
+
 def write_with_version(key: str, value: dict, ttl: int = 300):
     import time
-    versioned = {"data": value, "ts": time.time()}
-    # Only update if newer than what's stored
-    existing_raw = primary.get(key)
-    if existing_raw:
-        existing = json.loads(existing_raw)
-        if existing.get("ts", 0) > versioned["ts"]:
-            return  # Reject older write
-    primary.set(key, json.dumps(versioned), ex=ttl)
+    ts = time.time()
+    versioned = json.dumps({"data": value, "ts": ts})
+    # Atomically update only if our timestamp is newer
+    primary.eval(WRITE_IF_NEWER, 1, key, str(ts), versioned, str(ttl))
 ```
 
 ## Summary
