@@ -13,15 +13,15 @@ Description: Learn how to use SCRIPT FLUSH in Redis to clear the Lua script cach
 SCRIPT FLUSH removes all Lua scripts from Redis's server-side script cache. After flushing, any attempt to call a script with EVALSHA will return a NOSCRIPT error until the scripts are reloaded via SCRIPT LOAD or EVAL.
 
 SCRIPT FLUSH supports two modes:
-- **SYNC** - blocks the server until all scripts are deleted (default in Redis 6.2 and earlier)
-- **ASYNC** - removes scripts from the keyspace immediately and reclaims memory in a background thread (available in Redis 6.2+)
+- **SYNC** - blocks the server until all scripts are deleted (default in Redis 6.2+, unless `lazyfree-lazy-user-flush` is set to `yes`)
+- **ASYNC** - removes scripts from the script cache immediately and reclaims memory in a background thread (available in Redis 6.2+)
 
 ```mermaid
 flowchart TD
     A[Script cache: script1, script2, script3] --> B[SCRIPT FLUSH]
     B --> C{Mode}
     C -- SYNC --> D[Block server, clear all scripts immediately]
-    C -- ASYNC --> E[Remove from keyspace, free memory in background]
+    C -- ASYNC --> E[Remove from script cache, free memory in background]
     D & E --> F[Script cache: empty]
     F --> G[EVALSHA returns NOSCRIPT error]
 ```
@@ -57,11 +57,11 @@ SCRIPT LOAD "return 'test'"
 ```
 
 ```text
-"2067d915024a3e1657c4169c84f809f8ec75b9a7"
+"4eaa03de2a8a71a0758a6ffb7ab8f8fa2788517f"
 ```
 
 ```redis
-SCRIPT EXISTS 2067d915024a3e1657c4169c84f809f8ec75b9a7
+SCRIPT EXISTS 4eaa03de2a8a71a0758a6ffb7ab8f8fa2788517f
 ```
 
 ```text
@@ -71,7 +71,7 @@ SCRIPT EXISTS 2067d915024a3e1657c4169c84f809f8ec75b9a7
 ```redis
 SCRIPT FLUSH
 
-SCRIPT EXISTS 2067d915024a3e1657c4169c84f809f8ec75b9a7
+SCRIPT EXISTS 4eaa03de2a8a71a0758a6ffb7ab8f8fa2788517f
 ```
 
 ```text
