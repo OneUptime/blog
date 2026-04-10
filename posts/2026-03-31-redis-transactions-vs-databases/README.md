@@ -94,10 +94,9 @@ EXEC
 ```sql
 BEGIN;
 INSERT INTO accounts (id, balance) VALUES (1, 1000);
-UPDATE accounts SET balance = balance - 200 WHERE id = 99;  -- No row 99 exists
-COMMIT;
--- Depending on constraints, the whole transaction may roll back
--- With proper error handling, explicit ROLLBACK clears everything
+INSERT INTO accounts (id, balance) VALUES (1, 2000);  -- Fails: duplicate primary key
+ROLLBACK;
+-- Both operations are undone, database is unchanged
 ```
 
 ```mermaid
