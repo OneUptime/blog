@@ -85,7 +85,7 @@ SAVE
 
 # Trigger RDB snapshot (background, non-blocking)
 BGSAVE
-BGSAVE SCHEDULE   # schedule after replication if AOF active
+BGSAVE SCHEDULE   # schedule if another BGSAVE or AOF rewrite is in progress
 
 # Rewrite AOF file (background)
 BGREWRITEAOF
@@ -109,8 +109,8 @@ REPLICAOF NO ONE
 # Wait for replicas to acknowledge writes
 WAIT 1 1000    # wait for 1 replica, max 1000ms
 
-# Force replica to sync
-DEBUG SLEEP 0   # (triggers sync check)
+# Check replication info
+INFO replication
 ```
 
 ## Slow Log
@@ -138,7 +138,7 @@ CONFIG SET slowlog-max-len 128
 MONITOR
 
 # Latency history for specific event
-LATENCY HISTORY rdb_fork
+LATENCY HISTORY fork
 
 # Latest latency measurements
 LATENCY LATEST
