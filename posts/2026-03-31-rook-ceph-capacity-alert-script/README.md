@@ -32,7 +32,7 @@ ALERTS=()
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- ceph "$@"
 }
 ```
 
@@ -77,11 +77,11 @@ check_pool_capacity() {
 
   while IFS= read -r line; do
     [[ -n "$line" ]] && ALERTS+=("$line")
-  done < <(echo "$df_json" | python3 << 'PYEOF'
+  done < <(echo "$df_json" | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
-warn = float(sys.argv[1]) if len(sys.argv) > 1 else 75
-crit = float(sys.argv[2]) if len(sys.argv) > 2 else 90
+warn = float(sys.argv[1])
+crit = float(sys.argv[2])
 for pool in data.get("pools", []):
     name = pool["name"]
     used = pool["stats"]["bytes_used"]
@@ -90,11 +90,10 @@ for pool in data.get("pools", []):
     if total > 0:
         pct = used / total * 100
         if pct >= crit:
-            print(f"CRITICAL: Pool '{name}' at {pct:.1f}% capacity")
+            print(f"CRITICAL: Pool {name!r} at {pct:.1f}% capacity")
         elif pct >= warn:
-            print(f"WARNING: Pool '{name}' at {pct:.1f}% capacity")
-PYEOF
-  )
+            print(f"WARNING: Pool {name!r} at {pct:.1f}% capacity")
+' "$WARN_THRESHOLD" "$CRIT_THRESHOLD")
 }
 ```
 
@@ -102,7 +101,12 @@ PYEOF
 
 ```bash
 check_osd_utilization() {
-  ceph_cmd osd df --format json 2>/dev/null | python3 << 'PYEOF'
+  local osd_json
+  osd_json=$(ceph_cmd osd df --format json 2>/dev/null)
+
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && ALERTS+=("$line")
+  done < <(echo "$osd_json" | python3 -c '
 import sys, json
 data = json.load(sys.stdin)
 for node in data.get("nodes", []):
@@ -114,7 +118,7 @@ for node in data.get("nodes", []):
         print(f"CRITICAL: OSD.{osd_id} at {util:.1f}% utilization")
     elif util >= 80:
         print(f"WARNING: OSD.{osd_id} at {util:.1f}% utilization")
-PYEOF
+')
 }
 ```
 
