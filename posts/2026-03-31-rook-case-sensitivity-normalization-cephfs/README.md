@@ -24,7 +24,7 @@ When macOS clients mount CephFS:
 Enable case-insensitive lookups on a specific directory:
 
 ```bash
-# Enable case-insensitive mode (requires Ceph Octopus 15.x+ and kernel 5.11+)
+# Enable case-insensitive mode (requires Ceph Squid 19.2+ and ceph-fuse client)
 setfattr -n ceph.dir.casesensitive -v 0 /mnt/cephfs/shared-with-mac
 ```
 
@@ -49,11 +49,14 @@ setfattr -n ceph.dir.normalization -v nfd /mnt/cephfs/shared-with-mac
 
 # Or NFKC (compatibility decomposition + canonical composition)
 setfattr -n ceph.dir.normalization -v nfkc /mnt/cephfs/shared-with-mac
+
+# Or NFKD (compatibility decomposition)
+setfattr -n ceph.dir.normalization -v nfkd /mnt/cephfs/shared-with-mac
 ```
 
 ## Set Both Together for macOS Compatibility
 
-macOS uses UTF-8 with NFD normalization and case-insensitive lookups by default:
+macOS (APFS) is normalization-insensitive and case-insensitive by default. Using NFD normalization in CephFS provides the closest compatibility:
 
 ```bash
 setfattr -n ceph.dir.casesensitive -v 0 /mnt/cephfs/macos-share
@@ -63,9 +66,9 @@ setfattr -n ceph.dir.normalization -v nfd /mnt/cephfs/macos-share
 ## MDS Version Requirements
 
 These features require:
-- Ceph Octopus (15.2) or later
-- MDS built with ICU Unicode library support
-- For kernel client: Linux 5.11+
+- Ceph Squid (19.2) or later
+- The ceph-fuse client (the kernel CephFS driver does not support charmap)
+- ICU Unicode library support (used by the client for normalization)
 
 Check MDS version:
 
