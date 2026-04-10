@@ -143,6 +143,9 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
   ceph osd crush move zone-b datacenter=datacenter
   ceph osd crush move zone-c datacenter=datacenter
 
+  # Move datacenter under the default root
+  ceph osd crush move datacenter root=default
+
   # Move hosts into their zones
   ceph osd crush move node1 zone=zone-a
   ceph osd crush move node2 zone=zone-b
@@ -162,7 +165,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd tree | grep -E "osd
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph osd crush reweight osd.0 1.0
 
-# Reweight all OSDs based on actual disk size
+# Reweight OSDs to balance utilization across the cluster
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph osd reweight-by-utilization
 ```
@@ -176,8 +179,11 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
   # Create a rule for SSD-only replicated pools
   ceph osd crush rule create-replicated ssd-replicated default host ssd
 
-  # Create a rule for HDD erasure-coded pools
-  ceph osd crush rule create-erasure hdd-erasure default hdd
+  # Create an erasure code profile restricted to HDD devices
+  ceph osd erasure-code-profile set hdd-ec-profile crush-device-class=hdd
+
+  # Create a rule for HDD erasure-coded pools using that profile
+  ceph osd crush rule create-erasure hdd-erasure hdd-ec-profile
 "
 ```
 
@@ -210,7 +216,7 @@ Simulate data placement for a pool:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash -c "
-  # Show where PG 1.0 would be placed
+  # Show which PG and OSDs an object maps to
   ceph osd map replicapool myobject
 "
 ```
