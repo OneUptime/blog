@@ -48,6 +48,10 @@ def search_and_track(query: str, user_id: str):
     if num_results == 0:
         r.zincrby('search:zero_results', 1, query.lower())
 
+    # Track impressions for CTR calculation
+    if num_results > 0:
+        r.hincrby(f"search:ctr:{query.lower()}", 'impressions', 1)
+
     # Track by time window (hourly)
     hour_key = f"search:queries:{int(time.time() // 3600)}"
     r.rpush(hour_key, query.lower())
@@ -87,8 +91,6 @@ def track_click(query: str, doc_id: str, position: int):
     pipe = r.pipeline()
     # Total clicks for this query
     pipe.hincrby(f"search:ctr:{query.lower()}", 'clicks', 1)
-    # Total impressions
-    pipe.hincrby(f"search:ctr:{query.lower()}", 'impressions', 1)
     # Position data
     pipe.rpush(f"search:positions:{query.lower()}", position)
     pipe.execute()
