@@ -10,7 +10,7 @@ Description: Learn how to configure bidirectional object replication between two
 
 ## Overview
 
-Bidirectional sync in Ceph RGW enables active-active multisite deployments where writes to either zone are replicated to the other. This is useful for geographic redundancy and load distribution. Ceph handles write conflicts using a last-write-wins strategy based on object modification timestamps.
+Bidirectional sync in Ceph RGW enables active-active multisite deployments where writes to either zone are replicated to the other. This is useful for geographic redundancy and load distribution. Ceph handles write conflicts using a deterministic resolution strategy where, for non-versioned buckets, the most recently replicated update takes precedence, and for versioned buckets, conflicts are resolved using OLH (Object Logical Head) epochs.
 
 ## Step 1 - Set Up the Multisite Infrastructure
 
@@ -34,6 +34,12 @@ radosgw-admin user create --uid=replication-user \
   --display-name="Replication User" --system
 REPL_ACCESS=$(radosgw-admin user info --uid=replication-user | jq -r '.keys[0].access_key')
 REPL_SECRET=$(radosgw-admin user info --uid=replication-user | jq -r '.keys[0].secret_key')
+
+# Add the system user credentials to the master zone
+radosgw-admin zone modify --rgw-zone=zone-east \
+  --access-key="${REPL_ACCESS}" \
+  --secret="${REPL_SECRET}"
+radosgw-admin period update --commit
 ```
 
 ## Step 2 - Create the Second Zone
@@ -87,7 +93,7 @@ radosgw-admin period update --commit
 # Start RGW on zone-east (master cluster)
 cat >> /etc/ceph/ceph.conf << 'EOF'
 [client.rgw.zone-east]
-rgw_frontends = civetweb port=7480
+rgw_frontends = beast port=7480
 rgw_zone = zone-east
 rgw_zonegroup = bidir-group
 rgw_realm = bidir-realm
@@ -108,7 +114,7 @@ radosgw-admin period pull \
 
 cat >> /etc/ceph/ceph.conf << 'EOF'
 [client.rgw.zone-west]
-rgw_frontends = civetweb port=7480
+rgw_frontends = beast port=7480
 rgw_zone = zone-west
 rgw_zonegroup = bidir-group
 rgw_realm = bidir-realm
@@ -152,11 +158,11 @@ done
 radosgw-admin sync error list --max-entries=20 | \
   jq '.[] | select(.error_code == "ERR_CONFLICT")'
 
-# Monitor via Prometheus
-curl -s http://zone-east-rgw:9283/metrics | grep rgw_sync_inc_sync_index_count
-curl -s http://zone-west-rgw:9283/metrics | grep rgw_sync_inc_sync_index_count
+# Monitor via Prometheus (check data sync perf counters)
+curl -s http://zone-east-rgw:9283/metrics | grep rgw_data_sync
+curl -s http://zone-west-rgw:9283/metrics | grep rgw_data_sync
 ```
 
 ## Summary
 
-Bidirectional sync in Ceph RGW uses symmetrical sync policy flows to replicate objects between zones in both directions. Setting up requires a shared realm and zonegroup, system user credentials for inter-zone authentication, and the `symmetrical` flow type in the sync policy. Ceph resolves write conflicts with last-write-wins based on timestamps, making active-active deployments feasible for workloads that tolerate eventual consistency.
+Bidirectional sync in Ceph RGW uses symmetrical sync policy flows to replicate objects between zones in both directions. Setting up requires a shared realm and zonegroup, system user credentials for inter-zone authentication, and the `symmetrical` flow type in the sync policy. Ceph resolves write conflicts deterministically — for non-versioned buckets the most recently replicated write takes precedence, while versioned buckets use OLH epochs — making active-active deployments feasible for workloads that tolerate eventual consistency.
