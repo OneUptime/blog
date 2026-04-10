@@ -10,7 +10,7 @@ Description: Compare Redis and KeyDB on multi-threading capabilities, active-act
 
 ## Overview
 
-KeyDB is a multi-threaded fork of Redis developed by Snap (Snapchat) and later acquired by Snap Inc. It was designed to maximize CPU utilization on multi-core servers. KeyDB is fully API-compatible with Redis and adds multi-threaded command processing, active-active replication, and FLASH storage support.
+KeyDB is a multi-threaded fork of Redis originally created by John Sully and Ben Schermel at EQ Alpha Technology, and later acquired by Snap Inc. in 2022. It was designed to maximize CPU utilization on multi-core servers. KeyDB is fully API-compatible with Redis and adds multi-threaded command processing, active-active replication, and FLASH storage support.
 
 ## Architecture
 
@@ -38,14 +38,14 @@ redis-cli -h localhost PING
 # PONG
 
 redis-cli -h localhost INFO server
-# Server info shows "keydb_version" instead of "redis_version"
+# Server info shows KeyDB's version in the "redis_version" field for compatibility
 ```
 
 ## Multi-Threading Configuration
 
 ```text
 # keydb.conf
-server-threads 8          # Use 8 threads (match CPU core count)
+server-threads 4          # Use up to 4 threads (official docs recommend not exceeding 4)
 server-thread-affinity true  # Pin threads to specific CPU cores
 
 # Redis equivalent (only I/O threading)
@@ -107,6 +107,7 @@ REPLICAOF primary.example.com 6379
 # KeyDB active-active replication
 # ALL nodes accept reads and writes
 # Configure in keydb.conf:
+# multi-master yes
 # active-replica yes
 # replicaof keydb-node2.example.com 6379
 # replicaof keydb-node3.example.com 6379
@@ -125,15 +126,13 @@ r_node2.set("user:count", 1000)
 
 ## FLASH Storage Support
 
-KeyDB Enterprise supports storing large datasets on NVMe SSDs with hot data in RAM:
+KeyDB supports storing large datasets on NVMe SSDs with hot data in RAM using its FLASH storage feature:
 
 ```text
-# keydb.conf (Enterprise)
-enable-keydb-enterprise yes
-databases 1
-maxmemory 8gb           # RAM for hot data
-flash-storage /dev/nvme0n1  # Cold data on SSD
-flash-ratio 0.3         # Keep top 30% in RAM
+# keydb.conf
+storage-provider flash /mnt/flash  # Store data on NVMe SSD
+maxmemory 8gb                      # RAM for hot data
+maxmemory-policy allkeys-lru       # Evict least recently used keys from RAM to flash
 ```
 
 ## Lua Scripting
@@ -186,8 +185,9 @@ REPLICAOF redis-server.example.com 6379
 # Wait for full sync, then promote
 REPLICAOF NO ONE
 
-# Method 3: Live migration with redis-cli
-redis-cli --pipe < (redis-cli -h redis-server --pipe-mode)
+# Method 3: Mass insertion with redis-cli --pipe
+# Generate Redis protocol formatted commands and pipe them in
+cat commands.resp | redis-cli -h keydb-server --pipe
 ```
 
 ## Summary
