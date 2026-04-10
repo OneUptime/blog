@@ -36,8 +36,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Export the key for use in a Kubernetes Secret:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph auth get client.myapp -o /tmp/myapp.keyring
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph auth get client.myapp > /tmp/myapp.keyring
 
 cat /tmp/myapp.keyring
 ```
@@ -96,7 +96,7 @@ kubectl -n rook-ceph delete secret ceph-client-oldapp
 Automate key creation and Secret storage:
 
 ```bash
-KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth get-or-create-key client.myapp \
   mon 'allow r' \
   osd 'allow rw pool=myapp-data')
