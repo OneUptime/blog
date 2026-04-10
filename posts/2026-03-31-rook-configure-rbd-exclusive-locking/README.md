@@ -58,9 +58,9 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
   rbd feature enable replicapool/myimage exclusive-lock
 ```
 
-## Configuring Lock Timeout in the StorageClass
+## Configuring Exclusive Lock in the StorageClass
 
-Rook passes RBD configuration through the `StorageClass`. Set the lock-on-read and timeout options:
+Rook passes RBD configuration through the `StorageClass`. Include `exclusive-lock` in the `imageFeatures` parameter:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -94,7 +94,7 @@ After breaking the lock, the next writer will acquire a fresh lock automatically
 
 ## Exclusive Lock and RWX Access Modes
 
-RBD exclusive locking is incompatible with `ReadWriteMany` access mode. For multi-writer scenarios, use CephFS instead. Attempting to mount an RBD PVC as `ReadWriteMany` will fail if exclusive-lock is enabled.
+RBD with filesystem volume mode is incompatible with `ReadWriteMany` access mode. For multi-writer scenarios with a shared filesystem, use CephFS instead. RBD does support `ReadWriteMany` when using raw block volume mode (`volumeMode: Block`), but the application must handle concurrent access safely.
 
 ## Summary
 
