@@ -107,14 +107,15 @@ try {
 }
 ```
 
-**phpredis** returns `false` on failure (unless exceptions are enabled):
+**phpredis** throws `RedisException` on connection failures, but returns `false` for command-level errors:
 
 ```php
-$redis->setOption(Redis::OPT_THROW_ON_ERROR, true);
+$redis = new Redis();
 try {
+    $redis->connect('127.0.0.1', 6379);
     $redis->set('key', 'value');
 } catch (RedisException $e) {
-    // handle error
+    // connection failed or read/write error
 }
 ```
 
