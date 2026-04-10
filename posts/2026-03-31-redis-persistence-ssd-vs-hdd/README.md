@@ -89,12 +89,14 @@ redis-cli CONFIG SET dir /mnt/ssd/redis/
 redis-cli CONFIG SET dir /mnt/hdd/redis/
 ```
 
+Note: In Redis 7.0+, `dir` is a protected configuration parameter. Runtime changes via `CONFIG SET dir` require `enable-protected-configs yes` (or `local`) in `redis.conf`. Otherwise, set `dir` directly in the configuration file and restart Redis.
+
 ## Measuring I/O Impact
 
 Monitor I/O during a BGSAVE or AOF rewrite:
 
 ```bash
-iostat -x 1 30 | grep -E "Device|sda|nvme"
+iostat -xm 1 30 | grep -E "Device|sda|nvme"
 ```
 
 ```text
@@ -103,7 +105,7 @@ nvme0n1 12.0  485.0  0.15  18.00   0.45   4.2%
 sda      8.0  210.0  0.10   7.50   8.30  72.0%
 ```
 
-High `await` and `util` on an HDD during saves indicates saturation. Reduce save frequency or increase `no-appendfsync-on-rewrite`.
+High `await` and `util` on an HDD during saves indicates saturation. Reduce save frequency or enable `no-appendfsync-on-rewrite`.
 
 ## Handling Latency Spikes on HDD
 
@@ -128,8 +130,11 @@ If you have both HDD and SSD available:
 # Store AOF on SSD (frequent small writes)
 # Store RDB on HDD (large sequential writes, less frequent)
 
-# Symlink approach
+# Symlink approach (Redis < 7.0, single AOF file)
 ln -s /mnt/ssd/redis/appendonly.aof /var/lib/redis/appendonly.aof
+
+# Redis 7.0+ uses Multi Part AOF in a directory (default: appendonlydir)
+ln -s /mnt/ssd/redis/appendonlydir /var/lib/redis/appendonlydir
 ```
 
 Or configure two Redis instances with different `dir` settings where one handles AOF on SSD.
