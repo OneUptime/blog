@@ -133,7 +133,7 @@ async register(@Body() dto: RegisterDto) {
 ```bash
 redis-cli llen "bull:email:wait"
 redis-cli llen "bull:email:active"
-redis-cli llen "bull:email:failed"
+redis-cli zcard "bull:email:failed"
 ```
 
 ## Summary
