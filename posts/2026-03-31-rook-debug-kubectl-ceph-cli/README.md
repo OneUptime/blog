@@ -146,7 +146,7 @@ Show OSD utilization (fill levels):
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd df tree
 ```
 
-Show BlueStore device info for an OSD:
+List all storage devices tracked by the cluster:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -247,7 +247,7 @@ kubectl -n rook-ceph logs $POD -c csi-rbdplugin --tail=50
 Check CSI driver registration:
 
 ```bash
-kubectl -n rook-ceph get csidrivers
+kubectl get csidrivers
 ```
 
 List CSI nodes:
@@ -262,7 +262,7 @@ Check RGW service endpoints:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin period get-current | python3 -m json.tool
+  radosgw-admin period get | python3 -m json.tool
 ```
 
 Check bucket stats:
@@ -285,7 +285,7 @@ Show MDS (CephFS metadata) performance:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph mds perf dump
+  ceph tell mds.<id> perf dump
 ```
 
 ## Summary
