@@ -110,7 +110,14 @@ XRANGE app:events 1711900000000-0 + COUNT 50
 ```javascript
 // Read last 100 stream entries
 const entries = await redis.xrevrange('app:events', '+', '-', 'COUNT', 100);
-const formatted = entries.map(([id, fields]) => ({ id, ...fields }));
+// Each entry is [id, [field1, value1, field2, value2, ...]]
+const formatted = entries.map(([id, fields]) => {
+  const obj = { id };
+  for (let i = 0; i < fields.length; i += 2) {
+    obj[fields[i]] = fields[i + 1];
+  }
+  return obj;
+});
 ```
 
 ## Alternative 4: Check Length Before LRANGE
