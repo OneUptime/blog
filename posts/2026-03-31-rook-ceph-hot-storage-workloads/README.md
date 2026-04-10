@@ -35,7 +35,7 @@ spec:
   deviceClass: nvme
   parameters:
     pg_autoscale_mode: "on"
-    compression_mode: none   # Compression adds latency - skip for hot
+    compression_mode: "none"   # Compression adds latency - skip for hot
     min_size: "2"
 ```
 
@@ -48,7 +48,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 # Disable BlueStore deferred writes (not beneficial for NVMe)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph config set osd bluestore_deferred_batch_ops 0
+  ceph config set osd bluestore_prefer_deferred_size 0
 
 # Increase OSD op threads for NVMe parallelism
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
@@ -78,6 +78,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 ```
@@ -91,7 +93,14 @@ metadata:
   name: postgres-hot
   namespace: production
 spec:
+  serviceName: postgres-hot
+  selector:
+    matchLabels:
+      app: postgres-hot
   template:
+    metadata:
+      labels:
+        app: postgres-hot
     spec:
       containers:
         - name: postgres
@@ -133,9 +142,11 @@ kubectl exec -n production <pod-name> -- \
 ## Setting Latency Alerts
 
 ```promql
-# Alert if P99 OSD write latency exceeds 2ms
-histogram_quantile(0.99,
-  rate(ceph_osd_op_w_latency_bucket{namespace="rook-ceph"}[5m])
+# Alert if average OSD write latency exceeds 2ms
+(
+  rate(ceph_osd_op_w_latency_sum{namespace="rook-ceph"}[5m])
+    /
+  rate(ceph_osd_op_w_latency_count{namespace="rook-ceph"}[5m])
 ) * 1000 > 2
 ```
 
