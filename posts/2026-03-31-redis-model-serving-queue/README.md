@@ -18,7 +18,7 @@ The system has three components: a producer (web server) that enqueues inference
 
 ```bash
 docker run -d --name redis -p 6379:6379 redis:7-alpine
-pip install redis fastapi uvicorn
+pip install redis fastapi uvicorn torch transformers
 ```
 
 ## The Request Schema
@@ -79,7 +79,7 @@ import torch
 from transformers import pipeline
 
 def load_model(model_name: str):
-    return pipeline("text-generation", model=model_name, device=0 if torch.cuda.is_available() else -1)
+    return pipeline("text-generation", model=model_name, device="cuda:0" if torch.cuda.is_available() else "cpu")
 
 def run_worker(model_name: str = "gpt2"):
     model = load_model(model_name)
