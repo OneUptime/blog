@@ -20,7 +20,7 @@ CLIENT LIST
 
 # Look for:
 # omem=<size>  - current output buffer size in bytes
-# obl=<size>   - output buffer list size
+# obl=<size>   - output buffer length (fixed buffer portion)
 ```
 
 ```bash
@@ -96,7 +96,7 @@ while True:
 ```python
 # Process in batches and use async I/O
 import asyncio
-import aioredis
+import redis.asyncio as aioredis
 
 async def fast_consumer():
     r = aioredis.from_url('redis://localhost')
