@@ -67,7 +67,7 @@ ceph osd perf
 ceph osd pool stats
 
 # Network counters per OSD
-ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "op_latency|apply_latency"
+ceph daemon osd.0 perf dump | python3 -m json.tool | grep -E "op_latency|op_process_latency"
 ```
 
 ## Step 5 - Form and Test a Hypothesis
