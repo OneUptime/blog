@@ -17,7 +17,7 @@ Ceph RADOS Gateway (RGW) serves S3 and Swift object storage APIs via an HTTP fro
 Ceph RGW supports two built-in HTTP frontends:
 
 - **beast** - Default, high-performance frontend based on Boost.Asio
-- **civetweb** - Alternative embedded web server, simpler configuration
+- **civetweb** - Alternative embedded web server, simpler configuration (deprecated in Pacific, removed in Quincy and later)
 
 ## Configuring the Beast Frontend
 
@@ -55,7 +55,7 @@ ceph config set client.rgw.default rgw_frontends \
 # Set max concurrent connections
 ceph config set client.rgw.default rgw_thread_pool_size 512
 
-# Set max request size (default 128MB)
+# Set max chunk size for data operations (default 4MB)
 ceph config set client.rgw.default rgw_max_chunk_size 4194304  # 4MB
 ```
 
@@ -99,11 +99,14 @@ kubectl create secret tls rgw-tls-secret \
   -n rook-ceph
 ```
 
-## Enabling HTTP/1.1 Keep-Alive
+## HTTP/1.1 Keep-Alive
+
+The beast frontend supports HTTP/1.1 keep-alive by default. You can tune the request timeout, which governs how long beast waits for data on idle connections:
 
 ```bash
-# Configure keep-alive timeout
-ceph config set client.rgw.default rgw_max_attr_size 1024
+# Set request timeout in milliseconds (default 65000ms)
+ceph config set client.rgw.default rgw_frontends \
+  "beast port=8080 request_timeout_ms=65000"
 ```
 
 ## Verifying the Frontend Configuration
@@ -115,8 +118,8 @@ curl -v http://rgw-host:8080/
 # Test HTTPS endpoint
 curl -vk https://rgw-host:443/
 
-# Check RGW daemon info
-radosgw-admin --id rgw.default daemon info
+# Check RGW frontend config
+ceph config get client.rgw.default rgw_frontends
 ```
 
 ## Summary
