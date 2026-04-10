@@ -53,7 +53,7 @@ spec:
       ackLevel: broker
 ```
 
-For AMQPS (TLS):
+For AMQPS (TLS), use the `amqps://` URI scheme and port 5671:
 
 ```yaml
 spec:
@@ -63,11 +63,8 @@ spec:
     amqp:
       uri: amqps://user:password@rabbitmq.rabbitmq.svc.cluster.local:5671
       exchange: s3-exchange
-      useSSL: true
-      caCert: |
-        -----BEGIN CERTIFICATE-----
-        ...
-        -----END CERTIFICATE-----
+      disableVerifySSL: false
+      ackLevel: broker
 ```
 
 ## Step 2: Verify Topic Creation
@@ -107,7 +104,7 @@ metadata:
   name: my-bucket
   namespace: default
   labels:
-    notifications.rook.io/amqp-notification: "true"
+    bucket-notification-amqp-notification: amqp-notification
 spec:
   bucketName: my-bucket-amqp
   storageClassName: rook-ceph-bucket
@@ -155,7 +152,7 @@ kubectl exec -n rabbitmq rabbitmq-0 -- \
 |---|---|
 | `none` | Fire and forget -- no confirmation |
 | `broker` | Confirm delivery to broker exchange |
-| `routable` | Confirm message is routed to at least one queue |
+| `routeable` | Confirm message is routed to at least one queue |
 
 ## Verify Notification in Ceph
 
