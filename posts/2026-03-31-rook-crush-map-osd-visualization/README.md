@@ -95,19 +95,34 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 Sample rule output:
 
-```text
-rule replicated_rule {
-    id 0
-    type replicated
-    min_size 1
-    max_size 10
-    step take default
-    step chooseleaf firstn 0 type host
-    step emit
-}
+```json
+[
+    {
+        "rule_id": 0,
+        "rule_name": "replicated_rule",
+        "type": 1,
+        "min_size": 1,
+        "max_size": 10,
+        "steps": [
+            {
+                "op": "take",
+                "item": -1,
+                "item_name": "default"
+            },
+            {
+                "op": "chooseleaf_firstn",
+                "num": 0,
+                "type": "host"
+            },
+            {
+                "op": "emit"
+            }
+        ]
+    }
+]
 ```
 
-The `chooseleaf firstn 0 type host` line means Ceph places each replica on a different host.
+The `chooseleaf_firstn` step with `"type": "host"` means Ceph places each replica on a different host.
 
 ## Add Rack-Level Topology
 
