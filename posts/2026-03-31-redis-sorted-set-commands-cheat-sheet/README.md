@@ -64,7 +64,7 @@ ZLEXCOUNT myset "[a" "[z"
 ```bash
 # By index, ascending (0 = lowest score)
 ZRANGE leaderboard 0 -1              # all
-ZRANGE leaderboard 0 9 WITHSCORES   # top 10 with scores
+ZRANGE leaderboard 0 9 WITHSCORES   # lowest 10 with scores
 ZRANGE leaderboard 0 9 REV          # reverse order (highest first)
 
 # By score range
@@ -145,4 +145,4 @@ ZSCAN leaderboard 0 COUNT 10 MATCH "player:*"
 
 ## Summary
 
-Redis sorted set commands cover all ranking scenarios: ZADD with GT/LT for conditional updates, ZREVRANK for top-N leaderboards, ZRANGEBYSCORE for score windows, and ZPOPMIN/BZMPOP for priority queues. Set operations with WEIGHTS and AGGREGATE enable combining multiple sorted sets into a unified ranking.
+Redis sorted set commands cover all ranking scenarios: ZADD with GT/LT for conditional updates, ZREVRANK for top-N leaderboards, ZRANGE BYSCORE for score windows, and ZPOPMIN/BZMPOP for priority queues. Set operations with WEIGHTS and AGGREGATE enable combining multiple sorted sets into a unified ranking.
