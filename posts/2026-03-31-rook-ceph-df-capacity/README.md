@@ -91,8 +91,8 @@ Configure near-full and full thresholds:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c "
-  ceph config set global mon_osd_nearfull_ratio 0.75
-  ceph config set global mon_osd_full_ratio 0.85
+  ceph osd set-nearfull-ratio 0.75
+  ceph osd set-full-ratio 0.85
 "
 ```
 
