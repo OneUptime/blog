@@ -40,11 +40,13 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Common features you may want to require:
 
 ```text
-reply_encoding       - Clients must support the new reply encoding format
-reclaim_client       - Clients must support session reclaim
-lazy_caps            - Clients must support lazy capability revocation
-multi_reconnect      - Clients must handle multiple reconnect attempts
-deleg_ino            - Clients must support inode delegation
+reply_encoding       - MDS encodes request reply in extensible format
+reclaim_client       - Clients must support session reclaim (used by NFS-Ganesha)
+lazy_caps_wanted     - MDS only re-issues explicitly wanted caps when a stale client resumes
+multi_reconnect      - Clients can split large reconnect messages into multiple ones during MDS failover
+deleg_ino            - MDS delegates inode numbers to clients for async file creation
+metric_collect       - Clients can send performance metrics to MDS
+alternate_name       - Clients support alternate names for directory entries (encrypted file names)
 ```
 
 ## Remove a Required Feature
@@ -77,17 +79,17 @@ uname -r
 ceph-fuse --version
 ```
 
-Most features in `reply_encoding` are supported by:
-- Kernel client 5.7+
+The `reply_encoding` feature is supported by:
 - ceph-fuse with Nautilus (14.x) or later
+- Kernel client 5.4+ (Nautilus-era kernel support)
 
 ## Impact on Existing Clients
 
-Adding a required feature will immediately evict any connected client that does not support it. Plan the change during a maintenance window or use `require_min_compat_client` alongside feature flags:
+Adding a required feature will automatically evict any connected client that does not support it. Plan the change during a maintenance window or use `min_compat_client` alongside feature flags:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph fs set cephfs require_min_compat_client luminous
+  ceph fs set cephfs min_compat_client luminous
 ```
 
 ## Summary
