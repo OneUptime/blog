@@ -41,7 +41,7 @@ echo "$TIMESTAMP EVENT=$EVENT_TYPE DESC=$EVENT_DESC" >> /var/log/redis/sentinel-
 
 # Alert on critical events only
 case $EVENT_TYPE in
-  +odown|+switch-master|+failover-end|-odown)
+  +odown|switch-master|failover-end|-odown)
     curl -s -X POST "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK" \
       -H 'Content-type: application/json' \
       --data "{\"text\": \"Redis Sentinel: $EVENT_TYPE - $EVENT_DESC\"}"
@@ -69,7 +69,7 @@ Sentinel calls it with seven arguments:
 ```text
 $1 = master name
 $2 = role (leader or observer)
-$3 = state (start, end, abort)
+$3 = state (currently always "start")
 $4 = from-ip (old primary IP)
 $5 = from-port (old primary port)
 $6 = to-ip (new primary IP)
@@ -90,8 +90,8 @@ FROM_PORT=$5
 TO_IP=$6
 TO_PORT=$7
 
-if [ "$STATE" = "end" ] && [ "$ROLE" = "leader" ]; then
-  echo "Failover complete: $MASTER_NAME moved from $FROM_IP:$FROM_PORT to $TO_IP:$TO_PORT"
+if [ "$ROLE" = "leader" ]; then
+  echo "Failover triggered: $MASTER_NAME moving from $FROM_IP:$FROM_PORT to $TO_IP:$TO_PORT"
 
   # Update HAProxy config
   sed -i "s/server redis-primary $FROM_IP:$FROM_PORT/server redis-primary $TO_IP:$TO_PORT/" \
@@ -109,12 +109,12 @@ fi
 Sentinel has safeguards for script execution:
 
 ```bash
-# sentinel.conf
-# Max time a script can run before being killed (default 60000ms = 60s)
-sentinel script-max-runtime 60000
+# Scripts have a maximum running time of 60 seconds (hardcoded).
+# After this limit is reached, the script is terminated with SIGKILL
+# and the execution is retried.
 
-# If script returns exit code 1, it is retried up to 10 times
-# If script returns exit code 2, it is considered permanent failure
+# If script returns exit code 1, it is retried later (up to 10 times)
+# If script returns exit code 2 (or higher), the execution is not retried
 ```
 
 Scripts must return within the timeout. Long-running scripts can block Sentinel operations.
