@@ -14,7 +14,7 @@ When a user @mentions someone in a post or comment, the mentioned user should re
 
 ```text
 mentions:{userId}          -> List of mention event IDs
-mention:{mentionId}        -> Hash: content_id, actor_id, context, timestamp
+mention:{mentionId}        -> Hash: id, content_id, actor_id, username, timestamp, read
 mention_unread:{userId}    -> Counter for unread mentions
 ```
 
