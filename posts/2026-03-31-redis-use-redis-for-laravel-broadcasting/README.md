@@ -22,18 +22,20 @@ npm install --save-dev laravel-echo pusher-js
 ## Environment Configuration
 
 ```text
-BROADCAST_DRIVER=redis
+BROADCAST_CONNECTION=redis
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 ```
 
 ## Enable Broadcasting
 
-In `config/app.php`, uncomment:
+Run the broadcasting installation command:
 
-```php
-App\Providers\BroadcastServiceProvider::class,
+```bash
+php artisan install:broadcasting
 ```
+
+This creates the `config/broadcasting.php` configuration file and the `routes/channels.php` file for channel authorization.
 
 ## Creating a Broadcastable Event
 
@@ -135,10 +137,11 @@ window.Pusher = Pusher;
 
 const echo = new Echo({
   broadcaster: "reverb",
-  key: process.env.MIX_REVERB_APP_KEY,
-  wsHost: process.env.MIX_REVERB_HOST,
-  wsPort: process.env.MIX_REVERB_PORT,
-  forceTLS: false,
+  key: import.meta.env.VITE_REVERB_APP_KEY,
+  wsHost: import.meta.env.VITE_REVERB_HOST,
+  wsPort: import.meta.env.VITE_REVERB_PORT,
+  wssPort: import.meta.env.VITE_REVERB_PORT,
+  forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
   enabledTransports: ["ws", "wss"],
 });
 
