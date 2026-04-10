@@ -33,7 +33,7 @@ User accounts are stored as RADOS objects in the `default.rgw.meta` pool under t
 rados -p default.rgw.meta ls --all | grep "users.uid"
 
 # Read a user metadata object
-rados -p default.rgw.meta get "users.uid:myuser" /tmp/userdata.json
+rados -p default.rgw.meta -N users.uid get myuser /tmp/userdata.json
 cat /tmp/userdata.json
 ```
 
@@ -82,7 +82,7 @@ rados -p default.rgw.buckets.data \
 
 ## Locating Multipart Upload Data
 
-Incomplete multipart uploads store parts in `default.rgw.buckets.non-ec`:
+Multipart upload metadata (tracking objects for in-progress uploads) is stored in `default.rgw.buckets.non-ec`:
 
 ```bash
 rados -p default.rgw.buckets.non-ec ls | head -20
