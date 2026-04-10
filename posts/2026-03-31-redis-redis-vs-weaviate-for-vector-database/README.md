@@ -50,6 +50,8 @@ Redis requires you to manage vectors externally and store them as binary fields 
 import redis
 import numpy as np
 from openai import OpenAI
+from redis.commands.search.field import TextField, TagField, VectorField
+from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 
 r = redis.Redis()
 openai_client = OpenAI()
@@ -62,17 +64,17 @@ def embed(text: str) -> bytes:
     return np.array(response.data[0].embedding, dtype=np.float32).tobytes()
 
 # Create index
+schema = (
+    TextField("title"),
+    TextField("body"),
+    TagField("category"),
+    VectorField("embedding", "HNSW", {
+        "TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"
+    })
+)
 r.ft("idx:articles").create_index(
-    fields=[
-        r.ft.TextField("title"),
-        r.ft.TextField("body"),
-        r.ft.TagField("category"),
-        r.ft.VectorField("embedding",
-            algorithm="HNSW",
-            attributes={"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"}
-        )
-    ],
-    definition=r.ft.IndexDefinition(prefix=["article:"])
+    schema,
+    definition=IndexDefinition(prefix=["article:"], index_type=IndexType.HASH)
 )
 
 # Insert with vector
@@ -103,11 +105,16 @@ for obj in response.objects:
 
 ```python
 # Redis: manual vector embedding + KNN search
+from redis.commands.search.query import Query
+
 query_vec = embed("in-memory data stores")
-results = r.ft("idx:articles").search(
-    "*=>[KNN 5 @embedding $vec AS score]",
-    query_params={"vec": query_vec}
+q = (
+    Query("*=>[KNN 5 @embedding $vec AS score]")
+    .sort_by("score")
+    .return_fields("title", "category")
+    .dialect(2)
 )
+results = r.ft("idx:articles").search(q, {"vec": query_vec})
 for doc in results.docs:
     print(doc.title)
 ```
@@ -131,7 +138,8 @@ Redis hybrid search requires combining filters with KNN:
 # Redis hybrid: text filter + vector KNN
 FT.SEARCH idx:articles "@category:{databases}=>[KNN 10 @embedding $vec AS score]" \
   PARAMS 2 vec <binary_vector> \
-  SORTBY score ASC
+  SORTBY score ASC \
+  DIALECT 2
 ```
 
 ## Multi-Tenancy
@@ -146,7 +154,9 @@ client.collections.create(
 )
 
 # Insert data for a specific tenant
-articles.tenants.create(["tenant_a", "tenant_b"])
+from weaviate.classes.tenants import Tenant
+
+articles.tenants.create([Tenant(name="tenant_a"), Tenant(name="tenant_b")])
 articles.with_tenant("tenant_a").data.insert({
     "title": "Tenant A article"
 })
