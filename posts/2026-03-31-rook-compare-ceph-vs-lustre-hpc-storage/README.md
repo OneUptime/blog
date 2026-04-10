@@ -17,9 +17,9 @@ Lustre is a parallel distributed filesystem purpose-built for high-performance c
 | Feature | Ceph CephFS | Lustre |
 |---------|------------|-------|
 | Storage type | Unified (block/file/object) | File only |
-| Metadata servers | MDS (active-active) | MDT + MGS |
+| Metadata servers | MDS (active-active) | MDS + MGS |
 | Object storage targets | OSDs | OSTs |
-| Protocol | POSIX, NFS | POSIX, LNET |
+| Protocol | POSIX, NFS | POSIX (over LNET) |
 | Kubernetes support | Excellent (Rook) | Limited |
 | HPC pedigree | Growing | Decades of deployment |
 
@@ -42,7 +42,7 @@ Lustre is specifically optimized for sequential I/O on HPC workloads and regular
 | Parallel I/O (MPI-IO) | Good | Excellent |
 | Random I/O | Moderate | Good |
 | Metadata (small files) | Moderate | Moderate |
-| Burst buffers | No | Yes (DNE Burst Buffers) |
+| Burst buffers | No | Yes (via PCC and flash OSTs) |
 
 ## MPI-IO Patterns
 
@@ -69,6 +69,7 @@ metadata:
   name: rook-cephfs
 provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
+  clusterID: rook-ceph
   fsName: myfs
   pool: myfs-replicated
 ```
