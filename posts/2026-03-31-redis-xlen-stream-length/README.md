@@ -45,7 +45,7 @@ XLEN orders:stream
 ### XLEN on an empty stream
 
 ```redis
-XADD empty:stream * field "value"
+XADD empty:stream 1748700000000-0 field "value"
 XDEL empty:stream 1748700000000-0
 
 XLEN empty:stream
@@ -114,7 +114,7 @@ XLEN events:log
 ```
 
 ```redis
-# Messages acknowledged and consumed (from a specific group)
+# Consumer group info including pending (unacknowledged) messages
 XINFO GROUPS events:log
 ```
 
