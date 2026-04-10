@@ -82,7 +82,7 @@ Trigger a telemetry report manually (useful to verify transmission):
 ceph telemetry send
 ```
 
-If the send is successful, no output is produced. Check for errors:
+If the send is successful, you will see a confirmation message such as `Ceph report sent to <url>`. Check for errors:
 
 ```bash
 ceph log last 20 | grep telemetry
