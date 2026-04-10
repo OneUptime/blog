@@ -51,7 +51,7 @@ Longhorn installation is significantly simpler.
 | Feature | Rook/Ceph | Longhorn |
 |---------|-----------|---------|
 | Block storage (RWO) | Yes | Yes |
-| Shared file storage (RWX) | Yes (CephFS) | No |
+| Shared file storage (RWX) | Yes (CephFS) | Yes (NFS) |
 | Object storage | Yes (RGW) | No |
 | Snapshots | Yes | Yes |
 | Backups | Yes | Yes (S3/NFS) |
