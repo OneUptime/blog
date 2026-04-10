@@ -17,9 +17,8 @@ The `rbd-docker-plugin` is available as a Docker plugin:
 ```bash
 docker plugin install ghcr.io/yp-engineering/rbd-docker-plugin \
   --alias rbd \
-  --grant-all-permissions
-
-docker plugin enable rbd
+  --grant-all-permissions \
+  --disable
 ```
 
 Verify the plugin is active:
@@ -33,7 +32,7 @@ docker plugin ls | grep rbd
 Create a configuration file for the plugin:
 
 ```bash
-cat > /etc/docker/rbd-plugin.conf << 'EOF'
+cat > /etc/ceph/ceph.conf << 'EOF'
 [global]
 monitors = 192.168.1.10:6789,192.168.1.11:6789,192.168.1.12:6789
 auth_cluster_required = cephx
@@ -52,6 +51,8 @@ docker plugin set rbd \
   CEPH_CLUSTER=ceph \
   CEPH_KEYRING=/etc/ceph/ceph.client.docker-rbd.keyring \
   CEPH_POOL=docker-volumes
+
+docker plugin enable rbd
 ```
 
 ## Create Volumes with the Plugin
