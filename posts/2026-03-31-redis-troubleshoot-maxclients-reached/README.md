@@ -65,7 +65,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart redis
 
 # Verify
-redis-cli INFO server | grep maxclients
+redis-cli CONFIG GET maxclients
 ```
 
 ## Find Connection Leaks
