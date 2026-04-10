@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, ASP.NET Core, Output Caching, Distributed Cache, C#
 
-Description: Configure Redis as the output cache store in ASP.NET Core 7+ to cache full HTTP responses at the middleware level with fine-grained policies.
+Description: Configure Redis as the output cache store in ASP.NET Core 8+ to cache full HTTP responses at the middleware level with fine-grained policies.
 
 ---
 
 ## Introduction
 
-ASP.NET Core 7 introduced a new Output Caching middleware that caches full HTTP responses. Unlike the older Response Caching middleware, Output Caching supports fine-grained policies, cache key customization, and works with Redis as a distributed store through the `Microsoft.AspNetCore.OutputCaching.StackExchangeRedis` package.
+ASP.NET Core 7 introduced a new Output Caching middleware that caches full HTTP responses. Unlike the older Response Caching middleware, Output Caching supports fine-grained policies, cache key customization, and tag-based invalidation. Starting with .NET 8, Redis can be used as a distributed output cache store through the `Microsoft.AspNetCore.OutputCaching.StackExchangeRedis` package.
 
 ## Installation
 
@@ -150,16 +150,20 @@ public class AdminController : ControllerBase
 ```csharp
 builder.Services.AddOutputCache(options =>
 {
+    // excludeDefaultPolicy: true is required because the default policy
+    // skips caching for requests with an Authorization header
     options.AddPolicy("PerUser", b =>
         b.SetVaryByHeader("Authorization")
          .Expire(TimeSpan.FromMinutes(5))
-         .Tag("user-data")
+         .Tag("user-data"),
+        excludeDefaultPolicy: true
     );
 
     options.AddPolicy("PerUserAndQuery", b =>
         b.SetVaryByHeader("Authorization")
          .SetVaryByQuery("*")
-         .Expire(TimeSpan.FromMinutes(2))
+         .Expire(TimeSpan.FromMinutes(2)),
+        excludeDefaultPolicy: true
     );
 });
 ```
