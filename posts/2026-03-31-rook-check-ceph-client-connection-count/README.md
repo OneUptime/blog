@@ -31,7 +31,7 @@ ceph daemon mon.mon1 sessions
 Count active connections per OSD:
 
 ```bash
-ceph tell osd.* perf dump | grep -A2 "\"sessions_add\""
+ceph tell osd.* perf dump | grep "msgr_active_connections"
 ```
 
 For a specific OSD via the admin socket:
@@ -40,17 +40,26 @@ For a specific OSD via the admin socket:
 ceph daemon osd.0 perf dump | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-sessions = data.get('osd', {}).get('numpg', 0)
-print('PGs:', sessions)
-ms = data.get('ms', {})
-print('Sessions dispatched:', ms.get('sessions_add', {}).get('val', 0))
+total = 0
+for key in data:
+    if key.startswith('AsyncMessenger::Worker-'):
+        total += data[key].get('msgr_active_connections', 0)
+print('Active connections:', total)
 "
 ```
 
-## Checking MGR Client Sessions
+## Checking MGR Client Connections
 
 ```bash
-ceph daemon mgr.$(ceph mgr stat | python3 -c "import json,sys; print(json.load(sys.stdin)['active_name'])") sessions
+ceph daemon mgr.$(ceph mgr stat | python3 -c "import json,sys; print(json.load(sys.stdin)['active_name'])") perf dump | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+total = 0
+for key in data:
+    if key.startswith('AsyncMessenger::Worker-'):
+        total += data[key].get('msgr_active_connections', 0)
+print('Active connections:', total)
+"
 ```
 
 ## OS-Level Connection Check
@@ -73,8 +82,12 @@ For RGW (Beast frontend), check active HTTP connections:
 ceph daemon client.rgw.myzone perf dump | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-rgw = data.get('rgw', {})
-print('Active requests:', rgw.get('req', {}).get('val', 0))
+total = 0
+for key in data:
+    if key.startswith('AsyncMessenger::Worker-'):
+        total += data[key].get('msgr_active_connections', 0)
+print('Active connections:', total)
+print('Queued active requests:', data.get('rgw', {}).get('qactive', 0))
 "
 ```
 
