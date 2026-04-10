@@ -15,11 +15,16 @@ Both Redis and InfluxDB can store time-series data, but InfluxDB was purpose-bui
 Redis with the RedisTimeSeries module (part of Redis Stack) supports time-series operations natively:
 
 ```bash
-# Create a metric with 24h retention and automatic 1-minute average compaction
+# Create a metric with 24h retention
 TS.CREATE metrics:cpu:server1 \
   RETENTION 86400000 \
-  COMPACTION_POLICY avg:60000:1800000 \
   LABELS host server1 metric cpu_usage
+
+# Create a compaction destination and a rule for 1-minute averages
+TS.CREATE metrics:cpu:server1:avg \
+  RETENTION 1800000 \
+  LABELS host server1 metric cpu_usage
+TS.CREATERULE metrics:cpu:server1 metrics:cpu:server1:avg AGGREGATION avg 60000
 
 # Add samples (auto-timestamp with *)
 TS.ADD metrics:cpu:server1 * 73.5
@@ -48,7 +53,7 @@ InfluxDB uses a line protocol for writes and Flux or InfluxQL for queries:
 # Write using line protocol
 curl -s -XPOST "http://localhost:8086/api/v2/write?org=myorg&bucket=metrics&precision=s" \
   -H "Authorization: Token mytoken" \
-  --data-raw "cpu,host=server1 usage_percent=73.5 $(date +%s)"
+  --data-binary "cpu,host=server1 usage_percent=73.5 $(date +%s)"
 ```
 
 Flux query for CPU averages over the last hour:
@@ -90,7 +95,7 @@ with InfluxDBClient(url="http://localhost:8086", token="mytoken", org="myorg") a
 | Storage | RAM-bounded | Disk (TSM engine) |
 | Compression | Limited | High (TSM compression) |
 | Cardinality limit | RAM-bounded | Can be an issue at high cardinality |
-| Grafana integration | Via custom adapter | Native data source |
+| Grafana integration | Via plugin (Redis Data Source) | Native data source |
 | Alerting | External | Built-in |
 | Ops complexity | Low | Medium |
 
@@ -105,7 +110,7 @@ with InfluxDBClient(url="http://localhost:8086", token="mytoken", org="myorg") a
 - Long-term metrics storage with efficient disk compression.
 - You need Flux tasks for continuous downsampling and alerting.
 - You are building a monitoring stack and want native Grafana integration.
-- High-volume IoT ingestion with millions of data points per second.
+- High-volume IoT ingestion with hundreds of thousands of data points per second.
 
 ## Summary
 
