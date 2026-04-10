@@ -86,7 +86,7 @@ High memory alert (>80%):
 ```bash
 # Check top keys by memory
 redis-cli --scan | head -100 | while read key; do
-  redis-cli MEMORY USAGE "$key"
+  echo "$(redis-cli MEMORY USAGE "$key") $key"
 done | sort -n | tail -20
 
 # Check for large keys
@@ -107,7 +107,6 @@ redis-cli -h replica-ip INFO replication | grep slave_repl_offset
 redis-cli -h replica-ip INFO replication | grep master_link_status:
 
 # Force resync if needed (replica side)
-redis-cli -h replica-ip DEBUG SLEEP 0
 redis-cli -h replica-ip REPLICAOF master-ip 6379
 ```
 
