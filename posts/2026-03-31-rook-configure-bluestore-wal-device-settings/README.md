@@ -36,13 +36,27 @@ Latency comparison (typical values):
 
 ### With cephadm
 
-When adding OSDs, specify the WAL device:
+Create a DriveGroup service specification to define OSD layout with a separate WAL device:
+
+```yaml
+# osd-wal-spec.yaml
+service_type: osd
+service_id: hdd-with-wal
+placement:
+  hosts:
+    - myhost
+data_devices:
+  paths:
+    - /dev/sdb
+wal_devices:
+  paths:
+    - /dev/nvme0n1
+```
+
+Apply the specification:
 
 ```bash
-# Add OSD with separate WAL on NVMe
-ceph orch daemon add osd \
-  myhost:/dev/sdb:data \
-  /dev/nvme0n1:wal
+ceph orch apply -i osd-wal-spec.yaml
 ```
 
 ### With ceph-volume
@@ -88,7 +102,7 @@ spec:
 ## BlueStore WAL Configuration Parameters
 
 ```bash
-# WAL size (default is 0 = use all available space on WAL device)
+# WAL size (default is 96 MiB; set explicitly for larger WAL partitions)
 ceph config show osd.0 bluestore_block_wal_size
 
 # Set a specific WAL partition size (in bytes)
@@ -117,7 +131,7 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 rocksdb = data.get('rocksdb', {})
-for k in ['rocksdb_write_delay_time', 'rocksdb_write_wal_time', 'rocksdb_compact_range_count']:
+for k in ['rocksdb_write_delay_time', 'rocksdb_write_wal_time', 'rocksdb_compact']:
     print(k, ':', rocksdb.get(k, 'N/A'))
 "
 ```
@@ -137,11 +151,11 @@ Calculate WAL size based on your write workload:
 # Rule of thumb: WAL should hold ~10 seconds of writes
 # For 1 GB/s write rate: WAL = 10 GB minimum
 
-# Check current write rate
+# Check cumulative bytes written (take two samples to compute a rate)
 ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-print('Write bytes/s:', data.get('osd', {}).get('op_w_in_bytes', {}).get('avgcount', 'N/A'))
+print('Write bytes (cumulative):', data.get('osd', {}).get('op_w_in_bytes', 'N/A'))
 "
 ```
 
