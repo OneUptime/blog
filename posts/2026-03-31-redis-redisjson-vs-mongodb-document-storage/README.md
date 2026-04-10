@@ -103,7 +103,6 @@ Many teams use both: MongoDB as the system of record and RedisJSON as a hot cach
 ```python
 import redis
 import pymongo
-import json
 
 r = redis.Redis()
 mongo = pymongo.MongoClient()["mydb"]
