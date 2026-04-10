@@ -104,8 +104,8 @@ print(f"New counter value: {result}")
 
 Key constraints to keep in mind:
 
-1. Scripts must be deterministic - no random values or current time (use `redis.call('TIME')` for time)
-2. Scripts cannot call blocking commands
+1. Before Redis 7.0, scripts had to be deterministic (no `math.random()` or time functions in write scripts). Since Redis 7.0, this restriction is removed and you can freely use `redis.call('TIME')` or non-deterministic commands
+2. Blocking commands (like BLPOP) can be called but behave as their non-blocking equivalents, so they are rarely useful in scripts
 3. All keys accessed must be declared in `KEYS[]` for cluster compatibility
 4. Default execution time limit is 5 seconds (`lua-time-limit`)
 
