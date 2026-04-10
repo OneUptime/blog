@@ -205,14 +205,15 @@ ZSCAN activity:scores 0 COUNT 200
 ## Important Guarantees
 
 - Members present throughout the scan will appear at least once.
+- A given member may be returned more than once; deduplicate on the client side if needed.
 - Members added or removed during the scan may or may not appear.
 - COUNT is a hint; actual returned count may vary.
 - Cursor `0` in the response means completion, not an empty set.
 
 ## Performance Considerations
 
-- Each ZSCAN call is O(N) where N is the number of members returned.
-- Total complexity across a full scan is O(S) where S is the set size.
+- Each ZSCAN call is O(1) amortized.
+- Total complexity across a full scan is O(N) where N is the total number of elements in the sorted set.
 - Larger COUNT hints reduce round trips but increase per-call data transfer.
 
 ## Summary
