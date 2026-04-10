@@ -41,7 +41,7 @@ def check_rate_limit(identifier: str, limit: int = 100, window: int = 60) -> dic
 
     count = results[0]
     ttl = max(0, results[2])
-    reset_at = math.ceil(now / window) * window
+    reset_at = (current_window + 1) * window
 
     return {
         "allowed": count <= limit,
@@ -101,7 +101,7 @@ async function rateLimitMiddleware(req, res, next) {
 
     const limit = 100;
     const remaining = Math.max(0, limit - count);
-    const resetAt = Math.ceil(Date.now() / 1000 / 60) * 60;
+    const resetAt = (window + 1) * 60;
 
     res.set('X-RateLimit-Limit', limit);
     res.set('X-RateLimit-Remaining', remaining);
