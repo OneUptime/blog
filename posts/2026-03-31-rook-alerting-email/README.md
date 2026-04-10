@@ -23,7 +23,7 @@ Email notifications for Rook-Ceph alerts provide a low-barrier way to keep stora
 ```bash
 kubectl create secret generic smtp-credentials \
   --from-literal=smtp_password="<your-smtp-password>" \
-  -n monitoring
+  -n rook-ceph
 ```
 
 ## Configure Alertmanager with Email Receiver
@@ -64,7 +64,8 @@ spec:
         key: smtp_password
       requireTLS: true
       headers:
-        Subject: '[ROOK-CEPH] {{ .GroupLabels.alertname }} - {{ .Status | toUpper }}'
+      - key: Subject
+        value: '[ROOK-CEPH] {{ .GroupLabels.alertname }} - {{ .Status | toUpper }}'
   - name: email-critical
     emailConfigs:
     - to: storage-oncall@example.com,cto@example.com
