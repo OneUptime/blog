@@ -110,13 +110,13 @@ def check_session_spike(threshold_per_minute: int = 1000):
 ## Monitoring via Redis CLI
 
 ```bash
-# Quick session count via key pattern
+# Total key count in database (includes all keys, not just sessions)
 redis-cli DBSIZE
 
 # Estimate sessions only (not exact if mixed key types)
 redis-cli --scan --pattern "session:*" | wc -l
 
-# Memory used by sessions
+# Server-wide memory diagnostics and advice
 redis-cli MEMORY DOCTOR
 
 # Connected clients (proxy for active web users)
