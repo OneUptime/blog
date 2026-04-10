@@ -92,11 +92,14 @@ Configure JetStream with storage limits:
 config:
   jetstream:
     enabled: true
-    maxMemory: 1Gi
-    maxFile: 40Gi
-    domain: hub
+    merge:
+      domain: hub
+    memoryStore:
+      enabled: true
+      maxSize: 1Gi
     fileStore:
       dir: /data
+      maxSize: 40Gi
       pvc:
         enabled: true
         size: 50Gi
@@ -107,7 +110,7 @@ config:
 
 ```bash
 # Connect to the NATS box
-kubectl -n messaging exec -it nats-box -- sh
+kubectl -n messaging exec -it deploy/nats-box -- sh
 
 # Create a durable stream
 nats stream add ORDERS \
@@ -142,10 +145,10 @@ nats consumer info ORDERS order-processor
 ## Monitoring JetStream Storage
 
 ```bash
-kubectl -n messaging exec -it nats-box -- \
+kubectl -n messaging exec -it deploy/nats-box -- \
   nats server report jetstream
 
-kubectl -n messaging exec -it nats-box -- \
+kubectl -n messaging exec -it deploy/nats-box -- \
   nats account info
 ```
 
