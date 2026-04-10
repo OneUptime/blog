@@ -91,8 +91,12 @@ Create a pool with replication factor of 1 (no redundancy, faster writes):
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool create edge-data 16 16
 
+# Allow size 1 pools (required in Pacific+)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool set edge-data size 1
+  ceph config set global mon_allow_pool_size_one true
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph osd pool set edge-data size 1 --yes-i-really-mean-it
 
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd pool set edge-data min_size 1
@@ -111,9 +115,9 @@ metadata:
 data:
   config: |
     [osd]
-    # Reduce BlueStore cache size for edge
+    # Reduce OSD memory target for edge (1 GiB)
+    # BlueStore cache is auto-tuned within this target
     osd_memory_target = 1073741824
-    bluestore_cache_size = 536870912
     [mon]
     # Reduce monitor memory usage
     mon_data_avail_warn = 10
@@ -121,7 +125,7 @@ data:
 
 ## Syncing Edge Data to Central Storage
 
-For edge-to-cloud data sync, use RGW lifecycle policies to replicate to a central cluster:
+For edge-to-cloud data sync, use RGW multisite replication to sync data to a central cluster:
 
 ```bash
 # Configure zone replication to central cluster
@@ -131,7 +135,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
     --rgw-zone=edge-site-01 \
     --endpoints=http://edge-rgw:80
 
-# Set sync policy to push to central
+# Verify the current sync policy
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin sync policy get
 ```
