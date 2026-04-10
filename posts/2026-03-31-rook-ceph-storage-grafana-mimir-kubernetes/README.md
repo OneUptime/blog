@@ -45,6 +45,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --secret-key=mimirsecretkey
 
 # Create required Mimir buckets
+export AWS_ACCESS_KEY_ID=mimiraccesskey
+export AWS_SECRET_ACCESS_KEY=mimirsecretkey
 for bucket in mimir-blocks mimir-ruler mimir-alertmanager; do
   aws s3 mb s3://$bucket \
     --endpoint-url http://rook-ceph-rgw-mimir-store.rook-ceph:80
