@@ -101,7 +101,7 @@ redis_connected_clients
 ### Panel 5: Replication Lag
 
 ```text
-redis_replication_offset - redis_slave_replication_offset
+redis_master_repl_offset - redis_slave_repl_offset
 
 # Visualization: Time series
 # Alert if lag > 1MB or > 10 seconds
@@ -111,8 +111,8 @@ redis_replication_offset - redis_slave_replication_offset
 
 ```text
 # Command latency from INFO commandstats
-rate(redis_commands_duration_seconds_sum[1m]) /
-rate(redis_commands_duration_seconds_count[1m]) * 1000
+rate(redis_commands_duration_seconds_total[1m]) /
+rate(redis_commands_total[1m]) * 1000
 
 # Visualization: Heatmap or time series in milliseconds
 ```
@@ -166,7 +166,7 @@ Use the official redis_exporter dashboard:
 # Or import community dashboard 11835 for Redis
 curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
   -H "Content-Type: application/json" \
-  -d '{"pluginId":"grafana-dashboards-grafana","path":"","folderId":0,"dashboard":{"id":763}}'
+  -d '{"gnetId":763,"overwrite":true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}],"folderId":0}'
 ```
 
 ## Summary
