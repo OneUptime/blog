@@ -18,7 +18,7 @@ AWS EBS (Elastic Block Store) is a managed cloud block storage service. Ceph pro
 |---------|----------------|---------|
 | Deployment | On-premises / self-managed | AWS cloud only |
 | Management | Operator-managed | Fully managed |
-| Availability | Self-configured replication | 99.999% SLA (AWS) |
+| Availability | Self-configured replication | 99.99% SLA (AWS) |
 | Volume types | Configurable | gp3, io2, st1, sc1 |
 | Multi-attach | No (single RWO) | Yes (io1/io2 Multi-Attach) |
 | Kubernetes CSI | Rook RBD CSI | AWS EBS CSI |
@@ -61,8 +61,8 @@ volumeBindingMode: WaitForFirstConsumer
 
 | Metric | Ceph RBD (NVMe) | EBS gp3 | EBS io2 |
 |--------|----------------|---------|---------|
-| Max IOPS | ~100K (per volume) | 16,000 | 64,000 |
-| Max throughput | 1 GB/s+ | 1,000 MB/s | 4,000 MB/s |
+| Max IOPS | ~100K (per volume) | 80,000 | 256,000 |
+| Max throughput | 1 GB/s+ | 2,000 MB/s | 4,000 MB/s |
 | Latency | 0.5-2ms | ~1ms | Sub-millisecond |
 | Cost per GB | Low (hardware) | $0.08/GB/month | $0.125/GB/month |
 
