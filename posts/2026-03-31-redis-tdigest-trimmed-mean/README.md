@@ -52,6 +52,7 @@ The mean of values between the 25th and 75th percentiles.
 ### Excluding Extreme Outliers
 
 ```redis
+TDIGEST.CREATE response-times
 TDIGEST.ADD response-times 50 60 70 80 90 100 5000
 TDIGEST.TRIMMED_MEAN response-times 0.0 0.9
 ```
@@ -78,17 +79,17 @@ TDIGEST.TRIMMED_MEAN api:duration 0.05 0.95
 
 Excludes the worst 5% and best 5% of response times, yielding a stable average.
 
-### Empty Range Returns nan
+### Invalid Range Returns an Error
 
 ```redis
 TDIGEST.TRIMMED_MEAN latency 0.9 0.1
 ```
 
 ```text
-"nan"
+(error) ERR low_cut_quantile must be less than high_cut_quantile
 ```
 
-Low quantile must be less than high quantile.
+Low quantile must be less than high quantile; otherwise Redis returns an error.
 
 ## Use Cases
 
@@ -97,6 +98,7 @@ Low quantile must be less than high quantile.
 Exclude warm-up and spike measurements from benchmark averages:
 
 ```redis
+TDIGEST.CREATE benchmark:runs
 TDIGEST.ADD benchmark:runs 250 260 270 5000 265 255 275 280
 TDIGEST.TRIMMED_MEAN benchmark:runs 0.1 0.9
 ```
@@ -118,11 +120,11 @@ This excludes the bottom and top 5% of requests for a stable average.
 By comparing different trim ranges, identify whether data has two clusters:
 
 ```redis
--- Mean of the lower cluster
 TDIGEST.TRIMMED_MEAN response-times 0.0 0.5
--- Mean of the upper cluster
 TDIGEST.TRIMMED_MEAN response-times 0.5 1.0
 ```
+
+The first command returns the mean of the lower half; the second returns the mean of the upper half.
 
 If these differ significantly, the distribution is bimodal.
 
@@ -131,6 +133,7 @@ If these differ significantly, the distribution is bimodal.
 Exclude known measurement noise at the edges:
 
 ```redis
+TDIGEST.CREATE temperature:outdoor
 TDIGEST.ADD temperature:outdoor 18.5 19.0 19.5 20.0 -99.0 20.5
 TDIGEST.TRIMMED_MEAN temperature:outdoor 0.1 0.9
 ```
@@ -142,13 +145,12 @@ The erroneous -99.0 reading is excluded from the average.
 A regular arithmetic mean is sensitive to outliers. TDIGEST.TRIMMED_MEAN is robust:
 
 ```redis
+TDIGEST.CREATE demo
 TDIGEST.ADD demo 10 20 30 40 50 10000
-
--- Regular mean would be ~1693 (pulled by 10000)
--- Trimmed mean excludes the extremes
 TDIGEST.TRIMMED_MEAN demo 0.1 0.9
--- Returns: ~30 (representative of the bulk of data)
 ```
+
+A regular mean would be ~1692 (pulled by 10000). The trimmed mean excludes the extremes and returns a value representative of the bulk of the data.
 
 ## Choosing Trim Boundaries
 
