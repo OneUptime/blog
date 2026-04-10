@@ -57,10 +57,10 @@ redis-cli --stat -i 1 | tee /tmp/redis-stats.log
 Run this during your busiest period (typically business hours or peak traffic). Then analyze:
 
 ```bash
-awk '{print $4}' /tmp/redis-stats.log | sort -n | tail -5
+awk '{print $2}' /tmp/redis-stats.log | sort -n | tail -5
 ```
 
-This shows your peak key count and memory usage values over the monitoring window.
+This shows your peak memory usage values over the monitoring window. You can also use `awk '{print $1}'` to check peak key counts.
 
 ## Step 4: Estimate Required Instance Size
 
