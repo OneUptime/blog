@@ -15,7 +15,7 @@ Redis TLS handshake failures prevent clients from establishing secure connection
 Verify Redis is actually configured to use TLS:
 
 ```bash
-redis-cli -h 127.0.0.1 -p 6379 --tls --cert /etc/redis/tls/client.crt --key /etc/redis/tls/client.key --cacert /etc/redis/tls/ca.crt ping
+redis-cli -h 127.0.0.1 -p 6380 --tls --cert /etc/redis/tls/client.crt --key /etc/redis/tls/client.key --cacert /etc/redis/tls/ca.crt ping
 ```
 
 If you get `PONG`, the TLS layer is working. Otherwise, check the Redis config:
