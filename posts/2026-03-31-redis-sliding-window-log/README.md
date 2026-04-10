@@ -30,15 +30,16 @@ def is_allowed(user_id: str, limit: int, window_seconds: int) -> bool:
     pipe.zremrangebyscore(key, 0, window_start)
     # Count remaining entries (within window)
     pipe.zcard(key)
-    # Add current request timestamp
-    pipe.zadd(key, {str(now): now})
-    # Set TTL to auto-clean up inactive users
-    pipe.expire(key, window_seconds + 1)
-
     results = pipe.execute()
     count_in_window = results[1]
 
-    return count_in_window < limit
+    if count_in_window < limit:
+        # Add current request timestamp and refresh TTL
+        r.zadd(key, {str(now): now})
+        r.expire(key, window_seconds + 1)
+        return True
+
+    return False
 ```
 
 ## Atomic Version with Lua
