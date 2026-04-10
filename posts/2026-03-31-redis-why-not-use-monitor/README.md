@@ -102,7 +102,7 @@ def get_redis_stats() -> dict:
 For event-driven monitoring of specific key patterns, use keyspace notifications:
 
 ```bash
-# redis.conf - only notify on expired and evicted events
+# redis.conf - only notify on expired events
 notify-keyspace-events Ex
 ```
 
