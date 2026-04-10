@@ -26,7 +26,7 @@ ALERT_EMAIL="${ALERT_EMAIL:-ops@example.com}"
 EXIT_CODE=0
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS_POD" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS_POD" -- ceph "$@"
 }
 
 echo "=== Ceph Health Check: $(date) ==="
@@ -113,12 +113,9 @@ import sys, json
 data = json.load(sys.stdin)
 for pool in data.get("pools", []):
     name = pool["name"]
-    used = pool["stats"]["bytes_used"]
-    avail = pool["stats"]["max_avail"]
-    if avail > 0:
-        pct = used / (used + avail) * 100
-        if pct > 80:
-            print(f"WARNING: Pool '{name}' is {pct:.1f}% full")
+    pct = pool["stats"]["percent_used"] * 100
+    if pct > 80:
+        print(f"WARNING: Pool '{name}' is {pct:.1f}% full")
 PYEOF
 }
 ```
