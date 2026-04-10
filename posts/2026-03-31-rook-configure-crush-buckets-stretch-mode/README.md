@@ -86,7 +86,7 @@ ID  CLASS  WEIGHT   TYPE NAME       STATUS
 The CRUSH rule for stretch mode must use `datacenter` as the failure domain:
 
 ```bash
-ceph osd crush rule create-replicated stretch_rule default datacenter osd
+ceph osd crush rule create-replicated stretch_rule default datacenter
 ```
 
 Verify the rule was created:
