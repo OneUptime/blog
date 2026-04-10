@@ -32,7 +32,7 @@ results = redis.pipelined do |pipe|
 end
 
 # results is an array of return values
-p results # [true, true, "1", "2"]
+p results # ["OK", "OK", "1", "2"]
 ```
 
 ## Bulk Data Loading
@@ -61,7 +61,7 @@ Each command's result is returned in order:
 
 ```ruby
 results = redis.pipelined do |pipe|
-  pipe.set('x', 10)        # index 0: true
+  pipe.set('x', 10)        # index 0: "OK"
   pipe.incr('x')           # index 1: 11
   pipe.incr('x')           # index 2: 12
   pipe.get('x')            # index 3: "12"
