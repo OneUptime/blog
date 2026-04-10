@@ -48,8 +48,6 @@ def run_ceph(args: list[str]) -> dict[str, Any]:
 def get_osd_status() -> list[dict]:
     """Get status for all OSDs."""
     osd_dump = run_ceph(["osd", "dump"])
-    osd_tree = run_ceph(["osd", "tree"])
-    osd_stat = run_ceph(["osd", "stat"])
 
     osds = []
     for osd in osd_dump.get("osds", []):
