@@ -16,7 +16,7 @@ The Ceph NVMe over Fabrics (NVMe-oF) gateway exposes RBD images as NVMe namespac
 - AI/ML training workloads with large sequential I/O
 - Bare-metal servers that need fast block access without the RBD driver
 
-The gateway is managed by Rook via the `CephNVMEofGateway` CRD.
+The gateway is managed by Rook via the `CephNVMeOFGateway` CRD.
 
 ## Step 1 - Enable the NVMe-oF Gateway Feature
 
@@ -26,21 +26,21 @@ Ensure the Rook operator has the NVMe-oF feature enabled. Check the operator Con
 kubectl get configmap rook-ceph-operator-config -n rook-ceph -o yaml | grep nvme
 ```
 
-## Step 2 - Create a CephNVMEofGateway Resource
+## Step 2 - Create a CephNVMeOFGateway Resource
 
 Deploy the NVMe-oF gateway via the Rook CRD:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
-kind: CephNVMEofGateway
+kind: CephNVMeOFGateway
 metadata:
   name: nvmeof-gateway
   namespace: rook-ceph
 spec:
-  server:
-    image: quay.io/ceph/nvmeof:latest
-    instances: 2
-  serviceLoadBalancerSourceRanges:
+  image: quay.io/ceph/nvmeof:latest
+  instances: 2
+  pool: replicapool
+  loadBalancerSourceRanges:
   - 10.0.0.0/8
 ```
 
@@ -52,14 +52,14 @@ kubectl apply -f ceph-nvmeof-gateway.yaml
 
 ## Step 3 - Create an NVMe Subsystem and Namespace
 
-Use the `nvmeof` CLI tool in the Rook toolbox to create a subsystem:
+Use the `nvmeof-cli` tool in the NVMe-oF gateway pod to create a subsystem:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof subsystem add --subsystem nqn.2026-03.com.ceph:nvme-subsystem-01
+kubectl exec -it deploy/nvmeof-gateway -n rook-ceph -- \
+  nvmeof-cli subsystem create --subsystem nqn.2026-03.com.ceph:nvme-subsystem-01
 
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof namespace add \
+kubectl exec -it deploy/nvmeof-gateway -n rook-ceph -- \
+  nvmeof-cli namespace add \
   --subsystem nqn.2026-03.com.ceph:nvme-subsystem-01 \
   --rbd-pool replicapool \
   --rbd-image nvme-disk-01 \
@@ -71,8 +71,8 @@ kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
 Create a listener on the NVMe-oF gateway for clients to connect:
 
 ```bash
-kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
-  nvmeof listener add \
+kubectl exec -it deploy/nvmeof-gateway -n rook-ceph -- \
+  nvmeof-cli listener add \
   --subsystem nqn.2026-03.com.ceph:nvme-subsystem-01 \
   --gateway-name nvmeof-gateway-0 \
   --traddr 192.168.1.50 \
@@ -111,10 +111,10 @@ Node             SN                   Model         Namespace Usage     Format
 Check gateway and subsystem status from Rook:
 
 ```bash
-kubectl get cephnvmeofgateway -n rook-ceph
+kubectl get cephnvmeofgateways -n rook-ceph
 kubectl describe cephnvmeofgateway nvmeof-gateway -n rook-ceph
 ```
 
 ## Summary
 
-The Ceph NVMe-oF gateway exposes RBD images as NVMe namespaces over TCP, providing low-latency block access for high-performance workloads. Deploy the gateway using the `CephNVMEofGateway` CRD in Rook, create subsystems and namespaces via the `nvmeof` CLI, and connect initiators using `nvme-cli`. The gateway scales horizontally and supports multiple listeners for redundancy.
+The Ceph NVMe-oF gateway exposes RBD images as NVMe namespaces over TCP, providing low-latency block access for high-performance workloads. Deploy the gateway using the `CephNVMeOFGateway` CRD in Rook, create subsystems and namespaces via the `nvmeof-cli` tool, and connect initiators using `nvme-cli`. The gateway scales horizontally and supports multiple listeners for redundancy.
