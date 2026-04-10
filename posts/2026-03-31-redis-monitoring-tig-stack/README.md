@@ -65,11 +65,6 @@ sudo apt update && sudo apt install telegraf -y
   # Password optional
   # password = "yourpassword"
 
-[[inputs.redis]]
-  servers = ["tcp://localhost:6379"]
-  ## Specify which commands to collect from COMMANDSTATS
-  commands = ["get", "set", "hget", "hset", "zadd", "zrange"]
-
 [[outputs.influxdb_v2]]
   urls = ["http://localhost:8086"]
   token = "mytoken123"
@@ -105,7 +100,7 @@ redis_used_memory               - memory bytes in use
 redis_keyspace_hits             - successful key lookups
 redis_keyspace_misses           - failed key lookups
 redis_evicted_keys              - keys evicted due to maxmemory
-redis_total_commands_processed  - commands/sec
+redis_total_commands_processed  - total commands processed
 redis_rdb_last_bgsave_status    - last save status
 redis_aof_last_rewrite_time_sec - AOF rewrite duration
 ```
@@ -143,8 +138,9 @@ misses = from(bucket: "redis")
 ## Set Up Grafana Alerts
 
 ```bash
-# Add alerting rule via Grafana UI or API
-curl -X POST http://admin:admin@localhost:3000/api/alert-notifications \
+# Add contact point via Grafana Alerting Provisioning API
+curl -X POST http://localhost:3000/api/v1/provisioning/contact-points \
+  -H "Authorization: Bearer mytoken123" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Redis High Memory",
