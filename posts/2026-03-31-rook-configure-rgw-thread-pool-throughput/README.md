@@ -35,9 +35,6 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_thread_pool_size 2048
-
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_num_rados_handles 32
 ```
 
 **Large object, high throughput:** Fewer but longer-running threads prevent excessive context switching:
@@ -75,7 +72,7 @@ spec:
         memory: "32Gi"
 ```
 
-Each thread consumes approximately 10-20 MB of stack memory. 1024 threads = approximately 10-20 GB memory required.
+Each thread consumes approximately 8 MB of stack memory (the default Linux thread stack size). 1024 threads = approximately 8 GB of stack memory required, plus additional heap overhead per connection.
 
 ## Per-Instance Tuning
 
@@ -96,7 +93,7 @@ Check if threads are queuing up using RGW metrics:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph tell client.rgw.my-store perf dump | \
+  ceph tell client.rgw.my-store.a perf dump | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('throttle-rgw_ops'))"
 ```
 
