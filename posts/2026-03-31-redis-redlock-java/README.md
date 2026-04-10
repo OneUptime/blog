@@ -34,38 +34,34 @@ import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 
 public class RedlockConfig {
-    public static RedissonClient createRedissonClient() {
+    // Create a client for a single independent Redis node
+    public static RedissonClient createClient(String address) {
         Config config = new Config();
-        // Use multiple independent Redis nodes for Redlock
-        config.useClusterServers()
-            .addNodeAddress(
-                "redis://redis1:6379",
-                "redis://redis2:6379",
-                "redis://redis3:6379"
-            );
+        config.useSingleServer()
+            .setAddress(address);
         return Redisson.create(config);
     }
 }
 ```
 
-For true Redlock (independent instances, not a cluster):
+Redlock requires independent Redis instances (not a cluster). Create a separate `RedissonClient` for each node and combine them with `RedissonMultiLock`:
 
 ```java
 import org.redisson.RedissonMultiLock;
-import org.redisson.RedissonRedLock;
 import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 
 // Create clients for each independent Redis node
-RedissonClient client1 = createClient("redis://redis1:6379");
-RedissonClient client2 = createClient("redis://redis2:6379");
-RedissonClient client3 = createClient("redis://redis3:6379");
+RedissonClient client1 = RedlockConfig.createClient("redis://redis1:6379");
+RedissonClient client2 = RedlockConfig.createClient("redis://redis2:6379");
+RedissonClient client3 = RedlockConfig.createClient("redis://redis3:6379");
 
 RLock lock1 = client1.getLock("order:lock:42");
 RLock lock2 = client2.getLock("order:lock:42");
 RLock lock3 = client3.getLock("order:lock:42");
 
-// Create a RedLock across all nodes
-RedissonRedLock redLock = new RedissonRedLock(lock1, lock2, lock3);
+// Create a distributed lock across all nodes
+RedissonMultiLock multiLock = new RedissonMultiLock(lock1, lock2, lock3);
 ```
 
 ### Acquire and Release the Lock
@@ -74,14 +70,14 @@ RedissonRedLock redLock = new RedissonRedLock(lock1, lock2, lock3);
 import java.util.concurrent.TimeUnit;
 
 public class OrderService {
-    private final RedissonRedLock redLock;
+    private final RedissonMultiLock multiLock;
 
-    public OrderService(RedissonRedLock redLock) {
-        this.redLock = redLock;
+    public OrderService(RedissonMultiLock multiLock) {
+        this.multiLock = multiLock;
     }
 
     public void processOrder(long orderId) throws InterruptedException {
-        boolean acquired = redLock.tryLock(
+        boolean acquired = multiLock.tryLock(
             10,    // waitTime - max time to wait for the lock
             30,    // leaseTime - how long to hold the lock
             TimeUnit.SECONDS
@@ -95,7 +91,7 @@ public class OrderService {
             // Critical section
             performOrderProcessing(orderId);
         } finally {
-            redLock.unlock();
+            multiLock.unlock();
         }
     }
 
@@ -202,4 +198,4 @@ if (token != null) {
 
 ## Summary
 
-For Java, Redisson is the recommended Redlock implementation as it handles quorum logic, clock drift, and lock renewal internally. Use `RedissonRedLock` with independent Redis clients (not a cluster) and always release the lock in a `finally` block. For custom implementations, ensure the release uses a Lua script that checks the token value to prevent accidental unlocking by expired lock holders.
+For Java, Redisson is the recommended Redlock implementation as it handles quorum logic, clock drift, and lock renewal internally. Use `RedissonMultiLock` with independent Redis clients (not a cluster) and always release the lock in a `finally` block. For custom implementations, ensure the release uses a Lua script that checks the token value to prevent accidental unlocking by expired lock holders.
