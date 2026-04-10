@@ -105,11 +105,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 @Controller("notifications")
 export class NotificationsController {
 
-  constructor(@InjectWebSocketServer() private server: Server) {}
+  constructor(private readonly chatGateway: ChatGateway) {}
 
   @Post("broadcast")
   broadcast(@Body() body: { room: string; message: string }) {
-    this.server.to(body.room).emit("notification", body.message);
+    this.chatGateway.server.to(body.room).emit("notification", body.message);
     return { sent: true };
   }
 }
@@ -125,4 +125,4 @@ redis-cli pubsub channels "socket.io*"
 
 ## Summary
 
-NestJS WebSocket gateways scale horizontally by swapping the default IoAdapter for a `RedisIoAdapter` that routes Socket.io events through Redis Pub/Sub. The gateway code remains unchanged - only the adapter configuration differs. This enables REST endpoints and gateway events to reach clients connected to any instance in the cluster without sticky sessions.
+NestJS WebSocket gateways scale horizontally by swapping the default IoAdapter for a `RedisIoAdapter` that routes Socket.io events through Redis Pub/Sub. The gateway code remains unchanged - only the adapter configuration differs. This enables REST endpoints and gateway events to reach clients connected to any instance in the cluster. Note that sticky sessions are still required for Socket.io's default HTTP long-polling transport; you can avoid them only by forcing WebSocket-only connections on the client (`transports: ['websocket']`).
