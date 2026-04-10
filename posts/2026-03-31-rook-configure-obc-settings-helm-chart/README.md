@@ -51,7 +51,6 @@ reclaimPolicy: Delete
 parameters:
   objectStoreName: ceph-objectstore
   objectStoreNamespace: rook-ceph
-  region: us-east-1
 ```
 
 ## Creating an ObjectBucketClaim
