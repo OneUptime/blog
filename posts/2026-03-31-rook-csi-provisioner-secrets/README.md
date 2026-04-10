@@ -47,7 +47,7 @@ kind: Secret
 metadata:
   name: rook-csi-rbd-provisioner
   namespace: rook-ceph
-type: kubernetes.io/rook
+type: Opaque
 stringData:
   # Ceph user ID (without "client." prefix)
   userID: rook-csi-rbd-provisioner
@@ -63,7 +63,6 @@ PROVISIONER_KEY=$(ceph auth get-key client.rook-csi-rbd-provisioner)
 
 kubectl create secret generic rook-csi-rbd-provisioner \
   -n rook-ceph \
-  --type="kubernetes.io/rook" \
   --from-literal=userID=rook-csi-rbd-provisioner \
   --from-literal=userKey="$PROVISIONER_KEY"
 ```
@@ -79,7 +78,7 @@ kind: Secret
 metadata:
   name: rook-csi-rbd-node
   namespace: rook-ceph
-type: kubernetes.io/rook
+type: Opaque
 stringData:
   userID: rook-csi-rbd-node
   userKey: AQCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==
@@ -90,7 +89,6 @@ NODE_KEY=$(ceph auth get-key client.rook-csi-rbd-node)
 
 kubectl create secret generic rook-csi-rbd-node \
   -n rook-ceph \
-  --type="kubernetes.io/rook" \
   --from-literal=userID=rook-csi-rbd-node \
   --from-literal=userKey="$NODE_KEY"
 ```
