@@ -57,8 +57,6 @@ tolerations:
 nodeSelector:
   kubernetes.io/os: linux
 
-# Enable leader election for HA operator deployments
-enableLeaderElection: true
 ```
 
 ## Installing with Custom Values
