@@ -25,7 +25,6 @@ Pre-compute user or item features during batch jobs and store them in Redis Hash
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -130,13 +129,16 @@ def enqueue_request(r, user_id: int):
 
 # Consumer: process inference requests
 def process_requests(r):
+    last_id = '$'
     while True:
-        messages = r.xread({'inference:requests': '$'}, block=1000, count=10)
-        for _, records in messages or []:
-            for msg_id, data in records:
-                uid = int(data['user_id'])
-                pred = get_or_compute_prediction(r, uid)
-                r.xadd('inference:results', {'user_id': uid, 'prediction': pred})
+        messages = r.xread({'inference:requests': last_id}, block=1000, count=10)
+        if messages:
+            for _, records in messages:
+                for msg_id, data in records:
+                    uid = int(data['user_id'])
+                    pred = get_or_compute_prediction(r, uid)
+                    r.xadd('inference:results', {'user_id': uid, 'prediction': pred})
+                    last_id = msg_id
 ```
 
 ## Summary
