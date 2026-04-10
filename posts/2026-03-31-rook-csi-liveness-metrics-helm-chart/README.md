@@ -90,7 +90,7 @@ curl http://localhost:9080/metrics | grep csi_liveness
 Important metrics include:
 
 ```text
-csi_liveness - Reports 0 (alive) or 1 (dead) per driver
+csi_liveness - Reports 1 (alive) or 0 (dead) per driver
 ```
 
 ## Alerting on CSI Liveness
@@ -102,7 +102,7 @@ groups:
   - name: rook-csi
     rules:
       - alert: RookCSIDriverDown
-        expr: csi_liveness > 0
+        expr: csi_liveness == 0
         for: 5m
         labels:
           severity: critical
