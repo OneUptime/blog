@@ -101,11 +101,15 @@ In `hive-site.xml`, set the S3A properties:
   <name>fs.s3a.access.key</name>
   <value>ANALYTICSKEY</value>
 </property>
+<property>
+  <name>fs.s3a.secret.key</name>
+  <value>ANALYTICSSECRET</value>
+</property>
 ```
 
 ## Performance Tuning
 
-Increase multipart upload thresholds for large files:
+Set bucket quotas and tune RGW for high throughput:
 
 ```bash
 radosgw-admin global quota set \
