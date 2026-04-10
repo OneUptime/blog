@@ -29,7 +29,7 @@ S3 canned ACLs are predefined permission sets:
 ## Set a Canned ACL with AWS CLI
 
 ```bash
-# Set bucket as public-read (all objects readable without authentication)
+# Set bucket as public-read (anyone can list bucket contents without authentication)
 aws s3api put-bucket-acl \
   --bucket my-bucket \
   --acl public-read \
@@ -92,10 +92,10 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  # View bucket ACL
-  radosgw-admin bucket stats --bucket=my-bucket | jq '.acl'
+  # View bucket owner and stats
+  radosgw-admin bucket stats --bucket=my-bucket
 
-  # Link another user to a bucket (grants access)
+  # Re-link bucket to another user (changes bucket association/owner)
   radosgw-admin bucket link --bucket=my-bucket --uid=secondary-owner
 "
 ```
