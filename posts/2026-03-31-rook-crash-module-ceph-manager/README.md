@@ -10,15 +10,11 @@ Description: Learn how to configure the Ceph Manager crash module to collect, ar
 
 The Ceph Manager crash module collects crash reports from all Ceph daemons (OSDs, monitors, MDSes, etc.) and stores them in the cluster for review and analysis. This is essential for post-mortem debugging after unexpected daemon crashes.
 
-## Enabling the Crash Module
+## The Crash Module
 
-Enable the crash module:
+The crash module is always enabled by default and cannot be disabled. No action is needed to activate it — crash data collection begins automatically when the Ceph cluster is running.
 
-```bash
-ceph mgr module enable crash
-```
-
-By default, crash data is retained for a configurable period before being pruned.
+By default, crash data is retained for a configurable period (1 year) before being automatically pruned.
 
 ## Viewing Crash Reports
 
@@ -64,7 +60,7 @@ ceph crash archive-all
 
 ## Viewing Crash Stats
 
-Get a summary of crash frequency by module:
+Get a summary of saved crash reports grouped by age:
 
 ```bash
 ceph crash stat
@@ -86,8 +82,8 @@ ceph config set mgr mgr/crash/warn_recent_interval 86400
 ceph config set mgr mgr/crash/retain_interval 31536000
 ```
 
-- `warn_recent_interval` - interval in seconds to include crashes in the health warning
-- `retain_interval` - total retention period before pruning
+- `warn_recent_interval` - interval in seconds to include crashes in the health warning (default: 1209600, i.e., 2 weeks)
+- `retain_interval` - total retention period in seconds before automatic pruning (default: 31536000, i.e., 1 year)
 
 ## Pruning Old Crashes
 
@@ -101,10 +97,10 @@ This removes crash reports older than 90 days.
 
 ## Integration with Telemetry
 
-The crash module feeds into the telemetry module's crash channel. When telemetry is enabled, anonymized crash backtraces are shared with the Ceph project:
+The crash module feeds into the telemetry module's crash channel. When telemetry is enabled, the crash channel is on by default. If it was previously disabled, re-enable it to share anonymized crash backtraces with the Ceph project:
 
 ```bash
-ceph config set mgr mgr/telemetry/channel_crash true
+ceph telemetry enable channel crash
 ```
 
 ## Summary
