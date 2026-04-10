@@ -70,21 +70,20 @@ fn increment_if_below(con: &mut redis::Connection, key: &str, limit: i64)
             return Ok(false);
         }
 
-        let result: redis::RedisResult<(i64,)> = redis::pipe()
+        let result: Option<(i64,)> = redis::pipe()
             .atomic()
             .incr(key, 1)
-            .query(con);
+            .query(con)?;
 
         match result {
-            Ok(_) => return Ok(true),
-            Err(ref e) if e.kind() == redis::ErrorKind::TxAbortedError => continue,
-            Err(e) => return Err(e),
+            Some(_) => return Ok(true),
+            None => continue, // WATCH detected a change, retry
         }
     }
 }
 ```
 
-If another client modifies `key` between `WATCH` and `EXEC`, Redis returns a nil reply and we retry.
+If another client modifies `key` between `WATCH` and `EXEC`, Redis returns a nil reply. The `redis` crate deserializes this as `None` when the result type is `Option<T>`, so we check for `None` and retry.
 
 ## Error Handling
 
@@ -113,8 +112,8 @@ async fn main() -> redis::RedisResult<()> {
 
     redis::pipe()
         .atomic()
-        .set("session:abc", "user:42")
-        .expire("session:abc", 3600)
+        .set("session:abc", "user:42").ignore()
+        .expire("session:abc", 3600).ignore()
         .query_async(&mut con)
         .await?;
 
