@@ -41,7 +41,7 @@ beforeAll(async () => {
 }, 30000); // 30s timeout for container startup
 
 afterAll(async () => {
-  await client.quit();
+  await client.close();
   await container.stop();
 });
 
@@ -74,6 +74,8 @@ const container = await new RedisContainer('redis:7.2-alpine').start();
 ## Using Redis Stack (for RediSearch, RedisJSON)
 
 ```javascript
+import { GenericContainer } from 'testcontainers';
+
 const container = await new GenericContainer('redis/redis-stack-server:latest')
   .withExposedPorts(6379)
   .start();
