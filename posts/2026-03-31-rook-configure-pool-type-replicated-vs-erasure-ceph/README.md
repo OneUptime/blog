@@ -117,7 +117,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
 "
 ```
 
-Erasure coded pools have 2x write amplification (k+m writes per k data) and require additional CPU for encoding/decoding. They are not suitable for small random IO workloads like RBD or CephFS metadata.
+Erasure coded pools have (k+m)/k write amplification (e.g., 1.5x for 4+2) and require additional CPU for encoding/decoding. They are not suitable for small random IO workloads like RBD or CephFS metadata.
 
 ## Verify Pool Type After Creation
 
