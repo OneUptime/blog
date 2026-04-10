@@ -37,10 +37,7 @@ public class RateLimitScript {
             if count == 1 then
                 redis.call('EXPIRE', key, window)
             end
-            if count > limit then
-                return 0
-            end
-            return 1
+            return count
             """);
         SCRIPT.setResultType(Long.class);
     }
@@ -69,14 +66,14 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         String clientIp = request.getRemoteAddr();
         String key = "rl:" + clientIp + ":" + (System.currentTimeMillis() / 1000 / WINDOW_SEC);
 
-        Long allowed = redisTemplate.execute(
+        Long count = redisTemplate.execute(
             RateLimitScript.SCRIPT,
             List.of(key),
             String.valueOf(LIMIT),
             String.valueOf(WINDOW_SEC)
         );
 
-        if (allowed == null || allowed == 0) {
+        if (count == null || count > LIMIT) {
             response.setStatus(429);
             response.getWriter().write("{\"error\":\"Rate limit exceeded\"}");
             return false;
@@ -112,7 +109,7 @@ public class WebConfig implements WebMvcConfigurer {
 // Inside preHandle, before returning true:
 long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
 response.setHeader("X-RateLimit-Limit", String.valueOf(LIMIT));
-response.setHeader("X-RateLimit-Remaining", String.valueOf(Math.max(0, LIMIT - allowed)));
+response.setHeader("X-RateLimit-Remaining", String.valueOf(Math.max(0, LIMIT - count)));
 response.setHeader("X-RateLimit-Reset", String.valueOf(System.currentTimeMillis() / 1000 + ttl));
 ```
 
