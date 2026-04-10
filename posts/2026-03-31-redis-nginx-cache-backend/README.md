@@ -15,9 +15,10 @@ NGINX can serve responses from Redis without proxying to your application server
 The `ngx_http_redis` module allows NGINX to GET a key from Redis and return its value as the HTTP response body.
 
 ```bash
-# Install NGINX with Redis module (on Ubuntu)
-apt-get install nginx-extras
-# Or compile from source with --add-module=ngx_http_redis
+# Compile NGINX from source with the ngx_http_redis module
+# Download from https://github.com/osokin/ngx_http_redis
+./configure --add-module=/path/to/ngx_http_redis
+make && make install
 ```
 
 ```nginx
@@ -65,10 +66,9 @@ http {
         location /api/ {
             content_by_lua_block {
                 local redis = require "resty.redis"
-                local cjson = require "cjson"
 
                 local red = redis:new()
-                red:set_timeout(500)  -- 500ms timeout
+                red:set_timeouts(500, 500, 500)  -- connect, send, read timeouts in ms
 
                 local ok, err = red:connect("redis", 6379)
                 if not ok then
@@ -91,13 +91,13 @@ http {
 
                 -- Cache miss: proxy to app
                 red:set_keepalive(10000, 50)
-                ngx.header["X-Cache"] = "MISS"
                 ngx.exec("@app_fallback")
             }
         }
 
         location @app_fallback {
             proxy_pass http://app-backend:3000;
+            add_header X-Cache "MISS";
         }
     }
 }
