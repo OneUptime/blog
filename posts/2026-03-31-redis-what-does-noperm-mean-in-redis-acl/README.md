@@ -45,14 +45,16 @@ Use `ACL GETUSER` for a detailed breakdown:
 
 ```bash
 127.0.0.1:6379> ACL GETUSER readonlyuser
-1) "flags"
-2) 1) "on"
-3) "passwords"
-4) 1) "<sha256>"
-5) "commands"
-6) "+@read"
-7) "keys"
-8) "~*"
+ 1) "flags"
+ 2) 1) "on"
+ 3) "passwords"
+ 4) 1) "<sha256>"
+ 5) "commands"
+ 6) "+@read"
+ 7) "keys"
+ 8) "~*"
+ 9) "channels"
+10) "&*"
 ```
 
 ## Granting Missing Permissions
