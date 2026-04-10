@@ -10,18 +10,15 @@ Description: Set pod and container security contexts for the Rook-Ceph operator 
 
 ## Overview
 
-Kubernetes Pod Security Standards and organizational policies often require explicit security contexts on containers. The Rook-Ceph operator Helm chart exposes `podSecurityContext` and `containerSecurityContext` values for the operator pod, and per-daemon overrides for Ceph components.
+Kubernetes Pod Security Standards and organizational policies often require explicit security contexts on containers. The Rook-Ceph operator Helm chart exposes a `containerSecurityContext` value for the operator container. Note that the chart does not include a `podSecurityContext` Helm value; pod-level security settings must be applied separately if needed.
 
 ## Operator Pod Security Context
 
-Configure the security context at the pod level to control user/group IDs and filesystem group:
+The Rook operator Helm chart does not include a `podSecurityContext` value. Setting it in a values file will have no effect. If you need pod-level settings such as `fsGroup`, patch the operator deployment after installation:
 
-```yaml
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 2016
-  runAsGroup: 2016
-  fsGroup: 2016
+```bash
+kubectl patch deployment rook-ceph-operator -n rook-ceph --type merge \
+  -p '{"spec":{"template":{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":2016,"runAsGroup":2016,"fsGroup":2016}}}}}'
 ```
 
 ## Operator Container Security Context
@@ -32,14 +29,17 @@ Set security capabilities and privilege settings on the operator container itsel
 containerSecurityContext:
   runAsNonRoot: true
   runAsUser: 2016
+  runAsGroup: 2016
   capabilities:
     drop:
       - ALL
   readOnlyRootFilesystem: false
   allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
 ```
 
-Note that Rook does not require a read-only root filesystem by default because the operator needs to write configuration files during initialization.
+Note that Rook does not require a read-only root filesystem by default because the operator needs to write configuration files during initialization. The `seccompProfile` setting is required for clusters enforcing the `restricted` Pod Security Standard.
 
 ## Applying the Configuration
 
@@ -47,19 +47,16 @@ Include these sections in your operator values file:
 
 ```yaml
 # rook-operator-security.yaml
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 2016
-  runAsGroup: 2016
-  fsGroup: 2016
-
 containerSecurityContext:
   runAsNonRoot: true
   runAsUser: 2016
+  runAsGroup: 2016
   capabilities:
     drop:
       - ALL
   allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
 ```
 
 Then apply:
@@ -80,25 +77,22 @@ kubectl label namespace rook-ceph \
   pod-security.kubernetes.io/warn=restricted
 ```
 
-With the `restricted` standard, the above security context configuration aligns with all requirements. Verify after upgrade:
+With the `restricted` standard, the above security context configuration (including `seccompProfile`) aligns with all requirements. Verify the container security context after upgrade:
 
 ```bash
 kubectl get pod -n rook-ceph -l app=rook-ceph-operator \
-  -o jsonpath='{.items[0].spec.securityContext}'
+  -o jsonpath='{.items[0].spec.containers[0].securityContext}'
 ```
 
 ## OSD Security Context Considerations
 
-OSDs often need elevated privileges for disk access. Override this in the `CephCluster` CR rather than the operator chart:
+OSDs often need elevated privileges for disk access. Rook handles this internally based on the storage configuration. If using `hostPath` volumes on platforms with SELinux (such as OpenShift), set the `hostpathRequiresPrivileged` Helm value on the operator chart:
 
 ```yaml
-spec:
-  security:
-    keyRotation:
-      enabled: false
+hostpathRequiresPrivileged: true
 ```
 
-For OSD pods that need `privileged: true`, Rook handles this internally. Do not attempt to restrict OSD pod security contexts through the operator chart - configure it in the cluster CR.
+For OSD pods that need `privileged: true`, Rook enables this automatically. Do not attempt to restrict OSD pod security contexts through the operator `containerSecurityContext` value.
 
 ## Summary
 
