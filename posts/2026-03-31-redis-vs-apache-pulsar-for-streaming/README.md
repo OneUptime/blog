@@ -33,8 +33,8 @@ r = redis.Redis(decode_responses=True)
 r.xadd("events", {"type": "page_view", "path": "/home", "user": "u42"})
 
 # Consumer group processing
-msgs = r.xreadgroup("GROUP", "processors", "worker1",
-                     count=50, block=5000, streams={"events": ">"})
+msgs = r.xreadgroup("processors", "worker1",
+                     streams={"events": ">"}, count=50, block=5000)
 for stream, messages in msgs:
     for msg_id, data in messages:
         process(data)
