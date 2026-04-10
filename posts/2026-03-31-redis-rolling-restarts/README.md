@@ -17,7 +17,7 @@ In a Sentinel-managed setup (1 primary + 2 replicas), always restart replicas fi
 ```bash
 # Step 1: Identify current roles
 redis-cli -h sentinel-1 -p 26379 SENTINEL masters
-redis-cli -h sentinel-1 -p 26379 SENTINEL slaves mymaster
+redis-cli -h sentinel-1 -p 26379 SENTINEL replicas mymaster
 
 # Output shows which host is currently primary
 ```
@@ -88,8 +88,15 @@ for NODE in "${NODES[@]}"; do
   HOST="${NODE%:*}"
   PORT="${NODE#*:}"
 
-  # Skip if this is a primary with no healthy replica
+  # Check role and skip primaries with no healthy replica
   ROLE=$(redis-cli -h "$HOST" -p "$PORT" INFO replication | grep "^role:" | cut -d: -f2 | tr -d '\r')
+  if [ "$ROLE" = "master" ]; then
+    REPLICA_COUNT=$(redis-cli -h "$HOST" -p "$PORT" INFO replication | grep "^connected_slaves:" | cut -d: -f2 | tr -d '\r')
+    if [ "$REPLICA_COUNT" -eq 0 ]; then
+      echo "WARNING: Skipping $HOST - primary with no connected replicas"
+      continue
+    fi
+  fi
   echo "Restarting $HOST ($ROLE)"
 
   ssh "$HOST" "sudo systemctl restart redis"
@@ -117,7 +124,7 @@ echo "Rolling restart complete for all nodes"
 
 ```bash
 # Watch cluster state in real time
-watch -n 2 'redis-cli CLUSTER INFO | grep -E "cluster_state:|cluster_slots_ok:|connected_slaves:"'
+watch -n 2 'redis-cli CLUSTER INFO | grep -E "cluster_state:|cluster_slots_ok:|cluster_known_nodes:"'
 
 # Monitor replication lag
 redis-cli INFO replication | grep -E "master_repl_offset:|slave0:"
