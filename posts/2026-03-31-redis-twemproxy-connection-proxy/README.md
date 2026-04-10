@@ -58,7 +58,7 @@ Key settings:
 ## Starting Twemproxy
 
 ```bash
-nutcracker -c /etc/twemproxy/nutcracker.yml -d -l /var/log/nutcracker.log
+nutcracker -c /etc/twemproxy/nutcracker.yml -d -o /var/log/nutcracker.log
 ```
 
 Verify it is running:
@@ -85,14 +85,10 @@ print(value)  # Alice
 
 ## Enabling the Stats Endpoint
 
-Twemproxy exposes a stats port for monitoring:
+Twemproxy exposes a stats port for monitoring. The stats port and interval are configured via command-line flags (default port is 22222):
 
-```text
-redis_pool:
-  listen: 0.0.0.0:22121
-  stats_port: 22222
-  stats_interval: 30000
-  ...
+```bash
+nutcracker -c /etc/twemproxy/nutcracker.yml -s 22222 -i 30000
 ```
 
 Query stats:
@@ -103,7 +99,7 @@ curl -s http://localhost:22222 | python3 -m json.tool | grep -E "requests|connec
 
 ## Limitations to Know
 
-Twemproxy does not support multi-key commands (MGET, MSET) unless all keys hash to the same backend. Use hash tags `{prefix}` to colocate related keys:
+Twemproxy supports multi-key commands like MGET and MSET through command fragmentation — it splits them across backends and reassembles the results (note that MSET is not atomic across shards). However, commands that operate across keys like RENAME, SDIFF, SINTER, SUNION, and ZUNIONSTORE are not supported unless all keys reside on the same backend. Use hash tags `{prefix}` to colocate related keys:
 
 ```python
 # Both keys go to the same shard because of the hash tag
