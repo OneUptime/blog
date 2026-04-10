@@ -207,13 +207,10 @@ async function conditionalSet(key, value) {
 
 ## Checking Script Cache
 
-```bash
-# List scripts in cache (Redis 7.0+)
-redis-cli SCRIPT DEBUG yes
-redis-cli EVAL "return 1" 0
-redis-cli SCRIPT DEBUG no
+There is no Redis command to list all cached scripts. Use `SCRIPT EXISTS` to check whether specific scripts are loaded by their SHA1 hashes:
 
-# Or check if specific scripts are loaded
+```bash
+# Check if specific scripts are loaded
 redis-cli SCRIPT EXISTS sha1 sha2 sha3
 ```
 
