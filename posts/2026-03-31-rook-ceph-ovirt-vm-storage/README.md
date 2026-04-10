@@ -79,17 +79,17 @@ In the oVirt Administration Portal:
 Name: ceph-storage
 Data Center: Default
 Domain Function: Data
-Storage Type: ISCSI (for block) or choose RBD if your version supports it
+Storage Type: Managed Block Storage
 ```
 
-For Ceph-native RBD integration via oVirt 4.4+:
+Provide the cinderlib driver parameters for Ceph RBD:
 
 ```yaml
-Storage Type: Ceph RBD
-Monitor Address: mon-a.ceph.svc:6789
-Pool: ovirt
-Username: ovirt
-Password: YOUR_KEY
+volume_driver: cinder.volume.drivers.rbd.RBDDriver
+rbd_pool: ovirt
+rbd_ceph_conf: /etc/ceph/ceph.conf
+rbd_user: ovirt
+rbd_keyring_conf: /etc/ceph/ceph.client.ovirt.keyring
 ```
 
 ## Step 4 - Migrate VMs to Ceph Storage
