@@ -41,7 +41,7 @@ Elasticsearch indexes JSON documents with dynamic or explicit mappings.
 curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d '{
   "mappings": {
     "properties": {
-      "name":        { "type": "text", "boost": 2.0 },
+      "name":        { "type": "text" },
       "description": { "type": "text" },
       "price":       { "type": "float" },
       "category":    { "type": "keyword" }
@@ -120,7 +120,7 @@ FT.AGGREGATE idx:products "*"
 
 ## Relevance Scoring
 
-Elasticsearch uses BM25 by default and supports extensive relevance tuning with `function_score`, `script_score`, and field boosts. RediSearch also uses BM25 and supports field weights and custom scoring via `SCORER`.
+Elasticsearch uses BM25 by default and supports extensive relevance tuning with `function_score`, `script_score`, and field boosts. RediSearch defaults to TF-IDF scoring but supports BM25 and other scorers, along with field weights and custom scoring via `SCORER`.
 
 ```bash
 # RediSearch: custom scorer
@@ -156,8 +156,7 @@ Redis keeps its index in memory, giving sub-millisecond query latency for datase
 ```bash
 # RediSearch latency benchmark
 redis-benchmark -n 10000 -c 50 \
-  -P 1 \
-  --command "FT.SEARCH idx:products 'wireless' LIMIT 0 10"
+  FT.SEARCH idx:products wireless LIMIT 0 10
 # Typical: 1-3ms p99 latency
 ```
 
