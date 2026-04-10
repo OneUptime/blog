@@ -131,7 +131,7 @@ Use WATCH for check-and-set patterns:
 
 ```javascript
 async function conditionalUpdate(key, expectedValue, newValue) {
-  const watch = redis.watch(key);
+  await redis.watch(key);
 
   const current = await redis.get(key);
   if (current !== expectedValue) {
@@ -147,7 +147,7 @@ async function conditionalUpdate(key, expectedValue, newValue) {
 }
 ```
 
-## Batching HMSET/HGETALL Operations
+## Batching Hash Operations with HGETALL
 
 ```javascript
 async function batchGetUserProfiles(userIds) {
