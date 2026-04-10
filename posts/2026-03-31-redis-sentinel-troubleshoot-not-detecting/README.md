@@ -112,7 +112,8 @@ Look for:
 +slave ...
 
 # Problems
--odown ...  (failed to reach quorum)
++sdown without +odown  (quorum not reached, only one Sentinel sees the failure)
+-odown ...  (ODOWN state cleared before failover completed)
 TILT mode entered
 ```
 
