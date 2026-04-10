@@ -119,13 +119,15 @@ $redis->setOption(Redis::OPT_COMPRESSION, Redis::COMPRESSION_LZF);
 Use `SCAN` instead of `KEYS` in production to avoid blocking:
 
 ```php
-$cursor = null;
+$iterator = null;
 do {
-    [$cursor, $keys] = $redis->scan($cursor, ['match' => 'user:*', 'count' => 100]);
-    foreach ($keys as $key) {
-        echo $key . PHP_EOL;
+    $keys = $redis->scan($iterator, 'user:*', 100);
+    if ($keys !== false) {
+        foreach ($keys as $key) {
+            echo $key . PHP_EOL;
+        }
     }
-} while ($cursor != 0);
+} while ($iterator != 0);
 ```
 
 ## Summary
