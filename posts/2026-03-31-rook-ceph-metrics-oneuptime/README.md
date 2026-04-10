@@ -96,7 +96,7 @@ data:
 
     exporters:
       otlp:
-        endpoint: "https://oneuptime.example.com:4317"
+        endpoint: "oneuptime.example.com:4317"
         headers:
           Authorization: "Bearer ${ONEUPTIME_API_KEY}"
 
@@ -131,7 +131,7 @@ Set up alerts in OneUptime for Ceph health changes:
 
 ```bash
 # Create an alert policy via OneUptime API
-curl -X POST "https://oneuptime.example.com/api/on-call-policy" \
+curl -X POST "https://oneuptime.example.com/api/on-call-duty-policy" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ONEUPTIME_API_KEY}" \
   -d '{
