@@ -22,7 +22,7 @@ echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 Make permanent by adding to `/etc/rc.local` or creating a systemd override:
 
 ```bash
-cat > /etc/systemd/system/disable-thp.service << 'EOF'
+sudo tee /etc/systemd/system/disable-thp.service << 'EOF'
 [Unit]
 Description=Disable Transparent Huge Pages
 DefaultDependencies=no
@@ -92,6 +92,8 @@ net.ipv4.tcp_max_syn_backlog=65535
 vm.overcommit_memory=1
 net.core.rmem_max=134217728
 net.core.wmem_max=134217728
+net.ipv4.tcp_rmem=4096 87380 134217728
+net.ipv4.tcp_wmem=4096 65536 134217728
 ```
 
 Apply without reboot:
