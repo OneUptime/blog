@@ -76,7 +76,7 @@ MON_POD=$(kubectl get pods -n rook-ceph -l app=rook-ceph-mon -o jsonpath='{.item
 # List available monitor commands
 kubectl exec -n rook-ceph $MON_POD -- ceph daemon mon.a help
 
-# Dump the monitor's recent operations log
+# Get the monitor's status including quorum and monmap information
 kubectl exec -n rook-ceph $MON_POD -- ceph daemon mon.a mon_status
 ```
 
@@ -85,8 +85,11 @@ kubectl exec -n rook-ceph $MON_POD -- ceph daemon mon.a mon_status
 ```bash
 MDS_POD=$(kubectl get pods -n rook-ceph -l app=rook-ceph-mds -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n rook-ceph $MDS_POD -- ceph daemon mds.0 status
-kubectl exec -n rook-ceph $MDS_POD -- ceph daemon mds.0 dump_historic_ops
+# Discover the MDS daemon name (Rook names them after the filesystem, e.g., mds.myfs-a)
+kubectl exec -n rook-ceph $MDS_POD -- ls /var/run/ceph/
+
+kubectl exec -n rook-ceph $MDS_POD -- ceph daemon mds.myfs-a status
+kubectl exec -n rook-ceph $MDS_POD -- ceph daemon mds.myfs-a dump_historic_ops
 ```
 
 ## Practical Use Case: Throttling Recovery
