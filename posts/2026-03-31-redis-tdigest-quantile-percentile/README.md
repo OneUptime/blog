@@ -35,7 +35,7 @@ TDIGEST.QUANTILE key quantile [quantile ...]
 - `key` - the T-Digest key
 - `quantile [quantile ...]` - one or more quantile values between 0.0 and 1.0
 
-Returns an array of floating-point values, one per quantile. Returns `nan` for quantiles when the digest is empty or has only one observation.
+Returns an array of floating-point values, one per quantile. Returns `nan` for quantiles when the digest is empty.
 
 ## Examples
 
