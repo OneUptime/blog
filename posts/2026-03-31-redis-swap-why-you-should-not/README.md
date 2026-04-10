@@ -42,7 +42,7 @@ redis-cli INFO memory | grep used_memory_rss
 redis-cli INFO memory | grep used_memory
 ```
 
-If `used_memory_rss` significantly exceeds `used_memory`, memory fragmentation or swap pressure is likely.
+If `used_memory_rss` is significantly less than `used_memory`, Redis pages are likely swapped out. If `used_memory_rss` significantly exceeds `used_memory`, memory fragmentation is the cause.
 
 ## Disabling Swap Entirely
 
