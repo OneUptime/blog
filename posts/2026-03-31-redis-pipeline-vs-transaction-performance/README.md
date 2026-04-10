@@ -104,7 +104,7 @@ with r.pipeline() as pipe:
     while True:
         try:
             pipe.watch("balance:alice")
-            current = int(r.get("balance:alice") or 0)
+            current = int(pipe.get("balance:alice") or 0)
             if current >= 100:
                 pipe.multi()
                 pipe.decrby("balance:alice", 100)
