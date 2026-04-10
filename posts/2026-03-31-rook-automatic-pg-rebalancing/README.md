@@ -63,7 +63,7 @@ ceph osd pool set mypool target_size_bytes 1099511627776  # 1 TB
 ## Viewing Autoscaler Recommendations
 
 ```bash
-ceph osd pool autoscale-status --format json-pretty | python3 -m json.tool
+ceph osd pool autoscale-status --format json | python3 -m json.tool
 ```
 
 Example output:
@@ -73,9 +73,9 @@ Example output:
   {
     "pool_name": "mypool",
     "pg_autoscale_mode": "on",
-    "actual_pg_num": 32,
+    "pg_num_target": 32,
     "pg_num_final": 64,
-    "would_benefit_from_increasing": true
+    "would_adjust": true
   }
 ]
 ```
@@ -83,11 +83,11 @@ Example output:
 ## Setting Global Autoscaler Behavior
 
 ```bash
-# Minimum ratio change before acting (default 3x)
+# Target number of PGs per OSD (default 100)
 ceph config set global mon_target_pg_per_osd 100
 
 # Bias pools toward more PGs
-ceph osd pool set mypool pg_num_bias 1.5
+ceph osd pool set mypool pg_autoscale_bias 1.5
 ```
 
 ## Manual PG Count Adjustment
@@ -105,7 +105,7 @@ ceph osd pool set mypool pgp_num 128
 Wait for PG splitting to complete before changing again:
 
 ```bash
-watch ceph -s | grep remapped
+watch 'ceph -s | grep remapped'
 ```
 
 ## In Rook CephBlockPool
