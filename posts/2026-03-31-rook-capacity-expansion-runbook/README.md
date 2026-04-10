@@ -42,7 +42,7 @@ Apply and watch the operator provision new OSDs:
 
 ```bash
 kubectl -n rook-ceph apply -f ceph-cluster.yaml
-watch kubectl -n rook-ceph get pods | grep osd
+watch "kubectl -n rook-ceph get pods | grep osd"
 ```
 
 ## Option 2: Add New Nodes
