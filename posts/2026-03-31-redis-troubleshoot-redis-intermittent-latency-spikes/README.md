@@ -68,9 +68,12 @@ free -h
 Prevent Redis from using swap:
 
 ```bash
-redis-cli CONFIG SET activedefrag yes
-# Also ensure maxmemory is set appropriately
-redis-cli CONFIG GET maxmemory
+# Ensure maxmemory is set to cap Redis memory usage
+redis-cli CONFIG SET maxmemory 4gb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru
+
+# Reduce OS swap tendency
+sudo sysctl vm.swappiness=1
 ```
 
 ## Common Cause 4 - Fork for BGSAVE
@@ -79,10 +82,10 @@ redis-cli CONFIG GET maxmemory
 
 ```bash
 redis-cli LATENCY HISTORY fork
-redis-cli INFO stats | grep fork_average_us
+redis-cli INFO stats | grep latest_fork_usec
 ```
 
-Reduce fork time by keeping the RSS small and enabling transparent huge pages (THP) off:
+Reduce fork time by keeping the RSS small and disabling transparent huge pages (THP):
 
 ```bash
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
