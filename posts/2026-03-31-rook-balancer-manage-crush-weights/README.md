@@ -19,18 +19,14 @@ Without the balancer, CRUSH weight imbalances (from differently-sized drives or 
 
 ## Enabling the Balancer
 
+The balancer module is an always-on mgr module since Nautilus (v14.2.x) and does not need to be manually enabled. You only need to set the mode and turn on automatic balancing:
+
 ```bash
-# Enable the balancer mgr module
-ceph mgr module enable balancer
-
-# Check available modes
-ceph balancer mode
-
 # Set mode and turn on
 ceph balancer mode upmap
 ceph balancer on
 
-# Verify status
+# Verify status (also shows current mode)
 ceph balancer status
 ```
 
@@ -40,14 +36,14 @@ ceph balancer status
 # Use upmap for precise per-PG control (recommended for new clusters)
 ceph balancer mode upmap
 
-# Use crush-compat for compatibility with older clients (pre-Luminous)
+# Use crush-compat for compatibility with older clients
 ceph balancer mode crush-compat
 
 # Check minimum client version in the cluster
 ceph features
 ```
 
-`upmap` mode is preferred for Luminous and later because it is more accurate and does not modify the CRUSH map structure.
+`upmap` mode is more accurate and does not modify the CRUSH map structure. It has been the default mode since Pacific (v16.2.0). All clients in the cluster must be Luminous or newer to use `upmap`.
 
 ## Evaluating Current Balance
 
@@ -86,11 +82,11 @@ ceph balancer eval
 When `ceph balancer on` is set, the balancer runs automatically on a schedule:
 
 ```bash
-# Set how aggressively the balancer runs (0-1, default 0.5)
+# Set interval in seconds between balancer runs (default 60)
 ceph config set mgr mgr/balancer/sleep_interval 60
 
-# Set max PG moves per balancer cycle
-ceph config set mgr mgr/balancer/max_misplaced 0.05
+# Set max ratio of PGs allowed to be misplaced at once (default 0.05)
+ceph config set mgr target_max_misplaced_ratio 0.05
 
 # Check current auto-balance settings
 ceph config get mgr mgr/balancer/sleep_interval
@@ -100,14 +96,15 @@ ceph config get mgr mgr/balancer/sleep_interval
 
 ```bash
 # By default, all pools are balanced
-# Exclude a pool from balancing
-ceph osd pool set mypool nopgchange true
+# Restrict balancing to specific pools by pool ID
+ceph config set mgr mgr/balancer/pool_ids 1,2,3
 
-# Check which pools have balancing excluded
-ceph osd dump | grep nopgchange
+# Add or remove individual pools from the balancer
+ceph balancer pool add mypool
+ceph balancer pool rm mypool
 
-# Explicitly include a pool
-ceph osd pool set mypool nopgchange false
+# Clear pool restriction (balance all pools again)
+ceph config set mgr mgr/balancer/pool_ids ""
 ```
 
 ## Monitoring Balancer Activity
@@ -128,10 +125,9 @@ ceph osd df | sort -k 6 -n | tail -10
 ```bash
 # Pause automatic balancing (keeps module loaded)
 ceph balancer off
-
-# Completely disable the module
-ceph mgr module disable balancer
 ```
+
+Note: The balancer is an always-on mgr module since Nautilus and cannot be fully disabled with `ceph mgr module disable balancer`. Use `ceph balancer off` to stop automatic balancing.
 
 ## Summary
 
