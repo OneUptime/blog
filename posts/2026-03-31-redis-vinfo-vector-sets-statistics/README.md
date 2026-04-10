@@ -28,9 +28,9 @@ Returns an array of key-value pairs (like `HGETALL` format) describing the vecto
 ## Basic Usage
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 item1
-VADD products 0.8 0.2 0.6 0.4 item2
-VADD products 0.4 0.5 0.5 0.6 item3
+VADD products VALUES 4 0.1 0.9 0.3 0.7 item1
+VADD products VALUES 4 0.8 0.2 0.6 0.4 item2
+VADD products VALUES 4 0.4 0.5 0.5 0.6 item3
 
 VINFO products
 ```
@@ -38,30 +38,39 @@ VINFO products
 Example output:
 
 ```text
- 1) "vector-dim"
- 2) (integer) 4
- 3) "vector-count"
- 4) (integer) 3
- 5) "quant-type"
- 6) "q8"
- 7) "max-level"
+ 1) "quant-type"
+ 2) "int8"
+ 3) "hnsw-m"
+ 4) (integer) 16
+ 5) "vector-dim"
+ 6) (integer) 4
+ 7) "projection-input-dim"
  8) (integer) 0
- 9) "max-node-edges"
-10) (integer) 16
-11) "ml"
-12) "0.36067999899387363"
+ 9) "size"
+10) (integer) 3
+11) "max-level"
+12) (integer) 0
+13) "attributes-count"
+14) (integer) 0
+15) "vset-uid"
+16) (integer) 1
+17) "hnsw-max-node-uid"
+18) (integer) 3
 ```
 
 ## Understanding VINFO Fields
 
 | Field | Description |
 |---|---|
+| `quant-type` | Quantization: `f32`, `int8`, or `bin` |
+| `hnsw-m` | Maximum number of edges per node (M parameter) |
 | `vector-dim` | Number of dimensions in stored vectors |
-| `vector-count` | Total number of members |
-| `quant-type` | Quantization: `float32`, `q8`, or `bin` |
+| `projection-input-dim` | Original input dimension before projection (0 if no projection) |
+| `size` | Total number of members |
 | `max-level` | Highest level in the HNSW graph (0 = only one layer) |
-| `max-node-edges` | Maximum number of edges per node (M parameter) |
-| `ml` | Level multiplier for the HNSW graph |
+| `attributes-count` | Number of nodes with attributes |
+| `vset-uid` | Unique vector set identifier |
+| `hnsw-max-node-uid` | Highest node ID in the HNSW index |
 
 ## Workflow Diagram
 
@@ -69,10 +78,10 @@ Example output:
 flowchart TD
     A[VINFO key] --> B[Parse response array]
     B --> C[vector-dim: embedding size]
-    B --> D[vector-count: total members]
-    B --> E[quant-type: float32 / q8 / bin]
+    B --> D[size: total members]
+    B --> E[quant-type: f32 / int8 / bin]
     B --> F[max-level: HNSW graph depth]
-    B --> G[max-node-edges: M parameter]
+    B --> G[hnsw-m: M parameter]
 ```
 
 ## Using VINFO in Python
@@ -90,11 +99,11 @@ def get_vinfo(r, key):
 # Seed data
 for i in range(5):
     vec = [str(j * 0.1 + i * 0.01) for j in range(8)]
-    r.execute_command("VADD", "docs", *vec, f"doc{i}")
+    r.execute_command("VADD", "docs", "VALUES", 8, *vec, f"doc{i}")
 
 info = get_vinfo(r, "docs")
 print(f"Dimensions:    {info['vector-dim']}")
-print(f"Total vectors: {info['vector-count']}")
+print(f"Total vectors: {info['size']}")
 print(f"Quantization:  {info['quant-type']}")
 print(f"HNSW max-level: {info['max-level']}")
 ```
@@ -116,7 +125,7 @@ async function getVinfo(key) {
 
 const info = await getVinfo("docs");
 console.log("Dimensions:", info["vector-dim"]);
-console.log("Total vectors:", info["vector-count"]);
+console.log("Total vectors:", info["size"]);
 console.log("Quantization:", info["quant-type"]);
 ```
 
@@ -131,7 +140,7 @@ def monitor_vinfo(r, key, interval_seconds=60):
             info = get_vinfo(r, key)
             print(
                 f"[{time.strftime('%H:%M:%S')}] "
-                f"count={info['vector-count']} "
+                f"count={info['size']} "
                 f"dim={info['vector-dim']} "
                 f"quant={info['quant-type']}"
             )
@@ -148,7 +157,7 @@ keys = ["embeddings_v1", "embeddings_v2", "embeddings_v3"]
 for key in keys:
     try:
         info = get_vinfo(r, key)
-        print(f"{key}: {info['vector-count']} vectors, {info['vector-dim']} dims, {info['quant-type']}")
+        print(f"{key}: {info['size']} vectors, {info['vector-dim']} dims, {info['quant-type']}")
     except Exception:
         print(f"{key}: does not exist")
 ```
@@ -169,7 +178,7 @@ After a bulk import, verify the index was built with the expected quantization:
 
 ```python
 info = get_vinfo(r, "products")
-assert info["quant-type"] == "q8", f"Expected q8, got {info['quant-type']}"
+assert info["quant-type"] == "int8", f"Expected int8, got {info['quant-type']}"
 assert int(info["vector-dim"]) == 1536, f"Expected 1536 dims, got {info['vector-dim']}"
 print("Index verified successfully")
 ```
