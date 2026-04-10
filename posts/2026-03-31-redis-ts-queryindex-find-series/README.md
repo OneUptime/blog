@@ -83,18 +83,18 @@ Returns only series that have all three labels with those values.
 ### Find Series Where Label Exists
 
 ```redis
-TS.QUERYINDEX experiment!=
+TS.QUERYINDEX env=production experiment!=
 ```
 
-Returns all series that have the `experiment` label (any value).
+Returns all production series that have the `experiment` label (any value). The `env=production` filter is required because at least one value-matching filter must be present.
 
 ### Find Series Where Label Does Not Exist
 
 ```redis
-TS.QUERYINDEX compaction=
+TS.QUERYINDEX metric=temperature compaction=
 ```
 
-Returns series that do not have the `compaction` label - useful for finding raw (non-compacted) series.
+Returns temperature series that do not have the `compaction` label - useful for finding raw (non-compacted) series. A value-matching filter like `metric=temperature` is required alongside the existence check.
 
 ### Filter with Value List
 
@@ -153,10 +153,10 @@ TS.QUERYINDEX host=server-decommissioned-42
 
 ### Audit Active Experiments
 
-Find all time series linked to running experiments:
+Find all production time series linked to running experiments:
 
 ```redis
-TS.QUERYINDEX experiment!=
+TS.QUERYINDEX env=production experiment!=
 ```
 
 ## TS.QUERYINDEX vs TS.MGET / TS.MRANGE
@@ -169,14 +169,14 @@ TS.QUERYINDEX env=production metric=cpu
 TS.MGET FILTER env=production metric=cpu
 
 -- Returns time range data from matching series
-TS.MRANGE -3600000 + FILTER env=production metric=cpu
+TS.MRANGE - + FILTER env=production metric=cpu
 ```
 
 `TS.QUERYINDEX` is for discovery; `TS.MGET` and `TS.MRANGE` are for data retrieval.
 
 ## Performance Considerations
 
-- `TS.QUERYINDEX` scans the label index; it is fast for well-cardinality labels.
+- `TS.QUERYINDEX` scans the label index; it is fast for low-cardinality labels.
 - Avoid labels with very high cardinality (e.g., using a UUID as a label) as they expand the index size.
 - The result set can be large; be prepared to handle many keys if the filter is broad.
 
