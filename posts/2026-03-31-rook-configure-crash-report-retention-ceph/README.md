@@ -76,13 +76,13 @@ ceph crash archive-all
 Remove crash reports older than the retention period:
 
 ```bash
-ceph crash prune <keep-for-seconds>
+ceph crash prune <keep-days>
 ```
 
 Example: remove all crashes older than 30 days:
 
 ```bash
-ceph crash prune 2592000
+ceph crash prune 30
 ```
 
 List remaining crashes:
@@ -96,7 +96,7 @@ ceph crash ls
 Crash files are also stored locally on each Ceph host. In Rook, these are inside the OSD pod's filesystem or on the host via `hostPath`. Clean up old crash files:
 
 ```bash
-find /var/lib/ceph/crash -name "*.crash" -mtime +30 -delete
+find /var/lib/ceph/crash -mindepth 1 -maxdepth 1 -type d -not -name "posted" -mtime +30 -exec rm -rf {} +
 ```
 
 For Rook OSD pods, this path is typically inside the container:
@@ -129,7 +129,7 @@ spec:
             - ceph
             - crash
             - prune
-            - "2592000"
+            - "30"
           restartPolicy: OnFailure
 ```
 
