@@ -34,9 +34,9 @@ r.hset("users", "user:2", '{"name": "Bob"}')
 HGETALL users  # Do not run this in production
 ```
 
-**No per-field TTL.** Redis hash fields cannot have individual expiration times. If you need to expire individual user profiles, you cannot do it with a single hash.
+**No per-field TTL (before Redis 7.4).** Prior to Redis 7.4, hash fields cannot have individual expiration times. Redis 7.4 introduced `HEXPIRE` and related commands for per-field expiration, but the other scaling issues with a single large hash still apply.
 
-**Memory inefficiency at scale.** Redis switches hash encoding from ziplist to hashtable when a hash exceeds 128 fields or 64 bytes per field. A single massive hash is always a hashtable - losing the memory-efficient encoding.
+**Memory inefficiency at scale.** Redis uses a compact encoding (listpack in Redis 7.0+, ziplist in earlier versions) for small hashes, but switches to a hashtable when a hash exceeds 128 fields or any field value exceeds 64 bytes. A single massive hash is always a hashtable - losing the memory-efficient encoding.
 
 ## The Right Pattern: One Hash Per Entity
 
@@ -94,10 +94,12 @@ r.hset("product:sku_123", mapping={
 If you have a lookup table with millions of entries, partition it using a hash function:
 
 ```python
+import zlib
+
 NUM_PARTITIONS = 64
 
 def get_partition(key: str) -> int:
-    return hash(key) % NUM_PARTITIONS
+    return zlib.crc32(key.encode()) % NUM_PARTITIONS
 
 def set_in_partitioned_hash(collection: str, field: str, value: str):
     partition = get_partition(field)
