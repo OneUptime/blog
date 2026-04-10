@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ceph, Rook, Proxmox, Encryption, Security, LUKS, Data Protection
+Tags: Ceph, Proxmox, Encryption, Security, LUKS, Data Protection
 
 Description: Enable Ceph OSD encryption at rest in a Proxmox environment to protect VM disk data stored in Ceph RBD pools using dmcrypt/LUKS on OSD devices.
 
@@ -14,7 +14,7 @@ Ceph supports encryption at rest using dmcrypt/LUKS on OSD devices. When enabled
 
 Ceph OSD encryption uses Linux's dm-crypt framework:
 - Each OSD device gets a unique encryption key
-- Keys are stored in the Ceph monitor's keyring store
+- Keys are stored in the Ceph monitor's config-key store
 - Encryption/decryption is transparent to clients (Proxmox VMs)
 - Performance impact is typically 5-15% on modern CPUs with AES-NI
 
@@ -86,10 +86,12 @@ Ceph encryption keys are stored in the monitor's keystore. Back them up:
 ceph config-key ls | grep "dm-crypt"
 
 # Export keys for backup (store securely!)
-ceph config-key get "dm-crypt/osd/5/luks" > /secure-backup/osd5-key.b64
+# Key paths use the OSD's FSID (UUID), not the numeric ID
+# Find the FSID from the output of: ceph config-key ls | grep dm-crypt
+ceph config-key get "dm-crypt/osd/<osd-fsid>/luks" > /secure-backup/osd-key.b64
 
 # Verify key backup
-ceph config-key exists "dm-crypt/osd/5/luks" && echo "Key exists"
+ceph config-key exists "dm-crypt/osd/<osd-fsid>/luks" && echo "Key exists"
 ```
 
 ## Re-encrypting with a New Key (Key Rotation)
@@ -107,11 +109,11 @@ pveceph osd create /dev/sdd --encrypted
 # Monitor rebalancing
 ceph -w | grep "recovery\|rebalance"
 
-# After rebalancing, remove old unencrypted OSD
+# After rebalancing, remove old OSD
 ceph osd out osd.1
-# Wait for full rebalancing
-ceph osd purge osd.1 --yes-i-really-mean-it
-pveceph osd destroy 1
+# Wait for full rebalancing, then destroy via Proxmox
+# pveceph osd destroy handles the Ceph-level purge internally
+pveceph osd destroy 1 --cleanup
 ```
 
 ## Impact on VM Performance
