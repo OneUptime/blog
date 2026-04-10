@@ -12,9 +12,9 @@ Description: Learn how to configure advanced NFS-Ganesha settings in Rook includ
 
 The default `CephNFS` configuration in Rook uses sensible defaults for a basic deployment, but production environments often need tuning. Advanced configuration covers client-level access controls, squash policies, logging verbosity, cache parameters, and custom Ganesha config blocks. All of these are set via the `CephNFS` spec's `server` section or via per-export configurations managed through the Ceph CLI.
 
-## Custom Ganesha Config Block
+## CephNFS Resource and Custom Ganesha Config
 
-The `CephNFS` spec accepts a `ganesha.config` string that is injected directly into the Ganesha configuration. Use this for global NFS daemon settings:
+First, define the `CephNFS` resource. The `server` section controls the number of active NFS-Ganesha daemons and their log level:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -23,33 +23,34 @@ metadata:
   name: my-nfs
   namespace: rook-ceph
 spec:
-  rados:
-    pool: my-fs-data0
-    namespace: nfs-ns
-    object: conf-nfs.my-nfs
   server:
     active: 2
     logLevel: NIV_EVENT
-  ganesha:
-    config: |
-      NFS_CORE_PARAM {
-        Protocols = 4;
-        NFS_Port = 2049;
-        fsid_device = true;
-      }
-      CACHE_INODE {
-        Entries_HWMark = 100000;
-        Dir_Chunk = 1000;
-        NParts = 7;
-      }
-      NFSv4 {
-        Lease_Lifetime = 120;
-        Grace_Period = 120;
-        Minor_Versions = 1, 2;
-      }
 ```
 
-The `CACHE_INODE` block tunes the in-memory directory and inode cache, which significantly affects metadata performance for large filesystems.
+Custom NFS-Ganesha configuration blocks are applied via the Ceph CLI, not through the `CephNFS` CRD. Use `ceph nfs cluster config set` from the Rook toolbox to inject global daemon settings:
+
+```bash
+ceph nfs cluster config set my-nfs - <<'EOF'
+NFS_CORE_PARAM {
+  Protocols = 4;
+  NFS_Port = 2049;
+  fsid_device = true;
+}
+MDCACHE {
+  Entries_HWMark = 100000;
+  Dir_Chunk = 1000;
+  NParts = 7;
+}
+NFSv4 {
+  Lease_Lifetime = 120;
+  Grace_Period = 120;
+  Minor_Versions = 1, 2;
+}
+EOF
+```
+
+The `MDCACHE` block (formerly `CACHE_INODE` in older NFS-Ganesha versions) tunes the in-memory directory and inode cache, which significantly affects metadata performance for large filesystems.
 
 ## Per-Export Client Restrictions
 
@@ -117,4 +118,4 @@ kubectl -n rook-ceph logs \
 
 ## Summary
 
-Advanced NFS configuration in Rook is handled through the `ganesha.config` block for global daemon settings and via the Ceph NFS export apply API for per-export client restrictions and squash policies. Tune the inode cache parameters for metadata-heavy workloads, set appropriate squash modes for security, and use debug log levels when troubleshooting NFS mount or permission issues.
+Advanced NFS configuration in Rook is handled through the `ceph nfs cluster config set` command for global daemon settings and via the Ceph NFS export apply API for per-export client restrictions and squash policies. Tune the inode cache parameters for metadata-heavy workloads, set appropriate squash modes for security, and use debug log levels when troubleshooting NFS mount or permission issues.
