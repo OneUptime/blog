@@ -54,7 +54,7 @@ Override `@Cacheable` error handling via a custom `CacheErrorHandler`:
 ```java
 @Configuration
 @EnableCaching
-public class CacheConfig extends CachingConfigurerSupport {
+public class CacheConfig implements CachingConfigurer {
 
     @Override
     public CacheErrorHandler errorHandler() {
