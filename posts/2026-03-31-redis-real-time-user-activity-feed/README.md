@@ -8,7 +8,7 @@ Description: Learn to build a real-time user activity feed using Redis Lists and
 
 ---
 
-Activity feeds - "Alice liked your post", "Bob followed you" - need to be fast to read and easy to paginate. Redis Lists and Sorted Sets are perfect because prepending an event is O(1) and range queries are O(log N + M).
+Activity feeds - "Alice liked your post", "Bob followed you" - need to be fast to read and easy to paginate. Redis Lists are perfect because prepending an event with LPUSH is O(1), and Sorted Sets offer O(log N + M) range queries for score-based ordering.
 
 ## Storing Activity Events
 
@@ -96,4 +96,4 @@ redis-cli MEMORY USAGE feed:user_123
 
 ## Summary
 
-Redis Lists give you O(1) prepend for new events and O(1) paging with LRANGE. Fan-out on write scales well when follower counts are moderate; for large followings, consider fan-out on read. Use LTRIM to cap feed size and avoid unbounded memory growth.
+Redis Lists give you O(1) prepend for new events and efficient paging with LRANGE. Fan-out on write scales well when follower counts are moderate; for large followings, consider fan-out on read. Use LTRIM to cap feed size and avoid unbounded memory growth.
