@@ -60,7 +60,7 @@ spec:
   - s3
 
   # Optional: request an existing bucket by name
-  existingBucketID: ""
+  existingBucketName: ""
 ```
 
 ## Checking BucketClaim Status
@@ -72,7 +72,6 @@ kubectl describe bucketclaim -n my-app my-app-bucket
 Key status fields:
 - `bucketReady: true` - bucket has been successfully provisioned
 - `bucketName` - the actual bucket name created in Ceph
-- `bucketID` - the unique COSI identifier for the bucket
 
 ## Listing BucketClaims
 
@@ -103,21 +102,20 @@ metadata:
   namespace: my-app
 spec:
   bucketClassName: rook-ceph-bucketclass
-  existingBucketID: "ceph-bucket-abc123"
+  existingBucketName: "ceph-bucket-abc123"
   protocols:
   - s3
 ```
 
 ## Multi-Protocol Claims
 
-Ceph RGW also supports the Swift protocol:
+The COSI specification defines three protocols: `s3`, `azure`, and `gcs`. Ceph RGW's COSI driver currently only supports the S3 protocol:
 
 ```yaml
 spec:
   bucketClassName: rook-ceph-bucketclass
   protocols:
   - s3
-  - azure
 ```
 
 ## Deleting a BucketClaim
@@ -127,8 +125,8 @@ kubectl delete bucketclaim -n my-app my-app-bucket
 ```
 
 The bucket in Ceph will be deleted or retained based on the `deletionPolicy` of the BucketClass:
-- `delete` - removes the bucket and all objects
-- `retain` - keeps the bucket intact in Ceph
+- `Delete` - removes the bucket and all objects
+- `Retain` - keeps the bucket intact in Ceph
 
 ## Troubleshooting
 
