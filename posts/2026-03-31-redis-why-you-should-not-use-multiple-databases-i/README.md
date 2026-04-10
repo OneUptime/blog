@@ -54,19 +54,22 @@ const redis = new Redis.Cluster([{ host: 'localhost', port: 7000 }]);
 await redis.select(1); // Error: ERR SELECT is not allowed in cluster mode
 ```
 
-### 3. No Per-Database ACLs in Older Versions
+### 3. No Per-Database ACLs
 
-Redis ACL rules in older versions applied at the instance level, not per-database. Users with access to the instance could read from any database.
+Redis ACL rules apply at the instance level, not per-database. Users with access to the instance can read from any database. Even with Redis 7's ACL improvements, there is no way to restrict a user to a specific database number.
 
-### 4. Cross-Database Operations Are Impossible
+### 4. Cross-Database Operations Are Limited
 
-You cannot copy keys between databases without client-side workarounds. Pub/Sub, Lua scripts, and transactions (MULTI/EXEC) do not respect database boundaries in useful ways.
+Redis provides MOVE (since 1.0) and COPY with a DB option (since 6.2) for transferring keys between databases, but most other operations do not work across database boundaries. Pub/Sub, Lua scripts, and transactions (MULTI/EXEC) do not respect database boundaries in useful ways.
 
 ```bash
-# You cannot do this directly:
-COPY key db1:key  # This is not valid Redis syntax
+# MOVE a key from the current database to database 1
+MOVE mykey 1
 
-# You must manually move keys using DUMP/RESTORE or client-side logic
+# COPY a key to database 1 (Redis 6.2+)
+COPY mykey mykey DB 1
+
+# But you cannot run cross-database queries, joins, or transactions
 ```
 
 ### 5. Monitoring Becomes Confusing
