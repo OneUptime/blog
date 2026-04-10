@@ -34,7 +34,7 @@ If the script has already written data, `SCRIPT KILL` will fail to protect data 
 
 ```bash
 127.0.0.1:6379> SCRIPT KILL
-(error) UNKILLABLE Script attempted to write but took too long. You need to call SHUTDOWN NOSAVE.
+(error) UNKILLABLE Sorry the script already executed write commands against the dataset. You can either wait the script termination or kill the server in a hard way using the SHUTDOWN NOSAVE command.
 ```
 
 In that case, your only safe option is:
@@ -100,8 +100,8 @@ while True:
 ## Monitoring Script Execution Time
 
 ```bash
-127.0.0.1:6379> INFO stats
-# Look for: used_cpu_sys_children, used_cpu_user_children
+127.0.0.1:6379> INFO commandstats
+# Look for: cmdstat_eval, cmdstat_evalsha (calls, usec, usec_per_call)
 ```
 
 Add `redis.log` calls inside scripts to help diagnose slow paths:
