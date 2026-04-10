@@ -30,7 +30,7 @@ The most common cause is losing too many primary nodes simultaneously:
 
 ### Quorum Failure
 
-Redis Cluster uses a gossip protocol and requires a majority of nodes to agree for automatic failover. With 3 primaries, you need at least 2 reachable. With 6 nodes (3 primary + 3 replica), you need at least 4 reachable.
+Redis Cluster uses a gossip protocol and requires a majority of master nodes to agree for automatic failover. With 3 primaries, you need at least 2 masters reachable. Adding replicas does not change this quorum requirement — with 3 primaries and 3 replicas, you still need at least 2 masters reachable for failover to proceed.
 
 ### Manual Failover or Misconfiguration
 
@@ -55,7 +55,7 @@ cluster_known_nodes:6
 cluster_size:3
 ```
 
-`cluster_state:fail` confirms the cluster is down. `cluster_slots_fail` shows which slots have no reachable primary.
+`cluster_state:fail` confirms the cluster is down. `cluster_slots_fail` shows how many slots have no reachable primary.
 
 ### Check Node Status
 
@@ -138,7 +138,7 @@ If data loss is acceptable and you need to quickly restore:
 # Start cluster with cluster-reset hard
 redis-cli CLUSTER RESET HARD
 # Re-create cluster
-redis-cli --cluster create 10.0.0.1:6379 10.0.0.2:6379 10.0.0.3:6379 --cluster-replicas 1
+redis-cli --cluster create 10.0.0.1:6379 10.0.0.2:6379 10.0.0.3:6379
 ```
 
 ## Preventing CLUSTERDOWN
@@ -169,7 +169,7 @@ Place primaries and replicas in different AZs so a single AZ failure does not ta
 
 ### Monitor Cluster State
 
-```bash
+```yaml
 # Prometheus alert
 - alert: RedisClusterDown
   expr: redis_cluster_state == 0
