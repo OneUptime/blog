@@ -50,7 +50,7 @@ spec:
     allowMultiplePerNode: false
     stretchCluster:
       failureDomainLabel: topology.kubernetes.io/zone
-      subFailureDomain: kubernetes.io/hostname
+      subFailureDomain: host
       zones:
         - name: datacenter-a
           arbiter: false
