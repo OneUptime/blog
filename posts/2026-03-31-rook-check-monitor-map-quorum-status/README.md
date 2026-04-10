@@ -88,9 +88,9 @@ If monitors disagree on the monmap epoch, they may fail to synchronize. Check ea
 for mon in a b c; do
   echo "Monitor $mon epoch:"
   kubectl -n rook-ceph exec -it rook-ceph-mon-${mon}-<suffix> -- \
-    ceph-mon --mon-data /var/lib/ceph/mon/ceph-${mon} \
+    bash -c "ceph-mon --mon-data /var/lib/ceph/mon/ceph-${mon} \
     --extract-monmap /tmp/monmap && \
-    monmaptool --print /tmp/monmap 2>/dev/null | grep epoch
+    monmaptool --print /tmp/monmap 2>/dev/null | grep epoch"
 done
 ```
 
