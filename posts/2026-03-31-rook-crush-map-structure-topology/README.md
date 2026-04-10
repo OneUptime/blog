@@ -81,6 +81,8 @@ root default {
 rule replicated_rule {
     id 0
     type replicated
+    min_size 1
+    max_size 10
     step take default
     step chooseleaf firstn 0 type host
     step emit
@@ -95,7 +97,7 @@ Ceph supports several bucket algorithms that determine how sub-items are selecte
 uniform  - all items have equal weight; fast but inflexible
 list     - weighted probability list; good for append-only growth
 tree     - binary tree; efficient for large buckets
-straw    - independent weighting; handles weight changes well
+straw    - weighted straw-draw; suboptimal data movement on weight changes
 straw2   - improved straw; default and recommended for most use cases
 ```
 
@@ -107,6 +109,8 @@ Rules define the placement algorithm for a pool:
 rule replicated_rule {
     id 0
     type replicated          # replicated or erasure
+    min_size 1               # minimum number of replicas
+    max_size 10              # maximum number of replicas
     step take default        # start from the 'default' root bucket
     step chooseleaf firstn 0 type host   # choose N distinct hosts
     step emit                # output the selected OSDs
@@ -122,7 +126,7 @@ The `chooseleaf firstn 0 type host` line tells CRUSH to select as many distinct 
 crushtool -c crush.txt -o crush-new.bin
 
 # Test the new CRUSH map without applying
-crushtool -i crush-new.bin --test --num-rep=3 --pool=1 --min-x=0 --max-x=100
+crushtool -i crush-new.bin --test --num-rep=3 --rule=0 --min-x=0 --max-x=100
 
 # Apply the compiled CRUSH map to the cluster
 ceph osd setcrushmap -i crush-new.bin
