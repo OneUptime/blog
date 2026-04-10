@@ -71,8 +71,6 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    environment:
-      - REDIS_PASSWORD=your_strong_password
     command: >
       redis-server
       --requirepass your_strong_password
@@ -134,8 +132,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REDIS_URL=redis://redis:6379
-      - REDIS_PASSWORD=your_strong_password
+      - REDIS_URL=redis://:your_strong_password@redis:6379
     depends_on:
       redis:
         condition: service_healthy
