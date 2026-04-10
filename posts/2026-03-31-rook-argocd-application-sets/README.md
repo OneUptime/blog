@@ -95,6 +95,9 @@ spec:
       source:
         repoURL: https://github.com/myorg/rook-gitops
         path: "overlays/{{metadata.labels.environment}}"
+      destination:
+        server: "{{server}}"
+        namespace: rook-ceph
 ```
 
 Label your clusters:
