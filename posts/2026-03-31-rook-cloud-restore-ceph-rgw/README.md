@@ -37,9 +37,11 @@ aws s3api restore-object \
 ```
 
 Supported restore tiers in Ceph RGW:
-- `Expedited`: Fastest (minutes)
-- `Standard`: Moderate speed (hours)
-- `Bulk`: Slowest, lowest priority (hours)
+- `Expedited`: Highest priority
+- `Standard`: Default priority
+- `Bulk`: Lowest priority
+
+Note: These tiers are accepted for S3 API compatibility. In Ceph RGW cloud-s3 configurations, actual restore speed depends on the remote S3 endpoint performance rather than the tier parameter, unlike AWS Glacier where each tier has distinct retrieval times.
 
 ## Checking Restore Status
 
@@ -73,18 +75,16 @@ aws s3 cp s3://mybucket/archive/myfile.txt ./myfile.txt \
 
 ## Monitoring Restore Jobs
 
-Check active restore jobs via the RGW admin API:
+The most reliable way to monitor restore progress is via HEAD object requests as shown in the "Checking Restore Status" section above. You can also check lifecycle processing activity:
 
 ```bash
-radosgw-admin reshard status
+radosgw-admin lc list
 ```
 
-For detailed job status:
+To view the lifecycle configuration for a specific bucket:
 
 ```bash
-radosgw-admin cloud-transition stats \
-  --bucket mybucket \
-  --key archive/myfile.txt
+radosgw-admin lc get --bucket=mybucket
 ```
 
 ## Automating Restore with Python
