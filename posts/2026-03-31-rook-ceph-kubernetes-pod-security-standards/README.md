@@ -20,7 +20,7 @@ Kubernetes defines three PSS levels:
 - `baseline` - Minimal restrictions, blocks known privilege escalations
 - `restricted` - Heavily restricted, requires non-root, drops all capabilities
 
-Rook-Ceph OSD pods run as root and require privileged access. They must operate in a namespace with `privileged` or at least `baseline` enforcement.
+Rook-Ceph OSD pods run as root and require privileged access. They must operate in a namespace with `privileged` enforcement, as even `baseline` blocks privileged containers.
 
 ## Labeling the Rook-Ceph Namespace
 
@@ -101,16 +101,16 @@ spec:
 
 ## Auditing for Violations
 
-Enable audit mode first to detect violations before enforcing:
+Enable warn mode first to detect violations before enforcing. Warnings are returned directly in kubectl output when pods are created:
 
 ```bash
 kubectl label namespace rook-ceph \
+  pod-security.kubernetes.io/warn=privileged \
   pod-security.kubernetes.io/audit=privileged \
   --overwrite
-
-# Check audit logs
-kubectl get events -n rook-ceph | grep "PodSecurity"
 ```
+
+Warnings from the `warn` mode appear in kubectl output when creating or updating pods. Violations from `audit` mode are recorded in the API server audit log (configured via `--audit-log-path` or an audit webhook), not in Kubernetes Events.
 
 ## Summary
 
