@@ -61,7 +61,7 @@ spec:
 # 1 TB / 320 GB = ~3 x 8 TB HDDs per NVMe
 
 # Monitor actual DB usage - if spilling to HDD, add NVMe
-ceph daemon osd.0 perf dump | grep bluefs_bytes
+ceph daemon osd.0 perf dump bluefs | grep bytes
 ```
 
 ## Verify Device Assignment
@@ -99,7 +99,7 @@ ceph config set osd bluestore_rocksdb_options \
 ceph daemon osd.0 perf dump | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-spills = d.get('bluefs', {}).get('bluefs_bytes_written_slow', 0)
+spills = d.get('bluefs', {}).get('bytes_written_slow', 0)
 if spills > 0:
     print(f'DB spill to slow device: {spills/(1024**3):.2f} GB - add more NVMe')
 "
