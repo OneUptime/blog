@@ -100,7 +100,7 @@ def safe_flush():
     # Move batch atomically to processing key
     pipeline = r.pipeline()
     for _ in range(FLUSH_BATCH_SIZE):
-        pipeline.rpoplpush(WRITE_BUFFER, PROCESSING_BUFFER)
+        pipeline.lmove(WRITE_BUFFER, PROCESSING_BUFFER, "RIGHT", "LEFT")
     pipeline.execute()
 
     items = r.lrange(PROCESSING_BUFFER, 0, -1)
@@ -141,5 +141,5 @@ Not a good fit:
 
 ## Summary
 
-Redis as a write buffer absorbs high-frequency writes in memory and flushes them to the database in large, efficient batches. Use `RPOPLPUSH` to a processing key before flushing so that a crash does not lose buffered data. Monitor buffer depth as a health metric and apply backpressure when it grows too large.
+Redis as a write buffer absorbs high-frequency writes in memory and flushes them to the database in large, efficient batches. Use `LMOVE` to a processing key before flushing so that a crash does not lose buffered data. Monitor buffer depth as a health metric and apply backpressure when it grows too large.
 
