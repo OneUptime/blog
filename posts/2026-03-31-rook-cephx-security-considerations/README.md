@@ -93,8 +93,9 @@ Or configure it in Rook's `CephCluster`:
 ```yaml
 spec:
   network:
-    encryption:
-      enabled: true
+    connections:
+      encryption:
+        enabled: true
 ```
 
 ## Key Rotation Policy
@@ -102,9 +103,10 @@ spec:
 Establish a key rotation schedule for all client users:
 
 ```bash
-# Rotate and update Kubernetes Secret
-ceph auth rotate client.myapp
-NEW_KEY=$(ceph auth print-key client.myapp)
+# Rotate key by deleting and recreating the user
+ceph auth del client.myapp
+ceph auth get-or-create client.myapp mon 'allow r' osd 'allow rw pool=myapp-data'
+NEW_KEY=$(ceph auth get-key client.myapp)
 kubectl -n myapp-namespace patch secret ceph-myapp-key \
   --type='json' \
   -p="[{\"op\": \"replace\", \"path\": \"/data/key\", \"value\": \"$(echo -n $NEW_KEY | base64)\"}]"
