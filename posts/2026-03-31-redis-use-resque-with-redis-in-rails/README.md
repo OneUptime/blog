@@ -17,7 +17,6 @@ Resque is a Redis-backed Ruby library for creating background jobs. Unlike Sidek
 ```ruby
 # Gemfile
 gem "resque"
-gem "resque-web", require: false
 ```
 
 ```bash
@@ -31,10 +30,7 @@ Create `config/initializers/resque.rb`:
 ```ruby
 require "resque"
 
-Resque.redis = Redis.new(
-  url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"),
-  namespace: "resque",
-)
+Resque.redis = ENV.fetch("REDIS_URL", "redis://localhost:6379/0")
 
 # Set the namespace so Resque keys are isolated
 Resque.redis.namespace = "resque:myapp"
@@ -146,7 +142,6 @@ end
 
 ```ruby
 class NotificationJob
-  extend Resque::Plugins::Hooks
   @queue = :notifications
 
   def self.before_perform_log(user_id, type)
@@ -172,7 +167,7 @@ def queue_info
   {
     queues: Resque.queues,
     workers: Resque.workers.count,
-    working: Resque.working.count,
+    working: Resque::Worker.working.count,
     failed: Resque::Failure.count,
     queue_sizes: Resque.queues.each_with_object({}) do |q, h|
       h[q] = Resque.size(q)
