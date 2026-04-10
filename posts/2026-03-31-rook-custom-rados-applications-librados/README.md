@@ -56,9 +56,11 @@ class RADOSTaskQueue:
                 ioctx.set_xattr(f"task:{task_id}", "status", b"pending")
 
                 # Add to pending queue index via omap on a queue object
-                ioctx.set_omap("queue:pending", {
-                    f"{time.time()}:{task_id}": task_id.encode()
-                })
+                with rados.WriteOpCtx() as write_op:
+                    ioctx.set_omap(write_op,
+                        (f"{time.time()}:{task_id}",),
+                        (task_id.encode(),))
+                    ioctx.operate_write_op(write_op, "queue:pending")
 
         return task_id
 
@@ -66,10 +68,11 @@ class RADOSTaskQueue:
         with rados.Rados(conffile=self.conf) as cluster:
             with self._get_ioctx(cluster) as ioctx:
                 # Read first entry from pending queue
-                with ioctx.get_omap_vals(
-                    "queue:pending", "", "", 1
-                ) as omap:
-                    items = list(omap)
+                with rados.ReadOpCtx() as read_op:
+                    omap_iter, ret = ioctx.get_omap_vals(
+                        read_op, "", "", 1)
+                    ioctx.operate_read_op(read_op, "queue:pending")
+                    items = list(omap_iter)
 
                 if not items:
                     return None
@@ -91,8 +94,13 @@ class RADOSTaskQueue:
                 ioctx.set_xattr(f"task:{task_id}", "status", b"running")
 
                 # Remove from pending, add to running
-                ioctx.remove_omap_keys("queue:pending", {queue_key})
-                ioctx.set_omap("queue:running", {task_id: task_id.encode()})
+                with rados.WriteOpCtx() as write_op:
+                    ioctx.remove_omap_keys(write_op, (queue_key,))
+                    ioctx.operate_write_op(write_op, "queue:pending")
+                with rados.WriteOpCtx() as write_op:
+                    ioctx.set_omap(write_op,
+                        (task_id,), (task_id.encode(),))
+                    ioctx.operate_write_op(write_op, "queue:running")
 
                 return task
 
@@ -110,7 +118,9 @@ class RADOSTaskQueue:
                     json.dumps(task).encode()
                 )
                 ioctx.set_xattr(f"task:{task_id}", "status", b"done")
-                ioctx.remove_omap_keys("queue:running", {task_id})
+                with rados.WriteOpCtx() as write_op:
+                    ioctx.remove_omap_keys(write_op, (task_id,))
+                    ioctx.operate_write_op(write_op, "queue:running")
 
 # Usage
 queue = RADOSTaskQueue("/etc/ceph/ceph.conf", "tasks")
@@ -128,15 +138,14 @@ if task:
 Use watch/notify to signal consumers when new tasks arrive:
 
 ```python
-def on_notify(notify_id, notifier_id, watch_id, data, ioctx):
+def on_notify(notify_id, notifier_id, watch_id, data):
     print(f"New task notification: {data.decode()}")
-    ioctx.notify_ack(notify_id, watch_id, b"")
 
 # Producer: notify after submitting
-ioctx.notify("queue:pending", b"new_task", 5000)
+ioctx.notify("queue:pending", "new_task", 5000)
 
 # Consumer: watch for notifications
-watch_id = ioctx.watch("queue:pending", on_notify)
+watch = ioctx.watch("queue:pending", on_notify)
 ```
 
 ## Summary
