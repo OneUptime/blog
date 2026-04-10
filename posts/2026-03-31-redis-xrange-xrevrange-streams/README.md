@@ -30,7 +30,7 @@ XREVRANGE key end start [COUNT count]
 ```
 
 - `start` / `end` - ID boundaries; `-` = min possible ID, `+` = max possible ID
-- Use `(id` for an exclusive lower bound (not the full ID, just the start)
+- Use `(id` for an exclusive boundary on either start or end (available since Redis 6.2)
 - `COUNT count` - limit the number of messages returned
 
 ## Examples
@@ -200,7 +200,7 @@ done
 
 **Replay and audit** - Read historical messages in order to replay events or audit what happened during a time range.
 
-**Stream inspection** - Use `XRANGE key - + COUNT 10` to inspect recent messages in a stream during debugging.
+**Stream inspection** - Use `XREVRANGE key + - COUNT 10` to inspect the most recent messages in a stream during debugging.
 
 ## Summary
 
