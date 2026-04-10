@@ -10,7 +10,7 @@ Description: Learn how to configure OSD primary affinity in Ceph to bias which O
 
 ## What Is OSD Primary Affinity?
 
-In Ceph, each Placement Group (PG) has one primary OSD that handles all client reads and write acknowledgments before forwarding to replicas. By default, any OSD in a PG's acting set can become primary. Primary affinity is a per-OSD weight between 0.0 and 1.0 that biases CRUSH's primary selection. Setting affinity to 0 prevents an OSD from becoming primary, while 1.0 (the default) gives it full eligibility. This is useful for directing reads toward faster drives (SSDs vs HDDs) or excluding partially failed OSDs from serving primary duties.
+In Ceph, each Placement Group (PG) has one primary OSD that handles all client reads and coordinates writes by forwarding them to replicas, acknowledging to the client only after all replicas confirm persistence. By default, any OSD in a PG's acting set can become primary. Primary affinity is a per-OSD weight between 0.0 and 1.0 that biases CRUSH's primary selection. Setting affinity to 0 prevents an OSD from becoming primary, while 1.0 (the default) gives it full eligibility. This is useful for directing reads toward faster drives (SSDs vs HDDs) or excluding partially failed OSDs from serving primary duties.
 
 ## Checking Current Primary Affinity
 
@@ -25,7 +25,7 @@ Or check a specific OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd primary-affinity osd.0
+  ceph osd tree | grep osd.0
 ```
 
 ## Setting Primary Affinity
@@ -86,10 +86,10 @@ After changing affinities, verify that PGs redistributed:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph pg dump | awk '{print $15}' | sort | uniq -c | sort -rn | head -20
+  ceph pg dump pgs_brief | awk '{print $6}' | sort -n | uniq -c | sort -rn | head -20
 ```
 
-This shows how many PGs each OSD is primary for, confirming the bias took effect.
+This shows how many PGs each OSD is acting primary for, confirming the bias took effect.
 
 ## Summary
 
