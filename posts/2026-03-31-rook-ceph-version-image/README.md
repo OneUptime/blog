@@ -109,14 +109,14 @@ kubectl -n rook-ceph create secret docker-registry ceph-pull-secret \
   --docker-password=password
 ```
 
-Reference the secret in the Rook operator ConfigMap:
+Override the CSI plugin image in the Rook operator ConfigMap to use your private registry:
 
 ```yaml
 data:
-  ROOK_CSI_CEPH_IMAGE: my-registry.internal/ceph/ceph:v19.2.0
+  ROOK_CSI_CEPH_IMAGE: "my-registry.internal/cephcsi/cephcsi:v3.12.0"
 ```
 
-And reference the pull secret in the CephCluster:
+And configure the Ceph daemon image and pull secret in the CephCluster:
 
 ```yaml
 spec:
@@ -140,7 +140,7 @@ kubectl -n rook-ceph patch cephcluster rook-ceph \
 Rook performs a rolling upgrade, updating one daemon at a time. Monitor progress:
 
 ```bash
-kubectl -n rook-ceph get jobs -w
+kubectl -n rook-ceph get pods -w
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph versions
 ```
 
