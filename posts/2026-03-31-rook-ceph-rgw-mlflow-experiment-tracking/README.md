@@ -54,6 +54,9 @@ spec:
     matchLabels:
       app: mlflow
   template:
+    metadata:
+      labels:
+        app: mlflow
     spec:
       containers:
         - name: mlflow
@@ -135,4 +138,4 @@ for run in runs:
 
 ## Summary
 
-Ceph RGW integrates with MLflow as a drop-in S3-compatible artifact backend by setting `MLFLOW_S3_ENDPOINT_URL` to the RGW endpoint. All experiment artifacts, model checkpoints, and metrics are stored in Ceph with replication and CRUSH placement. This eliminates cloud storage costs while providing enterprise storage features for your ML experiment tracking platform.
+Ceph RGW integrates with MLflow as a drop-in S3-compatible artifact backend by setting `MLFLOW_S3_ENDPOINT_URL` to the RGW endpoint. All experiment artifacts and model checkpoints are stored in Ceph with replication and CRUSH placement, while metrics and parameters remain in the PostgreSQL backend store. This eliminates cloud storage costs while providing enterprise storage features for your ML experiment tracking platform.
