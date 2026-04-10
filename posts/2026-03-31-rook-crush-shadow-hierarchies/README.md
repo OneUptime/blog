@@ -19,9 +19,6 @@ This allows CRUSH rules to target a specific drive type using `step take default
 ```bash
 # Show the main tree and shadow hierarchies
 ceph osd crush tree --show-shadow
-
-# Show all trees including shadows
-ceph osd tree --show-shadow
 ```
 
 Example output with shadow hierarchies:
@@ -44,7 +41,7 @@ ID    CLASS  WEIGHT   TYPE NAME          STATUS  REWEIGHT  PRI-AFF
  2    ssd     1.000           osd.2        up    1.00000   1.00000
 ```
 
-Shadow buckets use large negative IDs (like -100, -101) and are automatically created and maintained.
+Shadow buckets use negative IDs (like -100, -101) and are automatically created and maintained.
 
 ## How CRUSH Rules Use Shadow Hierarchies
 
@@ -97,12 +94,12 @@ ssd shadow host:  node-01~ssd
 Shadow hierarchies are managed automatically, but you can remove a device class entirely:
 
 ```bash
-# Remove a class from all OSDs (also removes shadow tree entries)
-ceph osd crush rm-device-class ssd
-
-# Remove a class from specific OSDs
+# Remove the device class from specific OSDs (also removes shadow tree entries when no OSDs remain)
 ceph osd crush rm-device-class osd.2
 ceph osd crush rm-device-class osd.3
+
+# To remove a class from all OSDs at once, combine with class listing
+ceph osd crush rm-device-class $(ceph osd crush class ls-osd ssd)
 
 # Verify shadow hierarchy is gone
 ceph osd crush tree --show-shadow | grep "~ssd"
