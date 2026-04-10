@@ -10,7 +10,7 @@ Description: Learn how to configure FileStore OSD settings in legacy Ceph cluste
 
 ## FileStore Overview
 
-FileStore was the original OSD backend in Ceph, storing objects as files on a local POSIX filesystem (typically XFS). It uses a write-ahead journal (WAJ) to ensure consistency. FileStore is deprecated as of Ceph Reef and removed in later releases. BlueStore is now the default and recommended backend.
+FileStore was the original OSD backend in Ceph, storing objects as files on a local POSIX filesystem (typically XFS). It uses a write-ahead journal to ensure consistency. FileStore has been deprecated since Ceph Luminous (where BlueStore became the default) and is removed in Ceph Reef and later releases. BlueStore is now the default and recommended backend.
 
 If you are managing an older cluster still using FileStore, this guide covers the relevant configuration settings.
 
@@ -32,7 +32,7 @@ filestore_min_sync_interval = 0.01
 # I/O threads
 filestore_op_threads = 2
 filestore_queue_max_ops = 500
-filestore_queue_max_bytes = 100485760
+filestore_queue_max_bytes = 104857600
 
 # XFS mount options
 filestore_xfs_extsize = true
