@@ -15,7 +15,7 @@ CephFS relies on Metadata Servers (MDS) to handle all file system metadata opera
 ## MDS Roles
 
 - **Active MDS**: serves all metadata requests for its assigned directory rank
-- **Standby MDS**: warm spare that mirrors the active's journal
+- **Standby MDS**: cold spare that remains idle until needed for failover
 - **Standby-replay MDS**: "hot standby" that replays the active journal in real time, enabling faster failover
 
 ## Configuring Active-Standby MDS in Rook
@@ -130,13 +130,11 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
 
 # Check active MDS cache pressure
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mds.0 perf dump | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); \
-   print('cache size:', d['mds']['mds_mem.heap'])"
+  ceph tell mds.0 perf dump mds_mem
 
 # Get MDS cache stats
 kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph daemon mds.0 cache status
+  ceph tell mds.0 cache status
 ```
 
 ## MDS Memory Tuning
