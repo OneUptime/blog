@@ -24,7 +24,8 @@ When initialized, RGW creates the following pools:
 | `default.rgw.log` | Operation log |
 | `default.rgw.buckets.index` | Bucket object index |
 | `default.rgw.buckets.data` | Object data |
-| `default.rgw.buckets.non-ec` | Non-EC data overflow |
+| `default.rgw.buckets.non-ec` | Multipart upload metadata (data_extra_pool) |
+| `default.rgw.otp` | MFA/TOTP token storage |
 
 ## Pre-Creating Pools
 
@@ -42,7 +43,7 @@ ceph osd pool set default.rgw.buckets.data allow_ec_overwrites true
 
 # Create remaining replicated pools
 for pool in .rgw.root default.rgw.control default.rgw.meta \
-            default.rgw.log default.rgw.buckets.non-ec; do
+            default.rgw.log default.rgw.buckets.non-ec default.rgw.otp; do
   ceph osd pool create $pool replicated
   ceph osd pool set $pool size 3
 done
@@ -50,21 +51,15 @@ done
 # Tag all pools for RGW application
 for pool in .rgw.root default.rgw.control default.rgw.meta \
             default.rgw.log default.rgw.buckets.index \
-            default.rgw.buckets.data default.rgw.buckets.non-ec; do
+            default.rgw.buckets.data default.rgw.buckets.non-ec \
+            default.rgw.otp; do
   ceph osd pool application enable $pool rgw
 done
 ```
 
-## Initialize RGW Without Auto Pool Creation
+## Using Pre-Created Pools with RGW
 
-Start RGW with auto pool creation disabled:
-
-```bash
-ceph config set client.rgw rgw_create_pools false
-
-# Then manually run pool initialization
-radosgw-admin pool init
-```
+RGW automatically detects and uses pools that already exist. If you pre-create the pools listed above before starting the RGW daemon, it will use them without attempting to recreate them. No additional configuration is needed — simply ensure all required pools exist before RGW initialization.
 
 ## Customizing Pool Names in Zone Configuration
 
