@@ -24,8 +24,8 @@ A typical multi-site setup consists of:
 
 ```bash
 radosgw-admin realm create --rgw-realm=production --default
-radosgw-admin zonegroup create --rgw-zonegroup=us --master --default
-radosgw-admin zone create --rgw-zonegroup=us --rgw-zone=us-east-1 --master --default
+radosgw-admin zonegroup create --rgw-zonegroup=us --endpoints=http://primary-rgw.example.com:7480 --rgw-realm=production --master --default
+radosgw-admin zone create --rgw-zonegroup=us --rgw-zone=us-east-1 --master --default --endpoints=http://primary-rgw.example.com:7480
 radosgw-admin period update --commit
 ```
 
@@ -40,6 +40,16 @@ radosgw-admin user create \
 
 Note the `access_key` and `secret_key` from the output.
 
+Update the master zone with the system user credentials:
+
+```bash
+radosgw-admin zone modify --rgw-zone=us-east-1 \
+  --access-key=<access_key> \
+  --secret=<secret_key>
+
+radosgw-admin period update --commit
+```
+
 ## Step 3: Configure the Secondary Zone
 
 On the secondary cluster, pull the realm configuration:
@@ -49,6 +59,8 @@ radosgw-admin realm pull \
   --url=http://primary-rgw.example.com:7480 \
   --access-key=<sync_access_key> \
   --secret=<sync_secret_key>
+
+radosgw-admin realm default --rgw-realm=production
 
 radosgw-admin period pull \
   --url=http://primary-rgw.example.com:7480 \
@@ -80,9 +92,17 @@ radosgw-admin sync status
 Expected output includes lines like:
 
 ```text
-data sync source: us-east-1/rgw
-  syncing shard 0
-  syncing shard 1
+          realm <id> (production)
+      zonegroup <id> (us)
+           zone <id> (us-west-1)
+  metadata sync syncing
+                full sync: 0/64 shards
+                incremental sync: 64/64 shards
+      data sync source: <id> (us-east-1)
+                        syncing
+                        full sync: 0/128 shards
+                        incremental sync: 128/128 shards
+                        data is caught up with source
 ```
 
 ## Step 5: Test Replication
