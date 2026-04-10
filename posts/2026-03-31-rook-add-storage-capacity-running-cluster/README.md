@@ -138,8 +138,8 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash
 # Watch rebalancing progress
 watch -n10 "ceph status | grep -A3 'io:'"
 
-# Check PG distribution
-ceph pg dump osds | awk '{print $1, $15}' | sort -n
+# Check PG distribution across OSDs
+ceph osd df
 ```
 
 Rebalancing can take hours to days depending on cluster size.
@@ -169,7 +169,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash
 ceph osd stat
 
 # Verify utilization is now more balanced
-ceph osd df | sort -k9 -rn
+ceph osd df tree
 
 # Confirm health is OK
 ceph health
