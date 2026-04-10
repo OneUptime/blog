@@ -26,11 +26,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 The output shows the key and its capabilities:
 
-```json
+```
 [client.rgw.my-store.a]
     key = AQBxxxxxxxxxx==
-    caps mon = "allow rw"
-    caps osd = "allow rwx"
+    caps mon = "allow *"
+    caps osd = "allow rwx tag rgw *=*"
+    caps mgr = "allow rw"
 ```
 
 ## RGW Capability Requirements
@@ -40,14 +41,14 @@ RGW daemons require broad capabilities to manage S3 objects:
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph auth get-or-create client.rgw.custom-store.a \
-  mon 'allow rw' \
-  osd 'allow rwx' \
+  mon 'allow *' \
+  osd 'allow rwx tag rgw *=*' \
   mgr 'allow rw'
 ```
 
-## Configure RGW with a Custom Key
+## CephObjectStore CRD and Automatic Key Creation
 
-If you need a custom RGW key for a specific instance:
+Rook automatically creates and manages CephX keys for each CephObjectStore. There is no CRD field to specify a custom key name. Define the object store and Rook handles the rest:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -56,11 +57,15 @@ metadata:
   name: custom-store
   namespace: rook-ceph
 spec:
+  metadataPool:
+    replicated:
+      size: 3
+  dataPool:
+    replicated:
+      size: 3
   gateway:
-    type: s3
     port: 80
     instances: 2
-    keyName: my-custom-rgw-key
 ```
 
 ## Create S3 Users (Not CephX)
