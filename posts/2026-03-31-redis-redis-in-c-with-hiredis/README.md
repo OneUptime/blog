@@ -110,7 +110,7 @@ for (int i = 0; i < 3; i++) {
 }
 ```
 
-## Hashing for Consistent Key Distribution
+## Working with Redis Hashes
 
 ```c
 // Store struct data as hash
