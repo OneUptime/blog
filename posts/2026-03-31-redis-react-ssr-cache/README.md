@@ -50,7 +50,9 @@ export async function getServerSideProps({ params }) {
 
 ## Cache Full HTML Response at Middleware Level
 
-For higher throughput, cache the full rendered HTML response:
+For higher throughput, cache the full rendered HTML response.
+
+> **Note:** Next.js Middleware runs on the Edge Runtime, which does not support Node.js TCP connections required by `ioredis`. Use an HTTP-based Redis client like `@upstash/redis` instead.
 
 ```javascript
 // middleware.js (Next.js Middleware)
@@ -114,7 +116,7 @@ async function renderWithCache(req, res) {
 <html>
   <body>
     <div id="root">${html}</div>
-    <script>window.__INITIAL_DATA__ = ${JSON.stringify(data)}</script>
+    <script>window.__INITIAL_DATA__ = ${JSON.stringify(data).replace(/</g, '\\u003c')}</script>
   </body>
 </html>`;
 
