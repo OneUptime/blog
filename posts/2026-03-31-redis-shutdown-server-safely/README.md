@@ -17,14 +17,14 @@ SHUTDOWN [NOSAVE | SAVE] [NOW] [FORCE] [ABORT]
 ```
 
 - `SAVE` - Force an RDB snapshot before shutting down, even if persistence is disabled.
-- `NOSAVE` - Skip the RDB snapshot and exit immediately.
+- `NOSAVE` - Skip the RDB snapshot before shutting down.
 - `NOW` - Skip the grace period for replicas to catch up.
-- `FORCE` - Shutdown even if AOF fsync is still in progress.
+- `FORCE` - Ignore errors that would normally prevent shutdown, such as a failed RDB save or an in-progress AOF rewrite.
 - `ABORT` - Cancel a shutdown that is already in progress.
 
 ## Graceful Shutdown with Save
 
-The default behavior when no option is given depends on your persistence configuration. If AOF or RDB persistence is enabled, Redis will save before exiting:
+The default behavior when no option is given depends on your persistence configuration. If RDB save points are configured, Redis will perform a blocking save before exiting. If AOF is enabled, the AOF file will be flushed to disk:
 
 ```bash
 redis-cli SHUTDOWN
@@ -101,7 +101,7 @@ ps aux | grep redis-server
 - Always prefer `SHUTDOWN SAVE` in production to avoid data loss.
 - Use a process manager like systemd so Redis restarts automatically if needed.
 - In Redis Sentinel or Cluster setups, let the orchestration layer manage shutdowns to trigger proper failover before the node goes down.
-- Never use `kill -9` on a Redis process - this bypasses persistence and can corrupt the RDB file.
+- Never use `kill -9` on a Redis process - this bypasses the graceful shutdown sequence and causes data loss for any changes since the last successful save.
 
 ## Summary
 
