@@ -74,15 +74,16 @@ spec:
               - eu-central-1
 ```
 
-Disable Ceph multisite replication to non-EU zones:
+Verify that multisite replication, if configured, only includes EU zones:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global osd_pool_default_size 3
-
-# Ensure no zone sync to non-EU endpoints
+# List all zones and verify only EU endpoints are present
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin zone list
+
+# Inspect the zonegroup to confirm no non-EU zones are configured
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  radosgw-admin zonegroup get
 ```
 
 ## 3. Right to Erasure (Article 17)
