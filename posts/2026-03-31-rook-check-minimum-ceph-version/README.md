@@ -12,20 +12,18 @@ Rook manages Ceph daemons using container images. Each Rook version supports a s
 
 ## Rook and Ceph Version Compatibility
 
-Rook maps to specific Ceph releases. The compatibility matrix is published at `https://rook.io/docs/rook/latest/Getting-Started/Prerequisites/prerequisites/`.
+Rook maps to specific Ceph releases. The compatibility information is published on the Rook upgrade documentation at `https://rook.io/docs/rook/latest/Upgrade/ceph-upgrade/` and in the CephCluster CRD documentation.
 
 Example compatibility:
 
 ```text
 Rook v1.14.x supports:
   - Ceph Reef (v18.x) - recommended
-  - Ceph Quincy (v17.x) - supported
-  - Ceph Pacific (v16.x) - deprecated
+  - Ceph Quincy (v17.x) - minimum
 
 Rook v1.15.x supports:
   - Ceph Squid (v19.x) - recommended
   - Ceph Reef (v18.x) - supported
-  - Ceph Quincy (v17.x) - minimum
 ```
 
 ## Checking Current Ceph Version
@@ -125,7 +123,7 @@ Some Rook features require specific Ceph capabilities. Check if your Ceph versio
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph tell osd.0 help | grep -i namespace
 
-# Check if CSI features are supported
+# Check connected daemon and client feature flags
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph features
 ```
