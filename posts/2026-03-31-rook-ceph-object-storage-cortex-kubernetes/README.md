@@ -79,6 +79,15 @@ data:
         access_key_id: cortexaccesskey
         secret_access_key: cortexsecretkey
         insecure: true
+    alertmanager_storage:
+      backend: s3
+      s3:
+        bucket_name: cortex-alertmanager
+        endpoint: rook-ceph-rgw-cortex-store.rook-ceph:80
+        region: us-east-1
+        access_key_id: cortexaccesskey
+        secret_access_key: cortexsecretkey
+        insecure: true
     compactor:
       data_dir: /data/compactor
       sharding_enabled: true
@@ -90,8 +99,7 @@ data:
 helm repo add cortex-helm https://cortexproject.github.io/cortex-helm-chart
 helm install cortex cortex-helm/cortex \
   --namespace cortex \
-  --create-namespace \
-  --set config.storage.backend=s3
+  --create-namespace
 ```
 
 ## Verify Multi-Tenant Ingestion
