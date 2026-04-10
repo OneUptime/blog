@@ -88,7 +88,7 @@ rbd        50G       0       3.0   300G          0.17   0.40         0.40       
 
 If `NEW PG_NUM` differs from `PG_NUM`, the autoscaler will increase or decrease PGs automatically.
 
-## target_size vs target_size_ratio
+## target_size_bytes vs target_size_ratio
 
 Two options are available:
 
