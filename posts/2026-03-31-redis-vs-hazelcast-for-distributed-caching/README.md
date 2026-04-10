@@ -38,9 +38,10 @@ public Product getProduct(Long id) {
 
 ```yaml
 spring:
-  redis:
-    host: localhost
-    port: 6379
+  data:
+    redis:
+      host: localhost
+      port: 6379
   cache:
     type: redis
     redis:
@@ -84,7 +85,7 @@ cache.put("product:42", product);
 | Network hop | Always (TCP) | Optional (embedded) |
 | Data partitioning | Hash slots (Cluster) | Automatic partition map |
 | Near-cache | Client-side (read-through) | Built-in near-cache |
-| Distributed locking | Redlock / SET NX | ILock (CP subsystem) |
+| Distributed locking | Redlock / SET NX | FencedLock (CP subsystem) |
 | JCache (JSR-107) | Via add-on libs | Native |
 | WAN replication | Manual or Redis Cloud | Built-in WAN replication |
 | Ops complexity | Low | Medium |
@@ -108,7 +109,7 @@ if lock:
 Hazelcast ILock:
 
 ```java
-ILock lock = hz.getCPSubsystem().getLock("payment-42");
+FencedLock lock = hz.getCPSubsystem().getLock("payment-42");
 lock.lock();
 try {
     processPayment();
