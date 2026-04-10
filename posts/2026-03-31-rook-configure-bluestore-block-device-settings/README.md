@@ -31,16 +31,16 @@ lsblk $(readlink -f /var/lib/ceph/osd/ceph-0/block)
 This sets the size of the block device. It is normally auto-detected, but can be overridden:
 
 ```bash
-# View current setting (0 means auto-detect device size)
+# View current setting (default is 107374182400 i.e. 100 GiB; used only for file-backed block devices)
 ceph config show osd.0 bluestore_block_size
 
-# Manually set block size (useful if device size detection fails)
-ceph config set osd.0 bluestore_block_size 107374182400  # 100 GB
+# Manually set block size (for raw block devices, the actual device size is used automatically)
+ceph config set osd.0 bluestore_block_size 107374182400  # 100 GiB
 ```
 
 ### bluestore_min_alloc_size
 
-The minimum allocation unit. Writes smaller than this are staged in the WAL:
+The minimum allocation unit. Overwrites smaller than this are deferred through the WAL:
 
 ```bash
 # View default min alloc sizes
@@ -48,7 +48,7 @@ ceph config show osd.0 bluestore_min_alloc_size_hdd
 ceph config show osd.0 bluestore_min_alloc_size_ssd
 
 # Default for HDD: 65536 (64KB)
-# Default for SSD: 16384 (16KB) in Ceph Quincy+
+# Default for SSD: 4096 (4KB) in Ceph Octopus+
 ```
 
 ### bluestore_prefer_deferred_size
@@ -101,14 +101,14 @@ ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 bs = data.get('bluestore', {})
-print('Total allocated:', bs.get('bluestore_alloc_unit', 'N/A'))
+print('Allocation unit size:', bs.get('alloc_unit', 'N/A'))
 "
 ```
 
 Using the admin socket:
 
 ```bash
-ceph-osd -i 0 --get-or-create-osd-uuid
+ceph-osd -i 0 --get-osd-fsid
 ceph daemon osd.0 dump_mempools
 ```
 
@@ -120,7 +120,7 @@ For NVMe drives, BlueStore can use SPDK for direct I/O bypass:
 # In ceph.conf
 [osd]
 bluestore_spdk_mem = 2048
-bluestore_block_path = /dev/nvme0n1
+bluestore_block_path = "spdk:trtype:PCIe traddr:0000:01:00.0"
 ```
 
 ## Monitoring Block Device Performance
@@ -131,7 +131,7 @@ Track block device I/O with Ceph performance counters:
 ceph daemon osd.0 perf dump | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-for key in ['bluestore_write_big_bytes', 'bluestore_write_small_bytes', 'bluestore_write_pad_bytes']:
+for key in ['write_big_bytes', 'write_small_bytes', 'write_pad_bytes']:
     print(key, ':', data.get('bluestore', {}).get(key, 'N/A'))
 "
 ```
