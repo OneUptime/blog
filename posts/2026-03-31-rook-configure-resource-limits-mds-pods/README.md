@@ -77,11 +77,11 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 ```bash
 # Check MDS cache usage
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph daemon mds.myfs-a dump_mempools | python3 -m json.tool
+    ceph tell mds.myfs-a dump_mempools
 
 # View MDS cache stats
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph daemon mds.myfs-a cache status
+    ceph tell mds.myfs-a cache status
 
 # Real-time pod memory
 kubectl -n rook-ceph top pods -l app=rook-ceph-mds
@@ -101,11 +101,11 @@ kubectl -n rook-ceph top pods -l app=rook-ceph-mds
 ```bash
 # Check for high cache eviction rates
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph daemon mds.myfs-a perf dump | python3 -m json.tool | grep -i evict
+    ceph tell mds.myfs-a perf dump | grep -i evict
 
 # Check for slow metadata operations caused by cache pressure
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-    ceph daemon mds.myfs-a dump_ops_in_flight | python3 -m json.tool
+    ceph tell mds.myfs-a dump_ops_in_flight
 
 # Monitor MDS log for cache trim messages
 kubectl -n rook-ceph logs -l app=rook-ceph-mds --tail=100 | grep -i "cache\|trim\|evict"
