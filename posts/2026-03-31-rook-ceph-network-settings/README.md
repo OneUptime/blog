@@ -82,9 +82,9 @@ spec:
     provider: host        # Use host networking
     addressRanges:
       public:
-        - cidr: "192.168.1.0/24"
+        - "192.168.1.0/24"
       cluster:
-        - cidr: "10.0.0.0/24"
+        - "10.0.0.0/24"
 ```
 
 For Multus-based network isolation:
@@ -116,11 +116,8 @@ ms_bind_ipv4 = false
 # Increase socket buffer sizes
 ceph config set global ms_tcp_rcvbuf 0   # 0 = auto-tune
 
-# Enable TCP cork for batching small writes
+# Re-enable Nagle's algorithm to batch small writes (lower throughput latency trade-off)
 ceph config set global ms_tcp_nodelay false
-
-# Set max message size (default 100MB)
-ceph config set global ms_max_message_len 104857600
 ```
 
 ## Verifying Network Configuration
