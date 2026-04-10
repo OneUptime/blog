@@ -14,7 +14,7 @@ Product comparison lets shoppers evaluate multiple items side by side. Redis Set
 
 ```text
 compare:{sessionId}          -> Set of product IDs being compared
-compare:cache:{cacheKey}     -> Hash: cached comparison result
+compare:cache:{cacheKey}     -> String: cached comparison result (JSON)
 ```
 
 ## Adding and Removing Products from Comparison
