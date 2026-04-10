@@ -25,7 +25,7 @@ sequenceDiagram
     OS->>OS: Add to backlog queue\n(size = tcp-backlog)
     OS->>Redis: accept() called
     Redis->>Redis: Process connection
-    Note over OS: If queue full, new SYNs are dropped
+    Note over OS: If queue full, new connections are dropped
 ```
 
 ## Default Setting
@@ -44,11 +44,7 @@ In `redis.conf`:
 tcp-backlog 1024
 ```
 
-Or at runtime (note: only applies to the socket bind, effective on next restart for the listen backlog):
-
-```redis
-CONFIG SET tcp-backlog 1024
-```
+Note: `tcp-backlog` is an immutable configuration parameter in Redis. It cannot be changed at runtime with `CONFIG SET`. You must edit `redis.conf` and restart Redis for changes to take effect.
 
 ## OS-Level Requirement
 
