@@ -31,7 +31,7 @@ When an OBC named `my-app-bucket` is created in the `default` namespace, Rook ge
 - `BUCKET_PORT` - port (80 or 443)
 - `BUCKET_NAME` - generated bucket name
 - `BUCKET_REGION` - region string
-- `BUCKET_SSL` - whether SSL is enabled
+- `BUCKET_SUBREGION` - provisioner-dependent sub-region
 
 **Secret** (`my-app-bucket`):
 - `AWS_ACCESS_KEY_ID` - access key
@@ -154,9 +154,11 @@ spec:
         - name: python
           image: python:3.11-slim
           command:
-            - python3
+            - sh
             - -c
             - |
+              pip install boto3 -q
+              python3 <<'PYEOF'
               import boto3, os
               s3 = boto3.client('s3',
                 endpoint_url=f"http://{os.environ['BUCKET_HOST']}:{os.environ['BUCKET_PORT']}",
@@ -168,6 +170,7 @@ spec:
               s3.put_object(Bucket=bucket, Key='hello.txt', Body=b'Hello from Rook!')
               response = s3.get_object(Bucket=bucket, Key='hello.txt')
               print(response['Body'].read().decode())
+              PYEOF
           envFrom:
             - configMapRef:
                 name: my-app-bucket
