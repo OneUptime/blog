@@ -16,8 +16,7 @@ Opening a new Redis connection for every request is expensive. Connection poolin
 
 ```toml
 [dependencies]
-redis = "0.25"
-r2d2 = "0.8"
+redis = "0.20"
 r2d2_redis = "0.14"
 ```
 
@@ -133,7 +132,7 @@ For async Tokio applications, prefer `deadpool-redis` instead of `r2d2-redis`:
 ```toml
 [dependencies]
 deadpool-redis = "0.14"
-redis = { version = "0.25", features = ["tokio-comp"] }
+redis = { version = "0.24", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -141,14 +140,14 @@ tokio = { version = "1", features = ["full"] }
 use deadpool_redis::{Config, Pool, Runtime};
 use redis::AsyncCommands;
 
-async fn create_async_pool() -> Pool {
+fn create_async_pool() -> Pool {
     let cfg = Config::from_url("redis://127.0.0.1/");
     cfg.create_pool(Some(Runtime::Tokio1)).unwrap()
 }
 
 #[tokio::main]
 async fn main() {
-    let pool = create_async_pool().await;
+    let pool = create_async_pool();
     let mut con = pool.get().await.unwrap();
 
     let _: () = con.set("async_pool_key", "value").await.unwrap();
