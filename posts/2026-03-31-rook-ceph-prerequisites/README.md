@@ -146,7 +146,7 @@ kubectl get nodes --show-labels | grep storage-node
 Ceph generates significant internal traffic between OSDs, monitors, and the manager. Ensure your cluster nodes meet these network requirements:
 
 - At least 1 Gbps connectivity between all storage nodes
-- No firewall rules blocking traffic on ports 6789 (monitors), 6800-7300 (OSDs), and 8443 (dashboard)
+- No firewall rules blocking traffic on ports 3300 (monitors, msgr2) and 6789 (monitors, legacy msgr1), 6800-7300 (OSDs), and 8443 (dashboard)
 - Consistent hostname resolution between nodes (DNS or /etc/hosts)
 
 Test connectivity between nodes:
