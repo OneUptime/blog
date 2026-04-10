@@ -60,6 +60,7 @@ GETBIT mybitmap 1
 ```text
 (integer) 0
 (integer) 0
+(integer) 0
 (integer) 1
 (integer) 1
 (integer) 0
@@ -135,6 +136,7 @@ GETBIT sparse_bitmap 99999
 ```
 
 ```text
+(integer) 0
 (integer) 0
 ```
 
