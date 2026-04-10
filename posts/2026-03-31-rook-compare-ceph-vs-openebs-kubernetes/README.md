@@ -10,15 +10,15 @@ Description: Compare Rook/Ceph and OpenEBS for Kubernetes storage across storage
 
 ## Overview
 
-Rook/Ceph and OpenEBS both provide persistent storage for Kubernetes but use very different approaches. OpenEBS offers multiple storage engines (Jiva, cStor, LocalPV, Mayastor) targeting different use cases. Rook/Ceph uses a single distributed storage backend.
+Rook/Ceph and OpenEBS both provide persistent storage for Kubernetes but use very different approaches. OpenEBS offers multiple storage engines (Replicated PV Mayastor, LocalPV-HostPath, LocalPV-LVM, LocalPV-ZFS) targeting different use cases. Rook/Ceph uses a single distributed storage backend.
 
 ## Architecture Comparison
 
 | Feature | Rook/Ceph | OpenEBS |
 |---------|-----------|---------|
 | Storage type | Block, file, object | Block (primarily) |
-| Storage engines | RADOS | Jiva, cStor, Mayastor, LocalPV |
-| Metadata | Embedded (RADOS) | Mayastor (NVMe-oF), etcd |
+| Storage engines | RADOS | Replicated PV Mayastor, LocalPV-HostPath, LocalPV-LVM, LocalPV-ZFS |
+| Metadata | Embedded (RADOS) | etcd (Mayastor control plane), Kubernetes CRDs |
 | CNCF status | Graduated | Sandbox |
 | Kubernetes-native design | Partially (via Rook) | Fully |
 
@@ -35,7 +35,6 @@ provisioner: io.openebs.csi-mayastor
 parameters:
   repl: "3"
   protocol: nvmf
-  ioTimeout: "30"
 ```
 
 ## Rook/Ceph RBD Storage Class
@@ -62,7 +61,7 @@ allowVolumeExpansion: true
 | Block storage (RWO) | Yes | Yes |
 | File storage (RWX) | Yes (CephFS) | No |
 | Object storage | Yes (RGW) | No |
-| NVMe-oF support | Limited | Native |
+| NVMe-oF support | Yes (NVMe/TCP gateway) | Native (SPDK) |
 | Snapshots | Yes | Yes |
 | Volume cloning | Yes | Yes |
 | Thin provisioning | Yes | Yes |
@@ -74,7 +73,7 @@ OpenEBS Mayastor is optimized for NVMe storage and low-latency I/O using SPDK:
 
 | Metric | Rook/Ceph RBD | OpenEBS Mayastor |
 |--------|--------------|----------------|
-| 4K random read IOPS | 100K+ | 1M+ (NVMe) |
+| 4K random read IOPS | 100K+ | 100K-500K+ (NVMe) |
 | Latency (NVMe) | 0.5-2ms | 0.1-0.3ms |
 | CPU usage | Moderate | High (SPDK) |
 
