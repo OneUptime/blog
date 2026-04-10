@@ -124,7 +124,7 @@ dir /data
 dbfilename dump.rdb
 appendfilename appendonly.aof
 
-# Disable transparent huge pages warning
+# Enable incremental rehashing
 activerehashing yes
 ```
 
