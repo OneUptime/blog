@@ -86,7 +86,7 @@ Run this collection script daily via a CronJob and append to a time series:
 ```bash
 #!/bin/bash
 DATE=$(date +%Y-%m-%d)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph df --format json | \
   jq -r --arg d "$DATE" '[$d, .stats.total_bytes, .stats.total_used_raw_bytes] | @csv' \
   >> /data/ceph-growth.csv
