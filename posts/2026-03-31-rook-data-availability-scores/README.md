@@ -74,9 +74,9 @@ total_pgs = data.get('num_pgs', 0)
 by_state = data.get('num_pg_by_state', [])
 
 print(f'Total PGs: {total_pgs}')
-for state_info in sorted(by_state, key=lambda x: -x['count']):
-    pct = state_info['count'] / total_pgs * 100 if total_pgs > 0 else 0
-    print(f\"  {state_info['state']}: {state_info['count']} ({pct:.1f}%)\")
+for state_info in sorted(by_state, key=lambda x: -x['num']):
+    pct = state_info['num'] / total_pgs * 100 if total_pgs > 0 else 0
+    print(f\"  {state_info['state']}: {state_info['num']} ({pct:.1f}%)\")
 "
 ```
 
@@ -131,9 +131,9 @@ Unfound objects indicate potential data loss:
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph health detail | grep unfound
 
-# List PGs with unfound objects
+# List PGs stuck in an unclean state (includes those with unfound objects)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph pg ls unfound
+  ceph pg dump_stuck unclean
 ```
 
 ## Summary
