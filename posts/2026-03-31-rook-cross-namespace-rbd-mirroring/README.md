@@ -103,8 +103,8 @@ spec:
 Check that images created for both namespaces are being mirrored:
 
 ```bash
-# List all PVs using the mirrored pool
-kubectl get pv | grep mirrored-pool
+# List all PVs using the mirrored StorageClass
+kubectl get pv | grep rook-ceph-block-mirrored
 
 # Extract the RBD image names from PV specs
 kubectl get pv <pv-name> -o jsonpath='{.spec.csi.volumeAttributes.imageName}'
