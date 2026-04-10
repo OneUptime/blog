@@ -83,15 +83,38 @@ rbd create vms/myvm-disk --size 50G --image-feature layering
 rbd info vms/myvm-disk
 ```
 
-## Step 6 - Define a VM Using the RBD Disk
+## Step 6 - Register the Ceph Secret in libvirt
 
-Create the VM XML with RBD disk:
+The libvirt secret must be created before defining a VM that references it:
+
+```bash
+KEYRING=$(ceph auth get-key client.libvirt)
+
+virsh secret-define --file <(cat <<EOF
+<secret ephemeral='no' private='no'>
+  <usage type='ceph'>
+    <name>client.libvirt secret</name>
+  </usage>
+</secret>
+EOF
+)
+
+SECRET_UUID=$(virsh secret-list | grep ceph | awk '{print $1}')
+virsh secret-set-value $SECRET_UUID $KEYRING
+```
+
+## Step 7 - Define a VM Using the RBD Disk
+
+Create the VM XML with RBD disk, replacing `YOUR-SECRET-UUID` with the `$SECRET_UUID` from the previous step:
 
 ```xml
 <domain type='kvm'>
   <name>myvm</name>
   <memory unit='GiB'>4</memory>
   <vcpu>2</vcpu>
+  <os>
+    <type arch='x86_64'>hvm</type>
+  </os>
   <devices>
     <disk type='network' device='disk'>
       <driver name='qemu' type='raw' cache='writeback'/>
@@ -112,24 +135,6 @@ Create the VM XML with RBD disk:
 ```bash
 virsh define myvm.xml
 virsh start myvm
-```
-
-## Step 7 - Register the Ceph Secret in libvirt
-
-```bash
-KEYRING=$(ceph auth get-key client.libvirt)
-
-virsh secret-define --file <(cat <<EOF
-<secret ephemeral='no' private='no'>
-  <usage type='ceph'>
-    <name>client.libvirt secret</name>
-  </usage>
-</secret>
-EOF
-)
-
-SECRET_UUID=$(virsh secret-list | grep ceph | awk '{print $1}')
-virsh secret-set-value $SECRET_UUID $KEYRING
 ```
 
 ## Summary
