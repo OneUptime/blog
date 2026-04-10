@@ -10,7 +10,7 @@ Description: Learn how to configure Ceph logging and debugging levels to trouble
 
 ## Ceph Logging Architecture
 
-Ceph daemons write logs to files on each node, and optionally to the system journal. Log verbosity is controlled per-subsystem. Each subsystem has two log levels: the in-memory log level and the on-disk log level. The in-memory buffer is written to disk when an error occurs or when the on-disk level threshold is reached.
+Ceph daemons write logs to files on each node, and optionally to the system journal. Log verbosity is controlled per-subsystem. Each subsystem has two log levels: the in-memory log level and the on-disk log level. The in-memory buffer is flushed to disk when a fatal signal is raised or an assertion failure occurs within the Ceph code.
 
 In Rook environments, OSD and monitor logs appear in the container stdout and can be retrieved with `kubectl logs`.
 
@@ -19,10 +19,10 @@ In Rook environments, OSD and monitor logs appear in the container stdout and ca
 Log levels range from 0 (errors only) to 20 (maximum verbosity). The format is:
 
 ```text
-debug_<subsystem> = <memory_level>/<disk_level>
+debug_<subsystem> = <log_level>/<memory_level>
 ```
 
-For example, `debug_osd = 5/5` sets both in-memory and on-disk OSD logging to level 5.
+For example, `debug_osd = 5/5` sets both the on-disk log level and in-memory level for OSD logging to 5.
 
 ## Common Debug Subsystems
 
@@ -30,15 +30,15 @@ For example, `debug_osd = 5/5` sets both in-memory and on-disk OSD logging to le
 [global]
 debug_ms = 1/5
 debug_osd = 0/5
-debug_filestore = 0/5
-debug_journal = 0/5
+debug_bluestore = 0/5
+debug_bluefs = 0/5
 debug_monc = 0/5
 debug_mon = 0/5
 debug_rgw = 0/5
 debug_mds = 0/5
 ```
 
-Setting the memory level to 0 and disk level to 5 means only errors are kept in memory, but verbose logs are written to disk - useful when debugging without impacting performance.
+Setting the log level to 0 and memory level to 5 means only critical messages are written to the log file on disk, but verbose entries up to level 5 are kept in the in-memory buffer and flushed only on fatal signals or assertions - useful when debugging without impacting disk I/O.
 
 ## Enabling Debug Logging Dynamically
 
@@ -90,7 +90,7 @@ In Rook, logs are containerized and managed by Kubernetes. For bare-metal Ceph c
     notifempty
     sharedscripts
     postrotate
-        pkill -HUP ceph-osd ceph-mon ceph-mds 2>/dev/null || true
+        killall -q -1 ceph-mon ceph-mgr ceph-mds ceph-osd radosgw || true
     endscript
 }
 ```
