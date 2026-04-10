@@ -116,6 +116,18 @@ For large, infrequently-accessed data where storage efficiency is paramount (4+2
 apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
 metadata:
+  name: archive-metadata-pool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  deviceClass: hdd
+  replicated:
+    size: 3
+    requireSafeReplicaSize: true
+---
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
   name: archive-pool
   namespace: rook-ceph
 spec:
@@ -137,7 +149,7 @@ metadata:
 provisioner: rook-ceph.rbd.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  pool: archive-pool
+  pool: archive-metadata-pool
   dataPool: archive-pool
   imageFormat: "2"
   imageFeatures: layering
@@ -249,9 +261,9 @@ kubectl get storageclass | grep rook
 Use StorageClass annotations to document each profile:
 
 ```bash
-kubectl annotate storageclass rook-ceph-hot \
+kubectl annotate storageclass rook-ceph-hot --overwrite \
   storageclass.kubernetes.io/description="SSD, 3x replication, xfs, no compression. Use for: databases, caches. Cost: high"
-kubectl annotate storageclass rook-ceph-archive \
+kubectl annotate storageclass rook-ceph-archive --overwrite \
   storageclass.kubernetes.io/description="HDD, 4+2 EC, zstd compression. Use for: backups, logs, archives. Cost: low"
 ```
 
