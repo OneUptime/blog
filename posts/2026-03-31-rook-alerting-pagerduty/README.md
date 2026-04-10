@@ -27,8 +27,8 @@ Create a PagerDuty integration:
 
 ```bash
 kubectl create secret generic pagerduty-config \
-  --from-literal=service_key="<your-integration-key>" \
-  -n monitoring
+  --from-literal=routing_key="<your-integration-key>" \
+  -n rook-ceph
 ```
 
 ## Configure Alertmanager
@@ -54,14 +54,16 @@ spec:
   receivers:
   - name: pagerduty-receiver
     pagerdutyConfigs:
-    - serviceKey:
+    - routingKey:
         name: pagerduty-config
-        key: service_key
+        key: routing_key
       severity: '{{ if eq .Labels.severity "critical" }}critical{{ else }}warning{{ end }}'
       description: '{{ .CommonAnnotations.summary }}'
       details:
-        cluster: '{{ .CommonLabels.ceph_cluster }}'
-        alertname: '{{ .CommonLabels.alertname }}'
+      - key: cluster
+        value: '{{ .CommonLabels.ceph_cluster }}'
+      - key: alertname
+        value: '{{ .CommonLabels.alertname }}'
 ```
 
 ## Alertmanager Values for kube-prometheus-stack
@@ -83,10 +85,10 @@ alertmanager:
         repeat_interval: 4h
     receivers:
     - name: default
-      pagerdutyConfigs: []
+      pagerduty_configs: []
     - name: pagerduty-ceph
-      pagerdutyConfigs:
-      - serviceKey: "<integration-key>"
+      pagerduty_configs:
+      - routing_key: "<integration-key>"
         description: "{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}"
 ```
 
