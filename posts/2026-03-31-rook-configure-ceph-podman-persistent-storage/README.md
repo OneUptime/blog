@@ -63,7 +63,7 @@ podman run -d \
   --name myapp \
   --volume /mnt/ceph-rbd:/data:Z \
   --security-opt label=type:container_file_t \
-  docker.io/library/postgresql:15
+  docker.io/library/postgres:15
 ```
 
 The `:Z` flag sets SELinux context for the mount point.
