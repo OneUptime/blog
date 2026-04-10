@@ -78,9 +78,8 @@ metadata:
 driver: rook-ceph.cephfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  csi.storage.k8s.io/volumesnapshot/name: $(volumesnapshot.name)
-  csi.storage.k8s.io/volumesnapshot/namespace: $(volumesnapshot.namespace)
-  csi.storage.k8s.io/volumesnapshotcontent/name: $(volumesnapshotcontent.name)
+  csi.storage.k8s.io/snapshotter-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 deletionPolicy: Delete
 ```
 
