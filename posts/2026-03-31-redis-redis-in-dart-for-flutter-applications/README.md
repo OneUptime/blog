@@ -30,7 +30,7 @@ import 'package:resp_client/resp_server.dart';
 Future<void> main() async {
   final server = await connectSocket('localhost', port: 6379);
   final client = RespClient(server);
-  final commands = RespCommands(client);
+  final commands = RespCommandsTier2(client);
 
   print('Connected to Redis');
   await commands.set('greeting', 'Hello from Dart');
@@ -44,9 +44,11 @@ Future<void> main() async {
 ## Basic Operations
 
 ```dart
-Future<void> redisExamples(RespCommands commands) async {
+Future<void> redisExamples(RespClient client) async {
+  final commands = RespCommandsTier0(client);
+
   // String operations
-  await commands.set('counter', '0');
+  await commands.execute(['SET', 'counter', '0']);
   final result = await commands.execute(['INCR', 'counter']);
   print('Counter: $result');
 
@@ -71,10 +73,12 @@ This pattern is common in Dart Frog or Shelf API servers:
 
 ```dart
 Future<Map<String, dynamic>> getCachedUser(
-  RespCommands redis,
+  RespClient client,
   String userId,
   Future<Map<String, dynamic>> Function() fetchFromDb,
 ) async {
+  final redis = RespCommandsTier2(client);
+  final raw = RespCommandsTier0(client);
   final cacheKey = 'user:$userId:data';
   final cached = await redis.get(cacheKey);
 
@@ -83,7 +87,7 @@ Future<Map<String, dynamic>> getCachedUser(
   }
 
   final data = await fetchFromDb();
-  await redis.execute(['SET', cacheKey, jsonEncode(data), 'EX', '300']);
+  await raw.execute(['SET', cacheKey, jsonEncode(data), 'EX', '300']);
   return {'source': 'db', 'data': data};
 }
 ```
@@ -94,11 +98,13 @@ Flutter apps can receive real-time updates via a Dart backend that subscribes to
 
 ```dart
 Future<void> subscribeToPubSub(RespClient client) async {
+  final commands = RespCommandsTier0(client);
+
   // Send SUBSCRIBE command
-  await client.writeCommand(['SUBSCRIBE', 'app_events']);
+  await commands.execute(['SUBSCRIBE', 'app_events']);
 
   // Listen to incoming messages
-  await for (final message in client.listen) {
+  await for (final message in client.outputStream) {
     if (message is RespArray) {
       final parts = message.payload.cast<RespBulkString>();
       if (parts[0].payload == 'message') {
@@ -130,4 +136,4 @@ Redis lives in the backend layer. Flutter communicates with the Dart server, whi
 
 ## Summary
 
-Dart backends use `resp_client` to communicate with Redis for caching, session storage, and Pub/Sub bridging. Flutter apps themselves do not connect to Redis directly - instead, a Dart server acts as the intermediary, using Redis for fast state sharing and the Flutter app consuming data via HTTP or WebSocket.
+Dart backends use `resp_client` to communicate with Redis for caching, session storage, and Pub/Sub bridging. The package provides tiered command classes: `RespCommandsTier2` for convenient high-level operations like `set` and `get`, and `RespCommandsTier0` for executing raw Redis commands. Flutter apps themselves do not connect to Redis directly - instead, a Dart server acts as the intermediary, using Redis for fast state sharing and the Flutter app consuming data via HTTP or WebSocket.
