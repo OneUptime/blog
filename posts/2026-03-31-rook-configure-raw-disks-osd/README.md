@@ -141,24 +141,33 @@ spec:
 
 Encryption keys are stored as Kubernetes secrets in the `rook-ceph` namespace. Ensure `cryptsetup` is installed on all nodes before enabling this option.
 
-## Directory-Based OSDs for Testing
+## PVC-Based OSDs for Testing
 
-For development environments without spare raw disks, Rook can create file-based OSDs in a directory. This is not suitable for production due to performance limitations and lacks BlueStore benefits:
+For development environments without spare raw disks, Rook can provision OSDs using PersistentVolumeClaims (PVCs) backed by any available Kubernetes StorageClass. This avoids the need for dedicated raw block devices:
 
 ```yaml
 spec:
   storage:
-    useAllNodes: true
-    useAllDevices: false
-    directories:
-      - path: "/var/lib/rook-data"
+    storageClassDeviceSets:
+      - name: "test-set"
+        count: 3
+        portable: false
+        volumeClaimTemplates:
+          - metadata:
+              name: "data"
+            spec:
+              resources:
+                requests:
+                  storage: 10Gi
+              storageClassName: "local-path"
+              volumeMode: Block
+              accessModes:
+                - ReadWriteOnce
 ```
 
-The directory must exist on each node before Rook creates OSDs in it:
+Replace `local-path` with the StorageClass available in your test cluster (for example, the default StorageClass provided by kind or minikube).
 
-```bash
-sudo mkdir -p /var/lib/rook-data
-```
+> **Note:** Older Rook versions (prior to v1.3) supported a `directories` option for file-based OSDs. This was removed in Rook v1.3 and is no longer available.
 
 ## Disk Wiping Before Reuse
 
