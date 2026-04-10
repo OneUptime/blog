@@ -92,8 +92,13 @@ spec:
       requests:
         cpu: "2"
         memory: "8Gi"
-    config:
-      mds_cache_memory_limit: "8589934592"
+```
+
+Then set the MDS cache memory limit via the Ceph config store:
+
+```bash
+kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- \
+  ceph config set mds mds_cache_memory_limit 8589934592
 ```
 
 ## Step 5 - Spread Load Across Multiple MDS Ranks
@@ -123,7 +128,7 @@ groups:
 - name: cephfs-mds-perf
   rules:
   - alert: MDSHighLatency
-    expr: ceph_mds_server_req_create_latency_sum / ceph_mds_server_req_create_latency_avgcount > 0.1
+    expr: ceph_mds_server_req_create_latency_sum / ceph_mds_server_req_create_latency_count > 0.1
     for: 5m
     labels:
       severity: warning
