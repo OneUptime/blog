@@ -51,6 +51,16 @@ kubectl get deployments --all-namespaces -o json | \
   done
 ```
 
+Scale down statefulsets as well:
+
+```bash
+kubectl get statefulsets --all-namespaces -o json | \
+  jq -r '.items[] | select(.spec.template.spec.volumes[]?.persistentVolumeClaim.claimName != null) | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read ns sts; do
+    kubectl -n $ns scale statefulset $sts --replicas=0
+  done
+```
+
 ## Step 2 - Delete PVCs and PVs
 
 Delete all PVCs backed by Rook-Ceph StorageClasses:
@@ -192,7 +202,6 @@ spec:
       labels:
         app: rook-cleanup
     spec:
-      hostPID: true
       containers:
         - name: cleanup
           image: alpine
@@ -245,12 +254,12 @@ pvremove /dev/sdX
 
 ## Step 11 - Remove Kubernetes Labels
 
-Remove storage-related labels from nodes:
+Remove Rook-specific labels from nodes:
 
 ```bash
 kubectl label nodes --all \
-  role- \
-  topology.kubernetes.io/zone-
+  ceph.rook.io/DeviceSet- \
+  storage-node-
 ```
 
 ## Verifying Complete Cleanup
