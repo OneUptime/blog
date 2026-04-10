@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Java, Serialization
 
-Description: Learn how to serialize Java objects for Redis using Jackson JSON, Kryo, and Protocol Buffers with Spring Data Redis and Lettuce examples.
+Description: Learn how to serialize Java objects for Redis using Jackson JSON and Kryo with Spring Data Redis examples.
 
 ---
 
@@ -16,6 +16,7 @@ The most common approach for Spring Boot applications:
 
 ```java
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -28,14 +29,14 @@ public class RedisConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(factory);
 
-        Jackson2JsonRedisSerializer<Object> serializer =
-            new Jackson2JsonRedisSerializer<>(Object.class);
         ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
         mapper.activateDefaultTyping(
             mapper.getPolymorphicTypeValidator(),
             ObjectMapper.DefaultTyping.NON_FINAL
         );
-        serializer.setObjectMapper(mapper);
+        Jackson2JsonRedisSerializer<Object> serializer =
+            new Jackson2JsonRedisSerializer<>(mapper, Object.class);
 
         template.setValueSerializer(serializer);
         template.setKeySerializer(new StringRedisSerializer());
@@ -75,8 +76,10 @@ public RedisTemplate<String, UserProfile> userProfileTemplate(
 ) {
     RedisTemplate<String, UserProfile> template = new RedisTemplate<>();
     template.setConnectionFactory(factory);
+    ObjectMapper mapper = new ObjectMapper();
+    mapper.registerModule(new JavaTimeModule());
     template.setKeySerializer(new StringRedisSerializer());
-    template.setValueSerializer(new Jackson2JsonRedisSerializer<>(UserProfile.class));
+    template.setValueSerializer(new Jackson2JsonRedisSerializer<>(mapper, UserProfile.class));
     template.afterPropertiesSet();
     return template;
 }
@@ -128,6 +131,7 @@ public class JsonRedisSerializer<T> implements RedisSerializer<T> {
 
     @Override
     public byte[] serialize(T value) throws SerializationException {
+        if (value == null) return null;
         try {
             return mapper.writeValueAsBytes(value);
         } catch (JsonProcessingException e) {
