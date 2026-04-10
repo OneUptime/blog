@@ -109,10 +109,8 @@ Track global view counts alongside per-user history:
 
 ```python
 def record_view_with_global_count(user_id, product_id):
-    pipe = r.pipeline()
     record_product_view(user_id, product_id)
-    pipe.zincrby("product:view_counts", 1, product_id)
-    pipe.execute()
+    r.zincrby("product:view_counts", 1, product_id)
 
 def get_trending_products(limit=10):
     return r.zrevrange("product:view_counts", 0, limit - 1, withscores=True)
