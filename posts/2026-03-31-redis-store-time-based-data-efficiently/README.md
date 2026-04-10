@@ -88,10 +88,10 @@ EXPIRE requests:2024-01-15:14 86400   # Keep for 1 day
 ```
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 def increment_hourly_counter(metric, ts=None):
-    dt = datetime.utcfromtimestamp(ts or time.time())
+    dt = datetime.fromtimestamp(ts or time.time(), tz=timezone.utc)
     key = f"{metric}:{dt.strftime('%Y-%m-%d:%H')}"
     pipe = r.pipeline()
     pipe.incr(key)
