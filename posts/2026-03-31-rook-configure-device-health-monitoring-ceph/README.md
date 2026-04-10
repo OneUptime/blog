@@ -32,10 +32,10 @@ Once enabled, configure how often Ceph polls S.M.A.R.T. data from devices:
 
 ```bash
 # Check devices every 24 hours (86400 seconds)
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_scrape_frequency 86400
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mgr mgr/devicehealth/scrape_frequency 86400
 
-# Retain health metrics history for 86400 seconds per sample
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_metrics_max_age 8640000
+# Retain health metrics history for 8640000 seconds (~100 days)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mgr mgr/devicehealth/retention_period 8640000
 ```
 
 ## Setting the Failure Prediction Mode
@@ -43,11 +43,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global d
 Ceph can use a local prediction model or an external one. Set the prediction mode:
 
 ```bash
-# Use the built-in linear regression model
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_prediction_mode local
+# Use the built-in local prediction model
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_failure_prediction_mode local
 
-# Available values: none, local
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config get global device_health_prediction_mode
+# Available values: none, local, cloud
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config get global device_failure_prediction_mode
 ```
 
 ## Configuring Automatic OSD Marking
@@ -55,14 +55,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config get global d
 When a device is predicted to fail within a certain number of days, Ceph can automatically mark the corresponding OSD out. Configure this threshold:
 
 ```bash
-# Mark OSD out if failure predicted within 14 days
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_target_daemon osd
-
 # Enable automatic marking of predicted-failure OSDs
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_enable_monitoring true
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mgr mgr/devicehealth/enable_monitoring true
 
-# Days before predicted failure to mark OSD out
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global device_health_mark_out_threshold 14
+# Mark OSD out if failure predicted within 14 days (1209600 seconds)
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mgr mgr/devicehealth/mark_out_threshold 1209600
 ```
 
 ## Manually Collecting Device Health Data
@@ -99,7 +96,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph device predict-life
 
 ## Rook CephCluster Configuration
 
-You can also configure device health monitoring declaratively through the Rook CephCluster resource:
+You can enable the device health module declaratively through the Rook CephCluster resource using the `mgr.modules` field. Note that the `healthCheck.daemonHealth` section shown below is a separate feature that controls how the Rook operator monitors Ceph daemon liveness (mon quorum, OSD process health, cluster status), not SMART-based device health prediction:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -108,6 +105,10 @@ metadata:
   name: rook-ceph
   namespace: rook-ceph
 spec:
+  mgr:
+    modules:
+      - name: devicehealth
+        enabled: true
   healthCheck:
     daemonHealth:
       mon:
