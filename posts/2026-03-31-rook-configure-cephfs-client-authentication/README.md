@@ -14,7 +14,7 @@ CephFS uses CephX, Ceph's native authentication system, to authenticate clients 
 
 ## Understanding CephX Capabilities for CephFS
 
-A CephX key for CephFS clients requires two capability grants:
+A CephX key for CephFS clients requires three capability grants:
 - `mon` capabilities for authenticating with the monitor
 - `osd` capabilities for accessing the data pool
 - `mds` capabilities for accessing metadata
