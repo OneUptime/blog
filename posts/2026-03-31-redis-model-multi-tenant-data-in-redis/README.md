@@ -46,7 +46,7 @@ ZADD tenant:acme:leaderboard 1200 "user:102"
 ZADD tenant:globex:leaderboard 1800 "user:201"
 
 # Get top 3 for acme tenant
-ZREVRANGE tenant:acme:leaderboard 0 2 WITHSCORES
+ZRANGE tenant:acme:leaderboard 0 2 REV WITHSCORES
 ```
 
 ## Tenant Configuration
