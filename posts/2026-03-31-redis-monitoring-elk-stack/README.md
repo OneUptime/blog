@@ -183,7 +183,7 @@ GET redis-metrics/_search
 GET redis-slowlog-*/_search
 {
   "query": { "match_all": {} },
-  "sort": [{ "slowlog.duration_us": { "order": "desc" }}],
+  "sort": [{ "redis.slowlog.duration.us": { "order": "desc" }}],
   "size": 20
 }
 ```
