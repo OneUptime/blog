@@ -145,6 +145,9 @@ spec:
       port: 3300
     - protocol: TCP
       port: 6789
+    - protocol: TCP
+      port: 6800
+      endPort: 7300
   - from:
     - namespaceSelector: {}
     ports:
