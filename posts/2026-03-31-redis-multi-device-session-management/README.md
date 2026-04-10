@@ -25,8 +25,6 @@ session:{session_id}     -> Hash: {user_id, device, ip, user_agent, last_active}
 import redis
 import uuid
 import time
-import json
-
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 SESSION_TTL = 86400  # 24 hours
@@ -106,9 +104,9 @@ MAX_DEVICES = 5
 def enforce_device_limit(user_id: str):
     session_set_key = f"user:sessions:{user_id}"
     count = r.zcard(session_set_key)
-    if count >= MAX_DEVICES:
+    if count > MAX_DEVICES:
         # Remove oldest sessions (lowest score = oldest)
-        oldest = r.zrange(session_set_key, 0, count - MAX_DEVICES)
+        oldest = r.zrange(session_set_key, 0, count - MAX_DEVICES - 1)
         for sid in oldest:
             revoke_session(sid, user_id)
 ```
