@@ -30,8 +30,8 @@ flowchart LR
 Both clusters must be running Rook v1.8+ and Ceph Pacific (16.x) or later.
 
 ```bash
-# Verify cephfs-mirror module is available
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph module ls | grep mirroring
+# Verify Ceph version supports CephFS mirroring (Pacific 16.x+)
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph version
 ```
 
 ## Deploy the CephFilesystemMirror Daemon
@@ -43,8 +43,6 @@ metadata:
   name: my-fs-mirror
   namespace: rook-ceph
 spec:
-  # Number of mirror daemon instances
-  count: 1
   resources:
     requests:
       cpu: "500m"
@@ -92,8 +90,8 @@ spec:
       - interval: "24h"
         startTime: "00:00:00"
     snapshotRetention:
-      - duration: "7d"
-        prefix: "scheduled"
+      - path: "/"
+        duration: "7d"
 ```
 
 ## Create a Bootstrap Secret from the Secondary Cluster
@@ -143,18 +141,17 @@ kubectl get cephfilesystemmirror -n rook-ceph
 
 # Inspect mirroring state via Ceph toolbox
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs
+  ceph fs snapshot mirror daemon status
 
 # List peers
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer list myfs
+  ceph fs snapshot mirror peer_list myfs
 ```
 
 ## Placement for Mirror Daemon
 
 ```yaml
 spec:
-  count: 2
   placement:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
