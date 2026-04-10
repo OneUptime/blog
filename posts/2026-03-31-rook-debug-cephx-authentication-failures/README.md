@@ -43,8 +43,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Verify the key stored in the Kubernetes Secret matches what Ceph has:
 
 ```bash
-# Get the key from Ceph
-CEPH_KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+# Get the key from Ceph (omit -t to avoid TTY carriage returns in the variable)
+CEPH_KEY=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph auth get-key client.myapp)
 
 # Get the key from the Secret
@@ -84,14 +84,14 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 # Reproduce the failure and check logs
 kubectl -n rook-ceph logs -l app=rook-ceph-mon --tail=200 | grep -i auth
 
-# Reset log level
+# Reset to default log level
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set global debug_auth 0
+  ceph config rm global debug_auth
 ```
 
 ## Step 5: Check Clock Skew
 
-CephX fails if clocks are skewed more than 5 minutes:
+CephX is sensitive to clock skew. Ceph monitors warn when skew exceeds 0.05 seconds by default (`mon_clock_drift_allowed`), and larger drifts can cause authentication failures:
 
 ```bash
 # Check node times
@@ -104,11 +104,12 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Step 6: Test Authentication Directly
 
-Run a minimal auth test from the tools pod:
+Run a minimal auth test from the tools pod by exporting the client keyring and testing with it:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph --id myapp --keyring /etc/ceph/keyring status
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c \
+  'ceph auth get client.myapp -o /tmp/myapp.keyring && \
+   ceph --id myapp --keyring /tmp/myapp.keyring status'
 ```
 
 ## Summary
