@@ -33,7 +33,7 @@ ceph osd pool set mypool compression_mode none
 
 ## passive Mode
 
-Compresses data only when the client explicitly requests it via the `RGW_OBJECT_CONTENT_ENCODING: compress` hint. Default behavior is no compression.
+Compresses data only when the client sets a compressible hint via the RADOS allocation hint mechanism (`LIBRADOS_ALLOC_HINT_FLAG_COMPRESSIBLE`). Default behavior is no compression.
 
 ```bash
 ceph osd pool set mypool compression_mode passive
@@ -75,8 +75,8 @@ spec:
   failureDomain: host
   replicated:
     size: 3
-  compressionMode: force
   parameters:
+    compression_mode: force
     compression_algorithm: zstd
     compression_min_blob_size: "8192"
 ```
@@ -86,8 +86,8 @@ spec:
 To set a default compression mode for all new pools:
 
 ```bash
-ceph config set global bluestore_compression_mode aggressive
-ceph config set global bluestore_compression_algorithm snappy
+ceph config set osd bluestore_compression_mode aggressive
+ceph config set osd bluestore_compression_algorithm snappy
 ```
 
 Existing pools retain their own settings and must be updated individually.
