@@ -189,7 +189,7 @@ SINTERCARD 2 bigset1 bigset2 LIMIT 100
 
 If the intersection has more than 100 members, Redis stops counting at 100. This saves CPU when you only care about whether the overlap exceeds a threshold.
 
-## SINTERCARD vs SINTER + LLEN
+## SINTERCARD vs SINTERSTORE + SCARD
 
 ```redis
 -- Inefficient: retrieves all members then counts
