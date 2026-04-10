@@ -45,32 +45,39 @@ kubectl -n rook-ceph rollout restart deployment rook-ceph-rgw-my-store-a
 
 ## Configuring Compression per Storage Class
 
-Storage classes allow different compression settings for different data tiers:
+Storage classes allow different compression settings for different data tiers.
+
+First, add the storage classes to the zonegroup placement target:
 
 ```bash
-# Create a compressed storage class
-radosgw-admin zonegroup placement modify \
+radosgw-admin zonegroup placement add \
   --rgw-zonegroup default \
   --placement-id default-placement \
+  --storage-class COMPRESSED
+
+radosgw-admin zonegroup placement add \
+  --rgw-zonegroup default \
+  --placement-id default-placement \
+  --storage-class UNCOMPRESSED
+```
+
+Then configure the backing pool and compression at the zone level:
+
+```bash
+# Configure compressed class with its backing pool and compression
+radosgw-admin zone placement add \
+  --rgw-zone default \
+  --placement-id default-placement \
   --storage-class COMPRESSED \
+  --data-pool default.rgw.buckets.compressed \
   --compression zstd
 
-# Create an uncompressed storage class
-radosgw-admin zonegroup placement modify \
-  --rgw-zonegroup default \
+# Configure uncompressed class
+radosgw-admin zone placement add \
+  --rgw-zone default \
   --placement-id default-placement \
   --storage-class UNCOMPRESSED \
   --compression none
-```
-
-Create backing pools for each class:
-
-```bash
-radosgw-admin zonegroup placement modify \
-  --rgw-zonegroup default \
-  --placement-id default-placement \
-  --storage-class COMPRESSED \
-  --data-pool default.rgw.buckets.compressed
 ```
 
 ## Routing Objects to Storage Classes
@@ -102,14 +109,19 @@ Or via bucket lifecycle policy:
 ## Verifying RGW Compression Settings
 
 ```bash
-radosgw-admin zonegroup get | jq '.placement_targets[].val.storage_classes'
+radosgw-admin zone get | jq '.placement_targets[].val.storage_classes'
 ```
 
 Expected output:
 ```json
 {
-  "COMPRESSED": { "compression_type": "zstd" },
-  "STANDARD": { "compression_type": "zlib" }
+  "COMPRESSED": {
+    "data_pool": "default.rgw.buckets.compressed",
+    "compression_type": "zstd"
+  },
+  "STANDARD": {
+    "data_pool": "default.rgw.buckets.data"
+  }
 }
 ```
 
@@ -138,4 +150,4 @@ spec:
 
 ## Summary
 
-RGW compression settings can be applied globally via `ceph config set client.rgw rgw_compression_type`, per storage class using `radosgw-admin zonegroup placement modify`, or at the BlueStore pool level using `ceph osd pool set`. For most deployments, enabling pool-level zstd compression on RGW data pools is the simplest approach. Use storage classes to allow clients to opt into specific compression policies per object or bucket prefix.
+RGW compression settings can be applied globally via `ceph config set client.rgw rgw_compression_type`, per storage class using `radosgw-admin zone placement add`, or at the BlueStore pool level using `ceph osd pool set`. For most deployments, enabling pool-level zstd compression on RGW data pools is the simplest approach. Use storage classes to allow clients to opt into specific compression policies per object or bucket prefix.
