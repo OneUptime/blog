@@ -79,7 +79,7 @@ Use the AWS CLI to save and restore cache:
 ```yaml
       - name: Restore cache from Ceph
         run: |
-          aws s3 sync s3://github-actions-cache/${{ hashFiles('pom.xml') }}/ .m2/repository/ \
+          aws s3 sync s3://github-actions-cache/${{ hashFiles('pom.xml') }}/ ~/.m2/repository/ \
             --endpoint-url ${{ secrets.CEPH_ENDPOINT }} || true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CEPH_ACCESS_KEY }}
@@ -91,7 +91,7 @@ Use the AWS CLI to save and restore cache:
 
       - name: Save cache to Ceph
         run: |
-          aws s3 sync .m2/repository/ s3://github-actions-cache/${{ hashFiles('pom.xml') }}/ \
+          aws s3 sync ~/.m2/repository/ s3://github-actions-cache/${{ hashFiles('pom.xml') }}/ \
             --endpoint-url ${{ secrets.CEPH_ENDPOINT }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.CEPH_ACCESS_KEY }}
