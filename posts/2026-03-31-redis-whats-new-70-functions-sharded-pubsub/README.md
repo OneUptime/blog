@@ -75,9 +75,9 @@ The AOF directory contains:
 - Incremental `incr-*.aof` files for recent commands
 
 Benefits:
-- No more blocking AOF rewrites (BGREWRITEAOF)
-- The base file is written atomically
-- Faster startup since Redis loads the base + short incremental files
+- Eliminates the rewrite buffer flush that could briefly block the main process
+- The manifest file is updated atomically via a rename operation
+- Reduced memory overhead since there is no in-memory AOF rewrite buffer
 
 Check AOF status:
 
@@ -100,7 +100,7 @@ Redis 7.0 improved the expired key eviction algorithm, reducing CPU spikes from 
 
 ## LMPOP and ZMPOP with Blocking Variants
 
-Redis 7.0 added `BLMPOP` and `BZMPOP`, the blocking versions of the 6.2 pop commands:
+Redis 7.0 added `LMPOP` and `ZMPOP` for popping from multiple lists and sorted sets, along with their blocking variants `BLMPOP` and `BZMPOP`:
 
 ```bash
 # Block for up to 5 seconds waiting for an item
@@ -109,4 +109,4 @@ redis-cli BLMPOP 5 2 queue:high queue:low LEFT
 
 ## Summary
 
-Redis 7.0 brought persistent scripting via Functions, cluster-efficient Sharded Pub/Sub, a new multi-part AOF format that eliminates blocking rewrites, and the completion of the listpack encoding migration. These changes improved Redis reliability, cluster scalability, and operational simplicity.
+Redis 7.0 brought persistent scripting via Functions, cluster-efficient Sharded Pub/Sub, a new multi-part AOF format that eliminates the rewrite buffer flush bottleneck, and the completion of the listpack encoding migration. These changes improved Redis reliability, cluster scalability, and operational simplicity.
