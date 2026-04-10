@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, RGW, Zone, Multisite, Object Storage
 
-Description: Learn how to configure zone features in Ceph RGW to enable or disable specific capabilities like compression, encryption, and sync features per zone.
+Description: Learn how to configure zone features in Ceph RGW to enable or disable specific capabilities like resharding, compressed encryption, and notification features per zone.
 
 ---
 
@@ -17,19 +17,18 @@ Ceph RGW zones support a set of optional features that can be enabled or disable
 Ceph RGW zones support these features (as of Ceph Reef):
 
 - `resharding` - allows bucket resharding operations in the zone
-- `compress` - enables transparent object compression
-- `encrypt` - enables server-side encryption
-- `index.lazy` - enables lazy indexing for performance
+- `compress-encrypted` - enables combining server-side encryption and compression on the same object
+- `notification_v2` - enables v2 metadata format for bucket notifications and topics with multisite replication support
 
 ## Checking Current Zone Features
 
 ```bash
-# Show zone details including features
-radosgw-admin zone get --rgw-zone=us-east
+# Show zonegroup details including features
+radosgw-admin zonegroup get --rgw-zonegroup=us
 
-# Output includes features list:
-# "supported_features": ["resharding"],
-# "enabled_features": ["resharding"]
+# Output includes features at the zonegroup and zone level:
+# "enabled_features": ["resharding"],
+# "zones": [{ "name": "us-east", "supported_features": ["resharding"] }]
 ```
 
 ## Enabling Zone Features
@@ -40,10 +39,11 @@ radosgw-admin zone modify \
   --rgw-zone=us-east \
   --enable-feature=resharding
 
-# Enable multiple features
+# Enable multiple features (use separate flags for each)
 radosgw-admin zone modify \
   --rgw-zone=us-east \
-  --enable-feature=resharding,compress
+  --enable-feature=resharding \
+  --enable-feature=compress-encrypted
 
 # Commit the zone update
 radosgw-admin period update --commit
@@ -114,11 +114,11 @@ kubectl -n rook-ceph exec -it $TOOLBOX -- \
 
 ## Verifying Feature Configuration
 
-After enabling features, verify they appear in the zone configuration:
+After enabling features, verify they appear in the zonegroup configuration:
 
 ```bash
-radosgw-admin zone get --rgw-zone=us-east | \
-  jq '{enabled_features: .enabled_features, supported_features: .supported_features}'
+radosgw-admin zonegroup get --rgw-zonegroup=us | \
+  jq '{enabled_features, zones: [.zones[] | {name, supported_features}]}'
 ```
 
 Restart RGW daemons after modifying zone features to ensure they pick up the new configuration:
