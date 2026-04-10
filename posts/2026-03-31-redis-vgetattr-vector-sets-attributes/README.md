@@ -28,7 +28,7 @@ Returns the JSON attribute string for the member, or `nil` if no attribute was s
 ## Basic Example
 
 ```redis
-VADD products 0.1 0.9 0.3 0.7 product:1001
+VADD products VALUES 4 0.1 0.9 0.3 0.7 product:1001
 VSETATTR products product:1001 '{"name":"Wireless Headphones","price":79.99,"category":"electronics","in_stock":true}'
 
 VGETATTR products product:1001
@@ -55,7 +55,7 @@ flowchart TD
 ## Storing Rich Metadata
 
 ```redis
-VADD articles 0.3 0.7 0.2 0.8 0.5 article:42
+VADD articles VALUES 5 0.3 0.7 0.2 0.8 0.5 article:42
 VSETATTR articles article:42 '{
   "title": "Getting Started with Redis",
   "author": "Jane Doe",
@@ -77,7 +77,7 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 # Set up data
 vec = ["0.3", "0.7", "0.2", "0.8", "0.5"]
-r.execute_command("VADD", "articles", *vec, "article:42")
+r.execute_command("VADD", "articles", "VALUES", str(len(vec)), *vec, "article:42")
 attrs = {
     "title": "Getting Started with Redis",
     "author": "Jane Doe",
@@ -105,7 +105,7 @@ async function getAttribute(key, member) {
 }
 
 // Set up data
-await redis.call("VADD", "articles", "0.3", "0.7", "0.2", "0.8", "article:42");
+await redis.call("VADD", "articles", "VALUES", "4", "0.3", "0.7", "0.2", "0.8", "article:42");
 await redis.call(
   "VSETATTR", "articles", "article:42",
   JSON.stringify({ title: "Redis Intro", views: 500 })
@@ -122,7 +122,7 @@ A common pattern is to run `VSIM` to find the most similar vectors, then fetch t
 ```python
 def search_with_attributes(r, key, query_vector, count=5):
     vec_args = [str(v) for v in query_vector]
-    results = r.execute_command("VSIM", key, "VALUES", str(len(query_vector)), *vec_args, "COUNT", count)
+    results = r.execute_command("VSIM", key, "VALUES", str(len(query_vector)), *vec_args, "WITHSCORES", "COUNT", count)
 
     enriched = []
     for i in range(0, len(results), 2):
