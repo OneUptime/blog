@@ -94,7 +94,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- bash
 ceph osd tree
 
 # CRUSH rule for rack-level fault domains (future-proof)
-ceph osd crush rule create-replicated replicated_rule default rack host
+ceph osd crush rule create-replicated replicated_rule default rack
 ```
 
 If you plan to expand to rack-level fault domains, start with `rack` as the failure domain now:
@@ -103,6 +103,7 @@ If you plan to expand to rack-level fault domains, start with `rack` as the fail
 apiVersion: ceph.rook.io/v1
 kind: CephBlockPool
 spec:
+  failureDomain: rack
   replicated:
     size: 3
     requireSafeReplicaSize: true
