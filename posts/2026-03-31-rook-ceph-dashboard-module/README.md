@@ -45,7 +45,7 @@ Apply:
 
 ```bash
 kubectl apply -f cluster.yaml
-kubectl -n rook-ceph rollout status deployment rook-ceph-mgr
+kubectl -n rook-ceph rollout status deployment rook-ceph-mgr-a
 ```
 
 ## Accessing the Dashboard
@@ -76,19 +76,19 @@ Login with username `admin` and the retrieved password.
 ## Setting a Custom Admin Password
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph dashboard ac-user-set-password admin --password-policy-check=false <<< "NewPassword123!"
+kubectl -n rook-ceph exec -i deploy/rook-ceph-mgr-a -- \
+  ceph dashboard ac-user-set-password admin --force-password -i - <<< "NewPassword123!"
 ```
 
 ## Dashboard Module Configuration
 
 ```bash
 # Set SSL certificate
-kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph dashboard set-ssl-certificate-key - < /etc/ceph/dashboard.key
+kubectl -n rook-ceph exec -i deploy/rook-ceph-mgr-a -- \
+  ceph dashboard set-ssl-certificate -i - < /etc/ceph/dashboard.crt
 
-kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
-  ceph dashboard set-ssl-certificate - < /etc/ceph/dashboard.crt
+kubectl -n rook-ceph exec -i deploy/rook-ceph-mgr-a -- \
+  ceph dashboard set-ssl-certificate-key -i - < /etc/ceph/dashboard.key
 
 # Disable SSL for internal-only access
 kubectl -n rook-ceph exec -it deploy/rook-ceph-mgr-a -- \
