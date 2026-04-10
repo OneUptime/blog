@@ -10,7 +10,7 @@ Description: Learn how to use TDIGEST.INFO in Redis to inspect T-Digest sketch m
 
 ## How TDIGEST.INFO Works
 
-`TDIGEST.INFO` returns detailed metadata about a T-Digest sketch. This includes the compression parameter, the number of centroids currently stored, total observations added, memory size, and whether the sketch has been trimmed. It is the primary diagnostic tool for understanding the state of a sketch.
+`TDIGEST.INFO` returns detailed metadata about a T-Digest sketch. This includes the compression parameter, the number of centroids currently stored, total observations added, and memory size. It is the primary diagnostic tool for understanding the state of a sketch.
 
 ```mermaid
 graph TD
@@ -67,15 +67,15 @@ TDIGEST.INFO latency
  7) "Unmerged nodes"
  8) (integer) 0
  9) "Merged weight"
-10) "0"
+10) (integer) 0
 11) "Unmerged weight"
-12) "0"
+12) (integer) 0
 13) "Observations"
 14) (integer) 0
 15) "Total compressions"
 16) (integer) 0
 17) "Memory usage"
-18) (integer) 5040
+18) (integer) 9768
 ```
 
 ### After Adding Values
@@ -91,19 +91,19 @@ TDIGEST.INFO latency
  3) "Capacity"
  4) (integer) 610
  5) "Merged nodes"
- 6) (integer) 10
+ 6) (integer) 0
  7) "Unmerged nodes"
- 8) (integer) 0
+ 8) (integer) 10
  9) "Merged weight"
-10) "10"
+10) (integer) 0
 11) "Unmerged weight"
-12) "0"
+12) (integer) 10
 13) "Observations"
 14) (integer) 10
 15) "Total compressions"
-16) (integer) 1
+16) (integer) 0
 17) "Memory usage"
-18) (integer) 5248
+18) (integer) 9768
 ```
 
 ### Default Compression
@@ -130,7 +130,7 @@ If percentile estimates seem inaccurate, check the compression level. Higher com
 
 ```redis
 TDIGEST.INFO high-accuracy-sketch
--- Compression: 500 means up to 3060 centroids
+-- Compression: 500 means up to 3010 centroids
 ```
 
 ### Capacity Planning
@@ -180,10 +180,10 @@ TDIGEST.CREATE fast-sketch COMPRESSION 50
 TDIGEST.CREATE accurate-sketch COMPRESSION 500
 
 TDIGEST.INFO fast-sketch
--- Capacity: ~306
+-- Capacity: 310
 
 TDIGEST.INFO accurate-sketch
--- Capacity: ~3060
+-- Capacity: 3010
 ```
 
 ## Summary
