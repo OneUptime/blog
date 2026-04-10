@@ -48,7 +48,7 @@ config.active_job.queue_adapter = :sidekiq
 ```ruby
 # app/workers/email_worker.rb
 class EmailWorker
-  include Sidekiq::Worker
+  include Sidekiq::Job
 
   sidekiq_options queue: :emails, retry: 3, backtrace: true
 
@@ -125,7 +125,7 @@ end
 
 ```ruby
 class PaymentWorker
-  include Sidekiq::Worker
+  include Sidekiq::Job
 
   sidekiq_options retry: 5
 
@@ -163,4 +163,4 @@ bundle exec sidekiq -q critical -q emails -q default
 
 ## Summary
 
-Sidekiq integrates with Rails through Redis, storing jobs as JSON in Redis queues and processing them with a configurable number of threads. Workers include `Sidekiq::Worker`, define `perform(args)`, and are enqueued with `perform_async`, `perform_in`, or `perform_at`. The `config/sidekiq.yml` file controls queue priorities and worker concurrency. Sidekiq's web dashboard provides real-time visibility into queues, running jobs, retries, and failed jobs.
+Sidekiq integrates with Rails through Redis, storing jobs as JSON in Redis queues and processing them with a configurable number of threads. Jobs include `Sidekiq::Job`, define `perform(args)`, and are enqueued with `perform_async`, `perform_in`, or `perform_at`. The `config/sidekiq.yml` file controls queue priorities and worker concurrency. Sidekiq's web dashboard provides real-time visibility into queues, running jobs, retries, and failed jobs.
