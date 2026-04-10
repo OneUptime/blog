@@ -190,7 +190,7 @@ Only works correctly when all scores are equal.
 
 ```redis
 ZADD names 0 "anna" 0 "bob" 0 "carol" 0 "dave" 0 "eve"
-ZRANGE names "[b" "[d" BYLEX
+ZRANGE names "[b" "[dave" BYLEX
 ```
 
 ```text
@@ -202,7 +202,7 @@ ZRANGE names "[b" "[d" BYLEX
 Use `[` for inclusive and `(` for exclusive boundaries, or `-` for negative infinity and `+` for positive infinity.
 
 ```redis
-ZRANGE names "[b" "(d" BYLEX
+ZRANGE names "[b" "(dave" BYLEX
 ```
 
 ```text
