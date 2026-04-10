@@ -18,7 +18,7 @@ flowchart TD
     SSL_OFF["ssl: false"]
     SSL_ON --> SelfSigned["Auto-generated\nself-signed cert"]
     SSL_ON --> CustomCert["Custom cert\nfrom K8s Secret"]
-    SSL_OFF --> HTTP["HTTP on port 8080"]
+    SSL_OFF --> HTTP["HTTP on port 7000"]
     SelfSigned --> HTTPS["HTTPS on port 8443"]
     CustomCert --> HTTPS
 ```
@@ -35,7 +35,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v19.2.0
+    image: quay.io/ceph/ceph:v19.2.3
   dataDirHostPath: /var/lib/rook
   dashboard:
     enabled: true
@@ -54,7 +54,7 @@ spec:
   dashboard:
     enabled: true
     ssl: false
-    port: 8080
+    port: 7000
 ```
 
 This simplifies debugging and removes the need to deal with self-signed certificate warnings.
