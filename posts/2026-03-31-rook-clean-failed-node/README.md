@@ -87,7 +87,8 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ```bash
 # Delete OSD pods for the node
-kubectl delete pod -n rook-ceph -l app=rook-ceph-osd,node=<node-name>
+kubectl delete pod -n rook-ceph -l app=rook-ceph-osd \
+  --field-selector spec.nodeName=<node-name>
 
 # Delete OSD PVs if using PVC-based storage
 kubectl get pv | grep <node-name>
@@ -149,14 +150,13 @@ DISK=/dev/sdb
 sgdisk --zap-all $DISK
 dd if=/dev/zero of=$DISK bs=4096 count=100 oflag=direct
 
-# Remove any LVM artifacts
-pvremove /dev/sdb || true
-lvremove /dev/ceph-* || true
-vgremove /dev/ceph-* || true
-dmsetup remove_all
+# Remove any LVM artifacts (order: LV -> VG -> PV)
+lvremove -f /dev/ceph-*/* || true
+vgremove -f ceph-* || true
+pvremove $DISK || true
 
-# Remove lingering udev rules
-ls /dev/mapper/ | grep ceph
+# Remove Ceph device-mapper entries
+ls /dev/mapper/ | grep ceph | while read dev; do dmsetup remove "/dev/mapper/$dev"; done
 ```
 
 ## Step 10: Verify Cluster Health
