@@ -8,9 +8,9 @@ Description: Learn how to configure automatic snapshot schedules in Ceph using t
 
 ---
 
-## Ceph Snap Schedule Module
+## Ceph Snapshot Scheduling
 
-The `snap_schedule` manager module enables automatic, time-based snapshot creation for both RBD images and CephFS directories. It is the native Ceph solution for automated snapshot lifecycle management.
+Ceph provides automatic, time-based snapshot creation for both RBD images and CephFS directories. CephFS uses the `snap_schedule` manager module, while RBD uses snapshot scheduling through the `rbd mirror snapshot schedule` commands as part of the RBD mirroring subsystem.
 
 ## Enabling the Snap Schedule Module
 
@@ -26,37 +26,41 @@ ceph mgr module ls | grep snap_schedule
 
 ## Configuring RBD Snapshot Schedules
 
-### Enable Mirroring (Required for RBD Snap Schedule)
+### Enable Snapshot-Based Mirroring (Required for RBD Snap Schedule)
 
-RBD snap schedules require the image to have snapshotting features:
+RBD snapshot scheduling requires mirroring to be enabled on the pool and image:
 
 ```bash
-rbd feature enable mypool/myimage deep-flatten
+# Enable mirroring on the pool in image mode
+rbd mirror pool enable mypool image
+
+# Enable snapshot-based mirroring on the image
+rbd mirror image enable mypool/myimage snapshot
 ```
 
 ### Add a Schedule
 
 ```bash
 # Daily snapshot at midnight
-rbd snap schedule add --pool mypool --image myimage 24h
+rbd mirror snapshot schedule add --pool mypool --image myimage 24h
 
 # Hourly snapshot
-rbd snap schedule add --pool mypool --image myimage 1h
+rbd mirror snapshot schedule add --pool mypool --image myimage 1h
 
 # Snapshot every 6 hours starting at midnight
-rbd snap schedule add --pool mypool --image myimage 6h 2026-01-01T00:00:00
+rbd mirror snapshot schedule add --pool mypool --image myimage 6h 2026-01-01T00:00:00
 ```
 
 ### List Schedules
 
 ```bash
-rbd snap schedule ls --pool mypool --image myimage
+rbd mirror snapshot schedule list --pool mypool --image myimage
 ```
 
 ### Remove a Schedule
 
 ```bash
-rbd snap schedule rm --pool mypool --image myimage 24h
+rbd mirror snapshot schedule remove --pool mypool --image myimage 24h
 ```
 
 ## Configuring CephFS Snapshot Schedules
@@ -131,10 +135,10 @@ ls /mnt/cephfs/data/.snap/
 
 Output:
 ```text
-_scheduled_2026-03-31-000000_1711843200
-_scheduled_2026-03-30-000000_1711756800
+_scheduled_2026-03-31-000000_1774915200
+_scheduled_2026-03-30-000000_1774828800
 ```
 
 ## Summary
 
-The Ceph `snap_schedule` manager module automates point-in-time snapshot creation for both RBD images and CephFS directories. Enable the module with `ceph mgr module enable snap_schedule`, then create schedules using `rbd snap schedule add` for block devices or `ceph fs snap-schedule add` for filesystem directories. Always configure retention policies to automatically prune old snapshots and prevent unbounded storage growth.
+The Ceph `snap_schedule` manager module automates point-in-time snapshot creation for both RBD images and CephFS directories. Enable the CephFS module with `ceph mgr module enable snap_schedule`, then create schedules using `rbd mirror snapshot schedule add` for block devices or `ceph fs snap-schedule add` for filesystem directories. Always configure retention policies to automatically prune old snapshots and prevent unbounded storage growth.
