@@ -58,7 +58,7 @@ sudo systemctl restart newrelic-infra
 After a few minutes, query your Redis data with NRQL:
 
 ```sql
-SELECT latest(redis.net.instantaneous_ops_per_sec)
+SELECT latest(net.commandsProcessedPerSecond)
 FROM RedisSample
 FACET entityName
 SINCE 30 minutes ago
@@ -77,16 +77,16 @@ LIMIT 1
 Create a dashboard with these NRQL queries:
 
 ```sql
--- Memory usage percentage
-SELECT latest(redis.mem.used_memory) / latest(redis.config.maxmemory) * 100
+-- Memory usage as percentage of total system memory
+SELECT latest(system.usedMemoryBytes) / latest(system.totalSystemMemoryBytes) * 100
 AS 'Memory %'
 FROM RedisSample
 FACET entityName TIMESERIES
 
 -- Cache hit ratio
-SELECT rate(sum(redis.stats.keyspace_hits), 1 minute)
-  / (rate(sum(redis.stats.keyspace_hits), 1 minute)
-  + rate(sum(redis.stats.keyspace_misses), 1 minute)) * 100
+SELECT average(db.keyspaceHitsPerSecond)
+  / (average(db.keyspaceHitsPerSecond)
+  + average(db.keyspaceMissesPerSecond)) * 100
 AS 'Hit Ratio %'
 FROM RedisSample TIMESERIES
 ```
@@ -96,7 +96,7 @@ FROM RedisSample TIMESERIES
 Create an alert condition in New Relic for high eviction rate:
 
 ```sql
-SELECT rate(sum(redis.stats.evicted_keys), 1 minute)
+SELECT average(db.evictedKeysPerSecond) * 60
 FROM RedisSample
 WHERE environment = 'production'
 ```
