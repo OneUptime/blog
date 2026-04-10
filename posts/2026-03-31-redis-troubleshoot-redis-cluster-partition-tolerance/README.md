@@ -55,14 +55,14 @@ Look for nodes flagged as `fail` or `noaddr`:
 
 ## Manual Failover
 
-If a primary is down and its replica hasn't auto-failed over, trigger it manually:
+If you need to perform a planned failover while the primary is still reachable, connect to the replica:
 
 ```bash
-# Connect to the replica
+# Connect to the replica (requires the primary to be reachable)
 redis-cli -h 10.0.0.5 -p 6379 CLUSTER FAILOVER
 ```
 
-For a forced failover when the primary is unreachable:
+If the primary is down and its replica hasn't auto-failed over, force the failover:
 
 ```bash
 redis-cli -h 10.0.0.5 -p 6379 CLUSTER FAILOVER FORCE
