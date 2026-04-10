@@ -8,64 +8,62 @@ Description: Learn how to use redis-shake to migrate data between Redis instance
 
 ---
 
-redis-shake (also known as RedisShake) is an open-source tool from Alibaba for migrating data between Redis instances. It supports sync mode (live replication), restore mode (from RDB files), and scan mode (key-by-key copy), making it flexible for different migration scenarios.
+redis-shake (also known as RedisShake) is an open-source tool originally from Alibaba (now maintained under the tair-opensource organization) for migrating data between Redis instances. It supports sync (live replication via PSync), RDB restore, scan (key-by-key copy), and AOF import, making it flexible for different migration scenarios.
 
 ## Installation
 
 ```bash
-# Download the latest release
-wget https://github.com/alibaba/RedisShake/releases/latest/download/redis-shake.tar.gz
-tar xzf redis-shake.tar.gz
+# Download the latest release (Linux amd64 example)
+wget https://github.com/tair-opensource/RedisShake/releases/latest/download/redis-shake-linux-amd64.tar.gz
+tar xzf redis-shake-linux-amd64.tar.gz
 ls redis-shake/
-# redis-shake  redis-shake.toml  (binary and sample config)
+# redis-shake  shake.toml  (binary and sample config)
 ```
 
 ## Configuration File
 
-redis-shake uses a TOML configuration file:
+redis-shake uses a TOML configuration file. The behavior is determined by which reader and writer sections you include. You pick exactly one reader and one writer per config file:
 
 ```toml
-# redis-shake.toml
+# shake.toml
 
-[source]
-type = "standalone"          # standalone, cluster, sentinel
+[sync_reader]
 address = "source-host:6379"
 username = ""
 password = "source-password"
 tls = false
 
-[target]
-type = "standalone"
+[redis_writer]
+cluster = false
 address = "target-host:6379"
 username = ""
 password = "target-password"
 tls = false
 
 [advanced]
-# Number of concurrent goroutines
-parallel = 4
+# Number of CPU cores to use (0 = all cores)
+ncpu = 4
 
-# Key filter - only migrate keys matching pattern
-# filter_key_pattern = "session:*"
+# Key filter - only migrate keys matching prefix
+# [filter]
+# allow_key_prefix = ["session:"]
 
-# Log level: debug, info, warning, error
+# Log level: debug, info, warn
 log_level = "info"
-log_file = "redis-shake.log"
+log_file = "shake.log"
 ```
 
 ## Sync Mode (Live Replication)
 
-Sync mode is the most powerful: it does an initial full sync then streams live changes, making it suitable for near-zero downtime migration.
+Sync mode uses the `[sync_reader]` section. It does an initial full sync then streams live changes via the PSync protocol, making it suitable for near-zero downtime migration.
 
 ```bash
 # Run sync mode
-./redis-shake redis-shake.toml
+./redis-shake shake.toml
 
-# redis-shake output will show:
-# [INFO] source: standalone standalone-source-host:6379
-# [INFO] target: standalone standalone-target-host:6379
-# [INFO] syncing...
-# [INFO] all entries synced, total: 124532
+# redis-shake output will show progress:
+# [INFO] start syncing...
+# [INFO] all entries synced
 # [INFO] start incremental sync
 ```
 
@@ -76,69 +74,68 @@ While in incremental sync, you can monitor progress:
 redis-cli -h target-host -a "target-password" DBSIZE
 
 # Monitor redis-shake log
-tail -f redis-shake.log
+tail -f shake.log
 ```
 
 ## Restore Mode (From RDB File)
 
-If you have an RDB dump file, use restore mode:
+If you have an RDB dump file, use the `[rdb_reader]` section:
 
 ```toml
-[source]
-type = "rdb"
-address = "/path/to/dump.rdb"
+[rdb_reader]
+filepath = "/path/to/dump.rdb"
 
-[target]
-type = "standalone"
+[redis_writer]
 address = "target-host:6379"
 password = "target-password"
 ```
 
 ```bash
-./redis-shake redis-shake.toml
+./redis-shake shake.toml
 ```
 
 ## Scan Mode (Key-by-Key Copy)
 
-Scan mode reads keys from the source using SCAN and writes them to the target. It is slower but works when you cannot use replication:
+Scan mode uses the `[scan_reader]` section. It reads keys from the source using SCAN and writes them to the target. It is slower but works when you cannot use replication:
 
 ```toml
-[source]
-type = "scan"
+[scan_reader]
 address = "source-host:6379"
 password = "source-password"
 
-[target]
-type = "standalone"
+[redis_writer]
 address = "target-host:6379"
 password = "target-password"
 ```
 
 ## Filtering Keys During Migration
 
+Filtering is configured in the `[filter]` section:
+
 ```toml
-[advanced]
-# Migrate only keys matching a pattern
-filter_key_pattern = "user:*"
+[filter]
+# Migrate only keys matching a prefix
+allow_key_prefix = ["user:"]
 
-# Exclude keys matching a pattern
-exclude_key_pattern = "temp:*"
+# Exclude keys matching a prefix
+block_key_prefix = ["temp:"]
 
-# Migrate only specific database number
-source_db = 0
-target_db = 0
+# Migrate only specific databases
+allow_db = [0]
 ```
 
 ## Cluster to Cluster Migration
 
+For cluster-to-cluster migration, set `cluster = true` on both the reader and writer:
+
 ```toml
-[source]
-type = "cluster"
+[sync_reader]
+cluster = true
 address = "source-cluster-node1:6379"
 password = "source-password"
 
-[target]
-type = "cluster"
+[redis_writer]
+cluster = true
 address = "target-cluster-node1:6379"
 password = "target-password"
 ```
