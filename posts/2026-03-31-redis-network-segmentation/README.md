@@ -136,6 +136,9 @@ spec:
   podSelector:
     matchLabels:
       app: redis
+  policyTypes:
+  - Ingress
+  - Egress
   ingress:
   - from:
     - podSelector:
