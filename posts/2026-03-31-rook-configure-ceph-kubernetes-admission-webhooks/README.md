@@ -23,8 +23,6 @@ This example webhook validates that PVCs in the `production` namespace use the `
 
 ```python
 from flask import Flask, request, jsonify
-import base64
-import json
 
 app = Flask(__name__)
 
@@ -98,7 +96,7 @@ spec:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingAdmissionWebhook
+kind: ValidatingWebhookConfiguration
 metadata:
   name: storage-policy-validator
 webhooks:
@@ -125,7 +123,7 @@ webhooks:
 Label the namespace to activate enforcement:
 
 ```bash
-kubectl label namespace production storage-policy: enforced
+kubectl label namespace production storage-policy=enforced
 ```
 
 ## Testing the Webhook
