@@ -52,7 +52,8 @@ kafka-topics.sh --create \
   --topic orders \
   --partitions 6 \
   --replication-factor 3 \
-  --config retention.ms=604800000
+  --config retention.ms=604800000 \
+  --bootstrap-server localhost:9092
 
 # Produce
 echo '{"id":"123","status":"created"}' | kafka-console-producer.sh \
