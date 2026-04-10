@@ -114,6 +114,12 @@ ALTER SYSTEM SET shared_buffers = '1GB';
 SELECT pg_reload_conf();
 ```
 
+Note: `shared_buffers` and `wal_level` are postmaster parameters that require a full PostgreSQL restart to take effect. The `pg_reload_conf()` call above applies the other settings immediately, but you must restart the pod for `shared_buffers` and `wal_level` changes:
+
+```bash
+kubectl -n databases rollout restart statefulset postgres
+```
+
 Setting `random_page_cost = 1.1` (close to 1.0) tells the query planner that random I/O is nearly as fast as sequential, which is true for RBD-backed SSDs.
 
 ## Expanding the PostgreSQL Volume
