@@ -10,7 +10,7 @@ Description: Configure the crush_location option for Ceph OSDs to ensure accurat
 
 ## What is crush_location for OSDs
 
-The `crush_location` option in Ceph's configuration tells each OSD daemon where it sits in the CRUSH topology hierarchy when it first starts up. If the OSD is not already in the CRUSH map with a location, the `crush_location` value is used to insert it at startup. This is essential for automated deployments where you want OSDs to self-register in the correct topology position.
+The `crush_location` option in Ceph's configuration tells each OSD daemon where it sits in the CRUSH topology hierarchy. By default, every time an OSD starts it verifies that it is in the correct location in the CRUSH map and moves itself if it is not (controlled by the `osd crush update on start` option, which defaults to `true`). This is essential for automated deployments where you want OSDs to self-register and maintain the correct topology position.
 
 ## Setting crush_location in ceph.conf
 
@@ -77,7 +77,7 @@ When an OSD starts, it logs its CRUSH location:
 kubectl -n rook-ceph logs rook-ceph-osd-0-xxxxxxxxx | grep crush_location
 
 # Or check directly via ceph
-ceph osd find osd.0
+ceph osd find 0
 ```
 
 Expected output:
