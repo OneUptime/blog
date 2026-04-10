@@ -153,30 +153,24 @@ spec:
 
 ## Feature 5: ReadAffinity for RBD
 
-Reduce inter-node data transfer by reading from OSDs local to the pod's node:
+Reduce inter-node data transfer by reading from OSDs local to the pod's node. In a Rook-managed deployment, configure readAffinity through the CephCluster CR (do not edit the `rook-ceph-csi-config` ConfigMap directly, as the operator manages it and will overwrite manual changes):
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
 metadata:
-  name: rook-ceph-csi-config
+  name: rook-ceph
   namespace: rook-ceph
-data:
-  config.json: |-
-    [
-      {
-        "clusterID": "rook-ceph",
-        "monitors": ["<mon-ip>:6789"],
-        "readAffinity": {
-          "enabled": true,
-          "crushLocationLabels": [
-            "topology.kubernetes.io/zone",
-            "kubernetes.io/hostname"
-          ]
-        }
-      }
-    ]
+spec:
+  csi:
+    readAffinity:
+      enabled: true
+      crushLocationLabels:
+        - topology.kubernetes.io/zone
+        - kubernetes.io/hostname
 ```
+
+Note: ReadAffinity requires Linux kernel 5.8 or higher for the KRBD `read_from_replica` map option.
 
 ## Feature 6: Snapshot and Restore
 
