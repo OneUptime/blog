@@ -114,7 +114,7 @@ ZRANDMEMBER scores -6
 6) "alice"
 ```
 
-Duplicates appear because `|count|` (6) exceeds the set size (4).
+Duplicates can appear because negative count samples with replacement.
 
 ### Negative Count with WITHSCORES
 
@@ -179,11 +179,9 @@ ZRANDMEMBER features:active
 "ai_assist"
 ```
 
-### Weighted Random Selection via Scores
+### Uniform Random Sampling
 
-Use scores as relative weights and sample via negative count to approximate a weighted distribution.
-
-Note: Sorted sets deduplicate members, so true weighted random requires a list or Lua script. However, for broad sampling with possible duplication, negative count gives a roughly score-proportional appearance if the set is small.
+ZRANDMEMBER selects members uniformly at random, regardless of their scores. Each member has an equal probability of being chosen. If you need weighted random selection based on scores, you would need a Lua script or application-level logic.
 
 ### Random Sample for A/B Testing
 
@@ -242,7 +240,7 @@ ZRANDMEMBER deck 5
 5) "4"
 ```
 
-## Comparison: ZRANDMEMBER vs SRANDMEMBER vs SPOP
+## Comparison: ZRANDMEMBER vs SRANDMEMBER vs ZPOPMIN/ZPOPMAX
 
 | Aspect | ZRANDMEMBER | SRANDMEMBER | ZPOPMIN/ZPOPMAX |
 |---|---|---|---|
