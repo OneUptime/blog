@@ -78,17 +78,19 @@ Operation          Pipelining    Transaction    Winner
 Atomicity          None          Yes            Transaction
 Read-modify-write  Unsafe        Safe (+ WATCH) Transaction
 Bulk load          Fast          Slower*        Pipelining
-Error isolation    Per-command   Whole-batch    Pipeline
+Error isolation    Per-command   Per-command**   Tie
 ```
 
-*Transactions add MULTI/EXEC overhead and block other clients for the duration.
+*Transactions add MULTI/EXEC overhead and block other clients during EXEC processing.
+
+**Runtime errors in transactions do not cause a rollback - other commands still execute. Only queuing errors (invalid command syntax) abort the entire transaction.
 
 ## WATCH - Optimistic Locking with Transactions
 
 WATCH lets you abort a transaction if a key changes between the WATCH and EXEC:
 
 ```python
-def atomic_increment_if_positive(r, key):
+def atomic_decrement_if_positive(r, key):
     with r.pipeline() as pipe:
         while True:
             try:
@@ -110,7 +112,7 @@ Pipelining cannot do this - it has no WATCH equivalent.
 
 ## Can You Combine Both?
 
-Yes. Sending the MULTI/EXEC block itself via a pipeline reduces the round trips from 2 (MULTI, EXEC) to 1:
+Yes. Sending the MULTI/EXEC block itself via a pipeline reduces the round trips from N+2 (MULTI, N commands, EXEC) to 1:
 
 ```python
 # Pipeline wrapping a transaction: 1 round trip total
