@@ -17,7 +17,7 @@ Default Linux kernel parameters are designed for general workloads. Ceph OSD nod
 High-throughput Ceph clusters need large network buffers:
 
 ```bash
-cat | sudo tee /etc/sysctl.d/90-ceph-network.conf << 'EOF'
+cat << 'EOF' | sudo tee /etc/sysctl.d/90-ceph-network.conf
 # Increase TCP buffer sizes
 net.core.rmem_max = 134217728
 net.core.wmem_max = 134217728
@@ -43,7 +43,7 @@ sudo sysctl --system
 OSD performance is sensitive to memory reclaim behavior:
 
 ```bash
-cat | sudo tee /etc/sysctl.d/90-ceph-memory.conf << 'EOF'
+cat << 'EOF' | sudo tee /etc/sysctl.d/90-ceph-memory.conf
 # Reduce swappiness - avoid swapping Ceph daemons
 vm.swappiness = 10
 
@@ -78,20 +78,20 @@ echo mq-deadline | sudo tee /sys/block/sda/queue/scheduler
 Persist via udev rule:
 
 ```bash
-cat | sudo tee /etc/udev/rules.d/60-ceph-io-scheduler.rules << 'EOF'
+cat << 'EOF' | sudo tee /etc/udev/rules.d/60-ceph-io-scheduler.rules
 ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none"
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="mq-deadline"
 EOF
 ```
 
-## Huge Pages for RocksDB (BlueStore)
+## Transparent Huge Pages
 
-BlueStore uses RocksDB, which benefits from transparent huge pages:
+Ceph recommends disabling transparent huge pages (THP). While THP can improve performance for some workloads, it causes latency spikes on OSD nodes due to background memory compaction by `khugepaged`:
 
 ```bash
-echo always | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
-echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
 ## Queue Depth
