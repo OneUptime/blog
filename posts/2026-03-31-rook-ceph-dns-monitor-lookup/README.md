@@ -37,13 +37,13 @@ _ceph-mon._tcp.ceph.example.com. 300 IN SRV 0 100 3300 mon3.example.com.
 
 ## Configuring ceph.conf for DNS Discovery
 
-Remove hardcoded monitor IPs and use the DNS domain instead:
+Remove hardcoded monitor IPs and set the service name for DNS discovery. Ceph constructs the full SRV query by prepending `_` and appending `._tcp.<search-domain>` to the value of `mon_dns_srv_name`, using the system DNS search domain from `/etc/resolv.conf`:
 
 ```ini
 [global]
 fsid = a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ; Do not set mon_host - Ceph will query DNS
-mon_dns_srv_name = _ceph-mon._tcp.ceph.example.com
+mon_dns_srv_name = ceph-mon
 auth_cluster_required = cephx
 auth_service_required = cephx
 auth_client_required = cephx
@@ -92,17 +92,21 @@ mon_host = rook-ceph-mon-a.rook-ceph.svc.cluster.local:6789,\
 For Kubernetes-internal Ceph clusters needing SRV records, configure CoreDNS:
 
 ```yaml
-# CoreDNS custom config
+# CoreDNS custom config using the template plugin
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: coredns-custom
   namespace: kube-system
 data:
-  ceph.override: |
+  ceph.server: |
     ceph.cluster.local:53 {
-      srv
-      forward . /etc/resolv.conf
+      template IN SRV ceph.cluster.local {
+        match "^_ceph-mon[.]_tcp[.]ceph[.]cluster[.]local[.]$"
+        answer "{{ .Name }} 300 IN SRV 0 100 6789 rook-ceph-mon-a.rook-ceph.svc.cluster.local."
+        answer "{{ .Name }} 300 IN SRV 0 100 6789 rook-ceph-mon-b.rook-ceph.svc.cluster.local."
+        answer "{{ .Name }} 300 IN SRV 0 100 6789 rook-ceph-mon-c.rook-ceph.svc.cluster.local."
+      }
     }
 ```
 
