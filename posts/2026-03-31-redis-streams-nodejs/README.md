@@ -125,7 +125,7 @@ async function reclaimStaleMessages() {
 ```javascript
 const info = await client.xInfoStream('orders');
 console.log('Length:', info.length);
-console.log('Groups:', info.groups);
+console.log('Number of groups:', info.groups);
 
 const groups = await client.xInfoGroups('orders');
 for (const g of groups) {
@@ -140,7 +140,7 @@ for (const g of groups) {
 await client.xTrim('orders', 'MAXLEN', 10000);
 
 // Approximate trim (faster, allows slight overshoot)
-await client.xTrim('orders', 'MAXLEN', { threshold: 10000, strategy: '~' });
+await client.xTrim('orders', 'MAXLEN', 10000, { strategyModifier: '~' });
 ```
 
 ## Summary
