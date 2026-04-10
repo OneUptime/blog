@@ -36,28 +36,31 @@ docker push ${INTERNAL_REGISTRY}/rook/ceph:${ROOK_VERSION}
 # Update operator deployment to use internal registry
 helm install rook-ceph rook-ceph/rook-ceph \
   --set image.repository=${INTERNAL_REGISTRY}/rook/ceph \
-  --set csi.rbdPluginImage=${INTERNAL_REGISTRY}/cephcsi/cephcsi:v3.12.0
+  --set csi.cephcsi.repository=${INTERNAL_REGISTRY}/cephcsi/cephcsi \
+  --set csi.cephcsi.tag=v3.13.0
 ```
 
 ## FIPS-Compliant Encryption Configuration
 
-Configure Vault with FIPS 140-2 compliant keys for KMS integration:
+Configure Vault with FIPS 140-2 compliant keys for KMS integration in the CephCluster CRD:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
 metadata:
-  name: rook-ceph-operator-config
+  name: rook-ceph
   namespace: rook-ceph
-data:
-  CSI_ENABLE_ENCRYPTION: "true"
-  KMS_PROVIDER: "vault"
-  VAULT_ADDR: "https://vault.gov.internal:8200"
-  VAULT_AUTH_METHOD: "kubernetes"
-  VAULT_AUTH_MOUNT_PATH: "kubernetes"
-  VAULT_ROLE: "rook-ceph-role"
-  VAULT_BACKEND_PATH: "secret/rook-ceph"
-  VAULT_TLS_CA_CERT: "/etc/vault-tls/ca.crt"
+spec:
+  security:
+    kms:
+      connectionDetails:
+        KMS_PROVIDER: vault
+        VAULT_ADDR: https://vault.gov.internal:8200
+        VAULT_SECRET_ENGINE: kv
+        VAULT_BACKEND_PATH: rook-ceph
+        VAULT_AUTH_METHOD: kubernetes
+        VAULT_AUTH_KUBERNETES_ROLE: rook-ceph-role
+        VAULT_CACERT: /etc/vault-tls/ca.crt
 ```
 
 ## Network Encryption (Msgr2)
@@ -89,6 +92,12 @@ metadata:
   name: gov-store
   namespace: rook-ceph
 spec:
+  metadataPool:
+    replicated:
+      size: 3
+  dataPool:
+    replicated:
+      size: 3
   gateway:
     securePort: 443
     sslCertificateRef: gov-tls-cert
@@ -118,19 +127,23 @@ Apply bucket policies to enforce classification boundaries:
 
 ## Audit Logging Configuration
 
-Enable comprehensive RGW access logging:
+Enable comprehensive RGW access logging using the S3 Bucket Logging API:
 
 ```bash
-# Enable per-bucket logging
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin bucket logging enable \
+# Enable per-bucket logging via the S3 API
+aws --endpoint-url https://rgw.gov.internal \
+  s3api put-bucket-logging \
   --bucket classified-data \
-  --target-bucket audit-logs \
-  --target-prefix classified-data/
+  --bucket-logging-status '{
+    "LoggingEnabled": {
+      "TargetBucket": "audit-logs",
+      "TargetPrefix": "classified-data/"
+    }
+  }'
 
 # Verify logging configuration
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin bucket logging get --bucket classified-data
+aws --endpoint-url https://rgw.gov.internal \
+  s3api get-bucket-logging --bucket classified-data
 ```
 
 ## RBAC for Multi-Agency Access
@@ -151,6 +164,12 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   --quota-scope user \
   --uid agency-dod-user \
   --max-size 10T
+
+# Enable the quota (required after setting it)
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
+  radosgw-admin quota enable \
+  --quota-scope user \
+  --uid agency-dod-user
 ```
 
 ## Summary
