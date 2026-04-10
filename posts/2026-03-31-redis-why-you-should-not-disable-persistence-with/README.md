@@ -125,15 +125,15 @@ appendfsync everysec
 ## Monitoring Data Loss Exposure
 
 ```bash
-# Check last successful RDB save
+# Check last successful RDB save (returns UNIX timestamp)
 redis-cli LASTSAVE
 
 # Check AOF status
 redis-cli INFO persistence | grep aof
 
-# Check time since last save
-redis-cli DEBUG sleep 0
-redis-cli LASTSAVE
+# Check time since last save and unsaved changes
+redis-cli INFO persistence | grep rdb_last_save_time
+redis-cli INFO persistence | grep rdb_changes_since_last_save
 ```
 
 ## Making the Right Decision
