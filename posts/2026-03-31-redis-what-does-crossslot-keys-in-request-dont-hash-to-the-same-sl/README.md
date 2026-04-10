@@ -76,7 +76,7 @@ redis-cli -c MSET {100}.user "alice" {100}.order "pending"
 ### Hash Tag Examples
 
 ```python
-import redis.cluster
+from redis.cluster import RedisCluster
 
 rc = RedisCluster(host='10.0.0.1', port=6379)
 
