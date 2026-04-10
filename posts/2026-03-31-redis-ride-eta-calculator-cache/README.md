@@ -13,7 +13,7 @@ Ridesharing apps compute ETAs thousands of times per second - every time a user 
 ## Architecture
 
 1. Driver positions are updated in a Redis geo index every 5-10 seconds.
-2. When a user requests an ETA, find nearby drivers using `GEOIRADIUS`.
+2. When a user requests an ETA, find nearby drivers using `GEOSEARCH`.
 3. Check the route cache for a pre-computed ETA for that origin-destination pair.
 4. If no cached route, call the routing API and cache the result for 5 minutes.
 
