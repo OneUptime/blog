@@ -60,13 +60,20 @@ redis-cli -p 7004 GET user:1001
 
 The `MOVED` error redirects you to the primary. `READONLY` suppresses this redirection.
 
-## Using READONLY with redis-cli --cluster
+## Using READONLY with redis-cli in Cluster Mode
 
-Most Redis clients handle `READONLY` automatically when configured for replica reads. For example, with redis-cli:
+Most Redis clients handle `READONLY` automatically when configured for replica reads. With redis-cli, connect in cluster mode and issue the `READONLY` command:
 
 ```bash
-# Use --readonly flag to connect with READONLY mode
-redis-cli -c -p 7004 --readonly
+# Connect to a replica in cluster mode
+redis-cli -c -p 7004
+
+# Then enable READONLY mode
+READONLY
+# OK
+
+GET user:1001
+# Returns the value from this replica
 ```
 
 ## Using READONLY in Application Code
