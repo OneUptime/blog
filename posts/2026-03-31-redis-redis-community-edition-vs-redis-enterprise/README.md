@@ -12,7 +12,7 @@ Description: A detailed comparison of Redis Community Edition and Redis Enterpri
 
 Redis is available in two main editions:
 
-- **Redis Community Edition (CE)** - Open source (BSD-3-Clause as of Redis 7.4+), free, self-managed
+- **Redis Community Edition (CE)** - Source-available (RSALv2/SSPL dual license as of Redis 7.4+), free, self-managed
 - **Redis Enterprise** - Commercial product by Redis Ltd. with additional features, enterprise support, and fully managed cloud options (Redis Cloud)
 
 Note: Redis 7.4 changed from BSD to RSALv2/SSPL dual-license. Check the current license at redis.io before production use.
@@ -47,19 +47,20 @@ Support                         Community           24/7 Enterprise
 Redis Cluster (CE) distributes data across shards using hash slots:
 
 ```bash
-# Create a Redis Cluster (minimum 3 primary nodes)
+# Create a Redis Cluster (minimum 3 primary nodes, 6 nodes total with replicas)
 redis-cli --cluster create \
   10.0.0.1:7000 10.0.0.2:7001 10.0.0.3:7002 \
+  10.0.0.4:7003 10.0.0.5:7004 10.0.0.6:7005 \
   --cluster-replicas 1
 
-# Resharding requires downtime coordination
+# Resharding is online but requires careful coordination
 redis-cli --cluster reshard 10.0.0.1:7000
 ```
 
 Limitations:
 - Only 16,384 hash slots
 - Multi-key operations require keys on the same slot (use hash tags)
-- Resharding requires careful coordination
+- Resharding is online but requires careful coordination (clients may receive ASK/MOVED redirections)
 
 ### Redis Enterprise Clustering
 
@@ -155,8 +156,8 @@ Latency (Auto Tiering)          N/A                 1-5ms for cold data
 ## Licensing Note
 
 ```text
-Redis 7.x: RSALv2/SSPL dual-license (source-available, not OSI open source)
-Redis CE 7.4+: Redis Community Edition license
+Redis <= 7.2: BSD-3-Clause (OSI open source)
+Redis 7.4+:   RSALv2/SSPL dual-license (source-available, not OSI open source)
 
 For OSI-compliant open-source Redis, consider:
 - Valkey (Linux Foundation fork of Redis 7.2)
