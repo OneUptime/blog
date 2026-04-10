@@ -20,13 +20,12 @@ Ceph BlueStore supports the following checksum types:
 - `crc32c_8` - 8-bit truncated, minimal overhead
 - `xxhash32` - fast non-cryptographic hash
 - `xxhash64` - 64-bit variant for better collision resistance
-- `sha1` - cryptographic, slowest option
 
 ## Viewing Current Configuration
 
 ```bash
 ceph config get osd bluestore_csum_type
-ceph config get osd bluestore_block_size
+ceph config get osd bluestore_csum_block_size
 ```
 
 ## Setting the Checksum Algorithm Globally
@@ -56,7 +55,7 @@ spec:
     size: 3
   parameters:
     compression_mode: none
-    bluestore_csum_type: crc32c_16
+    csum_type: crc32c_16
 ```
 
 Alternatively, set pool-level hints directly:
@@ -84,10 +83,10 @@ ceph health detail | grep checksum
 journalctl -u ceph-osd@0 | grep -i "checksum mismatch"
 ```
 
-A RADOS stat can also force a checksum read:
+Reading object data forces a checksum verification:
 
 ```bash
-rados -p mypool stat myobject
+rados -p mypool get myobject /tmp/myobject
 ```
 
 ## Performance Considerations
