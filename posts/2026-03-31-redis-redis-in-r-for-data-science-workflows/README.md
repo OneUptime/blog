@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, R, Data Science, Caching, RediSearch
+Tags: Redis, R, Data Science, Caching
 
 Description: Learn how to use Redis in R with the redux package to cache model outputs, share data between processes, and speed up expensive computations.
 
@@ -109,14 +109,13 @@ R supports multi-processing via `parallel`. Use Redis Pub/Sub to coordinate:
 # In worker process
 subscribe_to_channel <- function() {
   sub <- hiredis()
-  sub$SUBSCRIBE("model_updates")
-
-  repeat {
-    msg <- sub$receive()
-    if (!is.null(msg[[3]])) {
-      cat("Update received:", msg[[3]], "\n")
-    }
-  }
+  sub$subscribe("model_updates",
+    transform = function(x) {
+      cat("Update received:", x$value, "\n")
+      x$value
+    },
+    terminate = function(x) identical(x, "STOP")
+  )
 }
 
 # In main process - publish when model finishes
@@ -127,7 +126,7 @@ r$PUBLISH("model_updates", paste("Model trained at", Sys.time()))
 
 ```r
 # Add feature flags
-r$SADD("features:enabled", "new_dashboard", "dark_mode", "export_csv")
+r$SADD("features:enabled", c("new_dashboard", "dark_mode", "export_csv"))
 
 # Check if a feature is enabled
 if (r$SISMEMBER("features:enabled", "dark_mode") == 1) {
