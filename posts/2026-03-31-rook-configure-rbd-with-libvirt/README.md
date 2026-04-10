@@ -105,10 +105,10 @@ Add the RBD volume as a disk in the VM domain XML:
 </disk>
 ```
 
-Apply to a running VM:
+Save the XML above to a file (e.g., `/tmp/rbd-disk.xml`) and attach it to a running VM:
 
 ```bash
-virsh attach-disk myvm --config --live
+virsh attach-device myvm /tmp/rbd-disk.xml --config --live
 ```
 
 ## Step 6 - Enable Live Migration
