@@ -24,13 +24,13 @@ Look for inconsistencies in which node each Sentinel considers the primary.
 
 ## Step 2: Check If Quorum Is Met
 
-Failover requires a quorum of Sentinels to agree. Check the configured quorum:
+Failover has two requirements: a quorum of Sentinels must agree the primary is unreachable (failure detection), and then a majority of all Sentinels (more than half) must authorize the actual failover. Check the configured quorum:
 
 ```bash
 redis-cli -p 26379 SENTINEL master mymaster | grep quorum
 ```
 
-If fewer Sentinels are reachable than the quorum, failover will not proceed. Check Sentinel process status on each node:
+If fewer Sentinels are reachable than the quorum, failure detection will not proceed. Even if the quorum is met, failover will not execute unless a majority of Sentinels can vote. Check Sentinel process status on each node:
 
 ```bash
 systemctl status redis-sentinel
