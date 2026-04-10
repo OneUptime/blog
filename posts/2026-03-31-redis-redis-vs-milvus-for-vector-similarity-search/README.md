@@ -103,7 +103,7 @@ index_params.add_index(
 )
 ```
 
-Redis only supports HNSW and FLAT (exact search) indexes.
+Redis supports HNSW, FLAT (exact search), and SVS-VAMANA (graph-based ANN with built-in compression, available since Redis 8.2) indexes.
 
 ## Inserting and Querying
 
@@ -169,7 +169,7 @@ results = client.search(
 Scale          | Redis Vector Search     | Milvus
 ---------------|-------------------------|---------------------------
 Vectors        | ~100M (RAM limited)     | Billions (DiskANN, cloud)
-Index types    | HNSW, FLAT              | 10+ (IVF, HNSW, DiskANN, GPU)
+Index types    | HNSW, FLAT, SVS-VAMANA  | 10+ (IVF, HNSW, DiskANN, GPU)
 GPU support    | No                      | Yes (GPU indexes)
 Sharding       | Redis Cluster (limited) | Native distributed
 Persistence    | AOF/RDB snapshots       | S3/MinIO object storage
