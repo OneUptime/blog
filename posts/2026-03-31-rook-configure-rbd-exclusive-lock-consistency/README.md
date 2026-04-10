@@ -92,17 +92,19 @@ spec:
 
 ## Lock Timeout Configuration
 
-Adjust how long Ceph waits before considering a lock client dead:
+The `lock_timeout` and `lock_on_read` options are kernel RBD (krbd) map options passed when mapping an image, not daemon-level config settings:
 
 ```bash
+# Set how long the client waits to acquire the exclusive lock (seconds, 0 = wait indefinitely)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client rbd_lock_timeout 30
+  rbd device map replicapool/my-vol -o lock_timeout=30
 
+# Disable lock acquisition on read operations
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client rbd_lock_on_read false
+  rbd device map replicapool/my-vol -o lock_on_read=0
 ```
 
-Setting `rbd_lock_on_read=false` allows multiple readers to share an image without acquiring the exclusive lock.
+Setting `lock_on_read=0` allows multiple readers to share an image without acquiring the exclusive lock. A `lock_timeout` of `0` (the default) means the client waits indefinitely for the lock.
 
 ## Troubleshooting Lock Conflicts
 
