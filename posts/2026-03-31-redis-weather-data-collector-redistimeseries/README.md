@@ -140,7 +140,7 @@ def compare_stations(metric: str, hours: int = 24):
     result = r.execute_command(
         'TS.MRANGE', from_ts, now,
         'AGGREGATION', 'avg', 3600000,
-        'FILTER', f'metric={metric}'
+        'FILTER', f'metric={metric}', 'resolution='
     )
 
     output = {}
