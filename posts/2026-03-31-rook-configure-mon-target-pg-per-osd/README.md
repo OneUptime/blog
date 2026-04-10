@@ -18,7 +18,7 @@ The default value is 100. This means with 10 OSDs and a replication factor of 3,
 
 ```bash
 # View current mon_target_pg_per_osd value
-ceph config get mon mon_target_pg_per_osd
+ceph config get global mon_target_pg_per_osd
 
 # Check autoscaler recommendations
 ceph osd pool autoscale-status
@@ -40,13 +40,13 @@ ceph-blockpool        1.2T     0B       3.0    10.8T         0.11    0.0        
 
 ```bash
 # Set to a lower value for smaller clusters or pools
-ceph config set mon mon_target_pg_per_osd 50
+ceph config set global mon_target_pg_per_osd 50
 
 # Set to a higher value for large, I/O-intensive clusters
-ceph config set mon mon_target_pg_per_osd 150
+ceph config set global mon_target_pg_per_osd 150
 
 # Verify the change took effect
-ceph config get mon mon_target_pg_per_osd
+ceph config get global mon_target_pg_per_osd
 ```
 
 ## Guidelines for Choosing the Right Value
