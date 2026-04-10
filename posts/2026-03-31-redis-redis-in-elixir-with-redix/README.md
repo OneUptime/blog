@@ -76,7 +76,7 @@ In a Phoenix app, add Redix to your supervision tree:
 ```elixir
 # lib/my_app/application.ex
 children = [
-  {Redix, {[host: "localhost", port: 6379], [name: :redix]}}
+  {Redix, host: "localhost", port: 6379, name: :redix}
 ]
 ```
 
@@ -90,15 +90,16 @@ For a pool of connections:
 
 ```elixir
 # Start multiple named connections
-pool_size = 5
+@pool_size 5
+
 children =
-  for i <- 0..(pool_size - 1) do
-    {Redix, {[host: "localhost"], [name: :"redix_#{i}"]}}
+  for i <- 0..(@pool_size - 1) do
+    Supervisor.child_spec({Redix, host: "localhost", name: :"redix_#{i}"}, id: {Redix, i})
   end
 
 # Pick one at random
 def pool_command(cmd) do
-  name = :"redix_#{:rand.uniform(pool_size) - 1}"
+  name = :"redix_#{Enum.random(0..(@pool_size - 1))}"
   Redix.command(name, cmd)
 end
 ```
@@ -109,7 +110,7 @@ end
 {:ok, pubsub} = Redix.PubSub.start_link("redis://localhost:6379")
 
 # Subscribe - messages arrive as Elixir messages
-:ok = Redix.PubSub.subscribe(pubsub, "notifications", self())
+{:ok, ref} = Redix.PubSub.subscribe(pubsub, "notifications", self())
 
 # In a GenServer or receive block
 receive do
