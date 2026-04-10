@@ -66,7 +66,7 @@ replicapool       0 B        0 B    3.0    10.0 TiB     0.0000         0.0000   
 metadata-pool     0 B        0 B    3.0    10.0 TiB     0.0000         0.0000             0.0000   1.0     16           8  on         False
 ```
 
-The bulk pool starts with 128 PGs instead of the minimal 32, ensuring better distribution from day one.
+In this example, the bulk pool is recommended 128 PGs instead of the minimal 32, ensuring better distribution from day one. The actual PG count depends on the number of OSDs, replication factor, and the `mon_target_pg_per_osd` setting.
 
 ## Configure Bulk in CephBlockPool
 
