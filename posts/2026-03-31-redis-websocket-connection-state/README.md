@@ -22,7 +22,7 @@ EXPIRE conn:abc123 120
 Also maintain a set of connection IDs per user:
 
 ```bash
-SADD user:user_42:connections conn:abc123 conn:def456
+SADD user:user_42:connections abc123 def456
 EXPIRE user:user_42:connections 120
 ```
 
