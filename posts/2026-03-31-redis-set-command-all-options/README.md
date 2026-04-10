@@ -14,12 +14,13 @@ The `SET` command is the most fundamental Redis command. It stores a string valu
 
 ```mermaid
 flowchart TD
-    A[Client sends SET key value] --> B{Key exists?}
-    B -- No --> C[Create key with value]
-    B -- Yes --> D[Overwrite value]
-    C --> E[Return OK]
-    D --> E
-    E --> F[Apply options: EX/PX/NX/XX/GET/KEEPTTL]
+    A[Client sends SET key value] --> B{NX/XX condition?}
+    B -- Not met --> C[Return nil]
+    B -- Met or not specified --> D[Store value at key]
+    D --> E[Apply expiry: EX/PX/EXAT/PXAT/KEEPTTL]
+    E --> F{GET specified?}
+    F -- Yes --> G[Return previous value]
+    F -- No --> H[Return OK]
 ```
 
 ## Syntax
@@ -88,7 +89,7 @@ OK
 Set a key to expire at an exact Unix timestamp.
 
 ```redis
-SET promo:summer2026 "SAVE20" EXAT 1751328000
+SET promo:summer2026 "SAVE20" EXAT 1782864000
 TTL promo:summer2026
 ```
 
