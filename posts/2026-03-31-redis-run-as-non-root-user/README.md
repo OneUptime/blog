@@ -32,6 +32,8 @@ Edit `/etc/redis/redis.conf`:
 # If started directly as the redis user, this is ignored.
 # Best practice: always start as the dedicated user via systemd
 
+supervised systemd
+
 dir /var/lib/redis
 logfile /var/log/redis/redis-server.log
 pidfile /run/redis/redis-server.pid
@@ -96,11 +98,13 @@ cat /proc/$(pgrep redis-server)/status | grep -E "^(Name|Uid|Gid):"
 
 ## Running Redis in Docker as Non-Root
 
-The official Redis Docker image already runs as the `redis` user (UID 999). Verify:
+The official Redis Docker image already runs `redis-server` as the `redis` user (UID 999). The entrypoint script uses `gosu` to drop privileges from root to the `redis` user when starting `redis-server`. Verify the running process user:
 
 ```bash
-docker run --rm redis:7 whoami
-# redis
+docker run -d --name redis-test redis:7
+docker top redis-test
+# The USER column should show "redis" or UID 999 for the redis-server process
+docker rm -f redis-test
 ```
 
 For Docker Compose:
