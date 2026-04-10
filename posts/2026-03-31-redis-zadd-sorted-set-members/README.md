@@ -104,7 +104,6 @@ ZSCORE leaderboard "alice"
 
 ```redis
 ZADD leaderboard XX 500 "newuser"
-EXISTS leaderboard
 ZSCORE leaderboard "newuser"
 ```
 
@@ -177,7 +176,7 @@ ZADD leaderboard 200 "bob" 300 "diana"
 With CH:
 
 ```redis
-ZADD leaderboard CH 200 "bob" 300 "diana"
+ZADD leaderboard CH 250 "bob" 350 "diana"
 ```
 
 ```text
@@ -193,7 +192,7 @@ ZADD leaderboard INCR 50 "bob"
 ```
 
 ```text
-"250"
+"300"
 ```
 
 Equivalent to ZINCRBY.
