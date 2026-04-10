@@ -103,9 +103,9 @@ Add a row "Capacity" and include:
 # Cluster used %
 (ceph_cluster_total_used_bytes / ceph_cluster_total_bytes) * 100
 
-# Per pool usage (filtered by $pool variable)
-(ceph_pool_bytes_used{name=~"$pool"} /
- (ceph_pool_bytes_used{name=~"$pool"} + ceph_pool_max_avail{name=~"$pool"})) * 100
+# Per pool usage (filtered by $pool variable via label join)
+(ceph_pool_bytes_used / (ceph_pool_bytes_used + ceph_pool_max_avail))
+  * on(pool_id) group_left(name) ceph_pool_metadata{name=~"$pool"} * 100
 ```
 
 Use a Time series panel with threshold lines at 75% and 85%.
@@ -119,13 +119,12 @@ sum(rate(ceph_osd_op_w[5m]))
 # Client Read IOPS
 sum(rate(ceph_osd_op_r[5m]))
 
-# Average Write Latency
-sum(rate(ceph_osd_op_w_latency_sum[5m])) /
-sum(rate(ceph_osd_op_w_latency_count[5m])) * 1000
+# Average OSD Apply Latency (ms)
+avg(ceph_osd_apply_latency_ms)
 ```
 
-Panel settings for latency:
-- Unit: milliseconds
+Panel settings for latency (metric is already in milliseconds):
+- Unit: milliseconds (ms)
 - Thresholds: 0-20 green, 20-100 yellow, 100+ red
 
 ## Step 6: Add an Annotation for Ceph Events
