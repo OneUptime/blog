@@ -27,33 +27,24 @@ ceph config get client.rgw rgw_cache_enabled
 ```
 
 The cache is per-RGW-instance and stores:
-- Object metadata (headers, ACLs)
-- Small objects below the `rgw_max_chunk_size` threshold
+- Object metadata (user info, bucket info, bucket instance info)
+- ACLs and extended attributes
 
 ## Configuring D4N Caching (Distributed Cache)
 
 D4N provides a distributed cache layer using Redis:
 
 ```bash
-# Enable D4N caching
+# Enable D4N by setting the RGW filter
+ceph config set client.rgw rgw_filter d4n
 ceph config set client.rgw rgw_d4n_address "redis-host:6379"
 ceph config set client.rgw rgw_d4n_l1_datacache_persistent_path /var/cache/rgw
-ceph config set client.rgw rgw_d4n_l1_datacache_size 10737418240  # 10GB
-
-# Configure cache policy
-ceph config set client.rgw rgw_datacache_enabled true
+ceph config set client.rgw rgw_d4n_l1_datacache_disk_reserve 1073741824  # 1GB reserved free space
 ```
 
 ## Setting Cache-Control Headers
 
-Configure RGW to return appropriate cache headers for CDN integration:
-
-```bash
-# Set default cache max-age for objects
-ceph config set client.rgw rgw_default_max_age 86400  # 24 hours
-```
-
-Use bucket lifecycle or object metadata to control caching per object:
+RGW does not have a server-side config option for setting a default `Cache-Control` header. Instead, set cache headers per object at upload time using S3 API metadata:
 
 ```bash
 # Set cache-control header on upload
@@ -69,7 +60,6 @@ Generate time-limited pre-signed URLs for CDN origins:
 
 ```python
 import boto3
-from datetime import datetime
 
 s3 = boto3.client(
     's3',
