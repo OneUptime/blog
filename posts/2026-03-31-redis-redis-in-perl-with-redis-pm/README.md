@@ -62,7 +62,7 @@ $redis->del('visits');
 ## Hash Operations
 
 ```perl
-# HSET
+# HMSET
 $redis->hmset('profile:1',
     city  => 'Paris',
     age   => 29,
