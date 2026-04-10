@@ -115,6 +115,16 @@ spec:
             env:
             - name: RGW_ENDPOINT
               value: "http://rook-ceph-rgw-store.rook-ceph:80"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: rgw-creds
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rgw-creds
+                  key: secret-key
             volumeMounts:
             - name: app-data
               mountPath: /data
