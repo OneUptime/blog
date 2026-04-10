@@ -95,15 +95,19 @@ spec:
       storage: 10Gi
     storageClassName: rook-ceph-tidb-pd
     config:
-      replication.max-replicas: 3
+      replication:
+        max-replicas: 3
   tikv:
     replicas: 3
     requests:
       storage: 200Gi
     storageClassName: rook-ceph-tikv
     config:
-      storage.block-cache.capacity: "4GB"
-      rocksdb.max-open-files: 4096
+      storage:
+        block-cache:
+          capacity: "4GB"
+      rocksdb:
+        max-open-files: 4096
   tidb:
     replicas: 2
     requests:
@@ -120,21 +124,27 @@ Optimize TiKV's RocksDB for block device storage:
 ```yaml
 tikv:
   config:
-    storage.block-cache.capacity: "4GB"
-    rocksdb.max-background-jobs: 4
-    rocksdb.max-open-files: 4096
-    raftdb.max-background-jobs: 2
-    # Reduce write amplification
-    rocksdb.level0-slowdown-writes-trigger: 20
-    rocksdb.level0-stop-writes-trigger: 36
+    storage:
+      block-cache:
+        capacity: "4GB"
+    rocksdb:
+      max-background-jobs: 4
+      max-open-files: 4096
+      defaultcf:
+        # Reduce write amplification
+        level0-slowdown-writes-trigger: 20
+        level0-stop-writes-trigger: 36
+    raftdb:
+      max-background-jobs: 2
 ```
 
 ## Monitoring TiKV Storage
 
 ```sql
--- Check region distribution
+-- Check leader region distribution per store
 SELECT count(*), store_id
-FROM information_schema.tikv_region_status
+FROM information_schema.tikv_region_peers
+WHERE is_leader = 1
 GROUP BY store_id;
 
 -- Check storage usage
