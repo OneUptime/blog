@@ -26,13 +26,13 @@ graph TD
 ```redis
 TS.CREATERULE sourceKey destKey
   AGGREGATION aggregator bucketDuration
-  [ALIGNTIMESTAMP alignTimestamp]
+  [alignTimestamp]
 ```
 
 - `sourceKey` - the source time series that receives raw data
 - `destKey` - must exist before creating the rule; receives aggregated data
 - `AGGREGATION` - aggregation function and bucket size in milliseconds
-- `ALIGNTIMESTAMP` - align bucket boundaries to this timestamp (default: 0 = epoch)
+- `alignTimestamp` - optional; align bucket boundaries to this timestamp in milliseconds (default: 0 = epoch)
 
 ### Aggregation Functions
 
@@ -84,7 +84,7 @@ TS.CREATERULE raw:requests hourly:requests:count AGGREGATION count 3600000
 
 ```redis
 -- Align bucket boundaries to midnight UTC
-TS.CREATERULE raw:sales daily:sales AGGREGATION sum 86400000 ALIGNTIMESTAMP 0
+TS.CREATERULE raw:sales daily:sales AGGREGATION sum 86400000 0
 ```
 
 ## Use Cases
@@ -107,7 +107,7 @@ Pre-compute aggregations at ingestion time so dashboards read from compact serie
 
 ```redis
 -- Dashboard reads from hourly:latency, not raw:latency
-TS.RANGE hourly:latency -2592000000 + AGGREGATION avg 3600000
+TS.RANGE hourly:latency - + AGGREGATION avg 3600000
 ```
 
 ### Anomaly Detection with Min/Max
@@ -137,13 +137,13 @@ TS.CREATERULE raw:transactions daily:transactions AGGREGATION sum 86400000
 ```redis
 -- Include the current partial hour bucket
 TS.GET hourly:latency LATEST
-TS.RANGE hourly:latency -86400000 + LATEST
+TS.RANGE hourly:latency - + LATEST
 ```
 
 ## Performance Considerations
 
 - Each compaction rule adds O(1) overhead per `TS.ADD` call.
-- Multiple rules on one source are evaluated in parallel per write.
+- Multiple rules on one source are evaluated sequentially; total overhead is O(M) for M rules.
 - Pre-created compaction series dramatically reduce dashboard query time.
 - Set appropriate retention on destination series to avoid unbounded growth.
 
