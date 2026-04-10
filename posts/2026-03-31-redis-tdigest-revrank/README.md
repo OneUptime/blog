@@ -156,7 +156,7 @@ TDIGEST.RANK latency 80
 
 -- Reverse rank: where does 80ms fall from the top?
 TDIGEST.REVRANK latency 80
--- Returns: 49 (49th slowest)
+-- Returns: 49 (50th slowest)
 ```
 
 ## TDIGEST.REVRANK vs TDIGEST.BYREVRANK
