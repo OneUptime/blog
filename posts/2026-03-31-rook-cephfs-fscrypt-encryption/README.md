@@ -16,16 +16,16 @@ CephFS fscrypt is a Linux kernel feature that provides file-system-level encrypt
 
 Before configuring fscrypt, ensure the following conditions are met:
 
-- Rook version 1.11 or later
-- Linux kernel 5.4 or later on all nodes
+- Rook version 1.15 or later
+- Linux kernel 6.6 or later on all nodes
 - CephFS kernel client loaded (`ceph` module)
-- The `fscrypt` kernel module enabled
+- `CONFIG_FS_ENCRYPTION=y` enabled in the kernel
 
 Check kernel support on your nodes:
 
 ```bash
 cat /proc/filesystems | grep ceph
-modinfo fscrypt
+grep CONFIG_FS_ENCRYPTION /boot/config-$(uname -r)
 ```
 
 ## Enable fscrypt in the StorageClass
@@ -68,7 +68,7 @@ data:
   config.json: |-
     {
       "secrets-metadata-kms": {
-        "encryptionKMSType": "secrets-metadata",
+        "encryptionKMSType": "metadata",
         "secretName": "cephfs-encryption-keys",
         "secretNamespace": "rook-ceph"
       }
@@ -124,7 +124,7 @@ After the pod runs, check the CSI node plugin logs to confirm encryption was app
 kubectl logs -n rook-ceph -l app=csi-cephfsplugin -c csi-cephfsplugin | grep -i fscrypt
 ```
 
-You should see log entries indicating the encryption policy was set on the volume directory. The Ceph MDS will store the encrypted blobs, and only pods with the correct key can decrypt the contents.
+You should see log entries indicating the encryption policy was set on the volume directory. The OSDs store the encrypted file data, while the MDS stores encrypted metadata such as filenames and directory entries. Neither the MDS nor OSDs are aware of the encryption — only clients with the correct key can decrypt the contents.
 
 ## Summary
 
