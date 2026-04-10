@@ -191,7 +191,7 @@ status:
     type: Ready
   phase: Ready
   info:
-    endpoint: http://rook-ceph-rgw-my-store-a.rook-ceph.svc.cluster.local:80
+    endpoint: http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local:80
 ```
 
 ## Verifying RGW Pools Were Created
@@ -205,7 +205,6 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd pool ls | grep my-s
 Expected pools:
 
 ```text
-.rgw.root
 my-store.rgw.control
 my-store.rgw.meta
 my-store.rgw.log
@@ -214,11 +213,13 @@ my-store.rgw.buckets.non-ec
 my-store.rgw.buckets.data
 ```
 
+Note: The `.rgw.root` pool is also created but does not include the store name prefix, so it will not appear in the `grep my-store` output above.
+
 Check RGW daemon status:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  radosgw-admin period get-current --format json | jq '.current_period.id'
+  radosgw-admin period get-current --format json | jq '.id'
 ```
 
 ## Scaling the RGW
