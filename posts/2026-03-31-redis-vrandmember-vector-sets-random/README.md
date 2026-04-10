@@ -32,11 +32,11 @@ Returns `nil` if the key does not exist or the set is empty.
 ## Basic Usage
 
 ```redis
-VADD docs 0.1 0.9 0.3 0.7 article1
-VADD docs 0.8 0.2 0.6 0.4 article2
-VADD docs 0.4 0.5 0.5 0.6 article3
-VADD docs 0.7 0.3 0.8 0.2 article4
-VADD docs 0.2 0.7 0.1 0.9 article5
+VADD docs VALUES 4 0.1 0.9 0.3 0.7 article1
+VADD docs VALUES 4 0.8 0.2 0.6 0.4 article2
+VADD docs VALUES 4 0.4 0.5 0.5 0.6 article3
+VADD docs VALUES 4 0.7 0.3 0.8 0.2 article4
+VADD docs VALUES 4 0.2 0.7 0.1 0.9 article5
 
 # Single random member
 VRANDMEMBER docs
@@ -76,7 +76,7 @@ vectors = {
     "article5": ["0.2", "0.7", "0.1", "0.9"],
 }
 for name, vec in vectors.items():
-    r.execute_command("VADD", "docs", *vec, name)
+    r.execute_command("VADD", "docs", "VALUES", len(vec), *vec, name)
 
 # Single random member
 single = r.execute_command("VRANDMEMBER", "docs")
@@ -100,7 +100,7 @@ const docs = [
   ["article3", "0.4", "0.5", "0.5", "0.6"],
 ];
 for (const [name, ...vec] of docs) {
-  await redis.call("VADD", "docs", ...vec, name);
+  await redis.call("VADD", "docs", "VALUES", vec.length, ...vec, name);
 }
 
 // Single random member
@@ -117,8 +117,6 @@ console.log("Sample:", sample);
 A common use case is selecting a random sample of vectors to evaluate search recall:
 
 ```python
-import random
-
 def evaluate_recall(r, key, sample_size=100):
     members = r.execute_command("VRANDMEMBER", key, sample_size)
     hit_count = 0
