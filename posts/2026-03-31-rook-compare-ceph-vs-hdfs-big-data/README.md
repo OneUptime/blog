@@ -18,7 +18,7 @@ HDFS (Hadoop Distributed File System) was built specifically for the Hadoop big 
 |---------|------|------|
 | Storage type | Block, file, object | File only |
 | Access protocol | S3, CephFS, RBD, Swift | HDFS protocol, WebHDFS |
-| Metadata service | MDS / RADOS | NameNode |
+| Metadata service | MON / MDS (CephFS) | NameNode |
 | Replication | Configurable (3x default) | 3x default |
 | Erasure coding | Yes | Yes (EC policies) |
 | Kubernetes integration | Excellent (Rook) | Limited |
