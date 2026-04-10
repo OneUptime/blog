@@ -14,9 +14,9 @@ Description: Learn how to use TS.MGET in Redis Time Series to retrieve the lates
 
 ```mermaid
 graph TD
-    A["series: sensor:temp:room-1 Labels: building=hq room=101"]
-    B["series: sensor:temp:room-2 Labels: building=hq room=102"]
-    C["series: sensor:temp:room-3 Labels: building=hq room=103"]
+    A["series: sensor:temp:room-1 Labels: building=hq metric=temperature"]
+    B["series: sensor:temp:room-2 Labels: building=hq metric=temperature"]
+    C["series: sensor:temp:room-3 Labels: building=hq metric=temperature"]
     D["TS.MGET FILTER building=hq metric=temperature"]
     A --> D
     B --> D
@@ -160,7 +160,7 @@ Use `TS.GET` when you know the exact key. Use `TS.MGET` when you want to query b
 TS.MGET FILTER env=production metric=cpu
 
 -- Range of values, multiple series
-TS.MRANGE -60000 + FILTER env=production metric=cpu
+TS.MRANGE - + FILTER env=production metric=cpu
 ```
 
 Use `TS.MGET` for current state. Use `TS.MRANGE` for historical analysis.
@@ -168,7 +168,7 @@ Use `TS.MGET` for current state. Use `TS.MRANGE` for historical analysis.
 ## Performance Considerations
 
 - `TS.MGET` scans the label index to find matching series, then reads one data point per series.
-- Label indexing is efficient for well-cardinality labels; avoid labels with thousands of unique values.
+- Label indexing is efficient for low-cardinality labels; avoid labels with thousands of unique values.
 - Use `SELECTED_LABELS` instead of `WITHLABELS` to reduce response payload size.
 
 ## Summary
