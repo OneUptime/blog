@@ -34,7 +34,7 @@ kubectl exec -it -n rook-ceph deploy/rook-ceph-tools -- bash
 Inside the toolbox:
 
 ```bash
-ceph dashboard ac-user-set-password admin --password-policy-enabled=false -i - <<< "MyNewSecurePassword123!"
+ceph dashboard ac-user-set-password admin -i - --force-password <<< "MyNewSecurePassword123!"
 ```
 
 Update the Kubernetes secret to match:
@@ -47,18 +47,11 @@ kubectl -n rook-ceph create secret generic rook-ceph-dashboard-password \
 
 ## Create a Read-Only Dashboard User
 
-For auditors or monitoring teams, create a read-only user:
-
-```bash
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-create readonly-user --enabled --roles=read-only
-```
-
-Set the password for the new user:
+For auditors or monitoring teams, create a read-only user with a password:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash -c \
-  "echo 'ReadOnlyPass!' | ceph dashboard ac-user-set-password readonly-user -i -"
+  "echo 'ReadOnlyPass!' | ceph dashboard ac-user-create readonly-user -i - read-only --force-password"
 ```
 
 ## List Dashboard Users
@@ -87,20 +80,20 @@ Verify SSO status:
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph dashboard sso status
 ```
 
-## Disable Dashboard Login (Maintenance)
+## Disable the Dashboard (Maintenance)
 
-To temporarily disable all dashboard logins for maintenance:
+To temporarily disable the Ceph Dashboard module for maintenance:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph dashboard disable-login
+  ceph mgr module disable dashboard
 ```
 
 Re-enable:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph dashboard enable-login
+  ceph mgr module enable dashboard
 ```
 
 ## Summary
