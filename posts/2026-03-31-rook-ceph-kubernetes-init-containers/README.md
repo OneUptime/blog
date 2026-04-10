@@ -112,7 +112,7 @@ kubectl describe pod seeded-app | grep -A20 Events
 
 ## Handling Init Container Failures
 
-Init containers retry on failure. If a Ceph volume is not yet available (e.g., cluster recovery), the init container waits and retries:
+Init containers retry on failure based on the Pod's `restartPolicy`. Note that Kubernetes will not start any container (including init containers) until all volumes are successfully mounted — if the volume is unavailable, the Pod stays in `Pending` state. Once the Pod starts, you can verify the volume is writable before proceeding:
 
 ```yaml
 initContainers:
@@ -122,10 +122,11 @@ initContainers:
   - /bin/sh
   - -c
   - |
-    until [ -d /data ]; do
-      echo "Waiting for volume..."
+    until touch /data/.volume-check 2>/dev/null; do
+      echo "Waiting for volume to be writable..."
       sleep 5
     done
+    rm -f /data/.volume-check
     echo "Volume ready"
   volumeMounts:
   - name: app-data
