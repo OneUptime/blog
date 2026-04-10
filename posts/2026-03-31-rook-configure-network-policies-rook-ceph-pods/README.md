@@ -90,8 +90,7 @@ spec:
       ports:
         - protocol: TCP
           port: 6800
-        - protocol: TCP
-          port: 6801
+          endPort: 7300
   egress:
     - to:
         - namespaceSelector:
@@ -101,13 +100,13 @@ spec:
 
 ## Allow CSI to Access Ceph
 
-The CSI pods in the `kube-system` or dedicated namespace need to reach the MONs:
+The CSI pods are deployed in the operator namespace (`rook-ceph` by default) and need to reach both the MONs and OSDs:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-csi-to-mon
+  name: allow-csi-to-ceph
   namespace: rook-ceph
 spec:
   podSelector:
@@ -115,10 +114,7 @@ spec:
       app: rook-ceph-mon
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
+        - podSelector:
             matchLabels:
               app: csi-rbdplugin
       ports:
@@ -126,6 +122,25 @@ spec:
           port: 3300
         - protocol: TCP
           port: 6789
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-csi-to-osd
+  namespace: rook-ceph
+spec:
+  podSelector:
+    matchLabels:
+      app: rook-ceph-osd
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: csi-rbdplugin
+      ports:
+        - protocol: TCP
+          port: 6800
+          endPort: 7300
 ```
 
 ## Allow Application Namespaces via CSI Only
