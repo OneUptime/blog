@@ -31,9 +31,6 @@ Total time ≈ max(write_time) + 1 * network_RTT
 ```python
 import rados
 
-def on_write_complete(completion, data):
-    print(f"Write complete for object: {data}")
-
 with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
     with cluster.open_ioctx("mypool") as ioctx:
         completions = []
@@ -46,7 +43,7 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
             comp = ioctx.aio_write_full(
                 obj_name,
                 data,
-                oncomplete=on_write_complete,
+                oncomplete=lambda c, _name=obj_name: print(f"Write complete for object: {_name}"),
                 onsafe=None
             )
             completions.append(comp)
@@ -56,7 +53,6 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
             comp.wait_for_complete_and_cb()
             if comp.get_return_value() != 0:
                 print(f"Write failed: {comp.get_return_value()}")
-            comp.release()
 
         print("All async writes complete")
 ```
@@ -66,9 +62,9 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
 ```python
 read_results = {}
 
-def on_read_complete(completion, name):
+def on_read_complete(completion, data, name):
     if completion.get_return_value() > 0:
-        read_results[name] = completion.get_data()
+        read_results[name] = data
 
 with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
     with cluster.open_ioctx("mypool") as ioctx:
@@ -79,13 +75,12 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
                 name,
                 256,
                 0,
-                oncomplete=lambda c, _n=name: on_read_complete(c, _n)
+                oncomplete=lambda c, d, _n=name: on_read_complete(c, d, _n)
             )
             completions.append(comp)
 
         for comp in completions:
             comp.wait_for_complete_and_cb()
-            comp.release()
 ```
 
 ## Async Operations in C
@@ -95,7 +90,6 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
 
 void write_callback(rados_completion_t comp, void *arg) {
     printf("Async write complete for: %s\n", (char *)arg);
-    rados_aio_release(comp);
 }
 
 /* In main: */
@@ -112,6 +106,7 @@ rados_aio_write_full(io, "myobj", comp, "Hello async!", 12);
 /* Do other work here */
 
 rados_aio_wait_for_complete(comp);
+rados_aio_release(comp);
 ```
 
 ## Throttling In-Flight Operations
@@ -129,7 +124,6 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
             # Throttle: wait if too many in flight
             while len(in_flight) >= MAX_IN_FLIGHT:
                 in_flight[0].wait_for_complete_and_cb()
-                in_flight[0].release()
                 in_flight.pop(0)
 
             comp = ioctx.aio_write_full(f"obj-{i}", f"data-{i}".encode())
@@ -138,7 +132,6 @@ with rados.Rados(conffile="/etc/ceph/ceph.conf") as cluster:
         # Drain remaining
         for comp in in_flight:
             comp.wait_for_complete_and_cb()
-            comp.release()
 ```
 
 ## Summary
