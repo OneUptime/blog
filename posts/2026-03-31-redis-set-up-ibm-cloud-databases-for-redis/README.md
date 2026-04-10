@@ -56,7 +56,7 @@ The JSON output contains a `connection.rediss` block with host, port, password, 
 ```bash
 # From the JSON credentials, extract and decode the cert
 ibmcloud resource service-key my-redis-creds --output json | \
-  jq -r '.credentials.connection.rediss.certificate.certificate_base64' | \
+  jq -r '.[0].credentials.connection.rediss.certificate.certificate_base64' | \
   base64 -d > ibm-redis-ca.pem
 ```
 
@@ -93,8 +93,10 @@ const redis = new Redis({
 
 redis.on("ready", () => console.log("IBM Cloud Redis ready"));
 
-await redis.set("ibm:test", "connected", "EX", 60);
-console.log(await redis.get("ibm:test"));
+(async () => {
+  await redis.set("ibm:test", "connected", "EX", 60);
+  console.log(await redis.get("ibm:test"));
+})();
 ```
 
 ## Connecting with Python
@@ -127,13 +129,11 @@ IBM Cloud Databases scales resources independently:
 
 ```bash
 # Scale memory to 2 GB per member
-ibmcloud cdb deployment-groups-set-config my-redis \
-  --group member \
+ibmcloud cdb deployment-groups-set my-redis member \
   --memory 2048
 
 # Scale disk to 20 GB
-ibmcloud cdb deployment-groups-set-config my-redis \
-  --group member \
+ibmcloud cdb deployment-groups-set my-redis member \
   --disk 20480
 ```
 
