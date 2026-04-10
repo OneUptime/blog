@@ -12,7 +12,7 @@ Real games rank players on multiple dimensions - kills, accuracy, wins, playtime
 
 ## Strategy 1: Composite Score Encoding
 
-Pack multiple scores into a single float by using bit shifting:
+Pack multiple scores into a single float by using positional encoding:
 
 ```python
 import redis
