@@ -117,7 +117,7 @@ FROM Metric
 SINCE 1 hour ago
 
 -- Pool capacity utilization
-SELECT latest(ceph_pool_bytes_used) / latest(ceph_pool_max_avail) * 100 AS 'Usage %'
+SELECT latest(ceph_pool_bytes_used) / (latest(ceph_pool_bytes_used) + latest(ceph_pool_max_avail)) * 100 AS 'Usage %'
 FROM Metric
 FACET pool_name
 ```
@@ -125,15 +125,32 @@ FACET pool_name
 ## Step 6 - Set Up Alert Policies
 
 ```bash
-# Create alert using New Relic CLI
-newrelic alerts conditions create \
-  --policyId <POLICY_ID> \
-  --type "static" \
-  --name "Ceph Health Degraded" \
-  --metric "ceph_health_status" \
-  --condition-scope "application" \
-  --threshold 1 \
-  --threshold-occurrences "at_least_once"
+# Create NRQL alert condition via New Relic NerdGraph API
+curl -X POST https://api.newrelic.com/graphql \
+  -H "Api-Key: <YOUR_NEW_RELIC_USER_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "mutation($accountId: Int!, $policyId: ID!, $condition: AlertsNrqlConditionStaticInput!) { alertsNrqlConditionStaticCreate(accountId: $accountId, policyId: $policyId, condition: $condition) { id name } }",
+    "variables": {
+      "accountId": <ACCOUNT_ID>,
+      "policyId": "<POLICY_ID>",
+      "condition": {
+        "name": "Ceph Health Degraded",
+        "enabled": true,
+        "nrql": {
+          "query": "SELECT latest(ceph_health_status) FROM Metric WHERE prometheus_server = '\''ceph-cluster'\''"
+        },
+        "signal": { "aggregationWindow": 60 },
+        "terms": [{
+          "threshold": 1,
+          "thresholdOccurrences": "AT_LEAST_ONCE",
+          "thresholdDuration": 300,
+          "operator": "ABOVE_OR_EQUALS",
+          "priority": "CRITICAL"
+        }]
+      }
+    }
+  }'
 ```
 
 ## Summary
