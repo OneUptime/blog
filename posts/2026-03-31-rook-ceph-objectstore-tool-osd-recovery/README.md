@@ -20,9 +20,9 @@ The OSD must be stopped before using the tool:
 # Stop the OSD in Rook
 kubectl -n rook-ceph scale deployment rook-ceph-osd-0 --replicas=0
 
-# Or via ceph commands
+# Or on a traditional (non-Rook) deployment
 ceph osd out osd.0
-ceph osd down osd.0
+sudo systemctl stop ceph-osd@0
 ```
 
 ## List Objects in a Damaged OSD
@@ -37,11 +37,11 @@ ceph-objectstore-tool \
 ## Export a Specific Object
 
 ```bash
-# List objects from a specific PG
+# List objects in a specific PG
 ceph-objectstore-tool \
   --data-path /var/lib/ceph/osd/ceph-0 \
   --pgid 1.0 \
-  --op list-pgs
+  --op list
 
 # Export a single object to a file
 ceph-objectstore-tool \
@@ -73,18 +73,18 @@ ceph pg deep-scrub 1.0
 # Remove a corrupt object (last resort - only if you have another replica)
 ceph-objectstore-tool \
   --data-path /var/lib/ceph/osd/ceph-0 \
-  --op remove \
   --pgid 1.0 \
-  '{"oid":"corrupted-object","key":"","snapid":-2,"hash":123456,"max":0,"pool":1,"namespace":""}'
+  '{"oid":"corrupted-object","key":"","snapid":-2,"hash":123456,"max":0,"pool":1,"namespace":""}' \
+  remove
 ```
 
-## Fix Missing PG Info
+## Fix a PG Stuck in Unknown State
 
 ```bash
 # If a PG is stuck in unknown state due to missing info
 ceph-objectstore-tool \
   --data-path /var/lib/ceph/osd/ceph-0 \
-  --op fix-lost \
+  --op mark-complete \
   --pgid 1.0
 ```
 
@@ -94,9 +94,9 @@ ceph-objectstore-tool \
 # Get object data directly from the OSD
 ceph-objectstore-tool \
   --data-path /var/lib/ceph/osd/ceph-0 \
-  --op get-bytes \
+  --pgid 1.0 \
   '{"oid":"my-object","key":"","snapid":-2,"hash":0,"max":0,"pool":1,"namespace":""}' \
-  > /tmp/recovered-object.bin
+  get-bytes > /tmp/recovered-object.bin
 ```
 
 ## Summary
