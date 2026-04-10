@@ -42,7 +42,7 @@ FT.CREATE documents
   SCHEMA
     title TEXT
     category TAG
-    embedding VECTOR HNSW 10
+    embedding VECTOR HNSW 12
       TYPE FLOAT32
       DIM 384
       DISTANCE_METRIC COSINE
@@ -60,7 +60,7 @@ FT.CREATE documents
 - `EF_CONSTRUCTION` - size of the candidate list during index build (default 200, higher = better quality but slower build)
 - `EF_RUNTIME` - size of the candidate list at query time (default 10, higher = better accuracy but slower queries)
 
-The number `10` after `HNSW` is the count of additional attribute parameters that follow.
+The number `12` after `HNSW` is the count of additional attribute parameters that follow (6 key-value pairs = 12 tokens).
 
 ## Storing Vectors
 
@@ -72,7 +72,7 @@ import redis
 
 r = redis.Redis()
 
--- 384-dimensional vector (e.g., from sentence-transformers)
+# 384-dimensional vector (e.g., from sentence-transformers)
 vector = np.array([0.1, 0.2, 0.3, ...], dtype=np.float32)
 r.hset("doc:1", mapping={
     "title": "Redis Performance Guide",
@@ -150,8 +150,8 @@ Dot product similarity. Requires pre-normalized vectors for meaningful results:
 
 ```redis
 DISTANCE_METRIC IP
--- Higher IP = more similar (opposite of L2/COSINE)
--- Sort DESCENDING for inner product
+-- Redis returns 1 - IP as the score, so lower score = more similar
+-- Sort ASC (same as COSINE and L2)
 ```
 
 ## Tuning HNSW Parameters
