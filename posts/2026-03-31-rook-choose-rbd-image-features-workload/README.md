@@ -102,7 +102,7 @@ rbd create replicapool/kernel-vol --size 50G \
 Check kernel RBD supported features:
 
 ```bash
-cat /sys/bus/platform/drivers/rbd/supported_features
+cat /sys/bus/rbd/supported_features
 ```
 
 ## Setting Default Features
