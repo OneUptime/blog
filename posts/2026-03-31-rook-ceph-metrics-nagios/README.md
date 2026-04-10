@@ -66,7 +66,7 @@ define command {
   command_line  /usr/lib/nagios/plugins/check_ceph_df \
     --id nagios \
     --keyring /etc/ceph/ceph.client.nagios.keyring \
-    --warning 70 --critical 85
+    -W 70 --critical 85
 }
 ```
 
