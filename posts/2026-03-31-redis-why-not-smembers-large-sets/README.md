@@ -44,12 +44,12 @@ def scan_set_members(key: str, count: int = 100):
         if cursor == 0:
             break
 
+def process_member(member: str):
+    print(f"Processing: {member}")
+
 # Process all members without blocking:
 for member in scan_set_members("big:set"):
     process_member(member)
-
-def process_member(member: str):
-    print(f"Processing: {member}")
 ```
 
 ## Paginated Set Access
@@ -57,9 +57,6 @@ def process_member(member: str):
 For user-facing paginated views, use SSCAN with a cursor token:
 
 ```python
-import json
-import base64
-
 def get_set_page(key: str, cursor: int = 0, page_size: int = 50) -> dict:
     cursor, members = r.sscan(key, cursor, count=page_size)
     return {
@@ -85,7 +82,7 @@ def is_premium_user(user_id: str) -> bool:
 # Check multiple memberships at once (Redis 6.2+)
 def check_memberships(set_key: str, members: list[str]) -> dict:
     results = r.smismember(set_key, *members)
-    return {m: bool(r) for m, r in zip(members, results)}
+    return {m: bool(v) for m, v in zip(members, results)}
 ```
 
 ## Set Cardinality Without SMEMBERS
