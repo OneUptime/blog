@@ -42,8 +42,6 @@ spec:
     useAllNodes: true
     useAllDevices: false
     deviceFilter: "^sd[b-z]"
-    config:
-      storeType: bluestore
   placement:
     osd:
       nodeAffinity:
@@ -62,29 +60,18 @@ With `useAllNodes: true` and `deviceFilter`, Rook automatically provisions OSDs 
 
 In your Cluster Autoscaler configuration, define a separate node group for storage nodes. The new nodes must already have the storage role label configured via the node group's user-data or bootstrap script.
 
-For AWS (kOps/EKS), add the label in the instance template user-data:
+For EKS, add the label via the kubelet `--node-labels` flag in the bootstrap script of your launch template user-data:
 
 ```bash
 #!/bin/bash
-kubectl label node $(hostname) role=storage-node
+/etc/eks/bootstrap.sh my-cluster \
+  --kubelet-extra-args '--node-labels=role=storage-node'
 ```
 
-Or use node templates in the Cluster Autoscaler config:
+For the Cluster Autoscaler to know about these labels before the node exists (so it can make correct scaling decisions), add the following tag to your Auto Scaling Group:
 
-```yaml
-apiVersion: autoscaling/v1beta1
-kind: NodeTemplate
-metadata:
-  name: storage-node-template
-spec:
-  metadata:
-    labels:
-      role: storage-node
-  spec:
-    taints:
-      - key: storage
-        value: "true"
-        effect: NoSchedule
+```
+k8s.io/cluster-autoscaler/node-template/label/role: storage-node
 ```
 
 ## Using PVC-Based OSDs with Auto-Scaling
@@ -103,7 +90,7 @@ spec:
       - name: set1
         count: 3
         portable: true
-        tuneSlowDeviceClass: false
+        tuneDeviceClass: false
         volumeClaimTemplates:
           - metadata:
               name: data
@@ -151,15 +138,10 @@ spec:
                 - sh
                 - -c
                 - |
-                  # Get cluster fill percentage
+                  # Get cluster fill percentage using jq (available in bitnami/kubectl)
                   FILL=$(kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-                    ceph df --format json | python3 -c "
-                  import json,sys
-                  d=json.load(sys.stdin)
-                  total=d['stats']['total_bytes']
-                  used=d['stats']['total_used_raw_bytes']
-                  print(int(used*100/total))
-                  ")
+                    ceph df --format json | \
+                    jq '.stats | (.total_used_raw_bytes * 100 / .total_bytes) | floor')
                   echo "Cluster fill: ${FILL}%"
                   if [ "$FILL" -gt 70 ]; then
                     echo "WARNING: Cluster above 70%, consider adding OSDs"
