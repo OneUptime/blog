@@ -22,7 +22,6 @@ product:search:{keyword}     -> Set: matching productIds (for simple keyword sea
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
