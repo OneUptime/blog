@@ -69,6 +69,7 @@ Use a separate thread to detect stale connections before they cause a long delay
 
 ```python
 import redis
+import socket
 import threading
 import time
 
@@ -85,9 +86,9 @@ class ResilientSubscriber:
         r = redis.Redis(host=self.host, port=self.port,
                         socket_timeout=10, socket_keepalive=True,
                         socket_keepalive_options={
-                            'TCP_KEEPIDLE': 30,
-                            'TCP_KEEPINTVL': 10,
-                            'TCP_KEEPCNT': 3,
+                            socket.TCP_KEEPIDLE: 30,
+                            socket.TCP_KEEPINTVL: 10,
+                            socket.TCP_KEEPCNT: 3,
                         },
                         decode_responses=True)
         pubsub = r.pubsub(ignore_subscribe_messages=True)
