@@ -28,7 +28,7 @@ FT.CREATE products:idx
 ```python
 import redis
 from redis.commands.search.field import TextField, TagField, NumericField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 
 client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -80,7 +80,7 @@ index_product("P001", {
 from redis.commands.search.query import Query
 
 def search_products(query_str: str, price_min: float = 0, price_max: float = 9999):
-    q = Query(f"@title|description:{query_str} @price:[{price_min} {price_max}]")
+    q = Query(f"@title|description:({query_str}) @price:[{price_min} {price_max}]")
     q.paging(0, 20)
     q.sort_by("price")
 
