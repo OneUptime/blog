@@ -77,7 +77,6 @@ pipe.execute()
 ## Performing KNN Search
 
 ```python
-import struct
 from redis.commands.search.query import Query
 
 query_text = "space travel and time"
