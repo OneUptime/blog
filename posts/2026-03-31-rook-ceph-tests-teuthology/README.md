@@ -14,9 +14,9 @@ Teuthology is the distributed test framework used by the Ceph project for integr
 
 Teuthology consists of:
 - **teuthology**: the test runner and task framework
-- **teuthology-worker**: runs on test machines
-- **paddles**: web interface for test results
-- **pulpito**: another results dashboard
+- **teuthology-dispatcher**: picks up jobs from the queue and runs them via teuthology-supervisor
+- **paddles**: RESTful API backend for storing and querying test results
+- **pulpito**: web dashboard frontend that displays results from paddles
 
 Tests are defined in YAML files called "suites" that describe which tasks to run.
 
@@ -31,8 +31,11 @@ cd teuthology
 python3 -m venv venv
 source venv/bin/activate
 
-# Install teuthology
-pip install -e .
+# Install teuthology using the bootstrap script
+./bootstrap
+
+# Activate the virtualenv created by bootstrap
+source venv/bin/activate
 
 # Verify installation
 teuthology --version
@@ -71,7 +74,7 @@ tasks:
 ## Running Tests Locally with teuthology-suite
 
 ```bash
-# For local testing without full infrastructure, use teuthology-nuke
+# Schedule a suite run against the test lab
 teuthology-suite \
   --suite ceph/basic \
   --ceph main \
@@ -143,7 +146,7 @@ class MyCephTask(Task):
         for i in range(self.bucket_count):
             ctx.cluster.only(client).run(
                 args=["aws", "s3", "mb", f"s3://test-bucket-{i}",
-                      "--endpoint-url", "http://localhost:8000"]
+                      "--endpoint-url", "http://localhost:7480"]
             )
 
     def end(self):
@@ -156,18 +159,17 @@ task = MyCephTask
 ## Analyzing Test Results
 
 ```bash
-# Fetch results from paddles
+# Submit results to paddles from a local archive
 teuthology-results \
-  --run ceph-main-2026-03-31 \
-  --machine-type vps
+  --name ceph-main-2026-03-31 \
+  --archive-dir /path/to/archive
 
-# Generate a summary report
+# Report results to paddles
 teuthology-report \
-  --run ceph-main-2026-03-31 \
-  --output report.html
+  --run ceph-main-2026-03-31
 
-# Check failed jobs
-teuthology-ls --run ceph-main-2026-03-31 --status fail
+# List jobs in an archive directory
+teuthology-ls /path/to/archive/ceph-main-2026-03-31 -v
 ```
 
 ## Summary
