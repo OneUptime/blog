@@ -26,7 +26,7 @@ Every response type is an array or scalar, forcing clients to maintain context t
 
 ## RESP3 New Data Types
 
-RESP3 adds 9 new types:
+RESP3 adds 10 new types:
 
 ```text
 % Maps           (native key-value, replaces paired arrays)
@@ -34,6 +34,7 @@ RESP3 adds 9 new types:
 | Attributes     (metadata attached to responses)
 > Push messages  (out-of-band server push)
 ( Big numbers
+! Blob errors    (multi-line error messages)
 = Verbatim string
 , Double
 # Boolean
