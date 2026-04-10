@@ -35,9 +35,6 @@ kind: CephCluster
 spec:
   network:
     provider: host
-    selectors:
-      public: "enp5s0f0"    # 100GbE public network
-      cluster: "enp5s0f1"   # 100GbE cluster network
   storage:
     useAllNodes: false
     nodes:
@@ -45,6 +42,17 @@ spec:
         devices:
           - name: "nvme0n1"
           - name: "nvme1n1"
+```
+
+Configure Ceph to bind to specific 100GbE subnets:
+
+```bash
+# Set public and cluster networks to match your 100GbE interface subnets
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph config set global public_network 10.100.0.0/24
+
+kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
+  ceph config set global cluster_network 10.200.0.0/24
 ```
 
 ## Create a High-Performance Pool
@@ -92,7 +100,7 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph config set client.gpu-node-1 rbd_cache_size 536870912
 ```
 
-## Deploy Data Pre-loading DaemonSet
+## Deploy Data Pre-loading Job
 
 Pre-load training data to CephFS before training starts:
 
@@ -106,6 +114,7 @@ spec:
     spec:
       nodeSelector:
         gpu: "true"
+      restartPolicy: Never
       containers:
         - name: preloader
           image: python:3.11
