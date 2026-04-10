@@ -57,7 +57,7 @@ TOOLBOX=$(kubectl -n $NAMESPACE get pods -l app=rook-ceph-tools \
 
 DOWN_OSDS=$(kubectl -n $NAMESPACE exec $TOOLBOX -- \
   ceph osd stat --format json | \
-  python3 -c "import json,sys; d=json.load(sys.stdin); print(d['num_down_osds'])")
+  python3 -c "import json,sys; d=json.load(sys.stdin); print(d['num_osds'] - d['num_up_osds'])")
 
 if [ "$DOWN_OSDS" -gt 0 ]; then
   echo "ALERT: $DOWN_OSDS OSDs are down"
@@ -110,10 +110,9 @@ INCONSISTENT=$(kubectl -n $NAMESPACE exec $TOOLBOX -- \
   python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-pg_states = d.get('pg_summary', {})
-# Find inconsistent PGs
-count = sum(1 for pg in d.get('pg_stats_sum', {}).get('state_stamp', [])
-            if 'inconsistent' in pg.get('state', ''))
+# Find inconsistent PGs from pgs_by_state
+count = sum(s['count'] for s in d.get('pgs_by_state', [])
+            if 'inconsistent' in s.get('state_name', ''))
 print(count)
 " 2>/dev/null || echo 0)
 
