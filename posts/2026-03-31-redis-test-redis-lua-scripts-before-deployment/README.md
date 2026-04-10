@@ -58,7 +58,13 @@ chmod +x test_script.sh
 
 ## Step 3 - Unit Test with Python
 
-Use `fakeredis` to test Lua scripts without a real Redis instance:
+Install `fakeredis` with Lua support (requires the `lupa` library):
+
+```bash
+pip install fakeredis[lua]
+```
+
+Then test Lua scripts without a real Redis instance:
 
 ```python
 import fakeredis
