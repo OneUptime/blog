@@ -34,6 +34,9 @@ aws s3 ls --endpoint-url http://ceph-rgw:80
 swift --os-auth-url http://keystone:5000/v3 \
       --os-username admin \
       --os-password secret \
+      --os-project-name admin \
+      --os-user-domain-name Default \
+      --os-project-domain-name Default \
       list
 ```
 
@@ -80,10 +83,9 @@ ceph osd pool set my-pool min_size 2
 
 Uses proxy servers, account/container/object servers, and configurable replica count:
 
-```ini
-[DEFAULT]
-# In swift.conf
-swift_hash_path_suffix = randomsuffix
+```bash
+# Create object ring with 3 replicas, partition power 10, min 1 hour between moves
+swift-ring-builder /etc/swift/object.builder create 10 3 1
 ```
 
 ## When to Choose Ceph RGW
