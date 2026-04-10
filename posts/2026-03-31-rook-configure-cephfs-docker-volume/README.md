@@ -73,8 +73,8 @@ Or mount using ceph-fuse (userspace, no kernel module required):
 
 ```bash
 ceph-fuse /mnt/cephfs \
-  --mon-host=192.168.1.10:6789 \
-  --client-mountpoint=/docker-volumes
+  -m 192.168.1.10:6789 \
+  --client_mountpoint=/docker-volumes
 ```
 
 ## Add to /etc/fstab for Persistence
@@ -116,8 +116,8 @@ Register CephFS mounts as Docker local volumes for better integration:
 docker volume create \
   --driver local \
   --opt type=ceph \
-  --opt device=:/ \
-  --opt o="name=admin,secretfile=/etc/ceph/admin.secret,addr=192.168.1.10" \
+  --opt device=192.168.1.10:6789:/ \
+  --opt o="name=admin,secretfile=/etc/ceph/admin.secret" \
   cephfs-volume
 ```
 
