@@ -15,7 +15,7 @@ Two CRUSH tunables have an outsized impact on cluster stability during OSD failu
 - **chooseleaf_vary_r** - fixes poor data distribution when OSDs fail in clusters using chooseleaf
 - **chooseleaf_stable** - prevents unnecessary PG remapping when unrelated OSDs in the same bucket change state
 
-Both were introduced as optional improvements before becoming defaults in the Hammer and Jewel releases respectively. Modern clusters using the `optimal` tunable profile have both enabled by default, but legacy clusters upgraded from older versions may not.
+Both were introduced as optional improvements before becoming defaults in the Firefly and Jewel releases respectively. Modern clusters using the `optimal` tunable profile have both enabled by default, but legacy clusters upgraded from older versions may not.
 
 ## Checking Current Values
 
@@ -47,8 +47,8 @@ When `chooseleaf_vary_r=0` (legacy behavior), the chooseleaf algorithm starts fr
 With `chooseleaf_vary_r=1`, Ceph varies the starting seed by replica number. This produces more uniform distribution even when failure avoidance kicks in:
 
 ```bash
-# Enable chooseleaf_vary_r
-ceph osd crush tunables hammer
+# Enable chooseleaf_vary_r (Firefly is the minimum profile that sets it to 1)
+ceph osd crush tunables firefly
 
 # Or set just this tunable
 ceph osd getcrushmap -o crush.bin
