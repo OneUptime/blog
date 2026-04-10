@@ -128,15 +128,7 @@ spec:
 
 If your cluster has both AMD64 and ARM64 nodes, use node selectors or taints to schedule Rook components on the appropriate nodes:
 
-Label ARM64 storage nodes:
-
-```bash
-kubectl label node arm64-node-1 storage-arch=arm64
-kubectl label node arm64-node-2 storage-arch=arm64
-kubectl label node arm64-node-3 storage-arch=arm64
-```
-
-Add placement in the CephCluster:
+Kubernetes automatically labels nodes with `kubernetes.io/arch` (e.g., `arm64` or `amd64`), so no manual labeling is required. Use this built-in label in the CephCluster placement:
 
 ```yaml
 spec:
@@ -164,9 +156,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
 
 ## Known ARM64 Limitations
 
-- Ceph Dashboard may have minor UI rendering differences on ARM64
 - Some older Ceph tuning guides reference x86-specific NUMA topology - ignore these for ARM64
-- On Raspberry Pi 4 (4 GB RAM), running a single-node cluster is feasible but tight on memory; allocate at least 6 GB if possible
+- On Raspberry Pi 4, the 4 GB model is tight on memory for a single-node cluster; use the 8 GB model if possible
 
 ## Summary
 
