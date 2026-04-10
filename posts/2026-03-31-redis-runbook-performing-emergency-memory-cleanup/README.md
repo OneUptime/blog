@@ -18,11 +18,13 @@ Check memory usage:
 redis-cli INFO memory | grep -E "used_memory_human|maxmemory_human|mem_fragmentation_ratio"
 ```
 
-Check if writes are being rejected:
+Test if writes are being rejected due to OOM:
 
 ```bash
-redis-cli INFO stats | grep "rejected_connections"
+redis-cli SET __oom_check__ test EX 10
 ```
+
+A reply of `-OOM command not allowed when used memory > 'maxmemory'` confirms writes are failing due to memory limits.
 
 Check eviction policy:
 
@@ -41,7 +43,7 @@ redis-cli CONFIG SET maxmemory-policy allkeys-lru
 Run bigkeys scan to identify memory hogs:
 
 ```bash
-redis-cli --bigkeys --sleep 0.01
+redis-cli --bigkeys -i 0.01
 ```
 
 Use MEMORY USAGE for specific keys:
