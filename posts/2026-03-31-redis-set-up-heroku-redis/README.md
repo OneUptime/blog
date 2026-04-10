@@ -15,7 +15,7 @@ Heroku Redis is a managed Redis add-on built on top of Redis by Redis Inc. It in
 Using the Heroku CLI:
 
 ```bash
-# Add the free Hobby Dev plan
+# Add the entry-level Mini plan
 heroku addons:create heroku-redis:mini --app your-app-name
 
 # Confirm the add-on was created
@@ -102,14 +102,11 @@ PONG
 ```bash
 # Show plan, version, connection count
 heroku redis:info --app your-app-name
-
-# View real-time stats
-heroku redis:stats --app your-app-name
 ```
 
 ## Upgrading Plans
 
-The free `mini` plan offers 25 MB RAM. For production you need a paid plan:
+The `mini` plan offers 25 MB RAM. For production you need a larger plan:
 
 ```bash
 heroku addons:upgrade heroku-redis:premium-0 --app your-app-name
@@ -120,7 +117,7 @@ Plan tiers go from `mini` (25 MB) up to `premium-14` (100 GB).
 ## Configuring Maxmemory Policy
 
 ```bash
-heroku redis:maxmemory your-app-name --policy allkeys-lru
+heroku redis:maxmemory REDIS_URL --policy allkeys-lru --app your-app-name
 ```
 
 Available policies mirror standard Redis options: `noeviction`, `allkeys-lru`, `volatile-lru`, `allkeys-random`, etc.
@@ -130,9 +127,9 @@ Available policies mirror standard Redis options: `noeviction`, `allkeys-lru`, `
 Heroku Redis performs automated minor version upgrades during a configurable maintenance window:
 
 ```bash
-heroku redis:maintenance --window "Sunday 06:00-08:00 UTC" --app your-app-name
+heroku redis:maintenance --window "Sunday 06:00" --app your-app-name
 ```
 
 ## Summary
 
-Heroku Redis integrates seamlessly with Heroku apps through the `REDIS_URL` config var and requires TLS for all connections. Use `ioredis` or the Python `redis` client with TLS enabled, set a sensible eviction policy for your workload, and upgrade from the free plan before hitting the 25 MB memory limit in production.
+Heroku Redis integrates seamlessly with Heroku apps through the `REDIS_URL` config var and requires TLS for all connections. Use `ioredis` or the Python `redis` client with TLS enabled, set a sensible eviction policy for your workload, and upgrade from the mini plan before hitting the 25 MB memory limit in production.
