@@ -119,7 +119,7 @@ Check Sentinel status regularly:
 
 ```bash
 redis-cli -p 26379 SENTINEL masters
-redis-cli -p 26379 SENTINEL slaves mymaster
+redis-cli -p 26379 SENTINEL replicas mymaster
 redis-cli -p 26379 SENTINEL sentinels mymaster
 ```
 
