@@ -130,4 +130,4 @@ aws s3 ls s3://$BUCKET_NAME \
 
 ## Summary
 
-Rook automatically provisions Kubernetes Secrets and ConfigMaps when ObjectBucketClaims are bound, following the COSI-compatible naming convention. Applications can inject these credentials directly using `envFrom` or individual `valueFrom` references, keeping S3 access keys out of application code. This pattern works seamlessly across namespaces as long as the OBC and consuming pod share the same namespace.
+Rook automatically provisions Kubernetes Secrets and ConfigMaps when ObjectBucketClaims are bound, following the lib-bucket-provisioner naming convention. Applications can inject these credentials directly using `envFrom` or individual `valueFrom` references, keeping S3 access keys out of application code. The OBC and consuming pod must be in the same namespace for this pattern to work.
