@@ -37,10 +37,16 @@ vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc" \
   kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
+# Enable a KV v2 secrets engine at the "rook" mount path
+vault secrets enable -path=rook kv-v2
+
 # Create a policy for Rook
 vault policy write rook-ceph - <<EOF
-path "secret/data/rook/*" {
+path "rook/data/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
+}
+path "rook/metadata/*" {
+  capabilities = ["read", "list"]
 }
 EOF
 
@@ -48,8 +54,8 @@ EOF
 vault write auth/kubernetes/role/rook-ceph \
   bound_service_account_names=rook-ceph-operator \
   bound_service_account_namespaces=rook-ceph \
-  policies=rook-ceph \
-  ttl=1h
+  token_policies=rook-ceph \
+  token_ttl=1h
 ```
 
 ## Creating the Vault Token Secret
@@ -81,11 +87,11 @@ spec:
       connectionDetails:
         KMS_PROVIDER: vault
         VAULT_ADDR: https://vault.example.com:8200
-        VAULT_BACKEND: v2
-        VAULT_SECRET_PATH: rook/osd-keys
+        VAULT_BACKEND: kv-v2
+        VAULT_BACKEND_PATH: rook
+        VAULT_SECRET_ENGINE: kv
         VAULT_AUTH_METHOD: kubernetes
         VAULT_AUTH_KUBERNETES_ROLE: rook-ceph
-      tokenSecretName: rook-vault-token
   storage:
     storageClassDeviceSets:
       - name: encrypted-set
@@ -109,10 +115,11 @@ spec:
       connectionDetails:
         KMS_PROVIDER: vault
         VAULT_ADDR: https://vault.example.com:8200
+        VAULT_BACKEND: kv-v2
+        VAULT_BACKEND_PATH: rook
+        VAULT_SECRET_ENGINE: kv
         VAULT_AUTH_METHOD: kubernetes
         VAULT_AUTH_KUBERNETES_ROLE: rook-ceph
-        VAULT_SECRET_PATH: rook/rgw-keys
-      tokenSecretName: rook-vault-token
 ```
 
 ## Verifying KMS Connectivity
@@ -123,24 +130,28 @@ Check that Rook can reach the KMS:
 # Look for KMS-related log messages in the operator
 kubectl -n rook-ceph logs deploy/rook-ceph-operator | grep -i "kms\|vault"
 
-# Verify the secret path in Vault
-vault kv list rook/osd-keys
+# Verify secrets stored by Rook in Vault
+vault kv list -mount=rook /
 ```
 
 ## Rotating Keys
 
-To rotate an OSD encryption key:
+Rook supports automatic key rotation via the `keyRotation` field in the CephCluster spec:
 
-```bash
-# Trigger key rotation via Rook annotation
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  rook.io/force-delete-storage-config="true"
+```yaml
+spec:
+  security:
+    keyRotation:
+      enabled: true
+      schedule: "@weekly"
 ```
 
-For RGW, rotate KMS keys and update the key version:
+This schedules a CronJob that rotates OSD encryption keys on the defined schedule.
+
+For RGW SSE-KMS keys stored in Vault, rotate them by writing a new version:
 
 ```bash
-vault kv put rook/rgw-keys/mykey value=$(openssl rand -hex 32)
+vault kv put -mount=rook rgw-keys/mykey value=$(openssl rand -hex 32)
 ```
 
 ## Summary
