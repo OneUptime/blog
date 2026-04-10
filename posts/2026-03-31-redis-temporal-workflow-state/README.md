@@ -18,7 +18,6 @@ Temporal retries failed activities, which can re-run expensive operations. Cache
 import temporalio.activity
 import redis
 import json
-import hashlib
 
 cache = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -46,7 +45,7 @@ Temporal workflow state is internal. Use Redis to make progress visible to dashb
 import temporalio.workflow
 import temporalio.activity
 import redis
-import json
+from datetime import timedelta
 
 progress_cache = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -92,27 +91,52 @@ async def acquire_resource_lock(resource_id: str, workflow_id: str) -> bool:
 @temporalio.activity.defn
 async def release_resource_lock(resource_id: str, workflow_id: str):
     lock_key = f"workflow:lock:{resource_id}"
-    current = lock_client.get(lock_key)
-    if current and current.decode() == workflow_id:
-        lock_client.delete(lock_key)
+    # Atomic check-and-delete via Lua to prevent race conditions
+    release_script = """
+    if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("DEL", KEYS[1])
+    else
+        return 0
+    end
+    """
+    lock_client.eval(release_script, 1, lock_key, workflow_id)
 ```
 
 ## Pattern 4: Memoize Signal Handlers
 
 ```python
+from datetime import timedelta
+
+@temporalio.activity.defn
+async def check_and_mark_event(event_id: str) -> bool:
+    """Returns True if this is a new event, False if already processed."""
+    dedup_key = f"workflow:event:{event_id}"
+    return cache.set(dedup_key, "1", nx=True, ex=86400) is not None
+
 @temporalio.workflow.defn
 class LongRunningWorkflow:
     def __init__(self):
-        self._processed_signals = set()
+        self._pending_events = []
 
     @temporalio.workflow.signal
     async def process_event(self, event_id: str, event_data: dict):
-        # Deduplicate events using Redis
-        dedup_key = f"workflow:event:{event_id}"
-        if not cache.set(dedup_key, "1", nx=True, ex=86400):
-            return  # Already processed
+        self._pending_events.append((event_id, event_data))
 
-        await self._handle_event(event_data)
+    @temporalio.workflow.run
+    async def run(self):
+        while True:
+            await temporalio.workflow.wait_condition(
+                lambda: len(self._pending_events) > 0
+            )
+            event_id, event_data = self._pending_events.pop(0)
+
+            # Deduplicate events using Redis via activity
+            is_new = await temporalio.workflow.execute_activity(
+                check_and_mark_event, args=[event_id],
+                schedule_to_close_timeout=timedelta(seconds=10),
+            )
+            if is_new:
+                await self._handle_event(event_data)
 ```
 
 ## Summary
