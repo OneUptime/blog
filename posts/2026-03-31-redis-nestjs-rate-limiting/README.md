@@ -30,7 +30,7 @@ import Redis from "ioredis";
 @Module({
   imports: [
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60, limit: 60 }],  // 60 requests per minute
+      throttlers: [{ ttl: 60000, limit: 60 }],  // 60 requests per minute
       storage: new ThrottlerStorageRedisService(
         new Redis({ host: "localhost", port: 6379 })
       ),
@@ -60,11 +60,11 @@ import { Throttle, SkipThrottle } from "@nestjs/throttler";
 export class ApiController {
 
   @Get("public")
-  @Throttle({ default: { ttl: 60, limit: 100 } })
+  @Throttle({ default: { ttl: 60000, limit: 100 } })
   publicEndpoint() { return "open"; }
 
   @Post("login")
-  @Throttle({ default: { ttl: 60, limit: 5 } })
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   login() { return "auth"; }
 
   @Get("health")
