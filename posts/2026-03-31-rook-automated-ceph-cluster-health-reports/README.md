@@ -54,13 +54,13 @@ Schedule the script to run every hour and daily for a summary:
 # Hourly health snapshot
 0 * * * * /usr/local/bin/ceph-health-report.sh
 
-# Daily summary at 7 AM
-0 7 * * * /usr/local/bin/ceph-health-report.sh | mail -s "Daily Ceph Report" ops@example.com
+# Daily summary emailed at 7 AM
+0 7 * * * { ceph status; ceph health detail; ceph osd stat; ceph df; } 2>&1 | mail -s "Daily Ceph Report" ops@example.com
 ```
 
 ## Parsing Health Output for Alerting
 
-Use `ceph health` exit codes to trigger alerts when the cluster is not HEALTH_OK:
+Parse the `ceph health` output to trigger alerts when the cluster is not HEALTH_OK:
 
 ```bash
 #!/bin/bash
@@ -78,7 +78,7 @@ For integration with dashboards or ticketing systems, output JSON:
 
 ```bash
 ceph status --format json-pretty > /var/log/ceph/status-$(date +%Y%m%d).json
-ceph health detail --format json-pretty >> /var/log/ceph/health-$(date +%Y%m%d).json
+ceph health detail --format json-pretty > /var/log/ceph/health-$(date +%Y%m%d).json
 ```
 
 You can then ship these files to Elasticsearch, S3, or any log aggregation system.
@@ -100,4 +100,4 @@ Use logrotate to keep reports manageable:
 
 ## Summary
 
-Automated Ceph health reports are easy to set up using shell scripts and cron, giving your team regular snapshots of cluster state without manual effort. Combining exit-code-based alerting with structured JSON output allows you to integrate health data into existing monitoring pipelines. Rotating old reports with logrotate keeps disk usage under control over time.
+Automated Ceph health reports are easy to set up using shell scripts and cron, giving your team regular snapshots of cluster state without manual effort. Combining output-based alerting with structured JSON output allows you to integrate health data into existing monitoring pipelines. Rotating old reports with logrotate keeps disk usage under control over time.
