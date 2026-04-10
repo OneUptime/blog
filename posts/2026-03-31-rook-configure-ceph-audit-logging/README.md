@@ -40,7 +40,6 @@ metadata:
   namespace: rook-ceph
 spec:
   gateway:
-    type: s3
     port: 80
     instances: 2
   metadataPool:
@@ -51,14 +50,14 @@ spec:
       size: 3
 ```
 
-Enable ops log via radosgw-admin:
+Set the op-mask on the admin user to control which operations are permitted:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   radosgw-admin user modify --uid=admin --op-mask="read,write,delete"
 ```
 
-Configure ops log to a RADOS pool:
+Enable ops log to a RADOS pool:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
