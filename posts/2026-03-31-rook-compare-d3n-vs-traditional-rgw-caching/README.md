@@ -30,7 +30,7 @@ Client --> RGW --> RADOS --> Client
 Before D3N, Ceph had an earlier datacache feature. It was limited and not widely used in production:
 
 - No Redis coordination
-- No LFUDA eviction
+- No LRU-based eviction
 - Less mature codebase
 - Limited to specific Ceph versions
 
@@ -44,10 +44,10 @@ Client --> RGW --> D3N Cache (local SSD) --> (hit) --> Client
 ```
 
 Features of D3N:
-- LFUDA eviction for intelligent retention
+- LRU eviction policy (with random as an alternative)
 - Optional Redis coordination for multi-RGW deployments
 - libaio for non-blocking cache I/O
-- Persistent cache that survives RGW restarts
+- Cache stored on local SSD (note: cache is purged on RGW restart)
 
 ## Feature Comparison
 
@@ -56,8 +56,8 @@ Features of D3N:
 | Read latency | High (RADOS) | Low (SSD) on cache hit |
 | Write performance | Unchanged | Unchanged |
 | Multi-RGW coordination | N/A | Via Redis |
-| Eviction policy | N/A | LFUDA |
-| Cache persistence | N/A | Yes |
+| Eviction policy | N/A | LRU (default) or random |
+| Cache persistence | N/A | No (purged on RGW restart) |
 | Configuration complexity | Low | Medium |
 | Best for | Write workloads | Read-heavy, repeated access |
 
@@ -66,11 +66,16 @@ Features of D3N:
 A typical 3-node Ceph cluster with D3N on NVMe:
 
 ```bash
-# Without D3N - direct RADOS read
-rados bench -p testpool 30 seq -t 16
+# Upload test objects (must be >4 MiB for D3N to cache tail objects)
+# Use an S3 client to benchmark through RGW, not rados bench
+# (rados bench bypasses RGW and will not exercise the D3N cache)
+
+# Without D3N - S3 GET routed to RADOS
+s3cmd get s3://testbucket/largefile /dev/null
 # Result: ~300 MiB/s, ~5ms avg latency
 
-# With D3N - cache hit (after warm-up)
+# With D3N - cache hit (after warm-up with repeated reads)
+s3cmd get s3://testbucket/largefile /dev/null
 # Result: ~1500 MiB/s, ~0.5ms avg latency (limited by NVMe speed)
 ```
 
@@ -92,14 +97,14 @@ Avoid D3N when:
 
 ```bash
 # Enable D3N on one RGW instance for A/B testing
-ceph config set client.rgw.zone-a d3n_l1_local_datacache_enabled true
-ceph config set client.rgw.zone-a d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
-ceph config set client.rgw.zone-a d3n_l1_datacache_size 10737418240
+ceph config set client.rgw.zone-a rgw_d3n_l1_local_datacache_enabled true
+ceph config set client.rgw.zone-a rgw_d3n_l1_datacache_persistent_path /var/lib/ceph/rgw/cache
+ceph config set client.rgw.zone-a rgw_d3n_l1_datacache_size 10737418240
 
 # Keep another instance without D3N for comparison
-ceph config set client.rgw.zone-b d3n_l1_local_datacache_enabled false
+ceph config set client.rgw.zone-b rgw_d3n_l1_local_datacache_enabled false
 ```
 
 ## Summary
 
-D3N is superior to traditional no-cache RGW for read-heavy workloads with repeated object access, offering order-of-magnitude latency improvements on cache hits. The trade-off is operational complexity - requiring dedicated SSD storage, optional Redis coordination, and ongoing monitoring. For write-heavy or single-read workloads, the simpler no-cache configuration is often the better choice.
+D3N is superior to traditional no-cache RGW for read-heavy workloads with repeated object access, offering order-of-magnitude latency improvements on cache hits. The trade-off is operational complexity - requiring dedicated SSD storage, optional Redis coordination, ongoing monitoring, and cache warm-up after each RGW restart. For write-heavy or single-read workloads, the simpler no-cache configuration is often the better choice.
