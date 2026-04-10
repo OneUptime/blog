@@ -26,7 +26,7 @@ docker stats redis
 docker stats redis --no-stream
 
 # JSON output for scripting
-docker stats redis --no-stream --format json
+docker stats redis --no-stream --format '{{json .}}'
 ```
 
 ## Resource Constraints and Monitoring
