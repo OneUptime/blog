@@ -30,14 +30,6 @@ redis-cli DEBUG SLEEP 5
 
 Do not run this in production as it blocks the entire server.
 
-### DEBUG JMAP
-
-Prints a count of objects by type in memory. Safe to run but may take time on large datasets:
-
-```bash
-redis-cli DEBUG JMAP
-```
-
 ### DEBUG RELOAD
 
 Forces Redis to save the RDB file and reload it. Useful for testing persistence without restarting:
@@ -46,15 +38,16 @@ Forces Redis to save the RDB file and reload it. Useful for testing persistence 
 redis-cli DEBUG RELOAD
 ```
 
+## Risky Subcommands
+
 ### DEBUG LOADAOF
 
-Triggers an immediate AOF load. This is used for testing AOF recovery:
+Flushes all existing data from the database and then reloads the AOF file. This is used for testing AOF recovery, but it is destructive because existing in-memory data is cleared first:
 
 ```bash
+# Flushes all data before reloading - use with caution
 redis-cli DEBUG LOADAOF
 ```
-
-## Risky Subcommands
 
 ### DEBUG SEGFAULT
 
@@ -71,17 +64,23 @@ While not a DEBUG subcommand, calling `FLUSHALL` without a backup is destructive
 
 ## Restricting DEBUG in Production
 
-To prevent accidental use, rename or disable the DEBUG command in `redis.conf`:
+The recommended way to restrict DEBUG in production is to use ACLs (available since Redis 6.0). Remove the DEBUG command from the default user:
 
 ```bash
-# redis.conf
-rename-command DEBUG ""
+ACL SETUSER default -DEBUG
 ```
 
-Or rename it to an obscure string:
+Or configure it in your `redis.conf` or ACL file:
 
-```bash
-rename-command DEBUG "a7f3b2c9d1e4f5a6"
+```text
+user default -DEBUG
+```
+
+As a legacy alternative, you can rename or disable the command in `redis.conf`, though this approach is deprecated in favor of ACLs:
+
+```text
+# redis.conf (deprecated - prefer ACLs)
+rename-command DEBUG ""
 ```
 
 ## Using DEBUG OBJECT
@@ -95,7 +94,7 @@ redis-cli DEBUG OBJECT mykey
 Output example:
 
 ```text
-Value at:0x7f3a2001d2f0 refcount:1 encoding:ziplist serializedlength:18 lru:14563281 lru_seconds_idle:2 type:list
+Value at:0x7f3a2001d2f0 refcount:1 encoding:listpack serializedlength:18 lru:14563281 lru_seconds_idle:2 type:list
 ```
 
 This tells you how Redis is storing the key internally, which helps with performance tuning.
@@ -106,4 +105,4 @@ If you're using Redis Cluster, avoid running DEBUG RELOAD or DEBUG SLEEP on prim
 
 ## Summary
 
-Redis DEBUG mode provides powerful introspection and testing capabilities, but several subcommands can crash or block the server. Always restrict DEBUG access in production via `rename-command`, and limit usage to non-destructive subcommands like `DEBUG OBJECT` or `DEBUG RELOAD` when needed in live environments.
+Redis DEBUG mode provides powerful introspection and testing capabilities, but several subcommands can crash or block the server. Always restrict DEBUG access in production via ACLs (or the legacy `rename-command`), and limit usage to non-destructive subcommands like `DEBUG OBJECT` or `DEBUG RELOAD` when needed in live environments.
