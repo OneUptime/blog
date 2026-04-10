@@ -53,7 +53,7 @@ def get_cheapest_products(n: int = 20) -> list:
     return [{"id": pid, **d} for pid, d in zip(product_ids, details)]
 
 def get_most_expensive_products(n: int = 20) -> list:
-    product_ids = r.zrevrange("products:by_price", 0, n - 1)
+    product_ids = r.zrange("products:by_price", 0, n - 1, desc=True)
     pipe = r.pipeline(transaction=False)
     for pid in product_ids:
         pipe.hgetall(f"product:{pid}")
@@ -65,7 +65,7 @@ def get_most_expensive_products(n: int = 20) -> list:
 
 ```python
 def get_products_in_price_range(min_price: float, max_price: float) -> list:
-    product_ids = r.zrangebyscore("products:by_price", min_price, max_price)
+    product_ids = r.zrange("products:by_price", min_price, max_price, byscore=True)
     pipe = r.pipeline(transaction=False)
     for pid in product_ids:
         pipe.hgetall(f"product:{pid}")
@@ -81,7 +81,7 @@ def record_score(player_id: str, score: int):
     r.zadd("leaderboard", {player_id: score})
 
 def get_top_players(n: int = 10) -> list:
-    return r.zrevrange("leaderboard", 0, n - 1, withscores=True)
+    return r.zrange("leaderboard", 0, n - 1, desc=True, withscores=True)
 
 def get_player_rank(player_id: str) -> int | None:
     rank = r.zrevrank("leaderboard", player_id)
