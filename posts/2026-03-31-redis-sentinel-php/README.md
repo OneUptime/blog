@@ -51,17 +51,16 @@ sentinel parallel-syncs mymaster 1
 
 ## Connecting with phpredis
 
-phpredis does not have native Sentinel support, so you must resolve the primary address manually before connecting:
+phpredis provides the `RedisSentinel` class for Sentinel operations. Unlike Predis, the `Redis` class does not handle Sentinel discovery automatically, so you resolve the primary address before connecting:
 
 ```php
 function getSentinelPrimary(array $sentinels, string $masterName): array
 {
     foreach ($sentinels as [$host, $port]) {
-        $s = new Redis();
         try {
-            $s->connect($host, $port, 1.0);
-            $info = $s->rawCommand('SENTINEL', 'get-master-addr-by-name', $masterName);
-            if ($info && count($info) === 2) {
+            $sentinel = new RedisSentinel($host, $port, 1.0);
+            $info = $sentinel->getMasterAddrByName($masterName);
+            if ($info !== false) {
                 return $info; // [$primaryHost, $primaryPort]
             }
         } catch (RedisException $e) {
@@ -141,8 +140,7 @@ function isSentinelHealthy(string $host, int $port): bool
     $s = new Redis();
     try {
         $s->connect($host, $port, 1.0);
-        $ping = $s->rawCommand('PING');
-        return $ping === '+PONG' || $ping === 'PONG';
+        return $s->ping() === true;
     } catch (RedisException $e) {
         return false;
     }
