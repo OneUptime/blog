@@ -28,7 +28,7 @@ Common signals include:
 - `failed_logins_1h` - failed login count in the past hour
 - `new_device` - first seen device flag
 - `geo_change` - country change since last session
-- `velocity` - transaction count in a rolling window
+- `velocity_high` - high transaction velocity flag
 
 ## Populating Signals
 
