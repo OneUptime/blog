@@ -64,6 +64,7 @@ TDIGEST.INFO latency
 ### Confirm Data Is Gone After Reset
 
 ```redis
+TDIGEST.CREATE scores COMPRESSION 100
 TDIGEST.ADD scores 100 200 300
 TDIGEST.QUANTILE scores 0.5
 ```
@@ -93,8 +94,9 @@ TDIGEST.INFO precise-sketch
 ```text
  1) "Compression"
  2) (integer) 500
- 3) "Observations"
- 4) (integer) 0
+...
+13) "Observations"
+14) (integer) 0
 ```
 
 The compression setting persists through the reset.
@@ -165,8 +167,8 @@ Use `TDIGEST.RESET` when you want to reuse an existing sketch configuration. Use
 
 ## Performance Considerations
 
-- `TDIGEST.RESET` is O(N) where N is the number of centroids, as it frees centroid memory.
-- It is significantly faster than deleting and recreating a sketch with the same compression.
+- `TDIGEST.RESET` is O(1) and is categorized as a fast command.
+- It is faster than deleting and recreating a sketch with the same compression.
 - The key remains in memory even after reset; use `DEL` if you want to reclaim the key's overhead.
 
 ## Summary
