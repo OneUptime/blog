@@ -120,7 +120,7 @@ public class RedisReadWriteHealthCheck : IHealthCheck
             return HealthCheckResult.Healthy("Redis is healthy", new Dictionary<string, object>
             {
                 ["latency_ms"] = latency.TotalMilliseconds,
-                ["connected_clients"] = _redis.GetCounters().TotalOutstanding,
+                ["connected"] = _redis.IsConnected,
             });
         }
         catch (RedisConnectionException ex)
