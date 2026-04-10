@@ -33,7 +33,7 @@ Rook ships default Prometheus alerting rules. View them:
 
 ```bash
 kubectl -n rook-ceph get prometheusrule -o yaml
-kubectl -n rook-ceph get prometheusrule rook-prometheus-rules -o yaml
+kubectl -n rook-ceph get prometheusrule prometheus-ceph-rules -o yaml
 ```
 
 Common built-in rules:
@@ -51,7 +51,7 @@ groups:
           summary: "Ceph cluster is in HEALTH_ERR state"
 
       - alert: CephOSDNearFull
-        expr: ceph_osd_utilization > 85
+        expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) > 0.85
         for: 10m
         labels:
           severity: warning
@@ -77,17 +77,17 @@ spec:
     - name: ceph.custom.rules
       rules:
         - alert: CephOSDNearFull
-          expr: ceph_osd_utilization > 80  # lowered from 85%
+          expr: (ceph_osd_stat_bytes_used / ceph_osd_stat_bytes) > 0.80  # lowered from 0.85
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "OSD {{ $labels.ceph_daemon }} exceeds 80% utilization"
-            description: "OSD {{ $labels.ceph_daemon }} on {{ $labels.host }} is at {{ $value | humanizePercentage }} capacity"
+            description: "OSD {{ $labels.ceph_daemon }} on {{ $labels.hostname }} is at {{ $value | humanizePercentage }} capacity"
 
         - alert: CephPoolNearFull
           expr: |
-            (ceph_pool_bytes_used / ceph_pool_max_avail) > 0.75
+            (ceph_pool_stored / (ceph_pool_stored + ceph_pool_max_avail)) > 0.75
           for: 15m
           labels:
             severity: warning
@@ -109,7 +109,7 @@ stringData:
       slack_api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
 
     route:
-      receiver: 'default'
+      receiver: 'slack'
       routes:
         - match:
             severity: critical
@@ -121,7 +121,7 @@ stringData:
     receivers:
       - name: pagerduty
         pagerduty_configs:
-          - service_key: 'YOUR_PAGERDUTY_KEY'
+          - routing_key: 'YOUR_PAGERDUTY_ROUTING_KEY'
 
       - name: slack
         slack_configs:
