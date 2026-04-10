@@ -81,7 +81,7 @@ while True:
 | Offline consumer | Messages are lost | Messages wait until consumer reconnects |
 | Message replay | Not possible | Yes (seek to any offset) |
 | Consumer tracking | None | Offset per consumer group |
-| Ordering | Not guaranteed (fan-out) | Per partition |
+| Ordering | Per channel | Per partition |
 | Delivery guarantee | At-most-once | At-least-once (configurable) |
 | Throughput | Very high | Very high |
 | Ops complexity | Zero | High |
@@ -108,7 +108,7 @@ Use **Redis Pub/Sub** when:
 - You want zero infrastructure overhead.
 
 Use **Kafka Topics** when:
-- Every message must be processed exactly once even if a consumer is offline.
+- Every message must be processed at least once, even if a consumer is offline.
 - You need audit trails or replay (event sourcing, debugging).
 - Multiple independent consumer groups need to process the same stream.
 
