@@ -147,6 +147,11 @@ def main():
 
         crits, warns = analyze_pg_states(states)
 
+        if len(stuck) > MAX_STUCK:
+            crits.append(
+                f"CRITICAL: {len(stuck)} stuck PG(s) exceeds threshold {MAX_STUCK}"
+            )
+
         all_alerts = crits + warns + (
             [f"WARNING: {len(stuck)} PG(s) stuck"] if stuck else []
         )
