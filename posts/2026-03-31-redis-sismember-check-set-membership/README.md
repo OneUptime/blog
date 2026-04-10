@@ -184,11 +184,15 @@ SISMEMBER active:sessions "token:abc123"
 
 SISMEMBER checks a single member. `SMISMEMBER` (introduced in Redis 6.2) checks multiple members in one call and returns an array of results.
 
-```redis
--- Check one member
-SISMEMBER myset "a"
+Check one member:
 
--- Check multiple members at once
+```redis
+SISMEMBER myset "a"
+```
+
+Check multiple members at once:
+
+```redis
 SMISMEMBER myset "a" "b" "c"
 ```
 
