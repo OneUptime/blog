@@ -98,6 +98,9 @@ func main() {
         for {
             select {
             case msg := <-sub.Channel():
+                if msg == nil {
+                    return // channel was closed
+                }
                 fmt.Printf("Got: %s\n", msg.Payload)
             case <-ctx.Done():
                 return
