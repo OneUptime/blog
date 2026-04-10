@@ -58,7 +58,7 @@ If this returns a very large number, it is a candidate for eviction when memory 
 
 ## Limitations with LFU Policy
 
-`OBJECT IDLETIME` only works when the `maxmemory-policy` is set to an LRU-based policy. When using LFU-based policies (`allkeys-lfu`, `volatile-lfu`), this command returns an error because Redis tracks access frequency instead of last access time.
+`OBJECT IDLETIME` is not available when the `maxmemory-policy` is set to an LFU-based policy. When using LFU-based policies (`allkeys-lfu`, `volatile-lfu`), this command returns an error because Redis tracks access frequency instead of last access time.
 
 ```bash
 redis-cli CONFIG SET maxmemory-policy allkeys-lfu
@@ -112,4 +112,4 @@ for key in r.scan_iter('session:*'):
 
 ## Summary
 
-`OBJECT IDLETIME` exposes Redis's internal LRU clock for any key. Use it to identify stale cache entries, understand eviction behavior, and build proactive cleanup scripts. Remember it only works with LRU policies - switch to `OBJECT FREQ` when running LFU eviction.
+`OBJECT IDLETIME` exposes Redis's internal LRU clock for any key. Use it to identify stale cache entries, understand eviction behavior, and build proactive cleanup scripts. Remember it is not available with LFU policies - switch to `OBJECT FREQ` when running LFU eviction.
