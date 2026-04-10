@@ -55,9 +55,9 @@ This reduces reallocations during repeated APPEND operations:
 
 ```bash
 SET counter ""
-APPEND counter "a"    # allocates 2 bytes
+APPEND counter "a"    # allocates 2 bytes (1 used + 1 pre-allocated)
 APPEND counter "b"    # uses pre-allocated space, no realloc
-APPEND counter "c"    # same
+APPEND counter "c"    # realloc needed (no free space left), allocates 6 bytes
 ```
 
 ## Lazy Shrinking
@@ -67,15 +67,15 @@ When you delete characters from an SDS string, the memory is not immediately fre
 ## Binary-Safe Example
 
 ```bash
-# Store a value with embedded null byte using raw bytes
-SET binkey $'\x00\x01\x02\x03'
-STRLEN binkey
-# 4  (not 0 as a C string would return)
+# Store a value with embedded null byte using redis-cli's -x flag
+printf '\x00\x01\x02\x03' | redis-cli -x SET binkey
+redis-cli STRLEN binkey
+# (integer) 4  (not 0 as a C string would return)
 ```
 
 ## Memory Impact
 
-SDS adds a small header (3 to 11 bytes depending on string length) to every string value. For tiny strings like short keys or integer strings, Redis uses the embedded string optimization: the header and content are stored in a single allocation.
+SDS adds a small header (1 to 17 bytes depending on string length) to every string value. For tiny strings like short keys or integer strings, Redis uses the embedded string optimization: the header and content are stored in a single allocation.
 
 ```bash
 SET tiny "hi"
