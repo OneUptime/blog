@@ -8,7 +8,7 @@ Description: Build multi-language search with RediSearch by configuring per-lang
 
 ---
 
-Supporting search in multiple languages requires language-aware stemming so "running", "runs", and "ran" all match the same root. RediSearch supports per-document language settings and a range of built-in stemmers.
+Supporting search in multiple languages requires language-aware stemming so "running", "runs", and "run" all match the same root. RediSearch supports per-document language settings and a range of built-in stemmers.
 
 ## Language-Aware Index Setup
 
@@ -62,20 +62,28 @@ index_article("art_001", {
 ```python
 from redis.commands.search.query import Query
 
+LANG_MAP = {
+    "en": "english", "fr": "french", "de": "german",
+    "es": "spanish", "pt": "portuguese", "it": "italian",
+    "nl": "dutch", "da": "danish", "sv": "swedish",
+    "no": "norwegian", "fi": "finnish",
+}
+
 def search_by_language(query_text: str, lang: str = "en",
                         limit: int = 10) -> list:
     # Target the appropriate language fields
     query = Query(f"@title_{lang}:{query_text} | @body_{lang}:{query_text}")
-    query = query.paging(0, limit).language(lang)
+    # .language() requires full language names, not ISO codes
+    query = query.paging(0, limit).language(LANG_MAP.get(lang, "english"))
     results = r.ft("idx:multilang").search(query)
-    return [json.loads(doc.json) for doc in results.docs]
+    return [{"id": doc.id, **json.loads(doc.json)} for doc in results.docs]
 ```
 
 ## Per-Language Stemming
 
 ```python
 def search_with_stemming(term: str, lang: str = "english") -> list:
-    # Language stemming: "running" matches "run", "runs", "ran"
+    # Language stemming: "running" matches "run" and "runs"
     query = Query(term).language(lang)
     results = r.ft("idx:multilang").search(query)
     return [json.loads(doc.json) for doc in results.docs]
