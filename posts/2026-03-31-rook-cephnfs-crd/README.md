@@ -141,7 +141,7 @@ metadata:
 provisioner: rook-ceph.nfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  nfsClusterID: my-nfs
+  nfsCluster: my-nfs
   fsName: myfs
   pool: myfs-data0
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
