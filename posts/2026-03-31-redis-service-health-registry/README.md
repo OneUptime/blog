@@ -15,7 +15,7 @@ Service discovery tools like Consul are powerful but add operational overhead. F
 Each service instance registers itself with a heartbeat key that expires if not renewed. A sorted set tracks all instances with their last-seen timestamp as the score.
 
 ```text
-Key pattern:   health:<service>:<instance-id>   (TTL = 2x heartbeat)
+Key pattern:   health:<service>:<instance-id>   (TTL = 3x heartbeat)
 Sorted set:    registry:<service>               (score = epoch timestamp)
 ```
 
@@ -84,7 +84,7 @@ Publish events when instances go up or down using keyspace notifications:
 
 ```bash
 # redis.conf
-notify-keyspace-events "KEg$"
+notify-keyspace-events "Ex"
 ```
 
 ```python
