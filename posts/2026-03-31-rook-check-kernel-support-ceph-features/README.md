@@ -22,7 +22,7 @@ Minimum recommended versions:
 - CephFS Octopus features: kernel 5.4+
 - RBD exclusive-lock: kernel 4.9+
 - CephFS snapshots: kernel 4.17+
-- RBD journaling: kernel 4.14+
+- RBD deep-flatten: kernel 5.1+
 
 ## Checking CephFS Feature Flags
 
@@ -32,10 +32,10 @@ When mounting CephFS, the kernel client negotiates features with the monitors. T
 cat /sys/module/ceph/parameters/supported_features 2>/dev/null || echo "not mounted yet"
 ```
 
-After mounting, inspect the connected session:
+After mounting, inspect the connected session via the MDS daemon:
 
 ```bash
-ceph daemon client.admin@<hostname> session ls
+ceph tell mds.<id> client ls
 ```
 
 ## Checking RBD Kernel Module Features
@@ -63,7 +63,7 @@ The output lists which features are supported by each daemon and client type.
 For CephFS, check if the kernel supports the required feature bits:
 
 ```bash
-ceph mds feature ls
+ceph fs feature ls
 ```
 
 For RBD, check which features an image uses vs. what the kernel supports:
@@ -79,8 +79,10 @@ Common RBD features and minimum kernel requirements:
 | layering | 3.10 |
 | exclusive-lock | 4.9 |
 | deep-flatten | 5.1 |
-| journaling | 4.14 |
 | object-map | 5.3 |
+| fast-diff | 5.3 |
+| data-pool | 4.11 |
+| journaling | Not supported by krbd |
 
 Disable unsupported features if needed:
 
