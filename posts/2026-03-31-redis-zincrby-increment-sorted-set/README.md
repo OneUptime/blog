@@ -183,9 +183,9 @@ ZREVRANGE wordcount 0 -1 WITHSCORES
 ```text
 1) "redis"
 2) "3"
-3) "set"
+3) "sorted"
 4) "1"
-5) "sorted"
+5) "set"
 6) "1"
 ```
 
