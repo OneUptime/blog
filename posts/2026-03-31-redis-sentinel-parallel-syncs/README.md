@@ -16,8 +16,8 @@ When Sentinel promotes a new primary:
 
 1. All existing replicas are reconfigured to follow the new primary
 2. Each replica performs a full or partial resync
-3. During resync, replicas are unavailable for reads
-4. After resync completes, replicas return to serving reads
+3. During a full resync, replicas briefly block connections while loading the new dataset (with `replica-serve-stale-data yes`, the default, they serve stale data until that point)
+4. After resync completes, replicas return to serving current data
 
 `parallel-syncs` controls how many replicas go through step 2-3 simultaneously.
 
@@ -93,7 +93,7 @@ If replicas support partial resync (their offset is still in the backlog), resyn
 redis-cli CONFIG SET repl-backlog-size 67108864  # 64MB
 ```
 
-With partial resync, even `parallel-syncs=3` may be acceptable since replicas reconnect in milliseconds.
+With partial resync, even `parallel-syncs=3` may be acceptable since only the missed commands are transferred rather than a full dataset.
 
 ## Monitoring Recovery Progress
 
