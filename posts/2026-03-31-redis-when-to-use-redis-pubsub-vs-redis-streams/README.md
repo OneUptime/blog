@@ -61,7 +61,7 @@ A Streams consumer group tracks the last acknowledged ID. After a restart, it re
 messages = r.xreadgroup('mygroup', 'worker-1', {'events': '>'}, block=2000)
 ```
 
-Use case: order processing, payment events, audit logs, any event that must be processed exactly once.
+Use case: order processing, payment events, audit logs, any event that must be processed at least once.
 
 ### 2. You need competing consumers (worker queues)
 
