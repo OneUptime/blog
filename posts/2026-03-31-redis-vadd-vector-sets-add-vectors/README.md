@@ -15,19 +15,22 @@ Redis 8 introduced vector sets, a native data type optimized for storing and sea
 ## VADD Syntax
 
 ```redis
-VADD key [REDUCE dim] [NOQUANT | Q8 | BIN] [EF ef_construction] [SETATTR json] [CAS] vector member
+VADD key [REDUCE dim] (FP32 | VALUES num) vector element [CAS] [NOQUANT | Q8 | BIN] [EF build-exploration-factor] [SETATTR attributes] [M numlinks]
 ```
 
 - `key` - name of the vector set
-- `vector` - space-separated floats representing the embedding
-- `member` - unique string identifier for this vector
+- `FP32` - vector is provided as a single raw binary blob in 32-bit float format
+- `VALUES num` - vector is provided as `num` space-separated floats
+- `vector` - the embedding data (binary blob after `FP32`, or `num` floats after `VALUES`)
+- `element` - unique string identifier for this vector
 - `REDUCE dim` - project the vector down to `dim` dimensions using random projection
+- `CAS` - offload the slow neighbor candidate collection to a background thread (check-and-set style)
 - `NOQUANT` - store as full 32-bit floats (highest precision, most memory)
 - `Q8` - quantize to 8-bit integers (default, good balance)
 - `BIN` - store as a binary vector (lowest memory)
-- `EF ef_construction` - HNSW index build quality (higher = better recall, slower insert)
-- `SETATTR json` - set a JSON attribute string on the member in one command
-- `CAS` - only update if the vector has changed (compare-and-swap)
+- `EF build-exploration-factor` - HNSW index build quality (higher = better recall, slower insert)
+- `SETATTR attributes` - set a JSON attribute string on the member in one command
+- `M numlinks` - number of maximum allowed links per node in the HNSW graph
 
 ## Prerequisites
 
@@ -37,9 +40,9 @@ VADD key [REDUCE dim] [NOQUANT | Q8 | BIN] [EF ef_construction] [SETATTR json] [
 ## Basic Usage
 
 ```redis
-VADD embeddings 0.12 0.98 0.45 0.67 0.23 doc1
-VADD embeddings 0.88 0.11 0.76 0.34 0.55 doc2
-VADD embeddings 0.33 0.72 0.18 0.91 0.04 doc3
+VADD embeddings VALUES 5 0.12 0.98 0.45 0.67 0.23 doc1
+VADD embeddings VALUES 5 0.88 0.11 0.76 0.34 0.55 doc2
+VADD embeddings VALUES 5 0.33 0.72 0.18 0.91 0.04 doc3
 ```
 
 Each call returns `1` when the member is new or `0` when it already existed and was updated.
@@ -48,13 +51,13 @@ Each call returns `1` when the member is new or `0` when it already existed and 
 
 ```redis
 # Full 32-bit float precision
-VADD embeddings NOQUANT 0.12 0.98 0.45 0.67 0.23 precise_doc
+VADD embeddings VALUES 5 0.12 0.98 0.45 0.67 0.23 precise_doc NOQUANT
 
 # 8-bit quantization (default)
-VADD embeddings Q8 0.12 0.98 0.45 0.67 0.23 compact_doc
+VADD embeddings VALUES 5 0.12 0.98 0.45 0.67 0.23 compact_doc Q8
 
 # Binary quantization (1 bit per dimension)
-VADD embeddings BIN 0.12 0.98 0.45 0.67 0.23 binary_doc
+VADD embeddings VALUES 5 0.12 0.98 0.45 0.67 0.23 binary_doc BIN
 ```
 
 ## Adding Vectors with Attributes
@@ -62,8 +65,8 @@ VADD embeddings BIN 0.12 0.98 0.45 0.67 0.23 binary_doc
 The `SETATTR` option combines `VADD` and `VSETATTR` into a single round-trip:
 
 ```redis
-VADD embeddings SETATTR '{"title":"Introduction to Redis","tags":["redis","database"]}' \
-  0.12 0.98 0.45 0.67 0.23 doc1
+VADD embeddings VALUES 5 0.12 0.98 0.45 0.67 0.23 doc1 \
+  SETATTR '{"title":"Introduction to Redis","tags":["redis","database"]}'
 ```
 
 ## Workflow Diagram
@@ -74,7 +77,7 @@ flowchart TD
     B -- Precision --> C[NOQUANT: 32-bit floats]
     B -- Balanced --> D[Q8: 8-bit integers]
     B -- Compact --> E[BIN: 1-bit binary]
-    C --> F[VADD key options vector member]
+    C --> F[VADD key VALUES num vector element options]
     D --> F
     E --> F
     F --> G[HNSW graph updated]
@@ -92,10 +95,10 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 def add_vector(key, member, vector, attrs=None):
     # Flatten numpy array to list of strings
     vec_args = [str(v) for v in vector.tolist()]
-    cmd = ["VADD", key]
+    cmd = ["VADD", key, "VALUES", str(len(vector))]
+    cmd += vec_args + [member]
     if attrs:
         cmd += ["SETATTR", attrs]
-    cmd += vec_args + [member]
     return r.execute_command(*cmd)
 
 embedding = np.random.rand(128).astype(np.float32)
@@ -110,9 +113,9 @@ const redis = new Redis();
 
 async function addVector(key, member, vector, attrs) {
   const vecArgs = vector.map(String);
-  const cmd = ["VADD", key];
-  if (attrs) cmd.push("SETATTR", JSON.stringify(attrs));
+  const cmd = ["VADD", key, "VALUES", String(vector.length)];
   cmd.push(...vecArgs, member);
+  if (attrs) cmd.push("SETATTR", JSON.stringify(attrs));
   return redis.call(...cmd);
 }
 
@@ -129,9 +132,10 @@ import java.util.List;
 
 try (Jedis jedis = new Jedis("localhost", 6379)) {
     List<String> args = new ArrayList<>();
-    args.add("VADD");
     args.add("docs");
     float[] vector = {0.12f, 0.98f, 0.45f, 0.67f, 0.23f};
+    args.add("VALUES");
+    args.add(String.valueOf(vector.length));
     for (float v : vector) {
         args.add(String.valueOf(v));
     }
@@ -146,10 +150,10 @@ try (Jedis jedis = new Jedis("localhost", 6379)) {
 
 ```redis
 # Fast insert, lower recall
-VADD embeddings EF 100 0.12 0.98 0.45 0.67 doc_fast
+VADD embeddings VALUES 4 0.12 0.98 0.45 0.67 doc_fast EF 100
 
 # Slow insert, higher recall
-VADD embeddings EF 400 0.12 0.98 0.45 0.67 doc_accurate
+VADD embeddings VALUES 4 0.12 0.98 0.45 0.67 doc_accurate EF 400
 ```
 
 The default is 200.
@@ -159,7 +163,7 @@ The default is 200.
 If your embeddings are very large (e.g. 1536 dimensions from OpenAI), the `REDUCE` option projects them to a lower dimension using a stable random projection matrix. The same projection is applied consistently across all members of the key:
 
 ```redis
-VADD embeddings REDUCE 64 0.12 0.98 ... (1536 floats) ... doc1
+VADD embeddings REDUCE 64 VALUES 1536 0.12 0.98 ... (1536 floats) ... doc1
 ```
 
 This reduces memory and search time at the cost of some accuracy.
@@ -170,7 +174,7 @@ This reduces memory and search time at the cost of some accuracy.
 pipe = r.pipeline()
 for i, (member, vector) in enumerate(documents):
     vec_args = [str(v) for v in vector.tolist()]
-    pipe.execute_command("VADD", "embeddings", *vec_args, member)
+    pipe.execute_command("VADD", "embeddings", "VALUES", str(len(vector)), *vec_args, member)
 results = pipe.execute()
 print(f"Inserted {sum(results)} new members")
 ```
