@@ -120,8 +120,7 @@ For production use, configure TLS on RGW and handle the certificate in Windows:
 
 ```powershell
 # Import the RGW self-signed cert to the Windows trust store
-$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-$cert.Import("C:\ceph-rgw.crt")
+$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2("C:\ceph-rgw.crt")
 $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "LocalMachine")
 $store.Open("ReadWrite")
 $store.Add($cert)
