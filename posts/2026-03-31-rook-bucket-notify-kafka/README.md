@@ -102,7 +102,7 @@ metadata:
   namespace: default
   labels:
     # This label links the notification to the bucket
-    notifications.rook.io/my-bucket-notification: "true"
+    bucket-notification-my-bucket-notification: my-bucket-notification
 spec:
   bucketName: my-application-bucket
   storageClassName: rook-ceph-bucket
@@ -112,7 +112,7 @@ Or add the label to an existing OBC:
 
 ```bash
 kubectl label objectbucketclaim my-bucket \
-  notifications.rook.io/my-bucket-notification=true \
+  bucket-notification-my-bucket-notification=my-bucket-notification \
   -n default
 ```
 
@@ -122,9 +122,10 @@ kubectl label objectbucketclaim my-bucket \
 # Check CephBucketNotification status
 kubectl get cephbucketnotification -n default
 
-# Verify via radosgw-admin
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  radosgw-admin notification list --bucket=my-application-bucket
+# Verify via S3 API
+aws s3api get-bucket-notification-configuration \
+  --bucket my-application-bucket \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph.svc:80
 ```
 
 ## Test: Upload an Object and Consume from Kafka
