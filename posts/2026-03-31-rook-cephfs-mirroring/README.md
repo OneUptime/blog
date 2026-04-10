@@ -29,7 +29,7 @@ flowchart LR
 ## Prerequisites
 
 - Two Rook-Ceph clusters with CephFS deployed on both
-- Rook v1.7+ for `CephFilesystemMirror` CRD support
+- Rook v1.6+ for `CephFilesystemMirror` CRD support
 - Network connectivity between the two clusters
 
 ## Step 1: Deploy CephFilesystemMirror Daemon
@@ -43,7 +43,6 @@ metadata:
   name: my-fs-mirror
   namespace: rook-ceph
 spec:
-  count: 1
   resources:
     requests:
       cpu: "100m"
@@ -105,7 +104,7 @@ On the **primary** cluster, generate the bootstrap token:
 
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer bootstrap create myfs --site-name primary
+  ceph fs snapshot mirror peer_bootstrap create myfs client.mirror_remote primary
 ```
 
 Copy the output token and create a secret on the **secondary** cluster:
@@ -142,7 +141,7 @@ ceph fs snapshot mirror add myfs /volumes/team-a
 ceph fs snapshot mirror add myfs /volumes/team-b
 
 # List mirrored directories
-ceph fs snapshot mirror dirmap myfs
+ceph fs snapshot mirror ls myfs
 ```
 
 ## Configure Snapshot Schedules
@@ -169,11 +168,8 @@ ceph fs snap-schedule list --fs myfs
 ```bash
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
 
-# Check overall mirroring status
-ceph fs snapshot mirror status myfs
-
-# Check per-directory sync status
-ceph fs snapshot mirror status myfs /volumes/team-a
+# Check overall mirroring daemon status
+ceph fs snapshot mirror daemon status
 ```
 
 Example output:
@@ -201,7 +197,7 @@ If the primary site goes down:
 ```bash
 # On secondary cluster - check if sync is current
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs
+  ceph fs snapshot mirror daemon status
 
 # Stop mirroring on secondary (become authoritative)
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
