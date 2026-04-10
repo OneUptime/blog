@@ -18,7 +18,7 @@ When you update the Ceph version in the CephCluster spec, Rook:
 3. Verifies the cluster returns to a healthy state
 4. Proceeds to the next daemon
 
-The upgrade order is: MGR -> MON -> OSD -> MDS -> RGW -> RBD Mirror
+The upgrade order is: MON -> MGR -> OSD -> MDS -> RGW -> RBD Mirror
 
 ## Preparing for an Upgrade
 
@@ -131,20 +131,18 @@ kubectl -n $NAMESPACE exec deploy/rook-ceph-tools -- ceph -s
 
 ## Pausing and Resuming Upgrades
 
-Pause a running upgrade:
+Pause a running upgrade by scaling down the Rook operator:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  ceph.rook.io/upgrade-paused="true"
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=0
 ```
 
-Resume:
+Resume by scaling it back up:
 
 ```bash
-kubectl -n rook-ceph annotate cephcluster rook-ceph \
-  ceph.rook.io/upgrade-paused-
+kubectl -n rook-ceph scale deployment rook-ceph-operator --replicas=1
 ```
 
 ## Summary
 
-Automating Ceph upgrades with Rook's rolling strategy requires updating the CephCluster image version and letting Rook handle daemon-by-daemon restarts with health verification. Adding pre-upgrade health checks and post-upgrade verification in a wrapper script creates a safe, repeatable upgrade process. The pause annotation provides an emergency stop if something goes wrong mid-upgrade.
+Automating Ceph upgrades with Rook's rolling strategy requires updating the CephCluster image version and letting Rook handle daemon-by-daemon restarts with health verification. Adding pre-upgrade health checks and post-upgrade verification in a wrapper script creates a safe, repeatable upgrade process. Scaling down the Rook operator provides an emergency stop if something goes wrong mid-upgrade.
