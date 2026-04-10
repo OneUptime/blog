@@ -114,7 +114,7 @@ Change the dashboard admin password from the toolbox:
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
-  ceph dashboard ac-user-set-password admin --force-password 'MyNewSecurePassword!'
+  bash -c "echo -n 'MyNewSecurePassword!' | ceph dashboard ac-user-set-password admin --force-password -i -"
 ```
 
 ## Key Monitoring Views
