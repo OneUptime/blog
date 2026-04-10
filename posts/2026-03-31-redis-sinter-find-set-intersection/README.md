@@ -18,7 +18,7 @@ Description: Learn how to use SINTER in Redis to find members that exist in all 
 SINTER key [key ...]
 ```
 
-- Provide two or more set keys.
+- Provide one or more set keys.
 - Returns members present in all sets.
 - Original sets are not modified.
 - Returns an empty array if any set is empty or does not exist.
