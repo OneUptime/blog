@@ -74,7 +74,7 @@ watch -n2 'redis-cli -h new-host -a "your-strong-password" INFO replication'
 
 # Compare offsets
 redis-cli -h old-host INFO replication | grep master_repl_offset
-redis-cli -h new-host -a "pwd" INFO replication | grep master_repl_offset
+redis-cli -h new-host -a "your-strong-password" INFO replication | grep master_repl_offset
 ```
 
 ## Step 4: Minimize the Cutover Window
@@ -83,13 +83,14 @@ When offsets are aligned, do a brief write pause:
 
 ```bash
 # Option A: Put application in read-only mode (application-level)
-# Option B: Block writes at Redis level temporarily
-redis-cli -h old-host CONFIG SET min-replicas-to-write 1
-# This causes writes to block until at least 1 replica is in sync
+# Option B: Pause writes at Redis level temporarily (Redis 6.2+)
+redis-cli -h old-host CLIENT PAUSE 60000 WRITE
+# Pauses write commands for 60 seconds while reads continue
+# For Redis < 6.2, use: CLIENT PAUSE 60000 (pauses all commands)
 
 # Confirm replica is fully caught up
 redis-cli -h old-host INFO replication | grep master_repl_offset
-redis-cli -h new-host -a "pwd" INFO replication | grep master_repl_offset
+redis-cli -h new-host -a "your-strong-password" INFO replication | grep master_repl_offset
 ```
 
 ## Step 5: Promote the Replica
@@ -129,18 +130,18 @@ print(f"Connected. Key count: {r.dbsize()}")
 ```bash
 # Compare key counts
 OLD_COUNT=$(redis-cli -h old-host INFO keyspace | grep -o "keys=[0-9]*" | cut -d= -f2)
-NEW_COUNT=$(redis-cli -h new-host -a "pwd" DBSIZE)
+NEW_COUNT=$(redis-cli --raw -h new-host -a "your-strong-password" DBSIZE)
 echo "Old: $OLD_COUNT, New: $NEW_COUNT"
 
 # Spot check random keys
 for i in $(seq 1 20); do
-  KEY=$(redis-cli -h new-host -a "pwd" RANDOMKEY)
-  TYPE=$(redis-cli -h new-host -a "pwd" TYPE "$KEY")
+  KEY=$(redis-cli --raw -h new-host -a "your-strong-password" RANDOMKEY)
+  TYPE=$(redis-cli -h new-host -a "your-strong-password" TYPE "$KEY")
   echo "$KEY: $TYPE"
 done
 
 # Check no replication errors
-redis-cli -h new-host -a "pwd" INFO replication | grep -E "repl_backlog|connected_slaves"
+redis-cli -h new-host -a "your-strong-password" INFO replication | grep -E "repl_backlog|connected_slaves"
 ```
 
 ## Step 8: Keep Old Instance as Standby
