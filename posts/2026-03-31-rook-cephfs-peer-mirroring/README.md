@@ -56,16 +56,16 @@ spec:
 # On the secondary cluster's toolbox
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
   ceph fs snapshot mirror peer_bootstrap create \
-  myfs-replica client.mirror-primary
+  myfs-replica client.mirror-primary primary-site
 
 # Example output (JSON token):
-# {"fsid":"abcd-1234","client_auth_key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica"}
+# {"fsid":"abcd-1234","key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica","user":"client.mirror-primary","site_name":"primary-site"}
 ```
 
 Encode the token for use as a Kubernetes secret:
 
 ```bash
-TOKEN='{"fsid":"abcd-1234","client_auth_key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica"}'
+TOKEN='{"fsid":"abcd-1234","key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica","user":"client.mirror-primary","site_name":"primary-site"}'
 echo -n "$TOKEN" | base64 -w 0
 ```
 
@@ -87,7 +87,7 @@ metadata:
   namespace: rook-ceph
 stringData:
   token: |
-    {"fsid":"abcd-1234","client_auth_key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica"}
+    {"fsid":"abcd-1234","key":"AQA...==","mon_host":"[v2:10.0.0.5:3300]","filesystem":"myfs-replica","user":"client.mirror-primary","site_name":"primary-site"}
 ```
 
 ## Step 4: Configure Mirroring on the Primary CephFilesystem
@@ -121,10 +121,10 @@ spec:
       - interval: "1h"
         startTime: "00:00:00"
     snapshotRetention:
-      - duration: "7d"
-        prefix: "hourly"
-      - duration: "30d"
-        prefix: "daily"
+      - path: "/"
+        duration: "7d"
+      - path: "/critical-data"
+        duration: "30d"
 ```
 
 ## Step 5: Enable Mirror Daemon on Primary
@@ -135,8 +135,7 @@ kind: CephFilesystemMirror
 metadata:
   name: my-fs-mirror
   namespace: rook-ceph
-spec:
-  count: 1
+spec: {}
 ```
 
 ```bash
@@ -148,11 +147,11 @@ kubectl apply -f cephfilesystemmirror.yaml
 ```bash
 # On primary cluster
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer list myfs
+  ceph fs snapshot mirror peer_list myfs
 
 # Check sync status
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror status myfs
+  ceph fs snapshot mirror daemon status myfs
 
 # On secondary cluster, verify snapshots are arriving
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
@@ -164,11 +163,11 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 ```bash
 # Check snapshot schedules on primary
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot schedule list /
+  ceph fs snap-schedule list /
 
 # Check last snapshot
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot schedule status /
+  ceph fs snap-schedule status /
 ```
 
 ## Removing a Peer
@@ -176,11 +175,11 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 ```bash
 # Get peer UUID
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer list myfs
+  ceph fs snapshot mirror peer_list myfs
 
 # Remove peer by UUID
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
-  ceph fs snapshot mirror peer remove myfs <peer-uuid>
+  ceph fs snapshot mirror peer_remove myfs <peer-uuid>
 
 # Remove the secret
 kubectl delete secret cephfs-mirror-peer -n rook-ceph
