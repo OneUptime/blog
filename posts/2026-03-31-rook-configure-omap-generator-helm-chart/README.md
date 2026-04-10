@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rook, Ceph, Kubernetes, Helm, CSI, RBD
 
-Description: Configure the OMAP generator in the Rook-Ceph Helm chart to manage RBD volume journaling metadata required for CSI operations.
+Description: Configure the OMAP generator in the Rook-Ceph Helm chart to manage RBD volume metadata mappings required for RBD mirroring.
 
 ---
 
 ## Overview
 
-The OMAP (Object Map) generator is a component in the Rook-Ceph CSI stack that manages per-volume metadata stored in Ceph RADOS objects. This metadata is required for CSI volume operations including cloning and snapshot tracking. Understanding when and how to configure the OMAP generator prevents provisioning failures.
+The OMAP (Object Map) generator is a component in the Rook-Ceph CSI stack that generates the OMAP mapping between PV names and RBD images. This mapping helps CSI identify RBD images for CSI operations. The OMAP generator is specifically needed when using the RBD mirroring feature, where these mappings must be maintained on secondary clusters.
 
 ## What the OMAP Generator Does
 
@@ -27,7 +27,7 @@ csi:
   enableOMAPGenerator: true
 ```
 
-When disabled (`false`), OMAP metadata management is handled differently - suitable only for environments with a single provisioner replica or when using external metadata stores.
+The OMAP generator is disabled by default. Enable it when using the RBD mirroring feature, as mirrored images on secondary clusters need their OMAP entries maintained.
 
 ## Provisioner Sidecar Configuration
 
@@ -87,15 +87,14 @@ kubectl exec -n rook-ceph -it deploy/rook-ceph-tools -- \
   bash -c "rados -p ceph-blockpool listomapkeys csi.volumes.default"
 ```
 
-## When to Disable the OMAP Generator
+## When to Enable the OMAP Generator
 
-Disable the OMAP generator only when:
-- Running a single provisioner replica
-- Using an external CSI metadata store
-- Migrating from an older Rook version where OMAP was not used
+Enable the OMAP generator when:
+- Using RBD mirroring to replicate images across Ceph clusters
+- Running a disaster recovery setup where secondary clusters need PV-to-RBD mappings
 
-For all standard deployments, keep `enableOMAPGenerator: true`.
+For deployments not using RBD mirroring, the OMAP generator can remain disabled (the default).
 
 ## Summary
 
-The OMAP generator in Rook-Ceph manages critical metadata for RBD volume identification. Enable it via `csi.enableOMAPGenerator: true` in the operator Helm chart for reliable CSI provisioning, especially in multi-replica provisioner deployments where consistent metadata tracking is essential.
+The OMAP generator in Rook-Ceph maintains the mapping between PV names and RBD images. Enable it via `csi.enableOMAPGenerator: true` in the operator Helm chart when using RBD mirroring, where secondary clusters need these mappings to identify mirrored images for CSI operations.
