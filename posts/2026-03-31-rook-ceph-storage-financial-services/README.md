@@ -60,7 +60,7 @@ reclaimPolicy: Retain
 allowVolumeExpansion: true
 ```
 
-## Configuring TLS for All Ceph Traffic
+## Enabling In-Transit Encryption for All Ceph Traffic
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -129,12 +129,14 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 
 ## Monitoring Latency for SLA Compliance
 
-Set Grafana alerts for P99 latency thresholds:
+Set Grafana alerts for average write latency thresholds:
 
 ```promql
-# Alert if P99 OSD write latency exceeds 5ms
-histogram_quantile(0.99,
-  rate(ceph_osd_op_w_latency_bucket{namespace="rook-ceph"}[5m])
+# Alert if average OSD write latency exceeds 5ms
+(
+  rate(ceph_osd_op_w_latency_sum{namespace="rook-ceph"}[5m])
+  /
+  rate(ceph_osd_op_w_latency_count{namespace="rook-ceph"}[5m])
 ) * 1000 > 5
 ```
 
