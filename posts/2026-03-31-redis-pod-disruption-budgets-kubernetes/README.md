@@ -94,7 +94,7 @@ kubectl drain node-1 --ignore-daemonsets --delete-emptydir-data
 kubectl describe pdb redis-cluster-pdb -n redis
 ```
 
-Sample output showing a disruption is blocked:
+Sample output showing PDB status during a drain:
 
 ```text
 Status:
@@ -102,23 +102,37 @@ Status:
   Disruptions Allowed:  1
   Current Healthy:      3
   Desired Healthy:      2
-  Total Replicas:       3
+  Expected Pods:        3
 ```
+
+Here, `Disruptions Allowed: 1` means one more pod can be evicted while still meeting the `minAvailable` requirement. When it reaches `0`, Kubernetes blocks further evictions.
 
 ## Testing PDB Enforcement
 
 Verify that Kubernetes blocks eviction when the PDB would be violated:
 
 ```bash
-# Try to evict a pod manually
+# List pods to find a target
 kubectl get pods -n redis -l app=redis-cluster
-kubectl evict redis-cluster-0 --namespace redis
+
+# Try to evict a pod via the Eviction API
+kubectl proxy &
+curl -X POST "http://localhost:8001/api/v1/namespaces/redis/pods/redis-cluster-0/eviction" \
+  -H "Content-Type: application/json" \
+  -d '{"apiVersion":"policy/v1","kind":"Eviction","metadata":{"name":"redis-cluster-0","namespace":"redis"}}'
 ```
 
-If the PDB would be violated, you'll get:
+If the PDB would be violated, the API returns a `429 Too Many Requests` error:
 
-```text
-Error from server (TooManyRequests): Cannot evict pod as it would violate the pod's disruption budget.
+```json
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "status": "Failure",
+  "message": "Cannot evict pod as it would violate the pod's disruption budget.",
+  "reason": "TooManyRequests",
+  "code": 429
+}
 ```
 
 ## PDB with Helm (Bitnami Redis Chart)
