@@ -54,7 +54,7 @@ doctl databases firewalls append <cluster-id> \
 DigitalOcean requires TLS. Download the CA cert from the cluster dashboard under **Connection Details**, or:
 
 ```bash
-doctl databases ca <cluster-id> --output-dir ./certs
+doctl databases get-ca <cluster-id> --output json | jq -r '.ca_certificate' > ./certs/ca-certificate.crt
 ```
 
 ## Connecting with redis-cli
@@ -70,7 +70,7 @@ redis-cli --tls \
 Test connectivity:
 
 ```bash
-127.0.0.1:25061> PING
+<host>:25061> PING
 PONG
 ```
 
@@ -144,7 +144,7 @@ The control panel also provides a connection URI. You can use it directly:
 
 ```bash
 export REDIS_URL="rediss://default:<password>@<host>:25061"
-redis-cli --tls --cacert ./certs/ca-certificate.crt "$REDIS_URL"
+redis-cli -u "$REDIS_URL" --tls --cacert ./certs/ca-certificate.crt
 ```
 
 ## Summary
