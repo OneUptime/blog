@@ -209,10 +209,11 @@ ZRANGEBYSCORE game 4000 7000 WITHSCORES
 
 ### Paginated Product Price Filter
 
+Page 1: products under $20.
+
 ```redis
 ZADD products:price 9.99 "prod:A" 19.99 "prod:B" 14.99 "prod:C" 24.99 "prod:D"
--- Page 1: products under $20
-ZRANGEBYSCORE products:price 0 19.99 LIMIT 0 2 WITHSCORES
+ZRANGEBYSCORE products:price 0 19.99 WITHSCORES LIMIT 0 2
 ```
 
 ```text
@@ -241,11 +242,15 @@ ZRANGEBYSCORE tasks 5 10
 
 `ZRANGEBYSCORE` returns results in ascending score order. `ZREVRANGEBYSCORE` returns them in descending order (and takes max before min in the argument order).
 
-```redis
--- Ascending
-ZRANGEBYSCORE scores 100 300
+Ascending:
 
--- Descending equivalent
+```redis
+ZRANGEBYSCORE scores 100 300
+```
+
+Descending equivalent:
+
+```redis
 ZREVRANGEBYSCORE scores 300 100
 ```
 
@@ -255,7 +260,7 @@ In Redis 6.2+, use `ZRANGE key max min BYSCORE REV` instead.
 
 - ZRANGEBYSCORE is O(log N + M) where N is the sorted set size and M is the number of returned elements.
 - For large sets with a small result range, this is very efficient.
-- LIMIT adds a constant offset cost. Large offsets require skipping results, so score-cursor pagination is more efficient for deep pagination.
+- LIMIT adds a cost proportional to the offset, since Redis must traverse and skip those elements. For deep pagination, score-cursor pagination is more efficient.
 
 ## Summary
 
