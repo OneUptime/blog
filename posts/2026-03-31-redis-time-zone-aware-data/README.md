@@ -45,7 +45,8 @@ def local_day_start_utc(tz_name: str, ts: float = None) -> float:
     ts = ts or time.time()
     tz = pytz.timezone(tz_name)
     local_dt = datetime.datetime.fromtimestamp(ts, tz=tz)
-    local_midnight = local_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    naive_midnight = local_dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    local_midnight = tz.localize(naive_midnight)
     return local_midnight.timestamp()
 
 def local_day_bucket(tz_name: str, ts: float = None) -> str:
