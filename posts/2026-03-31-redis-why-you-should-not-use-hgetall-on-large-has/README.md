@@ -34,8 +34,6 @@ Redis is single-threaded for command processing. HGETALL is O(N) where N is the 
 
 ```bash
 # Simulate the problem - create a large hash
-redis-cli
-
 for i in $(seq 1 100000); do
   redis-cli HSET large-hash "field-$i" "value-$i"
 done
