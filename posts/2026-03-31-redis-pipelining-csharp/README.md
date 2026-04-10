@@ -34,14 +34,14 @@ Use `CreateBatch` to explicitly group commands and execute them together:
 IBatch batch = db.CreateBatch();
 
 Task<bool> setTask = batch.StringSetAsync("batch:key1", "value1");
-Task<bool> incrTask = batch.KeyExpireAsync("batch:key1", TimeSpan.FromMinutes(30));
+Task<bool> expireTask = batch.KeyExpireAsync("batch:key1", TimeSpan.FromMinutes(30));
 Task<RedisValue> getTask = batch.StringGetAsync("batch:key2");
 
 // Execute all commands now
 batch.Execute();
 
 // Await results
-await Task.WhenAll(setTask, incrTask, getTask);
+await Task.WhenAll(setTask, expireTask, getTask);
 Console.WriteLine(await getTask);
 ```
 
