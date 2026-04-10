@@ -102,11 +102,11 @@ try (Jedis jedis = pool.getResource()) {
 
 ```java
 import redis.clients.jedis.JedisPooled;
-import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.AbstractPipeline;
 
 JedisPooled jedis = new JedisPooled("localhost", 6379);
 
-try (Pipeline pipe = jedis.pipelined()) {
+try (AbstractPipeline pipe = jedis.pipelined()) {
     for (int i = 0; i < 500; i++) {
         pipe.zadd("leaderboard", i * 1.5, "player:" + i);
     }
