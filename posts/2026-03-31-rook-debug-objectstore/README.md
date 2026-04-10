@@ -22,7 +22,7 @@ flowchart TD
     E --> G{Service reachable?}
     G -->|no| H[Check network policy / DNS]
     G -->|yes| I[Test S3 auth]
-    I --> J{403 / 403?}
+    I --> J{401 / 403?}
     J -->|yes| K[Check user credentials + caps]
     J -->|no| L[Check Ceph pool health]
 ```
@@ -78,9 +78,9 @@ kubectl run test-s3 --rm -it --image=curlimages/curl --restart=Never -- \
 kubectl get secret rook-ceph-object-user-my-store-my-user \
   -n rook-ceph -o yaml
 
-ACCESS_KEY=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
+export AWS_ACCESS_KEY_ID=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
   -n rook-ceph -o jsonpath='{.data.AccessKey}' | base64 -d)
-SECRET_KEY=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
+export AWS_SECRET_ACCESS_KEY=$(kubectl get secret rook-ceph-object-user-my-store-my-user \
   -n rook-ceph -o jsonpath='{.data.SecretKey}' | base64 -d)
 
 # Test with AWS CLI
