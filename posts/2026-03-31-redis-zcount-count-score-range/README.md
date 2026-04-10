@@ -169,7 +169,7 @@ ZCOUNT activity:scores 500 1000
 Count requests in the last 60 seconds using timestamps as scores.
 
 ```redis
-ZADD requests:user:42 1711900000 "r1" 1711900010 "r2" 1711900070 "r3"
+ZADD requests:user:42 1711899950 "r1" 1711899970 "r2" 1711900070 "r3"
 ZCOUNT requests:user:42 1711899940 1711900000
 ```
 
@@ -209,7 +209,7 @@ ZCOUNT game 2000 3999
 ### Count Events in a Time Window
 
 ```redis
-ZADD events 1000 "login" 1050 "purchase" 1100 "logout" 1200 "login"
+ZADD events 1000 "login" 1050 "purchase" 1100 "logout" 1200 "login2"
 ZCOUNT events 1000 1100
 ```
 
