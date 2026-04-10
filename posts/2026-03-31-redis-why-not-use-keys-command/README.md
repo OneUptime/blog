@@ -41,12 +41,12 @@ def scan_keys(pattern: str, count: int = 100):
         if cursor == 0:
             break
 
+def process_key(key: str):
+    print(f"Processing: {key}")
+
 # Usage
 for key in scan_keys("user:session:*"):
     process_key(key)
-
-def process_key(key: str):
-    print(f"Processing: {key}")
 ```
 
 ## Count Keys Without KEYS
@@ -74,7 +74,7 @@ def count_matching_keys(pattern: str) -> int:
 # for key in r.keys("temp:*"):
 #     r.delete(key)
 
-# Safe pattern: SCAN + pipeline delete in batches
+# Safe pattern: SCAN + batch delete
 def bulk_delete_pattern(pattern: str, batch_size: int = 500):
     cursor = 0
     total_deleted = 0
