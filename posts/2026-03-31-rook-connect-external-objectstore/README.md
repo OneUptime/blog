@@ -32,11 +32,12 @@ spec:
     port: 80
     externalRgwEndpoints:
       - ip: "192.168.10.50"
-      - ip: "192.168.10.51"
     instances: 0
 ```
 
 Setting `instances: 0` means Rook will not deploy any RGW pods. Traffic goes directly to the external endpoints.
+
+> **Note:** Multiple endpoints can be listed under `externalRgwEndpoints`, but only the first endpoint is advertised to consuming resources like ObjectBucketClaims. For high availability, use a single load balancer IP as the endpoint.
 
 ## Creating the Kubernetes Service
 
@@ -51,7 +52,24 @@ The service can be used by in-cluster workloads just like an internal object sto
 
 ## Configuring Credentials
 
-External object store users are managed on the external Ceph cluster. Create a user on the remote cluster and store the credentials as a Kubernetes secret:
+External object store users are managed on the external Ceph cluster. First, create an admin ops user on the remote cluster with the required capabilities for Rook to manage buckets and users:
+
+```bash
+# On the external Ceph cluster
+radosgw-admin user create --uid=rgw-admin-ops-user --display-name="RGW Admin Ops User" \
+  --caps="buckets=*;users=*;usage=read;metadata=read;zone=read"
+```
+
+Store the admin ops credentials as a Rook-typed secret in the Rook namespace:
+
+```bash
+kubectl -n rook-ceph create secret generic --type="kubernetes.io/rook" rgw-admin-ops-user \
+  --from-literal=accessKey=<admin-access-key> --from-literal=secretKey=<admin-secret-key>
+```
+
+This secret is required for the Rook operator to provision buckets via ObjectBucketClaims.
+
+Next, create an application user for your workloads:
 
 ```bash
 # On the external Ceph cluster
