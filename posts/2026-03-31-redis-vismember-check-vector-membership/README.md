@@ -22,9 +22,9 @@ Returns `1` if the element exists in the vector set, `0` otherwise.
 
 ```bash
 # Add some items to a vector set (3-dimensional float vectors)
-VADD products 0.1 0.2 0.8 laptop
-VADD products 0.9 0.1 0.3 phone
-VADD products 0.4 0.6 0.5 tablet
+VADD products VALUES 3 0.1 0.2 0.8 laptop
+VADD products VALUES 3 0.9 0.1 0.3 phone
+VADD products VALUES 3 0.4 0.6 0.5 tablet
 
 # Check if "laptop" is a member
 VISMEMBER products laptop
@@ -47,8 +47,8 @@ r = redis.Redis(host="localhost", port=6379)
 def add_product_if_missing(set_name, product_id, vector):
     exists = r.execute_command("VISMEMBER", set_name, product_id)
     if not exists:
-        # Flatten the vector and pass as arguments
-        args = []
+        # Pass VALUES <dim> before the vector components
+        args = ["VALUES", str(len(vector))]
         for v in vector:
             args.append(str(v))
         args.append(product_id)
@@ -83,7 +83,9 @@ for item, is_member in status.items():
 When syncing a product catalog into Redis vector sets, use `VISMEMBER` to skip re-embedding items that are already indexed:
 
 ```python
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 
 def sync_catalog(catalog, set_name):
     for product in catalog:
@@ -91,12 +93,12 @@ def sync_catalog(catalog, set_name):
         if r.execute_command("VISMEMBER", set_name, pid):
             continue  # Already indexed
         # Get embedding from OpenAI
-        resp = openai.Embedding.create(
+        resp = client.embeddings.create(
             model="text-embedding-3-small",
             input=product["description"]
         )
-        vec = resp["data"][0]["embedding"]
-        r.execute_command("VADD", set_name, *[str(v) for v in vec], pid)
+        vec = resp.data[0].embedding
+        r.execute_command("VADD", set_name, "VALUES", str(len(vec)), *[str(v) for v in vec], pid)
 ```
 
 ## Error Handling
