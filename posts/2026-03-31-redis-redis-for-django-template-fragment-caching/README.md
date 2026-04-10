@@ -103,7 +103,7 @@ Manually expire a cached fragment from Python:
 
 ```python
 from django.core.cache import cache
-from django.utils.cache import make_template_fragment_key
+from django.core.cache.utils import make_template_fragment_key
 
 # Invalidate "product_list" fragment (no vary variables)
 key = make_template_fragment_key("product_list")
@@ -117,7 +117,7 @@ cache.delete(key)
 In a view that updates a product:
 
 ```python
-from django.utils.cache import make_template_fragment_key
+from django.core.cache.utils import make_template_fragment_key
 from django.core.cache import cache
 
 def update_product(request, pk):
@@ -131,18 +131,20 @@ def update_product(request, pk):
 
 ## Nesting Fragments
 
-Fragment caches can nest - outer fragments can include inner fragments:
+Fragment caches can nest, but the inner fragment will not refresh independently while the outer fragment is cached. Once the outer fragment is stored, its rendered content (including the inner fragment's output) is served as a static string until the outer cache expires:
 
 ```html
 {% cache 3600 page_sidebar %}
   {% cache 600 featured_products %}
-    <!-- refreshes every 10 min inside a 1-hour sidebar cache -->
+    <!-- This inner fragment only refreshes when the outer sidebar cache expires -->
     {% for p in featured %} ... {% endfor %}
   {% endcache %}
 
   <div class="static-links">...</div>
 {% endcache %}
 ```
+
+To allow inner fragments to refresh independently, cache them outside the outer block or use the same timeout for both.
 
 ## Summary
 
