@@ -60,6 +60,8 @@ stringData:
 Update the MinIO service to point to Ceph RGW:
 
 ```yaml
+# ExternalName only creates a DNS CNAME alias — it does not proxy or remap ports.
+# Ensure the CephObjectStore gateway port matches what Kubeflow expects (default 9000).
 apiVersion: v1
 kind: Service
 metadata:
@@ -68,9 +70,6 @@ metadata:
 spec:
   type: ExternalName
   externalName: rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local
-  ports:
-    - port: 9000
-      targetPort: 80
 ```
 
 ## Configure Pipeline Component Storage
@@ -79,7 +78,6 @@ In your Kubeflow pipeline components, use the S3 artifact store:
 
 ```python
 from kfp import dsl
-from kfp.components import func_to_container_op
 
 @dsl.component
 def train_model(
