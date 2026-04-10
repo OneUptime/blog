@@ -99,7 +99,7 @@ DEL user:1001:prefs
 DEL user:1001:sessions
 ```
 
-In production, use a Lua script or pipeline to make the deletion atomic.
+In production, use a Lua script or transaction (`MULTI/EXEC`) to make the deletion atomic.
 
 ## Avoiding Nested Objects
 
