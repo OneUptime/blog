@@ -13,7 +13,7 @@ NestJS has a built-in `CacheModule` that integrates with various stores. Switchi
 ## Install Dependencies
 
 ```bash
-npm install @nestjs/cache-manager cache-manager cache-manager-redis-yet redis
+npm install @nestjs/cache-manager cache-manager cache-manager-redis-yet redis nestjs-cacheable
 ```
 
 ## Register CacheModule with Redis
@@ -45,7 +45,7 @@ export class AppModule {}
 ```typescript
 // products.service.ts
 import { Injectable } from "@nestjs/common";
-import { Cacheable, CacheEvict } from "@nestjs/cache-manager";
+import { Cacheable, CacheEvict } from "nestjs-cacheable";
 
 @Injectable()
 export class ProductsService {
@@ -81,7 +81,7 @@ export class ProductsService {
     if (cached) return cached;
 
     const product = await this.productRepository.findOne({ where: { id } });
-    await this.cacheManager.set(`product:${id}`, product, 300);
+    await this.cacheManager.set(`product:${id}`, product, 300 * 1000);
     return product;
   }
 
@@ -103,14 +103,14 @@ import { CacheInterceptor, CacheKey, CacheTTL } from "@nestjs/cache-manager";
 export class ProductsController {
 
   @Get()
-  @CacheTTL(30)
+  @CacheTTL(30 * 1000)
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(":id")
   @CacheKey("product-detail")
-  @CacheTTL(300)
+  @CacheTTL(300 * 1000)
   findOne(@Param("id") id: string) {
     return this.productsService.findOne(id);
   }
