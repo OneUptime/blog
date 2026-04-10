@@ -93,7 +93,7 @@ annotations:
 
 ## Correlating with Latency
 
-Ops/sec alone is not enough. Pair it with `latency_ms` from `INFO latencystats` or `LATENCY HISTORY` so you can confirm whether a traffic increase is actually degrading response times.
+Ops/sec alone is not enough. Pair it with per-command latency percentiles from `INFO latencystats` (e.g., `latency_percentiles_usec_get`) or `LATENCY HISTORY` so you can confirm whether a traffic increase is actually degrading response times.
 
 ## Summary
 
