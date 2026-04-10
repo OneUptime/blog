@@ -25,7 +25,7 @@ Moving an OSD in CRUSH changes which failure domain it belongs to, which trigger
 ceph osd tree
 
 # Find where a specific OSD is located
-ceph osd find osd.3
+ceph osd find 3
 
 # Check the parent bucket of an OSD
 ceph osd crush dump | python3 -m json.tool | grep -B5 '"name": "osd.3"'
