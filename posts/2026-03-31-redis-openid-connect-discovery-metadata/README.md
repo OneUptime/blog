@@ -84,7 +84,8 @@ async function validateIdToken(token, issuer, audience) {
   } catch (err) {
     if (err.code === 'ERR_JWKS_NO_MATCHING_KEY') {
       // Key may have rotated - clear cache and retry once
-      await redis.del(`oidc:jwks:${encodeURIComponent(issuer)}`);
+      const discovery = await getDiscoveryDocument(issuer);
+      await redis.del(`oidc:jwks:${encodeURIComponent(discovery.jwks_uri)}`);
       const freshJwks = await getJwks(issuer);
       const freshKeySet = jose.createLocalJWKSet(freshJwks);
       const { payload } = await jose.jwtVerify(token, freshKeySet, { issuer, audience });
