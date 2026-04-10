@@ -39,7 +39,7 @@ XPENDING key group [[IDLE min-idle-time] start end count [consumer]]
 - `end` - maximum message ID (use `+` for highest)
 - `count` - max number of entries to return
 - `consumer` - filter to a specific consumer (optional)
-- `IDLE min-idle-time` - only return messages idle for at least this many ms (Redis 7.0+)
+- `IDLE min-idle-time` - only return messages idle for at least this many ms (Redis 6.2+)
 
 ## Examples
 
@@ -96,7 +96,7 @@ View only pending messages held by a specific consumer:
 XPENDING mystream workers - + 10 consumer1
 ```
 
-### Filter by Idle Time (Redis 7.0+)
+### Filter by Idle Time (Redis 6.2+)
 
 List messages that have been pending for more than 60 seconds:
 
