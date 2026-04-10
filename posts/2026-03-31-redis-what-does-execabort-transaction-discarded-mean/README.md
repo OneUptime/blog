@@ -63,7 +63,7 @@ QUEUED
 
 ## How to Fix It
 
-Ensure all commands queued in a transaction have correct syntax and the right number of arguments. If you encounter EXECABORT, use `DISCARD` to clean up and start again.
+Ensure all commands queued in a transaction have correct syntax and the right number of arguments. If you notice errors while queuing commands, use `DISCARD` instead of `EXEC` to cleanly abandon the transaction block and start again.
 
 ```bash
 127.0.0.1:6379> MULTI
