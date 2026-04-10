@@ -98,17 +98,16 @@ apply Service "Ceph Disk Usage" {
 For Rook clusters in Kubernetes, check via Prometheus:
 
 ```bash
-# Install check_prometheus plugin
-wget https://github.com/prometheus/blackbox_exporter/releases/latest/download/blackbox_exporter-linux-amd64.tar.gz
-
-# Or use check_prometheus_metric
-pip install check-prometheus-metric
+# Install check_prometheus_metric plugin
+wget -O /usr/local/bin/check_prometheus_metric.sh \
+  https://raw.githubusercontent.com/magenta-aps/check_prometheus_metric/master/check_prometheus_metric.sh
+chmod +x /usr/local/bin/check_prometheus_metric.sh
 
 # Define a CheckCommand for Prometheus
 object CheckCommand "check-ceph-prometheus" {
   command = [ "/usr/local/bin/check_prometheus_metric.sh" ]
   arguments = {
-    "-H" = "rook-ceph-mgr.rook-ceph.svc.cluster.local"
+    "-H" = "http://prometheus.monitoring.svc.cluster.local:9090"
     "-q" = "ceph_health_status"
     "-w" = "1"
     "-c" = "2"
@@ -121,18 +120,26 @@ object CheckCommand "check-ceph-prometheus" {
 
 Configure Icinga Web 2 to display Ceph metrics with PNP4Nagios or Graphite:
 
-```bash
-# /etc/icingaweb2/modules/monitoring/config.ini
-[backends]
-[backend_icinga2]
-type = ido
+```ini
+# /etc/icingaweb2/resources.ini
+[icinga_ido]
+type = db
+db = pgsql
 host = localhost
 port = 5432
-dbtype = pgsql
 dbname = icinga
 username = icinga
 password = icinga
+```
 
+```ini
+# /etc/icingaweb2/modules/monitoring/backends.ini
+[icinga2]
+type = ido
+resource = icinga_ido
+```
+
+```bash
 # Enable performance data writer
 icinga2 feature enable perfdata
 icinga2 feature enable graphite
