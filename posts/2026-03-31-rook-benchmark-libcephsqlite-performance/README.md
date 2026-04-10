@@ -25,7 +25,7 @@ ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libcephsqlite.so")
 
 POOL = "benchmark-pool"
 DB_OBJ = "bench.db"
-URI = f"file:{POOL}/{DB_OBJ}?vfs=ceph"
+URI = f"file:///{POOL}:/{DB_OBJ}?vfs=ceph"
 
 def setup(conn):
     conn.execute("PRAGMA journal_mode=WAL")
@@ -114,7 +114,7 @@ for mode in DELETE WAL; do
   python3 - <<PYEOF
 import sqlite3, ctypes, time
 ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libcephsqlite.so")
-conn = sqlite3.connect("file:benchmark-pool/mode_test.db?vfs=ceph", uri=True)
+conn = sqlite3.connect("file:///benchmark-pool:/mode_test.db?vfs=ceph", uri=True)
 conn.execute(f"PRAGMA journal_mode=${mode}")
 conn.execute("CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, v TEXT)")
 t0 = time.perf_counter()
@@ -144,8 +144,8 @@ Typical results on a local Ceph cluster with 10GbE networking:
 # Tune these PRAGMA settings for better performance
 conn.execute("PRAGMA cache_size=50000")          # 50k page cache (~200MB)
 conn.execute("PRAGMA temp_store=MEMORY")          # Keep temp tables in RAM
-conn.execute("PRAGMA mmap_size=268435456")        # 256MB memory-mapped I/O
-conn.execute("PRAGMA page_size=8192")             # Larger pages for RADOS
+conn.execute("PRAGMA mmap_size=268435456")        # No effect with libcephsqlite (RADOS VFS does not support mmap)
+conn.execute("PRAGMA page_size=8192")             # Larger pages for RADOS (new databases only; existing databases require VACUUM)
 conn.execute("PRAGMA wal_autocheckpoint=2000")    # Less frequent checkpoints
 ```
 
