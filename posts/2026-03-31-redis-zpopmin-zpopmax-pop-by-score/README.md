@@ -139,7 +139,6 @@ Process tasks in order of urgency (lowest score = highest priority).
 
 ```redis
 ZADD taskqueue 1 "critical" 5 "normal" 3 "high" 10 "low"
--- Process next task:
 ZPOPMIN taskqueue
 ```
 
