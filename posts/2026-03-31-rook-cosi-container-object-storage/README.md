@@ -19,22 +19,33 @@ Rook includes a COSI driver that implements this interface, allowing you to prov
 The COSI controller is a separate component that must be installed in the cluster. Deploy it:
 
 ```bash
-kubectl create -k github.com/kubernetes-sigs/container-object-storage-interface-api
-kubectl create -k github.com/kubernetes-sigs/container-object-storage-interface-controller
+kubectl apply -k github.com/kubernetes-sigs/container-object-storage-interface
 ```
 
 Verify the controller is running:
 
 ```bash
-kubectl get pod -n objectstorage-system
+kubectl get pod -n container-object-storage-system
 ```
 
 ## Enabling COSI in Rook
 
-The Rook COSI driver is deployed automatically when a `CephObjectStore` exists. Confirm the driver pod is running:
+The Rook COSI driver requires a `CephCOSIDriver` CR and at least one `CephObjectStore` to be present. Create the driver CR:
+
+```yaml
+apiVersion: ceph.rook.io/v1
+kind: CephCOSIDriver
+metadata:
+  name: ceph-cosi-driver
+  namespace: rook-ceph
+spec:
+  deploymentStrategy: Auto
+```
+
+Confirm the driver pod is running:
 
 ```bash
-kubectl -n rook-ceph get pod -l app=rook-ceph-cosi-driver
+kubectl -n rook-ceph get pod -l app=ceph-cosi-driver
 ```
 
 ## Creating a BucketClass
@@ -46,12 +57,11 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketClass
 metadata:
   name: rook-ceph-bucketclass
-driverName: rook-ceph.ceph.rook.io
+driverName: rook-ceph.ceph.objectstorage.k8s.io
 deletionPolicy: Delete
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
-  region: us-east-1
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ## Claiming a Bucket with BucketClaim
@@ -65,7 +75,7 @@ metadata:
   name: my-app-bucket
   namespace: my-app
 spec:
-  storageClassName: rook-ceph-bucketclass
+  bucketClassName: rook-ceph-bucketclass
   protocols:
     - s3
 ```
@@ -100,11 +110,11 @@ apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccessClass
 metadata:
   name: rook-ceph-bucket-access-class
-driverName: rook-ceph.ceph.rook.io
+driverName: rook-ceph.ceph.objectstorage.k8s.io
 authenticationType: KEY
 parameters:
-  objectStoreName: my-store
-  objectStoreNamespace: rook-ceph
+  objectStoreUserSecretName: rook-ceph-object-user-my-store-cosi
+  objectStoreUserSecretNamespace: rook-ceph
 ```
 
 ## Using Credentials in a Pod
