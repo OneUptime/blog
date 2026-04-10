@@ -63,9 +63,8 @@ return formatted  -- "score:98.60"
 return string.upper("redis")   -- "REDIS"
 return string.lower("REDIS")   -- "redis"
 
--- string.rep
+-- string.rep (two arguments only in Redis's Lua 5.1)
 return string.rep("ab", 3)     -- "ababab"
-return string.rep("ab", 3, "-") -- "ab-ab-ab"
 ```
 
 ## Practical Example - Parse a Namespace from a Key
@@ -115,12 +114,12 @@ redis-cli EVAL "$(cat add_tags.lua)" 1 "article:tags" "redis,lua,scripting"
 
 ## String Length vs Byte Length
 
-Lua's `#` operator returns byte count, not character count. For ASCII data this is fine. For multi-byte UTF-8, use `string.len()` or the byte library if precision matters:
+Lua's `#` operator and `string.len()` both return the byte count, not the character count. For ASCII data this is fine since each character is one byte. For multi-byte UTF-8 strings, both will return a larger number than the actual character count. Redis uses Lua 5.1 which has no built-in UTF-8 character counting:
 
 ```lua
 local s = ARGV[1]
-return #s        -- Byte length
-return string.len(s)  -- Same as #s
+return #s              -- Byte length
+-- string.len(s) returns the same byte length
 ```
 
 ## Validate String Input
