@@ -14,7 +14,7 @@ The Ceph RADOS Gateway (RGW) can emit an operations log - a structured record of
 
 ## Enabling the Ops Log Sidecar
 
-The ops log sidecar is configured in the `CephObjectStore` spec under `gateway`. Set `rgwCommandFlags` to enable the log backend, and configure the sidecar via the `opsLogSidecar` field if your Rook version supports it. For older versions, you enable the UNIX socket backend and let the sidecar tail it.
+The ops log sidecar is configured in the `CephObjectStore` spec under `gateway`. Set `rgwConfig` to enable the log backend, and configure the sidecar via the `opsLogSidecar` field if your Rook version supports it. For older versions, you enable the UNIX socket backend and let the sidecar tail it.
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -26,7 +26,7 @@ spec:
   gateway:
     port: 80
     instances: 1
-    rgwCommandFlags:
+    rgwConfig:
       rgw_ops_log_socket_path: "/var/run/ceph/rgw-ops.sock"
       rgw_enable_ops_log: "true"
       rgw_ops_log_data_backlog: "8388608"
@@ -62,13 +62,13 @@ RGW ops log entries are JSON objects. A typical entry looks like this:
 ```json
 {
   "bucket": "my-bucket",
-  "time": "2026-03-31T10:00:00.000Z",
+  "time": "2026-03-31T10:00:00.000000Z",
   "remote_addr": "10.0.0.5",
   "user": "alice",
-  "operation": "REST.GET.OBJECT",
-  "key": "images/photo.jpg",
-  "request_uri": "GET /my-bucket/images/photo.jpg HTTP/1.1",
-  "http_status": 200,
+  "operation": "get_obj",
+  "object": "images/photo.jpg",
+  "uri": "GET /my-bucket/images/photo.jpg HTTP/1.1",
+  "http_status": "200",
   "bytes_sent": 204800,
   "total_time": 45
 }
@@ -82,19 +82,19 @@ Once the sidecar emits JSON to stdout, use Fluentd, Promtail, or Vector to colle
 
 ```yaml
 # Promtail scrape config for RGW ops logs
-scrapeConfigs:
-  - jobName: rgw-ops-log
-    pipelineStages:
+scrape_configs:
+  - job_name: rgw-ops-log
+    pipeline_stages:
       - json:
           expressions:
             bucket: bucket
             operation: operation
             status: http_status
-    staticConfigs:
+    static_configs:
       - labels:
           job: rook-rgw-ops
 ```
 
 ## Summary
 
-Configuring an ops log sidecar for RGW in Rook involves enabling the ops log UNIX socket via `rgwCommandFlags`, then running a sidecar container that reads the socket and emits structured JSON to stdout. This pattern integrates cleanly with Kubernetes log collection pipelines, giving you full S3 audit trails without modifying the core RGW process.
+Configuring an ops log sidecar for RGW in Rook involves enabling the ops log UNIX socket via `rgwConfig`, then running a sidecar container that reads the socket and emits structured JSON to stdout. This pattern integrates cleanly with Kubernetes log collection pipelines, giving you full S3 audit trails without modifying the core RGW process.
