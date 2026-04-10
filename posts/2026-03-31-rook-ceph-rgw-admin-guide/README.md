@@ -66,8 +66,8 @@ radosgw-admin bucket list --uid=alice
 # Get bucket info
 radosgw-admin bucket stats --bucket=mybucket
 
-# Link a bucket to a user
-radosgw-admin bucket link --bucket=mybucket --uid=alice
+# Link a bucket to a user (get bucket-id from bucket stats output)
+radosgw-admin bucket link --bucket=mybucket --bucket-id=<bucket-id> --uid=alice
 
 # Remove a bucket (and all objects)
 radosgw-admin bucket rm --bucket=mybucket --purge-objects
@@ -100,7 +100,7 @@ radosgw-admin user stats --uid=alice
 
 ```bash
 # List objects in a bucket
-radosgw-admin object list --bucket=mybucket
+radosgw-admin bucket list --bucket=mybucket
 
 # Get object info
 radosgw-admin object stat --bucket=mybucket --object=file.txt
