@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Permission, RBAC, Authorization, Data Modeling, Access Control
 
-Description: Design role-based and attribute-based permission systems in Redis using sets and hashes for fast authorization checks with sub-millisecond latency.
+Description: Design role-based permission systems in Redis using sets and bitmaps for fast authorization checks with sub-millisecond latency.
 
 ---
 
@@ -22,10 +22,14 @@ SADD role:admin read write delete manage_users
 SADD role:editor read write
 SADD role:viewer read
 
-# Assign roles to users
+# Assign roles to users (and maintain reverse mapping)
 SADD user:101:roles admin
+SADD role:admin:users 101
 SADD user:102:roles editor viewer
+SADD role:editor:users 102
+SADD role:viewer:users 102
 SADD user:103:roles viewer
+SADD role:viewer:users 103
 ```
 
 ### Checking Permissions
@@ -88,8 +92,6 @@ GETBIT perm:user:103 1
 ```python
 import redis
 
-r = redis.Redis(decode_responses=True)
-
 class PermissionSystem:
     def __init__(self):
         self.r = redis.Redis(decode_responses=True)
@@ -99,6 +101,7 @@ class PermissionSystem:
 
     def assign_role(self, user_id: str, role: str):
         self.r.sadd(f"user:{user_id}:roles", role)
+        self.r.sadd(f"role:{role}:users", user_id)
 
     def get_effective_permissions(self, user_id: str):
         roles = self.r.smembers(f"user:{user_id}:roles")
