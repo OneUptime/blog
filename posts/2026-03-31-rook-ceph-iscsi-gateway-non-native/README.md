@@ -31,26 +31,29 @@ spec:
     size: 3
 ```
 
-```yaml
-apiVersion: ceph.rook.io/v1
-kind: CephIscsiGateway
-metadata:
-  name: rook-iscsi
-  namespace: rook-ceph
-spec:
-  image: quay.io/ceph/ceph:v18.2.0
-  gatewayNodes:
-    - name: gateway-node1
-    - name: gateway-node2
-  livenessProbe:
-    disabled: false
-  readinessProbe:
-    disabled: false
-```
+Install ceph-iscsi on each dedicated gateway host and connect to the Rook-managed cluster:
 
 ```bash
-kubectl apply -f iscsi-gateway.yaml
-kubectl -n rook-ceph get pod -l app=rook-ceph-iscsi
+apt-get install -y ceph-iscsi targetcli-fb tcmu-runner
+
+# Copy Ceph credentials from the Rook cluster to each gateway host
+kubectl get secret rook-ceph-admin-keyring -n rook-ceph \
+  -o jsonpath='{.data.keyring}' | base64 -d > /etc/ceph/ceph.client.admin.keyring
+
+# Configure the iSCSI gateway
+cat > /etc/ceph/iscsi-gateway.cfg << 'EOF'
+[config]
+cluster_name = ceph
+gateway_keyring = ceph.client.admin.keyring
+api_secure = false
+api_user = admin
+api_password = admin
+api_port = 5000
+trusted_ip_list = GATEWAY_IP1,GATEWAY_IP2
+EOF
+
+systemctl enable --now rbd-target-api
+systemctl enable --now rbd-target-gw
 ```
 
 ## Step 2 - Create an RBD Image for iSCSI
@@ -67,18 +70,16 @@ kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
 Access the ceph-iscsi API:
 
 ```bash
-GATEWAY_IP=$(kubectl -n rook-ceph get svc rook-ceph-iscsi-service -o jsonpath='{.spec.clusterIP}')
-
-# Using gwcli to configure targets
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
-
+# On the gateway host, use gwcli to configure targets
 gwcli <<EOF
 /iscsi-targets create iqn.2016-06.io.rook:target1
-/iscsi-targets/iqn.2016-06.io.rook:target1/gateways create gateway1 ${GATEWAY_IP} skipchecks=true
+/iscsi-targets/iqn.2016-06.io.rook:target1/gateways create gateway1 GATEWAY_IP1 skipchecks=true
+/iscsi-targets/iqn.2016-06.io.rook:target1/gateways create gateway2 GATEWAY_IP2 skipchecks=true
+/disks create pool=iscsi-pool image=iscsi-disk-01
+/iscsi-targets/iqn.2016-06.io.rook:target1/disks add iscsi-pool/iscsi-disk-01
 /iscsi-targets/iqn.2016-06.io.rook:target1/hosts create iqn.2024-01.com.example:initiator1
-/iscsi-targets/iqn.2016-06.io.rook:target1/hosts/iqn.2024-01.com.example:initiator1 chap_creds username=backupuser password=secretpassword123
-/iscsi-targets/iqn.2016-06.io.rook:target1/disks add pool=iscsi-pool image=iscsi-disk-01
-/iscsi-targets/iqn.2016-06.io.rook:target1/disks/iscsi-pool.iscsi-disk-01 add_acl initiator iqn.2024-01.com.example:initiator1
+/iscsi-targets/iqn.2016-06.io.rook:target1/hosts/iqn.2024-01.com.example:initiator1 auth chap=backupuser/secretpassword123
+/iscsi-targets/iqn.2016-06.io.rook:target1/hosts/iqn.2024-01.com.example:initiator1 disk add iscsi-pool/iscsi-disk-01
 EOF
 ```
 
