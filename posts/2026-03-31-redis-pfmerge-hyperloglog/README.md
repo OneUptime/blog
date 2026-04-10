@@ -32,7 +32,7 @@ PFMERGE destkey sourcekey [sourcekey ...]
 - `destkey` - destination key where the merged HyperLogLog is stored
 - `sourcekey` - one or more source HyperLogLog keys
 
-If `destkey` already exists, it is overwritten. Returns `OK` always.
+If `destkey` already exists, it is treated as one of the source sets and its cardinality is included in the merged result. Returns `OK` always.
 
 ## Examples
 
@@ -66,7 +66,7 @@ PFADD users:apac user:300 user:100
 
 PFMERGE users:global users:us users:eu users:apac
 PFCOUNT users:global
-# Returns approximately 7 unique users globally
+# Returns approximately 6 unique users globally
 ```
 
 ### Incremental Merge
