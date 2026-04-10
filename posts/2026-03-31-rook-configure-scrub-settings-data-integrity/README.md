@@ -48,7 +48,7 @@ Restrict scrubs to off-peak hours to reduce impact:
 ```bash
 ceph config set osd osd_scrub_begin_hour 22
 ceph config set osd osd_scrub_end_hour 6
-ceph config set osd osd_scrub_begin_week_day 0
+ceph config set osd osd_scrub_begin_week_day 1
 ceph config set osd osd_scrub_end_week_day 5
 ```
 
