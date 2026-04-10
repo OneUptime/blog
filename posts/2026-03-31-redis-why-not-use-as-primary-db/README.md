@@ -48,7 +48,7 @@ dbfilename dump.rdb
 dir /var/lib/redis
 ```
 
-**AOF (Append Only File):** Logs every write command for point-in-time recovery:
+**AOF (Append Only File):** Logs every write command and replays them on restart for durability:
 
 ```bash
 # redis.conf
@@ -131,7 +131,7 @@ no-appendfsync-on-rewrite no
 auto-aof-rewrite-percentage 100
 auto-aof-rewrite-min-size 64mb
 maxmemory 4gb
-maxmemory-policy allkeys-lru
+maxmemory-policy noeviction
 ```
 
 ## Summary
