@@ -79,8 +79,6 @@ spec:
       cluster_formation.k8s.address_type = hostname
       vm_memory_high_watermark.relative = 0.7
       disk_free_limit.absolute = 2GB
-      # Quorum queues for HA
-      quorum_queue.default_membership_type = implicit
 ```
 
 ## Configuring Durable Queues and Exchanges
@@ -107,6 +105,13 @@ channel.queue_declare(
     queue="order-processing",
     durable=True,
     arguments={"x-queue-type": "quorum"},
+)
+
+# Bind the queue to the exchange
+channel.queue_bind(
+    queue="order-processing",
+    exchange="orders",
+    routing_key="order-processing",
 )
 
 # Publish a persistent message
