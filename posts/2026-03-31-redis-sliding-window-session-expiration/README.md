@@ -12,7 +12,7 @@ Fixed TTL sessions expire at a set time regardless of user activity, causing fru
 
 ## How It Works
 
-Every time a user makes an authenticated request, you call `EXPIRE` (or `EXPIREX`) on their session key to push the expiration forward. The session only truly expires if no requests arrive within the idle timeout window.
+Every time a user makes an authenticated request, you call `EXPIRE` (or `PEXPIRE` for millisecond precision) on their session key to push the expiration forward. The session only truly expires if no requests arrive within the idle timeout window.
 
 ## Basic Implementation
 
