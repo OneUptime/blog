@@ -75,6 +75,7 @@ NEGATIVE_TTL = 30    # 30 seconds
 ```javascript
 const redis = require('redis');
 const client = redis.createClient();
+await client.connect();
 
 const NEGATIVE_SENTINEL = '__NULL__';
 
