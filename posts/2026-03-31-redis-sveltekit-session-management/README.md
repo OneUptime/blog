@@ -111,7 +111,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 ```typescript
 // src/routes/login/+page.server.ts
 import type { Actions } from "@sveltejs/kit";
-import { createSession } from "$lib/server/session";
+import { createSession, deleteSession } from "$lib/server/session";
 import { redirect, fail } from "@sveltejs/kit";
 
 export const actions: Actions = {
