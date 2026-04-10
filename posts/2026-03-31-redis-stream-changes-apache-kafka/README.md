@@ -27,7 +27,7 @@ redis-cli CONFIG SET notify-keyspace-events KEA
 The flags mean:
 - `K` - keyspace events
 - `E` - keyevent events
-- `A` - all commands (set, del, expire, etc.)
+- `A` - alias for `g$lshzxetd`, covers most command classes (set, del, expire, etc.)
 
 Verify it's set:
 
@@ -40,7 +40,7 @@ redis-cli CONFIG GET notify-keyspace-events
 Using Confluent Hub:
 
 ```bash
-confluent-hub install jaredpetersen/kafka-connect-redis:0.6.0
+confluent-hub install jaredpetersen/kafka-connect-redis:1.2.3
 ```
 
 Or download the JAR and place it in your Kafka Connect plugins directory.
@@ -53,10 +53,10 @@ Create a connector config file `redis-source.json`:
 {
   "name": "redis-source-connector",
   "config": {
-    "connector.class": "com.github.jaredpetersen.kafkaconnectredis.source.RedisSourceConnector",
+    "connector.class": "io.github.jaredpetersen.kafkaconnectredis.source.RedisSourceConnector",
     "tasks.max": "1",
     "redis.uri": "redis://localhost:6379",
-    "redis.channels.pattern.active": "true",
+    "redis.channels.pattern.enabled": "true",
     "redis.channels": "__keyevent@0__:*",
     "topic": "redis-keyevents"
   }
@@ -77,7 +77,6 @@ A Python consumer to process Redis change events:
 
 ```python
 from kafka import KafkaConsumer
-import json
 
 consumer = KafkaConsumer(
     "redis-keyevents",
