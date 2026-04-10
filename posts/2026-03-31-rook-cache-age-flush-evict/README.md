@@ -14,8 +14,8 @@ Cache age settings in Ceph define the minimum time an object must stay in the ca
 
 Ceph uses age thresholds alongside ratio thresholds to determine when to flush or evict objects:
 
-- **Flush age**: Dirty objects older than this age are eligible for flushing, even if dirty ratio is below the threshold
-- **Evict age**: Clean objects older than this age are eligible for eviction, even if the cache is not full
+- **Flush age**: Dirty objects must be older than this age before the cache tiering agent will flush them to the backing pool
+- **Evict age**: Objects must be older than this age before they can be evicted from the cache tier
 
 This time-based approach ensures that objects do not stay in the cache indefinitely, even during low-traffic periods.
 
@@ -34,16 +34,16 @@ ceph osd pool set cache-pool cache_min_evict_age 300
 Age and ratio settings work together:
 
 ```text
-Flush triggers when EITHER:
-  - dirty_ratio exceeded (ratio-based flush)
-  - Object is dirty AND older than cache_min_flush_age (age-based flush)
+Flush triggers when BOTH:
+  - cache_target_dirty_ratio is exceeded (ratio threshold met)
+  - Object is dirty AND older than cache_min_flush_age (age threshold met)
 
-Evict triggers when EITHER:
-  - full_ratio exceeded AND object is older than cache_min_evict_age
-  - Object is clean AND older than cache_min_evict_age
+Evict triggers when BOTH:
+  - cache_target_full_ratio is exceeded (ratio threshold met)
+  - Object is older than cache_min_evict_age (age threshold met)
 ```
 
-Setting age to 0 means objects can be flushed or evicted immediately after being written to the cache. Setting age to a very large value (e.g., 86400 seconds = 24 hours) means objects stay in cache for at least one day regardless of ratio pressure.
+Setting age to 0 means objects can be flushed or evicted as soon as ratio thresholds are exceeded. Setting age to a very large value (e.g., 86400 seconds = 24 hours) means objects stay in cache for at least one day even when ratio thresholds are exceeded, which can cause the cache to fill up if objects cannot age out fast enough.
 
 ## Practical Age Values
 
