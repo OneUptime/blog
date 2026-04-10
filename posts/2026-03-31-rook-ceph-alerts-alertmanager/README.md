@@ -80,7 +80,7 @@ spec:
       rules:
         - alert: CephCapacityWarning
           expr: |
-            100 * ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 70
+            ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 0.70
           for: 5m
           labels:
             severity: warning
@@ -92,7 +92,7 @@ spec:
 
         - alert: CephCapacityCritical
           expr: |
-            100 * ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 85
+            ceph_cluster_total_used_raw_bytes / ceph_cluster_total_bytes > 0.85
           for: 1m
           labels:
             severity: critical
