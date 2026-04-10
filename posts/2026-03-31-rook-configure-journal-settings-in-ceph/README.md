@@ -10,7 +10,7 @@ Description: Learn how to configure Ceph journal settings for FileStore OSDs, in
 
 ## What is the Ceph Journal
 
-In FileStore-based Ceph deployments, each OSD uses a write-ahead journal (WAJ) to ensure data consistency. All incoming writes go to the journal first, then are replayed asynchronously to the backing filesystem. This ensures that a crash mid-write does not leave data in an inconsistent state.
+In FileStore-based Ceph deployments, each OSD uses a write-ahead journal to ensure data consistency. All incoming writes go to the journal first, then are replayed asynchronously to the backing filesystem. This ensures that a crash mid-write does not leave data in an inconsistent state.
 
 The journal is critical to FileStore performance. When the journal is on a slow device (the same spinning disk as data), it creates a bottleneck. Placing the journal on a dedicated SSD dramatically improves throughput.
 
