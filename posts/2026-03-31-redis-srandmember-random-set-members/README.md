@@ -96,7 +96,7 @@ SRANDMEMBER pool -7
 7) "charlie"
 ```
 
-Duplicates appear because the absolute count (7) exceeds the set size (5).
+Duplicates appear because negative count samples with replacement — each pick is independent, so repeats are possible even when `|count|` is smaller than the set size.
 
 ### Non-Existent Key
 
@@ -168,16 +168,24 @@ SRANDMEMBER users:all 3
 3) "u9"
 ```
 
-### Weighted Random Simulation with Duplicates
+### Sampling with Replacement
 
-Use negative count to simulate a weighted random distribution by duplicating high-weight entries.
+Use negative count when you need a fixed number of random picks that may include repeats, such as simulating dice rolls or bootstrap sampling.
 
 ```redis
-SADD weighted "prize:big" "prize:small" "prize:small" "prize:small"
--- Note: sets deduplicate, so use a sorted set or list for true weighting
--- For small differences, negative count can approximate:
-SRANDMEMBER weighted -1
+SADD colors "red" "green" "blue"
+SRANDMEMBER colors -5
 ```
+
+```text
+1) "blue"
+2) "red"
+3) "blue"
+4) "green"
+5) "blue"
+```
+
+Each pick is independent, so the same member can appear multiple times.
 
 ### Shuffle a Deck or Randomize Order
 
