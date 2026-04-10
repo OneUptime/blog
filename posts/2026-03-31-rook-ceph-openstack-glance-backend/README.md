@@ -66,7 +66,7 @@ rbd_store_chunk_size = 8
 Also ensure the image format is set to raw for best performance with RBD:
 
 ```ini
-[DEFAULT]
+[image_format]
 disk_formats = ami,ari,aki,vhd,vmdk,raw,qcow2,vdi,iso
 ```
 
