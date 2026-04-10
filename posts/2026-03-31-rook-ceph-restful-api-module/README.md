@@ -40,18 +40,18 @@ The API runs on port 8003 by default:
 
 ```bash
 # Port-forward to access the API
-kubectl -n rook-ceph port-forward svc/rook-ceph-mgr 8003:8003
+kubectl -n rook-ceph port-forward deploy/rook-ceph-mgr-a 8003:8003
 
-# Get cluster health
-curl -k https://localhost:8003/api/health/full \
-  -u admin:YOUR_API_KEY
+# List servers
+curl -k https://localhost:8003/server \
+  -u admin:YOUR_API_KEY | python3 -m json.tool
 
 # List OSDs
-curl -k https://localhost:8003/api/osd \
+curl -k https://localhost:8003/osd \
   -u admin:YOUR_API_KEY | python3 -m json.tool
 
 # List pools
-curl -k https://localhost:8003/api/pool \
+curl -k https://localhost:8003/pool \
   -u admin:YOUR_API_KEY | python3 -m json.tool
 ```
 
@@ -60,23 +60,26 @@ curl -k https://localhost:8003/api/pool \
 Key endpoints exposed by the RESTful module:
 
 ```bash
-# Cluster status
-GET /api/health/full
-
 # OSD management
-GET  /api/osd          # List all OSDs
-GET  /api/osd/{id}     # Get specific OSD info
-POST /api/osd/{id}/down  # Mark OSD down
+GET   /osd              # List all OSDs
+GET   /osd/{id}         # Get specific OSD info
+PATCH /osd/{id}         # Modify OSD (e.g., {"up": false} to mark down)
 
 # Pool management
-GET  /api/pool          # List pools
-POST /api/pool          # Create pool
+GET  /pool              # List pools
+POST /pool              # Create pool
 
 # Monitor info
-GET  /api/mon           # List monitors
+GET  /mon               # List monitors
+
+# Server info
+GET  /server            # List servers
 
 # Config options
-GET  /api/config/global  # Get global config
+GET  /config/cluster    # Get cluster config
+
+# Performance
+GET  /perf              # Get performance counters
 ```
 
 ## Configuring the Module
@@ -116,15 +119,16 @@ import requests
 import urllib3
 urllib3.disable_warnings()
 
-BASE_URL = "https://localhost:8003/api"
+BASE_URL = "https://localhost:8003"
 AUTH = ("admin", "YOUR_API_KEY")
 
-# Get cluster health
-response = requests.get(f"{BASE_URL}/health/full", auth=AUTH, verify=False)
-health = response.json()
-print(f"Cluster status: {health['overall_status']}")
+# List OSDs
+response = requests.get(f"{BASE_URL}/osd", auth=AUTH, verify=False)
+osds = response.json()
+for osd_id, osd_info in osds.items():
+    print(f"OSD {osd_id}: {osd_info}")
 ```
 
 ## Summary
 
-The Ceph MGR RESTful module provides a JSON HTTP API for cluster management and automation. Enable it with `ceph mgr module enable restful`, create API keys with `ceph restful create-key`, and access endpoints on port 8003. Expose the service via a Kubernetes Service and use HTTP Basic Auth with the generated key for all requests.
+The Ceph MGR RESTful module provides a JSON HTTP API for cluster management and automation. Enable it with `ceph mgr module enable restful`, create API keys with `ceph restful create-key`, and access endpoints on port 8003. Expose the service via a Kubernetes Service or port-forward to the MGR pod, and use HTTP Basic Auth with the generated key for all requests.
