@@ -10,14 +10,14 @@ Description: Integrate Azure Key Vault as a KMS backend for Rook-Ceph encrypted 
 
 ## Overview
 
-Azure Key Vault provides centralized secret and key management for workloads running in Azure Kubernetes Service (AKS) or any Kubernetes cluster with Azure connectivity. Rook-Ceph supports Azure Key Vault as a KMS backend, enabling envelope encryption where per-volume keys are wrapped using Azure Key Vault keys.
+Azure Key Vault provides centralized secret and key management for workloads running in Azure Kubernetes Service (AKS) or any Kubernetes cluster with Azure connectivity. Rook-Ceph supports Azure Key Vault as a KMS backend through ceph-csi, storing per-volume encryption passphrases as secrets in Azure Key Vault.
 
 ## Prerequisites
 
 - Azure subscription with Key Vault service
 - Kubernetes cluster with network access to Azure Key Vault
 - Azure Service Principal or Managed Identity with Key Vault access
-- Rook-Ceph 1.12 or later
+- Rook-Ceph 1.14 or later
 
 ## Step 1 - Create an Azure Key Vault
 
@@ -30,39 +30,32 @@ az keyvault create \
   --sku premium
 ```
 
-## Step 2 - Create a Key in Key Vault
+## Step 2 - Create a Service Principal with Certificate Authentication
 
 ```bash
-az keyvault key create \
-  --vault-name rook-ceph-kv \
-  --name rook-ceph-root-key \
-  --protection hsm \
-  --kty RSA-HSM \
-  --size 4096
-```
-
-## Step 3 - Create a Service Principal with Key Vault Access
-
-```bash
-# Create service principal
+# Create service principal with certificate-based authentication
 az ad sp create-for-rbac \
   --name rook-ceph-kv-sp \
-  --skip-assignment true
-
-# Grant Key Vault access
-az keyvault set-policy \
-  --name rook-ceph-kv \
-  --spn <service-principal-id> \
-  --key-permissions get wrapKey unwrapKey create
+  --create-cert
 ```
 
-## Step 4 - Store Azure Credentials as Kubernetes Secrets
+Note the `appId`, `tenant`, and `fileWithCertAndPrivateKey` from the output.
+
+## Step 3 - Grant Key Vault Access to the Service Principal
+
+```bash
+# Grant Key Vault secret permissions (ceph-csi stores passphrases as secrets)
+az keyvault set-policy \
+  --name rook-ceph-kv \
+  --spn <service-principal-app-id> \
+  --secret-permissions get set delete
+```
+
+## Step 4 - Store the Certificate as a Kubernetes Secret
 
 ```bash
 kubectl create secret generic azure-kv-credentials \
-  --from-literal=CLIENT_ID="<service-principal-id>" \
-  --from-literal=CLIENT_SECRET="<service-principal-secret>" \
-  --from-literal=TENANT_ID="<azure-tenant-id>" \
+  --from-file=CLIENT_CERT=<path-to-certificate.pem> \
   -n rook-ceph
 ```
 
@@ -78,13 +71,11 @@ data:
   config.json: |-
     {
       "azure-kv-kms": {
-        "encryptionKMSType": "azure-kv",
+        "KMS_PROVIDER": "azure-kv",
         "AZURE_VAULT_URL": "https://rook-ceph-kv.vault.azure.net/",
-        "AZURE_VAULT_KEY_NAME": "rook-ceph-root-key",
-        "AZURE_VAULT_KEY_VERSION": "",
-        "AZURE_CLIENT_ID": "azure-kv-credentials",
-        "AZURE_CLIENT_SECRET": "azure-kv-credentials",
-        "AZURE_TENANT_ID": "azure-kv-credentials"
+        "AZURE_CLIENT_ID": "<service-principal-app-id>",
+        "AZURE_TENANT_ID": "<azure-tenant-id>",
+        "AZURE_CERT_SECRET_NAME": "azure-kv-credentials"
       }
     }
 ```
@@ -122,9 +113,9 @@ az aks update --resource-group rook-rg --name rook-aks \
 az identity create --name rook-ceph-identity --resource-group rook-rg
 az keyvault set-policy --name rook-ceph-kv \
   --object-id <managed-identity-principal-id> \
-  --key-permissions get wrapKey unwrapKey create
+  --secret-permissions get set delete
 ```
 
 ## Summary
 
-Azure Key Vault integration in Rook-Ceph provides HSM-backed encryption key management for workloads on Azure. Using envelope encryption, per-volume LUKS keys are wrapped with an Azure Key Vault key, ensuring the root key material never leaves the Azure HSM. For AKS environments, Workload Identity eliminates service principal credential management entirely.
+Azure Key Vault integration in Rook-Ceph provides centralized encryption passphrase management for workloads on Azure. Per-volume encryption passphrases are stored as secrets in Azure Key Vault, keeping sensitive key material in a managed service rather than on the cluster. For AKS environments, Workload Identity eliminates service principal credential management entirely.
