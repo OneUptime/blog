@@ -8,7 +8,7 @@ Description: Learn how to use NRedisStack to access Redis modules like RedisJSON
 
 ---
 
-NRedisStack is the official .NET client library that provides access to Redis modules including RedisJSON, RediSearch, RedisTimeSeries, RedisGraph, and RedisBloom. It builds on top of StackExchange.Redis and adds typed commands for each module.
+NRedisStack is the official .NET client library that provides access to Redis modules including RedisJSON, RediSearch, RedisTimeSeries, and RedisBloom. It builds on top of StackExchange.Redis and adds typed commands for each module.
 
 ## Installing NRedisStack
 
@@ -80,9 +80,7 @@ Track time-series metrics such as request latency:
 var ts = db.TS();
 
 // Create a time series key
-await ts.CreateAsync("latency:api", new TsCreateParamsBuilder()
-    .SetRetentionTime(86400000) // 1 day in ms
-    .Build());
+await ts.CreateAsync("latency:api", retentionTime: 86400000); // 1 day in ms
 
 // Add a data point (timestamp 0 = auto)
 await ts.AddAsync("latency:api", "*", 142.5);
