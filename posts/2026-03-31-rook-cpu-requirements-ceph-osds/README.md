@@ -24,7 +24,7 @@ CPU planning for Ceph OSDs depends heavily on media type, workload pattern, and 
 
 BlueStore (default Ceph storage engine) uses CPU for:
 - RocksDB compaction (WAL/DB metadata)
-- CRC32 checksums on all I/O
+- CRC32c checksums on all I/O
 - Optional inline compression
 - Optional at-rest encryption
 
@@ -50,13 +50,15 @@ echo "System overhead: ${SYSTEM_OVERHEAD} cores"
 During OSD recovery, CPU usage can spike significantly:
 
 ```bash
-# Check current recovery thread count
-ceph config get osd osd_recovery_threads
-# Default: 1
-
 # Check max backfill threads
 ceph config get osd osd_max_backfills
-# Default: 1 (for HDDs), 4 (for SSDs recommended)
+# Default: 1
+
+# Check recovery max active (device-type aware, since Octopus)
+ceph config get osd osd_recovery_max_active_hdd
+# Default: 3
+ceph config get osd osd_recovery_max_active_ssd
+# Default: 10
 ```
 
 Budget for recovery to run simultaneously with normal I/O:
@@ -121,19 +123,22 @@ recommended_cpu:
 
 breakdown:
   osd_normal_io: 16 cores (4 NVMe x 4 cores)
-  recovery_burst: 8 cores
+  recovery_burst: 16 cores
+  monitors_mgr: 4 cores
   os_system: 4 cores
-  headroom: 4 cores
+  headroom: 8 cores
 ```
 
 ## Step 6 - Monitor CPU Utilization
+
+Check OSD latency (high latency can indicate CPU bottlenecks):
 
 ```bash
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- \
   ceph osd perf | sort -k2 -n -r | head -10
 ```
 
-Check per-OSD CPU from the host:
+Check per-OSD CPU usage from the host:
 
 ```bash
 top -b -n1 | grep ceph-osd | awk '{print $1, $9, $11}' | sort -k2 -rn
