@@ -42,7 +42,7 @@ And Redis responds with:
 
 ## Inspecting RESP Traffic
 
-Use `redis-cli --resp` to see raw RESP output:
+Use `-3` with `redis-cli` to enable RESP3 protocol mode:
 
 ```bash
 redis-cli --no-auth-warning -3 GET mykey
@@ -70,7 +70,7 @@ Enable RESP3 with the HELLO command:
 redis-cli HELLO 3
 ```
 
-RESP3 is backward-compatible and clients can negotiate which version to use at connection time.
+Redis servers support both RESP2 and RESP3, and clients can negotiate which version to use at connection time via the HELLO command. Connections default to RESP2.
 
 ## Why RESP Is Efficient
 
