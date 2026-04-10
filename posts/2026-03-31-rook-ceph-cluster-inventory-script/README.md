@@ -27,11 +27,11 @@ FORMAT="${FORMAT:-text}"  # text or json
 mkdir -p "$OUTPUT_DIR"
 
 ceph_cmd() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- ceph "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- ceph "$@"
 }
 
 radosgw_admin() {
-  kubectl -n "$NAMESPACE" exec -it "$TOOLS" -- radosgw-admin "$@"
+  kubectl -n "$NAMESPACE" exec "$TOOLS" -- radosgw-admin "$@"
 }
 
 log() { echo "[INVENTORY] $*"; }
@@ -59,7 +59,7 @@ collect_monitors() {
   ceph_cmd mon stat > "$OUTPUT_DIR/mon-stat.txt"
 
   # Extract monitor details
-  python3 << 'PYEOF' > "$OUTPUT_DIR/monitors.txt"
+  python3 << PYEOF > "$OUTPUT_DIR/monitors.txt"
 import json
 with open("$OUTPUT_DIR/mon-dump.json") as f:
     data = json.load(f)
@@ -96,7 +96,7 @@ collect_pools() {
   ceph_cmd df detail --format json > "$OUTPUT_DIR/df.json"
 
   # Generate pool summary
-  python3 << 'PYEOF' > "$OUTPUT_DIR/pools-summary.txt"
+  python3 << PYEOF > "$OUTPUT_DIR/pools-summary.txt"
 import json
 with open("$OUTPUT_DIR/pools.json") as f:
     pools = json.load(f)
