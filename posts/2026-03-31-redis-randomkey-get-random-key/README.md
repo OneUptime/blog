@@ -93,7 +93,7 @@ flowchart TD
 
 ```bash
 #!/bin/bash
-# Sample 10 random keys and show their type and size
+# Sample 10 random keys and show their type
 for i in $(seq 1 10); do
   KEY=$(redis-cli RANDOMKEY)
   if [ -z "$KEY" ]; then
@@ -114,7 +114,7 @@ done
 
 ## Behavior with Expired Keys
 
-`RANDOMKEY` may return a key that has just expired but has not yet been evicted. If you receive a key and then call `GET` on it, you may get `(nil)` if the expiry happened between the two commands. Always handle nil responses defensively.
+When `RANDOMKEY` returns a key, that key may expire before your next command reaches the server. If you receive a key and then call `GET` on it, you may get `(nil)` if the key expired between the two commands. Always handle nil responses defensively.
 
 ```redis
 SET temp "value" PX 1
