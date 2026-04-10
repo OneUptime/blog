@@ -26,8 +26,7 @@ Extract a time window around an incident and search all daemon logs:
 ```bash
 # Get logs from all Ceph pods for the incident window
 kubectl -n rook-ceph logs -l app=rook-ceph-osd \
-  --since-time="2024-01-15T10:20:00Z" \
-  --until-time="2024-01-15T10:30:00Z" > /tmp/osd-logs.txt
+  --since-time="2024-01-15T10:20:00Z" > /tmp/osd-logs.txt
 
 kubectl -n rook-ceph logs -l app=rook-ceph-mon \
   --since-time="2024-01-15T10:20:00Z" > /tmp/mon-logs.txt
