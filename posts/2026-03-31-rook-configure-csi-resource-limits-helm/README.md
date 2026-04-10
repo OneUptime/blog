@@ -72,6 +72,14 @@ csi:
         limits:
           memory: 1Gi
           cpu: 500m
+    - name: liveness-prometheus
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+          cpu: 100m
 
   csiRBDProvisionerResource: |
     - name: csi-provisioner
@@ -114,6 +122,64 @@ csi:
         limits:
           memory: 256Mi
           cpu: 200m
+    - name: liveness-prometheus
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+          cpu: 100m
+
+  csiCephFSProvisionerResource: |
+    - name: csi-provisioner
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+    - name: csi-attacher
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+    - name: csi-resizer
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+    - name: csi-cephfsplugin
+      resource:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 1Gi
+          cpu: 500m
+    - name: csi-snapshotter
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 100m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+    - name: liveness-prometheus
+      resource:
+        requests:
+          memory: 128Mi
+          cpu: 50m
+        limits:
+          memory: 256Mi
+          cpu: 100m
 ```
 
 ## Applying the Configuration
@@ -129,8 +195,8 @@ helm upgrade rook-ceph rook-release/rook-ceph \
 After upgrade, check applied resources:
 
 ```bash
-kubectl get pod -n rook-ceph csi-rbdplugin-<id> \
-  -o jsonpath='{.spec.containers[*].resources}' | jq .
+kubectl get pod -n rook-ceph csi-rbdplugin-<id> -o json \
+  | jq '.spec.containers[] | {name: .name, resources: .resources}'
 ```
 
 ## Summary
