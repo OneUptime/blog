@@ -18,7 +18,7 @@ graph TD
     B["TAG field: exact match, no analysis"]
     B --> C["@category:{electronics}"]
     B --> D["@status:{active|draft}"]
-    B --> E["@tags:{redis,database}"]
+    B --> E["@tags:{redis | database}"]
     B --> F["case-insensitive by default"]
 ```
 
