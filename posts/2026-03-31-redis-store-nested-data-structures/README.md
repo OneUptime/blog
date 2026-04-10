@@ -15,8 +15,7 @@ Redis data types are flat by design - hashes store string fields mapping to stri
 The simplest approach: serialize the entire object to JSON and store it as a string.
 
 ```bash
-SET product:99 '{"id":99,"name":"Widget","metadata":{"sku":"WG-001","tags":["sale","new"]}}'
-EX 3600
+SET product:99 '{"id":99,"name":"Widget","metadata":{"sku":"WG-001","tags":["sale","new"]}}' EX 3600
 ```
 
 ```python
