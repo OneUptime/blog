@@ -122,6 +122,7 @@ BITCOUNT user:42:logins     # count login days
 
 ```bash
 GEOADD locations 13.361389 38.115556 "Palermo"
+GEOADD locations 15.087269 37.502669 "Catania"
 GEODIST locations "Palermo" "Catania" km
 ```
 
