@@ -15,7 +15,6 @@ CORS (Cross-Origin Resource Sharing) configuration on Rook-Ceph buckets allows b
 ```mermaid
 sequenceDiagram
     participant Browser
-    participant WebApp
     participant RGW as Rook RGW
     Browser->>RGW: OPTIONS /bucket/object (preflight)
     RGW->>Browser: 200 OK + CORS headers
@@ -45,7 +44,7 @@ export AWS_SECRET_ACCESS_KEY=$(kubectl get secret rook-ceph-object-user-my-store
 
 ## Basic CORS Configuration
 
-Allow GET and PUT from any origin:
+Allow all methods from any origin:
 
 ```json
 {
@@ -127,13 +126,15 @@ For browser-based direct uploads using pre-signed URLs:
 }
 ```
 
-Generate a pre-signed URL for the upload:
+Generate a pre-signed URL to verify download access:
 
 ```bash
 aws s3 presign s3://my-app-bucket/uploads/file.jpg \
   --expires-in 3600 \
   --endpoint-url ${RGW_ENDPOINT}
 ```
+
+Note: `aws s3 presign` generates pre-signed GET (download) URLs only. To generate pre-signed PUT (upload) URLs, use an AWS SDK such as boto3's `generate_presigned_url` with the `put_object` method.
 
 ## Read Current CORS Configuration
 
