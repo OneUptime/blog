@@ -29,10 +29,8 @@ Ceph defaults to:
 ## Configuring the Run Directory
 
 ```bash
-# Set a custom run directory
-ceph config set global run_dir /run/ceph
-
-# Or in ceph.conf
+# Set a custom run directory in ceph.conf
+# Note: run_dir is a startup option and must be set in ceph.conf, not via ceph config set
 cat >> /etc/ceph/ceph.conf << 'EOF'
 [global]
 run_dir = /run/ceph
@@ -51,17 +49,28 @@ sudo chmod 750 /run/ceph
 
 The admin socket enables live interaction with running daemons:
 
+The default template is:
+
 ```ini
 [global]
-; Admin socket path template
+admin_socket = $run_dir/$cluster-$name.asok
+```
+
+Which resolves to paths like `/var/run/ceph/ceph-osd.0.asok`. To avoid socket name collisions (e.g., multiple librados instances in one process), you can add `$pid` and `$cctid` to the template:
+
+```ini
+[global]
+; Custom admin socket path with PID and context ID to avoid collisions
 admin_socket = /var/run/ceph/$cluster-$type.$id.$pid.$cctid.asok
 ```
 
 The variables expand as:
 - `$cluster` - cluster name (default: `ceph`)
+- `$name` - shorthand for `$type.$id`
 - `$type` - daemon type (`osd`, `mon`, `mds`)
 - `$id` - daemon ID (`0`, `mon-a`, etc.)
 - `$pid` - process ID
+- `$cctid` - CephContext identifier (useful for multi-instance processes)
 
 ```bash
 # List admin sockets for running daemons
@@ -70,9 +79,9 @@ ls /var/run/ceph/*.asok
 # Use an admin socket
 ceph daemon /var/run/ceph/ceph-osd.0.asok config show
 
-# In Rook - access via toolbox
-kubectl exec -it rook-ceph-tools -n rook-ceph -- \
-  ceph daemon osd.0 perf dump
+# In Rook - access via the specific daemon pod (admin sockets are local to each pod)
+kubectl exec -n rook-ceph <osd-pod-name> -c osd -- \
+  ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok perf dump
 ```
 
 ## Configuring the Temp Directory
@@ -122,17 +131,18 @@ systemd-tmpfiles --create /etc/tmpfiles.d/ceph.conf
 
 ## Rook Considerations
 
-In Rook, admin sockets are inside daemon containers. Access them via the toolbox:
+In Rook, admin sockets are inside daemon containers and are not accessible from the toolbox pod. To use admin socket commands, exec into the specific daemon pod:
 
 ```bash
-# The toolbox has access to daemon sockets
-kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
+# Find the OSD pod name
+kubectl get pods -n rook-ceph -l app=rook-ceph-osd
 
-# List available sockets
-ls /run/ceph/
+# Exec into the daemon pod to access its admin socket
+kubectl exec -n rook-ceph <osd-pod-name> -c osd -- \
+  ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok config show | grep tmp_dir
 
-# Interact with a daemon
-ceph daemon osd.0 config show | grep tmp_dir
+# The toolbox can still run cluster-wide commands via the monitor
+kubectl exec -it rook-ceph-tools -n rook-ceph -- ceph config get osd tmp_dir
 ```
 
 ## Summary
