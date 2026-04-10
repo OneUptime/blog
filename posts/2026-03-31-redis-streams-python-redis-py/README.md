@@ -37,7 +37,7 @@ messages = r.xrange("events", min="-", max="+", count=10)
 for msg_id, fields in messages:
     print(msg_id, fields)
 
-# Non-blocking read for new messages
+# Blocking read that waits indefinitely for new messages
 messages = r.xread({"events": "$"}, count=5, block=0)
 ```
 
@@ -81,8 +81,6 @@ consume("worker-1")
 Messages that were delivered but not acknowledged go into the Pending Entry List (PEL). Reclaim them after a timeout:
 
 ```python
-import time
-
 def reclaim_stale(stream: str, group: str, min_idle_ms: int = 30000):
     pending = r.xpending_range(stream, group, min="-", max="+", count=100, idle=min_idle_ms)
     for entry in pending:
