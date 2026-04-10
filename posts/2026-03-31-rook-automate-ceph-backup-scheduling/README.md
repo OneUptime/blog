@@ -146,12 +146,12 @@ Prometheus alert for failed backups:
 
 ```yaml
 - alert: CephBackupJobFailed
-  expr: kube_job_status_failed{namespace="rook-ceph", job=~"rbd-snapshot.*"} > 0
+  expr: kube_job_status_failed{namespace="rook-ceph", job_name=~"rbd-snapshot.*"} > 0
   for: 5m
   labels:
     severity: critical
   annotations:
-    summary: "Ceph backup job {{ $labels.job }} failed"
+    summary: "Ceph backup job {{ $labels.job_name }} failed"
 ```
 
 ## Summary
