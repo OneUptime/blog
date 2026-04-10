@@ -29,13 +29,13 @@ stringData:
   rgw_s3_auth_use_ldap: "true"
   rgw_ldap_uri: "ldap://ldap.example.com"
   rgw_ldap_binddn: "cn=admin,dc=example,dc=com"
-  rgw_ldap_bindpw: "super-secret-password"
+  rgw_ldap_secret: "/etc/ceph/ldap-bindpw"
   rgw_ldap_searchdn: "ou=users,dc=example,dc=com"
 ```
 
 ## Referencing the Secret in CephObjectStore
 
-For RGW (RADOS Gateway / S3) configuration, reference secrets via the `config` map in the `CephObjectStore`:
+For RGW (RADOS Gateway / S3) server-side encryption, reference a KMS token Secret via the `security.kms` section in the `CephObjectStore`:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -55,31 +55,18 @@ spec:
       tokenSecretName: vault-kms-token
 ```
 
-## Injecting Ceph Config from a Secret into Pods
+## Overriding Ceph Configuration
 
-For RGW config that must be injected at pod startup, use environment variables from secrets in the operator ConfigMap approach:
+For custom Ceph configuration that must be applied to all daemons at startup, use the `rook-config-override` ConfigMap. Rook automatically creates this ConfigMap when the cluster is initialized. Edit it to add custom ceph.conf settings:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: rook-ceph-operator-config
+  name: rook-config-override
   namespace: rook-ceph
 data:
-  ROOK_CEPH_SECRET_VOLUME_MOUNTS: "ceph-custom-config:/etc/ceph/custom"
-```
-
-Then create a Secret with the custom ceph.conf-format content:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ceph-custom-config
-  namespace: rook-ceph
-type: Opaque
-stringData:
-  custom.conf: |
+  config: |
     [global]
     auth_client_required = cephx
     [client.rgw.my-store]
@@ -95,14 +82,23 @@ Rook automatically creates and manages the Ceph admin keyring in a Secret:
 kubectl -n rook-ceph get secret rook-ceph-admin-keyring -o yaml
 ```
 
-If you need to rotate the admin key, update the Secret and the operator will synchronize it:
+To retrieve the current admin key from the Secret:
 
 ```bash
-NEW_KEY=$(ceph auth get-or-create client.admin \
-  mon 'profile rbd' osd 'profile rbd' mgr 'profile rbd' \
+kubectl -n rook-ceph get secret rook-ceph-admin-keyring -o jsonpath='{.data.keyring}' | base64 -d
+```
+
+To rotate the admin key, delete and recreate the entity from the Rook toolbox, then update the Secret to match:
+
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph auth del client.admin
+NEW_KEY=$(kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph auth get-or-create client.admin \
+  mon 'allow *' osd 'allow *' mgr 'allow *' mds 'allow *' \
   | grep key | awk '{print $3}')
 kubectl -n rook-ceph patch secret rook-ceph-admin-keyring \
-  --type='json' -p="[{\"op\":\"replace\",\"path\":\"/data/keyring\",\"value\":\"$(echo -n "[client.admin]\n\tkey = ${NEW_KEY}" | base64 -w0)\"}]"
+  --type='json' -p="[{\"op\":\"replace\",\"path\":\"/data/keyring\",\"value\":\"$(printf '[client.admin]\n\tkey = %s\n' "${NEW_KEY}" | base64 -w0)\"}]"
 ```
 
 ## Verifying Secret-Based Config
@@ -121,4 +117,4 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config dump | grep 
 
 ## Summary
 
-Storing sensitive Ceph configuration in Kubernetes Secrets separates credentials from CRD definitions, enabling RBAC-controlled access and audit logging. Use Secrets for RGW LDAP credentials, KMS tokens, and custom ceph.conf content. Reference them through the CephObjectStore security section or operator ConfigMap volume mounts to keep sensitive values out of Git repositories and CRD manifests.
+Storing sensitive Ceph configuration in Kubernetes Secrets separates credentials from CRD definitions, enabling RBAC-controlled access and audit logging. Use Secrets for RGW LDAP credentials, KMS tokens, and custom ceph.conf content. Reference them through the CephObjectStore security section and use the `rook-config-override` ConfigMap for custom ceph.conf settings to keep sensitive values out of Git repositories and CRD manifests.
