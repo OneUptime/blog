@@ -14,12 +14,15 @@ When many applications connect to RGW simultaneously - CI/CD systems, microservi
 
 ## Frontend Thread Pool Configuration
 
-The Beast frontend handles each connection with a thread from its pool. Size it based on expected peak concurrent connections:
+The Beast frontend uses an asynchronous model with a worker thread pool. Size it based on expected peak concurrent connections:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw rgw_frontends \
-    "beast port=80 num_threads=2048 max_header_size=65536"
+    "beast port=80 max_header_size=65536"
+
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph config set client.rgw rgw_thread_pool_size 2048
 ```
 
 Also increase the maximum number of connections the OS allows per process:
@@ -32,7 +35,6 @@ metadata:
   namespace: rook-ceph
 spec:
   gateway:
-    type: s3
     port: 80
     instances: 4
     resources:
@@ -44,14 +46,11 @@ spec:
         memory: "32Gi"
 ```
 
-## RADOS Handle Pool
+## RADOS Objecter Tuning
 
-Each thread needs a RADOS handle for backend operations. Increase the pool:
+Increase the concurrent RADOS operation limits to prevent throttling under high connection counts:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set client.rgw rgw_num_rados_handles 32
-
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set client.rgw objecter_inflight_ops 65536
 
@@ -90,10 +89,10 @@ metadata:
 spec:
   selector:
     app: rook-ceph-rgw
-    rgw: my-store
+    rook_object_store: my-store
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 80
   type: LoadBalancer
   sessionAffinity: None
 ```
@@ -142,4 +141,4 @@ ceph_rgw_failed_req
 
 ## Summary
 
-Handling high concurrent connections in Ceph RGW requires increasing the Beast frontend thread pool, expanding the RADOS handle pool, and deploying multiple RGW instances behind a load balancer. OS-level TCP tuning on the nodes prevents connection drops at the kernel level under peak load.
+Handling high concurrent connections in Ceph RGW requires increasing the Beast frontend thread pool, tuning RADOS objecter limits, and deploying multiple RGW instances behind a load balancer. OS-level TCP tuning on the nodes prevents connection drops at the kernel level under peak load.
