@@ -12,7 +12,7 @@ Ceph clients maintain a write-back cache to buffer I/O before sending it to the 
 
 ## RBD Client Cache
 
-The RBD client cache is enabled by default for non-librbd clients. It buffers writes locally before flushing to the cluster, reducing round-trip latency.
+The RBD client cache (librbd cache) is enabled by default. It buffers writes locally before flushing to the cluster, reducing round-trip latency.
 
 ### Basic Cache Configuration
 
@@ -43,7 +43,7 @@ Databases often do their own caching and prefer direct I/O with cache disabled:
 rbd_cache = false
 ```
 
-Or per-image via image features:
+Or per-image via image-level configuration override:
 
 ```bash
 rbd config image set mypool/myimage rbd_cache false
@@ -91,10 +91,10 @@ For RBD:
 rbd perf image iostat mypool
 ```
 
-For libcephfs, check the client's `/proc` stats:
+For libcephfs, check the client's debugfs stats:
 
 ```bash
-cat /proc/fs/ceph/*/stats
+cat /sys/kernel/debug/ceph/*/mdsc
 ```
 
 ## Cache Flush Tuning
@@ -102,9 +102,11 @@ cat /proc/fs/ceph/*/stats
 Force a client to flush its cache:
 
 ```bash
-# Via admin socket (if accessible)
-ceph daemon /var/run/ceph/ceph-client.myapp.asok cache status
-ceph daemon /var/run/ceph/ceph-client.myapp.asok cache drop
+# Check client cache config via admin socket
+ceph daemon /var/run/ceph/ceph-client.myapp.asok config show | grep rbd_cache
+
+# Drop MDS metadata cache (for CephFS)
+ceph tell mds.0 cache drop
 ```
 
 ## Summary
