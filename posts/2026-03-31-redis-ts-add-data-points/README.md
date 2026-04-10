@@ -30,9 +30,9 @@ TS.ADD key timestamp value
   [ENCODING [COMPRESSED|UNCOMPRESSED]]
   [CHUNK_SIZE chunkSize]
   [DUPLICATE_POLICY policy]
+  [ON_DUPLICATE policy]
   [IGNORE ignoreMaxTimediff ignoreMaxValDiff]
   [LABELS {label value}...]
-  [ON_DUPLICATE policy]
 ```
 
 - `key` - the time series key
@@ -145,7 +145,7 @@ TS.MADD temperature * 22.5 humidity * 65.0 pressure * 1013.2
 ```redis
 -- This fails if 1000 is before the last stored timestamp
 TS.ADD latency 1000 50.0
--- Error: TSDB: Timestamp cannot be older than oldest timestamp
+-- Error: TSDB: timestamp is older than the latest timestamp in the time series
 ```
 
 ## Performance Considerations
