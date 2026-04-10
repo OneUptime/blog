@@ -73,25 +73,25 @@ info = r.execute_command("HELLO")
 print(info["proto"])  # 3
 ```
 
-**Node.js (ioredis):**
+**Node.js (node-redis):**
 
 ```javascript
-const Redis = require("ioredis");
+import { createClient } from "redis";
 
-const client = new Redis({
-  host: "localhost",
-  port: 6379,
+const client = createClient({
+  url: "redis://localhost:6379",
   RESP: 3,
 });
 
-client.hello(3).then((info) => {
-  console.log("Protocol:", info.proto); // 3
-});
+await client.connect();
+
+const info = await client.HELLO();
+console.log("Protocol:", info.proto); // 3
 ```
 
 ## Combining Auth and Protocol Upgrade
 
-HELLO supports inline authentication, saving a round trip compared to AUTH + SELECT:
+HELLO supports inline authentication, saving a round trip compared to sending AUTH and HELLO as separate commands:
 
 ```bash
 # Upgrade to RESP3 and authenticate in one command
@@ -147,7 +147,7 @@ After upgrading with `HELLO 3`:
 - `SMEMBERS` returns a set, not a list
 - `CONFIG GET` returns a dict
 - Server push messages (Pub/Sub, invalidations) use the push type `>`
-- Boolean responses (e.g., from `EXISTS`) return Python `True`/`False` not `1`/`0`
+- Boolean responses (e.g., from `SISMEMBER`) return Python `True`/`False` not `1`/`0`
 
 ## Summary
 
