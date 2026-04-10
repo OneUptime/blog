@@ -73,7 +73,7 @@ spec:
 # sites/edge-1/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../edge-profile
 
 patches:
@@ -124,7 +124,7 @@ mkdir -p sites/$SITE_NAME
 cat > sites/$SITE_NAME/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../edge-profile
 patches:
 - target:
