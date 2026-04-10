@@ -142,9 +142,9 @@ For a full registry UI, deploy Harbor with Ceph as the S3 backend:
 # In harbor.yml
 storage_service:
   s3:
-    access_key: REGISTRY_ACCESS_KEY
-    secret_key: REGISTRY_SECRET_KEY
-    region_endpoint: http://rook-ceph-rgw-my-store.rook-ceph:80
+    accesskey: REGISTRY_ACCESS_KEY
+    secretkey: REGISTRY_SECRET_KEY
+    regionendpoint: http://rook-ceph-rgw-my-store.rook-ceph:80
     bucket: harbor-registry
     region: us-east-1
     secure: false
