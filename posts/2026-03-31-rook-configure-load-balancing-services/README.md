@@ -27,16 +27,30 @@ spec:
     port: 80
     securePort: 443
     instances: 2
-    service:
-      annotations:
-        metallb.universe.tf/address-pool: storage-pool
-    type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rook-ceph-rgw-my-store-lb
+  namespace: rook-ceph
+  annotations:
+    metallb.universe.tf/address-pool: storage-pool
+spec:
+  type: LoadBalancer
+  selector:
+    app: rook-ceph-rgw
+    rook_object_store: my-store
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
 ```
 
 Verify the external IP is assigned:
 
 ```bash
-kubectl -n rook-ceph get svc rook-ceph-rgw-my-store
+kubectl -n rook-ceph get svc rook-ceph-rgw-my-store-lb
 ```
 
 ## LoadBalancer for Ceph Dashboard
@@ -114,7 +128,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 ## Health Checks for Load Balanced Services
 
-Configure readiness probes to remove unhealthy RGW instances from rotation:
+Verify RGW health by testing the service endpoints:
 
 ```bash
 # Test RGW health endpoint
@@ -126,7 +140,7 @@ aws s3 ls --endpoint-url http://<rgw-lb-ip>
 
 ## Monitoring Load Balancer Performance
 
-Check request distribution across RGW instances using Prometheus:
+Check RGW pool I/O statistics to monitor storage activity:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
