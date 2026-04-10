@@ -20,15 +20,13 @@ Layout parameters include:
 
 ## Viewing the Default Layout
 
-Use the Rook toolbox to inspect default file layouts:
+Use the Rook toolbox to check your filesystem's data pools:
 
 ```bash
-kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
-# Mount CephFS temporarily in the toolbox
-ceph tell mds.myfs:0 config get mds_default_dir_layout
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph fs get myfs
 ```
 
-Or inspect a file directly:
+To inspect the actual layout attributes, use `getfattr` from a client node where CephFS is mounted:
 
 ```bash
 getfattr -n ceph.file.layout /mnt/cephfs/testfile
@@ -37,10 +35,8 @@ getfattr -n ceph.file.layout /mnt/cephfs/testfile
 Output example:
 
 ```text
-ceph.file.layout.stripe_unit=4194304
-ceph.file.layout.stripe_count=1
-ceph.file.layout.object_size=4194304
-ceph.file.layout.pool=myfs-data0
+# file: /mnt/cephfs/testfile
+ceph.file.layout="stripe_unit=4194304 stripe_count=1 object_size=4194304 pool=myfs-data0"
 ```
 
 ## Setting Layout on a Directory
