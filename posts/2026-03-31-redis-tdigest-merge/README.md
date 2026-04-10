@@ -144,7 +144,7 @@ TDIGEST.QUANTILE post-deploy 0.99
 
 ## Performance Considerations
 
-- Merge is O(N log N) where N is the total number of centroids across all sources.
+- Merge is O(N*K) where N is the number of centroids and K is the number of input sketches.
 - Using OVERRIDE avoids unbounded growth in the destination sketch.
 - Set destination compression to at least as high as the source compression for best accuracy.
 - Source sketches are not modified by the merge.
