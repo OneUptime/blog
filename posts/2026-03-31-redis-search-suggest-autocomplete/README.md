@@ -12,7 +12,7 @@ Redis Sorted Sets make an excellent foundation for autocomplete because they sup
 
 ## Approach 1: Prefix Indexing with Sorted Sets
 
-Store all prefixes of each term as members of a sorted set, with score 0 for prefixes and the actual score for full words:
+Store all prefixes of each term as members of a sorted set. Every member must have the same score (0) because `ZRANGEBYLEX` only produces correct results when all scores are identical. Popularity scores are stored in a separate hash:
 
 ```python
 import redis
@@ -23,12 +23,13 @@ def add_term(index_key: str, term: str, score: float = 1.0):
     """Add a term and all its prefixes to the autocomplete index."""
     term = term.lower()
     pipe = client.pipeline()
-    # Add each prefix with score 0, full term with actual score
-    for i in range(1, len(term) + 1):
-        prefix = term[:i]
-        pipe.zadd(index_key, {prefix + "*": 0})
-    # Full term with search score (higher = more relevant)
-    pipe.zadd(index_key, {term + "*": score})
+    # Add each prefix with score 0 (no suffix marker)
+    for i in range(1, len(term)):
+        pipe.zadd(index_key, {term[:i]: 0})
+    # Full term with * suffix marker, also score 0 for ZRANGEBYLEX
+    pipe.zadd(index_key, {term + "*": 0})
+    # Store popularity score in a separate hash
+    pipe.hset(index_key + ":scores", term, score)
     pipe.execute()
 
 def autocomplete(index_key: str, prefix: str, limit: int = 10) -> list:
@@ -43,9 +44,13 @@ def autocomplete(index_key: str, prefix: str, limit: int = 10) -> list:
     # Filter to full terms (ending with *) and strip the marker
     completions = [c[:-1] for c in candidates if c.endswith("*")]
 
-    # Get scores and sort by popularity
+    # Get scores from the separate hash and sort by popularity
     if completions:
-        scored = [(c, client.zscore(index_key, c + "*") or 0) for c in completions]
+        pipe = client.pipeline()
+        for c in completions:
+            pipe.hget(index_key + ":scores", c)
+        scores = pipe.execute()
+        scored = [(c, float(s) if s else 0) for c, s in zip(completions, scores)]
         scored.sort(key=lambda x: -x[1])
         return [c for c, _ in scored[:limit]]
     return []
@@ -105,9 +110,8 @@ Boost terms that users actually click:
 def record_selection(index_key: str, selected_term: str):
     """Increase score when user selects a suggestion."""
     term = selected_term.lower()
-    member = term + "*"
-    # Increment score by 1 on selection
-    client.zincrby(index_key, 1, member)
+    # Increment score by 1 in the separate scores hash
+    client.hincrbyfloat(index_key + ":scores", term, 1)
     # Also invalidate cached completions for this prefix
     for i in range(1, len(term) + 1):
         cache_key = f"ac:cache:{index_key}:{term[:i]}"
