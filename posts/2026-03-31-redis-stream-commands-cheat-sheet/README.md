@@ -19,8 +19,8 @@ XADD events * action "login" user_id 42
 # Add with explicit ID (milliseconds-sequence)
 XADD events 1711900000000-0 action "login" user_id 42
 
-# Add with partial ID (auto sequence)
-XADD events 1711900000000-* action "login" user_id 42
+# Add with partial ID (auto sequence, Redis 7.0+)
+XADD events 1711900000000 action "login" user_id 42
 
 # Cap stream length (approximate, uses ~ for efficiency)
 XADD events MAXLEN ~ 10000 * action "login" user_id 42
@@ -111,7 +111,7 @@ XREADGROUP GROUP mygroup consumer1 COUNT 10 STREAMS events 0
 # Claim idle messages from another consumer
 XCLAIM events mygroup consumer2 60000 1711900000000-0
 
-# Auto-claim idle messages (Redis 7.0+)
+# Auto-claim idle messages (Redis 6.2+)
 XAUTOCLAIM events mygroup consumer2 60000 0-0 COUNT 10
 
 # Delete a specific entry
