@@ -114,8 +114,8 @@ try {
 }
 ```
 
-Redisson automatically renews the lease for long-running operations through a watchdog mechanism - the lock will not expire while the JVM holding it is alive. Always use `finally` to ensure `unlock()` is called even if an exception occurs.
+Redisson automatically renews the lease through a watchdog mechanism when no explicit `leaseTime` is set (e.g., `lock.lock()` or `lock.tryLock(waitTime)`). The watchdog prolongs the lock while the JVM holding it is alive. When an explicit `leaseTime` is provided, such as `tryLock(5, 30, TimeUnit.SECONDS)`, the watchdog is disabled and the lock auto-releases after the specified duration. Always use `finally` to ensure `unlock()` is called even if an exception occurs.
 
 ## Summary
 
-Redisson `RLock` provides distributed mutual exclusion backed by Redis with automatic lease renewal. The `tryLock` variant with explicit wait and lease times is the safest pattern for production code. `RReadWriteLock` and `RMultiLock` address more advanced scenarios like concurrent reads or atomic multi-resource locking.
+Redisson `RLock` provides distributed mutual exclusion backed by Redis with automatic lease renewal. The `tryLock` variant with explicit wait and lease times is the safest pattern for production code. `RReadWriteLock` and `MultiLock` (via `getMultiLock()`) address more advanced scenarios like concurrent reads or atomic multi-resource locking.
