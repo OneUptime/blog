@@ -18,7 +18,7 @@ graph TD
     B --> C[OSD 0 - 4MB chunks]
     B --> D[OSD 1 - 4MB chunks]
     B --> E[OSD 2 - 4MB chunks]
-    F[RBD Image - 10GiB] --> G[Striped into 2.5MB Objects]
+    F[RBD Image - 10GiB] --> G[Striped into 4 MiB Objects]
     G --> B
     H[Kubernetes PVC] --> I[CSI RBD Driver]
     I --> F
@@ -160,7 +160,7 @@ spec:
 
 ```bash
 kubectl apply -f rbd-test.yaml
-kubectl wait --for=condition=Complete pod/rbd-test-pod --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/rbd-test-pod --timeout=60s
 kubectl logs rbd-test-pod
 ```
 
