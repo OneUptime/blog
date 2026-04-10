@@ -61,6 +61,9 @@ Erasure-coded pools cannot be mirrored directly - you must use a replicated meta
 # Create EC pool for data
 ceph osd pool create ec-data-pool erasure
 
+# Allow EC overwrites (required for RBD on EC pools)
+ceph osd pool set ec-data-pool allow_ec_overwrites true
+
 # Enable RBD application on EC pool
 rbd pool init ec-data-pool
 
