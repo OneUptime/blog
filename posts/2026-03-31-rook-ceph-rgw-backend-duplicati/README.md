@@ -84,7 +84,7 @@ In Duplicati UI:
 ## Step 6 - Monitor Backup Status
 
 ```bash
-duplicati-cli list-backups \
+duplicati-cli find \
   "s3://duplicati-backups/my-server/?s3-server-name=ceph-rgw.example.com:7480&aws-access-key-id=KEY&aws-secret-access-key=SECRET"
 ```
 
