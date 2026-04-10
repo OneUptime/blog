@@ -73,7 +73,7 @@ ssh "$STAGING_HOST" "chown redis:redis /var/lib/redis/dump.rdb"
 ssh "$STAGING_HOST" "systemctl start redis"
 sleep 3
 
-KEYCOUNT=$(redis-cli -h "$STAGING_HOST" -p "$STAGING_PORT" DBSIZE)
+KEYCOUNT=$(redis-cli -h "$STAGING_HOST" -p "$STAGING_PORT" DBSIZE | awk '{print $2}')
 echo "Keys after restore: $KEYCOUNT"
 
 if [ "$KEYCOUNT" -gt 0 ]; then
@@ -89,11 +89,12 @@ fi
 Verify your application reconnects correctly after failover:
 
 ```python
-import redis
+from redis.sentinel import Sentinel
 import time
 import subprocess
 
-r = redis.Redis(host="redis-primary.internal", port=6379)
+sentinel = Sentinel([('sentinel-host', 26379)], socket_timeout=0.5)
+r = sentinel.master_for('mymaster', socket_timeout=0.5)
 
 # Write initial data
 r.set("reconnect_test", "initial_value")
@@ -110,7 +111,7 @@ for attempt in range(5):
         value = r.get("reconnect_test")
         print(f"Attempt {attempt+1}: Got value '{value}' - reconnection successful")
         break
-    except redis.exceptions.ConnectionError as e:
+    except Exception as e:
         print(f"Attempt {attempt+1}: Connection error - {e}")
         time.sleep(2)
 ```
