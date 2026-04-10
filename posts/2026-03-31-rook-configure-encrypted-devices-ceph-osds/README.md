@@ -94,8 +94,8 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Check the LUKS header on the host node:
 
 ```bash
-kubectl -n rook-ceph debug node/worker-1 -- \
-  chroot /host cryptsetup status /dev/mapper/ocs-devicemapper-*
+kubectl debug node/worker-1 -it --image=busybox -- \
+  chroot /host cryptsetup status /dev/mapper/*-block-dmcrypt
 ```
 
 ## Step 5: Monitor Encryption Status
@@ -104,7 +104,7 @@ Use the Ceph dashboard or CLI to verify all OSDs report encryption:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd dump | grep encrypt
+  ceph osd metadata | grep encrypt
 ```
 
 ## Important Considerations
