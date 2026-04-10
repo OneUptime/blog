@@ -72,7 +72,7 @@ ceph osd reweight-by-utilization
 Preview the changes without applying:
 
 ```bash
-ceph osd reweight-by-utilization 120 0.01 5 --no-increasing
+ceph osd test-reweight-by-utilization 120 0.01 5 --no-increasing
 ```
 
 Arguments:
