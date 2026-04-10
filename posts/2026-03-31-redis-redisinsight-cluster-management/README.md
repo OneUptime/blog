@@ -105,7 +105,7 @@ Use the CLI tab to add nodes to an existing cluster:
 OK
 ```
 
-Then use `redis-cli --cluster add-node` to assign slots.
+Then use `redis-cli --cluster reshard` to redistribute slots to the new node.
 
 ## Removing a Node
 
