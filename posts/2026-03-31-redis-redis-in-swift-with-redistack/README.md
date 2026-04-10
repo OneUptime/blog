@@ -56,9 +56,9 @@ print("Visits: \(count)")
 ## Working with Hashes
 
 ```swift
-let fields: [String: RESPValue] = [
-    "email": .init(bulk: "alice@example.com"),
-    "role": .init(bulk: "admin"),
+let fields: [String: String] = [
+    "email": "alice@example.com",
+    "role": "admin",
 ]
 try connection.hmset(fields, in: "user:1").wait()
 
@@ -69,11 +69,12 @@ print("Email: \(email ?? "nil")")
 ## Pipelining
 
 ```swift
-var pipeline = connection.makePipeline()
-for i in 0..<100 {
-    _ = pipeline.enqueue(RedisCommand<Void>.set(.init("item:\(i)"), to: "\(i)"))
+connection.sendCommandsImmediately = false
+let futures = (0..<100).map { i in
+    connection.set("item:\(i)", to: "\(i)")
 }
-try pipeline.execute().wait()
+connection.sendCommandsImmediately = true
+try EventLoopFuture.andAllSucceed(futures, on: connection.eventLoop).wait()
 print("Inserted 100 items")
 ```
 
@@ -85,9 +86,9 @@ let subscriber = try RedisConnection.make(
     boundEventLoop: eventLoop
 ).wait()
 
-try subscriber.subscribe(to: ["alerts"]) { message, _ in
-    print("Received: \(message)")
-}.wait()
+try subscriber.subscribe(to: "alerts", messageReceiver: { channel, message in
+    print("Received from \(channel): \(message)")
+}).wait()
 
 // Publisher (separate connection)
 try connection.publish("Hello from Swift!", to: "alerts").wait()
@@ -101,7 +102,7 @@ Vapor ships with built-in Redis support via `vapor/redis`:
 // configure.swift
 import Redis
 
-app.redis.configuration = .init(hostname: "localhost")
+app.redis.configuration = try .init(hostname: "localhost")
 ```
 
 ```swift
