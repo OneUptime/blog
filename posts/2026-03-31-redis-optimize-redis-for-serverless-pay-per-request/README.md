@@ -17,7 +17,7 @@ In pay-per-request Redis:
 ```text
 Upstash pricing (approximate):
   $0.2 per 100,000 commands
-  $0.03 per 100MB of storage
+  $0.03 per MB of storage
 
 Example: 10M commands/month = $20
          500MB storage       = $15
