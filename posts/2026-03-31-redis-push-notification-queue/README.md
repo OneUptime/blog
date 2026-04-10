@@ -36,14 +36,14 @@ def register_token(user_id, token, platform):
     key = f"push:tokens:{user_id}"
     # Store token with platform metadata
     token_data = json.dumps({"token": token, "platform": platform})
-    pipe = r.pipeline()
-    pipe.sadd(key, token_data)
-    # Trim if too many tokens
+    r.sadd(key, token_data)
+    # Trim if too many tokens (Sets are unordered, removes an arbitrary token)
     all_tokens = r.smembers(key)
     if len(all_tokens) > MAX_TOKENS_PER_USER:
-        oldest = list(all_tokens)[0]
-        pipe.srem(key, oldest)
-    pipe.execute()
+        for td in all_tokens:
+            if td != token_data:
+                r.srem(key, td)
+                break
 
 def get_user_tokens(user_id):
     token_data_set = r.smembers(f"push:tokens:{user_id}")
@@ -116,7 +116,7 @@ def nack_push(job_data, max_retries=3):
 ```python
 def requeue_stuck_jobs():
     now = time.time()
-    stuck = r.zrangebyscore("push:processing", 0, now)
+    stuck = r.zrange("push:processing", 0, now, byscore=True)
     if stuck:
         pipe = r.pipeline()
         for job_data in stuck:
