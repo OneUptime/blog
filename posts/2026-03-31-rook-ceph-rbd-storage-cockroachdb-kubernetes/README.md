@@ -8,12 +8,12 @@ Description: Learn how to provision Ceph RBD block storage for CockroachDB on Ku
 
 ---
 
-CockroachDB is a distributed SQL database designed for cloud-native environments. It stores data using a RocksDB-based storage engine that performs well on block devices. Rook-Ceph RBD provides the per-node persistent storage that CockroachDB needs on Kubernetes.
+CockroachDB is a distributed SQL database designed for cloud-native environments. It stores data using the Pebble storage engine that performs well on block devices. Rook-Ceph RBD provides the per-node persistent storage that CockroachDB needs on Kubernetes.
 
 ## CockroachDB Storage Architecture
 
 Each CockroachDB node stores:
-- **Pebble/RocksDB data files** - The core database storage
+- **Pebble data files** - The core database storage
 - **WAL files** - Write-ahead log for crash recovery
 - **Temporary sort files** - For large query operations
 
@@ -132,15 +132,17 @@ spec:
 
 CockroachDB benefits from tuning storage and memory settings:
 
+```bash
+# Set store size per node by adding the --store flag to startup args
+# --store=path=/cockroach/cockroach-data,size=190GiB
+```
+
 ```sql
--- Set max disk store per node (match PVC size)
-SET CLUSTER SETTING kv.store.max_bytes = '190GiB';
+-- Limit snapshot rebalance rate to reduce I/O pressure on Ceph RBD
+SET CLUSTER SETTING kv.snapshot_rebalance.max_rate = '64 MiB';
 
--- Tune RocksDB L0 compaction
-SET CLUSTER SETTING storage.l0_stop_writes_threshold = 12;
-
--- Increase Raft log size for better replication throughput
-SET CLUSTER SETTING raft.max_uncommitted_entries_size = '128 MiB';
+-- Limit snapshot recovery rate for network-attached storage
+SET CLUSTER SETTING kv.snapshot_recovery.max_rate = '64 MiB';
 ```
 
 ## Cluster Health Monitoring
@@ -155,4 +157,4 @@ kubectl -n databases exec -it cockroachdb-0 -- \
 
 ## Summary
 
-Ceph RBD provides the per-node persistent storage CockroachDB needs for its distributed SQL engine. Both the CockroachDB Kubernetes operator and manual StatefulSet deployments reference Rook StorageClasses for PVC provisioning. Using `reclaimPolicy: Retain` protects data during maintenance, and tuning RocksDB compaction settings ensures consistent write performance on RBD-backed storage.
+Ceph RBD provides the per-node persistent storage CockroachDB needs for its distributed SQL engine. Both the CockroachDB Kubernetes operator and manual StatefulSet deployments reference Rook StorageClasses for PVC provisioning. Using `reclaimPolicy: Retain` protects data during maintenance, and tuning Pebble storage settings ensures consistent write performance on RBD-backed storage.
