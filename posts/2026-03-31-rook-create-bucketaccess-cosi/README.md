@@ -46,7 +46,7 @@ metadata:
   namespace: my-app
 spec:
   bucketClaimName: my-app-bucket
-  protocol: s3
+  protocol: S3
   bucketAccessClassName: rook-ceph-access-class
   credentialsSecretName: my-bucket-credentials
 ```
@@ -62,8 +62,8 @@ kubectl get bucketaccess -n my-app my-app-bucket-access -w
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `bucketClaimName` | Yes | Name of the BucketClaim to access |
-| `protocol` | Yes | `s3`, `azure`, or `gcs` |
+| `bucketClaimName` | Yes | Name of the BucketClaim to access (must be in the same namespace) |
+| `protocol` | No | `S3`, `Azure`, or `GCP`. If omitted, defaults to the protocol supported by the bucket |
 | `bucketAccessClassName` | Yes | Authentication class to use |
 | `credentialsSecretName` | Yes | Name for the generated Secret |
 | `serviceAccountName` | No | For IAM-style auth |
@@ -74,7 +74,7 @@ kubectl get bucketaccess -n my-app my-app-bucket-access -w
 kubectl describe bucketaccess -n my-app my-app-bucket-access
 ```
 
-Status conditions to look for:
+Status fields to look for:
 - `accessGranted: true` - credentials have been issued
 - `accountID` - the Ceph user created for this access
 
@@ -86,7 +86,25 @@ After BucketAccess is ready, a Secret named `my-bucket-credentials` is created:
 kubectl get secret -n my-app my-bucket-credentials -o yaml
 ```
 
-Reference it in a pod:
+The Secret contains a single key `BucketInfo` whose value is a JSON-serialized object with the following structure:
+
+```json
+{
+  "spec": {
+    "bucketName": "my-app-bucket-xxxx",
+    "authenticationType": "KEY",
+    "protocols": ["S3"],
+    "secretS3": {
+      "endpoint": "http://rook-ceph-rgw-my-store.rook-ceph.svc:80",
+      "region": "",
+      "accessKeyID": "EXAMPLE_ACCESS_KEY",
+      "accessSecretKey": "EXAMPLE_SECRET_KEY"
+    }
+  }
+}
+```
+
+To use it in a pod, mount the Secret and parse the JSON. For example, using an init container to extract the credentials:
 
 ```yaml
 apiVersion: v1
@@ -95,65 +113,75 @@ metadata:
   name: s3-consumer
   namespace: my-app
 spec:
+  initContainers:
+  - name: extract-creds
+    image: busybox:latest
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      cat /cosi/BucketInfo | sed 's/.*accessKeyID":"//' | sed 's/".*//' > /shared/access-key-id
+      cat /cosi/BucketInfo | sed 's/.*accessSecretKey":"//' | sed 's/".*//' > /shared/access-secret-key
+      cat /cosi/BucketInfo | sed 's/.*endpoint":"//' | sed 's/".*//' > /shared/endpoint
+      cat /cosi/BucketInfo | sed 's/.*bucketName":"//' | sed 's/".*//' > /shared/bucket-name
+    volumeMounts:
+    - name: cosi-secret
+      mountPath: /cosi
+    - name: shared
+      mountPath: /shared
   containers:
   - name: app
     image: amazon/aws-cli:latest
-    command: ["/bin/sh", "-c", "aws s3 ls; sleep infinity"]
-    env:
-    - name: AWS_ACCESS_KEY_ID
-      valueFrom:
-        secretKeyRef:
-          name: my-bucket-credentials
-          key: AccessKeyID
-    - name: AWS_SECRET_ACCESS_KEY
-      valueFrom:
-        secretKeyRef:
-          name: my-bucket-credentials
-          key: SecretAccessKey
-    - name: BUCKET_NAME
-      valueFrom:
-        secretKeyRef:
-          name: my-bucket-credentials
-          key: BucketName
-    - name: ENDPOINT
-      valueFrom:
-        secretKeyRef:
-          name: my-bucket-credentials
-          key: Endpoint
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      export AWS_ACCESS_KEY_ID=$(cat /shared/access-key-id)
+      export AWS_SECRET_ACCESS_KEY=$(cat /shared/access-secret-key)
+      export AWS_ENDPOINT_URL=$(cat /shared/endpoint)
+      aws s3 ls --endpoint-url $AWS_ENDPOINT_URL
+      sleep infinity
+    volumeMounts:
+    - name: shared
+      mountPath: /shared
+  volumes:
+  - name: cosi-secret
+    secret:
+      secretName: my-bucket-credentials
+  - name: shared
+    emptyDir: {}
 ```
 
 ## Granting Multiple Applications Access to the Same Bucket
 
-You can create multiple BucketAccess objects pointing to the same BucketClaim:
+You can create multiple BucketAccess objects pointing to the same BucketClaim within the same namespace. Note that BucketAccess resolves `bucketClaimName` in its own namespace, so cross-namespace references are not supported.
 
 ```yaml
-# Access for service A
+# Access for service A (same namespace as the BucketClaim)
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccess
 metadata:
   name: service-a-access
-  namespace: service-a-ns
+  namespace: my-app
 spec:
   bucketClaimName: shared-bucket
-  protocol: s3
+  protocol: S3
   bucketAccessClassName: rook-ceph-access-class
   credentialsSecretName: service-a-creds
 
 ---
-# Access for service B (separate credentials)
+# Access for service B (separate credentials, same namespace)
 apiVersion: objectstorage.k8s.io/v1alpha1
 kind: BucketAccess
 metadata:
   name: service-b-access
-  namespace: service-b-ns
+  namespace: my-app
 spec:
   bucketClaimName: shared-bucket
-  protocol: s3
+  protocol: S3
   bucketAccessClassName: rook-ceph-access-class
   credentialsSecretName: service-b-creds
 ```
 
-Each service gets its own Ceph user credentials while accessing the same underlying bucket.
+Each service gets its own Ceph user credentials while accessing the same underlying bucket. The credential Secrets are created in the same namespace and can be referenced by pods deployed there.
 
 ## Summary
 
