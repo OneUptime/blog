@@ -14,7 +14,7 @@ Redis uses jemalloc as its default memory allocator instead of the system's stan
 
 ## What Is jemalloc?
 
-jemalloc (Jason Evans malloc) is a general-purpose memory allocator developed at Facebook. It was designed with several goals:
+jemalloc (Jason Evans malloc) is a general-purpose memory allocator originally created by Jason Evans for FreeBSD and later further developed at Facebook (Meta). It was designed with several goals:
 
 - Reduce heap fragmentation in long-running processes
 - Scale efficiently across multiple CPU threads
@@ -41,7 +41,7 @@ glibc malloc uses a segregated free list approach that can accumulate fragmentat
 jemalloc organizes memory into size classes and arenas:
 
 - **Size classes**: Allocations are rounded up to predetermined size classes (e.g., 8, 16, 32, 48, 64, 80, 96... bytes). This limits internal fragmentation.
-- **Arenas**: Multiple independent memory pools (arenas) are maintained, one per CPU thread. This reduces lock contention.
+- **Arenas**: Multiple independent memory pools (arenas) are maintained (typically 4x the number of CPUs), and threads are distributed across them. This reduces lock contention.
 - **Extents**: Large contiguous memory regions managed within each arena.
 
 ```text
