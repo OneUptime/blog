@@ -64,7 +64,7 @@ ZMSCORE leaderboard alice carol diana
 3) "3100"
 ```
 
-`carol` is not in the set, so her position returns nil. The positions of the other members are unaffected.
+`carol` is not in the set, so her score returns nil. The scores of the other members are unaffected.
 
 ### Single member (equivalent to ZSCORE)
 
