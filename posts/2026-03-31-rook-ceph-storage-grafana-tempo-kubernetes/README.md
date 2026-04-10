@@ -53,18 +53,21 @@ aws s3 mb s3://tempo-traces \
 Create `tempo-values.yaml`:
 
 ```yaml
-tempo:
-  storage:
-    trace:
-      backend: s3
-      s3:
-        bucket: tempo-traces
-        endpoint: rook-ceph-rgw-tempo-store.rook-ceph:80
-        region: us-east-1
-        access_key: tempoaccesskey
-        secret_key: temposecretkey
-        insecure: true
-        forcepathstyle: true
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: tempo-traces
+      endpoint: rook-ceph-rgw-tempo-store.rook-ceph:80
+      region: us-east-1
+      access_key: tempoaccesskey
+      secret_key: temposecretkey
+      insecure: true
+      forcepathstyle: true
+
+traces:
+  zipkin:
+    enabled: true
 ```
 
 Install Tempo:
@@ -82,22 +85,22 @@ helm install tempo grafana/tempo-distributed \
 Use the Tempo CLI to verify ingestion. First, port-forward the distributor:
 
 ```bash
-kubectl -n tracing port-forward svc/tempo-distributor 4317
+kubectl -n tracing port-forward svc/tempo-distributor 9411
 ```
 
-Send a test span using OpenTelemetry:
+Send a test span using the Zipkin format:
 
 ```bash
 curl -X POST http://localhost:9411/api/v2/spans \
   -H "Content-Type: application/json" \
-  -d '[{"traceId":"abc123","id":"def456","name":"test-span","timestamp":1700000000000000,"duration":1000}]'
+  -d '[{"traceId":"4e441824ec2b6a44ffdc9bb9a6453df3","id":"ffdc9bb9a6453df3","name":"test-span","timestamp":1700000000000000,"duration":1000}]'
 ```
 
 Query the trace via Tempo API:
 
 ```bash
 kubectl -n tracing port-forward svc/tempo-query-frontend 3200
-curl http://localhost:3200/api/traces/abc123 | jq .
+curl http://localhost:3200/api/traces/4e441824ec2b6a44ffdc9bb9a6453df3 | jq .
 ```
 
 ## Compaction and Retention
@@ -106,8 +109,8 @@ Tempo compacts trace blocks to reduce storage use. Configure retention in the He
 
 ```yaml
 tempo:
-  global:
-    max_trace_idle_period: 30s
+  ingester:
+    trace_idle_period: 30s
   compactor:
     compaction:
       block_retention: 336h  # 14 days
