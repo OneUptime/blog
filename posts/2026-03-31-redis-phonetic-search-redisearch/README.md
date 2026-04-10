@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, RediSearch, Phonetic Search, SOUNDEX, Search
+Tags: Redis, RediSearch, Phonetic Search, Double Metaphone, Search
 
 Description: Enable phonetic search in RediSearch to match names that sound alike, using the built-in double metaphone algorithm.
 
@@ -59,10 +59,9 @@ for person in people:
 from redis.commands.search.query import Query
 
 def phonetic_search(name_query: str, limit: int = 10) -> list:
-    # Wrap search term with ~ for phonetic matching
-    phonetic_query = f"~{name_query}"
+    # Phonetic matching is automatic on fields with PHONETIC attribute
     results = r.ft("idx:phonetic").search(
-        Query(phonetic_query).paging(0, limit)
+        Query(name_query).paging(0, limit)
     )
     return [
         {"id": doc.id, **json.loads(doc.json)}
@@ -74,15 +73,15 @@ def phonetic_search(name_query: str, limit: int = 10) -> list:
 
 ```python
 def smart_name_search(name: str) -> dict:
-    # Exact search
+    # Exact search (disable phonetic matching)
     exact = r.ft("idx:phonetic").search(
-        Query(name).paging(0, 5)
+        Query(f"@name:({name})=>{{$phonetic:false}}").paging(0, 5)
     )
     exact_results = [json.loads(d.json) for d in exact.docs]
 
-    # Phonetic search
+    # Phonetic search (enabled by default on PHONETIC fields)
     phonetic = r.ft("idx:phonetic").search(
-        Query(f"~{name}").paging(0, 10)
+        Query(name).paging(0, 10)
     )
     phonetic_results = [json.loads(d.json) for d in phonetic.docs]
 
@@ -111,9 +110,9 @@ for r_item in results:
 ```
 
 ```bash
-# Test in redis-cli
-redis-cli FT.SEARCH idx:phonetic "~Smith" LIMIT 0 10
-redis-cli FT.SEARCH idx:phonetic "~Johnson" LIMIT 0 10
+# Test in redis-cli (phonetic matching is automatic on PHONETIC fields)
+redis-cli FT.SEARCH idx:phonetic "Smith" LIMIT 0 10
+redis-cli FT.SEARCH idx:phonetic "Johnson" LIMIT 0 10
 ```
 
 ## Supported Phonetic Matchers
