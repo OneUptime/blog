@@ -46,11 +46,11 @@ ID  CLASS  WEIGHT   TYPE NAME         STATUS  REWEIGHT  PRI-AFF
 # Show only OSDs with non-up status
 ceph osd tree | grep -E "down|out"
 
-# Show all OSDs with weights
+# Show only down OSDs in the tree
 ceph osd tree down
 ```
 
-## Using the stat Option
+## Using JSON Output
 
 ```bash
 ceph osd tree --format json | python3 -m json.tool | grep -E '"name"|"status"'
@@ -97,10 +97,10 @@ ceph osd crush rule dump replicated_rule
 ceph osd df
 ```
 
-Compare `SIZE` and `USE%` columns. Large variance indicates uneven distribution. Rebalance with:
+Compare `SIZE` and `%USE` columns. Large variance indicates uneven distribution. Rebalance with:
 
 ```bash
-ceph osd reweight-by-utilization 80
+ceph osd reweight-by-utilization 120
 ```
 
 ## Adding Device Classes
