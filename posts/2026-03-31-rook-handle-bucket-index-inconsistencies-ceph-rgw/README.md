@@ -43,25 +43,31 @@ radosgw-admin bucket check --uid=alice --fix
 
 ## Step 3: Rebuild the Bucket Index
 
-If the index is severely corrupted, rebuild it from scratch by scanning all objects:
+If the basic check does not resolve the issue, run a deeper check that compares the index against actual RADOS objects:
 
 ```bash
-radosgw-admin bucket resync --bucket my-bucket
+radosgw-admin bucket check --check-objects --fix --bucket my-bucket
 ```
 
-Or use the lower-level index rebuild command:
+If the index is severely corrupted, purge it entirely and rebuild from scratch:
 
 ```bash
 radosgw-admin bi purge --bucket my-bucket
-radosgw-admin bucket sync run --bucket my-bucket
+radosgw-admin bucket check --check-objects --fix --bucket my-bucket
 ```
 
 ## Step 4: Sync Stats After Fix
 
-After repairs, force a stats update:
+After repairs, verify the bucket stats are correct:
 
 ```bash
-radosgw-admin bucket stats --bucket my-bucket --sync-stats
+radosgw-admin bucket stats --bucket my-bucket
+```
+
+Then sync the user-level usage stats to reflect the repaired bucket:
+
+```bash
+radosgw-admin user stats --uid=<user> --sync-stats
 ```
 
 ## Step 5: Check the RADOS Objects Directly
@@ -88,4 +94,4 @@ ceph health detail | grep -i "slow requests"
 
 ## Summary
 
-Ceph RGW bucket index inconsistencies are repaired with `radosgw-admin bucket check --fix` for minor issues and `bi purge` followed by index rebuild for severe corruption. Always sync stats after repair and inspect raw RADOS index objects when automated tools do not resolve the problem. Regular cluster health monitoring reduces the chance of inconsistencies occurring.
+Ceph RGW bucket index inconsistencies are repaired with `radosgw-admin bucket check --fix` for minor issues and `bi purge` followed by `bucket check --check-objects --fix` for severe corruption. Always sync user stats after repair and inspect raw RADOS index objects when automated tools do not resolve the problem. Regular cluster health monitoring reduces the chance of inconsistencies occurring.
