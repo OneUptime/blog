@@ -12,7 +12,7 @@ Data integrity is one of the most critical requirements for any storage system. 
 
 ## Checksums at the BlueStore Layer
 
-BlueStore, Ceph's default object store since Luminous, stores a checksum alongside every piece of data written to disk. Supported algorithms include crc32c (default), xxhash32, xxhash64, sha1, and none.
+BlueStore, Ceph's default object store since Luminous, stores a checksum alongside every piece of data written to disk. Supported algorithms include crc32c (default), xxhash32, xxhash64, crc32c_16, crc32c_8, and none.
 
 ```bash
 ceph config get osd bluestore_csum_type
