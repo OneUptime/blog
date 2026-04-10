@@ -50,8 +50,8 @@ return 2 ^ 10              -- 1024.0 (preferred in Redis/LuaJIT)
 
 ```lua
 return math.abs(-42)      -- 42
-return math.fmod(10, 3)   -- 1.0 (floating point modulo)
-return 10 % 3             -- 1 (integer modulo, preferred)
+return math.fmod(10, 3)   -- 1.0 (floating point modulo, truncates toward zero)
+return 10 % 3             -- 1 (flooring modulo: a - math.floor(a/b)*b)
 ```
 
 ## Practical Example - Exponential Backoff
@@ -108,25 +108,26 @@ local percentile = math.floor((rank / total) * 100)
 return percentile
 ```
 
-## Important: No Random in Scripts
+## Important: Deterministic Random in Scripts
 
-`math.random()` is available but blocked in Redis scripts to ensure determinism:
+`math.random()` is available in Redis scripts but is seeded with a fixed seed at the start of every script execution to ensure deterministic behavior across replicas:
 
-```bash
-redis-cli EVAL "return math.random()" 0
-# ERR This Redis command is not allowed from script
+```lua
+-- math.random() works but returns the same sequence every time
+local r = math.random(1, 100)  -- deterministic, same result on every call
 ```
 
-For randomness, use `redis.call('RANDOMKEY')` or generate random values before passing them as arguments.
+In Redis 7.0+ (where verbatim script replication was removed), `math.random()` is randomly seeded on each invocation and works freely. For older Redis versions, pass random values as `ARGV` from the client side for true randomness.
 
 ## Math Constants
 
 ```lua
-return math.pi    -- 3.14159...
-return math.huge  -- infinity
-return math.maxinteger  -- max integer (Lua 5.3+)
+math.pi    -- 3.14159... (use in calculations; note EVAL truncates to 3 if returned directly)
+math.huge  -- infinity (useful for comparisons; cannot be returned from EVAL as an integer)
 ```
+
+Note: Redis uses Lua 5.1, so Lua 5.3+ constants like `math.maxinteger` are not available. When returning numeric results from EVAL, Lua numbers are truncated to integers. Use `tostring()` if you need to return a floating-point value as a string.
 
 ## Summary
 
-Lua's `math` library in Redis scripts covers rounding (`floor`, `ceil`), comparisons (`min`, `max`), powers (`^` operator), and absolute values. Use it for server-side calculations like exponential backoff, score normalization, and percentile ranking that would otherwise require an extra network round-trip. Avoid `math.random()` inside scripts as it is blocked to maintain script determinism.
+Lua's `math` library in Redis scripts covers rounding (`floor`, `ceil`), comparisons (`min`, `max`), powers (`^` operator), and absolute values. Use it for server-side calculations like exponential backoff, score normalization, and percentile ranking that would otherwise require an extra network round-trip. Remember that Redis EVAL truncates Lua numbers to integers on return, so use `math.floor()` before returning or `tostring()` to preserve decimals. Note that `math.random()` works but is deterministically seeded in Redis versions prior to 7.0.
