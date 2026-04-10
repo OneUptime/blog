@@ -91,8 +91,7 @@ Create a Druid ingestion spec:
         "dimensions": ["user_id", "action", "url", "country"]
       },
       "metricsSpec": [
-        {"type": "count", "name": "count"},
-        {"type": "longSum", "name": "total_events", "fieldName": "count"}
+        {"type": "count", "name": "event_count"}
       ],
       "granularitySpec": {
         "type": "uniform",
@@ -132,15 +131,29 @@ curl -X POST http://druid-overlord:8090/druid/indexer/v1/supervisor \
 For simpler setups without Kafka, poll Redis and push to Druid's HTTP endpoint:
 
 ```python
+import json
 import requests
-
-DRUID_ENDPOINT = "http://druid-router:8888/druid/v2/sql"
 
 def push_batch_to_druid(events: list):
     # Druid HTTP input source for batch ingestion
     payload = {
         "type": "index_parallel",
         "spec": {
+            "dataSchema": {
+                "dataSource": "redis_events",
+                "timestampSpec": {
+                    "column": "timestamp",
+                    "format": "iso"
+                },
+                "dimensionsSpec": {
+                    "dimensions": ["user_id", "action", "url", "country"]
+                },
+                "granularitySpec": {
+                    "type": "uniform",
+                    "segmentGranularity": "HOUR",
+                    "queryGranularity": "MINUTE"
+                }
+            },
             "ioConfig": {
                 "type": "index_parallel",
                 "inputSource": {
@@ -148,6 +161,9 @@ def push_batch_to_druid(events: list):
                     "data": "\n".join(json.dumps(e) for e in events)
                 },
                 "inputFormat": {"type": "json"}
+            },
+            "tuningConfig": {
+                "type": "index_parallel"
             }
         }
     }
