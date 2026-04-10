@@ -60,11 +60,9 @@ For Rook-managed Ceph, use the Prometheus input plugin:
 [[inputs.prometheus]]
   urls = ["http://rook-ceph-mgr.rook-ceph.svc.cluster.local:9283/metrics"]
   metric_version = 2
-  name_prefix = ""
 
   ## Filter to only Ceph metrics
-  [inputs.prometheus.tagpass]
-    __name__ = ["ceph_*"]
+  namepass = ["ceph_*"]
 
   ## Add cluster tag
   [inputs.prometheus.tags]
@@ -85,7 +83,7 @@ For Rook-managed Ceph, use the Prometheus input plugin:
   ## Timeout for HTTP messages
   timeout = "5s"
 
-  ## Batch up metrics before sending
+  ## Only send metrics that have a cluster tag
   [outputs.influxdb_v2.tagpass]
     cluster = ["*"]
 ```
@@ -123,21 +121,22 @@ from(bucket: "ceph-metrics")
 
 ```javascript
 // InfluxDB alerting task - ceph_health_alert.flux
-import "influxdata/influxdb/alerts"
 import "slack"
 
 data = from(bucket: "ceph-metrics")
   |> range(start: -5m)
   |> filter(fn: (r) => r._measurement == "ceph_health_status")
   |> last()
+  |> filter(fn: (r) => r._value > 0)
 
 data
-  |> filter(fn: (r) => r._value > 0)
-  |> slack.message(
-      url: "https://hooks.slack.com/services/XXX/YYY/ZZZ",
-      text: "Ceph health degraded: status=${r._value}",
-      color: "danger"
-  )
+  |> map(fn: (r) => ({r with
+      _sent: slack.message(
+          url: "https://hooks.slack.com/services/XXX/YYY/ZZZ",
+          text: "Ceph health degraded: status=${string(v: r._value)}",
+          color: "danger",
+      )
+  }))
 ```
 
 ## Summary
