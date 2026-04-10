@@ -106,16 +106,30 @@ spec:
 Configure Elasticsearch I/O settings via cluster settings:
 
 ```bash
-# Set store type (default is fine but verify)
+# Configure disk allocation watermarks
 curl -X PUT "http://elasticsearch-es-http:9200/_cluster/settings" \
   -H "Content-Type: application/json" \
   -d '{
     "persistent": {
-      "indices.store.preload": ["nvd", "dvd"],
       "cluster.routing.allocation.disk.threshold_enabled": true,
       "cluster.routing.allocation.disk.watermark.low": "85%",
       "cluster.routing.allocation.disk.watermark.high": "90%",
       "cluster.routing.allocation.disk.watermark.flood_stage": "95%"
+    }
+  }'
+```
+
+Preload specific Lucene file extensions into memory by setting `index.store.preload` in your index template:
+
+```bash
+curl -X PUT "http://elasticsearch-es-http:9200/_index_template/logs-template" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "index_patterns": ["logs-*"],
+    "template": {
+      "settings": {
+        "index.store.preload": ["nvd", "dvd"]
+      }
     }
   }'
 ```
