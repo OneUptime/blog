@@ -16,7 +16,7 @@ By default, the MDS cache limit is 4GB. In memory-constrained environments this 
 
 ## Setting the MDS Cache Memory Limit
 
-Configure the cache limit in the CephFilesystem spec:
+Rook automatically derives `mds_cache_memory_limit` from the pod's Kubernetes memory resource limit. You control it by setting `resources.limits.memory` on the `metadataServer` spec:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -39,13 +39,11 @@ spec:
         memory: "8Gi"
         cpu: "2"
       limits:
-        memory: "12Gi"
+        memory: "16Gi"
         cpu: "4"
-    config:
-      MDS_CACHE_MEMORY_LIMIT: "8589934592"
 ```
 
-The `MDS_CACHE_MEMORY_LIMIT` value is in bytes (8589934592 = 8GB).
+Rook uses a `cacheMemoryLimitFactor` (default 0.5) to calculate the MDS cache limit from the pod memory limit. With a 16Gi pod limit and the default factor, the MDS cache would be set to 8GB. To explicitly override the cache limit, use the `ceph config set` command described below.
 
 ## Setting Cache Limit Via Ceph Config
 
@@ -72,23 +70,24 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph fs status myfs
 ```
 
-For detailed cache statistics:
+For detailed cache statistics, use `ceph tell` to query the MDS admin socket (replace `myfs` with your filesystem name and `0` with the MDS rank):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.$(ceph mds stat | awk '/active/ {print $1}') cache status
+  ceph tell mds.myfs:0 cache status
 ```
 
 ## Tuning Cache Pressure Settings
 
-Adjust when the MDS starts aggressively trimming the cache:
+Adjust how the MDS trims the cache:
 
 ```bash
-# Start trimming when cache is 90% full (default 0.9)
+# Trim check interval in seconds (default 1)
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_cache_trim_threshold 0.9
+  ceph config set mds mds_cache_trim_interval 1
 
-# Trim interval in seconds (default 5)
+# Decay half-life for the trim counter (default 1.0)
+# Higher values slow down trimming; lower values make it more aggressive
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph config set mds mds_cache_trim_decay_rate 1.0
 ```
@@ -108,8 +107,8 @@ ceph config set mds mds_cache_memory_limit 8589934592
 ceph config set mds mds_cache_memory_limit 17179869184
 ```
 
-Always set the Kubernetes memory limit to at least 20% above the MDS cache limit to account for other MDS memory usage.
+Always set the Kubernetes memory limit to at least 50-100% above the MDS cache limit to account for other MDS memory usage. Under normal conditions, MDS can use approximately 130% of its cache size in total RAM.
 
 ## Summary
 
-The MDS cache memory limit is a critical tuning parameter that directly affects CephFS metadata performance. Set it in the CephFilesystem CRD via the `MDS_CACHE_MEMORY_LIMIT` config parameter, and ensure Kubernetes memory limits are set correspondingly higher to prevent OOM kills. Monitor cache hit rates and actual usage to find the optimal value for your filesystem size and access patterns.
+The MDS cache memory limit is a critical tuning parameter that directly affects CephFS metadata performance. In Rook, the cache limit is automatically derived from the pod's Kubernetes memory limit via `cacheMemoryLimitFactor`, or you can explicitly override it with `ceph config set mds mds_cache_memory_limit`. Ensure Kubernetes memory limits are set 50-100% above the MDS cache limit to prevent OOM kills. Monitor cache hit rates and actual usage to find the optimal value for your filesystem size and access patterns.
