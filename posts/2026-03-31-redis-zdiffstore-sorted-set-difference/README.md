@@ -223,7 +223,7 @@ Use ZDIFFSTORE when you want to cache the result, query it with ZRANGE, or apply
 
 ## Performance Considerations
 
-- ZDIFFSTORE is O(L log(L) + (N - K) log(N)) where L is the first set size, N is the total member count across all sets, and K is the intersection size.
+- ZDIFFSTORE is O(L + (N - K) log(N)) where L is the total number of elements in all the sets, N is the size of the first set, and K is the size of the result set.
 - Results retain the first set's scores; no aggregation overhead.
 - For very large reference sets with large exclusion lists, the operation scales with reference set size.
 
