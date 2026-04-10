@@ -60,7 +60,7 @@ spec:
 Use the Rook toolbox to inspect pool configuration:
 
 ```bash
-kubectl exec -it rook-ceph-tools -n rook-ceph -- bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
 
 # List all pools
 ceph osd lspools
