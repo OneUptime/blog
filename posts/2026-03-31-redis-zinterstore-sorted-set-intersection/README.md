@@ -153,10 +153,10 @@ ZREVRANGE active:all 0 -1 WITHSCORES
 ```
 
 ```text
-1) "u1"
-2) "21"
-3) "u3"
-4) "23"
+1) "u3"
+2) "23"
+3) "u1"
+4) "21"
 ```
 
 Only u1 and u3 are active in all three channels.
@@ -227,7 +227,7 @@ ZREVRANGE engaged:premium 0 -1 WITHSCORES
 
 ## Performance Considerations
 
-- ZINTERSTORE is O(N * K log(N * K)) where N is the size of the smallest set and K is the number of sets.
+- ZINTERSTORE is O(N*K)+O(M*log(M)) where N is the size of the smallest input sorted set, K is the number of input sorted sets, and M is the number of elements in the resulting sorted set.
 - Redis optimizes by using the smallest set as the iteration base and checking membership in all others.
 - Large sets with tiny overlaps will still iterate over the small set efficiently.
 
