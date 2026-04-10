@@ -83,8 +83,7 @@ CURRENT_VERSION = 2
 
 def pack(data: dict) -> bytes:
     buf = io.BytesIO()
-    struct.pack_into(">H", buf.getbuffer(), 0, CURRENT_VERSION)
-    buf.seek(2)
+    buf.write(struct.pack(">H", CURRENT_VERSION))
     fastavro.schemaless_writer(buf, SCHEMAS[CURRENT_VERSION], data)
     return buf.getvalue()
 
@@ -104,10 +103,12 @@ def get_with_migration(user_id: int):
     if raw is None:
         return None
 
+    # Check version before deserialize migrates it
+    original_version = json.loads(raw).get("_v", 1)
     data = deserialize(raw)
 
-    # If we got a v1 object and migrated it, re-cache as v2
-    if data.get("_v", 1) != 2:
+    # If we got an old version, re-cache as v2
+    if original_version != 2:
         client.set(f"user:{user_id}", serialize_v2(data), ex=3600)
 
     return data
