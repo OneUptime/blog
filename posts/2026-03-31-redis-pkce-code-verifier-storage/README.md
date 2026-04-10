@@ -26,7 +26,7 @@ PKCE (Proof Key for Code Exchange) protects public OAuth clients from authorizat
 const crypto = require('crypto');
 
 function generateCodeVerifier() {
-  return crypto.randomBytes(64).toString('base64url').slice(0, 128);
+  return crypto.randomBytes(96).toString('base64url').slice(0, 128);
 }
 
 function generateCodeChallenge(verifier) {
