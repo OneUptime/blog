@@ -121,7 +121,7 @@ Common warning messages and their meaning:
 
 ```text
 HEALTH_WARN 1 nearfull osd(s)
-  - OSD is above the nearfull threshold (75% by default)
+  - OSD is above the nearfull threshold (85% by default)
 
 HEALTH_WARN Degraded data redundancy: X objects degraded
   - Some objects have fewer than the expected number of copies
@@ -197,7 +197,7 @@ All PGs should be `active+clean`. Other states and their meaning:
 | active+clean | Healthy, fully replicated |
 | active+degraded | Active but below replication target |
 | active+remapped | Being recovered to correct OSDs |
-| undersized | Fewer replicas than `min_size` |
+| undersized | Fewer replicas than pool `size` (replication factor) |
 | peering | Negotiating state between OSDs |
 | stale | Primary OSD not reporting |
 | inactive | Cannot serve I/O |
