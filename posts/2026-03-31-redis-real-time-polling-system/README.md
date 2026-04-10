@@ -110,8 +110,6 @@ def create_poll(poll_id: str, question: str, options: list[str], duration_second
 ## Subscribing to Live Results
 
 ```python
-import threading
-
 def watch_poll(poll_id: str):
     sub = r.pubsub()
     sub.subscribe(f"poll:{poll_id}:updates")
