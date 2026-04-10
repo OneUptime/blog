@@ -46,6 +46,7 @@ redis-cli SLOWLOG GET 20
 #    4) 1) "KEYS"
 #       2) "*"
 #    5) "127.0.0.1:52341"
+#    6) "app-worker"
 
 # Count total slow log entries
 redis-cli SLOWLOG LEN
@@ -122,7 +123,6 @@ redis-cli SORT large-set LIMIT 0 100
 ```python
 import redis
 import time
-import json
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -152,6 +152,9 @@ monitor_slow_log()
 ## Latency Analysis
 
 ```bash
+# Enable latency monitoring first (disabled by default, threshold in ms)
+redis-cli CONFIG SET latency-monitor-threshold 100
+
 # Redis built-in latency monitoring
 redis-cli LATENCY LATEST
 # Shows max latency for different event types:
