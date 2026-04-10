@@ -19,13 +19,13 @@ The metadata cache is local to each MDS. In a multi-active MDS configuration, th
 The main settings that control the metadata cache:
 
 - `mds_cache_memory_limit` - maximum memory the MDS will use for its cache (default: 4 GiB)
-- `mds_cache_trim_threshold` - fraction of cache limit at which trimming begins
+- `mds_cache_trim_threshold` - number of entries trimmed per tick to throttle cache trimming rate
 - `mds_cache_trim_decay_rate` - controls how aggressively old entries are evicted
 - `mds_health_cache_threshold` - fraction above which health warnings are issued
 
 ## Configuring MDS Cache via Rook
 
-Override MDS cache settings through the `CephFilesystem` CRD's `metadataServer.config` field:
+Rook automatically sets `mds_cache_memory_limit` based on the memory resource limit declared in the `CephFilesystem` CRD. By default, it uses 50% of the memory limit (factor of 0.5). You can adjust this ratio with the `cacheMemoryLimitFactor` field:
 
 ```yaml
 apiVersion: ceph.rook.io/v1
@@ -49,13 +49,12 @@ spec:
         memory: "8Gi"
         cpu: "2"
       limits:
-        memory: "12Gi"
+        memory: "16Gi"
         cpu: "4"
-    config:
-      mds_cache_memory_limit: "8589934592"
+    cacheMemoryLimitFactor: 0.5
 ```
 
-The `mds_cache_memory_limit` is in bytes. 8 GiB = 8589934592.
+With a memory limit of 16 GiB and the default `cacheMemoryLimitFactor` of 0.5, Rook sets `mds_cache_memory_limit` to 8 GiB (8589934592 bytes). MDS uses approximately 125% of this value in actual RAM, so ensure the container memory limit has sufficient headroom.
 
 ## Applying Config Changes at Runtime
 
@@ -108,13 +107,12 @@ metadataServer:
     requests:
       memory: "6Gi"
     limits:
-      memory: "8Gi"
-  config:
-    mds_cache_memory_limit: "6442450944"
+      memory: "12Gi"
+  cacheMemoryLimitFactor: 0.5
 ```
 
-This configuration provides 4 active MDS instances each with 6 GiB cache - effectively 24 GiB total metadata cache capacity.
+This configuration provides 4 active MDS instances each with 6 GiB cache (50% of 12 GiB limit) - effectively 24 GiB total metadata cache capacity.
 
 ## Summary
 
-The CephFS distributed metadata cache in Rook is configured through the `metadataServer.config` section of the CephFilesystem CRD. Set `mds_cache_memory_limit` to match available node memory, and allocate corresponding resource requests and limits. For metadata-intensive workloads, increase `activeCount` to distribute the directory tree and scale cache capacity. Monitor `ceph health detail` and `ceph tell mds.<name> cache status` to verify the cache is operating within healthy bounds.
+The CephFS distributed metadata cache in Rook is configured through the memory resource limits in the `metadataServer` section of the CephFilesystem CRD. Rook automatically sets `mds_cache_memory_limit` based on the pod memory limit, and the ratio can be tuned with `cacheMemoryLimitFactor`. For metadata-intensive workloads, increase `activeCount` to distribute the directory tree and scale cache capacity. Monitor `ceph health detail` and `ceph tell mds.<name> cache status` to verify the cache is operating within healthy bounds.
