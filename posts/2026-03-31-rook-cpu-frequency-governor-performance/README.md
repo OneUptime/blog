@@ -146,9 +146,12 @@ spec:
           for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
             echo performance > $f 2>/dev/null || true
           done
+        volumeMounts:
+        - name: sys
+          mountPath: /sys
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.1
+        image: registry.k8s.io/pause:3.10
       volumes:
       - name: sys
         hostPath:
