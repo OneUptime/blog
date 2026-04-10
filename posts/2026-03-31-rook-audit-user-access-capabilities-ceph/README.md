@@ -83,7 +83,7 @@ For object store access auditing, enable RGW usage tracking:
 ```bash
 # Enable usage logging in RGW
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  radosgw-admin usage trim --uid=admin --start-date=$(date -d '7 days ago' +%Y-%m-%d)
+  ceph config set client.rgw rgw_enable_usage_log true
 
 # Show recent usage by user
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -112,7 +112,26 @@ spec:
               command:
                 - /bin/bash
                 - -c
-                - "ceph auth export > /tmp/audit-$(date +%Y%m%d).txt && diff /tmp/audit-previous.txt /tmp/audit-$(date +%Y%m%d).txt || true"
+                - |
+                  ceph auth list
+                  echo "--- Entities with wildcard access ---"
+                  ceph auth list | grep -B2 "allow \*"
+              volumeMounts:
+                - name: ceph-config
+                  mountPath: /etc/ceph/ceph.conf
+                  subPath: ceph.conf
+                  readOnly: true
+                - name: ceph-admin-keyring
+                  mountPath: /etc/ceph/keyring
+                  subPath: keyring
+                  readOnly: true
+          volumes:
+            - name: ceph-config
+              configMap:
+                name: rook-ceph-config
+            - name: ceph-admin-keyring
+              secret:
+                secretName: rook-ceph-admin-keyring
           restartPolicy: OnFailure
 ```
 
