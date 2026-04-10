@@ -36,7 +36,6 @@ Large datasets develop memory fragmentation over time:
 ```text
 activedefrag yes
 active-defrag-ignore-bytes 100mb
-active-defrag-enabled yes
 active-defrag-threshold-lower 10
 active-defrag-threshold-upper 100
 active-defrag-cycle-min 1
