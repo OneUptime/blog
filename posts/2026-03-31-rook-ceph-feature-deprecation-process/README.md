@@ -70,15 +70,20 @@ ceph tell mds.* client ls
 # Mark the OSD out
 ceph osd out osd.N
 
-# Wait for data migration to complete
-ceph status
+# Wait for data to fully replicate away
+while ! ceph osd safe-to-destroy osd.N ; do sleep 60 ; done
 
-# Stop and migrate
+# Stop the OSD
 systemctl stop ceph-osd@N
-ceph-bluestore-tool bluefs-bdev-migrate \
-  --path /var/lib/ceph/osd/ceph-N \
-  --devs-source /dev/sdX \
-  --dev-target /dev/sdX
+
+# Destroy the old FileStore OSD (preserves the ID for reuse)
+ceph osd destroy N --yes-i-really-mean-it
+
+# Zap the device
+ceph-volume lvm zap /dev/sdX
+
+# Recreate as BlueStore
+ceph-volume lvm create --bluestore --data /dev/sdX --osd-id N
 ```
 
 ## Setting Up Alerts for Deprecation Warnings
@@ -90,7 +95,7 @@ groups:
 - name: ceph-deprecation
   rules:
   - alert: CephDeprecatedFeatureActive
-    expr: ceph_health_status == 1 and on() ceph_health_detail{type="HEALTH_WARN"} =~ "deprecated"
+    expr: ceph_health_detail{name=~".*DEPRECATED.*"} == 1
     for: 5m
     labels:
       severity: warning
