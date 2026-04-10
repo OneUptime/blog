@@ -39,6 +39,7 @@ def check_rate_limit(
     count, _, ttl = results
     return {
         "allowed": count <= limit,
+        "limit": limit,
         "count": count,
         "remaining": max(0, limit - count),
         "reset_in": ttl,
@@ -107,7 +108,7 @@ def endpoint_rate_limit():
 def set_rate_limit_headers(response):
     if hasattr(g, 'rate_limit_result'):
         r_info = g.rate_limit_result
-        response.headers['X-RateLimit-Limit'] = r_info.get('count', 0) + r_info.get('remaining', 0)
+        response.headers['X-RateLimit-Limit'] = r_info.get('limit', 0)
         response.headers['X-RateLimit-Remaining'] = r_info.get('remaining', 0)
         response.headers['X-RateLimit-Reset'] = r_info.get('reset_in', 0)
     return response
