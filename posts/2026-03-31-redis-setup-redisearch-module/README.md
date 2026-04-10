@@ -28,12 +28,12 @@ graph TD
 
 ### Option 1: Redis Stack (Recommended)
 
-Redis Stack bundles Redis with RediSearch, RedisJSON, RedisTimeSeries, RedisBloom, and RedisGraph.
+Redis Stack bundles Redis with RediSearch, RedisJSON, RedisTimeSeries, and RedisBloom.
 
 **Docker (quickest start):**
 
-```redis
--- Run Redis Stack in Docker
+```bash
+# Run Redis Stack in Docker
 docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
 ```
 
@@ -201,7 +201,7 @@ FT.DROPINDEX products DD
 -- Set query timeout to 1 second
 FT.CONFIG SET TIMEOUT 1000
 
--- Allow longer prefix searches
+-- Set minimum prefix length for wildcard queries
 FT.CONFIG SET MINPREFIX 2
 
 -- Increase thread pool for faster indexing
@@ -229,6 +229,7 @@ npm install ioredis
 ```
 
 ```text
+const Redis = require("ioredis");
 const redis = new Redis();
 const results = await redis.call("FT.SEARCH", "products", "redis");
 ```
