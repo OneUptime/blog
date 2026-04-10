@@ -108,7 +108,7 @@ def watchlist_snapshot(symbols):
     for symbol in symbols:
         pipe.hget("prices:last", symbol)
     results = pipe.execute()
-    return {s: json.loads(r) for s, r in zip(symbols, results) if r}
+    return {s: json.loads(raw) for s, raw in zip(symbols, results) if raw}
 ```
 
 ## Summary
