@@ -52,7 +52,7 @@ Allow Ceph to automatically adjust PG counts as data grows:
 ```bash
 # Enable autoscaling globally
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph osd pool set noautoscale off
+  ceph osd pool unset noautoscale
 
 # Check autoscale status per pool
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
@@ -70,7 +70,7 @@ spec:
     target_size_ratio: "0.2"
 ```
 
-## Adjust CRUSH Weights
+## Adjust OSD and CRUSH Weights
 
 If some OSDs are larger than others, adjust their weights to get proportional distribution:
 
@@ -79,11 +79,11 @@ If some OSDs are larger than others, adjust their weights to get proportional di
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd tree
 
-# Reweight an OSD to its actual utilization
+# Adjust OSD reweight based on actual utilization
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd reweight-by-utilization
 
-# Manually set crush weight for a specific OSD
+# Manually set CRUSH weight for a specific OSD
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   ceph osd crush reweight osd.5 2.0
 ```
@@ -113,7 +113,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   watch ceph status
 ```
 
-Look at the `io` section and `misplaced` objects count to track progress.
+Look at the `pgs` section for `misplaced` objects count and the `io` section for recovery throughput to track progress.
 
 ## Summary
 
