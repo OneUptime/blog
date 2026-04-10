@@ -18,6 +18,7 @@ Use ISO year and week number for natural ordering and calendar alignment:
 import redis
 import time
 import datetime
+import calendar
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -47,7 +48,7 @@ def rollup_week(metric: str, any_day_in_week_ts: float) -> int:
     # Find Monday of that week
     dt = datetime.datetime.utcfromtimestamp(any_day_in_week_ts)
     monday = dt - datetime.timedelta(days=dt.weekday())
-    monday_ts = monday.replace(hour=0, minute=0, second=0).timestamp()
+    monday_ts = calendar.timegm(monday.replace(hour=0, minute=0, second=0).timetuple())
 
     pipe = r.pipeline()
     for d in range(7):
@@ -101,7 +102,7 @@ def rollup_week_with_stats(metric: str, any_day_in_week_ts: float):
 
     dt = datetime.datetime.utcfromtimestamp(any_day_in_week_ts)
     monday = dt - datetime.timedelta(days=dt.weekday())
-    monday_ts = monday.replace(hour=0, minute=0, second=0).timestamp()
+    monday_ts = calendar.timegm(monday.replace(hour=0, minute=0, second=0).timetuple())
 
     daily_vals = []
     for d in range(7):
