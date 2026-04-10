@@ -30,7 +30,7 @@ gwcli
 
 Password requirements:
 - Minimum 12 characters
-- Maximum 16 characters for CHAP, 96 for iSCSI mutual CHAP
+- Maximum 16 characters (applies to both CHAP and mutual CHAP)
 - Alphanumeric and special characters allowed
 
 ## Mutual CHAP Configuration
