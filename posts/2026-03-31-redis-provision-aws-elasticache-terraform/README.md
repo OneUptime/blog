@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Terraform, AWS, ElastiCache, Infrastructure
 
-Description: Learn how to provision AWS ElastiCache for Redis using Terraform, including cluster mode, subnet groups, parameter groups, and security configuration.
+Description: Learn how to provision AWS ElastiCache for Redis using Terraform, including subnet groups, replication groups, and security configuration.
 
 ---
 
@@ -40,6 +40,10 @@ variable "vpc_id" {}
 variable "private_subnet_ids" {
   type = list(string)
 }
+
+variable "app_security_group_id" {
+  description = "Security group ID of the application layer allowed to access Redis"
+}
 ```
 
 ## Step 2: Create the Subnet Group
@@ -68,7 +72,7 @@ resource "aws_security_group" "redis" {
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
+    security_groups = [var.app_security_group_id]
   }
 
   egress {
@@ -140,8 +144,13 @@ output "redis_reader_endpoint" {
 terraform init
 terraform plan -var="redis_auth_token=your-strong-token" \
                -var="vpc_id=vpc-abc123" \
-               -var="private_subnet_ids=[\"subnet-1\",\"subnet-2\"]"
-terraform apply -auto-approve
+               -var="private_subnet_ids=[\"subnet-1\",\"subnet-2\"]" \
+               -var="app_security_group_id=sg-app123"
+terraform apply -var="redis_auth_token=your-strong-token" \
+                -var="vpc_id=vpc-abc123" \
+                -var="private_subnet_ids=[\"subnet-1\",\"subnet-2\"]" \
+                -var="app_security_group_id=sg-app123" \
+                -auto-approve
 ```
 
 After apply, get the endpoint:
