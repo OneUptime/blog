@@ -195,8 +195,8 @@ Iterate through members for logging or compliance reporting without loading ever
 
 ## Performance Considerations
 
-- Each SSCAN call is O(N) where N is the number of members returned in that batch.
-- Total complexity across all calls to complete a scan is O(S) where S is the set size.
+- Each SSCAN call is O(1) amortized.
+- Total complexity across all calls to complete a full scan is O(N) where N is the set size.
 - COUNT hint trades round trips for per-call overhead; tune based on your needs.
 
 ## Summary
