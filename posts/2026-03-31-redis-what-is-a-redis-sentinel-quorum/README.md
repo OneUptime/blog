@@ -38,7 +38,7 @@ Without a quorum requirement, any single Sentinel could trigger a failover due t
 3. Now two Redis primaries exist simultaneously - a split-brain scenario
 4. Clients write to both, data diverges
 
-A quorum of 2 (out of 3 Sentinels) prevents this: both Sentinel B and C must also see the primary as unreachable before failover proceeds.
+A quorum of 2 (out of 3 Sentinels) prevents this: at least one other Sentinel must also see the primary as unreachable before failover proceeds. If only Sentinel A has a network issue, neither B nor C will confirm the failure, so the quorum is not met and no failover occurs.
 
 ## Quorum vs. Majority
 
