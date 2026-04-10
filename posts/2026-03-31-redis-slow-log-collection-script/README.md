@@ -114,15 +114,16 @@ def collect_slow_log(count: int = 128) -> list:
     return new_entries
 
 def format_entry(entry: dict) -> dict:
-    args = entry.get("command", [])
+    command = entry.get("command", "")
+    parts = command.split() if command else []
     return {
         "id": entry["id"],
         "timestamp": entry["start_time"],
         "duration_us": entry["duration"],
         "duration_ms": entry["duration"] / 1000,
-        "command": args[0] if args else "UNKNOWN",
-        "args_preview": " ".join(str(a) for a in args[:4]),
-        "client_addr": entry.get("client_addr", ""),
+        "command": parts[0] if parts else "UNKNOWN",
+        "args_preview": " ".join(parts[:4]),
+        "client_addr": entry.get("client_address", ""),
         "client_name": entry.get("client_name", ""),
     }
 
@@ -137,7 +138,8 @@ if __name__ == "__main__":
 
     if entries:
         slowest = max(entries, key=lambda e: e["duration"])
-        print(f"Slowest command: {slowest.get('command', [])[:2]} "
+        cmd_preview = " ".join(slowest.get("command", "").split()[:2])
+        print(f"Slowest command: {cmd_preview} "
               f"({slowest['duration'] / 1000:.1f}ms)")
 ```
 
