@@ -29,9 +29,11 @@ When a set has few small-value members, Redis stores it as a `listpack` - a flat
 
 ```bash
 # Thresholds that trigger the switch from listpack to hashtable
-CONFIG GET set-max-listpack-size
+CONFIG GET set-max-listpack-entries
 # Default: 128 (max elements)
-# Element values must also be under 64 bytes
+
+CONFIG GET set-max-listpack-value
+# Default: 64 (max bytes per element)
 ```
 
 ## Hashtable Encoding for Large Sets
@@ -86,7 +88,7 @@ OBJECT ENCODING primes   # "listpack"
 
 ```bash
 # For memory savings with small sets, keep default or slightly raise
-CONFIG SET set-max-listpack-size 128
+CONFIG SET set-max-listpack-entries 128
 
 # For all-integer sets, raise intset limit to defer hashtable
 CONFIG SET set-max-intset-entries 1024
@@ -124,4 +126,4 @@ SINTER friends:alice friends:bob
 
 ## Summary
 
-Redis sets use three internal encodings: `intset` for all-integer small sets, `listpack` for mixed small sets, and `hashtable` for large sets. Automatic encoding promotion happens when element count or size thresholds are exceeded. Tune `set-max-listpack-size` and `set-max-intset-entries` to balance memory efficiency against CPU overhead for your workload.
+Redis sets use three internal encodings: `intset` for all-integer small sets, `listpack` for mixed small sets, and `hashtable` for large sets. Automatic encoding promotion happens when element count or size thresholds are exceeded. Tune `set-max-listpack-entries`, `set-max-listpack-value`, and `set-max-intset-entries` to balance memory efficiency against CPU overhead for your workload.
