@@ -117,7 +117,7 @@ kubectl exec -n rook-ceph deploy/rook-ceph-tools -- \
 import json, sys
 data = json.load(sys.stdin)
 print('Health:', data['health']['status'])
-print('OSDs:', data['osdmap']['num_osds'], 'up')
+print('OSDs:', data['osdmap']['num_up_osds'], 'up,', data['osdmap']['num_osds'], 'total')
 "
 ```
 
