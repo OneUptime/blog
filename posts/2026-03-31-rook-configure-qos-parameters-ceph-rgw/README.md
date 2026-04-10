@@ -22,20 +22,21 @@ Ceph RADOS Gateway (RGW) supports multiple layers of QoS to control object stora
 Set request rate limits on an individual RGW user:
 
 ```bash
-# Limit to 1000 ops/minute and 1GB/hour per user
-radosgw-admin user modify --uid=alice \
-  --max-buckets=100 \
-  --rate-limit-enabled=true \
+# Set rate limits: 500 read ops/min, 200 write ops/min, 512MB/min read, 256MB/min write
+radosgw-admin ratelimit set --ratelimit-scope=user --uid=alice \
   --max-read-ops=500 \
   --max-write-ops=200 \
-  --max-read-bytes=536870912 \    # 512MB/s
-  --max-write-bytes=268435456     # 256MB/s
+  --max-read-bytes=536870912 \
+  --max-write-bytes=268435456
+
+# Enable the rate limit for the user
+radosgw-admin ratelimit enable --ratelimit-scope=user --uid=alice
 ```
 
 Check the current limits:
 
 ```bash
-radosgw-admin user info --uid=alice | python3 -m json.tool | grep -A10 rate
+radosgw-admin ratelimit get --ratelimit-scope=user --uid=alice
 ```
 
 ## Enabling Per-Bucket Rate Limits
@@ -43,33 +44,38 @@ radosgw-admin user info --uid=alice | python3 -m json.tool | grep -A10 rate
 Apply rate limits to a specific bucket:
 
 ```bash
-radosgw-admin bucket limit set \
+# Set rate limits: 200 read ops/min, 50 write ops/min, 100MB/min read, 50MB/min write
+radosgw-admin ratelimit set --ratelimit-scope=bucket \
   --bucket=production-assets \
-  --uid=alice \
   --max-read-ops=200 \
   --max-write-ops=50 \
-  --max-read-bytes=104857600 \   # 100MB/s
-  --max-write-bytes=52428800     # 50MB/s
+  --max-read-bytes=104857600 \
+  --max-write-bytes=52428800
+
+# Enable the rate limit for the bucket
+radosgw-admin ratelimit enable --ratelimit-scope=bucket \
+  --bucket=production-assets
 ```
 
 View bucket limits:
 
 ```bash
-radosgw-admin bucket limit get --bucket=production-assets
+radosgw-admin ratelimit get --ratelimit-scope=bucket --bucket=production-assets
 ```
 
-## Global Rate Limiting with ratelimit Zone
+## Global Rate Limiting
 
-Apply global limits in the zone configuration:
+Apply global rate limits that apply to all users:
 
 ```bash
-radosgw-admin zone modify \
-  --rgw-zone=default \
+radosgw-admin global ratelimit set --ratelimit-scope=user \
   --max-read-ops=10000 \
   --max-write-ops=5000
+
+radosgw-admin global ratelimit enable --ratelimit-scope=user
 ```
 
-These limits apply to all users in the zone unless overridden at the user level.
+These limits apply to all users unless overridden at the user level.
 
 ## Configuring RGW Thread Pool Limits
 
@@ -79,7 +85,6 @@ Limit the number of concurrent RGW operations by controlling thread pools:
 cat >> /etc/ceph/ceph.conf << 'EOF'
 [client.rgw.gateway1]
 rgw_thread_pool_size = 256
-rgw_num_rados_handles = 8
 rgw_max_chunk_size = 4194304
 EOF
 ```
@@ -102,15 +107,13 @@ radosgw-admin quota set --quota-scope=user \
   --max-size=107374182400   # 100GB
 
 # Per-bucket storage quota
-radosgw-admin quota set --quota-scope=bucket \
-  --uid=alice \
-  --bucket=uploads \
+radosgw-admin quota set --bucket=uploads \
   --max-objects=10000 \
   --max-size=10737418240   # 10GB
 
 # Enable quotas
 radosgw-admin quota enable --quota-scope=user --uid=alice
-radosgw-admin quota enable --quota-scope=bucket --uid=alice --bucket=uploads
+radosgw-admin quota enable --bucket=uploads
 ```
 
 ## Monitoring RGW QoS Metrics
