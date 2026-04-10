@@ -24,10 +24,11 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
   --access-key=harborakey \
   --secret-key=harborskey
 
-for bucket in harbor-registry harbor-chartmuseum; do
-  aws s3 mb s3://$bucket \
-    --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph:80
-done
+export AWS_ACCESS_KEY_ID=harborakey
+export AWS_SECRET_ACCESS_KEY=harborskey
+
+aws s3 mb s3://harbor-registry \
+  --endpoint-url http://rook-ceph-rgw-my-store.rook-ceph:80
 ```
 
 ## Install Harbor with Helm
@@ -57,25 +58,25 @@ persistence:
     s3:
       bucket: harbor-registry
       region: us-east-1
-      regionEndpoint: http://rook-ceph-rgw-my-store.rook-ceph:80
+      regionendpoint: http://rook-ceph-rgw-my-store.rook-ceph:80
       accesskey: harborakey
       secretkey: harborskey
       secure: false
       v4auth: true
+  # Use Ceph RBD for Harbor's database, Redis, and Trivy PVCs
+  persistentVolumeClaim:
+    database:
+      storageClass: ceph-rbd
+    redis:
+      storageClass: ceph-rbd
+    trivy:
+      storageClass: ceph-rbd
 
-# Use Ceph RBD for Harbor's database
 database:
   type: internal
-  internal:
-    storageClass: ceph-rbd
 
 redis:
   type: internal
-  internal:
-    storageClass: ceph-rbd
-
-trivy:
-  storageClass: ceph-rbd
 ```
 
 Install Harbor:
