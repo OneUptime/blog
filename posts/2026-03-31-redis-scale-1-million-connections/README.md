@@ -80,7 +80,9 @@ clusters:
     lb_policy: ROUND_ROBIN
     upstream_connection_options:
       tcp_keepalive: {}
-    max_connections: 500
+    circuit_breakers:
+      thresholds:
+        - max_connections: 500
 ```
 
 ## Application-Side Connection Pooling
@@ -122,7 +124,7 @@ Alert when `redis_connected_clients` approaches `maxclients`.
 ## Identifying Top Clients
 
 ```bash
-redis-cli CLIENT LIST | awk -F'[= ]' '{print $4}' | sort | uniq -c | sort -rn | head -20
+redis-cli CLIENT LIST | awk -F'[= ]' '{print $4}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Summary
