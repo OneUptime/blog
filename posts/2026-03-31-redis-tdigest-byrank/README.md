@@ -31,7 +31,7 @@ TDIGEST.BYRANK key rank [rank ...]
 
 - `key` - the T-Digest sketch key
 - `rank` - zero-based rank position(s) to query
-- Returns one value per rank; returns `nan` for out-of-range ranks
+- Returns one value per rank; returns `inf` for out-of-range ranks (ranks >= count); returns `nan` when the sketch is empty
 
 ## Examples
 
@@ -65,15 +65,16 @@ TDIGEST.BYRANK latency 0 1 2 3 4
 5) "55"
 ```
 
-### Out-of-Range Rank Returns nan
+### Out-of-Range Rank Returns inf
 
 ```redis
+TDIGEST.CREATE scores
 TDIGEST.ADD scores 10 20 30
 TDIGEST.BYRANK scores 5
 ```
 
 ```text
-1) "nan"
+1) "inf"
 ```
 
 Rank 5 does not exist when the count is 3.
@@ -115,6 +116,7 @@ TDIGEST.BYRANK sensor:readings 0 9 19 29 39 49 59 69 79 89 99
 Confirm a round-trip: get the rank of a value, then retrieve the value at that rank.
 
 ```redis
+TDIGEST.CREATE prices
 TDIGEST.ADD prices 10 20 30 40 50
 TDIGEST.RANK prices 30
 -- Returns approximate rank, e.g. 2
