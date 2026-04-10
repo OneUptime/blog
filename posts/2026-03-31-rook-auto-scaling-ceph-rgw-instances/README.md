@@ -90,7 +90,7 @@ spec:
 
 ## Custom Metrics for RGW Scaling
 
-Scale based on request rate using Prometheus adapter:
+Scale based on request rate using Prometheus adapter. Note that `ceph_rgw_qps` is not a built-in Ceph metric - you need to create a Prometheus recording rule (e.g., `rate(ceph_rgw_req[5m])`) and expose it through the Prometheus adapter:
 
 ```yaml
 - type: External
@@ -150,8 +150,8 @@ Key metrics to watch:
 # RGW request rate
 rate(ceph_rgw_req[5m])
 
-# Active connections
-ceph_rgw_metadata{type="rgw"}
+# RGW daemon metadata (identity and version info)
+ceph_rgw_metadata
 
 # CPU per RGW pod
 rate(container_cpu_usage_seconds_total{container="rgw"}[5m])
