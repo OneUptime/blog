@@ -48,7 +48,7 @@ public class FixedWindowRateLimiter
 Lua scripts run atomically in Redis, preventing race conditions:
 
 ```csharp
-private static readonly LuaScript SlidingWindowScript = LuaScript.Prepare(@"
+private static readonly string SlidingWindowScript = @"
     local key = KEYS[1]
     local now = tonumber(ARGV[1])
     local window = tonumber(ARGV[2])
@@ -63,7 +63,7 @@ private static readonly LuaScript SlidingWindowScript = LuaScript.Prepare(@"
         return 1
     end
     return 0
-");
+";
 
 public async Task<bool> IsSlidingAllowedAsync(string clientId, int limit, int windowSeconds)
 {
