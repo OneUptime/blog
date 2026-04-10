@@ -16,32 +16,29 @@ Proper session timeout tuning is critical: too long and a crashed client blocks 
 
 ## Key Session Timeout Parameters
 
-| Parameter | Default | Purpose |
-|---|---|---|
-| `mds_session_timeout` | 60s | Time before evicting an unresponsive client |
-| `mds_reconnect_timeout` | 45s | Time to wait for clients to reconnect after MDS failover |
-| `mds_cap_revoke_eviction_timeout` | 0 | Time to evict a client that refuses cap revocation |
+| Parameter | Default | Set Via | Purpose |
+|---|---|---|---|
+| `session_timeout` | 60s | `ceph fs set` | Time before marking an unresponsive client as stale |
+| `session_autoclose` | 300s | `ceph fs set` | Time before evicting a stale/unresponsive client |
+| `mds_reconnect_timeout` | 45s | `ceph config set mds` | Time to wait for clients to reconnect after MDS failover |
+| `mds_cap_revoke_eviction_timeout` | 0 | `ceph config set mds` | Time to evict a client that refuses cap revocation |
 
 ## Setting Session Timeout
 
-Adjust the session timeout based on your network reliability:
+CephFS uses two filesystem-level parameters for session timeouts: `session_timeout` controls when an unresponsive client is marked as stale, and `session_autoclose` controls when a stale client is evicted. These are set with `ceph fs set`, not `ceph config set mds`:
 
 ```bash
-# For stable datacenter networks - shorter timeout is fine
+# For stable datacenter networks - default stale timeout is fine
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_session_timeout 60
+  ceph fs set myfs session_timeout 60
 
-# For unreliable networks or slow clients - increase timeout
+# For unreliable networks or slow clients - increase the autoclose eviction timeout
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph config set mds mds_session_timeout 300
-```
+  ceph fs set myfs session_autoclose 600
 
-Or configure it in the CephFilesystem spec:
-
-```yaml
-metadataServer:
-  config:
-    mds_session_timeout: "120"
+# Verify current settings
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
+  ceph fs get myfs | grep session
 ```
 
 ## Configuring Reconnect Timeout
@@ -94,7 +91,7 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 
 # Evict a specific session by client ID
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon mds.myfs.a session evict 4321
+  ceph tell mds.myfs:0 client evict id=4321
 ```
 
 ## Session Eviction Monitoring
@@ -102,9 +99,9 @@ kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
 Set up alerts for frequent client evictions, which indicate unstable clients or too-short timeouts:
 
 ```promql
-increase(ceph_mds_sessions_evicted_total[10m]) > 5
+increase(ceph_mds_sessions_session_remove[10m]) > 5
 ```
 
 ## Summary
 
-MDS session timeouts balance availability against lock stickiness. Short timeouts reduce the impact of crashed clients but may evict clients with transient disconnections. Set `mds_session_timeout` based on your network reliability, configure `mds_cap_revoke_eviction_timeout` to prevent capability revocation hangs, and monitor eviction rates as a health indicator. Adjust timeouts upward for WAN-connected clients and containerized workloads that may experience slow reconnections.
+MDS session timeouts balance availability against lock stickiness. Short timeouts reduce the impact of crashed clients but may evict clients with transient disconnections. Set `session_timeout` and `session_autoclose` via `ceph fs set` based on your network reliability, configure `mds_cap_revoke_eviction_timeout` to prevent capability revocation hangs, and monitor session removal rates as a health indicator. Adjust timeouts upward for WAN-connected clients and containerized workloads that may experience slow reconnections.
