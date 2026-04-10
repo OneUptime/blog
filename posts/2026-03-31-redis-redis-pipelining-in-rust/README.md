@@ -32,7 +32,7 @@ fn main() -> redis::RedisResult<()> {
     let mut con = client.get_connection()?;
 
     let (val1, val2, val3): (String, i64, bool) = redis::pipe()
-        .set("key1", "hello")
+        .set("key1", "hello").ignore()
         .get("key1")
         .incr("counter", 1)
         .exists("key1")
@@ -50,10 +50,10 @@ The `.query()` call sends all commands in a single batch and returns a tuple of 
 To make a pipeline atomic (wrapped in a transaction), call `.atomic()`:
 
 ```rust
-let (updated,): (bool,) = redis::pipe()
+redis::pipe()
     .atomic()
-    .set("user:1:name", "Alice")
-    .set("user:1:email", "alice@example.com")
+    .set("user:1:name", "Alice").ignore()
+    .set("user:1:email", "alice@example.com").ignore()
     .query(&mut con)?;
 ```
 
@@ -61,7 +61,7 @@ This wraps the commands in `MULTI`/`EXEC`, ensuring all-or-nothing execution.
 
 ## Async Pipelining with Tokio
 
-For async code, use `get_async_connection()` and the same `pipe()` builder:
+For async code, use `get_multiplexed_async_connection()` and the same `pipe()` builder:
 
 ```rust
 use redis::AsyncCommands;
