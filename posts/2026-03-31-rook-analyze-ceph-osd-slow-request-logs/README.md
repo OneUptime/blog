@@ -15,7 +15,7 @@ Slow OSD requests are one of the most common performance issues in Ceph clusters
 When an OSD request exceeds `osd_op_complaint_time` (default 30 seconds), Ceph logs a warning:
 
 ```text
-2024-01-15T10:23:45.123+0000 osd.2 slow request 30.123 seconds old, received at 2024-01-15T09:53:15
+2024-01-15T10:23:45.123+0000 osd.2 slow request 30.123 seconds old, received at 2024-01-15T10:23:15
 ```
 
 The log includes the request age, the originating OSD, and the affected placement groups.
@@ -55,7 +55,7 @@ Dump detailed perf counters for a specific OSD:
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.2 dump_ops_in_flight
+  ceph tell osd.2 dump_ops_in_flight
 ```
 
 ## Adjust the Slow Request Threshold
@@ -77,7 +77,7 @@ kubectl -n rook-ceph exec -it <osd-pod> -- iostat -x 2 5
 
 # Check BlueStore stats
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- \
-  ceph daemon osd.2 perf dump | python3 -c \
+  ceph tell osd.2 perf dump | python3 -c \
   "import sys,json; d=json.load(sys.stdin); print(d.get('bluestore', {}))"
 ```
 
@@ -97,4 +97,4 @@ rate(ceph_osd_op_r_latency_sum[5m]) / rate(ceph_osd_op_r_latency_count[5m])
 
 ## Summary
 
-OSD slow request analysis starts with searching pod logs for the "slow request" string, counting occurrences per OSD to find outliers, and then using `ceph daemon osd.N dump_ops_in_flight` for real-time visibility. Correlating slow request timing with disk I/O stats and network metrics points to whether the bottleneck is hardware, network, or cluster configuration.
+OSD slow request analysis starts with searching pod logs for the "slow request" string, counting occurrences per OSD to find outliers, and then using `ceph tell osd.N dump_ops_in_flight` for real-time visibility. Correlating slow request timing with disk I/O stats and network metrics points to whether the bottleneck is hardware, network, or cluster configuration.
