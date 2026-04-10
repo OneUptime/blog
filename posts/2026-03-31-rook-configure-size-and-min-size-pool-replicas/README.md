@@ -13,7 +13,7 @@ Description: Learn how to configure Ceph pool size and min_size parameters to co
 Two parameters control replication in Ceph pools:
 
 - **size**: The total number of replicas to maintain (default: 3). Ceph writes to all `size` replicas before acknowledging a write.
-- **min_size**: The minimum number of replicas that must acknowledge a write for it to succeed (default: 2). If available replicas drop below min_size, the pool goes read-only.
+- **min_size**: The minimum number of replicas that must acknowledge a write for it to succeed (default: 2). If available replicas drop below min_size, the pool blocks all I/O.
 
 Together they determine fault tolerance and write availability.
 
@@ -22,7 +22,7 @@ Together they determine fault tolerance and write availability.
 With `size=3, min_size=2`:
 - Normal operation: all 3 replicas are written
 - 1 OSD down: still writes to 2 replicas, cluster stays writable
-- 2 OSDs down: only 1 replica available, cluster goes read-only (1 < min_size)
+- 2 OSDs down: only 1 replica available, pool blocks all I/O (1 < min_size)
 
 With `size=3, min_size=1` (less safe):
 - 2 OSDs down: still writable with 1 replica
@@ -42,7 +42,7 @@ spec:
   failureDomain: host
   replicated:
     size: 3
-    requireSafeReplicaSize: true  # Enforces min_size >= size/2 + 1
+    requireSafeReplicaSize: true  # Enforces min_size >= ceil(size/2)
 ```
 
 The `requireSafeReplicaSize: true` option prevents creating pools with unsafe min_size values.
@@ -90,7 +90,7 @@ Note: Two-node clusters have no fault tolerance for OSD failures.
 ```yaml
 replicated:
   size: 4
-  # min_size defaults to 3
+  # min_size defaults to 2
 ```
 
 ## Verify Settings
@@ -117,11 +117,12 @@ The cluster remains fully writable in this state, but recovery should complete b
 
 ## Impact on Read Performance
 
-With `size=3`, Ceph reads from the primary OSD only by default. Enabling `nodeep-scrub` does not affect this. For distributing reads across replicas, use the `balance_reads` option (available in Ceph Quincy+):
+With `size=3`, Ceph reads from the primary OSD only by default. For distributing reads across replicas, enable the read balancer in the mgr balancer module (available in Ceph Reef+):
 
 ```bash
 kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash -c "
-  ceph osd pool set rbd read_balance_score 1
+  ceph balancer on
+  ceph balancer mode upmap-read
 "
 ```
 
