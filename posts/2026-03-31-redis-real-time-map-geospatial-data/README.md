@@ -100,9 +100,12 @@ def get_entities_in_viewport(entity_type: str, center_lat: float,
 
 ```python
 import asyncio
+import redis.asyncio as aioredis
+
+async_r = aioredis.Redis(host='localhost', port=6379, decode_responses=True)
 
 async def websocket_handler(websocket, entity_type: str):
-    pubsub = r.pubsub()
+    pubsub = async_r.pubsub()
     await pubsub.subscribe(f"map:updates:{entity_type}")
 
     try:
