@@ -28,11 +28,11 @@ Returns an array of levels. Each level contains an array of member names that ar
 ## Basic Usage
 
 ```redis
-VADD items 0.1 0.9 0.3 0.7 a
-VADD items 0.2 0.8 0.4 0.6 b
-VADD items 0.3 0.7 0.5 0.5 c
-VADD items 0.9 0.1 0.7 0.3 d
-VADD items 0.8 0.2 0.6 0.4 e
+VADD items VALUES 4 0.1 0.9 0.3 0.7 a
+VADD items VALUES 4 0.2 0.8 0.4 0.6 b
+VADD items VALUES 4 0.3 0.7 0.5 0.5 c
+VADD items VALUES 4 0.9 0.1 0.7 0.3 d
+VADD items VALUES 4 0.8 0.2 0.6 0.4 e
 
 VLINKS items a
 ```
@@ -109,7 +109,7 @@ for i, (name, vec) in enumerate([
     ("c", ["0.3", "0.7", "0.5", "0.5"]),
     ("d", ["0.9", "0.1", "0.7", "0.3"]),
 ]):
-    r.execute_command("VADD", "items", *vec, name)
+    r.execute_command("VADD", "items", "VALUES", "4", *vec, name)
 
 links = get_vlinks(r, "items", "a", with_scores=True)
 print("Graph links for 'a':", links)
@@ -134,7 +134,7 @@ const members = [
   ["c", "0.9", "0.1", "0.7", "0.3"],
 ];
 for (const [name, ...vec] of members) {
-  await redis.call("VADD", "items", ...vec, name);
+  await redis.call("VADD", "items", "VALUES", "4", ...vec, name);
 }
 
 const links = await getVlinks("items", "a", true);
@@ -150,7 +150,7 @@ def check_connectivity(r, key):
     # Get all members via VSIM with a dummy query
     all_members_raw = r.execute_command("VSIM", key, "VALUES", "4",
                                         "0.5", "0.5", "0.5", "0.5", "COUNT", 1000)
-    members = all_members_raw[::2]
+    members = all_members_raw
 
     isolated = []
     for member in members:
