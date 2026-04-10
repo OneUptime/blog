@@ -10,7 +10,7 @@ Description: Learn how to use TDIGEST.RANK in Redis to find the approximate rank
 
 ## How TDIGEST.RANK Works
 
-`TDIGEST.RANK` returns the approximate rank (zero-based position) of one or more values within a T-Digest sketch. A rank of 0 means the value is at or below the minimum; a rank of N-1 means it is at or above the maximum. This is the inverse of `TDIGEST.BYRANK`, which converts a rank to a value.
+`TDIGEST.RANK` returns the approximate rank (zero-based position) of one or more values within a T-Digest sketch. A rank of 0 corresponds to the minimum observed value; a rank of N-1 corresponds to the maximum. Values below the minimum return -1, and values above the maximum return N (the total count). This is the inverse of `TDIGEST.BYRANK`, which converts a rank to a value.
 
 ```mermaid
 graph TD
@@ -89,6 +89,7 @@ When count is 5, returning 5 means the value is above all observed values.
 ### Querying Rank on a Large Sketch
 
 ```redis
+TDIGEST.CREATE api:times
 TDIGEST.ADD api:times 150 200 250 300 350 400 450 500 550 600
 TDIGEST.RANK api:times 300 500
 ```
@@ -163,7 +164,7 @@ TDIGEST.CDF latency 100
 
 ## Performance Considerations
 
-- O(log N) per value query where N is the compression (number of centroids).
+- O(1) per value query.
 - Querying multiple values in one call reduces round-trip latency.
 - Results are approximate; accuracy is highest at the tails.
 
