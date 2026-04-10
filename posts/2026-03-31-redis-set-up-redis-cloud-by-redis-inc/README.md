@@ -8,7 +8,7 @@ Description: Provision and connect to a Redis Cloud database from Redis Inc., in
 
 ---
 
-Redis Cloud is the official managed Redis service from Redis Inc. (the company behind Redis). It runs on AWS, GCP, and Azure and offers Redis Stack modules (RediSearch, RedisJSON, RedisGraph) out of the box. This guide walks through setting up a free database and connecting to it.
+Redis Cloud is the official managed Redis service from Redis Inc. (the company behind Redis). It runs on AWS, GCP, and Azure and offers Redis Stack modules (RediSearch, RedisJSON, RedisTimeSeries) out of the box. This guide walks through setting up a free database and connecting to it.
 
 ## Creating a Free Redis Cloud Account
 
@@ -40,9 +40,9 @@ redis-cli --tls \
 Verify:
 
 ```bash
-127.0.0.1:12345> PING
+redis-12345.c1.us-east-1-1.ec2.cloud.redislabs.com:12345> PING
 PONG
-127.0.0.1:12345> SET greeting "hello redis cloud"
+redis-12345.c1.us-east-1-1.ec2.cloud.redislabs.com:12345> SET greeting "hello redis cloud"
 OK
 ```
 
