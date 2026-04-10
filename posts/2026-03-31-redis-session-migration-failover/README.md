@@ -101,7 +101,10 @@ def get_session_with_fallback(session_id: str) -> dict | None:
     db_data = get_session_from_db(session_id)
     if db_data:
         # Re-warm Redis cache
-        r.setex(f"session:{session_id}", 3600, db_data)
+        try:
+            r.setex(f"session:{session_id}", 3600, db_data)
+        except redis.RedisError:
+            pass
         return json.loads(db_data)
 
     return None
@@ -123,7 +126,7 @@ def handle_missing_session(request, response):
 
 ```bash
 # Subscribe to Redis Sentinel events
-redis-cli -p 26379 SUBSCRIBE +failover-triggered +promoted-slave +switch-master
+redis-cli -p 26379 SUBSCRIBE +try-failover +failover-end +switch-master
 ```
 
 ## Summary
