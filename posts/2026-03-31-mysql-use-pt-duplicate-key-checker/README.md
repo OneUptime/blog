@@ -86,7 +86,7 @@ pt-duplicate-key-checker \
   --verbose
 ```
 
-The tool marks foreign key indexes with a warning so you do not drop them.
+The tool notes which indexes are used by foreign key constraints, so you can avoid dropping them.
 
 ## Saving the Output for Review
 
