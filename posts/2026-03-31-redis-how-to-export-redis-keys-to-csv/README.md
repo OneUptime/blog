@@ -110,7 +110,7 @@ async function exportSortedSetToCSV(key, outputFile, withScores = true) {
 
     for (let i = 0; i < entries.length; i += 2) {
       const rank = start + Math.floor(i / 2) + 1;
-      const member = entries[i].replace(/,/g, '\\,'); // Escape commas
+      const member = entries[i].replace(/"/g, '""'); // Escape double quotes for CSV
       const score = entries[i + 1];
 
       writeStream.write(withScores ? `${rank},"${member}",${score}\n` : `${rank},"${member}"\n`);
