@@ -38,12 +38,12 @@ Output:
 
 ```text
 {
+  "active": true,
   "name": "Alice",
   "roles": [
     "admin",
     "editor"
-  ],
-  "active": true
+  ]
 }
 ```
 
@@ -78,16 +78,16 @@ Output for the `/users/1` row:
 
 ```text
 {
+  "email": "alice@example.com",
   "id": 1,
   "name": "Alice",
-  "email": "alice@example.com",
   "roles": [
     "admin",
     "editor"
   ],
   "settings": {
-    "theme": "dark",
-    "lang": "en"
+    "lang": "en",
+    "theme": "dark"
   }
 }
 ```
@@ -137,15 +137,15 @@ SELECT JSON_PRETTY(
 
 ```text
 {
-  "user": {
-    "id": 1,
-    "name": "Alice"
-  },
+  "active": 1,
   "tags": [
     "admin",
     "editor"
   ],
-  "active": true
+  "user": {
+    "id": 1,
+    "name": "Alice"
+  }
 }
 ```
 
