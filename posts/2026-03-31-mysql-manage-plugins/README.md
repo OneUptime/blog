@@ -37,9 +37,10 @@ Common plugin types in MySQL:
 |------|---------|
 | `STORAGE ENGINE` | InnoDB, MyISAM, MEMORY |
 | `AUTHENTICATION` | caching_sha2_password, mysql_native_password |
-| `AUDIT` | audit_log, validate_password |
-| `INFORMATION SCHEMA` | X Plugin tables |
-| `DAEMON` | Clone plugin, Group Replication |
+| `AUDIT` | audit_log (MySQL Enterprise) |
+| `VALIDATE PASSWORD` | validate_password |
+| `INFORMATION SCHEMA` | InnoDB buffer, compression tables |
+| `DAEMON` | Clone plugin, Group Replication, X Plugin |
 
 ## Installing a Plugin with INSTALL PLUGIN
 
@@ -75,20 +76,27 @@ FROM mysql.component;
 
 ## Configuring Plugin Behavior
 
-After installing a plugin, its system variables become available:
+After installing a plugin, its system variables become available. Note that the plugin version uses underscore-separated variable names, while the MySQL 8.0 component version uses dot-separated names:
 
 ```sql
 SHOW VARIABLES LIKE 'validate_password%';
 ```
 
-Configure a plugin variable at runtime:
+Configure variables at runtime for the plugin version (installed with `INSTALL PLUGIN`):
+
+```sql
+SET GLOBAL validate_password_policy = 'STRONG';
+SET GLOBAL validate_password_length = 12;
+```
+
+Or for the component version (installed with `INSTALL COMPONENT`):
 
 ```sql
 SET GLOBAL validate_password.policy = 'STRONG';
 SET GLOBAL validate_password.length = 12;
 ```
 
-Persist configuration in `my.cnf`:
+Persist configuration in `my.cnf` (using component variable names for MySQL 8.0):
 
 ```ini
 [mysqld]
