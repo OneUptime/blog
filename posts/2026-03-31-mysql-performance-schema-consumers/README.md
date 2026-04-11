@@ -53,7 +53,11 @@ Typical output:
 | events_statements_history        | YES     |
 | events_statements_history_long   | NO      |
 | events_transactions_current      | YES     |
+| events_transactions_history      | YES     |
+| events_transactions_history_long | NO      |
 | events_waits_current             | NO      |
+| events_waits_history             | NO      |
+| events_waits_history_long        | NO      |
 | global_instrumentation           | YES     |
 | statements_digest                | YES     |
 | thread_instrumentation           | YES     |
