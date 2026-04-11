@@ -65,18 +65,18 @@ print(r.hexists("user:1001", "phone"))  # False
 r.hdel("user:1001", "verified")
 
 # Count fields in a hash
-print(r.hlen("user:1001"))  # 4
+print(r.hlen("user:1001"))  # 5
 
 # List all field names
-print(r.hkeys("user:1001"))  # ['name', 'email', 'plan', 'credits']
+print(r.hkeys("user:1001"))  # ['name', 'email', 'plan', 'credits', 'balance']
 
 # List all values
-print(r.hvals("user:1001"))  # ['Alice', 'alice@example.com', 'enterprise', '600']
+print(r.hvals("user:1001"))  # ['Alice', 'alice@example.com', 'enterprise', '600', '9.99']
 ```
 
 ## Hash as a Model Layer
 
-Wrap hash operations in a helper class:
+Wrap hash operations in helper functions:
 
 ```python
 from dataclasses import dataclass, asdict
@@ -112,7 +112,7 @@ print(user)
 
 ## Memory Efficiency
 
-Redis uses a compact ziplist encoding for hashes with fewer than 128 fields and values shorter than 64 bytes. Keep hashes small to benefit from this optimization.
+Redis uses a compact listpack encoding for hashes with fewer than 128 fields and values shorter than 64 bytes (in Redis versions before 7.0, this encoding was called ziplist). Keep hashes small to benefit from this optimization.
 
 Check current encoding:
 
