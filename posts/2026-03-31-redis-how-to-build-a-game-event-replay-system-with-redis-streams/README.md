@@ -219,7 +219,11 @@ def get_match_statistics(match_id: str) -> dict:
             if event_type == "kill":
                 stats[player_id]["kills"] += 1
                 victim = event.get("victim_id")
-                if victim and victim in stats:
+                if victim:
+                    if victim not in stats:
+                        stats[victim] = {
+                            "kills": 0, "deaths": 0, "shots_fired": 0
+                        }
                     stats[victim]["deaths"] += 1
             elif event_type == "shot_fired":
                 stats[player_id]["shots_fired"] += 1
