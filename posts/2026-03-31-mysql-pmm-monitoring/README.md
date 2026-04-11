@@ -12,14 +12,14 @@ Description: Learn how to install and configure Percona Monitoring and Managemen
 
 Percona Monitoring and Management (PMM) is an open-source observability platform for MySQL, PostgreSQL, and MongoDB. It consists of two components:
 
-- **PMM Server** - a Docker-based server running Grafana, Prometheus, and Percona-specific dashboards
+- **PMM Server** - a Docker-based server running Grafana, VictoriaMetrics, and Percona-specific dashboards
 - **PMM Client** - an agent installed on each MySQL host that collects metrics and sends them to the server
 
 ```mermaid
 flowchart LR
     MySQL["MySQL Server"]
     PMMClient["PMM Client\n(pmm-agent + mysqld_exporter)"]
-    PMMServer["PMM Server\n(Prometheus + Grafana + QAN)"]
+    PMMServer["PMM Server\n(VictoriaMetrics + Grafana + QAN)"]
     Browser["Browser\nDashboards"]
 
     MySQL -- "metrics" --> PMMClient
@@ -89,8 +89,12 @@ Create a dedicated user in MySQL for PMM:
 ```sql
 CREATE USER 'pmm'@'localhost' IDENTIFIED BY 'PmmPass123!' WITH MAX_USER_CONNECTIONS 10;
 
-GRANT SELECT, PROCESS, SUPER, REPLICATION CLIENT, RELOAD,
+-- MySQL 8.0+
+GRANT SELECT, PROCESS, REPLICATION CLIENT, RELOAD,
       BACKUP_ADMIN ON *.* TO 'pmm'@'localhost';
+
+-- MySQL 5.7 (BACKUP_ADMIN does not exist, omit it)
+-- GRANT SELECT, PROCESS, REPLICATION CLIENT, RELOAD ON *.* TO 'pmm'@'localhost';
 
 GRANT SELECT, UPDATE, DELETE, DROP ON performance_schema.* TO 'pmm'@'localhost';
 ```
@@ -213,4 +217,4 @@ PMM Advisors automatically analyze your MySQL configuration and flag issues. Nav
 
 ## Summary
 
-Percona Monitoring and Management provides a complete MySQL observability solution with PMM Server (running Grafana and Prometheus) and PMM Client on each MySQL host. After creating a monitoring user and registering the MySQL service with `pmm-admin add mysql`, pre-built dashboards show connection counts, InnoDB health, query performance, and replication status. The Query Analytics feature is particularly valuable for identifying the queries that contribute most to database load.
+Percona Monitoring and Management provides a complete MySQL observability solution with PMM Server (running Grafana and VictoriaMetrics) and PMM Client on each MySQL host. After creating a monitoring user and registering the MySQL service with `pmm-admin add mysql`, pre-built dashboards show connection counts, InnoDB health, query performance, and replication status. The Query Analytics feature is particularly valuable for identifying the queries that contribute most to database load.
