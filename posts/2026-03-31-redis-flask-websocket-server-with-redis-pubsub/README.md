@@ -19,7 +19,7 @@ pip install flask-socketio redis eventlet
 ## Application Setup
 
 ```python
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
@@ -116,18 +116,17 @@ def broadcast_notification():
 ## Running with Multiple Workers
 
 ```bash
-# Worker 1
-eventlet -w 1 -b 0.0.0.0:5000 myapp:app
+# Instance 1
+gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:5000 myapp:app
 
-# Worker 2 (receives Redis messages via Pub/Sub)
-eventlet -w 1 -b 0.0.0.0:5001 myapp:app
-
-# Or with gunicorn
-gunicorn --worker-class eventlet -w 4 myapp:socketio_app
+# Instance 2 (receives Redis messages via Pub/Sub)
+gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:5001 myapp:app
 ```
+
+Place a load balancer (e.g., nginx with `ip_hash`) in front of both instances with sticky sessions enabled.
 
 Redis ensures that a message emitted by Worker 1 reaches clients connected to Worker 2.
 
 ## Summary
 
-Flask-SocketIO with `message_queue="redis://..."` uses Redis Pub/Sub to distribute WebSocket events across all worker processes. Define event handlers with `@socketio.on()`, use `join_room`/`emit(..., room=...)` for targeted delivery, and call `socketio.emit()` from regular HTTP routes to push server-initiated events. This architecture scales horizontally without sticky sessions.
+Flask-SocketIO with `message_queue="redis://..."` uses Redis Pub/Sub to distribute WebSocket events across all worker processes. Define event handlers with `@socketio.on()`, use `join_room`/`emit(..., room=...)` for targeted delivery, and call `socketio.emit()` from regular HTTP routes to push server-initiated events. This architecture scales horizontally with sticky sessions and a load balancer in front of your instances.
