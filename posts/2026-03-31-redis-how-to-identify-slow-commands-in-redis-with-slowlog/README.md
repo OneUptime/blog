@@ -108,14 +108,15 @@ command_counts = Counter()
 command_times = {}
 
 for entry in entries:
-    cmd = entry['command'][0].upper()
+    parts = entry['command'].split()
+    cmd = parts[0].upper()
     duration_ms = entry['duration'] / 1000
     command_counts[cmd] += 1
     command_times.setdefault(cmd, []).append(duration_ms)
 
     ts = datetime.fromtimestamp(entry['start_time'])
-    args = ' '.join(entry['command'][:3])
-    print(f"[{ts}] {args} - {duration_ms:.1f}ms (client: {entry['client_addr']})")
+    args = ' '.join(parts[:3])
+    print(f"[{ts}] {args} - {duration_ms:.1f}ms (client: {entry.get('client_address', 'N/A')})")
 
 print("\n--- Summary by Command ---")
 for cmd, count in command_counts.most_common():
@@ -131,10 +132,10 @@ Collect slowlog entries on a schedule and persist to a file for trend analysis:
 #!/bin/bash
 LOG_DIR=/var/log/redis
 DATE=$(date +%Y%m%d_%H%M%S)
-THRESHOLD=128  # only export if there are significant entries
+THRESHOLD=5  # only export if there are significant entries
 
 count=$(redis-cli SLOWLOG LEN)
-if [ "$count" -gt 5 ]; then
+if [ "$count" -gt "$THRESHOLD" ]; then
     redis-cli SLOWLOG GET 50 > "${LOG_DIR}/slowlog_${DATE}.txt"
     redis-cli SLOWLOG RESET
     echo "Exported ${count} slowlog entries"
@@ -161,7 +162,7 @@ def check_slowlog_alert(threshold=20):
     if length > threshold:
         entries = r.slowlog_get(10)
         worst = max(entries, key=lambda e: e['duration'])
-        worst_cmd = worst['command'][0]
+        worst_cmd = worst['command'].split()[0]
         worst_ms = worst['duration'] / 1000
 
         msg = MIMEText(
