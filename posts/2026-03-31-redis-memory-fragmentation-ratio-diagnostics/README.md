@@ -96,7 +96,6 @@ redis-cli INFO memory | grep mem_fragmentation_ratio
 ```bash
 redis-cli CONFIG SET activedefrag yes
 redis-cli CONFIG SET active-defrag-ignore-bytes 100mb
-redis-cli CONFIG SET active-defrag-enabled yes
 redis-cli CONFIG SET active-defrag-threshold-lower 10   # start at 10% frag
 redis-cli CONFIG SET active-defrag-threshold-upper 100  # max effort at 100%
 ```
@@ -147,7 +146,7 @@ When the ratio is < 1.0, Redis is using swap, which is much worse than fragmenta
 
 ```bash
 # Check if Redis process is swapping
-cat /proc/$(redis-cli INFO server | grep process_id | awk -F: '{print $2}')/status | grep VmSwap
+cat /proc/$(redis-cli INFO server | grep process_id | awk -F: '{print $2}' | tr -d '\r')/status | grep VmSwap
 ```
 
 Swap causes dramatically higher latency. If you see ratio < 1.0:
