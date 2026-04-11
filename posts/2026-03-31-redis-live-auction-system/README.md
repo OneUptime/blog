@@ -120,7 +120,7 @@ Retrieve the top 5 bids with amounts:
 
 ```python
 def get_top_bids(item_id: str, count: int = 5) -> list:
-    bids = r.zrange(f"auction:{item_id}:bids", -count, -1, withscores=True, rev=True)
+    bids = r.zrange(f"auction:{item_id}:bids", 0, count - 1, withscores=True, rev=True)
     return [
         {"bidder": member.split(":")[0], "amount": score}
         for member, score in bids
