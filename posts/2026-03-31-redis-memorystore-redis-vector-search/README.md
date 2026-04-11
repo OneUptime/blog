@@ -13,7 +13,7 @@ Memorystore for Redis on GCP supports Redis 7.2 with the RediSearch module, enab
 ## Prerequisites
 
 - Memorystore for Redis with RediSearch enabled (requires importing a compatible RDB or using a cluster that supports modules)
-- Note: As of 2026, use Memorystore for Redis Cluster or the Valkey offering for module support. Standard HA supports basic vector operations via RESP3.
+- Note: As of 2026, use Memorystore for Redis Cluster or the Valkey offering for module support. Standard Memorystore for Redis does not support RediSearch modules.
 
 ## Storing Vectors with Python
 
@@ -93,20 +93,18 @@ def semantic_search(query_text: str, top_k: int = 3) -> list:
         query, query_params={"query_vec": query_vector}
     )
     return [
-        {"title": doc.title, "category": doc.category, "score": doc.score}
+        {"title": doc.title, "category": doc.category, "score": float(doc.score)}
         for doc in results.docs
     ]
 
 results = semantic_search("how to set up Redis on Google Cloud")
-for r in results:
-    print(f"{r['title']} (score: {r['score']:.4f})")
+for result in results:
+    print(f"{result['title']} (score: {result['score']:.4f})")
 ```
 
 ## Semantic Caching Pattern
 
 ```python
-import hashlib
-
 def semantic_cache_lookup(query: str, threshold: float = 0.92) -> str | None:
     query_vec = model.encode(query).astype(np.float32).tobytes()
     q = (
@@ -115,7 +113,7 @@ def semantic_cache_lookup(query: str, threshold: float = 0.92) -> str | None:
         .dialect(2)
     )
     results = r.ft("cache").search(q, query_params={"vec": query_vec})
-    if results.docs and float(results.docs[0].score) >= threshold:
+    if results.docs and float(results.docs[0].score) <= (1 - threshold):
         return results.docs[0].answer
     return None
 ```
