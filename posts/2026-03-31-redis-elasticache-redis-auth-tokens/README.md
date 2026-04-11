@@ -51,11 +51,11 @@ aws elasticache modify-replication-group \
   --auth-token-update-strategy ROTATE \
   --apply-immediately
 
-# Step 2: After updating all clients, delete the old token
+# Step 2: After updating all clients, finalize the rotation
 aws elasticache modify-replication-group \
   --replication-group-id my-cluster \
   --auth-token "NewStr0ngP@ssword2025!" \
-  --auth-token-update-strategy DELETE \
+  --auth-token-update-strategy SET \
   --apply-immediately
 ```
 
@@ -92,12 +92,11 @@ resource "aws_secretsmanager_secret_version" "redis_token" {
 ```python
 import redis
 import boto3
-import json
 
 def get_redis_client():
     sm = boto3.client("secretsmanager")
     secret = sm.get_secret_value(SecretId="elasticache/redis-auth-token")
-    token = json.loads(secret["SecretString"])["token"]
+    token = secret["SecretString"]
     return redis.Redis(
         host="secure-redis.abc.cache.amazonaws.com",
         port=6379,
@@ -111,4 +110,4 @@ client.set("key", "value")
 
 ## Summary
 
-ElastiCache Redis auth tokens require TLS to be enabled and add password-based authentication for every connection. Use the `ROTATE` strategy for zero-downtime token rotation - update the token, roll out clients with the new password, then delete the old token. Store tokens in AWS Secrets Manager rather than environment variables or code.
+ElastiCache Redis auth tokens require TLS to be enabled and add password-based authentication for every connection. Use the `ROTATE` strategy for zero-downtime token rotation - add the new token, roll out clients with the new password, then finalize with `SET`. Store tokens in AWS Secrets Manager rather than environment variables or code.
