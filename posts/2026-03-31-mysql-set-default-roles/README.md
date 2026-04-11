@@ -40,7 +40,7 @@ All listed roles are active from login.
 SET DEFAULT ROLE ALL TO 'carol'@'%';
 ```
 
-This activates every role currently granted to Carol, including any roles granted in the future.
+This activates every role currently granted to Carol. If new roles are granted later, run `SET DEFAULT ROLE ALL` again or use `activate_all_roles_on_login` to cover future grants automatically.
 
 ## Setting Default Roles for Multiple Users at Once
 
@@ -62,16 +62,8 @@ After this, Alice must manually activate roles each session with `SET ROLE`.
 ## Checking Current Default Roles
 
 ```sql
-SELECT user, host, default_role
-FROM mysql.user
-WHERE user = 'alice';
-```
-
-Or query `information_schema`:
-
-```sql
 SELECT USER, HOST, DEFAULT_ROLE_USER, DEFAULT_ROLE_HOST
-FROM information_schema.DEFAULT_ROLES
+FROM mysql.default_roles
 WHERE USER = 'alice';
 ```
 
@@ -106,7 +98,7 @@ Or in `my.cnf`:
 activate_all_roles_on_login = ON
 ```
 
-This is a global setting. `SET DEFAULT ROLE` per user takes precedence when more granular control is needed.
+This is a global setting and overrides per-user defaults: when enabled, all granted roles are activated at login regardless of `SET DEFAULT ROLE` settings. Turn it off if you need granular per-user control.
 
 ## Verifying Role Activation at Login
 
