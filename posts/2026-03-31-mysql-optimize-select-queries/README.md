@@ -102,7 +102,7 @@ FROM orders o;
 -- Fast: single join
 SELECT o.id, c.name AS cname
 FROM orders o
-JOIN customers c ON o.customer_id = c.id;
+LEFT JOIN customers c ON o.customer_id = c.id;
 ```
 
 ## Use WHERE Instead of HAVING for Filtering
