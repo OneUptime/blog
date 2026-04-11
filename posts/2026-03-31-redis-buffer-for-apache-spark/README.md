@@ -68,6 +68,7 @@ Use the `spark-redis` connector:
 
 ```python
 from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StringType
 
 spark = SparkSession.builder \
     .appName("RedisBufferConsumer") \
@@ -75,15 +76,23 @@ spark = SparkSession.builder \
     .config("spark.redis.port", "6379") \
     .getOrCreate()
 
-# Read from Redis Stream as a Spark DataFrame
-df = spark.read \
-    .format("org.apache.spark.sql.redis") \
-    .option("table", "events:raw") \
-    .option("key.column", "id") \
+schema = StructType() \
+    .add("data", StringType())
+
+# Read from Redis Stream via Structured Streaming
+df = spark.readStream \
+    .format("redis") \
+    .option("stream.keys", "events:raw") \
+    .schema(schema) \
     .load()
 
-df.printSchema()
-df.show(5)
+# Write to console for demonstration
+query = df.writeStream \
+    .outputMode("append") \
+    .format("console") \
+    .start()
+
+query.awaitTermination()
 ```
 
 ## Spark Structured Streaming from Redis
@@ -92,7 +101,6 @@ For continuous processing, poll Redis in micro-batches using a foreachBatch sink
 
 ```python
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import StructType, StringType
 import redis
 import json
@@ -121,7 +129,8 @@ while True:
             .add("timestamp", StringType())
 
         spark_df = spark.createDataFrame(
-            [json.loads(r["data"]) for r in batch]
+            [json.loads(row["data"]) for row in batch],
+            schema=schema
         )
         # Process and write to your sink
         spark_df.write.mode("append").parquet("s3://my-bucket/events/")
