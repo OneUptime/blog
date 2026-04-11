@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, System Design, Chat, Real-Time, Pub/Sub, Interview, WebSocket
 
-Description: A complete system design walkthrough for building a real-time chat system using Redis Pub/Sub, Streams, and sorted sets for message history.
+Description: A complete system design walkthrough for building a real-time chat system using Redis Pub/Sub, Streams, and Hashes for message history and unread counts.
 
 ---
 
@@ -75,22 +75,21 @@ async function getBulkPresence(userIds) {
 
 ```javascript
 async function sendMessage(chatId, senderId, content) {
-  const message = {
-    senderId,
-    content,
-    sentAt: String(Date.now())
-  };
+  const sentAt = String(Date.now());
 
-  // 1. Store in Redis Stream (recent history, 30-day TTL approximated by MAXLEN)
+  // 1. Store in Redis Stream (recent history, capped at ~1000 messages per chat)
   const messageId = await redis.xadd(
     `chat:${chatId}:messages`,
+    'MAXLEN', '~', 1000,
     '*',
-    message,
-    'MAXLEN', '~', '1000'  // Keep last ~1000 messages per chat
+    'senderId', String(senderId),
+    'content', content,
+    'sentAt', sentAt
   );
 
   // 2. Publish to Pub/Sub channel for real-time delivery
-  await redis.publish(`chat:${chatId}`, JSON.stringify({ ...message, messageId }));
+  const message = { senderId, content, sentAt, messageId };
+  await redis.publish(`chat:${chatId}`, JSON.stringify(message));
 
   // 3. Update unread counts for all members except sender
   const members = await redis.smembers(`chat:${chatId}:members`);
@@ -185,7 +184,13 @@ async function getChatHistory(chatId, count = 50) {
   );
 
   return entries
-    .map(([id, fields]) => ({ messageId: id, ...fields }))
+    .map(([id, fields]) => {
+      const obj = { messageId: id };
+      for (let i = 0; i < fields.length; i += 2) {
+        obj[fields[i]] = fields[i + 1];
+      }
+      return obj;
+    })
     .reverse(); // Return in chronological order
 }
 ```
