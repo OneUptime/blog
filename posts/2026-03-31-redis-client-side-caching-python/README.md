@@ -40,12 +40,13 @@ class RedisClientSideCache:
 
     def _setup_tracking(self):
         """Enable CLIENT TRACKING and start invalidation listener"""
+        # Get client ID first so that subscribe() reuses the same pooled connection
+        inv_client_id = self.inv_r.client_id()
+
         pubsub = self.inv_r.pubsub()
         pubsub.subscribe('__redis__:invalidate')
 
-        inv_client_id = self.inv_r.client_id()
-
-        # Redirect invalidation messages to the inv_r connection
+        # Redirect invalidation messages to the subscribed connection
         self.r.execute_command(
             'CLIENT', 'TRACKING', 'ON',
             'REDIRECT', str(inv_client_id)
