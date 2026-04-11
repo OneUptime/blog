@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Spatial, Geometry, Function, GIS
 
-Description: Learn how to use MySQL's ST_IsValid() function to check geometry validity and how to fix invalid geometries with ST_MakeValid().
+Description: Learn how to use MySQL's ST_IsValid() function to check geometry validity, audit spatial data, and understand the difference between well-formedness and validity.
 
 ---
 
@@ -74,18 +74,18 @@ FROM territories
 WHERE ST_IsValid(boundary) = 0;
 ```
 
-## Fixing Invalid Geometries with ST_MakeValid()
+## Checking Validity with ST_Validate()
 
-MySQL 8.0.24 introduced `ST_MakeValid()` to repair invalid geometries:
+MySQL also provides `ST_Validate()`, which returns the geometry itself if it is valid, or NULL if it is not:
 
 ```sql
--- Repair invalid geometries in-place
-UPDATE territories
-SET boundary = ST_MakeValid(boundary)
-WHERE ST_IsValid(boundary) = 0;
+-- Filter out rows with invalid geometries
+SELECT id, name
+FROM territories
+WHERE ST_Validate(boundary) IS NOT NULL;
 ```
 
-`ST_MakeValid()` applies minimal changes to make the geometry valid. Self-intersecting polygons may be split into multipolygons, and collapsed rings may be removed.
+Note that `ST_Validate()` does not repair invalid geometries. Unlike PostGIS, which offers `ST_MakeValid()` for geometry repair, MySQL has no built-in function to fix invalid geometries. You must correct invalid geometry data at the source or rebuild it manually.
 
 ## Validating Before Insert
 
@@ -108,25 +108,27 @@ DELIMITER ;
 ## Common Causes of Invalid Geometries
 
 - Self-intersecting polygon rings
-- Polygons with duplicate consecutive points
-- Rings that are not closed (first and last point differ)
+- Polygon interior rings located outside the exterior ring
 - Multipolygons with overlapping component polygons
-- Polygons with fewer than 4 points (including closing point)
+
+Note: Some structural problems like unclosed rings or polygons with fewer than 4 points are caught earlier by MySQL as well-formedness errors. `ST_GeomFromText()` rejects these at parse time before `ST_IsValid()` is ever called.
 
 ## Testing Edge Cases
 
-```sql
--- Unclosed ring (first != last point) - invalid
-SELECT ST_IsValid(
-  ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4))', 0)
-) AS valid;
+Some malformed geometries are rejected at parse time by `ST_GeomFromText()` before `ST_IsValid()` can evaluate them:
 
--- Too few points - invalid
-SELECT ST_IsValid(
-  ST_GeomFromText('POLYGON((0 0, 1 1, 0 0))', 0)
-) AS valid;
+```sql
+-- Unclosed ring (first != last point) - raises an error
+SELECT ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4))', 0);
+-- ERROR 3037 (22023): Invalid GIS data provided to function st_geomfromtext.
+
+-- Too few points - raises an error
+SELECT ST_GeomFromText('POLYGON((0 0, 1 1, 0 0))', 0);
+-- ERROR 3037 (22023): Invalid GIS data provided to function st_geomfromtext.
 ```
+
+These are **well-formedness** violations, not validity violations. MySQL distinguishes between the two: well-formedness is enforced at parse/storage time, while geometric validity (checked by `ST_IsValid()`) applies to structurally well-formed geometries that have geometric problems like self-intersection.
 
 ## Summary
 
-`ST_IsValid()` checks whether a geometry conforms to OGC validity rules. Use it to audit imported spatial data, prevent invalid geometries from entering your database via triggers, and identify candidates for repair with `ST_MakeValid()`. Always validate externally-sourced geometry data before running spatial analysis functions on it.
+`ST_IsValid()` checks whether a geometry conforms to OGC validity rules. Use it to audit imported spatial data, prevent invalid geometries from entering your database via triggers, and filter valid geometries with `ST_Validate()`. Always validate externally-sourced geometry data before running spatial analysis functions on it.
