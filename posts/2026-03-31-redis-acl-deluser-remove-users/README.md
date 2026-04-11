@@ -10,13 +10,13 @@ Description: Learn how to use ACL DELUSER in Redis to permanently remove one or 
 
 ## Overview
 
-`ACL DELUSER` removes one or more users from the Redis Access Control List. Once a user is deleted, any new authentication attempts using that username will fail. Existing connections authenticated as the deleted user are not immediately terminated but lose their session when they reconnect or when the server processes the next command in some configurations.
+`ACL DELUSER` removes one or more users from the Redis Access Control List. Once a user is deleted, any new authentication attempts using that username will fail. Since Redis 6.2, all existing connections authenticated as the deleted user are also terminated automatically. In earlier versions (6.0–6.0.x), connections remained active until the client disconnected or reconnected.
 
 ```mermaid
 flowchart TD
     A[ACL DELUSER username] --> B{User exists?}
     B -- Yes --> C[Remove user from ACL]
-    C --> D[Active connections remain until disconnect]
+    C --> D[Active connections terminated automatically]
     D --> E[New AUTH attempts with username fail]
     B -- No --> F[Returns 0, no error]
 ```
@@ -107,13 +107,13 @@ ACL DELUSER default
 
 The `default` user is always present. You can disable it with `ACL SETUSER default off` but not delete it.
 
-### Active connections are not immediately killed
+### Active connections are terminated automatically
 
-Deleting a user does not close existing connections that were already authenticated. If you need to immediately terminate those connections, use `CLIENT KILL` after `ACL DELUSER`:
+Since Redis 6.2, deleting a user also terminates all existing connections authenticated as that user. In Redis 6.0.x, connections were not closed automatically and you needed to use `CLIENT KILL` separately:
 
 ```redis
 ACL DELUSER alice
-CLIENT KILL USER alice
+CLIENT KILL USER alice  # only needed in Redis versions before 6.2
 ```
 
 ### Persisting the change
@@ -141,7 +141,7 @@ ACL GETUSER alice
 # 2. Delete the user
 ACL DELUSER alice
 
-# 3. Kill any active connections from alice
+# 3. Kill active connections (only needed before Redis 6.2)
 CLIENT KILL USER alice
 
 # 4. Persist the change
@@ -164,4 +164,4 @@ sequenceDiagram
 
 ## Summary
 
-`ACL DELUSER` removes one or more users from the Redis ACL and returns the count of deleted users. The `default` user cannot be removed. Existing authenticated connections are not terminated automatically, so follow up with `CLIENT KILL USER` if immediate disconnection is required. Always call `ACL SAVE` after deleting users to persist the change to the ACL file, otherwise the deletion is lost on restart.
+`ACL DELUSER` removes one or more users from the Redis ACL and returns the count of deleted users. The `default` user cannot be removed. Since Redis 6.2, existing authenticated connections are terminated automatically when the user is deleted. Always call `ACL SAVE` after deleting users to persist the change to the ACL file, otherwise the deletion is lost on restart.
