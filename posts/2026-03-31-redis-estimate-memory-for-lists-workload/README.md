@@ -16,10 +16,10 @@ Since Redis 3.2, lists use the `quicklist` encoding - a doubly-linked list of zi
 
 ```bash
 redis-cli CONFIG GET list-max-listpack-size
-# list-max-listpack-size: 128
+# list-max-listpack-size: -2
 ```
 
-Each quicklist node holds up to 128 elements by default (negative values mean size limits in bytes).
+The default value is `-2`, meaning each node can be at most 8 KB. Negative values set size limits (`-1`: 4 KB, `-2`: 8 KB, `-3`: 16 KB, `-4`: 32 KB, `-5`: 64 KB), while positive values set a maximum element count per node.
 
 ## Memory Per List Element
 
@@ -28,11 +28,13 @@ Quicklist overhead (base):        ~72 bytes per list key
 Per quicklist node:               ~32 bytes node header
 Per element in ziplist node:      ~11 bytes overhead + element_size bytes
 
-For a list with 500 elements of 20 bytes each:
-  Nodes needed: ceil(500 / 128) = 4 nodes
-  Memory = 72 + (4 * 32) + (500 * (11 + 20))
-         = 72 + 128 + 15,500
-         = ~15,700 bytes (~15.3 KB)
+For a list with 500 elements of 20 bytes each (default -2 / 8 KB node limit):
+  Bytes per entry in listpack: ~11 + 20 = ~31 bytes
+  Effective node capacity: floor(8192 / 31) ≈ 264 elements
+  Nodes needed: ceil(500 / 264) = 2 nodes
+  Memory = 72 + (2 * 32) + (500 * (11 + 20))
+         = 72 + 64 + 15,500
+         = ~15,636 bytes (~15.3 KB)
 ```
 
 ## Practical Memory Examples
@@ -82,14 +84,16 @@ def estimate_list_memory(
     }
 
 # 10,000 job queues with 500 items each (30 bytes per item)
+# With default -2 (8 KB/node): floor(8192 / (11 + 30)) = 199 effective elements/node
 result = estimate_list_memory(
     num_lists=10_000,
     elements_per_list=500,
-    avg_element_size_bytes=30
+    avg_element_size_bytes=30,
+    node_capacity=199
 )
 print(result)
-# {'elements_per_list': 500, 'num_nodes_per_list': 4,
-#  'bytes_per_list': 20700, 'total_mb': 197.3, 'total_gb': 0.193}
+# {'elements_per_list': 500, 'num_nodes_per_list': 3,
+#  'bytes_per_list': 20668, 'total_mb': 197.1, 'total_gb': 0.192}
 ```
 
 ## Impact of Node Size Configuration
@@ -102,9 +106,9 @@ redis-cli CONFIG SET list-max-listpack-size 256
 ```
 
 ```text
-With 128 elements/node: 4 nodes for 500 elements
+With default -2 (8 KB/node) and 30-byte elements: 3 nodes for 500 elements
 With 256 elements/node: 2 nodes for 500 elements
-Memory savings: ~64 bytes per list (modest but multiplies with millions of lists)
+Memory savings: ~32 bytes per list (modest but multiplies with millions of lists)
 ```
 
 ## Long Lists (>= 512 elements)
@@ -133,4 +137,4 @@ done | sort -rn | head -10
 
 ## Summary
 
-Redis list memory is governed by the quicklist structure, with each node holding up to 128 elements by default. Memory per element is approximately 11 bytes overhead plus the element size itself. For large workloads with millions of list keys, use the estimation formula and validate against `MEMORY USAGE` on real data. Consider Streams for append-only high-volume workloads where memory efficiency is critical.
+Redis list memory is governed by the quicklist structure, with each node limited to 8 KB by default (configurable via `list-max-listpack-size`). Memory per element is approximately 11 bytes overhead plus the element size itself. For large workloads with millions of list keys, use the estimation formula and validate against `MEMORY USAGE` on real data. Consider Streams for append-only high-volume workloads where memory efficiency is critical.
