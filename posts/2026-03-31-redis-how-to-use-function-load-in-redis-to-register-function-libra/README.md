@@ -10,7 +10,7 @@ Description: Learn how to use FUNCTION LOAD in Redis 7.0+ to register Lua functi
 
 ## What Is FUNCTION LOAD
 
-`FUNCTION LOAD` is the command that registers a function library in Redis 7.0+. Unlike `SCRIPT LOAD` which caches anonymous scripts by SHA1, `FUNCTION LOAD` creates a named library containing one or more callable functions that persist across server restarts (when AOF is enabled).
+`FUNCTION LOAD` is the command that registers a function library in Redis 7.0+. Unlike `SCRIPT LOAD` which caches anonymous scripts by SHA1, `FUNCTION LOAD` creates a named library containing one or more callable functions that persist across server restarts (when persistence is enabled).
 
 ```text
 FUNCTION LOAD [REPLACE] function-code
@@ -157,7 +157,6 @@ print(f"Extended TTL: {new_ttl}")
 
 ```javascript
 const { createClient } = require('redis');
-const fs = require('fs');
 
 const client = createClient();
 await client.connect();
@@ -185,7 +184,7 @@ redis.register_function('check_limit', check_limit)
 await client.functionLoad(libraryCode, { REPLACE: true });
 console.log('Library loaded');
 
-const result = await client.fcall('check_limit', ['rate:api:user:1'], ['10', '60']);
+const result = await client.fCall('check_limit', { keys: ['rate:api:user:1'], arguments: ['10', '60'] });
 const [allowed, current, ttl] = result;
 console.log(`Allowed: ${allowed}, Current: ${current}, TTL: ${ttl}s`);
 ```
@@ -202,8 +201,8 @@ def load_library_from_file(filepath, replace=False):
         code = f.read()
     return client.function_load(code, replace=replace)
 
-sha = load_library_from_file('./redis_functions/cache_utils.lua', replace=True)
-print(f"Loaded: {sha}")
+library_name = load_library_from_file('./redis_functions/cache_utils.lua', replace=True)
+print(f"Loaded: {library_name}")
 ```
 
 ## Function Registration Options
