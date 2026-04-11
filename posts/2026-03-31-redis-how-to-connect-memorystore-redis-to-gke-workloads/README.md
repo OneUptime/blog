@@ -22,7 +22,7 @@ GKE Cluster (10.0.0.0/14)
          |
 Memorystore Redis
   Private IP: 10.100.0.3
-  Port: 6379 (or 6378 for TLS)
+  Port: 6379 (TLS uses the same port)
 ```
 
 ## Creating Memorystore in the Same VPC as GKE
@@ -40,7 +40,7 @@ gcloud redis instances create gke-redis \
   --size=5 \
   --region=us-central1 \
   --zone=us-central1-a \
-  --secondary-zone=us-central1-b \
+  --alternative-zone=us-central1-b \
   --tier=standard \
   --redis-version=redis_7_0 \
   --auth-enabled \
@@ -252,9 +252,7 @@ kubectl run redis-test \
   --rm -it \
   --restart=Never \
   --namespace=production \
-  --env="REDIS_HOST=$REDIS_IP" \
-  --env="REDIS_AUTH=$REDIS_AUTH" \
-  -- redis-cli -h $REDIS_HOST -a $REDIS_AUTH ping
+  -- redis-cli -h $REDIS_IP -a $REDIS_AUTH ping
 
 # Or use a more interactive debug pod
 kubectl run debug \
@@ -300,7 +298,7 @@ resource "google_redis_instance" "gke_cache" {
 # Store in Secret Manager
 resource "google_secret_manager_secret" "redis_host" {
   secret_id = "redis-host"
-  replication { automatic = true }
+  replication { auto {} }
 }
 
 resource "google_secret_manager_secret_version" "redis_host" {
@@ -311,4 +309,4 @@ resource "google_secret_manager_secret_version" "redis_host" {
 
 ## Summary
 
-Connecting GKE workloads to Memorystore Redis requires both resources to be in the same VPC (or peered VNets). Store the Redis private IP and auth string in Kubernetes Secrets (preferably synced from Google Secret Manager via External Secrets Operator) and inject them as environment variables into your pods. Apply NetworkPolicies to restrict Redis access to only the pods that need it, and test connectivity using a temporary debug pod with redis-cli before deploying your application.
+Connecting GKE workloads to Memorystore Redis requires both resources to be in the same VPC (or peered VPCs). Store the Redis private IP and auth string in Kubernetes Secrets (preferably synced from Google Secret Manager via External Secrets Operator) and inject them as environment variables into your pods. Apply NetworkPolicies to restrict Redis access to only the pods that need it, and test connectivity using a temporary debug pod with redis-cli before deploying your application.
