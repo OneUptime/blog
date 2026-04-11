@@ -29,7 +29,7 @@ Server 1 wants to broadcast to all clients:
 Socket.io has official Redis adapter support:
 
 ```bash
-npm install socket.io @socket.io/redis-adapter ioredis
+npm install socket.io @socket.io/redis-adapter redis
 ```
 
 ```javascript
@@ -93,9 +93,8 @@ const localClients = new Map();
 
 // Subscribe to the shared broadcast channel
 subscriber.subscribe('ws:broadcast');
-subscriber.subscribe('ws:room:*');
 
-subscriber.on('pmessage', (pattern, channel, message) => {
+subscriber.on('message', (channel, message) => {
   const event = JSON.parse(message);
 
   // Forward to local clients subscribed to this channel
