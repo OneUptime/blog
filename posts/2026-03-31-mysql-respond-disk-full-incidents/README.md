@@ -59,7 +59,7 @@ SHOW BINARY LOGS;
 
 ```sql
 -- On primary, only after all replicas have consumed the logs
-SHOW REPLICA STATUS\G  -- check Relay_Master_Log_File on each replica
+SHOW REPLICA STATUS\G  -- check Relay_Source_Log_File on each replica
 
 -- Purge logs older than 3 days
 PURGE BINARY LOGS BEFORE NOW() - INTERVAL 3 DAY;
