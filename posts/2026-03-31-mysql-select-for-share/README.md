@@ -93,7 +93,7 @@ COMMIT;
 
 ## Upgrading from Shared to Exclusive Lock
 
-You cannot directly upgrade a shared lock to an exclusive lock. The workaround:
+Within the same transaction, you can request an exclusive lock on a row you already hold a shared lock on. InnoDB will upgrade the lock if no other session holds a conflicting lock. However, if another session also holds a shared lock on the same row and both sessions try to upgrade, a deadlock occurs:
 
 ```sql
 START TRANSACTION;
@@ -101,11 +101,12 @@ START TRANSACTION;
 -- First check with shared lock
 SELECT quantity FROM inventory WHERE product_id = 5 FOR SHARE;
 
--- To modify: use FOR UPDATE in the same or a new transaction
--- But acquiring FOR UPDATE while holding FOR SHARE on the same row from another session causes deadlock risk
--- Better pattern: go directly to FOR UPDATE if you plan to modify
+-- Upgrade to exclusive lock in the same transaction
+-- Succeeds if no other session holds an S lock on this row
+-- Deadlocks if another session also holds an S lock and tries to upgrade
 SELECT quantity FROM inventory WHERE product_id = 5 FOR UPDATE;
 
+-- Better pattern: go directly to FOR UPDATE if you plan to modify
 UPDATE inventory SET quantity = quantity - 1 WHERE product_id = 5;
 COMMIT;
 ```
