@@ -63,7 +63,7 @@ ZADD leaderboard:global 150 user:1001
 ZADD leaderboard:global 200 user:1002
 
 # Read top 10 instantly
-ZREVRANGE leaderboard:global 0 9 WITHSCORES
+ZRANGE leaderboard:global 0 9 REV WITHSCORES
 ```
 
 ## Fan-Out on Write for Feeds
