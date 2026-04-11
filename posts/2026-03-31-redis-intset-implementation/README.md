@@ -67,7 +67,7 @@ Intset is roughly 5-6x more memory-efficient for integer sets.
 
 ## Upgrade on Overflow
 
-If you add an integer larger than the current encoding can hold, Redis upgrades the encoding in place. Adding a value above 2^31 to a 32-bit intset causes Redis to re-encode every element as 64-bit:
+If you add an integer larger than the current encoding can hold, Redis upgrades the encoding in place. For example, adding a value that exceeds the 32-bit range causes Redis to re-encode every element as 64-bit:
 
 ```bash
 SADD small_set 1 2 3
