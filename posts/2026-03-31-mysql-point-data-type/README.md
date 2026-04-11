@@ -10,15 +10,15 @@ Description: Learn how to store and query single geographic coordinates using th
 
 ## What Is the POINT Data Type
 
-`POINT` is a spatial data type in MySQL that represents a single location in a two-dimensional coordinate space. It stores an X value (longitude) and a Y value (latitude) together as a single column value. POINT is the most common spatial type used for storing things like store locations, delivery addresses, or GPS coordinates.
+`POINT` is a spatial data type in MySQL that represents a single location in a two-dimensional coordinate space. It stores a pair of coordinate values as a single column value. For geographic coordinate systems like WGS84 (SRID 4326), the first axis is latitude and the second axis is longitude, following the axis order defined by the spatial reference system. POINT is the most common spatial type used for storing things like store locations, delivery addresses, or GPS coordinates.
 
-MySQL uses the OpenGIS standard for geometry types. POINT values can be created from Well-Known Text (WKT) using `ST_GeomFromText`, or from coordinates using `ST_PointFromText` and `ST_MakePoint`.
+MySQL uses the OpenGIS standard for geometry types. POINT values can be created from Well-Known Text (WKT) using `ST_GeomFromText`, or from coordinates using `ST_PointFromText` and the `Point()` constructor.
 
 ```mermaid
 graph TD
     A[POINT column] --> B["Stores X and Y coordinates"]
-    B --> C["ST_X - returns longitude / X"]
-    B --> D["ST_Y - returns latitude / Y"]
+    B --> C["ST_X - returns latitude for SRID 4326"]
+    B --> D["ST_Y - returns longitude for SRID 4326"]
     A --> E["Spatial Index on POINT NOT NULL"]
     E --> F["Accelerates ST_Within, MBRContains queries"]
 ```
@@ -29,15 +29,15 @@ graph TD
 -- Column definition
 column_name POINT [NOT NULL] [SRID srid_value]
 
--- Create a POINT value from WKT
-ST_GeomFromText('POINT(longitude latitude)', srid)
+-- Create a POINT value from WKT (SRID 4326 axis order: latitude first)
+ST_GeomFromText('POINT(latitude longitude)', srid)
 
--- Create a POINT value from coordinates
-ST_MakePoint(longitude, latitude)
+-- Create a POINT value using the Point constructor (SRID 0 by default)
+Point(x, y)
 
--- Extract coordinates
-ST_X(point_column)   -- returns X / longitude
-ST_Y(point_column)   -- returns Y / latitude
+-- Extract coordinates (for SRID 4326: X = latitude, Y = longitude)
+ST_X(point_column)   -- returns first axis (latitude for SRID 4326)
+ST_Y(point_column)   -- returns second axis (longitude for SRID 4326)
 ```
 
 ## Examples
@@ -59,17 +59,17 @@ SRID 4326 is the WGS84 coordinate reference system used by GPS. Specifying the S
 ### Insert POINT Values
 
 ```sql
--- Using ST_GeomFromText (WKT format: longitude latitude)
+-- Using ST_GeomFromText (WKT format for SRID 4326: latitude longitude)
 INSERT INTO landmarks (name, category, location) VALUES
-    ('Eiffel Tower',       'Monument',  ST_GeomFromText('POINT(2.2945 48.8584)',    4326)),
-    ('Statue of Liberty',  'Monument',  ST_GeomFromText('POINT(-74.0445 40.6892)', 4326)),
-    ('Sydney Opera House', 'Arts',      ST_GeomFromText('POINT(151.2153 -33.8568)', 4326)),
-    ('Big Ben',            'Monument',  ST_GeomFromText('POINT(-0.1246 51.5007)',   4326)),
-    ('Colosseum',          'Monument',  ST_GeomFromText('POINT(12.4922 41.8902)',   4326));
+    ('Eiffel Tower',       'Monument',  ST_GeomFromText('POINT(48.8584 2.2945)',    4326)),
+    ('Statue of Liberty',  'Monument',  ST_GeomFromText('POINT(40.6892 -74.0445)', 4326)),
+    ('Sydney Opera House', 'Arts',      ST_GeomFromText('POINT(-33.8568 151.2153)', 4326)),
+    ('Big Ben',            'Monument',  ST_GeomFromText('POINT(51.5007 -0.1246)',   4326)),
+    ('Colosseum',          'Monument',  ST_GeomFromText('POINT(41.8902 12.4922)',   4326));
 
--- Using ST_MakePoint
+-- Using ST_SRID with Point constructor
 INSERT INTO landmarks (name, category, location) VALUES
-    ('Tokyo Tower', 'Monument', ST_MakePoint(139.7454, 35.6586));
+    ('Tokyo Tower', 'Monument', ST_SRID(Point(35.6586, 139.7454), 4326));
 ```
 
 ### Read POINT Coordinates
@@ -78,35 +78,35 @@ INSERT INTO landmarks (name, category, location) VALUES
 SELECT
     name,
     category,
-    ST_X(location) AS longitude,
-    ST_Y(location) AS latitude
+    ST_X(location) AS latitude,
+    ST_Y(location) AS longitude
 FROM landmarks
 ORDER BY name;
 ```
 
 ```text
-+-----------------------+-----------+------------+-----------+
-| name                  | category  | longitude  | latitude  |
-+-----------------------+-----------+------------+-----------+
-| Big Ben               | Monument  |  -0.124600 |  51.50070 |
-| Colosseum             | Monument  |  12.492200 |  41.89020 |
-| Eiffel Tower          | Monument  |   2.294500 |  48.85840 |
-| Statue of Liberty     | Monument  | -74.044500 |  40.68920 |
-| Sydney Opera House    | Arts      | 151.215300 | -33.85680 |
-| Tokyo Tower           | Monument  | 139.745400 |  35.65860 |
-+-----------------------+-----------+------------+-----------+
++-----------------------+-----------+-----------+------------+
+| name                  | category  | latitude  | longitude  |
++-----------------------+-----------+-----------+------------+
+| Big Ben               | Monument  |  51.50070 |  -0.124600 |
+| Colosseum             | Monument  |  41.89020 |  12.492200 |
+| Eiffel Tower          | Monument  |  48.85840 |   2.294500 |
+| Statue of Liberty     | Monument  |  40.68920 | -74.044500 |
+| Sydney Opera House    | Arts      | -33.85680 | 151.215300 |
+| Tokyo Tower           | Monument  |  35.65860 | 139.745400 |
++-----------------------+-----------+-----------+------------+
 ```
 
 ### Calculate Distance Between Two Points
 
 ```sql
--- Distance in meters using the WGS84 ellipsoid
+-- Distance in meters using a spherical Earth model
 SELECT
     name,
     ROUND(
         ST_Distance_Sphere(
             location,
-            ST_GeomFromText('POINT(2.2945 48.8584)', 4326)
+            ST_GeomFromText('POINT(48.8584 2.2945)', 4326)
         )
     ) AS distance_from_eiffel_meters
 FROM landmarks
@@ -131,23 +131,23 @@ ORDER BY distance_from_eiffel_meters;
 ```sql
 -- Find European landmarks (rough bounding box)
 SET @europe_bbox = ST_GeomFromText(
-    'POLYGON((-10 35, 40 35, 40 60, -10 60, -10 35))',
+    'POLYGON((35 -10, 35 40, 60 40, 60 -10, 35 -10))',
     4326
 );
 
-SELECT name, ST_X(location) AS lon, ST_Y(location) AS lat
+SELECT name, ST_X(location) AS lat, ST_Y(location) AS lon
 FROM landmarks
 WHERE MBRContains(@europe_bbox, location);
 ```
 
 ```text
-+--------------+--------+---------+
-| name         | lon    | lat     |
-+--------------+--------+---------+
-| Eiffel Tower | 2.2945 | 48.8584 |
-| Big Ben      | -0.1246| 51.5007 |
-| Colosseum    | 12.4922| 41.8902 |
-+--------------+--------+---------+
++--------------+---------+--------+
+| name         | lat     | lon    |
++--------------+---------+--------+
+| Eiffel Tower | 48.8584 | 2.2945 |
+| Big Ben      | 51.5007 | -0.1246|
+| Colosseum    | 41.8902 | 12.4922|
++--------------+---------+--------+
 ```
 
 ### Convert POINT to WKT String
@@ -162,9 +162,9 @@ LIMIT 3;
 +-----------------------+-----------------------------+
 | name                  | wkt                         |
 +-----------------------+-----------------------------+
-| Eiffel Tower          | POINT(2.2945 48.8584)       |
-| Statue of Liberty     | POINT(-74.0445 40.6892)     |
-| Sydney Opera House    | POINT(151.2153 -33.8568)    |
+| Eiffel Tower          | POINT(48.8584 2.2945)       |
+| Statue of Liberty     | POINT(40.6892 -74.0445)     |
+| Sydney Opera House    | POINT(-33.8568 151.2153)    |
 +-----------------------+-----------------------------+
 ```
 
@@ -172,7 +172,7 @@ LIMIT 3;
 
 ```sql
 UPDATE landmarks
-SET location = ST_GeomFromText('POINT(2.2950 48.8590)', 4326)
+SET location = ST_GeomFromText('POINT(48.8590 2.2950)', 4326)
 WHERE name = 'Eiffel Tower';
 ```
 
@@ -198,11 +198,11 @@ WHERE id = 1;
 ## Best Practices
 
 - Declare POINT columns as `NOT NULL` with a fixed SRID so MySQL can use a spatial index and perform correct geodetic calculations.
-- Always use `ST_GeomFromText('POINT(lon lat)', 4326)` format - WKT puts X (longitude) first, then Y (latitude).
-- Use `ST_X()` to get longitude and `ST_Y()` to get latitude. The naming is counterintuitive for geographers but follows the OpenGIS convention.
-- For distance queries in meters, use `ST_Distance_Sphere` (fast, approximate) or `ST_Distance` with SRID 4326 (exact geodetic).
+- Always use `ST_GeomFromText('POINT(lat lon)', 4326)` format - for SRID 4326, the axis order is latitude first, longitude second, matching the SRS definition.
+- Use `ST_X()` to get latitude and `ST_Y()` to get longitude for SRID 4326. Alternatively, use `ST_Latitude()` and `ST_Longitude()` (MySQL 8.0.12+) for unambiguous access.
+- For distance queries in meters, use `ST_Distance_Sphere` (fast, spherical approximation) or `ST_Distance` with SRID 4326 (exact geodetic using the WGS84 ellipsoid).
 - Combine a `MBRContains` bounding box (spatial index) with an exact distance filter for efficient radius searches.
 
 ## Summary
 
-The `POINT` data type in MySQL stores a single (X, Y) coordinate pair representing a location in a two-dimensional space. Declare POINT columns `NOT NULL` with SRID 4326 for WGS84 geographic coordinates. Insert values with `ST_GeomFromText('POINT(lon lat)', 4326)` or `ST_MakePoint(lon, lat)`. Extract coordinates with `ST_X()` and `ST_Y()`. Add a `SPATIAL INDEX` on the column to accelerate spatial queries using `MBRContains`, `ST_Within`, and related functions.
+The `POINT` data type in MySQL stores a single (X, Y) coordinate pair representing a location in a two-dimensional space. Declare POINT columns `NOT NULL` with SRID 4326 for WGS84 geographic coordinates. Insert values with `ST_GeomFromText('POINT(lat lon)', 4326)`, following the SRS-defined axis order of latitude first, longitude second. Extract coordinates with `ST_X()` (latitude) and `ST_Y()` (longitude) for SRID 4326, or use `ST_Latitude()` and `ST_Longitude()` for clarity. Add a `SPATIAL INDEX` on the column to accelerate spatial queries using `MBRContains`, `ST_Within`, and related functions.
