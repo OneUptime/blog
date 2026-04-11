@@ -46,6 +46,7 @@ resource "aws_elasticache_replication_group" "redis_eu" {
 Route EU users to an EU Redis instance and non-EU users to a separate instance:
 
 ```python
+import json
 import redis
 import os
 
