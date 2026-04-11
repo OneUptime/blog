@@ -67,7 +67,12 @@ sdk.start();
 // All ioredis operations are now traced
 const Redis = require('ioredis');
 const client = new Redis();
-await client.set('key', 'value');
+
+async function main() {
+  await client.set('key', 'value');
+}
+
+main();
 ```
 
 ## Manual Span Creation for Batch Operations
