@@ -94,21 +94,36 @@ mysqlslap -u root -p \
   --iterations=3
 ```
 
-Sample output:
+Sample output (repeated for each concurrency level):
 
 ```text
 Benchmark
-        Concurrency level: 1
-        Average: 0.025 seconds
+        Average number of seconds to run all queries: 0.025 seconds
+        Minimum number of seconds to run all queries: 0.024 seconds
+        Maximum number of seconds to run all queries: 0.026 seconds
+        Number of clients running queries: 1
+        Average number of queries per client: 0
 
-        Concurrency level: 10
-        Average: 0.078 seconds
+Benchmark
+        Average number of seconds to run all queries: 0.078 seconds
+        Minimum number of seconds to run all queries: 0.070 seconds
+        Maximum number of seconds to run all queries: 0.085 seconds
+        Number of clients running queries: 10
+        Average number of queries per client: 0
 
-        Concurrency level: 50
-        Average: 0.312 seconds
+Benchmark
+        Average number of seconds to run all queries: 0.312 seconds
+        Minimum number of seconds to run all queries: 0.298 seconds
+        Maximum number of seconds to run all queries: 0.331 seconds
+        Number of clients running queries: 50
+        Average number of queries per client: 0
 
-        Concurrency level: 100
-        Average: 0.689 seconds
+Benchmark
+        Average number of seconds to run all queries: 0.689 seconds
+        Minimum number of seconds to run all queries: 0.654 seconds
+        Maximum number of seconds to run all queries: 0.721 seconds
+        Number of clients running queries: 100
+        Average number of queries per client: 0
 ```
 
 ## Schema Setup and Teardown
