@@ -114,12 +114,13 @@ WHERE FILE_TYPE = 'TABLESPACE'
 ORDER BY TABLESPACE_NAME;
 ```
 
-Find which tables are in a specific tablespace:
+Find which tables are in a specific tablespace (MySQL 8.0+):
 
 ```sql
-SELECT TABLE_SCHEMA, TABLE_NAME, CREATE_OPTIONS
-FROM information_schema.TABLES
-WHERE CREATE_OPTIONS LIKE '%TABLESPACE=ts_archive%';
+SELECT t.NAME AS table_name, ts.NAME AS tablespace_name
+FROM information_schema.INNODB_TABLES t
+JOIN information_schema.INNODB_TABLESPACES ts ON t.SPACE = ts.SPACE
+WHERE ts.NAME = 'ts_archive';
 ```
 
 ## Dropping a General Tablespace
