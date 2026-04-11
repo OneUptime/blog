@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Mobile, Real-Time, Pub/Sub, Sync
 
-Description: Learn how to use Redis Pub/Sub and keyspace notifications to synchronize data in real time across mobile app clients.
+Description: Learn how to use Redis Pub/Sub to synchronize data in real time across mobile app clients.
 
 ---
 
-Real-time sync keeps mobile app users on the same page. When one user updates a shared document or cart, others should see the change immediately. Redis Pub/Sub and keyspace notifications make this straightforward without polling.
+Real-time sync keeps mobile app users on the same page. When one user updates a shared document or cart, others should see the change immediately. Redis Pub/Sub makes this straightforward without polling.
 
 ## Architecture Overview
 
