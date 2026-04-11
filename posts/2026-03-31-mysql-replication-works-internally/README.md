@@ -14,7 +14,7 @@ MySQL replication is asynchronous by default. The primary (source) records all d
 
 ## The Binary Log on the Primary
 
-The binary log (`binlog`) is a sequential journal of all committed transactions that change data. It is written after InnoDB commits a transaction to the redo log:
+The binary log (`binlog`) is a sequential journal of all committed transactions that change data. It is written as part of a two-phase commit: InnoDB first prepares the transaction in the redo log, then the binary log entry is written, and finally InnoDB commits:
 
 ```sql
 SHOW VARIABLES LIKE 'log_bin';
@@ -49,9 +49,8 @@ A separate SQL thread reads events from the relay logs and applies them to the r
 
 ```sql
 -- Check replication lag
-SELECT
-  SECONDS_BEHIND_SOURCE  -- Seconds the replica is behind the primary
-FROM performance_schema.replication_applier_status_by_coordinator;
+SHOW REPLICA STATUS\G
+-- Key field: Seconds_Behind_Source  -- Seconds the replica is behind the primary
 ```
 
 ## GTID-Based Replication
