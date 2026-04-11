@@ -27,7 +27,7 @@ On spinning disks, sequential I/O is far faster than random I/O due to seek time
 innodb_io_capacity = 4000
 innodb_io_capacity_max = 8000
 
-# For consumer SSD (500-1000 IOPS sequential):
+# For SATA SSD (typically 10,000-80,000+ random IOPS):
 # innodb_io_capacity = 1000
 # innodb_io_capacity_max = 3000
 ```
@@ -99,11 +99,11 @@ cat /sys/block/nvme0n1/queue/scheduler
 echo mq-deadline | sudo tee /sys/block/nvme0n1/queue/scheduler
 
 # Make permanent in /etc/udev/rules.d/60-scheduler.rules
-echo 'ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="mq-deadline"' | \
+echo 'ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="mq-deadline"' | \
   sudo tee /etc/udev/rules.d/60-scheduler.rules
 ```
 
-## Redo Log and Doublewrite Buffer on SSD
+## Doublewrite Buffer on SSD
 
 With fast SSD storage, you can safely enable the doublewrite buffer (it protects against partial page writes) without significant overhead:
 
