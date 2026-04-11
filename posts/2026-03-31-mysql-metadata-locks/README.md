@@ -32,10 +32,10 @@ Every SQL statement that accesses a table acquires an MDL:
 
 ```text
 MDL modes (from least to most restrictive):
-  SHARED                  - Acquired by most DML (SELECT, INSERT, UPDATE)
-  SHARED_READ             - Read operations
-  SHARED_WRITE            - DML that modifies data
-  SHARED_NO_READ_WRITE    - FLUSH TABLES
+  SHARED                  - Basic shared lock (HANDLER statements)
+  SHARED_READ             - SELECT and other read operations
+  SHARED_WRITE            - INSERT, UPDATE, DELETE
+  SHARED_NO_READ_WRITE    - LOCK TABLES ... WRITE
   EXCLUSIVE               - DDL operations (ALTER TABLE, DROP TABLE)
 ```
 
@@ -71,25 +71,28 @@ Enable MDL instrumentation in Performance Schema:
 UPDATE performance_schema.setup_instruments
 SET ENABLED = 'YES', TIMED = 'YES'
 WHERE NAME = 'wait/lock/metadata/sql/mdl';
-
-UPDATE performance_schema.setup_consumers
-SET ENABLED = 'YES'
-WHERE NAME = 'events_statements_current';
 ```
 
 Query active MDL waits:
 
 ```sql
 SELECT
-    r.PROCESSLIST_ID AS waiting_pid,
-    r.SQL_TEXT AS waiting_query,
-    b.PROCESSLIST_ID AS blocking_pid,
-    b.SQL_TEXT AS blocking_query,
-    b.PROCESSLIST_TIME AS blocking_time_seconds
-FROM performance_schema.metadata_locks ml
-JOIN performance_schema.events_statements_current r
-    ON r.THREAD_ID = ml.OWNER_THREAD_ID
-WHERE ml.LOCK_STATUS = 'PENDING';
+    wt.PROCESSLIST_ID AS waiting_pid,
+    wt.PROCESSLIST_INFO AS waiting_query,
+    bt.PROCESSLIST_ID AS blocking_pid,
+    bt.PROCESSLIST_INFO AS blocking_query,
+    bt.PROCESSLIST_TIME AS blocking_time_seconds
+FROM performance_schema.metadata_locks wml
+JOIN performance_schema.metadata_locks bml
+    ON bml.OBJECT_TYPE = wml.OBJECT_TYPE
+    AND bml.OBJECT_SCHEMA = wml.OBJECT_SCHEMA
+    AND bml.OBJECT_NAME = wml.OBJECT_NAME
+    AND bml.LOCK_STATUS = 'GRANTED'
+JOIN performance_schema.threads wt
+    ON wt.THREAD_ID = wml.OWNER_THREAD_ID
+JOIN performance_schema.threads bt
+    ON bt.THREAD_ID = bml.OWNER_THREAD_ID
+WHERE wml.LOCK_STATUS = 'PENDING';
 ```
 
 ## Finding the Blocking Transaction
