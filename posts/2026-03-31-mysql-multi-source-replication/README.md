@@ -29,7 +29,7 @@ flowchart TD
 
 ## Prerequisites
 
-- MySQL 5.7.6+ on all servers
+- MySQL 8.0.23+ on all servers (multi-source replication is available since 5.7.6, but this guide uses the modern syntax introduced in 8.0.23+)
 - `gtid_mode = ON` or position-based replication on each source
 - Replication user on each source that the replica can authenticate with
 - `replica_parallel_type = LOGICAL_CLOCK` and `replica_parallel_workers > 1` recommended for performance
@@ -118,7 +118,7 @@ SELECT
   CHANNEL_NAME,
   SERVICE_STATE       AS sql_thread_state,
   LAST_ERROR_MESSAGE  AS sql_error,
-  LAST_APPLIED_TRANSACTION
+  LAST_PROCESSED_TRANSACTION
 FROM performance_schema.replication_applier_status_by_coordinator;
 ```
 
@@ -147,7 +147,7 @@ If GTIDs are not enabled, use file and position coordinates instead:
 -- Get coordinates from the source
 -- (Run on Source 1)
 FLUSH TABLES WITH READ LOCK;
-SHOW BINARY LOG STATUS;
+SHOW MASTER STATUS;
 /*
 +------------------+----------+
 | File             | Position |
