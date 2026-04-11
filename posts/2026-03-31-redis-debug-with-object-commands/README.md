@@ -25,13 +25,14 @@ Common encodings and when they apply:
 | String | `int` | Value is an integer |
 | String | `embstr` | String <= 44 bytes |
 | String | `raw` | String > 44 bytes |
-| List | `listpack` | <= 128 entries, each <= 64 bytes |
+| List | `listpack` | Small lists within `list-max-listpack-size` limit (default ~8 KB) |
 | List | `quicklist` | Larger lists |
 | Hash | `listpack` | <= 128 entries, each <= 64 bytes |
 | Hash | `hashtable` | Larger hashes |
+| Set | `intset` | All members are integers, <= 512 entries |
 | Set | `listpack` | <= 128 entries, each <= 64 bytes |
 | Set | `hashtable` | Larger sets |
-| ZSet | `listpack` | <= 128 entries |
+| ZSet | `listpack` | <= 128 entries, each <= 64 bytes |
 | ZSet | `skiplist` | Larger sorted sets |
 
 ```bash
