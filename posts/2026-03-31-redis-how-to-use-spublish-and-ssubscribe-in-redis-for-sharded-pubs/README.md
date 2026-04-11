@@ -29,8 +29,10 @@ SSUBSCRIBE shardchannel [shardchannel ...]
 
 ```bash
 SSUBSCRIBE orders:us-east
-SSUBSCRIBE payments:eu-west analytics:asia
+SSUBSCRIBE {payments}.eu-west {payments}.asia
 ```
+
+Note: all channels in a single `SSUBSCRIBE` call must belong to the same hash slot. Use separate calls for channels in different slots.
 
 Each subscription confirmation returns:
 
