@@ -216,9 +216,9 @@ ZADD leaderboard 1500 "alice" 900 "bob" 1200 "charlie"
 SORT leaderboard ALPHA
 # 1) "alice" 2) "bob" 3) "charlie"
 
-# Sort by score (use ZRANGE instead for this use case!)
-SORT leaderboard
-# Sorts lexicographically by default since scores != values
+# SORT leaderboard (without ALPHA) would error because
+# "alice", "bob", "charlie" are not numeric values:
+# (error) ERR One or more scores can't be converted into double
 ```
 
 For sorted set score-based ordering, prefer `ZRANGE` and `ZREVRANGE`.
@@ -241,7 +241,6 @@ SORT_RO mylist BY weight:* GET name:*
 
 ```python
 import redis
-import time
 
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
