@@ -81,30 +81,32 @@ INSERT INTO event_metadata (event, meta) VALUES
 
 ## Merging Rows into a Single Document
 
+When there are exactly two rows, a self-join works well:
+
 ```sql
--- Combine all login event metadata into one document
-SELECT JSON_MERGE_PRESERVE(
-    GROUP_CONCAT(meta ORDER BY id SEPARATOR '","' )
-) AS merged
-FROM event_metadata
-WHERE event = 'login';
+-- Combine two login event metadata rows using a self-join
+SELECT JSON_MERGE_PRESERVE(e1.meta, e2.meta) AS merged
+FROM event_metadata e1
+JOIN event_metadata e2
+    ON e1.event = e2.event AND e1.id < e2.id
+WHERE e1.event = 'login';
 ```
 
-A cleaner approach uses a subquery:
+Another approach for exactly two rows uses `MIN` and `MAX`:
 
 ```sql
 SELECT
     event,
     JSON_MERGE_PRESERVE(
-        MIN(meta),  -- first row
-        MAX(meta)   -- second row (works when only 2 rows; use variables for more)
+        MIN(meta),
+        MAX(meta)
     ) AS combined_meta
 FROM event_metadata
 WHERE event = 'login'
 GROUP BY event;
 ```
 
-For merging many rows, collect them at the application layer or use a stored procedure with a loop.
+Note that `JSON_MERGE_PRESERVE()` requires at least two arguments, so you cannot dynamically expand aggregated rows into separate arguments within a single SQL call. For merging many rows, collect them at the application layer or use a stored procedure with a loop.
 
 ## Object Recursive Merge
 
@@ -152,18 +154,9 @@ INSERT INTO user_activity VALUES
 (1, '["login", "viewed_dashboard"]'),
 (1, '["clicked_ad", "login"]'),
 (2, '["signup", "verified_email"]');
-
--- Combine tags per user (arrays are concatenated)
-SELECT
-    user_id,
-    JSON_MERGE_PRESERVE(
-        JSON_ARRAYAGG(tags)  -- this creates an array-of-arrays, not ideal
-    ) AS all_tags
-FROM user_activity
-GROUP BY user_id;
 ```
 
-For merging arrays of arrays into a flat array, use `JSON_MERGE_PRESERVE` with two explicit array arguments:
+Since `JSON_MERGE_PRESERVE()` requires at least two arguments, you cannot wrap a single `JSON_ARRAYAGG()` call with it. Instead, merge explicit array arguments directly:
 
 ```sql
 SELECT JSON_MERGE_PRESERVE(
