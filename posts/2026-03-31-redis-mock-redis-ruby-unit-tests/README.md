@@ -130,23 +130,6 @@ it 'sets a TTL on the key' do
 end
 ```
 
-## Testing Pub/Sub
-
-```ruby
-it 'publishes to the correct channel' do
-  received = []
-  thread = Thread.new do
-    mock_redis.subscribe('events') do |on|
-      on.message { |_ch, msg| received << msg }
-    end
-  end
-
-  mock_redis.publish('events', 'hello')
-  thread.join(0.1)
-  expect(received).to include('hello')
-end
-```
-
 ## Minitest Example
 
 ```ruby
