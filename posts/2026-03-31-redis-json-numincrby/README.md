@@ -34,27 +34,27 @@ JSON.SET stats:1 $ '{"views":100,"likes":25,"score":4.5,"inventory":50}'
 
 ```redis
 127.0.0.1:6379> JSON.NUMINCRBY stats:1 $.views 1
-1) "[101]"
+"[101]"
 
 127.0.0.1:6379> JSON.NUMINCRBY stats:1 $.views 10
-1) "[111]"
+"[111]"
 ```
 
 ## Decrement
 
 ```redis
 127.0.0.1:6379> JSON.NUMINCRBY stats:1 $.inventory -5
-1) "[45]"
+"[45]"
 ```
 
 ## Floating-Point Increment
 
 ```redis
 127.0.0.1:6379> JSON.NUMINCRBY stats:1 $.score 0.1
-1) "[4.6]"
+"[4.6]"
 
 127.0.0.1:6379> JSON.NUMINCRBY stats:1 $.score -0.2
-1) "[4.4]"
+"[4.4]"
 ```
 
 ## Wildcard: Increment All Matching Numbers
@@ -63,9 +63,7 @@ JSON.SET stats:1 $ '{"views":100,"likes":25,"score":4.5,"inventory":50}'
 JSON.SET prices:1 $ '{"items":[{"name":"apple","price":1.0},{"name":"banana","price":0.5},{"name":"cherry","price":2.0}]}'
 
 JSON.NUMINCRBY prices:1 '$.items[*].price' 0.25
-# 1) "[1.25]"
-# 2) "[0.75]"
-# 3) "[2.25]"
+# "[1.25,0.75,2.25]"
 ```
 
 All matched numeric nodes are incremented and all new values are returned.
@@ -76,10 +74,10 @@ All matched numeric nodes are incremented and all new values are returned.
 JSON.SET user:1 $ '{"profile":{"name":"Alice","metrics":{"logins":10,"api_calls":500}}}'
 
 JSON.NUMINCRBY user:1 $.profile.metrics.logins 1
-# 1) "[11]"
+# "[11]"
 
 JSON.NUMINCRBY user:1 $.profile.metrics.api_calls 25
-# 1) "[525]"
+# "[525]"
 ```
 
 ## Atomic Increment Flow
