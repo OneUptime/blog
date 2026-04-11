@@ -48,7 +48,7 @@ This means Redis can handle thousands of concurrent clients without spawning thr
 
 Redis uses optimized encoding for small data:
 - Short strings use embedded string encoding (no heap allocation)
-- Small hashes and sets use `listpack` (formerly `ziplist`) instead of full hash tables
+- Small hashes and sorted sets use `listpack` (formerly `ziplist`) instead of full hash tables
 
 ## Persistence Mechanisms
 
