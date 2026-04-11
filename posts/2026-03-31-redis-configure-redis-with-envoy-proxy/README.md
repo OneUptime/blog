@@ -74,10 +74,9 @@ curl http://localhost:9901/stats | grep redis
 You'll see counters like:
 
 ```text
-redis_stats.upstream_cx_active: 3
-redis_stats.command.get.total: 1042
-redis_stats.command.set.total: 312
-redis_stats.command.get.latency_us_p50: 450
+redis.redis_stats.downstream_cx_active: 3
+redis.redis_stats.command.get.total: 1042
+redis.redis_stats.command.set.total: 312
 ```
 
 ## Adding TLS Termination
@@ -118,7 +117,7 @@ This is useful for multi-tenant or workload-separated deployments.
 
 ## Monitoring with OneUptime
 
-Once Envoy exposes metrics via its admin endpoint, you can scrape them with a Prometheus exporter and send alerts to OneUptime. Set up a monitor that triggers when `redis_stats.upstream_cx_active` exceeds your threshold or command latency spikes above acceptable levels.
+Once Envoy exposes metrics via its admin endpoint, you can scrape them with a Prometheus exporter and send alerts to OneUptime. Set up a monitor that triggers when `redis.redis_stats.downstream_cx_active` exceeds your threshold or command latency spikes above acceptable levels.
 
 ## Summary
 
