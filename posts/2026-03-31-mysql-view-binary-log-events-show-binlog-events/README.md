@@ -22,7 +22,7 @@ SHOW BINLOG EVENTS
 ## Viewing Events in the Current Binary Log
 
 ```sql
--- Show first events in the current active binary log
+-- Show first events in the first binary log
 SHOW BINLOG EVENTS;
 ```
 
@@ -106,8 +106,8 @@ Once you identify the log position just before an unwanted change:
 SHOW BINLOG EVENTS IN 'mysql-bin.000003' FROM 1000 LIMIT 50;
 -- Identify the position: say 2450
 
--- Restore up to position 2449
-mysqlbinlog --stop-position=2449 /var/lib/mysql/binlogs/mysql-bin.000003 | mysql -u root -p
+-- Restore up to but not including position 2450
+mysqlbinlog --stop-position=2450 /var/lib/mysql/binlogs/mysql-bin.000003 | mysql -u root -p
 ```
 
 ## Summary
