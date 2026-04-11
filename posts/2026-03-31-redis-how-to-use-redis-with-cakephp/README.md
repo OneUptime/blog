@@ -12,6 +12,20 @@ CakePHP has built-in support for Redis through its `Cache` and `Session` compone
 
 ## Installing Dependencies
 
+CakePHP's built-in `RedisEngine` requires the phpredis PHP extension:
+
+```bash
+pecl install redis
+```
+
+Make sure the extension is enabled in your `php.ini`:
+
+```ini
+extension=redis
+```
+
+If you also want to use Predis for manual Redis operations (shown later), install it via Composer:
+
 ```bash
 composer require predis/predis
 ```
@@ -25,7 +39,7 @@ Add a Redis cache configuration in `config/app.php`.
 'Cache' => [
     'default' => [
         'className' => \Cake\Cache\Engine\RedisEngine::class,
-        'server' => env('REDIS_HOST', '127.0.0.1'),
+        'host' => env('REDIS_HOST', '127.0.0.1'),
         'port' => env('REDIS_PORT', 6379),
         'password' => env('REDIS_PASSWORD', false),
         'database' => 0,
@@ -34,7 +48,7 @@ Add a Redis cache configuration in `config/app.php`.
     ],
     'long_term' => [
         'className' => \Cake\Cache\Engine\RedisEngine::class,
-        'server' => env('REDIS_HOST', '127.0.0.1'),
+        'host' => env('REDIS_HOST', '127.0.0.1'),
         'port' => env('REDIS_PORT', 6379),
         'duration' => '+1 day',
         'prefix' => 'myapp_lt_',
@@ -79,9 +93,7 @@ CakePHP supports query-level result caching.
 // src/Model/Table/ProductsTable.php
 public function findCachedAll(Query $query, array $options): Query
 {
-    return $query
-        ->cache('products_table_cache', 'default')
-        ->find('all');
+    return $query->cache('products_table_cache', 'default');
 }
 ```
 
@@ -91,9 +103,8 @@ Configure sessions to use Redis in `config/app.php`.
 
 ```php
 'Session' => [
-    'defaults' => 'php',
+    'defaults' => 'cache',
     'handler' => [
-        'engine' => \Cake\Http\Session\CacheSession::class,
         'config' => 'default',
     ],
     'cookie' => 'myapp_session',
