@@ -21,10 +21,9 @@ TS.MRANGE fromTimestamp toTimestamp
   [FILTER_BY_VALUE min max]
   [WITHLABELS | SELECTED_LABELS label...]
   [COUNT count]
-  [ALIGN align]
-  [AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
-  [GROUPBY label REDUCE reducer]
+  [[ALIGN align] AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
   FILTER filterExpr [filterExpr ...]
+  [GROUPBY label REDUCE reducer]
 ```
 
 ## Setting Up Sample Data
@@ -95,7 +94,7 @@ TS.MRANGE - + \
   GROUPBY region REDUCE AVG
 ```
 
-Available reducers: `SUM`, `MIN`, `MAX`, `AVG`, `COUNT`, `STD.P`, `STD.S`, `VAR.P`, `VAR.S`
+Available reducers: `SUM`, `MIN`, `MAX`, `AVG`, `COUNT`, `RANGE`, `STD.P`, `STD.S`, `VAR.P`, `VAR.S`
 
 ## Including Labels in Response
 
@@ -112,7 +111,6 @@ TS.MRANGE - + SELECTED_LABELS host region FILTER metric=cpu
 ```python
 import redis
 import time
-from collections import defaultdict
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 ts = r.ts()
