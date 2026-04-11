@@ -73,19 +73,21 @@ Alert when either metric exceeds 75-80%.
 ## Viewing Recent Events
 
 ```bash
-ndb_mgm> all report events
+ndb_mgm> ALL REPORT EventLog
 ```
 
-To monitor events in real time, run `ndb_mgm` with the `--events` flag:
+To execute this as a one-line command from the shell, use the `-e` (`--execute`) flag:
 
 ```bash
-ndb_mgm -e "all report events" -c 192.168.1.10
+ndb_mgm -e "ALL REPORT EventLog" -c 192.168.1.10
 ```
+
+To monitor events in real time, run `ndb_mgm` interactively. Cluster events are displayed in the console as they occur. Use `CLUSTERLOG INFO` to view current log filter settings and `CLUSTERLOG FILTER <severity>` to toggle event severity levels.
 
 ## Checking Backup Status
 
 ```bash
-ndb_mgm> show backups
+ndb_mgm> ALL REPORT BackupStatus
 ```
 
 ## One-Line Commands (Non-Interactive)
@@ -117,7 +119,7 @@ SELECT node_id, status FROM nodes;
 SELECT node_id, memory_type, used, total
 FROM memoryusage;
 
--- Transaction statistics
+-- Inter-node transporter statistics
 SELECT * FROM transporters;
 ```
 
