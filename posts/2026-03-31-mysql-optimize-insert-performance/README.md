@@ -75,7 +75,7 @@ For client-side files use `LOAD DATA LOCAL INFILE`.
 For fresh table loads, temporarily disable non-unique index updates:
 
 ```sql
--- Disable index updates (MyISAM specific, or use for InnoDB bulk loads)
+-- Disable non-unique index updates (MyISAM only, has no effect on InnoDB)
 ALTER TABLE large_table DISABLE KEYS;
 
 -- Load data
@@ -91,7 +91,7 @@ For InnoDB, a better approach is to drop and recreate secondary indexes after th
 
 ```sql
 -- Reduce flush frequency during bulk load (higher risk)
--- 0 = flush every second (not every commit)
+-- 2 = write to OS cache at each commit, flush to disk once per second
 SET GLOBAL innodb_flush_log_at_trx_commit = 2;
 
 -- Increase buffer pool to absorb more writes in memory
@@ -108,13 +108,13 @@ For idempotent inserts:
 
 ```sql
 -- Skip duplicates silently
-INSERT IGNORE INTO user_preferences (user_id, key, value)
+INSERT IGNORE INTO user_preferences (user_id, `key`, value)
 VALUES (42, 'theme', 'dark');
 
 -- Upsert: insert or update on conflict
-INSERT INTO user_preferences (user_id, key, value)
-VALUES (42, 'theme', 'dark')
-ON DUPLICATE KEY UPDATE value = VALUES(value);
+INSERT INTO user_preferences (user_id, `key`, value)
+VALUES (42, 'theme', 'dark') AS new_row
+ON DUPLICATE KEY UPDATE value = new_row.value;
 ```
 
 ## Avoid Triggers on High-Volume Tables
