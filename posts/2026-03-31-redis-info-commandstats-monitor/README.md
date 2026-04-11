@@ -32,7 +32,7 @@ cmdstat_keys:calls=3,usec=48200,usec_per_call=16066.67,rejected_calls=0,failed_c
 | `calls` | Total times this command was called since startup or last RESET |
 | `usec` | Total microseconds spent executing this command |
 | `usec_per_call` | Average microseconds per invocation |
-| `rejected_calls` | Calls rejected due to errors (e.g., wrong type) |
+| `rejected_calls` | Calls rejected before execution (e.g., wrong number of arguments, ACL denials) |
 | `failed_calls` | Calls that returned an error to the client |
 
 ## Find the Most Expensive Commands
@@ -41,7 +41,7 @@ Sort by `usec_per_call` to find slow commands:
 
 ```bash
 redis-cli INFO commandstats | \
-  awk -F'[:,=]' '{print $2, $8}' | \
+  awk -F'[:,=]' '{print $1, $7}' | \
   sort -k2 -rn | head -10
 ```
 
@@ -53,7 +53,7 @@ Sort by `calls` to see your workload profile:
 
 ```bash
 redis-cli INFO commandstats | \
-  awk -F'[:,=]' '{print $2, $4}' | \
+  awk -F'[:,=]' '{print $1, $3}' | \
   sort -k2 -rn | head -10
 ```
 
@@ -71,7 +71,6 @@ Wait 5-10 minutes, then run `INFO commandstats` again for a clean sample.
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host="127.0.0.1", port=6379)
 
