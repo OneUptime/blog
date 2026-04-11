@@ -63,12 +63,11 @@ Add to configuration for persistence:
 # /etc/mysql/mysql.conf.d/mysqld.cnf
 [mysqld]
 plugin-load-add             = thread_pool.so
-thread_handling             = pool-of-threads
 thread_pool_size            = 16
-thread_pool_max_threads     = 1000
-thread_pool_stall_limit     = 500
-thread_pool_idle_timeout    = 60
+thread_pool_stall_limit     = 60
 ```
+
+Note: In MySQL Enterprise, loading the thread pool plugin automatically activates it — there is no `thread_handling` variable. The `thread_pool_stall_limit` value is in units of 10 milliseconds (so 60 = 600ms).
 
 ## Installation (Percona Server)
 
@@ -91,35 +90,43 @@ sudo systemctl restart mysql
 
 ### thread_pool_size
 
-Number of thread groups. Each group handles connections independently. The recommended value is equal to the number of CPU cores:
+Number of thread groups. Each group handles connections independently. The recommended value is equal to the number of CPU cores. This variable is not dynamic and requires a server restart to change:
 
-```sql
-SET GLOBAL thread_pool_size = 16;  -- For a 16-core server
+```ini
+[mysqld]
+thread_pool_size = 16  # For a 16-core server
 ```
 
 Each group runs 1-2 active threads. Too few groups creates a bottleneck; too many reduces the benefit.
 
 ### thread_pool_stall_limit
 
-Time in milliseconds before a connection is considered stalled (blocking the thread group). When a query stalls, the thread pool creates an extra thread to avoid starving other connections:
+Time before a connection is considered stalled (blocking the thread group). When a query stalls, the thread pool creates an extra thread to avoid starving other connections:
+
+- **MySQL Enterprise**: Units of 10 milliseconds. Default: 60 (= 600ms).
+- **Percona Server**: Units of milliseconds. Default: 500ms.
 
 ```sql
-SET GLOBAL thread_pool_stall_limit = 500;  -- 500ms (default)
+-- Percona Server (milliseconds)
+SET GLOBAL thread_pool_stall_limit = 500;
+
+-- MySQL Enterprise (10ms units, so 50 = 500ms)
+SET GLOBAL thread_pool_stall_limit = 50;
 ```
 
-For long-running queries, increase this value. For OLTP workloads, lower values (100-200ms) keep the pool more responsive.
+For long-running queries, increase this value. For OLTP workloads, lower values keep the pool more responsive.
 
-### thread_pool_max_threads
+### thread_pool_max_threads (Percona Server / MariaDB)
 
-Maximum total threads the pool can create (including extra threads for stalled connections):
+Maximum total threads the pool can create (including extra threads for stalled connections). This variable is specific to Percona Server and MariaDB:
 
 ```sql
 SET GLOBAL thread_pool_max_threads = 1000;
 ```
 
-### thread_pool_idle_timeout
+### thread_pool_idle_timeout (Percona Server / MariaDB)
 
-Time in seconds before an idle worker thread exits:
+Time in seconds before an idle worker thread exits. This variable is specific to Percona Server and MariaDB:
 
 ```sql
 SET GLOBAL thread_pool_idle_timeout = 60;
@@ -153,12 +160,15 @@ SELECT * FROM performance_schema.tp_thread_group_stats\G
 
 ## Tuning for Different Workloads
 
+The examples below use Percona Server syntax (milliseconds for `thread_pool_stall_limit`, `thread_handling` directive). Adjust units for MySQL Enterprise (10ms units, no `thread_handling`).
+
 ### OLTP (Short Queries, High Concurrency)
 
 ```ini
 [mysqld]
-thread_pool_size         = 16      -- Equal to CPU cores
-thread_pool_stall_limit  = 100     -- Detect stalls quickly
+thread_handling          = pool-of-threads
+thread_pool_size         = 16      # Equal to CPU cores
+thread_pool_stall_limit  = 100     # Detect stalls quickly (ms)
 thread_pool_max_threads  = 500
 ```
 
@@ -166,8 +176,9 @@ thread_pool_max_threads  = 500
 
 ```ini
 [mysqld]
-thread_pool_size         = 8       -- Fewer groups, fewer context switches
-thread_pool_stall_limit  = 1000    -- Give long queries more time before stall
+thread_handling          = pool-of-threads
+thread_pool_size         = 8       # Fewer groups, fewer context switches
+thread_pool_stall_limit  = 1000    # Give long queries more time before stall (ms)
 thread_pool_max_threads  = 200
 ```
 
@@ -177,7 +188,8 @@ Long queries will frequently hit `thread_pool_stall_limit` and trigger extra thr
 
 ```ini
 [mysqld]
-thread_pool_stall_limit = 5000    -- 5 seconds for report queries
+thread_handling         = pool-of-threads
+thread_pool_stall_limit = 5000    # 5 seconds for report queries (ms)
 ```
 
 ## Comparing Performance
@@ -221,4 +233,4 @@ Use both for maximum scalability: ProxySQL reduces backend connections, and the 
 
 ## Summary
 
-The MySQL Thread Pool plugin replaces the default one-thread-per-connection model with thread groups that serve multiple connections, reducing OS thread context switching at high concurrency. Set `thread_pool_size` to the CPU core count and `thread_pool_stall_limit` based on your query duration profile. The plugin is available in MySQL Enterprise Edition and Percona Server. Monitor `TP_THREAD_GROUP_STATE` to detect stalls and tune accordingly.
+The MySQL Thread Pool plugin replaces the default one-thread-per-connection model with thread groups that serve multiple connections, reducing OS thread context switching at high concurrency. Set `thread_pool_size` to the CPU core count and `thread_pool_stall_limit` based on your query duration profile. The plugin is available in MySQL Enterprise Edition, Percona Server, and MariaDB. Monitor `TP_THREAD_GROUP_STATE` to detect stalls and tune accordingly.
