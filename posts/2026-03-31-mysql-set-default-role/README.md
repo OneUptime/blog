@@ -119,7 +119,7 @@ SET DEFAULT ROLE 'app_reader' TO 'alice'@'%';
 ALTER USER 'alice'@'%' DEFAULT ROLE 'app_reader';
 ```
 
-`ALTER USER` is preferred in MySQL 8 for consistency with other user management operations.
+Both are equally valid. `ALTER USER` supports `CURRENT_USER` syntax, while `SET DEFAULT ROLE` can target multiple users in a single statement.
 
 ## Removing Default Roles
 
