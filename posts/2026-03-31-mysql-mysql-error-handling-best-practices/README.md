@@ -17,7 +17,7 @@ MySQL errors have a numeric error code, a five-character SQLSTATE, and a message
 ```text
 1062  (23000) - Duplicate entry for unique constraint
 1213  (40001) - Deadlock found; transaction rolled back
-1205  (40001) - Lock wait timeout exceeded
+1205  (HY000) - Lock wait timeout exceeded
 1406  (22001) - Data too long for column
 1364  (HY000) - Field has no default value
 2006  (HY000) - MySQL server has gone away
@@ -47,7 +47,7 @@ END $$
 DELIMITER ;
 ```
 
-The `EXIT HANDLER` rolls back to the statement that triggered it and executes the handler body, then exits the procedure block.
+The `EXIT HANDLER` executes the handler body when the condition is raised, then exits the enclosing `BEGIN...END` block. It does not perform an automatic rollback — add an explicit `ROLLBACK` in the handler body if needed.
 
 ## Deadlock Handling in Application Code
 
@@ -86,10 +86,11 @@ import pymysql
 
 def create_user(conn, email, username):
     try:
-        conn.execute(
-            "INSERT INTO users (email, username) VALUES (%s, %s)",
-            (email, username)
-        )
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO users (email, username) VALUES (%s, %s)",
+                (email, username)
+            )
     except pymysql.err.IntegrityError as e:
         code, msg = e.args
         if code == 1062:
@@ -112,7 +113,8 @@ logger = logging.getLogger(__name__)
 def safe_insert(conn, table, data):
     sql = f"INSERT INTO {table} SET " + ", ".join(f"{k} = %s" for k in data)
     try:
-        conn.execute(sql, list(data.values()))
+        with conn.cursor() as cursor:
+            cursor.execute(sql, list(data.values()))
     except Exception as e:
         logger.error(
             "DB insert failed",
@@ -126,6 +128,8 @@ def safe_insert(conn, table, data):
 Raise application-level errors from stored procedures with meaningful messages:
 
 ```sql
+DELIMITER $$
+
 CREATE PROCEDURE transfer_funds(
   IN from_account INT,
   IN to_account INT,
@@ -139,7 +143,9 @@ BEGIN
   END IF;
   UPDATE accounts SET balance_amount = balance_amount - amount WHERE id = from_account;
   UPDATE accounts SET balance_amount = balance_amount + amount WHERE id = to_account;
-END;
+END $$
+
+DELIMITER ;
 ```
 
 ## Summary
