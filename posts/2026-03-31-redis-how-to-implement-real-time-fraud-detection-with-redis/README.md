@@ -137,7 +137,10 @@ def calculate_fraud_score(
         signals.append(f"many_merchants:{unique_merchants}")
 
     # Check country diversity (transactions from multiple countries)
-    unique_countries = r.zcard(f"fraud:countries:{user_id}")
+    unique_countries = r.zcount(
+        f"fraud:countries:{user_id}",
+        now - 86400, now
+    )
     if unique_countries >= RULES["unique_countries"]["limit"]:
         score += 35
         signals.append(f"multi_country:{unique_countries}")
