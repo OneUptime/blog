@@ -62,7 +62,7 @@ redis-cli -p 7002 CLUSTER SETSLOT 500 NODE $NODE_B
 While a slot is in MIGRATING state, clients querying keys that have already moved receive an `ASK` redirection. Well-behaved Redis clients handle this transparently. You can verify migration is active:
 
 ```bash
-redis-cli -p 7001 CLUSTER INFO | grep migrating
+redis-cli -p 7001 CLUSTER NODES | grep "\->"
 ```
 
 ## Aborting a Migration
