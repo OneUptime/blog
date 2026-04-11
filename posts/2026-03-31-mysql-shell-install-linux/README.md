@@ -33,8 +33,8 @@ flowchart LR
 ### Add the MySQL APT Repository
 
 ```bash
-wget https://dev.mysql.com/get/mysql-apt-config_0.8.29-1_all.deb
-sudo dpkg -i mysql-apt-config_0.8.29-1_all.deb
+wget https://dev.mysql.com/get/mysql-apt-config_0.8.36-1_all.deb
+sudo dpkg -i mysql-apt-config_0.8.36-1_all.deb
 sudo apt update
 ```
 
@@ -59,7 +59,7 @@ MySQL Shell 8.0.x
 ### Add the MySQL Yum Repository
 
 ```bash
-sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm
+sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-3.noarch.rpm
 ```
 
 ### Install MySQL Shell
@@ -101,7 +101,7 @@ On successful connection, you see:
 MySQL Shell 8.0.x
 ...
 Server version: 8.0.x MySQL Community Server - GPL
-mysql>
+mysql-sql>
 ```
 
 ## Switching Between Modes
@@ -118,7 +118,7 @@ Inside `mysqlsh`, switch modes with backslash commands.
 
 ## SQL Mode
 
-The default mode after connecting.
+The default mode in MySQL Shell 8.4 and later. In earlier versions, the default mode is JavaScript.
 
 ```sql
 SHOW DATABASES;
@@ -190,7 +190,7 @@ util.loadDump('/backup/myapp-dump', {threads: 4});
 MySQL Shell supports tab completion for SQL keywords, schema names, table names, and column names. Press `Tab` twice to see suggestions.
 
 ```text
-mysql> SELECT * FROM use<TAB>
+mysql-sql> SELECT * FROM use<TAB>
 users   user_roles
 ```
 
@@ -202,10 +202,10 @@ MySQL Shell stores its configuration at:
 ~/.mysqlsh/options.json
 ```
 
-Set the default scripting mode:
+Set the default scripting mode from inside the shell:
 
-```bash
-mysqlsh --option default-mode=sql
+```text
+\option --persist defaultMode sql
 ```
 
 ## Summary
