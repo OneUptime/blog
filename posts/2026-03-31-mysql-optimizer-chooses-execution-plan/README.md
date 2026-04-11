@@ -31,7 +31,7 @@ SELECT cost_name, cost_value FROM mysql.engine_cost;
 For each table in the query, the optimizer considers several access methods:
 
 - **const/eq_ref**: single row lookup via primary key or unique index - cheapest
-- **ref**: index range scan on a non-unique index
+- **ref**: index lookup using equality on a non-unique index
 - **range**: index range scan with inequalities (`>`, `<`, `BETWEEN`)
 - **index**: full index scan - reads only the index, not table rows
 - **ALL**: full table scan - most expensive
@@ -66,7 +66,7 @@ For queries joining multiple tables, the optimizer evaluates different join orde
 
 ```sql
 SHOW VARIABLES LIKE 'optimizer_search_depth';
--- Default 62 (exhaustive search up to 7 tables)
+-- Default 62 (maximum depth, effectively exhaustive for any practical join count)
 ```
 
 The optimizer generally places the most selective table first (the "driving table") to reduce rows passed to subsequent joins.
