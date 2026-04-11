@@ -187,13 +187,13 @@ Expected output for `cluster_state`: `ok`, and `cluster_slots_assigned`: `16384`
 ## Connect with a Cluster-Aware Client (Python)
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 rc = RedisCluster(
     startup_nodes=[
-        {"host": "127.0.0.1", "port": "7001"},
-        {"host": "127.0.0.1", "port": "7002"},
-        {"host": "127.0.0.1", "port": "7003"},
+        ClusterNode("127.0.0.1", 7001),
+        ClusterNode("127.0.0.1", 7002),
+        ClusterNode("127.0.0.1", 7003),
     ],
     decode_responses=True,
 )
