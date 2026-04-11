@@ -69,15 +69,15 @@ mysql_query_rules =
   {
     rule_id = 1,
     active = 1,
-    match_pattern = "^SELECT",
-    destination_hostgroup = 20,
+    match_digest = "^SELECT.*FOR UPDATE",
+    destination_hostgroup = 10,
     apply = 1
   },
   {
     rule_id = 2,
     active = 1,
-    match_digest = "^SELECT.*FOR UPDATE",
-    destination_hostgroup = 10,
+    match_pattern = "^SELECT",
+    destination_hostgroup = 20,
     apply = 1
   }
 )
@@ -92,7 +92,7 @@ Ensure covering indexes exist for the most common read patterns:
 SELECT
   DIGEST_TEXT,
   COUNT_STAR,
-  ROUND(AVG_TIMER_WAIT / 1000000000, 3) AS avg_sec
+  ROUND(AVG_TIMER_WAIT / 1000000000000, 3) AS avg_sec
 FROM performance_schema.events_statements_summary_by_digest
 WHERE DIGEST_TEXT LIKE 'SELECT%'
 ORDER BY COUNT_STAR DESC
