@@ -189,19 +189,19 @@ DELIMITER $$
 CREATE PROCEDURE process_order_batch()
 BEGIN
     DECLARE i INT DEFAULT 1;
-    DECLARE v_savepoint VARCHAR(50);
+    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+    BEGIN
+        -- On error, rollback only the current item and continue
+        ROLLBACK TO SAVEPOINT current_item;
+    END;
 
     START TRANSACTION;
 
     WHILE i <= 5 DO
-        SET v_savepoint = CONCAT('batch_item_', i);
-        SAVEPOINT batch_item_1;  -- Named savepoints (use dynamic SQL for variable names)
+        SAVEPOINT current_item;  -- Overwritten each iteration, which is fine
 
         -- Process order item i
         INSERT INTO orders (customer_id, total) VALUES (i, i * 100.00);
-
-        -- If error, rollback this item only and continue
-        -- (In practice, use DECLARE HANDLER for error catching)
 
         SET i = i + 1;
     END WHILE;
