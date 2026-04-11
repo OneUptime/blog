@@ -37,7 +37,7 @@ brew update
 brew install mysql
 ```
 
-Homebrew installs the latest stable MySQL release. At time of writing that is MySQL 8.0 / 8.4. To pin a specific major version, install the versioned formula instead.
+Homebrew installs the latest stable MySQL release, which may be a newer major version than 8.0. To install MySQL 8.0 specifically, use the versioned formula instead.
 
 ```bash
 brew install mysql@8.0
@@ -48,6 +48,8 @@ After installing the versioned formula, link it so the binaries are on your PATH
 ```bash
 brew link mysql@8.0 --force
 ```
+
+If you installed the versioned formula, use `mysql@8.0` in all service commands (e.g., `brew services start mysql@8.0`).
 
 ## Starting MySQL
 
@@ -89,6 +91,8 @@ The script will prompt you through several steps:
 ```text
 Securing the MySQL server deployment.
 
+Enter password for user root (press Enter if none): 
+
 Would you like to setup VALIDATE PASSWORD component? [Y/N]: Y
 Please enter 0 = LOW, 1 = MEDIUM and 2 = STRONG: 1
 New password: ••••••••
@@ -126,8 +130,9 @@ SELECT VERSION();
 Avoid using the root account for application development. Create a dedicated user instead.
 
 ```sql
+CREATE DATABASE myapp;
 CREATE USER 'devuser'@'localhost' IDENTIFIED BY 'StrongPass!2024';
-GRANT ALL PRIVILEGES ON *.* TO 'devuser'@'localhost' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON myapp.* TO 'devuser'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
