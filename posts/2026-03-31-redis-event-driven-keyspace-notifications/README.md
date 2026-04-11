@@ -34,7 +34,7 @@ redis-cli CONFIG SET notify-keyspace-events "KEA"
 For production, limit to the event types you actually use:
 
 ```bash
-# String + hash + generic (DEL/EXPIRE) + keyevent channel
+# K=keyspace, E=keyevent, $=string, h=hash, g=generic (DEL/EXPIRE)
 redis-cli CONFIG SET notify-keyspace-events "KE$hg"
 ```
 
@@ -62,9 +62,9 @@ class KeyspaceEventRouter:
 
     def start(self):
         self.pubsub.psubscribe(f"__keyevent@{self.db}__:*")
-        threading.Thread(target=self._dispatch, daemon=True).start()
+        threading.Thread(target=self._listen, daemon=True).start()
 
-    def _dispatch(self, message):
+    def _handle_message(self, message):
         if message["type"] not in ("message", "pmessage"):
             return
         channel = message["channel"]
@@ -74,9 +74,9 @@ class KeyspaceEventRouter:
             if (ev_type == "*" or ev_type == event_type) and regex.match(key):
                 handler(key, event_type)
 
-    def _dispatch(self):
+    def _listen(self):
         for message in self.pubsub.listen():
-            self._dispatch(message)
+            self._handle_message(message)
 ```
 
 ## Registering Domain Handlers
