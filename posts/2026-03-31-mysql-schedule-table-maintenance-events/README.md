@@ -114,7 +114,7 @@ END //
 DELIMITER ;
 ```
 
-`FAST` skips rows that have not been modified since the last check; `QUICK` skips checking the delete-links of rows.
+`FAST` checks only tables that have not been closed properly (ignored for InnoDB); `QUICK` does not scan rows to check for incorrect links.
 
 ## Maintenance Log Table
 
