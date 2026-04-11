@@ -16,7 +16,7 @@ Every Redis Cluster node listens on two ports:
 
 ```text
 Client port:      6379  (or custom, e.g., 7001)
-Cluster bus port: 16379 (client port + 10000)
+Cluster bus port: 16379 (client port + 10000, or set via cluster-port config in Redis 7.0+)
 ```
 
 Clients connect to the client port. Cluster nodes connect to each other's bus port.
@@ -33,7 +33,7 @@ ss -tlnp | grep -E "6379|16379"
 2. MEET messages - add new nodes to the cluster
 3. FAIL messages - immediate broadcast of confirmed node failures
 4. UPDATE messages - propagate config epoch changes after failover
-5. MFSTART/MFEND - manual failover coordination
+5. MFSTART - manual failover coordination
 6. PUBLISH payloads - for keyspace notifications and Pub/Sub in cluster
 ```
 
@@ -53,7 +53,7 @@ Gossip section (variable):
   - For each: node ID, IP, port, flags, last ping sent, last pong received
 ```
 
-This is why 16384 slots was chosen - the slot bitmap fits in 2048 bytes, keeping heartbeat messages under 2KB.
+This is why 16384 slots was chosen - the slot bitmap fits in 2048 bytes (2KB), keeping the heartbeat packet header compact. With 65536 slots, the bitmap alone would be 8KB, making gossip messages prohibitively large.
 
 ## Checking Cluster Bus Links
 
