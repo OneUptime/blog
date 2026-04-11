@@ -107,7 +107,7 @@ import redis
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Stage data under temp key, then make it live atomically
-client.set('job:processing:12345', 'task data')
+client.hset('job:processing:12345', 'status', 'processing')
 
 # Do some processing...
 client.hset('job:processing:12345', 'status', 'done')
