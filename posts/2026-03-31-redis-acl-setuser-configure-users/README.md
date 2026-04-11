@@ -83,7 +83,7 @@ ACL SETUSER admin on >adminpass allkeys allcommands allchannels
 ### Create a read-only replica monitoring user
 
 ```redis
-ACL SETUSER monitor on >monpass allkeys +INFO +MONITOR +CLIENT +COMMAND nocommands +INFO +MONITOR
+ACL SETUSER monitor on >monpass allkeys nocommands +INFO +MONITOR +CLIENT +COMMAND
 ```
 
 ## Modifying an Existing User
