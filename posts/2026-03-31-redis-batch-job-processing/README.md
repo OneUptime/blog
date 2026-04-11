@@ -35,7 +35,7 @@ BATCH_SIZE = 100
 
 def dequeue_batch(batch_size: int = BATCH_SIZE) -> list:
     # Redis 7.0+: LMPOP count items from queue
-    result = r.lmpop(1, [QUEUE_KEY], direction='RIGHT', count=batch_size)
+    result = r.lmpop(1, QUEUE_KEY, direction='RIGHT', count=batch_size)
     if not result:
         return []
     _, items = result
