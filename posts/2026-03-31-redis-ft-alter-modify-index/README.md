@@ -10,14 +10,14 @@ Description: Learn how to use FT.ALTER in Redis to add new fields to an existing
 
 ## Introduction
 
-`FT.ALTER` adds new fields to an existing RediSearch index schema. It allows you to extend the search schema incrementally - new keys written after the alter are indexed with the new fields immediately, while existing keys are re-indexed in the background if you use `SKIPINITIALSCAN` carefully.
+`FT.ALTER` adds new fields to an existing RediSearch index schema. It allows you to extend the search schema incrementally - new keys written after the alter are indexed with the new fields immediately, and existing keys are re-indexed in the background by default. If you use `SKIPINITIALSCAN`, existing documents are not re-indexed until they are next updated.
 
 Note: `FT.ALTER` can only add fields; it cannot remove or rename existing fields. To do that you must drop and recreate the index.
 
 ## Basic Syntax
 
 ```redis
-FT.ALTER index SCHEMA ADD field type [options] [field type [options] ...]
+FT.ALTER index [SKIPINITIALSCAN] SCHEMA ADD field type [options] [field type [options] ...]
 ```
 
 ## Example: Starting Index
@@ -81,13 +81,13 @@ FT.ALTER idx:products SCHEMA ADD location GEO
 After adding, store geo data as `"longitude,latitude"`:
 
 ```redis
-HSET product:4 name "Local Gadget" price 29 category "electronics" location "51.5074,-0.1278"
+HSET product:4 name "Local Gadget" price 29 category "electronics" location "-0.1278,51.5074"
 ```
 
 Query by radius:
 
 ```redis
-FT.SEARCH idx:products "@location:[51.5 -0.12 5 km]"
+FT.SEARCH idx:products "@location:[-0.12 51.5 5 km]"
 ```
 
 ## What Happens After FT.ALTER
