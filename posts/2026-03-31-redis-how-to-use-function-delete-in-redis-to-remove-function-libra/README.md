@@ -178,7 +178,7 @@ print("All function libraries removed")
 
 ## FUNCTION DELETE in Cluster Mode
 
-In Redis cluster, `FUNCTION DELETE` propagates to all nodes in the cluster automatically since functions are replicated. You only need to issue the command once to the primary node.
+In Redis Cluster, `FUNCTION DELETE` does not automatically propagate across shards. You need to execute the command on each shard's primary node. Each primary will then replicate the deletion to its own replicas. Client libraries like redis-py's `RedisCluster` and node-redis's cluster client typically handle this by broadcasting the command to all primary nodes on your behalf.
 
 ## Lifecycle Management Script
 
