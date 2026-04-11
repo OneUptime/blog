@@ -68,24 +68,27 @@ Queries with the sharding key in the WHERE clause are routed to the correct shar
 
 ## Query Rewriting and Validation
 
-VTGate rewrites queries before forwarding them to MySQL. It blocks full-table scans on large tables, enforces query timeouts, and normalizes queries for caching.
+VTGate rewrites queries before forwarding them to MySQL. It enforces query timeouts, normalizes queries for caching, and can optionally block scatter queries with the `--no-scatter` flag.
 
 ```sql
--- Vitess rejects queries without a WHERE clause on sharded tables
--- to prevent accidental scatter queries
-SELECT * FROM orders; -- blocked by Vitess policy
-SELECT * FROM orders WHERE user_id = 42; -- routed to correct shard
+-- Without the sharding key, Vitess executes a scatter query across all shards
+SELECT * FROM orders; -- hits every shard, can be slow
+
+-- With the sharding key, Vitess routes to the correct shard
+SELECT * FROM orders WHERE user_id = 42; -- routed to one shard
+
+-- Admins can block scatter queries by starting VTGate with --no-scatter
 ```
 
 ## Schema Changes
 
-Vitess includes an online schema change tool (Online DDL) that applies schema migrations without table locks, using gh-ost or pt-osc under the hood.
+Vitess includes an online schema change tool (Online DDL) that applies schema migrations without table locks. The built-in `vitess` strategy uses VReplication to perform non-blocking, revertible migrations.
 
 ```sql
--- Vitess Online DDL
-ALTER TABLE orders ADD COLUMN notes TEXT,
-ALGORITHM=ONLINE, LOCK=NONE;
--- Vitess routes this through gh-ost automatically
+-- Vitess Online DDL: set the strategy, then run your ALTER
+SET @@ddl_strategy='vitess';
+ALTER TABLE orders ADD COLUMN notes TEXT;
+-- Vitess handles this via VReplication (online, revertible)
 ```
 
 ## When to Add Vitess
