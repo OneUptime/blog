@@ -25,7 +25,7 @@ Output looks like:
 1711900400.124123 [0 127.0.0.1:52311] "GET" "user:42"
 ```
 
-This is useful for short debugging sessions but should never be left running in production - it can reduce throughput by up to 50% on busy servers.
+This is useful for short debugging sessions but should never be left running in production - it can reduce throughput by more than 50% on busy servers.
 
 To capture output to a file:
 
