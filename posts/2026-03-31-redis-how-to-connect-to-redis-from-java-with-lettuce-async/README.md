@@ -97,6 +97,7 @@ public class LettuceAsyncExample {
 
 ```java
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScanStream;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
 import reactor.core.publisher.Mono;
@@ -114,9 +115,9 @@ public class LettuceReactiveExample {
 
         result.subscribe(val -> System.out.println("Value: " + val));
 
-        // Reactive scan
-        Flux.from(reactive.scan()).subscribe(scanCursor -> {
-            System.out.println("Scan keys: " + scanCursor.getKeys());
+        // Reactive scan using ScanStream (iterates all keys automatically)
+        ScanStream.scan(reactive).subscribe(key -> {
+            System.out.println("Key: " + key);
         });
 
         // Block for demo
@@ -132,6 +133,7 @@ public class LettuceReactiveExample {
 ```java
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
+import java.time.Duration;
 
 public class SecureLettuceExample {
     public static void main(String[] args) {
@@ -219,13 +221,19 @@ public class SentinelExample {
 ## Redis Cluster Connection
 
 ```java
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.cluster.RedisClusterClient;
 import io.lettuce.core.cluster.api.StatefulRedisClusterConnection;
+import java.util.List;
 
 public class ClusterExample {
     public static void main(String[] args) {
         RedisClusterClient clusterClient = RedisClusterClient.create(
-            "redis://node1:6379,redis://node2:6379,redis://node3:6379"
+            List.of(
+                RedisURI.create("redis://node1:6379"),
+                RedisURI.create("redis://node2:6379"),
+                RedisURI.create("redis://node3:6379")
+            )
         );
 
         try (StatefulRedisClusterConnection<String, String> conn = clusterClient.connect()) {
