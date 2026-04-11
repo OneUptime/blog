@@ -97,8 +97,8 @@ CREATE TRIGGER trg_employees_normalize
 BEFORE INSERT ON employees
 FOR EACH ROW
 BEGIN
-    SET NEW.first_name = UPPER(LEFT(NEW.first_name, 1))
-                       || LOWER(SUBSTRING(NEW.first_name, 2));
+    SET NEW.first_name = CONCAT(UPPER(LEFT(NEW.first_name, 1)),
+                               LOWER(SUBSTRING(NEW.first_name, 2)));
     SET NEW.hired_date = COALESCE(NEW.hired_date, CURDATE());
 END //
 
