@@ -44,7 +44,7 @@ The `-i 5` flag refreshes every 5 seconds.
 
 ## Differentiating Question Types
 
-`Questions` counts all queries including prepared statement executions. Use these counters to break down by type:
+`Questions` counts statements sent by clients to the server, including prepared statement executions, but excludes statements executed within stored programs. Use these counters to break down by type:
 
 ```sql
 SELECT VARIABLE_NAME, VARIABLE_VALUE
