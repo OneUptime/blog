@@ -147,7 +147,9 @@ pub async fn get_counter(
 
 ```rust
 use actix_web::middleware::Next;
-use actix_web::{body::MessageBody, dev::{ServiceRequest, ServiceResponse}};
+use actix_web::{web, body::MessageBody, dev::{ServiceRequest, ServiceResponse}};
+use deadpool_redis::Pool;
+use redis::AsyncCommands;
 
 pub async fn rate_limit(
     req: ServiceRequest,
@@ -155,7 +157,7 @@ pub async fn rate_limit(
 ) -> actix_web::Result<ServiceResponse<impl MessageBody>> {
     if let Some(pool) = req.app_data::<web::Data<Pool>>() {
         if let Ok(mut conn) = pool.get().await {
-            let ip = req.peer_addr().map(|a| a.to_string()).unwrap_or_default();
+            let ip = req.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
             let key = format!("rate:{}", ip);
             let count: i64 = conn.incr(&key, 1).await.unwrap_or(1);
             if count == 1 {
