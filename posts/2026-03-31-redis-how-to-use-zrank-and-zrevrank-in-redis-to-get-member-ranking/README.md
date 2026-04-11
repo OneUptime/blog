@@ -150,7 +150,7 @@ def get_player_stats(player_id):
 
 stats = get_player_stats('player:2')
 print(stats)
-# {'player': 'player:2', 'score': 12000, 'rank': 4, 'percentile': 20.0}
+# {'player': 'player:2', 'score': 12000, 'rank': 4, 'percentile': 40.0}
 ```
 
 ### Rank Change Tracking
