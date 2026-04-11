@@ -77,20 +77,20 @@ When `cluster_state:fail`, with `cluster-allow-reads-when-down no`, all commands
 
 ## Application-Level Handling
 
-In Python with `redis-py-cluster`:
+In Python with `redis-py`:
 
 ```python
-from rediscluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 startup_nodes = [
-    {"host": "192.168.1.10", "port": "7000"},
-    {"host": "192.168.1.11", "port": "7001"},
+    ClusterNode("192.168.1.10", 7000),
+    ClusterNode("192.168.1.11", 7001),
 ]
 
 rc = RedisCluster(
     startup_nodes=startup_nodes,
     decode_responses=True,
-    skip_full_coverage_check=True  # allows connection even if cluster incomplete
+    require_full_coverage=False,  # allows connection even if cluster incomplete
 )
 
 try:
