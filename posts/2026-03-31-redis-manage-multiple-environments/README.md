@@ -75,6 +75,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
+      - ./redis-config/base.conf:/etc/redis/base.conf:ro
       - ./redis-config/dev.conf:/etc/redis/dev.conf:ro
 ```
 
@@ -88,6 +89,7 @@ services:
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
+      - ./redis-config/base.conf:/etc/redis/base.conf:ro
       - ./redis-config/staging.conf:/etc/redis/staging.conf:ro
       - redis-staging-data:/data
     restart: unless-stopped
@@ -99,9 +101,9 @@ volumes:
 ## Environment-Specific Connection Management
 
 ```bash
-# Use a wrapper script for environment-aware connections
 #!/bin/bash
 # redis-connect.sh
+# Environment-aware Redis connection wrapper
 ENV="${ENVIRONMENT:-development}"
 
 case "$ENV" in
