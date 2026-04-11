@@ -16,7 +16,7 @@ Description: Learn how to use CLIENT SETNAME to assign a descriptive name to a R
 flowchart LR
     A[CLIENT SETNAME myapp-worker-1] --> B[Connection named in Redis]
     B --> C[CLIENT LIST shows name=myapp-worker-1]
-    B --> D[CLIENT KILL ID can target by name]
+    B --> D[CLIENT LIST name helps identify IDs to kill]
     E[CLIENT GETNAME] --> F[Returns current connection name]
 ```
 
@@ -27,7 +27,7 @@ CLIENT SETNAME connection-name
 CLIENT GETNAME
 ```
 
-`CLIENT SETNAME` returns `OK`. `CLIENT GETNAME` returns the name string or an empty bulk string if no name is set.
+`CLIENT SETNAME` returns `OK`. `CLIENT GETNAME` returns the name string or a null bulk reply if no name is set.
 
 ## Setting a Connection Name
 
@@ -56,12 +56,12 @@ CLIENT GETNAME
 ```
 
 ```text
-""
+(nil)
 ```
 
 ## Naming Rules
 
-Connection names must not contain spaces. They can include letters, numbers, hyphens, and underscores:
+Connection names must not contain spaces, newlines, or non-printable characters. Any printable ASCII character from `!` (0x21) through `~` (0x7E) is allowed, including letters, numbers, hyphens, underscores, dots, colons, and more:
 
 ```redis
 # Valid names
@@ -170,7 +170,7 @@ CLIENT GETNAME
 ```
 
 ```text
-""
+(nil)
 ```
 
 ## Summary
