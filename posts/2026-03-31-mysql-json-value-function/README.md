@@ -86,13 +86,13 @@ SELECT JSON_VALUE('{"a": 1}', '$.b' ERROR ON EMPTY);
 Control behavior when type conversion fails:
 
 ```sql
-SELECT JSON_VALUE('"not-a-number"', '$' RETURNING INTEGER ERROR ON ERROR);
+SELECT JSON_VALUE('"not-a-number"', '$' RETURNING SIGNED ERROR ON ERROR);
 -- Raises an error
 
-SELECT JSON_VALUE('"not-a-number"', '$' RETURNING INTEGER DEFAULT -1 ON ERROR);
+SELECT JSON_VALUE('"not-a-number"', '$' RETURNING SIGNED DEFAULT -1 ON ERROR);
 -- Result: -1
 
-SELECT JSON_VALUE('"not-a-number"', '$' RETURNING INTEGER NULL ON ERROR);
+SELECT JSON_VALUE('"not-a-number"', '$' RETURNING SIGNED NULL ON ERROR);
 -- Result: NULL
 ```
 
@@ -104,7 +104,7 @@ INSERT INTO orders VALUES (1, '{"amount": 99.99, "status": "shipped"}');
 
 -- Using ->> (unquotes but returns VARCHAR)
 SELECT data->>'$.amount' FROM orders WHERE id = 1;
--- Result: "99.99" (string)
+-- Result: 99.99 (string type, not numeric)
 
 -- Using JSON_VALUE with RETURNING
 SELECT JSON_VALUE(data, '$.amount' RETURNING DECIMAL(10,2)) FROM orders WHERE id = 1;
