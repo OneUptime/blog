@@ -22,7 +22,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.90"
+      version = "~> 3.114"
     }
   }
   required_version = ">= 1.3.0"
@@ -64,8 +64,7 @@ resource "azurerm_redis_cache" "redis" {
     maxmemory_reserved     = 125  # MB reserved for non-cache use
     maxmemory_delta        = 125  # MB reserved for fragmentation
     maxmemory_policy       = "allkeys-lru"
-    enable_authentication  = true
-    rdb_backup_enabled     = false  # Enable for Premium tier
+    authentication_enabled = true
     notify_keyspace_events = ""
   }
 
@@ -173,7 +172,7 @@ resource "azurerm_redis_cache" "redis_vnet" {
 ## Firewall Rules
 
 ```hcl
-# Allow specific IP ranges (Standard/Premium tier)
+# Allow specific IP ranges (Basic, Standard, or Premium tier)
 resource "azurerm_redis_firewall_rule" "office" {
   name                = "allow-office"
   redis_cache_name    = azurerm_redis_cache.redis.name
