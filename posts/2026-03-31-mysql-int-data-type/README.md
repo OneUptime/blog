@@ -100,13 +100,13 @@ ALTER TABLE products
 
 ## Performance Considerations
 
-INT columns that appear in `WHERE`, `JOIN`, or `ORDER BY` clauses should be indexed. Comparing an INT column to a string literal forces an implicit cast and prevents index use.
+INT columns that appear in `WHERE`, `JOIN`, or `ORDER BY` clauses should be indexed. Comparing an INT column to a string literal causes MySQL to silently convert the string to a number, which can produce unexpected matches when the string contains non-numeric characters.
 
 ```sql
 -- Good: compare INT to INT
 SELECT * FROM products WHERE id = 42;
 
--- Bad: implicit cast disables index
+-- Bad: '42abc' is silently converted to 42, producing unexpected results
 SELECT * FROM products WHERE id = '42abc';
 ```
 
