@@ -23,7 +23,8 @@ tls-key-file /etc/redis/tls/server.key
 tls-ca-cert-file /etc/redis/tls/ca.crt
 tls-auth-clients yes
 tls-protocols "TLSv1.2 TLSv1.3"
-tls-ciphers "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+tls-ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+tls-ciphersuites "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
 ```
 
 ## Step 2: Disable the Default Unauthenticated User
@@ -45,7 +46,10 @@ ACL GENPASS 256
 Assign to users:
 
 ```bash
-ACL SETUSER appuser on >$(ACL GENPASS) ~app:* &app:* -@all +@read +@write +@string
+# First, generate a password in redis-cli:
+#   ACL GENPASS 256
+# Then use the output as the password:
+ACL SETUSER appuser on >GENERATED_PASSWORD_HERE ~app:* &app:* -@all +@read +@write +@string
 ```
 
 ## Step 4: Restrict to Minimal Commands
@@ -110,10 +114,15 @@ maxmemory-policy allkeys-lru
 ## Step 10: Verify Your Hardening
 
 ```bash
-redis-cli -p 6380 --tls --cacert ca.crt INFO server | grep redis_version
-redis-cli ACL WHOAMI
-redis-cli -u redis://default:@127.0.0.1:6379 PING
-# Should fail: "(error) WRONGPASS"
+# Successful connection with full mTLS credentials:
+redis-cli -p 6380 --tls --cert client.crt --key client.key --cacert ca.crt INFO server | grep redis_version
+redis-cli -p 6380 --tls --cert client.crt --key client.key --cacert ca.crt ACL WHOAMI
+
+# Should fail (no client certificate for mTLS):
+redis-cli -p 6380 --tls --cacert ca.crt PING
+
+# Should fail (non-TLS port is disabled):
+redis-cli -p 6379 PING
 ```
 
 ## Summary
