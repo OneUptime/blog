@@ -60,6 +60,7 @@ RedisInstrumentor().instrument()
 With auto-instrumentation active, create parent spans for your business operations:
 
 ```python
+import json
 import redis
 
 tracer = trace.get_tracer(__name__)
@@ -84,7 +85,7 @@ def get_user_profile(user_id: str):
         return user
 ```
 
-In Jaeger, you will see `get_user_profile` as the parent span with a child `redis SET` or `redis GET` span showing exact Redis latency.
+In Jaeger, you will see `get_user_profile` as the parent span with a child `SET` or `GET` span showing exact Redis latency.
 
 ## Use the OpenTelemetry Collector as a Pipeline
 
@@ -99,8 +100,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  jaeger:
-    endpoint: jaeger:14250
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -108,7 +109,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 This decouples your application from Jaeger, making it easy to add additional exporters later.
@@ -117,14 +118,14 @@ This decouples your application from Jaeger, making it easy to add additional ex
 
 In the Jaeger UI:
 1. Select your service from the dropdown
-2. Filter by operation name `redis GET` or `redis SET`
+2. Filter by operation name `GET` or `SET`
 3. Look for high-duration spans indicating slow Redis operations
 
 Key span attributes to look for:
 
 ```text
 db.system = redis
-db.statement = GET user:123
+db.statement = GET ?
 net.peer.name = localhost
 net.peer.port = 6379
 span.duration = 2.4ms
