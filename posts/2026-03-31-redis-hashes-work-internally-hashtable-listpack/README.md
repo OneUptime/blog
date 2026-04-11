@@ -28,7 +28,7 @@ OBJECT ENCODING big_hash
 When a hash has few fields with small values, Redis stores it as a flat `listpack` - a contiguous byte array with no per-entry pointers. Fields and values are stored as consecutive pairs:
 
 ```text
-[total_bytes][field0][value0][field1][value1]...[0xFF]
+[total_bytes][num_elements][field0][value0][field1][value1]...[0xFF]
 ```
 
 This is extremely memory efficient but requires linear scan for field lookups - acceptable because small hashes are small.
@@ -43,7 +43,7 @@ CONFIG GET hash-max-listpack-value
 
 ## Hashtable Encoding
 
-When a hash exceeds the listpack thresholds, Redis converts it to a proper hash table with open chaining. Each bucket stores a linked list of entries, and the table resizes dynamically.
+When a hash exceeds the listpack thresholds, Redis converts it to a proper hash table with separate chaining. Each bucket stores a linked list of entries, and the table resizes dynamically.
 
 ```text
 Hashtable:
