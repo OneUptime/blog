@@ -54,12 +54,20 @@ SHOW TRIGGERS FROM myapp_db WHERE `Table` = 'orders';
 
 ## Filtering with LIKE
 
-```sql
--- Find triggers with 'audit' in their name
-SHOW TRIGGERS LIKE '%audit%';
+The `LIKE` clause matches against **table names**, not trigger names:
 
--- Find triggers starting with 'before_'
-SHOW TRIGGERS LIKE 'before_%';
+```sql
+-- Find triggers on tables with 'order' in the table name
+SHOW TRIGGERS LIKE '%order%';
+
+-- Find triggers on tables starting with 'audit_'
+SHOW TRIGGERS LIKE 'audit_%';
+```
+
+To filter by trigger name, use `WHERE` instead:
+
+```sql
+SHOW TRIGGERS WHERE `Trigger` LIKE '%audit%';
 ```
 
 ## Key Output Columns
