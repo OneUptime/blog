@@ -106,8 +106,8 @@ This triggers a new resync from the new primary.
 Control which replica is preferred for promotion during failover:
 
 ```bash
-# Higher priority = preferred for promotion (default 100)
-redis-cli -h replica-1 -p 7004 CONFIG SET replica-priority 100
+# Lower non-zero priority = preferred for promotion (default 100)
+redis-cli -h replica-1 -p 7004 CONFIG SET replica-priority 10
 
 # Never promote this replica (useful for replicas used only for backups)
 redis-cli -h backup-replica -p 7008 CONFIG SET replica-priority 0
