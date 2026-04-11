@@ -174,4 +174,4 @@ TRUNCATE TABLE users;
 
 ## Summary
 
-The `AUTO_INCREMENT` attribute is the standard way to generate surrogate primary keys in MySQL. It automatically produces unique, sequential integers per connection and never reuses values, even after deletions or rollbacks. For production tables, prefer `BIGINT UNSIGNED AUTO_INCREMENT` to future-proof against overflow, and use `LAST_INSERT_ID()` to safely retrieve generated IDs after inserts.
+The `AUTO_INCREMENT` attribute is the standard way to generate surrogate primary keys in MySQL. It automatically produces unique, sequential integers and never reuses values, even after deletions or rollbacks. For production tables, prefer `BIGINT UNSIGNED AUTO_INCREMENT` to future-proof against overflow, and use `LAST_INSERT_ID()` to safely retrieve generated IDs after inserts.
