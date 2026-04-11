@@ -15,7 +15,7 @@ Testcontainers for Node.js starts and stops real Docker containers programmatica
 ## Installation
 
 ```bash
-npm install --save-dev testcontainers mysql2
+npm install --save-dev @testcontainers/mysql mysql2
 ```
 
 Requires Docker to be running on the machine or CI agent.
@@ -24,7 +24,7 @@ Requires Docker to be running on the machine or CI agent.
 
 ```javascript
 // test/integration/order.test.js
-const { MySqlContainer } = require('testcontainers');
+const { MySqlContainer } = require('@testcontainers/mysql');
 const mysql = require('mysql2/promise');
 const assert = require('node:assert/strict');
 
@@ -111,7 +111,7 @@ describe('Order Repository', () => {
 
 ```javascript
 // jest.setup.js
-const { MySqlContainer } = require('testcontainers');
+const { MySqlContainer } = require('@testcontainers/mysql');
 const mysql = require('mysql2/promise');
 
 let container;
@@ -151,7 +151,7 @@ afterAll(async () => {
 ```javascript
 // jest.config.js
 module.exports = {
-  globalSetup: './jest.setup.js',
+  setupFilesAfterFramework: ['./jest.setup.js'],
   testTimeout: 30000
 };
 ```
