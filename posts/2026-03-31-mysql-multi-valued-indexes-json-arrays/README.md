@@ -75,7 +75,7 @@ EXPLAIN SELECT * FROM products
 WHERE JSON_OVERLAPS(tags, '["electronics", "audio"]')\G
 ```
 
-Each `EXPLAIN` should show `type: ref` and the index name in the `key` column.
+`MEMBER OF()` queries should show `type: ref` in `EXPLAIN`, while `JSON_CONTAINS()` and `JSON_OVERLAPS()` queries show `type: range`. All three should display the index name in the `key` column.
 
 ## Verifying Index Usage
 
@@ -96,17 +96,18 @@ Expected output includes `"index_condition": "'electronics' member of ..."` with
 Multi-valued indexes have important restrictions:
 
 ```sql
--- 1. Cannot be part of a composite unique index
+-- 1. Only one multi-valued key part is allowed per index
 -- 2. Cannot be used with foreign keys
 -- 3. Cannot be a primary key
--- 4. Only one multi-valued index per expression column
 
--- 5. The index only works when the entire array path is queried
--- This uses the index:
+-- 4. The query path must match the indexed path
+-- If the index is on CAST(tags AS CHAR(50) ARRAY), this uses it:
 SELECT * FROM products WHERE 'x' MEMBER OF(tags);
 
--- This does NOT use the index (nested path):
+-- This does NOT use that index (different path expression):
 SELECT * FROM products WHERE 'x' MEMBER OF(tags->'$.category');
+-- To index a nested path, define the index on the same expression:
+-- ADD INDEX idx_cat ((CAST(tags->'$.category' AS CHAR(50) ARRAY)));
 ```
 
 ## Updating JSON Arrays with an Index
