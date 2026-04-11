@@ -71,8 +71,8 @@ Identify files with the highest read latency per operation:
 SELECT
   SUBSTRING_INDEX(FILE_NAME, '/', -1) AS file,
   COUNT_READ,
-  ROUND(SUM_TIMER_READ / COUNT_READ / 1e6, 2) AS avg_read_ms,
-  ROUND(MAX_TIMER_READ / 1e6, 2) AS max_read_ms
+  ROUND(SUM_TIMER_READ / COUNT_READ / 1e9, 2) AS avg_read_ms,
+  ROUND(MAX_TIMER_READ / 1e9, 2) AS max_read_ms
 FROM performance_schema.file_summary_by_instance
 WHERE COUNT_READ > 100
 ORDER BY avg_read_ms DESC
