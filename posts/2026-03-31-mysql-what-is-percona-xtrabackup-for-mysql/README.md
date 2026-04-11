@@ -154,7 +154,7 @@ xtrabackup --user=xtrabackup --password=backuppass \
 
 # Compress while streaming
 xtrabackup --user=xtrabackup --password=backuppass \
-  --backup --stream=xbstream --compress \
+  --backup --stream=xbstream \
   | gzip > /backup/full_$(date +%Y%m%d).xbstream.gz
 ```
 
