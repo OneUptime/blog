@@ -16,12 +16,14 @@ Create a backup script at `/usr/local/bin/mysql_backup.sh`:
 
 ```bash
 #!/bin/bash
+set -o pipefail
 
 # Configuration
 BACKUP_DIR="/backup/mysql"
 RETENTION_DAYS=7
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="/var/log/mysql_backup.log"
+BACKUP_STATUS=0
 
 # Create backup directory if it doesn't exist
 mkdir -p "${BACKUP_DIR}"
@@ -45,13 +47,14 @@ for DB in $DATABASES; do
     --quick \
     --routines \
     --events \
-    "${DB}" \
-    | gzip > "${OUTPUT_FILE}" 2>>"${LOG_FILE}"
+    "${DB}" 2>>"${LOG_FILE}" \
+    | gzip > "${OUTPUT_FILE}"
 
   if [ $? -eq 0 ]; then
     echo "[${DATE}] Backed up: ${DB} -> ${OUTPUT_FILE}" >> "${LOG_FILE}"
   else
     echo "[${DATE}] ERROR: Failed to back up ${DB}" >> "${LOG_FILE}"
+    BACKUP_STATUS=1
   fi
 done
 
