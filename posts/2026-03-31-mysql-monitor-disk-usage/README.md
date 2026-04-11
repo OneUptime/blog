@@ -68,7 +68,7 @@ SHOW BINARY LOGS;
 Check total binary log size:
 
 ```bash
-du -sh /var/lib/mysql/mysql-bin.*
+du -sh /var/lib/mysql/binlog.*
 ```
 
 Ensure `binlog_expire_logs_seconds` is set to automatically remove old logs:
@@ -85,8 +85,8 @@ InnoDB undo logs grow when long-running transactions are open:
 SELECT NAME, SPACE_TYPE,
        ROUND(FILE_SIZE / 1073741824, 2) AS size_gb,
        ROUND(ALLOCATED_SIZE / 1073741824, 2) AS allocated_gb
-FROM information_schema.FILES
-WHERE FILE_TYPE = 'UNDO LOG';
+FROM information_schema.INNODB_TABLESPACES
+WHERE SPACE_TYPE = 'Undo';
 ```
 
 The temporary tablespace (`ibtmp1`) can also grow under heavy temp table usage:
