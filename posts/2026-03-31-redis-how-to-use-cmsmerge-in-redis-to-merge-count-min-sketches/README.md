@@ -12,7 +12,7 @@ Description: Learn how CMS.MERGE combines multiple Count-Min Sketches in Redis i
 
 `CMS.MERGE` is a RedisBloom command that merges two or more Count-Min Sketches (CMS) into a single destination sketch. This is useful when you collect frequency data in separate sketches - perhaps per-region or per-time-window - and want to aggregate them into a global view.
 
-The merge operation adds the counters from each source sketch into the destination, respecting optional weight multipliers.
+The merge operation replaces the counters in the destination with the weighted sum of the source sketches' counters, respecting optional weight multipliers.
 
 ## Prerequisites
 
@@ -31,9 +31,9 @@ CMS.INITBYDIM region_eu 2000 5
 CMS.INITBYDIM region_asia 2000 5
 
 # Populate each with regional event data
-CMS.ADD region_us "product:A" 500 "product:B" 300 "product:C" 120
-CMS.ADD region_eu "product:A" 280 "product:B" 450 "product:C" 90
-CMS.ADD region_asia "product:A" 620 "product:B" 150 "product:C" 340
+CMS.INCRBY region_us "product:A" 500 "product:B" 300 "product:C" 120
+CMS.INCRBY region_eu "product:A" 280 "product:B" 450 "product:C" 90
+CMS.INCRBY region_asia "product:A" 620 "product:B" 150 "product:C" 340
 ```
 
 ## Basic CMS.MERGE Syntax
@@ -66,8 +66,8 @@ CMS.QUERY global_products "product:A" "product:B" "product:C"
 The `WEIGHTS` option lets you scale each source sketch's contribution before merging:
 
 ```bash
-# Weight EU data 2x and Asia data 1.5x to normalize for timezone differences
-CMS.MERGE weighted_global 3 region_us region_eu region_asia WEIGHTS 1 2 1.5
+# Weight EU data 2x and Asia data 2x to normalize for timezone differences
+CMS.MERGE weighted_global 3 region_us region_eu region_asia WEIGHTS 1 2 2
 ```
 
 This is useful when different sources have different sampling rates or time windows.
@@ -83,10 +83,10 @@ for hour in 00 01 02 03; do
 done
 
 # Simulate adding events to each hour
-CMS.ADD events:hour:00 "login" 1200 "search" 3400 "purchase" 89
-CMS.ADD events:hour:01 "login" 980 "search" 2800 "purchase" 112
-CMS.ADD events:hour:02 "login" 750 "search" 2100 "purchase" 67
-CMS.ADD events:hour:03 "login" 640 "search" 1900 "purchase" 45
+CMS.INCRBY events:hour:00 "login" 1200 "search" 3400 "purchase" 89
+CMS.INCRBY events:hour:01 "login" 980 "search" 2800 "purchase" 112
+CMS.INCRBY events:hour:02 "login" 750 "search" 2100 "purchase" 67
+CMS.INCRBY events:hour:03 "login" 640 "search" 1900 "purchase" 45
 
 # Merge into daily sketch
 CMS.INITBYDIM events:day:2026-03-31 5000 7
@@ -115,9 +115,9 @@ for svc in services:
     r.execute_command("CMS.INITBYDIM", svc, 3000, 6)
 
 # Add data to each service
-r.execute_command("CMS.ADD", "service_auth", "user:1001", 45, "user:1002", 12)
-r.execute_command("CMS.ADD", "service_api", "user:1001", 120, "user:1002", 88)
-r.execute_command("CMS.ADD", "service_worker", "user:1001", 30, "user:1002", 5)
+r.execute_command("CMS.INCRBY", "service_auth", "user:1001", 45, "user:1002", 12)
+r.execute_command("CMS.INCRBY", "service_api", "user:1001", 120, "user:1002", 88)
+r.execute_command("CMS.INCRBY", "service_worker", "user:1001", 30, "user:1002", 5)
 
 # Create destination and merge
 r.execute_command("CMS.INITBYDIM", "all_services", 3000, 6)
@@ -142,7 +142,7 @@ CMS.INITBYDIM sketch_large 2000 5
 CMS.INITBYDIM dest 2000 5
 
 CMS.MERGE dest 2 sketch_small sketch_large
-# (error) ERR CMS sketches have different dimensions
+# (error) CMS: width/depth is not equal
 ```
 
 Always ensure all sketches share the same width and depth before merging.
