@@ -104,17 +104,11 @@ List<KeyValue<String, String>> values = commands.mget("{user:1}:name", "{user:1}
 ## Executing Commands on All Masters
 
 ```java
-import io.lettuce.core.cluster.api.NodeSelectionSupport;
-
 // Run DBSIZE on each master node
 Map<String, Long> dbSizes = new HashMap<>();
 commands.masters().commands().dbsize()
-    .forEach((nodeId, future) -> {
-        try {
-            dbSizes.put(nodeId, future.get());
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-        }
+    .asMap().forEach((node, size) -> {
+        dbSizes.put(node.getNodeId(), size);
     });
 ```
 
