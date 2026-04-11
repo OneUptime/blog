@@ -91,7 +91,7 @@ Both commands produce identical output for `GET` operations. The key differences
 | Aspect | BITFIELD GET | BITFIELD_RO GET |
 |---|---|---|
 | Read replicas | Typically not routed | Yes, explicitly safe |
-| Allows SET/INCRBY | Yes (in same call) | No (compile-time rejection) |
+| Allows SET/INCRBY | Yes (in same call) | No (parse-time rejection) |
 | Redis version | All | 6.0+ |
 | Keyspace events | Possible (if mixed ops) | Never |
 
