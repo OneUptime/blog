@@ -158,7 +158,7 @@ SELECT -42 * SIGN(-42);
 -- Returns: 42
 ```
 
-This identity (`X * SIGN(X) = ABS(X)`) is occasionally useful in complex expressions where `ABS()` cannot be nested but `SIGN()` can.
+This identity (`X * SIGN(X) = ABS(X)`) is occasionally useful in complex expressions where you need to manipulate the sign and magnitude of a value separately.
 
 ---
 
