@@ -106,7 +106,7 @@ routing_strategy = next-available
 # round-robin - distribute connections equally across all servers
 routing_strategy = round-robin
 
-# round-robin-with-fallback - round-robin primaries; fall back to secondaries
+# round-robin-with-fallback - round-robin secondaries; fall back to primary
 routing_strategy = round-robin-with-fallback
 ```
 
