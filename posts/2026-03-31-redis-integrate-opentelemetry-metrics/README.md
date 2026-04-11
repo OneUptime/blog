@@ -52,8 +52,8 @@ redis.memory.used                 - Bytes used by data
 redis.keyspace.hits               - Total keyspace hits
 redis.keyspace.misses             - Total keyspace misses
 redis.commands.processed          - Total commands processed
-redis.net.input                   - Bytes received per second
-redis.net.output                  - Bytes sent per second
+redis.net.input                   - Total bytes read from the network
+redis.net.output                  - Total bytes written to the network
 redis.rdb.changes_since_last_save - Unsaved changes count
 redis.uptime                      - Server uptime in seconds
 ```
@@ -123,12 +123,6 @@ def get_from_cache(key: str):
 Track cache hit rate as a gauge metric:
 
 ```python
-hit_rate_gauge = meter.create_observable_gauge(
-    "app.redis.cache_hit_rate",
-    callbacks=[get_hit_rate],
-    description="Cache hit rate percentage"
-)
-
 total_hits = 0
 total_requests = 0
 
@@ -137,8 +131,14 @@ def get_hit_rate(options):
         return
     rate = (total_hits / total_requests) * 100
     yield metrics.Observation(rate, {"service": "user-api"})
+
+hit_rate_gauge = meter.create_observable_gauge(
+    "app.redis.cache_hit_rate",
+    callbacks=[get_hit_rate],
+    description="Cache hit rate percentage"
+)
 ```
 
 ## Summary
 
-OpenTelemetry provides two complementary approaches for Redis metrics: the Collector's Redis receiver for server-level stats, and the OTel Metrics API for application-level metrics like cache hit rate. Use both together for complete visibility. Deploy the Collector as a sidecar in Kubernetes and export to any backend that speaks OTLP - Prometheus, Tempo, Grafana Cloud, or OneUptime.
+OpenTelemetry provides two complementary approaches for Redis metrics: the Collector's Redis receiver for server-level stats, and the OTel Metrics API for application-level metrics like cache hit rate. Use both together for complete visibility. Deploy the Collector as a sidecar in Kubernetes and export to any backend that speaks OTLP - Prometheus, Grafana Cloud, Datadog, or OneUptime.
