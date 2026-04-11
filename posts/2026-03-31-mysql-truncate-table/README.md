@@ -93,7 +93,7 @@ With `DELETE FROM log_entries`, the `AUTO_INCREMENT` counter would continue from
 | Triggers | Not fired | Fired for each row |
 | AUTO_INCREMENT reset | Yes | No |
 | Transaction rollback | Not possible in InnoDB | Possible |
-| Foreign key checks | Fails if child rows exist | Cascade or fail per FK definition |
+| Foreign key checks | Fails if FK constraint exists | Cascade or fail per FK definition |
 | Requires privilege | DROP privilege | DELETE privilege |
 
 ## TRUNCATE and Foreign Keys
