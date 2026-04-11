@@ -100,17 +100,11 @@ Check how much disk space binary logs consume:
 du -sh /var/lib/mysql/mysql-bin.*
 ```
 
-Or query from MySQL:
+Or query from MySQL using `SHOW BINARY LOGS`, which returns file names and sizes directly:
 
 ```sql
-SELECT
-  LOG_NAME,
-  FILE_SIZE / 1073741824 AS size_gb
-FROM information_schema.FILES
-WHERE FILE_TYPE = 'UNDO LOG';
+SHOW BINARY LOGS;
 ```
-
-For binary log sizes, `SHOW BINARY LOGS` returns file sizes directly.
 
 ## Handling the General Query Log
 
@@ -148,7 +142,7 @@ Never purge binary logs that have not been replicated to all replicas. Check rep
 
 ```sql
 SHOW REPLICA STATUS\G
--- Note the Master_Log_File value and only purge logs older than that
+-- Note the Source_Log_File value and only purge logs older than that
 ```
 
 ## Summary
