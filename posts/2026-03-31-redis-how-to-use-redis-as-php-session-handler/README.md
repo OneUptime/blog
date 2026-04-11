@@ -248,6 +248,8 @@ function logout(): void {
 ```php
 <?php
 
+use Predis\Client;
+
 $redis = new Client();
 
 // Count active sessions (phpredis prefix)
