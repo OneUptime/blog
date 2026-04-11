@@ -47,7 +47,7 @@ INSERT INTO customers VALUES
 
 SELECT
     customer_id,
-    UPPER(LEFT(name, 1)) || LOWER(SUBSTRING(name, 2)) AS formatted_name,  -- Title case attempt
+    CONCAT(UPPER(LEFT(name, 1)), LOWER(SUBSTRING(name, 2))) AS formatted_name,  -- Title case attempt
     LOWER(email) AS normalised_email
 FROM customers;
 ```
@@ -115,11 +115,11 @@ SELECT * FROM customers WHERE LOWER(email) = 'alice@example.com';
 `UPPER` and `LOWER` work correctly with Unicode characters in `utf8mb4`:
 
 ```sql
-SELECT UPPER('straße');    -- 'STRASSE' (German sharp S expands)
-SELECT LOWER('ISTANBUL');  -- 'istanbul'
+SELECT UPPER('café');      -- 'CAFÉ'
+SELECT LOWER('MÜNCHEN');   -- 'münchen'
 ```
 
-For languages with context-dependent casing rules (Turkish dotted/dotless I), MySQL follows Unicode rules based on the collation. Use `utf8mb4_tr_0900_ai_ci` for Turkish.
+Note that MySQL's `UPPER()` uses simple (one-to-one) case mapping, so it does not expand `ß` to `SS`. For languages with context-dependent casing rules (Turkish dotted/dotless I), MySQL follows Unicode rules based on the collation. Use `utf8mb4_tr_0900_ai_ci` for Turkish.
 
 ## Combining with other string functions
 
