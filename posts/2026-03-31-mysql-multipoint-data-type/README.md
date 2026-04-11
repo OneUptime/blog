@@ -29,9 +29,10 @@ graph TD
 column_name MULTIPOINT [NOT NULL] [SRID srid_value]
 
 -- Create from WKT
-ST_GeomFromText('MULTIPOINT((x1 y1), (x2 y2), (x3 y3))', srid)
+-- For SRID 4326, MySQL 8.0 axis order is (latitude longitude)
+ST_GeomFromText('MULTIPOINT((lat1 lon1), (lat2 lon2), (lat3 lon3))', 4326)
 -- Alternative (no inner parentheses, also valid in MySQL)
-ST_GeomFromText('MULTIPOINT(x1 y1, x2 y2, x3 y3)', srid)
+ST_GeomFromText('MULTIPOINT(lat1 lon1, lat2 lon2, lat3 lon3)', 4326)
 
 -- Useful functions
 ST_NumGeometries(mp)       -- count of points in the collection
@@ -63,10 +64,10 @@ INSERT INTO branch_networks (company, region, locations) VALUES
     'New York',
     ST_GeomFromText(
         'MULTIPOINT(
-            (-74.0060 40.7128),
-            (-73.9857 40.7484),
-            (-73.9442 40.6782),
-            (-73.8648 40.7282)
+            (40.7128 -74.0060),
+            (40.7484 -73.9857),
+            (40.6782 -73.9442),
+            (40.7282 -73.8648)
         )',
         4326
     )
@@ -76,9 +77,9 @@ INSERT INTO branch_networks (company, region, locations) VALUES
     'Chicago',
     ST_GeomFromText(
         'MULTIPOINT(
-            (-87.6298 41.8781),
-            (-87.6553 41.9200),
-            (-87.6700 41.8500)
+            (41.8781 -87.6298),
+            (41.9200 -87.6553),
+            (41.8500 -87.6700)
         )',
         4326
     )
@@ -100,8 +101,8 @@ FROM branch_networks;
 +------------+----------+--------------+-------------------------------------------------+
 | company    | region   | num_branches | bounding_box_wkt                                |
 +------------+----------+--------------+-------------------------------------------------+
-| City Bank  | New York | 4            | POLYGON((-74.006 40.6782,...,-74.006 40.6782))  |
-| Quick Mart | Chicago  | 3            | POLYGON((-87.67 41.85,...,-87.67 41.85))        |
+| City Bank  | New York | 4            | POLYGON((40.6782 -74.006,...,40.6782 -74.006))  |
+| Quick Mart | Chicago  | 3            | POLYGON((41.85 -87.67,...,41.85 -87.67))        |
 +------------+----------+--------------+-------------------------------------------------+
 ```
 
@@ -120,8 +121,8 @@ FROM branch_networks;
 +------------+---------------------------+---------------------------+---------------------------+
 | company    | branch_1                  | branch_2                  | branch_3                  |
 +------------+---------------------------+---------------------------+---------------------------+
-| City Bank  | POINT(-74.006 40.7128)    | POINT(-73.9857 40.7484)   | POINT(-73.9442 40.6782)   |
-| Quick Mart | POINT(-87.6298 41.8781)   | POINT(-87.6553 41.92)     | POINT(-87.67 41.85)       |
+| City Bank  | POINT(40.7128 -74.006)    | POINT(40.7484 -73.9857)   | POINT(40.6782 -73.9442)   |
+| Quick Mart | POINT(41.8781 -87.6298)   | POINT(41.92 -87.6553)     | POINT(41.85 -87.67)       |
 +------------+---------------------------+---------------------------+---------------------------+
 ```
 
@@ -129,7 +130,7 @@ FROM branch_networks;
 
 ```sql
 SET @manhattan = ST_GeomFromText(
-    'POLYGON((-74.020 40.700, -73.960 40.700, -73.960 40.800, -74.020 40.800, -74.020 40.700))',
+    'POLYGON((40.700 -74.020, 40.700 -73.960, 40.800 -73.960, 40.800 -74.020, 40.700 -74.020))',
     4326
 );
 
@@ -169,13 +170,13 @@ ORDER BY b.company, nums.n;
 +------------+--------------+---------------------------+
 | company    | branch_index | branch_location           |
 +------------+--------------+---------------------------+
-| City Bank  | 1            | POINT(-74.006 40.7128)    |
-| City Bank  | 2            | POINT(-73.9857 40.7484)   |
-| City Bank  | 3            | POINT(-73.9442 40.6782)   |
-| City Bank  | 4            | POINT(-73.8648 40.7282)   |
-| Quick Mart | 1            | POINT(-87.6298 41.8781)   |
-| Quick Mart | 2            | POINT(-87.6553 41.92)     |
-| Quick Mart | 3            | POINT(-87.67 41.85)       |
+| City Bank  | 1            | POINT(40.7128 -74.006)    |
+| City Bank  | 2            | POINT(40.7484 -73.9857)   |
+| City Bank  | 3            | POINT(40.6782 -73.9442)   |
+| City Bank  | 4            | POINT(40.7282 -73.8648)   |
+| Quick Mart | 1            | POINT(41.8781 -87.6298)   |
+| Quick Mart | 2            | POINT(41.92 -87.6553)     |
+| Quick Mart | 3            | POINT(41.85 -87.67)       |
 +------------+--------------+---------------------------+
 ```
 
