@@ -19,14 +19,12 @@ Apache Superset supports Redis as both a query results cache and a Celery task r
 ## Installing Dependencies
 
 ```bash
-pip install apache-superset[redis] celery redis
+pip install apache-superset celery redis
 ```
 
 ## Configuring Redis Cache in superset_config.py
 
 ```python
-from cachelib.redis import RedisCache
-
 # Main query results cache
 CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
@@ -97,11 +95,13 @@ Or via API:
 import requests
 
 session = requests.Session()
-session.post("http://superset:8088/api/v1/security/login", json={
+response = session.post("http://superset:8088/api/v1/security/login", json={
     "username": "admin",
     "password": "admin",
-    "provider": "db"
+    "provider": "db",
 })
+access_token = response.json()["access_token"]
+session.headers.update({"Authorization": f"Bearer {access_token}"})
 
 # Set 30-minute cache on a specific chart
 session.put("http://superset:8088/api/v1/chart/42", json={
@@ -115,7 +115,7 @@ Check Redis memory usage by prefix:
 
 ```bash
 redis-cli --scan --pattern "superset_results_*" | wc -l
-redis-cli --scan --pattern "superset_results_*" | xargs redis-cli MEMORY USAGE | awk '{sum+=$1} END {print sum/1024/1024 " MB"}'
+redis-cli --scan --pattern "superset_results_*" | xargs -n 1 redis-cli MEMORY USAGE | awk '{sum+=$1} END {print sum/1024/1024 " MB"}'
 ```
 
 Check cache hit rate:
