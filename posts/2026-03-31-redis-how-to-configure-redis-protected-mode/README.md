@@ -18,7 +18,7 @@ When protected mode is on and Redis detects it may be exposed to the internet (b
 
 Protected mode activates when ALL of the following are true:
 1. `protected-mode yes` is set (the default)
-2. Redis is bound to something other than loopback (127.0.0.1)
+2. No explicit `bind` directive is configured (Redis defaults to listening on all interfaces)
 3. No password has been set via `requirepass` or ACL
 
 When triggered, Redis responds to external connections with:
