@@ -8,7 +8,7 @@ Description: Learn how Redis diskless replication streams RDB data directly to r
 
 ---
 
-By default, Redis replication requires the primary to save an RDB snapshot to disk before sending it to new replicas. Diskless replication bypasses this step by streaming the RDB data directly to replicas over a socket. This reduces disk I/O and speeds up initial sync on fast networks.
+Prior to Redis 7.0, Redis replication defaults to saving an RDB snapshot to disk before sending it to new replicas. Since Redis 7.0, diskless replication is enabled by default. Diskless replication bypasses the disk step by streaming the RDB data directly to replicas over a socket. This reduces disk I/O and speeds up initial sync on fast networks.
 
 ## Standard vs Diskless Replication
 
@@ -68,8 +68,8 @@ Scenario: 8 replicas joining a 40GB dataset primary
 
 Standard:
   - Write 40GB to disk: ~80 seconds
-  - Send to each replica sequentially: 8 * 40GB
-  - Total: significant time + heavy disk wear
+  - Send 40GB from disk to each replica: 8 disk reads
+  - Total: significant time + heavy disk I/O
 
 Diskless (max-replicas=0 means unlimited):
   - Stream 40GB once to all 8 replicas in parallel
@@ -90,7 +90,7 @@ Watch the Redis log during a replica join to confirm diskless mode is active:
 
 ```text
 Starting BGSAVE for SYNC with target: replicas sockets
-Background RDB transfer started by pid 12345
+Background RDB transfer started by pid 12345 to replica socket
 ```
 
 Compare to standard mode which logs:
