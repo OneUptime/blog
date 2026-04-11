@@ -221,4 +221,4 @@ print(f"Current step: {state.get('current_step')}")
 
 ## Summary
 
-The Saga pattern with Redis Streams enables distributed transactions across microservices by decomposing operations into sequential steps with compensating actions. Redis Streams provide reliable message delivery for command routing, consumer groups ensure exactly-once step processing, and Hash storage persists the full saga state for auditing and recovery. Failed steps trigger reverse compensation commands to maintain data consistency.
+The Saga pattern with Redis Streams enables distributed transactions across microservices by decomposing operations into sequential steps with compensating actions. Redis Streams provide reliable message delivery for command routing, consumer groups ensure at-least-once step processing, and Hash storage persists the full saga state for auditing and recovery. Failed steps trigger reverse compensation commands to maintain data consistency.
