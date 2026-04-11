@@ -56,6 +56,7 @@ Required attributes:
 CREATE TABLE products (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
+    category VARCHAR(50),
     price DECIMAL(10, 2),
     cost DECIMAL(10, 2),
     tax_rate DECIMAL(5, 4) DEFAULT 0.08
@@ -68,12 +69,12 @@ CREATE TABLE orders (
     discount_pct DECIMAL(5, 2) DEFAULT 0
 );
 
-INSERT INTO products (name, price, cost, tax_rate) VALUES
-    ('Laptop',   999.99, 600.00, 0.08),
-    ('Mouse',     29.99,  10.00, 0.08),
-    ('Keyboard',  59.99,  20.00, 0.08),
-    ('Desk',     349.99, 180.00, 0.05),
-    ('Chair',    199.99,  90.00, 0.05);
+INSERT INTO products (name, category, price, cost, tax_rate) VALUES
+    ('Laptop',   'Electronics', 999.99, 600.00, 0.08),
+    ('Mouse',    'Electronics',  29.99,  10.00, 0.08),
+    ('Keyboard', 'Electronics',  59.99,  20.00, 0.08),
+    ('Desk',     'Furniture',   349.99, 180.00, 0.05),
+    ('Chair',    'Furniture',   199.99,  90.00, 0.05);
 
 INSERT INTO orders (product_id, quantity, discount_pct) VALUES
     (1, 3, 10), (2, 10, 0), (3, 5, 5), (4, 2, 15), (5, 4, 0);
@@ -142,9 +143,9 @@ ORDER BY margin_pct DESC;
 +----------+--------+--------+------------+
 | name     | price  | cost   | margin_pct |
 +----------+--------+--------+------------+
-| Mouse    |  29.99 |  10.00 |  66.62     |
-| Keyboard |  59.99 |  20.00 |  66.64     |
-| Chair    | 199.99 |  90.00 |  54.99     |
+| Mouse    |  29.99 |  10.00 |  66.69     |
+| Keyboard |  59.99 |  20.00 |  66.66     |
+| Chair    | 199.99 |  90.00 |  55.00     |
 | Desk     | 349.99 | 180.00 |  48.57     |
 | Laptop   | 999.99 | 600.00 |  40.00     |
 +----------+--------+--------+------------+
@@ -186,7 +187,7 @@ SELECT name, price, cost
 FROM products
 ORDER BY profit_margin_pct(price, cost) DESC;
 
--- Use function in a join's ON condition (less common but valid)
+-- Use function in a query with a JOIN
 SELECT o.id, p.name,
        o.quantity * p.price * (1 - o.discount_pct / 100) AS line_total,
        price_with_tax(o.quantity * p.price * (1 - o.discount_pct / 100), p.tax_rate) AS total_with_tax
