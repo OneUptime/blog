@@ -23,10 +23,9 @@ TS.MREVRANGE fromTimestamp toTimestamp
   [FILTER_BY_VALUE min max]
   [WITHLABELS | SELECTED_LABELS label...]
   [COUNT count]
-  [ALIGN align]
-  [AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
-  [GROUPBY label REDUCE reducer]
+  [[ALIGN align] AGGREGATION aggregator bucketDuration [BUCKETTIMESTAMP bt] [EMPTY]]
   FILTER filterExpr [filterExpr ...]
+  [GROUPBY label REDUCE reducer]
 ```
 
 The `FILTER` clause is required.
@@ -81,7 +80,7 @@ TS.MREVRANGE - + COUNT 5 FILTER metric=cpu
 
 ```bash
 # Include host label for identification
-TS.MREVRANGE - + SELECTED_LABELS host WITHLABELS FILTER metric=cpu COUNT 3
+TS.MREVRANGE - + WITHLABELS COUNT 3 FILTER metric=cpu
 ```
 
 ## With Aggregation - Newest Buckets First
