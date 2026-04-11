@@ -86,7 +86,7 @@ BITCOUNT daily-active:2026-03-31 -1 -1
 
 ### Weekly Active Users (Approximate)
 
-Count active days for all users across a week by ORing bitmaps first:
+Count unique users active across a week by ORing daily bitmaps first:
 
 ```redis
 BITOP OR weekly-active daily-active:2026-03-25 daily-active:2026-03-26 daily-active:2026-03-27 daily-active:2026-03-28 daily-active:2026-03-29 daily-active:2026-03-30 daily-active:2026-03-31
