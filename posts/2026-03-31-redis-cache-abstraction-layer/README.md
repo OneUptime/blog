@@ -40,7 +40,6 @@ class CacheBackend(ABC):
 
 ```python
 import redis
-import json
 import pickle
 
 class RedisCache(CacheBackend):
@@ -112,8 +111,6 @@ class StampedeProtectedCache(CacheBackend):
 Chain a local in-process cache in front of Redis:
 
 ```python
-import functools
-
 class TieredCache(CacheBackend):
     def __init__(self, l1: CacheBackend, l2: CacheBackend):
         self._l1 = l1
