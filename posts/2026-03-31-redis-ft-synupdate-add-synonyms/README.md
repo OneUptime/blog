@@ -30,7 +30,7 @@ FT.SYNUPDATE index synonym_group_id [SKIPINITIALSCAN] term [term ...]
 
 - `index` - the RediSearch index name
 - `synonym_group_id` - a string identifier for the synonym group (create new or overwrite existing)
-- `SKIPINITIALSCAN` - do not re-index existing documents for this synonym group (faster for large indexes)
+- `SKIPINITIALSCAN` - skip scanning and updating the inverted index for existing documents (faster for large indexes)
 - `term [term ...]` - two or more terms that are synonyms of each other
 
 Returns `OK` on success.
@@ -95,19 +95,17 @@ FT.SEARCH articles "laptop"
 
 ### Update an Existing Synonym Group
 
-To add a new term to an existing group, call `FT.SYNUPDATE` with the same group ID and include all terms (old plus new):
+To add a new term to an existing group, call `FT.SYNUPDATE` with the same group ID and the new terms:
 
 ```redis
--- Original group: vehicles = car, automobile, vehicle
--- Add "truck" to the group
-FT.SYNUPDATE articles vehicles car automobile vehicle truck
+FT.SYNUPDATE articles vehicles truck
 ```
 
-Calling `FT.SYNUPDATE` with an existing group ID replaces the group's terms.
+Calling `FT.SYNUPDATE` with an existing group ID adds the new terms to the existing group. You cannot remove terms from a synonym group once added.
 
 ### Skip Initial Scan for Large Indexes
 
-When adding synonyms to an index with millions of documents, use `SKIPINITIALSCAN` to avoid a full re-index. The synonym will apply to documents indexed after this point:
+When adding synonyms to an index with millions of documents, use `SKIPINITIALSCAN` to skip scanning and updating the inverted index for existing documents. Query-time synonym expansion still matches existing documents, but index-time synonym entries are only added for documents indexed after this point:
 
 ```redis
 FT.SYNUPDATE articles electronics SKIPINITIALSCAN phone mobile smartphone
@@ -115,23 +113,29 @@ FT.SYNUPDATE articles electronics SKIPINITIALSCAN phone mobile smartphone
 
 ## Viewing Current Synonym Groups
 
-Use `FT.SYNDUMP` to see all synonym groups defined on an index:
+Use `FT.SYNDUMP` to see all synonym terms and their group IDs. The output lists each term followed by an array of synonym group IDs it belongs to:
 
 ```redis
 FT.SYNDUMP articles
 ```
 
 ```text
-1) "vehicles"
-2) 1) "car"
-   2) "automobile"
-   3) "vehicle"
-   4) "truck"
-3) "computers"
-4) 1) "laptop"
-   2) "notebook"
-   3) "computer"
-   4) "PC"
+ 1) "car"
+ 2) 1) "vehicles"
+ 3) "automobile"
+ 4) 1) "vehicles"
+ 5) "vehicle"
+ 6) 1) "vehicles"
+ 7) "truck"
+ 8) 1) "vehicles"
+ 9) "laptop"
+10) 1) "computers"
+11) "notebook"
+12) 1) "computers"
+13) "computer"
+14) 1) "computers"
+15) "PC"
+16) 1) "computers"
 ```
 
 ## Practical Use Cases
