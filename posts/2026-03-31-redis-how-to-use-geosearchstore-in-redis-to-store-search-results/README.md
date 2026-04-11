@@ -81,7 +81,6 @@ ZRANGE nearby:restaurants:dist 0 -1 WITHSCORES
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
