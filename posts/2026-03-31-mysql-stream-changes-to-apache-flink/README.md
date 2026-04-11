@@ -51,6 +51,7 @@ CREATE TABLE mysql_orders (
   total_amount    DECIMAL(10, 2),
   status          STRING,
   order_date      TIMESTAMP(3),
+  WATERMARK FOR order_date AS order_date - INTERVAL '5' SECOND,
   PRIMARY KEY (id) NOT ENFORCED
 ) WITH (
   'connector'    = 'mysql-cdc',
@@ -77,7 +78,9 @@ CREATE TABLE order_revenue_per_minute (
 ) WITH (
   'connector' = 'jdbc',
   'url'       = 'jdbc:mysql://analytics-db:3306/reports',
-  'table-name' = 'order_revenue_per_minute'
+  'table-name' = 'order_revenue_per_minute',
+  'username'  = 'analytics_user',
+  'password'  = 'analytics_password'
 );
 
 INSERT INTO order_revenue_per_minute
@@ -128,8 +131,8 @@ curl http://flink-jobmanager:8081/jobs/{job-id}/metrics
 ```
 
 Key metrics to monitor:
-- `currentFetchEventTimeLag` - CDC lag from MySQL binary log
-- `numberOfEnqueuedRecords` - backlog of unprocessed records
+- `currentEmitEventTimeLag` - lag between event time and current processing time
+- `pendingRecords` - number of records awaiting processing from the source
 
 ## Summary
 
