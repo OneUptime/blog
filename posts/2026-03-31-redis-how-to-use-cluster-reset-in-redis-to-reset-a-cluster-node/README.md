@@ -50,11 +50,11 @@ Use HARD reset when you need to completely disassociate a node from any cluster 
 | Clear known nodes table | Yes | Yes |
 | Clear slot assignments | Yes | Yes |
 | Flush cluster state | Yes | Yes |
+| Turn replica into empty master (data flushed) | Yes | Yes |
 | Generate new node ID | No | Yes |
 | Reset config epoch to 0 | No | Yes |
-| Flush all data (FLUSHALL) | No | No |
 
-Note: `CLUSTER RESET` does NOT delete the data stored in the node. It only resets cluster membership state.
+Note: If the node is a replica, `CLUSTER RESET` flushes its dataset and promotes it to an empty master. For master nodes, the command does not flush data — in fact, it **refuses to run on a master that holds any keys**. You must run `FLUSHALL` on the master first, then execute `CLUSTER RESET`.
 
 ## Typical Use Cases
 
@@ -106,9 +106,9 @@ redis-cli -h 127.0.0.1 -p 7004 CLUSTER NODES | grep myself
 
 ## Important Cautions
 
-- Do not run `CLUSTER RESET` on a master that still owns hash slots without first migrating them - this will cause a partial cluster and data loss risk
+- `CLUSTER RESET` **will not execute** on a master node that holds any keys. You must run `FLUSHALL` first, then reset. Always migrate slots away from master nodes before resetting to avoid data loss
 - Running HARD reset on a node that other nodes still reference will leave stale entries in other nodes' views until `CLUSTER FORGET` is called
-- `CLUSTER RESET` flushes only cluster state, not keyspace data
+- If the node is a replica, `CLUSTER RESET` flushes its dataset and converts it into an empty master. For master nodes (after keys are removed), cluster state is cleared but the empty keyspace is preserved
 
 ## Python Example
 
