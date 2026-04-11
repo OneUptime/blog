@@ -56,7 +56,7 @@ Startup time comparison for a 10 GB dataset:
 | RDB only | ~8 seconds |
 | Hybrid (AOF + RDB preamble) | ~9 seconds |
 
-Pure AOF must replay all write commands since creation. Hybrid only replays commands since the last rewrite, dramatically reducing restart time.
+Pure AOF must replay every command in the file to reconstruct the dataset, which is slower than loading binary data. Hybrid loads the bulk of the data via the fast RDB format and only replays AOF commands appended since the last rewrite, dramatically reducing restart time.
 
 ## Verifying the Hybrid File
 
@@ -71,7 +71,7 @@ redis-cli INFO persistence | grep aof_rewrite_in_progress
 
 # Inspect the first bytes of the AOF file
 head -c 9 /var/lib/redis/appendonly.aof
-# Should output: REDIS000
+# Should output: REDIS0009
 ```
 
 ## Disabling Hybrid Persistence
