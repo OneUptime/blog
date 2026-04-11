@@ -17,13 +17,7 @@ Build Caddy with the `cache-handler` module using `xcaddy`:
 ```bash
 go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 xcaddy build \
-  --with github.com/darkweak/souin/plugins/caddy
-```
-
-Or use the prebuilt Docker image with the plugin included:
-
-```bash
-docker pull darkweak/souin:latest-caddy
+  --with github.com/caddyserver/cache-handler
 ```
 
 ## Start Redis
@@ -38,12 +32,11 @@ Configure Caddy to use the Souin cache middleware with Redis:
 
 ```text
 {
-    order cache before rewrite
     cache {
         ttl 5m
         stale 2m
         redis {
-            url redis://localhost:6379
+            url 127.0.0.1:6379
         }
     }
 }
@@ -78,12 +71,11 @@ If you use Caddy's JSON config instead of Caddyfile:
                 "handle": [{
                   "handler": "cache",
                   "ttl": "5m",
-                  "storers": [{
+                  "redis": {
                     "configuration": {
-                      "url": "redis://localhost:6379"
-                    },
-                    "name": "redis"
-                  }]
+                      "InitAddress": ["127.0.0.1:6379"]
+                    }
+                  }
                 }]
               }]
             }]
@@ -101,31 +93,35 @@ Make two requests and observe the cache header:
 
 ```bash
 curl -I https://api.example.com/data
-# X-Cache: MISS
+# Cache-Status: Souin; fwd=uri-miss
 
 curl -I https://api.example.com/data
-# X-Cache: HIT
+# Cache-Status: Souin; hit
 ```
 
 Inspect the cached entry in Redis:
 
 ```bash
-redis-cli keys "souin*"
-redis-cli get "souin_GET_api.example.com_/data"
+redis-cli keys "GET-*"
+redis-cli get "GET-https-api.example.com-/data"
 ```
 
 ## Cache Invalidation
 
-Use Caddy's Souin API to invalidate specific cache entries:
+Use Souin's built-in API to invalidate cache entries. The API is available at `/souin-api/souin/` by default:
 
 ```bash
-curl -X PURGE https://api.example.com/data
+# Purge a specific path pattern
+curl -X PURGE https://api.example.com/souin-api/souin/data
+
+# Flush all cached entries
+curl -X PURGE https://api.example.com/souin-api/souin/flush
 ```
 
 Or expire keys directly in Redis:
 
 ```bash
-redis-cli del "souin_GET_api.example.com_/data"
+redis-cli del "GET-https-api.example.com-/data"
 ```
 
 ## Summary
