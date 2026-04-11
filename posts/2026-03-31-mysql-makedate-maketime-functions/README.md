@@ -122,7 +122,7 @@ To build a complete `DATETIME`, combine `MAKEDATE()` and `MAKETIME()` with `TIME
 SELECT TIMESTAMP(MAKEDATE(2026, 90), MAKETIME(14, 30, 0)) AS full_datetime;
 -- Returns: '2026-03-31 14:30:00'
 
--- Alternative using STR_TO_DATE
+-- Alternative using CAST and CONCAT
 SELECT CAST(CONCAT(MAKEDATE(2026, 90), ' ', MAKETIME(14, 30, 0)) AS DATETIME) AS full_datetime;
 ```
 
