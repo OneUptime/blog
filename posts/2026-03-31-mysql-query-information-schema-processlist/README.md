@@ -39,7 +39,7 @@ ORDER BY TIME DESC;
 | `COMMAND` | Query, Sleep, Connect, etc. |
 | `TIME` | Seconds the thread has been in current state |
 | `STATE` | Thread state (Waiting for lock, Sending data, etc.) |
-| `INFO` | Full SQL text (truncated to 65,535 chars) |
+| `INFO` | Full SQL text (LONGTEXT; `NULL` if idle) |
 
 ## Finding Long-Running Queries
 
