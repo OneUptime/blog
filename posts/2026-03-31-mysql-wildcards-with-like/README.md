@@ -43,12 +43,10 @@ SELECT * FROM countries WHERE code LIKE 'U_';
 You can mix both wildcards in the same pattern:
 
 ```sql
--- Match filenames like 'report_2025.csv', 'export_2024.csv'
-SELECT filename
-FROM exports
-WHERE filename LIKE '_______%__.csv';
-
--- 7+ chars before underscore, 2 chars (year suffix), then .csv
+-- Match email addresses with at least one character before @
+SELECT email FROM users WHERE email LIKE '_%@%';
+-- Matches: 'a@test.com', 'user@domain.org'
+-- Does NOT match: '@missing.com'
 
 -- Match version strings like v1.0, v2.1, v10.5
 SELECT version FROM releases WHERE version LIKE 'v_%.%';
@@ -94,8 +92,8 @@ Wildcards match characters according to the column collation:
 SELECT * FROM users WHERE username LIKE 'admin%';
 -- Matches: 'admin', 'Admin', 'ADMIN', 'administrator'
 
--- Force case-sensitive match
-SELECT * FROM users WHERE username LIKE BINARY 'admin%';
+-- Force case-sensitive match using a binary collation
+SELECT * FROM users WHERE username LIKE 'admin%' COLLATE utf8mb4_bin;
 -- Matches only: 'admin', 'administrator' (not 'Admin')
 ```
 
@@ -116,4 +114,4 @@ Check with `EXPLAIN` to verify index usage. Leading wildcards prevent index use 
 
 ## Summary
 
-MySQL's `%` wildcard matches any sequence of zero or more characters, while `_` matches exactly one character. Combine them freely in patterns. Prefix patterns (`'value%'`) use B-tree indexes and are fast; patterns with a leading wildcard force a full table scan. Escape literal `%` and `_` using a backslash with the `ESCAPE` clause. For case-sensitive matching, use `LIKE BINARY` or switch to a case-sensitive collation.
+MySQL's `%` wildcard matches any sequence of zero or more characters, while `_` matches exactly one character. Combine them freely in patterns. Prefix patterns (`'value%'`) use B-tree indexes and are fast; patterns with a leading wildcard force a full table scan. Escape literal `%` and `_` using a backslash with the `ESCAPE` clause. For case-sensitive matching, use a binary collation such as `utf8mb4_bin` with the `COLLATE` clause.
