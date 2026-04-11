@@ -39,9 +39,9 @@ dbset bm TPC-C
 # Connection settings
 diset connection mysql_host     127.0.0.1
 diset connection mysql_port     3306
-diset connection mysql_user     hammerdb
-diset connection mysql_pass     hammerpass
-diset connection mysql_db       tpcc
+diset tpcc mysql_user           hammerdb
+diset tpcc mysql_pass           hammerpass
+diset tpcc mysql_dbase          tpcc
 
 # Warehouse count (1 warehouse = ~100 MB)
 diset tpcc mysql_count_ware  10
@@ -67,9 +67,9 @@ dbset bm TPC-C
 
 diset connection mysql_host  127.0.0.1
 diset connection mysql_port  3306
-diset connection mysql_user  hammerdb
-diset connection mysql_pass  hammerpass
-diset connection mysql_db    tpcc
+diset tpcc mysql_user        hammerdb
+diset tpcc mysql_pass        hammerpass
+diset tpcc mysql_dbase       tpcc
 
 # Test duration: 2-minute ramp + 5-minute measurement
 diset tpcc mysql_rampup   2
@@ -82,9 +82,6 @@ loadscript
 vucreate
 vurun
 waittocomplete
-
-# Print results
-print result
 exit
 ```
 
@@ -109,14 +106,13 @@ Higher NOPM means more throughput. Compare results before and after configuratio
 dbset db mysql
 dbset bm TPC-H
 
-diset connection mysql_host  127.0.0.1
-diset connection mysql_port  3306
-diset connection mysql_user  hammerdb
-diset connection mysql_pass  hammerpass
-diset connection mysql_db    tpch
+diset connection mysql_host   127.0.0.1
+diset connection mysql_port   3306
 
-diset tpch mysql_scale_fact 1
-diset tpch mysql_tpch_dbase tpch
+diset tpch mysql_scale_fact   1
+diset tpch mysql_tpch_user    hammerdb
+diset tpch mysql_tpch_pass    hammerpass
+diset tpch mysql_tpch_dbase   tpch
 
 buildschema
 waittocomplete
@@ -125,7 +121,6 @@ loadscript
 vucreate
 vurun
 waittocomplete
-print result
 exit
 ```
 
