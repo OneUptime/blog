@@ -29,7 +29,7 @@ CALL GetOrdersByStatus('pending');
 A stored function is a named block of SQL code that always returns a single scalar value. Functions are used inside SQL expressions like built-in functions. They cannot modify database state (no DML inside a function by default).
 
 ```sql
-CREATE FUNCTION GetCustomerOrderCount(customer_id INT)
+CREATE FUNCTION GetCustomerOrderCount(cust_id INT)
 RETURNS INT
 DETERMINISTIC
 READS SQL DATA
@@ -37,7 +37,7 @@ BEGIN
   DECLARE order_count INT;
   SELECT COUNT(*) INTO order_count
   FROM orders
-  WHERE customer_id = customer_id;
+  WHERE customer_id = cust_id;
   RETURN order_count;
 END;
 
@@ -159,8 +159,8 @@ Use functions when:
 ```sql
 -- Example: using a function in WHERE clause
 SELECT * FROM orders
-WHERE CalculateDiscount(total, c.tier) > 50.00
-JOIN customers c ON orders.customer_id = c.id;
+JOIN customers c ON orders.customer_id = c.id
+WHERE CalculateDiscount(total, c.tier) > 50.00;
 ```
 
 ## Managing Procedures and Functions
