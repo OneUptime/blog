@@ -20,16 +20,16 @@ There are two primary approaches to streaming Redis changes to Elasticsearch:
 Enable keyspace notifications in Redis:
 
 ```bash
-# Enable all keyspace events (K) and all commands (A)
-redis-cli CONFIG SET notify-keyspace-events KA
+# Enable all keyevent events (E) and all commands (A)
+redis-cli CONFIG SET notify-keyspace-events EA
 
-# Or more specific: Key events (K) + String events (g) + Hash events (h)
-redis-cli CONFIG SET notify-keyspace-events Kgh
+# Or more specific: Keyevent events (E) + String commands ($) + Hash commands (h) + Generic commands (g) + Expired events (x)
+redis-cli CONFIG SET notify-keyspace-events E$hgx
 ```
 
 ```bash
 # In redis.conf
-notify-keyspace-events KA
+notify-keyspace-events EA
 ```
 
 Subscribe and index to Elasticsearch:
@@ -150,8 +150,10 @@ async function hsetWithChangeLog(key, fields) {
 ## Stream Consumer to Elasticsearch
 
 ```javascript
+const Redis = require('ioredis');
 const { Client } = require('@elastic/elasticsearch');
 
+const redis = new Redis({ host: process.env.REDIS_HOST || 'localhost' });
 const esClient = new Client({ node: process.env.ES_NODE || 'http://localhost:9200' });
 const STREAM = 'redis:changes';
 const GROUP = 'es-indexers';
