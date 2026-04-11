@@ -21,6 +21,8 @@ mysql-cluster-community-server    - SQL node + standard MySQL
 mysql-cluster-community-data-node - Data node (ndbd/ndbmtd)
 mysql-cluster-community-management-server - Management node (ndb_mgmd)
 mysql-cluster-community-client    - Client tools
+mysql-cluster-community-common    - Shared files (dependency for server/client)
+mysql-cluster-community-libs      - Shared libraries (dependency for server/client)
 ```
 
 ## Installing on Ubuntu/Debian
@@ -42,7 +44,9 @@ sudo dpkg -i mysql-cluster-community-management-server_8.0.36-debian12-x86_64.de
 # Install data node
 sudo dpkg -i mysql-cluster-community-data-node_8.0.36-debian12-x86_64.deb
 
-# Install SQL node
+# Install SQL node (common and libs are required dependencies)
+sudo dpkg -i mysql-cluster-community-common_8.0.36-debian12-x86_64.deb
+sudo dpkg -i mysql-cluster-community-libs_8.0.36-debian12-x86_64.deb
 sudo dpkg -i mysql-cluster-community-client_8.0.36-debian12-x86_64.deb
 sudo dpkg -i mysql-cluster-community-server_8.0.36-debian12-x86_64.deb
 ```
@@ -60,7 +64,9 @@ sudo rpm -ivh mysql-cluster-community-management-server-8.0.36-1.el8.x86_64.rpm
 # Install data node package
 sudo rpm -ivh mysql-cluster-community-data-node-8.0.36-1.el8.x86_64.rpm
 
-# Install SQL node packages
+# Install SQL node packages (common and libs are required dependencies)
+sudo rpm -ivh mysql-cluster-community-common-8.0.36-1.el8.x86_64.rpm
+sudo rpm -ivh mysql-cluster-community-libs-8.0.36-1.el8.x86_64.rpm
 sudo rpm -ivh mysql-cluster-community-client-8.0.36-1.el8.x86_64.rpm
 sudo rpm -ivh mysql-cluster-community-server-8.0.36-1.el8.x86_64.rpm
 ```
@@ -93,7 +99,7 @@ sudo chown -R mysql:mysql /usr/local/mysql/data
 
 ## Minimal Node Topology
 
-A minimal NDB Cluster requires at least three hosts:
+A minimal NDB Cluster involves four node processes:
 
 ```text
 Host            Role
