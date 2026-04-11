@@ -217,25 +217,28 @@ Verify that the promoted replica has all expected data:
 ```bash
 #!/bin/bash
 # test_failover.sh
+# Uses docker exec to run redis-cli inside the Docker network,
+# since Sentinel returns internal container IPs and ports.
 
 echo "Setting data on primary..."
-redis-cli -p 6379 SET pre_failover_key "value_before"
-redis-cli -p 6379 SET counter 100
+docker exec redis-primary redis-cli SET pre_failover_key "value_before"
+docker exec redis-primary redis-cli SET counter 100
 
 echo "Current primary:"
-redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+docker exec sentinel-1 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 
 echo "Stopping primary..."
 docker stop redis-primary
 sleep 12
 
 echo "New primary after failover:"
-redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+docker exec sentinel-1 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
 
 echo "Checking data on new primary..."
-NEW_PORT=$(redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | tail -1)
-redis-cli -p $NEW_PORT GET pre_failover_key
-redis-cli -p $NEW_PORT GET counter
+NEW_IP=$(docker exec sentinel-1 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | head -1 | tr -d '\r')
+NEW_PORT=$(docker exec sentinel-1 redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster | tail -1 | tr -d '\r')
+docker exec sentinel-1 redis-cli -h $NEW_IP -p $NEW_PORT GET pre_failover_key
+docker exec sentinel-1 redis-cli -h $NEW_IP -p $NEW_PORT GET counter
 
 echo "Failover test complete"
 ```
@@ -280,4 +283,4 @@ def test_data_survives_failover(sentinel_client):
 
 ## Summary
 
-Testing Redis failover requires a realistic environment with Sentinel configured for automatic primary election. Use Docker Compose to create a primary-replica-sentinel topology, then simulate failures by stopping the primary container. Verify that your application's retry logic and sentinel-aware clients reconnect within an acceptable time window and that no data is lost (since replication is synchronous at confirmation time). Always test both the automatic failover path and your application's connection recovery logic.
+Testing Redis failover requires a realistic environment with Sentinel configured for automatic primary election. Use Docker Compose to create a primary-replica-sentinel topology, then simulate failures by stopping the primary container. Verify that your application's retry logic and sentinel-aware clients reconnect within an acceptable time window and that data loss is minimized (note that Redis replication is asynchronous by default, so writes acknowledged just before a failure may not have been replicated to the promoted replica). Always test both the automatic failover path and your application's connection recovery logic.
