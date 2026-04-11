@@ -13,7 +13,7 @@ By default, Flask stores session data in a signed cookie on the client. For larg
 ## Installation
 
 ```bash
-pip install Flask-Session redis
+pip install "Flask-Session[redis]"
 ```
 
 ## Configuration
@@ -31,7 +31,7 @@ app.config["SESSION_REDIS"] = None  # auto-connect to localhost
 import redis
 app.config["SESSION_REDIS"] = redis.Redis(host="localhost", port=6379, db=1)
 app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_USE_SIGNER"] = True      # sign the session ID cookie
+app.config["SESSION_USE_SIGNER"] = True      # deprecated since 0.7.0; safe to omit
 app.config["SESSION_KEY_PREFIX"] = "session:"
 app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1 hour
 
@@ -124,4 +124,4 @@ def invalidate_sessions():
 
 ## Summary
 
-Flask-Session with Redis stores sessions server-side using the Redis key `{SESSION_KEY_PREFIX}{session_id}`. Set `SESSION_USE_SIGNER = True` to sign the session cookie ID. Use `session.permanent = True` with `PERMANENT_SESSION_LIFETIME` to control TTL. The session interface in your routes remains identical to Flask's default cookie sessions.
+Flask-Session with Redis stores sessions server-side using the Redis key `{SESSION_KEY_PREFIX}{session_id}`. Use `session.permanent = True` with `PERMANENT_SESSION_LIFETIME` to control TTL. The session interface in your routes remains identical to Flask's default cookie sessions.
