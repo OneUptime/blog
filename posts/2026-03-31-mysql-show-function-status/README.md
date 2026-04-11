@@ -46,7 +46,7 @@ collation_connection: utf8mb4_0900_ai_ci
 SHOW FUNCTION STATUS LIKE '%format%';
 
 -- Find functions starting with 'fn_'
-SHOW FUNCTION STATUS LIKE 'fn_%';
+SHOW FUNCTION STATUS LIKE 'fn\_%';
 
 -- Find functions ending with '_calc'
 SHOW FUNCTION STATUS LIKE '%_calc';
