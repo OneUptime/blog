@@ -165,14 +165,14 @@ print_r($result);
 ```php
 // Subscriber (runs as a blocking loop)
 $subscriber = new Client();
-$subscriber->pubSubLoop(function ($loop, $message) {
+$pubsub = $subscriber->pubSubLoop(['subscribe' => ['notifications']]);
+
+foreach ($pubsub as $message) {
     if ($message->kind === 'message') {
         $data = json_decode($message->payload, true);
         echo "Received: " . $data['text'] . "\n";
     }
-}, function ($loop) {
-    $loop->subscribe('notifications');
-});
+}
 ```
 
 ```php
