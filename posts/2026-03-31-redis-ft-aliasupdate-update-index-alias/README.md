@@ -102,7 +102,7 @@ Always ensure the new index is fully built and populated before calling `FT.ALIA
 ## Alias Management Workflow
 
 ```bash
-# List all indexes including aliases
+# List all indexes (does not list aliases)
 FT._LIST
 
 # Create initial alias
