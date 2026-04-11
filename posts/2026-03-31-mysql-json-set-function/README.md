@@ -67,9 +67,9 @@ SELECT JSON_SET(@order, '$.customer.tier', 'premium');
 If the intermediate path does not exist, `JSON_SET()` will create the structure only if the path resolves cleanly. Inserting into a missing nested object requires the parent to already exist:
 
 ```sql
--- Parent $.address does not exist - inserts a plain string at that path
+-- Parent $.address does not exist - the path cannot resolve
 SELECT JSON_SET(@order, '$.address.city', 'London');
--- Fails to create nested object; sets $.address to "city":"London" string unexpectedly
+-- Returns the document unchanged because the parent path $.address does not exist
 -- Correct approach: set the whole object
 SELECT JSON_SET(@order, '$.address', JSON_OBJECT('city', 'London'));
 ```
@@ -111,7 +111,7 @@ WHERE details->>'$.name' = 'Widget';
 
 -- Add a "on_sale" flag to all products
 UPDATE products
-SET details = JSON_SET(details, '$.on_sale', false);
+SET details = JSON_SET(details, '$.on_sale', CAST('false' AS JSON));
 ```
 
 ## Setting Multiple Fields Atomically
@@ -124,7 +124,7 @@ SET details = JSON_SET(
   details,
   '$.price',   19.99,
   '$.stock',   50,
-  '$.on_sale', true
+  '$.on_sale', CAST('true' AS JSON)
 )
 WHERE details->>'$.name' = 'Widget';
 ```
