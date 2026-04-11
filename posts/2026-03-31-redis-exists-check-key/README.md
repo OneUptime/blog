@@ -132,7 +132,7 @@ HSET config:settings theme "dark" lang "en"
 
 For a simple existence check, EXISTS is better than GET because:
 
-- EXISTS returns just 0 or 1 - no data transfer
+- EXISTS returns just an integer count - no data transfer
 - EXISTS is semantically clearer
 - GET returns the value (unnecessary data) and nil for missing keys
 
