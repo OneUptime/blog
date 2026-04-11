@@ -106,7 +106,7 @@ SELECT id, a.val, b.info
 FROM a INNER JOIN b USING (id)
 WHERE id > 1;
 
--- Risky: table qualifier on a USING column can cause errors in strict mode
+-- Error in MySQL 8.0.16+: table qualifier on a USING column is not allowed
 SELECT a.id  -- avoid this pattern
 FROM a INNER JOIN b USING (id);
 ```
