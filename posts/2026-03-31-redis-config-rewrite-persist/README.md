@@ -39,7 +39,7 @@ Redis must have been started with a configuration file:
 redis-server /etc/redis/redis.conf
 ```
 
-If Redis was started without a config file or with `--config-file ""`, `CONFIG REWRITE` returns an error:
+If Redis was started without a config file, `CONFIG REWRITE` returns an error:
 
 ```text
 (error) ERR The server is running without a config file
@@ -136,7 +136,7 @@ loglevel notice
 
 - **Live tuning persistence** - persist `CONFIG SET` changes made during incident response
 - **Deployment automation** - apply and persist config changes via scripts without Redis restarts
-- **Configuration drift detection** - diff `redis.conf` against `CONFIG GET *` output to find unperisted changes
+- **Configuration drift detection** - diff `redis.conf` against `CONFIG GET *` output to find unpersisted changes
 - **Gradual rollouts** - test a config change with `CONFIG SET`, then persist with `CONFIG REWRITE` after validation
 
 ## Summary
