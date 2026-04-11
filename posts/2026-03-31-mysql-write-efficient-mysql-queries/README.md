@@ -57,7 +57,7 @@ WHERE created_at >= '2026-01-01' AND created_at < '2027-01-01';
 A covering index includes all columns referenced by a query, eliminating the need to access the table rows:
 
 ```sql
--- Query reads only id, status, and amount
+-- Query references status, created_at, id, and amount
 ALTER TABLE orders ADD INDEX idx_covering (status, created_at, id, amount);
 
 SELECT id, amount FROM orders
