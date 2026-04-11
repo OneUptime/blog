@@ -65,9 +65,9 @@ STRLEN log:session1
 ```
 
 ```text
-(integer) 39
-(integer) 73
-(integer) 73
+(integer) 38
+(integer) 71
+(integer) 71
 ```
 
 ### Building a CSV buffer
