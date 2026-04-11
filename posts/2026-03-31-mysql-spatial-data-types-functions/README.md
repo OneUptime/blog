@@ -10,7 +10,7 @@ Description: Learn how to use MySQL spatial data types like POINT and POLYGON al
 
 ## How MySQL Spatial Data Works
 
-MySQL supports the OpenGIS standard for storing and querying geometric and geographic data. Spatial data types such as `POINT`, `LINESTRING`, `POLYGON`, and `GEOMETRY` can be stored in columns and queried using spatial functions. MySQL 5.7+ added a spatial reference system (SRS) and geodetic calculations; MySQL 8.0 improved SRS support significantly.
+MySQL supports the OpenGIS standard for storing and querying geometric and geographic data. Spatial data types such as `POINT`, `LINESTRING`, `POLYGON`, and `GEOMETRY` can be stored in columns and queried using spatial functions. MySQL 5.7 introduced spatial data types with the `ST_` function prefix. MySQL 8.0 added full spatial reference system (SRS) support with geodetic calculations for geographic data.
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
 ## Spatial Data Types
 
 ```text
-POINT         - A single x,y coordinate (longitude, latitude)
+POINT         - A single coordinate pair (latitude, longitude for SRID 4326)
 LINESTRING    - A sequence of points forming a line
 POLYGON       - A closed area defined by rings
 MULTIPOINT    - A collection of points
@@ -48,34 +48,34 @@ CREATE TABLE locations (
 );
 
 INSERT INTO locations (name, category, coords) VALUES
-('Central Park',     'park',       ST_GeomFromText('POINT(-73.9654 40.7829)', 4326)),
-('Times Square',     'landmark',   ST_GeomFromText('POINT(-73.9857 40.7580)', 4326)),
-('Brooklyn Bridge',  'landmark',   ST_GeomFromText('POINT(-73.9969 40.7061)', 4326)),
-('JFK Airport',      'airport',    ST_GeomFromText('POINT(-73.7781 40.6413)', 4326)),
-('LaGuardia Airport','airport',    ST_GeomFromText('POINT(-73.8740 40.7773)', 4326));
+('Central Park',     'park',       ST_GeomFromText('POINT(40.7829 -73.9654)', 4326)),
+('Times Square',     'landmark',   ST_GeomFromText('POINT(40.7580 -73.9857)', 4326)),
+('Brooklyn Bridge',  'landmark',   ST_GeomFromText('POINT(40.7061 -73.9969)', 4326)),
+('JFK Airport',      'airport',    ST_GeomFromText('POINT(40.6413 -73.7781)', 4326)),
+('LaGuardia Airport','airport',    ST_GeomFromText('POINT(40.7773 -73.8740)', 4326));
 ```
 
-Note: For geographic (lat/lon) data, use SRID 4326 (WGS 84). Coordinates are stored as (longitude, latitude).
+Note: For geographic (lat/lon) data, use SRID 4326 (WGS 84). The default WKT axis order for SRID 4326 is (latitude, longitude).
 
 ## Creating Spatial Values
 
 **ST_GeomFromText** - create geometry from WKT (Well Known Text):
 
 ```sql
-SELECT ST_GeomFromText('POINT(-73.9857 40.7580)', 4326) AS times_square;
+SELECT ST_GeomFromText('POINT(40.7580 -73.9857)', 4326) AS times_square;
 ```
 
 **ST_Point** - create a point directly:
 
 ```sql
-SELECT ST_Point(-73.9857, 40.7580) AS pt;
+SELECT ST_Point(40.7580, -73.9857, 4326) AS pt;
 ```
 
 **Polygon example:**
 
 ```sql
 SELECT ST_GeomFromText(
-    'POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.78, -74.02 40.78, -74.02 40.70))',
+    'POLYGON((40.70 -74.02, 40.70 -73.97, 40.78 -73.97, 40.78 -74.02, 40.70 -74.02))',
     4326
 ) AS manhattan_bbox;
 ```
@@ -98,7 +98,7 @@ ORDER BY distance_meters;
 **Find locations within 5 km of Times Square:**
 
 ```sql
-SET @times_square = ST_GeomFromText('POINT(-73.9857 40.7580)', 4326);
+SET @times_square = ST_GeomFromText('POINT(40.7580 -73.9857)', 4326);
 
 SELECT
     name,
@@ -115,7 +115,7 @@ ORDER BY km_from_times_square;
 
 ```sql
 SET @manhattan = ST_GeomFromText(
-    'POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.80, -74.02 40.80, -74.02 40.70))',
+    'POLYGON((40.70 -74.02, 40.70 -73.97, 40.80 -73.97, 40.80 -74.02, 40.70 -74.02))',
     4326
 );
 
@@ -124,13 +124,13 @@ FROM locations
 WHERE ST_Contains(@manhattan, coords);
 ```
 
-## ST_MBRContains - Bounding Box Search
+## MBRContains - Bounding Box Search
 
 For faster approximate containment checks using a minimum bounding rectangle:
 
 ```sql
 SET @bbox = ST_GeomFromText(
-    'POLYGON((-74.05 40.70, -73.95 40.70, -73.95 40.80, -74.05 40.80, -74.05 40.70))',
+    'POLYGON((40.70 -74.05, 40.70 -73.95, 40.80 -73.95, 40.80 -74.05, 40.70 -74.05))',
     4326
 );
 
@@ -143,22 +143,22 @@ WHERE MBRContains(@bbox, coords);
 ```sql
 SELECT
     name,
-    ST_X(coords) AS longitude,
-    ST_Y(coords) AS latitude,
+    ST_X(coords) AS latitude,
+    ST_Y(coords) AS longitude,
     ST_AsText(coords) AS wkt
 FROM locations;
 ```
 
 ```text
-+--------------------+-----------+----------+-------------------------------+
-| name               | longitude | latitude | wkt                           |
-+--------------------+-----------+----------+-------------------------------+
-| Central Park       | -73.9654  | 40.7829  | POINT(-73.9654 40.7829)       |
-| Times Square       | -73.9857  | 40.758   | POINT(-73.9857 40.758)        |
-| Brooklyn Bridge    | -73.9969  | 40.7061  | POINT(-73.9969 40.7061)       |
-| JFK Airport        | -73.7781  | 40.6413  | POINT(-73.7781 40.6413)       |
-| LaGuardia Airport  | -73.874   | 40.7773  | POINT(-73.874 40.7773)        |
-+--------------------+-----------+----------+-------------------------------+
++--------------------+----------+-----------+-------------------------------+
+| name               | latitude | longitude | wkt                           |
++--------------------+----------+-----------+-------------------------------+
+| Central Park       | 40.7829  | -73.9654  | POINT(40.7829 -73.9654)       |
+| Times Square       | 40.758   | -73.9857  | POINT(40.758 -73.9857)        |
+| Brooklyn Bridge    | 40.7061  | -73.9969  | POINT(40.7061 -73.9969)       |
+| JFK Airport        | 40.6413  | -73.7781  | POINT(40.6413 -73.7781)       |
+| LaGuardia Airport  | 40.7773  | -73.874   | POINT(40.7773 -73.874)        |
++--------------------+----------+-----------+-------------------------------+
 ```
 
 ## Spatial Indexes
@@ -185,24 +185,24 @@ SET @radius_km = 5;
 SET @deg = @radius_km / 111.0;   -- rough degree approximation
 
 SET @bbox = ST_GeomFromText(
-    CONCAT('POLYGON((', @lon-@deg,' ',@lat-@deg,',',
-                        @lon+@deg,' ',@lat-@deg,',',
-                        @lon+@deg,' ',@lat+@deg,',',
-                        @lon-@deg,' ',@lat+@deg,',',
-                        @lon-@deg,' ',@lat-@deg,'))'), 4326);
+    CONCAT('POLYGON((', @lat-@deg,' ',@lon-@deg,',',
+                        @lat-@deg,' ',@lon+@deg,',',
+                        @lat+@deg,' ',@lon+@deg,',',
+                        @lat+@deg,' ',@lon-@deg,',',
+                        @lat-@deg,' ',@lon-@deg,'))'), 4326);
 
 SELECT name,
-       ROUND(ST_Distance(coords, ST_Point(@lon, @lat)) / 1000, 2) AS km
+       ROUND(ST_Distance(coords, ST_Point(@lat, @lon, 4326)) / 1000, 2) AS km
 FROM locations
 WHERE MBRContains(@bbox, coords)
-  AND ST_Distance(coords, ST_Point(@lon, @lat)) <= @radius_km * 1000
+  AND ST_Distance(coords, ST_Point(@lat, @lon, 4326)) <= @radius_km * 1000
 ORDER BY km;
 ```
 
 ## Best Practices
 
 - Always specify SRID 4326 for geographic (latitude/longitude) data; without an SRID, MySQL stores planar coordinates that give incorrect distances.
-- Store longitude first, then latitude - this matches the WKT convention (x, y) even though humans often say lat/lon.
+- For SRID 4326, MySQL 8.0 defaults to the SRS axis order: latitude first, then longitude in WKT. Use `ST_Latitude()` / `ST_Longitude()` instead of `ST_X()` / `ST_Y()` for clearer geographic code.
 - Use `SPATIAL INDEX` on `NOT NULL` POINT columns with a fixed SRID to enable index-assisted containment queries.
 - For large-scale proximity searches, combine a bounding-box pre-filter with exact `ST_Distance` filtering.
 - Export spatial data as GeoJSON using `ST_AsGeoJSON` when integrating with mapping libraries.
