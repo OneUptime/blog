@@ -70,12 +70,12 @@ ORDER BY m.name, e.name;
 | employee | manager | department  | salary    |
 +----------+---------+-------------+-----------+
 | Sarah    | NULL    | Executive   | 150000.00 |
-| Alice    | Sarah   | Engineering | 105000.00 |
-| Bob      | Sarah   | Marketing   |  80000.00 |
 | Carol    | Alice   | Engineering |  90000.00 |
 | Dave     | Alice   | Engineering |  85000.00 |
 | Eve      | Bob     | Marketing   |  70000.00 |
 | Frank    | Bob     | Marketing   |  68000.00 |
+| Alice    | Sarah   | Engineering | 105000.00 |
+| Bob      | Sarah   | Marketing   |  80000.00 |
 +----------+---------+-------------+-----------+
 ```
 
@@ -96,14 +96,10 @@ WHERE e.salary > m.salary;
 ```
 
 ```text
-+----------+-----------------+---------+----------------+
-| employee | employee_salary | manager | manager_salary |
-+----------+-----------------+---------+----------------+
-| Alice    | 105000.00       | Sarah   | 150000.00      |
-+----------+-----------------+---------+----------------+
+Empty set (0.00 sec)
 ```
 
-No results - all managers earn more. Adjust salaries to test:
+No employees earn more than their manager with the current data. Adjust salaries to test:
 
 ```sql
 UPDATE employees SET salary = 95000.00 WHERE name = 'Sarah';
