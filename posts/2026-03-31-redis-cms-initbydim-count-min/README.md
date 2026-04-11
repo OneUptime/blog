@@ -54,7 +54,7 @@ Returns `OK` on success. Returns an error if the key already exists.
 CMS.INITBYDIM word_frequency 2000 7
 ```
 
-Creates a sketch with 2000 counters per row and 7 hash functions. Approximate error rate: `e / width` (about 0.14% per element).
+Creates a sketch with 2000 counters per row and 7 hash functions. Approximate error rate: `2 / width` (about 0.1% per element).
 
 ### Small Sketch for Prototyping
 
@@ -88,13 +88,13 @@ CMS.INFO word_frequency
 
 ### Width (Controls Error)
 
-The expected overestimation error for any element is approximately `total_count / width`:
+The expected overestimation error for any element is approximately `2 * total_count / width`:
 
 | Width | Error (assuming 1M total counts) |
 |-------|----------------------------------|
-| 1,000 | ~1,000 per element (0.1%) |
-| 10,000 | ~100 per element (0.01%) |
-| 100,000 | ~10 per element (0.001%) |
+| 1,000 | ~2,000 per element (0.2%) |
+| 10,000 | ~200 per element (0.02%) |
+| 100,000 | ~20 per element (0.002%) |
 
 ### Depth (Controls Confidence)
 
@@ -102,37 +102,37 @@ The probability that the estimate exceeds the error bound:
 
 | Depth | Failure Probability |
 |-------|---------------------|
-| 5 | ~0.67% |
-| 7 | ~0.09% |
-| 10 | ~0.0045% |
+| 5 | ~3.13% |
+| 7 | ~0.78% |
+| 10 | ~0.098% |
 
 ### Rule of Thumb
 
 For most applications, start with:
-- Width: `ceil(2.72 / error_rate)` where error_rate is a fraction like 0.001
-- Depth: `ceil(log(1 / delta))` where delta is the desired failure probability
+- Width: `ceil(2 / error_rate)` where error_rate is a fraction like 0.001
+- Depth: `ceil(log2(1 / delta))` where delta is the desired failure probability
 
 For 0.1% error with 99.9% confidence:
-- Width = `ceil(2.72 / 0.001)` = 2720
-- Depth = `ceil(log(1000))` = 7
+- Width = `ceil(2 / 0.001)` = 2000
+- Depth = `ceil(log2(1000))` = 10
 
 ```redis
-CMS.INITBYDIM events 2720 7
+CMS.INITBYDIM events 2000 10
 ```
 
 ## Memory Calculation
 
 ```text
 Memory = width * depth * bytes_per_counter
-       = 2720  * 7   * 4 bytes (32-bit counter)
-       = 76,160 bytes (~74 KB)
+       = 2000  * 10  * 4 bytes (32-bit counter)
+       = 80,000 bytes (~78 KB)
 ```
 
 Compare this to an exact HashMap of 1 million unique elements:
 - HashMap: ~50 MB
-- Count-Min Sketch: ~74 KB
+- Count-Min Sketch: ~78 KB
 
-That is a 700x memory reduction.
+That is a ~640x memory reduction.
 
 ## After Initialization
 
