@@ -42,7 +42,7 @@ DATE_FORMAT(date, format)
 %j - Day of year (090)
 %w - Day of week number (0=Sunday)
 %U - Week number (0-53, week starts Sunday)
-%V - Week number (01-53, week starts Monday)
+%V - Week number (01-53, week starts Sunday)
 ```
 
 ## Common Date Format Examples
@@ -135,7 +135,7 @@ ORDER BY month;
 SELECT
   id,
   customer_id,
-  DATE_FORMAT(created_at, '%W, %B %e, %Y at %l:%i %p') AS formatted_date
+  DATE_FORMAT(created_at, '%W, %M %e, %Y at %l:%i %p') AS formatted_date
 FROM orders
 ORDER BY created_at DESC
 LIMIT 10;
