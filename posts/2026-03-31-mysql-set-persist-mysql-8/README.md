@@ -16,7 +16,7 @@ Before MySQL 8.0, when you used `SET GLOBAL` to change a system variable at runt
 
 | Command | Applies Now | Persists to File | Use Case |
 | --- | --- | --- | --- |
-| SET GLOBAL | Yes | No | Temporary change for current session |
+| SET GLOBAL | Yes | No | Runtime change, lost on server restart |
 | SET PERSIST | Yes | Yes | Permanent change taking effect immediately |
 | SET PERSIST_ONLY | No | Yes | Change a read-only variable (takes effect after restart) |
 
@@ -54,13 +54,13 @@ SELECT * FROM performance_schema.persisted_variables;
 ```
 
 ```text
-+-----------------------------+-------+
-| VARIABLE_NAME               | VALUE |
-+-----------------------------+-------+
-| max_connections             | 500   |
-| innodb_buffer_pool_size     | 4G    |
-| slow_query_log              | ON    |
-+-----------------------------+-------+
++-----------------------------+------------+
+| VARIABLE_NAME               | VALUE      |
++-----------------------------+------------+
+| max_connections             | 500        |
+| innodb_buffer_pool_size     | 4294967296 |
+| slow_query_log              | ON         |
++-----------------------------+------------+
 ```
 
 ## The mysqld-auto.cnf File
@@ -129,7 +129,7 @@ All five changes survive the next restart and are documented with who made them 
 
 ## Required Privilege
 
-The `SYSTEM_VARIABLES_ADMIN` privilege (or `SUPER`) is required to use `SET PERSIST` and `SET PERSIST_ONLY`.
+The `SYSTEM_VARIABLES_ADMIN` privilege (or the deprecated `SUPER`) is required to use `SET PERSIST` and `SET PERSIST_ONLY`. To use `SET PERSIST_ONLY` on read-only (non-dynamic) variables, the `PERSIST_RO_VARIABLES_ADMIN` privilege is also required.
 
 ## Summary
 
