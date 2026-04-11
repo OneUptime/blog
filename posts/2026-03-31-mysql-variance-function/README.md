@@ -86,13 +86,13 @@ ORDER BY student, subject;
 | student | subject | tests | avg_score | variance_pop | variance_samp | std_dev |
 +---------+---------+-------+-----------+--------------+---------------+---------+
 | Alice   | Math    |     3 |     88.33 |         8.22 |         12.33 |    2.87 |
-| Alice   | Science |     3 |     75.00 |        191.67|        287.50 |   13.84 |
+| Alice   | Science |     3 |     75.00 |       216.67 |        325.00 |   14.72 |
 | Bob     | Math    |     3 |     75.00 |          0.67|          1.00 |    0.82 |
 | Bob     | Science |     3 |     80.00 |          2.67|          4.00 |    1.63 |
 +---------+---------+-------+-----------+--------------+---------------+---------+
 ```
 
-Alice's Science scores have very high variance (191.67) compared to Bob's consistently narrow scores.
+Alice's Science scores have very high variance (216.67) compared to Bob's consistently narrow scores.
 
 ## VARIANCE() vs STDDEV(): The Relationship
 
