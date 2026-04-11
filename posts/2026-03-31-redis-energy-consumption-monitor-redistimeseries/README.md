@@ -124,7 +124,7 @@ def calculate_cost(meter_id: str, days: int = 30) -> dict:
     info = r.execute_command('TS.INFO', f"energy:{meter_id}:energy_kwh")
     info_dict = dict(zip(info[0::2], info[1::2]))
     labels_raw = info_dict.get('labels', [])
-    labels = dict(zip(labels_raw[0::2], labels_raw[1::2]))
+    labels = dict(labels_raw)
     tariff = float(labels.get('tariff', 0.15))
 
     return {
