@@ -51,8 +51,8 @@ Internally, the radix tree keys are the millisecond part of entry IDs. Entries w
 A listpack is a sequential blob of bytes encoding multiple field-value pairs. Each element stores:
 
 1. Encoding byte (string length or integer type)
-2. Previous element length (for backward traversal)
-3. Actual content
+2. Actual content (data bytes)
+3. Back-length of the current entry (for backward traversal)
 
 This is extremely memory-efficient for small values but cannot be randomly accessed by index - the entire listpack must be scanned linearly.
 
@@ -123,8 +123,8 @@ redis-cli XINFO STREAM mystream FULL
 Returns a detailed view including:
 
 - `length`: Number of entries
-- `radix-tree-keys`: Number of radix tree nodes
-- `radix-tree-nodes`: Total listpack nodes allocated
+- `radix-tree-keys`: Number of keys in the radix tree (each key maps to a listpack node)
+- `radix-tree-nodes`: Number of internal nodes in the radix tree data structure
 - `last-generated-id`: Highest ID ever added
 - `entries-added`: Total historical inserts (not trimmed)
 - `groups`: Consumer group state including PEL per consumer
