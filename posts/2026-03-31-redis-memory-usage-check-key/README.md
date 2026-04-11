@@ -92,7 +92,12 @@ flowchart TD
 
 ## Comparing Encodings
 
+Redis uses compact encodings (like listpack) for small collections and switches to standard encodings (like hashtable) when a threshold is exceeded. The default `hash-max-listpack-entries` is 128, so to demonstrate the encoding switch with fewer fields, we lower it:
+
 ```redis
+# Lower the threshold for demonstration
+CONFIG SET hash-max-listpack-entries 3
+
 # Small hash - listpack encoding (compact)
 HSET small:hash f1 v1 f2 v2
 OBJECT ENCODING small:hash
@@ -100,12 +105,15 @@ OBJECT ENCODING small:hash
 MEMORY USAGE small:hash
 # (integer) 72
 
-# Large hash - hashtable encoding (more overhead)
-HSET large:hash f1 v1 f2 v2 f3 v3 f4 v4 f5 v5 f6 v6 f7 v7 f8 v8 f9 v9
+# Hash exceeding threshold - hashtable encoding (more overhead)
+HSET large:hash f1 v1 f2 v2 f3 v3 f4 v4
 OBJECT ENCODING large:hash
 # "hashtable"
 MEMORY USAGE large:hash
-# (integer) 520
+# (integer) 288
+
+# Restore default
+CONFIG SET hash-max-listpack-entries 128
 ```
 
 ## Finding the Largest Keys
