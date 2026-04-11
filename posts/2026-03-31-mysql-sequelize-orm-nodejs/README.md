@@ -215,7 +215,7 @@ async function registerUser(name, email, planId) {
 When you need full control over SQL:
 
 ```javascript
-const [rows] = await sequelize.query(
+const rows = await sequelize.query(
     'SELECT u.id, u.name, COUNT(p.id) AS post_count ' +
     'FROM users u LEFT JOIN posts p ON u.id = p.user_id ' +
     'GROUP BY u.id ORDER BY post_count DESC',
