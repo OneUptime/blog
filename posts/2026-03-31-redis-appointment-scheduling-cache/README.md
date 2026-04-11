@@ -14,11 +14,11 @@ Healthcare scheduling systems face a classic concurrency problem: multiple patie
 
 ```bash
 # Available slots stored in a sorted set (score = datetime as Unix timestamp)
-ZADD provider:dr-smith:slots 1712000000 "2024-04-01T09:00"
-ZADD provider:dr-smith:slots 1712003600 "2024-04-01T10:00"
+ZADD provider:dr-smith:slots 1711962000 "2024-04-01T09:00"
+ZADD provider:dr-smith:slots 1711965600 "2024-04-01T10:00"
 
 # Appointment details stored in a hash
-HSET appt:abc123 provider_id dr-smith patient_id pt-99 datetime 1712000000 type checkup status confirmed
+HSET appt:abc123 provider_id dr-smith patient_id pt-99 datetime 1711962000 type checkup status confirmed
 
 # Temporary hold key (expires if patient doesn't complete booking)
 SET hold:dr-smith:2024-04-01T09:00 pt-99 EX 300
