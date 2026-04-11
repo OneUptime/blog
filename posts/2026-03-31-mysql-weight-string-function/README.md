@@ -99,7 +99,7 @@ When `UNIQUE` constraints or `GROUP BY` merge rows you did not expect:
 
 ```sql
 SELECT
-  tag,
+  ANY_VALUE(tag) AS tag,
   HEX(WEIGHT_STRING(tag)) AS weight
 FROM product_tags
 GROUP BY WEIGHT_STRING(tag);
