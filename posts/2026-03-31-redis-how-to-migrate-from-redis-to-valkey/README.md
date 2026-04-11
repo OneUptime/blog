@@ -48,7 +48,6 @@ cat /etc/redis/redis.conf
 
 # Count keys and estimate data size
 redis-cli DBSIZE
-redis-cli DEBUG SLEEP 0  # just to test connectivity
 redis-cli INFO keyspace
 ```
 
@@ -108,7 +107,7 @@ The cleanest approach uses Valkey as a replica of Redis, then performs a failove
 valkey-cli -p 6380 REPLICAOF 127.0.0.1 6379
 
 # 2. Monitor replication lag
-valkey-cli -p 6380 INFO replication | grep -E "master_sync|master_repl"
+valkey-cli -p 6380 INFO replication | grep -E "master_link_status|master_last_io_seconds_ago|master_sync_in_progress"
 
 # Wait until connected and in_sync
 # master_link_status:up
@@ -123,6 +122,8 @@ valkey-cli -p 6380 REPLICAOF NO ONE
 
 # 5. Update application connection strings to point to Valkey port
 ```
+
+**Note:** Cross-replication is compatible with Redis OSS 7.2 and earlier. Redis 7.4+ (Community Edition) uses a different replication format and is not compatible with Valkey.
 
 ### Option B: RDB Snapshot Migration
 
