@@ -46,12 +46,10 @@ io-threads-do-reads yes   # Also use threads for reads (not just writes)
 ## Choosing the Right Thread Count
 
 ```bash
-# Rule of thumb: set io-threads to number of CPU cores minus 1
-# (Leave 1 core for the main thread)
-
-# 4-core server: io-threads 3
+# Recommended values from the Redis documentation:
+# 4-core server: io-threads 2 or 3
 # 8-core server: io-threads 6
-# 16-core server: io-threads 12
+# Using more than 8 threads is unlikely to help much.
 ```
 
 Do not exceed CPU core count:
@@ -61,8 +59,8 @@ Do not exceed CPU core count:
 nproc --all
 # Example output: 8
 
-# Optimal for 8 cores:
-io-threads 7
+# Recommended for 8 cores (per Redis docs):
+io-threads 6
 ```
 
 ## When IO Threads Help (and When They Don't)
@@ -79,8 +77,8 @@ IO threading does **not** help when:
 
 ```bash
 # Check if you're network-bound or CPU-bound
-INFO stats | grep instantaneous_ops_per_sec
-INFO cpu | grep used_cpu_sys
+redis-cli INFO stats | grep instantaneous_ops_per_sec
+redis-cli INFO cpu | grep used_cpu_sys
 
 # Network-bound: high ops/sec but CPU is not pegged
 # CPU-bound: CPU at 100%, ops/sec limited
@@ -102,7 +100,7 @@ redis-benchmark -h 127.0.0.1 -p 6381 -n 1000000 -c 100 --pipeline 16
 
 ```bash
 # Check Redis server info
-INFO server | grep redis_version
+redis-cli INFO server | grep redis_version
 
 # Monitor with redis-cli --stat
 redis-cli --stat
@@ -113,15 +111,15 @@ redis-cli --stat
 
 ## TLS and IO Threads
 
-IO threads are automatically disabled when TLS is enabled, because TLS handling cannot be safely parallelized in the current implementation:
+In Redis 6.x and 7.x, IO threads do not work when TLS is enabled because TLS handling cannot be safely parallelized in those versions. Starting with Redis 8.0, IO threads fully support TLS connections.
 
 ```bash
-# If TLS is enabled, io-threads has no effect
+# Redis 6.x/7.x: io-threads has no effect when TLS is enabled
+# Redis 8.0+: io-threads works with TLS
 # redis.conf
 tls-port 6380
 tls-cert-file /path/to/cert.pem
 tls-key-file /path/to/key.pem
-# io-threads setting is ignored with TLS
 ```
 
 ## io-threads-do-reads
@@ -145,7 +143,7 @@ maxmemory 32gb
 maxmemory-policy allkeys-lru
 
 # IO threading for multi-core
-io-threads 7           # 8-core server, leave 1 for main thread
+io-threads 6           # 8-core server (per Redis docs)
 io-threads-do-reads yes
 
 # Connection tuning
@@ -157,4 +155,4 @@ hz 20
 
 ## Summary
 
-Redis IO threads (available since Redis 6.0) parallelize network reads and writes across multiple CPU cores, enabling Redis to fully utilize multi-core hardware for high-concurrency and large-payload workloads. Set `io-threads` to one less than the number of CPU cores and enable `io-threads-do-reads yes` for maximum throughput. IO threads have no effect with TLS enabled, and provide little benefit for low-concurrency or CPU-bound command workloads.
+Redis IO threads (available since Redis 6.0) parallelize network reads and writes across multiple CPU cores, enabling Redis to fully utilize multi-core hardware for high-concurrency and large-payload workloads. Set `io-threads` based on the Redis documentation recommendations for your core count (e.g., 2-3 for 4 cores, 6 for 8 cores) and enable `io-threads-do-reads yes` for maximum throughput. In Redis 6.x and 7.x, IO threads have no effect with TLS enabled (this limitation was removed in Redis 8.0). IO threads provide little benefit for low-concurrency or CPU-bound command workloads.
