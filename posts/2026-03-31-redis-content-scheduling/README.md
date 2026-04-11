@@ -16,7 +16,6 @@ Store the content ID in a sorted set scored by its publish time:
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -59,7 +58,7 @@ def unpublish_expired_content():
 
 ## Rescheduling Content
 
-Update the publish time by removing the old entry and adding a new one:
+Update the publish time by calling `zadd` again — it updates the score in place if the member already exists:
 
 ```python
 def reschedule_content(content_id: str, new_publish_at: float):
