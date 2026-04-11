@@ -121,7 +121,7 @@ keys, _ := rdb.HKeys(ctx, "user:1").Result()
 fmt.Println(keys) // [name email age]
 
 values, _ := rdb.HVals(ctx, "user:1").Result()
-fmt.Println(values) // [Alice alice@example.com 30]
+fmt.Println(values) // [Alice alice@example.com 31]
 
 count, _ := rdb.HLen(ctx, "user:1").Result()
 fmt.Println(count) // 3
