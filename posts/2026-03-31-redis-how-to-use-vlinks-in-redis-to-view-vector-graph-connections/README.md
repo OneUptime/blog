@@ -17,7 +17,7 @@ Each element in the HNSW graph has connections (links) to other elements at mult
 ## Syntax
 
 ```text
-VLINKS key element
+VLINKS key element [WITHSCORES]
 ```
 
 Returns a nested array: for each HNSW level, a list of connected element IDs.
@@ -26,17 +26,17 @@ Returns a nested array: for each HNSW level, a list of connected element IDs.
 
 ```bash
 # Build a small vector set
-VADD graph_demo a VALUES 4 0.1 0.2 0.3 0.4
-VADD graph_demo b VALUES 4 0.11 0.21 0.31 0.41
-VADD graph_demo c VALUES 4 0.12 0.22 0.32 0.42
-VADD graph_demo d VALUES 4 0.9 0.8 0.7 0.6
-VADD graph_demo e VALUES 4 0.91 0.81 0.71 0.61
+VADD graph_demo VALUES 4 0.1 0.2 0.3 0.4 a
+VADD graph_demo VALUES 4 0.11 0.21 0.31 0.41 b
+VADD graph_demo VALUES 4 0.12 0.22 0.32 0.42 c
+VADD graph_demo VALUES 4 0.9 0.8 0.7 0.6 d
+VADD graph_demo VALUES 4 0.91 0.81 0.71 0.61 e
 
 # View HNSW connections for element 'a'
 VLINKS graph_demo a
-# Returns:
-# 1) (empty array)    - level 0 links
-# 2) 1) "b"           - level 1 links (nearest neighbors)
+# Returns (levels listed from highest to level 0):
+# 1) (empty array)    - higher level links (sparse, used for fast traversal)
+# 2) 1) "b"           - level 0 links (base layer, dense connections)
 #    2) "c"
 #    3) "d"
 ```
@@ -95,8 +95,8 @@ elements = {
 }
 
 for element_id, vec in elements.items():
-    r.execute_command("VADD", "demo:vectors", element_id,
-                      "VALUES", str(len(vec)), *[str(v) for v in vec])
+    r.execute_command("VADD", "demo:vectors",
+                      "VALUES", str(len(vec)), *[str(v) for v in vec], element_id)
 
 analyze_neighborhood("demo:vectors", "item:A")
 ```
