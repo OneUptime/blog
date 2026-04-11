@@ -22,7 +22,9 @@ Redis supports both patterns efficiently.
 ```text
 post:{post_id}           -> Hash: author_id, content, timestamp, likes
 user:{user_id}:following -> Set: user IDs this user follows
+user:{user_id}:followers -> Set: user IDs that follow this user
 feed:{user_id}           -> Sorted Set: post_id as member, timestamp as score
+timeline:{user_id}       -> Sorted Set: author's own posts (used in pull/hybrid models)
 ```
 
 ## Setting Up the Data Structures
@@ -30,7 +32,6 @@ feed:{user_id}           -> Sorted Set: post_id as member, timestamp as score
 ```python
 from redis import Redis
 import time
-import json
 import uuid
 
 r = Redis(decode_responses=True)
@@ -100,9 +101,15 @@ def get_feed(user_id: int, page: int = 0, page_size: int = 20) -> list:
 
 ## Fan-Out on Read (Pull Model)
 
-For users with many followers, writing to millions of feeds is impractical. Use pull for high-follower accounts:
+For users with many followers, writing to millions of feeds is impractical. Use pull for high-follower accounts. Each author maintains their own timeline Sorted Set:
 
 ```python
+def publish_post_pull(author_id: int, content: str) -> str:
+    post_id = create_post(author_id, content)
+    timestamp = time.time()
+    r.zadd(f"timeline:{author_id}", {post_id: timestamp})
+    return post_id
+
 def get_feed_pull(user_id: int, page: int = 0, page_size: int = 20) -> list:
     following = r.smembers(f"user:{user_id}:following")
     if not following:
@@ -160,8 +167,9 @@ def smart_publish(author_id: int, content: str) -> str:
 
 ```python
 def like_post(user_id: int, post_id: str):
-    r.hincrby(f"post:{post_id}", "likes", 1)
-    r.sadd(f"post:{post_id}:liked_by", user_id)
+    added = r.sadd(f"post:{post_id}:liked_by", user_id)
+    if added:
+        r.hincrby(f"post:{post_id}", "likes", 1)
 
 def get_post_with_engagement(post_id: str) -> dict:
     post = r.hgetall(f"post:{post_id}")
