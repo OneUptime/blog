@@ -21,7 +21,7 @@ JSON.TYPE key [path]
 - `key` - the Redis key
 - `path` - JSONPath expression (defaults to `$`)
 
-Returns an array of type strings (one per matched node), or nil if the key does not exist or the path is not found.
+Returns an array of type strings (one per matched node). If the key does not exist, returns nil. If using JSONPath and the path matches no nodes, returns an empty array.
 
 ## Setup
 
@@ -73,7 +73,7 @@ JSON.SET profile:1 $ '{
 
 ```redis
 127.0.0.1:6379> JSON.TYPE profile:1 $.nonexistent
-1) (nil)
+(empty array)
 ```
 
 ## Wildcard: Type of All Values
@@ -156,7 +156,7 @@ for e in errors:
 flowchart TD
     A["JSON.TYPE key path"] --> B["Locate node at path"]
     B --> C{"Node found?"}
-    C -- No --> D["Return nil"]
+    C -- No --> D["Return empty array"]
     C -- Yes --> E["Determine JSON type"]
     E --> F["Return type string:\nobject/array/string/integer/number/boolean/null"]
 ```
