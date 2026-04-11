@@ -19,7 +19,7 @@ Enable AOF in `redis.conf`:
 ```text
 appendonly yes
 appendfilename "appendonly.aof"
-appenddirname "/var/lib/redis"
+dir /var/lib/redis
 ```
 
 Or enable at runtime:
