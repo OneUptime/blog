@@ -41,9 +41,9 @@ Both middleware must be in the correct order:
 ```python
 MIDDLEWARE = [
     "django.middleware.cache.UpdateCacheMiddleware",   # MUST be first
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.cache.FetchFromCacheMiddleware", # MUST be last
 ]
@@ -88,7 +88,7 @@ class ArticleDetailView(View):
 
 ## Cache-Control Headers
 
-Django cache middleware respects `Cache-Control` headers. Responses with `no-cache`, `no-store`, or `private` will not be stored:
+Django cache middleware respects `Cache-Control` headers. Responses with `Cache-Control: private` will not be stored by the middleware. The `@never_cache` decorator sets `private` along with `no-cache`, `no-store`, and `must-revalidate` to fully prevent caching:
 
 ```python
 from django.views.decorators.cache import cache_control
@@ -127,7 +127,9 @@ cache.clear()  # clears all cache keys (use cautiously)
 # Or use redis-py directly for pattern-based deletion
 from django_redis import get_redis_connection
 redis_con = get_redis_connection("default")
-keys = redis_con.keys("myapp:page:*")
+# Django page cache keys are stored as:
+# <KEY_PREFIX>:<VERSION>:views.decorators.cache.cache_page.<CACHE_MIDDLEWARE_KEY_PREFIX>.*
+keys = redis_con.keys("myapp:1:views.decorators.cache.cache_page.*")
 if keys:
     redis_con.delete(*keys)
 ```
