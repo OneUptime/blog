@@ -26,7 +26,7 @@ SHOW GLOBAL STATUS LIKE 'Created_tmp%';
 ```
 
 This returns:
-- `Created_tmp_tables` - total in-memory temporary tables created since startup
+- `Created_tmp_tables` - total internal temporary tables created since startup (both in-memory and on-disk)
 - `Created_tmp_disk_tables` - total temporary tables that spilled to disk
 - `Created_tmp_files` - number of temporary files used by the sort buffer
 
@@ -35,10 +35,10 @@ The ratio of disk tables to total tables is the most important metric:
 ```sql
 SELECT
   (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Created_tmp_disk_tables') AS disk_tmp,
-  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Created_tmp_tables') AS mem_tmp;
+  (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Created_tmp_tables') AS total_tmp;
 ```
 
-If `disk_tmp / (disk_tmp + mem_tmp)` exceeds 10-20%, you likely have queries generating large intermediate result sets.
+If `disk_tmp / total_tmp` exceeds 10-20%, you likely have queries generating large intermediate result sets.
 
 ## Computing the Rate Over Time
 
