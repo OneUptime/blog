@@ -99,7 +99,8 @@ def publish_pending_events(db_conn, broker_client):
                 "UPDATE outbox_events SET published_at = NOW() WHERE id = %s",
                 (event["id"],)
             )
-        db_conn.commit()
+
+    db_conn.commit()
 ```
 
 The `FOR UPDATE SKIP LOCKED` clause prevents multiple relay instances from processing the same event concurrently.
