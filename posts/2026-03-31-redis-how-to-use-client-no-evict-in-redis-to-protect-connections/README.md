@@ -51,10 +51,10 @@ Check if a client has no-evict set via `CLIENT INFO` or `CLIENT LIST`:
 
 ```bash
 CLIENT INFO
-# ... flags=N ... (N indicates no-evict is set)
+# ... flags=e ... (e indicates the client is excluded from eviction)
 
 CLIENT LIST
-# id=5 addr=127.0.0.1:54321 ... flags=N ...
+# id=5 addr=127.0.0.1:54321 ... flags=e ...
 ```
 
 ## Practical Example in Python
@@ -86,7 +86,7 @@ const client = createClient();
 await client.connect();
 
 // Protect the monitoring connection
-await client.clientNoEvict('ON');
+await client.clientNoEvict(true);
 console.log('Client protected from eviction');
 
 // This connection is now safe even under memory pressure
@@ -94,7 +94,7 @@ const info = await client.clientInfo();
 console.log('Client info:', info);
 
 // Remove protection
-await client.clientNoEvict('OFF');
+await client.clientNoEvict(false);
 ```
 
 ## Use Case: Monitoring Agent
