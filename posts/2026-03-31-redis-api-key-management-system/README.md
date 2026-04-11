@@ -60,7 +60,7 @@ def authenticate_api_key(raw_key):
     if not data or data.get("active") != "1":
         return None
 
-    # Update last used timestamp asynchronously
+    # Update last used timestamp
     r.hset(f"apikey:{key_hash}", "last_used", str(time.time()))
 
     return {
@@ -124,9 +124,8 @@ def revoke_api_key(key_hash):
 def rotate_api_key(user_id, old_key_hash, name, scopes=None):
     # Create new key
     result = create_api_key(user_id, name, scopes)
-    # Deactivate old key with a grace period
-    r.hset(f"apikey:{old_key_hash}", "active", "0")
-    r.expire(f"apikey:{old_key_hash}", 3600)  # Keep for 1 hour for in-flight requests
+    # Keep old key active during grace period, then let it expire
+    r.expire(f"apikey:{old_key_hash}", 3600)  # Old key works for 1 hour for in-flight requests
     return result
 
 def list_user_keys(user_id):
