@@ -10,7 +10,7 @@ Description: Learn how to use SHOW OPEN TABLES in MySQL to view which tables are
 
 ## What Is SHOW OPEN TABLES
 
-`SHOW OPEN TABLES` lists the tables that are currently open in the MySQL table cache. MySQL maintains a table cache (controlled by the `table_open_cache` variable) to avoid reopening tables on every query. `SHOW OPEN TABLES` shows you which tables are currently cached, whether they are locked by an ongoing operation, and how many times they have been opened.
+`SHOW OPEN TABLES` lists the tables that are currently open in the MySQL table cache. MySQL maintains a table cache (controlled by the `table_open_cache` variable) to avoid reopening tables on every query. `SHOW OPEN TABLES` shows you which tables are currently cached, whether they are locked by an ongoing operation, and how many table locks or lock requests exist for each table.
 
 ```sql
 SHOW OPEN TABLES;
@@ -40,7 +40,7 @@ SHOW OPEN TABLES;
 
 - **Database**: The database containing the table
 - **Table**: The table name
-- **In_use**: The number of table instances currently in use by active queries. A value greater than 0 means the table is being actively queried or modified.
+- **In_use**: The number of table locks or lock requests for the table. A value greater than 0 means the table has active locks held or pending lock requests from other sessions.
 - **Name_locked**: Whether the table name is locked (e.g., during a `DROP TABLE` or `RENAME TABLE` operation). Usually 0 in normal operation.
 
 ## Filtering Results
