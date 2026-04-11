@@ -126,7 +126,7 @@ rate(mysql_global_status_queries[5m])
 rate(mysql_global_status_slow_queries[5m])
 
 # InnoDB buffer pool hit ratio
-(mysql_global_status_innodb_buffer_pool_reads / mysql_global_status_innodb_buffer_pool_read_requests)
+1 - (mysql_global_status_innodb_buffer_pool_reads / mysql_global_status_innodb_buffer_pool_read_requests)
 
 # Replication lag (seconds behind primary)
 mysql_slave_status_seconds_behind_master
