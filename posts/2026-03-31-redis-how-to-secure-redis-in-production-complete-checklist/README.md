@@ -84,12 +84,15 @@ user default off
 ### Enable TLS for client connections
 
 ```text
+port 0
 tls-port 6380
 tls-cert-file /etc/ssl/redis/redis.crt
 tls-key-file /etc/ssl/redis/redis.key
 tls-ca-cert-file /etc/ssl/redis/ca.crt
 tls-auth-clients yes
 ```
+
+Setting `port 0` disables the non-TLS listener. Without it, Redis will still accept unencrypted connections on port 6379.
 
 ### Enable TLS for replication
 
