@@ -26,19 +26,18 @@ Most Redis client libraries emit an error or callback when the connection drops.
 
 ```python
 import redis
-import time
 import logging
-
-def on_disconnect(error):
-    logging.error(f"Disconnected from Redis: {error}")
 
 r = redis.Redis(host='localhost', port=6379)
 pubsub = r.pubsub()
 pubsub.subscribe('mychannel')
 
-for message in pubsub.listen():
-    if message['type'] == 'message':
-        process(message['data'])
+try:
+    for message in pubsub.listen():
+        if message['type'] == 'message':
+            process(message['data'])
+except redis.exceptions.ConnectionError as e:
+    logging.error(f"Disconnected from Redis: {e}")
 ```
 
 If the connection drops during iteration, `pubsub.listen()` raises a `redis.exceptions.ConnectionError`.
@@ -148,6 +147,7 @@ Keep the connection alive by sending periodic pings. This prevents idle connecti
 ```python
 import redis
 import threading
+import time
 
 r = redis.Redis(host='localhost', port=6379)
 pubsub = r.pubsub()
