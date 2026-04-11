@@ -104,6 +104,7 @@ LEFT JOIN taxonomies t ON t.id = ct.taxonomy_id
 WHERE c.content_type_id = 1
   AND c.status = 'published'
   AND c.published_at <= NOW()
+GROUP BY c.id
 ORDER BY c.published_at DESC
 LIMIT 10;
 ```
@@ -122,4 +123,4 @@ LIMIT 20;
 
 ## Summary
 
-A MySQL CMS schema covers content with status and slug management, flexible taxonomy through a junction table, revision history for editorial rollback, and full-text search via FULLTEXT indexes. The combination of a covering index on `(content_type_id, status, published_at)` and the FULLTEXT index supports both the listing queries that power editorial dashboards and the search queries that serve readers.
+A MySQL CMS schema covers content with status and slug management, flexible taxonomy through a junction table, revision history for editorial rollback, and full-text search via FULLTEXT indexes. The combination of a composite index on `(content_type_id, status, published_at)` and the FULLTEXT index supports both the listing queries that power editorial dashboards and the search queries that serve readers.
