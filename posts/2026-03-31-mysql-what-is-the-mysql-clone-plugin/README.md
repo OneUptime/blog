@@ -12,7 +12,7 @@ Description: The MySQL Clone Plugin enables fast provisioning of new replicas by
 
 The MySQL Clone Plugin, introduced in MySQL 8.0.17, allows you to clone a complete, consistent copy of a MySQL instance - either locally to another directory or remotely to another MySQL server. It is the fastest way to provision a new replica without taking the primary offline.
 
-The plugin copies all InnoDB data, including all databases, tablespaces, redo logs, and system configuration, then leaves the cloned server ready to join a replication group.
+The plugin copies all InnoDB data, including all databases, tablespaces, redo logs, and undo logs, then leaves the cloned server ready to join a replication group.
 
 ## Installing the Clone Plugin
 
@@ -71,13 +71,15 @@ The recipient server will restart automatically after cloning completes.
 ## Monitoring Clone Progress
 
 ```sql
--- Monitor during clone operation
+-- Monitor clone operation status
 SELECT
   STATE,
-  STAGE,
-  ESTIMATE,
-  DATA_ELAPSED,
-  DATA_SPEED,
+  BEGIN_TIME,
+  END_TIME,
+  SOURCE,
+  DESTINATION,
+  ERROR_NO,
+  ERROR_MESSAGE,
   BINLOG_FILE,
   BINLOG_POSITION
 FROM performance_schema.clone_status;
