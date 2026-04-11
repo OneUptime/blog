@@ -14,7 +14,7 @@ Install the Datadog Agent on the MySQL host:
 
 ```bash
 DD_API_KEY=<YOUR_API_KEY> DD_SITE="datadoghq.com" \
-  bash -c "$(curl -L https://s3.amazonaws.com/dd-agent-bootstrap/datadog_agent7_setup.sh)"
+  bash -c "$(curl -L https://install.datadoghq.com/scripts/install_script_agent7.sh)"
 ```
 
 ## Creating the Datadog MySQL User
@@ -100,7 +100,7 @@ Once data is flowing, create Datadog monitors for these metrics:
 mysql.net.connections          - active connections
 mysql.performance.threads_running - threads executing queries
 mysql.replication.seconds_behind_master - replication lag
-mysql.innodb.buffer_pool_free_pages - buffer pool pressure
+mysql.innodb.buffer_pool_free      - buffer pool pressure
 mysql.performance.slow_queries - slow query rate
 ```
 
