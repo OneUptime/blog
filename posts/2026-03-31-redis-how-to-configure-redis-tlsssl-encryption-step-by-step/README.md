@@ -201,17 +201,17 @@ redis-cli --tls --cacert /etc/ssl/redis/ca.crt -p 6380 PING
 
 ## Monitoring TLS Status
 
-Check TLS info:
+Verify TLS is configured by checking the active TLS port:
 
 ```bash
-redis-cli --tls --cacert /etc/ssl/redis/ca.crt -p 6380 INFO tls
+redis-cli --tls --cacert /etc/ssl/redis/ca.crt -p 6380 CONFIG GET tls-port
 ```
 
 Output:
 
 ```text
-# TLS
-tls_enabled:1
+1) "tls-port"
+2) "6380"
 ```
 
 ## Summary
