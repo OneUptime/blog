@@ -116,7 +116,7 @@ SELECT ST_Distance_Sphere(
 | Function | Model | Accuracy | Performance |
 |---|---|---|---|
 | `ST_Distance_Sphere()` | Spherical (haversine) | Good | Fast |
-| `ST_Distance()` with SRID 4326 | Ellipsoidal (Vincenty) | Better | Slower |
+| `ST_Distance()` with SRID 4326 | Ellipsoidal (geodesic) | Better | Slower |
 
 For distances under 1,000 km, the difference is typically less than 0.3%.
 
