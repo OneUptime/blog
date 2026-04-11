@@ -60,7 +60,9 @@ Oracle's PL/SQL is a highly capable procedural extension to SQL with packages, b
 -- Oracle PL/SQL
 CREATE OR REPLACE PROCEDURE update_salary(emp_id NUMBER, raise_pct NUMBER)
 AS
+  v_current_salary NUMBER;
 BEGIN
+  SELECT salary INTO v_current_salary FROM employees WHERE employee_id = emp_id;
   UPDATE employees SET salary = salary * (1 + raise_pct / 100)
   WHERE employee_id = emp_id;
   COMMIT;
