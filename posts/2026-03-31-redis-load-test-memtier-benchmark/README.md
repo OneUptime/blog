@@ -28,7 +28,7 @@ sudo make install
 Or use the Docker image:
 
 ```bash
-docker pull redislabs/memtier_benchmark
+docker pull redis/memtier_benchmark
 ```
 
 ## Basic Throughput Test
@@ -48,7 +48,7 @@ memtier_benchmark \
 
 ## Realistic Key Distribution
 
-Real traffic does not hit all keys uniformly. Simulate a Zipf (hot-key) distribution:
+Real traffic does not hit all keys uniformly. Simulate a Gaussian (hot-key) distribution:
 
 ```bash
 memtier_benchmark \
@@ -58,7 +58,7 @@ memtier_benchmark \
   --threads=4 \
   --requests=50000 \
   --ratio=1:9 \
-  --key-pattern=P:P \
+  --key-pattern=G:G \
   --key-maximum=100000 \
   --data-size=512
 ```
@@ -66,7 +66,9 @@ memtier_benchmark \
 Key patterns:
 - `R:R` - random keys on both SET and GET
 - `S:S` - sequential keys
-- `P:P` - Gaussian distribution (simulates popular keys)
+- `G:G` - Gaussian distribution (simulates popular keys)
+- `Z:Z` - Zipfian distribution (heavy-tailed hot-key pattern)
+- `P:P` - parallel (sequential where each client gets a subset of the key range)
 
 ## Testing with Varying Data Sizes
 
@@ -127,7 +129,7 @@ Totals       123456.70  55555.51  55555.52    1.01ms   5356.90
 
 Key metrics:
 - **Ops/sec** - total throughput
-- **Latency** - p50 average (also check p99 with `--print-percentiles 50,99`)
+- **Latency** - average (arithmetic mean); p50, p99, and p99.9 percentiles are shown in separate columns by default
 - **Hits/sec vs Misses/sec** - your effective cache hit rate
 
 ## Summary
