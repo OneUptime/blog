@@ -65,7 +65,8 @@ redis-cli --bigkeys
 
 # Or scan and estimate sizes manually
 redis-cli --scan --pattern '*' | while read key; do
-  redis-cli MEMORY USAGE "$key"
+  bytes=$(redis-cli MEMORY USAGE "$key")
+  echo "$bytes $key"
 done | sort -n | tail -20
 ```
 
@@ -74,7 +75,8 @@ For large hashes, lists, or sets:
 ```bash
 redis-cli OBJECT ENCODING mykey
 redis-cli MEMORY USAGE mykey
-redis-cli DEBUG OBJECT mykey
+redis-cli OBJECT FREQ mykey
+redis-cli OBJECT IDLETIME mykey
 ```
 
 ## Step 4 - Increase maxmemory
@@ -93,7 +95,7 @@ When setting `maxmemory`, leave headroom for replication buffers, Lua scripts, a
 
 ## Step 5 - Enable Active Defragmentation
 
-High fragmentation ratios (above 1.5) mean Redis is holding more virtual memory than the actual data requires. Enable active defragmentation to recover fragmented memory:
+High fragmentation ratios (above 1.5) mean the operating system has allocated more resident memory (RSS) to Redis than the data actually requires. Enable active defragmentation to recover fragmented memory:
 
 ```bash
 redis-cli CONFIG SET activedefrag yes
@@ -118,7 +120,7 @@ done | head -50
 Apply TTLs programmatically where appropriate:
 
 ```bash
-EXPIRE mykey 86400
+redis-cli EXPIRE mykey 86400
 ```
 
 ## Step 7 - Monitor Memory Over Time
