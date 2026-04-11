@@ -10,7 +10,7 @@ Description: Learn how to use the path enumeration pattern in MySQL to store and
 
 ## What Is Path Enumeration?
 
-Path enumeration (also called materialized path) stores the full path from the root to each node as a delimited string in a single column. For example, a node might store `/1/4/9/` indicating it is the child of node 9, which is the child of node 4, which is the child of node 1. This makes subtree queries fast via simple `LIKE` prefix matching.
+Path enumeration (also called materialized path) stores the full path from the root to each node as a delimited string in a single column. For example, a node might store `/1/4/9/` indicating it is node 9, a child of node 4, which is a child of node 1. This makes subtree queries fast via simple `LIKE` prefix matching.
 
 ## Schema Setup
 
@@ -71,6 +71,7 @@ Use the path length to distinguish depth. Direct children have exactly one extra
 ```sql
 SELECT * FROM categories
 WHERE path LIKE CONCAT(@parent_path, '%')
+  AND path != @parent_path
   AND path NOT LIKE CONCAT(@parent_path, '%/%/%');
 ```
 
@@ -95,8 +96,8 @@ Updating a subtree means replacing the old path prefix with the new one for all 
 ```sql
 UPDATE categories
 SET path = CONCAT(@new_parent_path,
-                  SUBSTRING(path, LENGTH(@old_path) + 1))
-WHERE path LIKE CONCAT(@old_path, '%');
+                  SUBSTRING(path, LENGTH(@old_parent_path) + 1))
+WHERE path LIKE CONCAT(@old_parent_path, '%');
 ```
 
 ## Deleting a Subtree
