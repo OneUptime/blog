@@ -113,7 +113,7 @@ CREATE PROCEDURE wait_for_lock(
   OUT p_acquired  TINYINT
 )
 BEGIN
-  DECLARE elapsed INT DEFAULT 0;
+  DECLARE elapsed DECIMAL(5,1) DEFAULT 0;
   DECLARE poll_interval DECIMAL(3,1) DEFAULT 0.5;
 
   SET p_acquired = 0;
