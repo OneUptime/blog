@@ -36,7 +36,7 @@ Use a proxy that understands Redis protocol (like HAProxy with TCP mode or Envoy
 
 ### Pattern 3 - Sentinel-Aware Proxy (Recommended)
 
-Use Predixy or Twemproxy, which integrate with Redis Sentinel to automatically route to the current primary.
+Use a Sentinel-aware proxy like Predixy, which integrates with Redis Sentinel to automatically route to the current primary.
 
 ## AWS Network Load Balancer Setup
 
@@ -62,7 +62,7 @@ else
 fi
 ```
 
-Register this as a health check on the NLB target group.
+Expose this script via an HTTP endpoint (for example, using the Python health check service shown below) and configure the NLB target group to use an HTTP health check against that endpoint.
 
 ## HAProxy Configuration for Redis
 
@@ -117,14 +117,14 @@ stream {
         listen 6379;
         proxy_pass redis_primary;
         proxy_connect_timeout 1s;
-        proxy_timeout 3s;
+        proxy_timeout 300s;
     }
 
     server {
         listen 6380;
         proxy_pass redis_replicas;
         proxy_connect_timeout 1s;
-        proxy_timeout 3s;
+        proxy_timeout 300s;
     }
 }
 ```
@@ -208,7 +208,7 @@ Point your load balancer health check to `http://redis-host:8080/health/primary`
 
 ## Sticky Sessions for Pub/Sub
 
-If your application uses Redis Pub/Sub, load balancer session persistence is critical - a subscriber must stay connected to the same Redis instance. Use source IP or cookie-based persistence:
+If your application uses Redis Pub/Sub, load balancer session persistence is critical - a subscriber must stay connected to the same Redis instance. Since Redis uses TCP (not HTTP), use source IP affinity for persistence:
 
 ```text
 # HAProxy sticky by source IP
