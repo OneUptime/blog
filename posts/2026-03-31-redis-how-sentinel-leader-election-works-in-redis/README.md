@@ -121,7 +121,7 @@ During a failover, Sentinel logs show the election:
 You can also watch Sentinel events:
 
 ```bash
-redis-cli -p 26379 SUBSCRIBE +sentinel-event
+redis-cli -p 26379 SUBSCRIBE +elected-leader
 ```
 
 Or subscribe to all Sentinel events:
