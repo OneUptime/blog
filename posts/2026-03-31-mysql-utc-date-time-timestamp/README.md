@@ -117,7 +117,7 @@ SELECT
     UTC_TIME()       AS utc_time;
 ```
 
-When the session is `America/New_York` (UTC-5 during EST), `NOW()` will be 5 hours behind `UTC_TIMESTAMP()`.
+When the session is `America/New_York` (UTC-5 during EST, UTC-4 during EDT), `NOW()` will be 4 or 5 hours behind `UTC_TIMESTAMP()` depending on daylight saving time.
 
 ---
 
@@ -224,4 +224,4 @@ WHERE created_at >= UTC_DATE()
 
 ## Summary
 
-`UTC_DATE()`, `UTC_TIME()`, and `UTC_TIMESTAMP()` always return the current UTC date, time, and datetime regardless of the MySQL server or session time zone. Use these functions when building globally distributed applications to ensure consistent, unambiguous timestamps. Store all event times in UTC, use `UTC_TIMESTAMP()` for inserts, and use `CONVERT_TZ()` to present local times to end users. All three functions support fractional seconds precision with the optional `fsp` parameter.
+`UTC_DATE()`, `UTC_TIME()`, and `UTC_TIMESTAMP()` always return the current UTC date, time, and datetime regardless of the MySQL server or session time zone. Use these functions when building globally distributed applications to ensure consistent, unambiguous timestamps. Store all event times in UTC, use `UTC_TIMESTAMP()` for inserts, and use `CONVERT_TZ()` to present local times to end users. `UTC_TIME()` and `UTC_TIMESTAMP()` support fractional seconds precision with the optional `fsp` parameter.
