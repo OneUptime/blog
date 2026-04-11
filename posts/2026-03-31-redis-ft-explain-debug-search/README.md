@@ -30,7 +30,7 @@ FT.EXPLAIN index query [DIALECT dialect]
 
 - `index` - the name of the RediSearch index
 - `query` - the query string to explain
-- `DIALECT` - optional query dialect version (1, 2, or 3)
+- `DIALECT` - optional query dialect version (1, 2, 3, or 4)
 
 Returns a multi-line string representing the query execution plan tree.
 
@@ -158,7 +158,7 @@ UNION {
 }
 ```
 
-Dialect 2 enables fuzzy matching with `%term%` syntax.
+Fuzzy matching with `%term%` syntax works in all dialects. The `DIALECT` parameter controls how certain operators are parsed in compound expressions.
 
 ## Reading the Plan Tree
 
@@ -203,7 +203,7 @@ If `the` is a stopword it will be omitted from the plan tree entirely.
 
 ## FT.EXPLAIN vs FT.EXPLAINCLI
 
-`FT.EXPLAINCLI` formats the output with indentation for easier reading in a terminal. Programmatically, `FT.EXPLAIN` returns a flat string that you can parse.
+`FT.EXPLAINCLI` returns the execution plan as an array of strings (one per line), making it easier to read in `redis-cli`. `FT.EXPLAIN` returns a single bulk string, which requires `redis-cli --raw` to display line breaks properly but is easier to parse programmatically.
 
 ```redis
 FT.EXPLAINCLI products "@title:redis @category:{database}"
