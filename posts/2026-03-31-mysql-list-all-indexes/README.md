@@ -96,7 +96,7 @@ WHERE TABLE_SCHEMA = 'your_database'
 The `sys` schema provides convenient views for index analysis:
 
 ```sql
--- Tables with no indexes
+-- Tables experiencing full table scans (may indicate missing indexes)
 SELECT * FROM sys.schema_tables_with_full_table_scans
 WHERE object_schema = 'your_database';
 
