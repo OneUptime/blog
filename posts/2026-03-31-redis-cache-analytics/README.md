@@ -64,7 +64,7 @@ def get_top_keys(n: int = 10) -> list:
 def cached_get(key: str) -> Optional[dict]:
     raw = r.get(key)
     track_key_access(key)
-    if raw:
+    if raw is not None:
         r.incr(f"{ANALYTICS_PREFIX}default:hits")
         return json.loads(raw)
     r.incr(f"{ANALYTICS_PREFIX}default:misses")
