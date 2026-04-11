@@ -144,4 +144,4 @@ VALUES (UUID_TO_BIN('550e8400-e29b-41d4-a716-446655440000', 1), 'checkout');
 
 ## Summary
 
-MySQL provides `UUID()` for generating globally unique 128-bit identifiers and `UUID_SHORT()` for compact 64-bit server-unique integers. For production use, store UUIDs as `BINARY(16)` using `UUID_TO_BIN(UUID(), 1)` to reduce storage by more than half and keep the time-ordered byte layout that InnoDB clustered indexes benefit from. Use `BIN_TO_UUID` to convert back to string form for display. `UUID_SHORT` is a lightweight alternative for single-server systems that need non-sequential integer IDs.
+MySQL provides `UUID()` for generating globally unique 128-bit identifiers and `UUID_SHORT()` for compact 64-bit server-unique integers. For production use, store UUIDs as `BINARY(16)` using `UUID_TO_BIN(UUID(), 1)` to reduce storage by more than half and keep the time-ordered byte layout that InnoDB clustered indexes benefit from. Use `BIN_TO_UUID` to convert back to string form for display. `UUID_SHORT` is a lightweight alternative for single-server systems that need compact, sortable integer IDs without auto-increment.
