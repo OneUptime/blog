@@ -116,7 +116,7 @@ WHERE EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id);
 
 ## Using join_buffer_size for Non-Indexed JOINs
 
-When an index cannot be added, increase `join_buffer_size` to improve block nested-loop performance:
+When an index cannot be added, increase `join_buffer_size` to improve non-indexed join performance. In MySQL 8.0.18+, this buffer is used by hash joins (which replaced block nested-loop joins in 8.0.20):
 
 ```sql
 SET SESSION join_buffer_size = 4 * 1024 * 1024; -- 4MB
