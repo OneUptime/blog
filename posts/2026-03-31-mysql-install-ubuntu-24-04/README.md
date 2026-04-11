@@ -85,7 +85,7 @@ To switch to password authentication for the root account (optional):
 
 ```sql
 ALTER USER 'root'@'localhost'
-    IDENTIFIED WITH mysql_native_password
+    IDENTIFIED WITH caching_sha2_password
     BY 'YourStrongRootPassword1!';
 FLUSH PRIVILEGES;
 ```
