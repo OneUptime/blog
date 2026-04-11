@@ -10,7 +10,7 @@ Description: Learn how to use stored generated columns in MySQL to precompute an
 
 ## What Are Stored Generated Columns
 
-MySQL supports two types of generated columns: virtual and stored. A virtual generated column computes its value on the fly each time it is read, while a stored generated column computes the value once and saves it to disk. Stored columns consume more space but can be indexed and are faster to read.
+MySQL supports two types of generated columns: virtual and stored. A virtual generated column computes its value on the fly each time it is read, while a stored generated column computes the value once and saves it to disk. Stored columns consume more disk space but are faster to read since their values are precomputed and stored on disk. Both stored and virtual generated columns can be indexed in InnoDB, though stored columns offer broader indexing support across all storage engines.
 
 Generated columns are defined using the `AS (expression) STORED` syntax in a `CREATE TABLE` or `ALTER TABLE` statement.
 
@@ -46,7 +46,7 @@ ADD COLUMN full_name VARCHAR(255)
 
 ## Indexing a Stored Generated Column
 
-One major advantage of stored generated columns over virtual ones is the ability to index them directly:
+While virtual generated columns can also have secondary indexes in InnoDB, stored generated columns can be indexed across all storage engines and support primary key indexing:
 
 ```sql
 CREATE TABLE logs (
