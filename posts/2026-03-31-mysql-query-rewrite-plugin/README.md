@@ -21,19 +21,14 @@ The plugin requires both a server-side plugin and a helper stored procedures pac
 mysql -u root -p < /usr/share/mysql/install_rewriter.sql
 ```
 
-Or install manually:
+Or install from within the MySQL client:
 
 ```sql
--- Install the plugin
-INSTALL PLUGIN rewriter SONAME 'rewriter.so';
-
--- Install the required schema and stored procedures
+-- Run the install script (installs the plugin, schema, and stored procedures)
 SOURCE /usr/share/mysql/install_rewriter.sql;
 
 -- Verify installation
-SELECT plugin_name, plugin_status
-FROM information_schema.plugins
-WHERE plugin_name = 'rewriter';
+SHOW GLOBAL VARIABLES LIKE 'rewriter_enabled';
 ```
 
 ## How the Rewrite Plugin Works
@@ -127,9 +122,10 @@ SHOW STATUS LIKE 'Rewriter%';
 ```
 
 ```text
-Rewriter_number_loaded_rules    - Rules currently loaded
+Rewriter_number_loaded_rules      - Rules currently loaded
+Rewriter_number_reloads           - Number of times the rules table has been reloaded
 Rewriter_number_rewritten_queries - Queries rewritten since startup
-Rewriter_number_warnings        - Warnings during rule loading
+Rewriter_reload_error             - Whether an error occurred on last reload (ON/OFF)
 ```
 
 ## Disabling and Removing Rules
