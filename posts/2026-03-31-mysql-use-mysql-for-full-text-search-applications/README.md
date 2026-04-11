@@ -64,8 +64,8 @@ Operator reference:
 ```text
 +term   - term must be present
 -term   - term must not be present
->term   - term must be present, increase relevance
-<term   - term must be present, decrease relevance
+>term   - increase the term's relevance contribution
+<term   - decrease the term's relevance contribution
 *       - wildcard suffix (fast* matches faster, fastest)
 "phrase" - exact phrase match
 ```
