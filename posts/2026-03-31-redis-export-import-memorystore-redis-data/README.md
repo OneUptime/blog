@@ -12,30 +12,25 @@ Memorystore supports exporting Redis data as an RDB file to Cloud Storage and im
 
 ## Prerequisites
 
-- Memorystore Standard HA instance (Basic tier does not support export)
+- A Memorystore for Redis instance (Basic or Standard HA tier)
 - A Cloud Storage bucket in the same region
 - Memorystore service account must have Storage Object Admin on the bucket
 
 ## Granting Storage Access
 
 ```bash
-# Get the Memorystore service account
-gcloud redis instances describe prod-cache \
-  --region=us-central1 \
-  --format="value(persistenceConfig.rdbSnapshotPeriod)"
-
-# Grant storage access
+# Construct the Memorystore service account email
 REDIS_SA="service-$(gcloud projects describe my-project --format='value(projectNumber)')@cloud-redis.iam.gserviceaccount.com"
 
+# Grant storage access
 gsutil iam ch serviceAccount:$REDIS_SA:objectAdmin gs://my-redis-backups
 ```
 
 ## Exporting Redis Data
 
 ```bash
-gcloud redis instances export prod-cache \
-  --region=us-central1 \
-  --gcs-bucket=gs://my-redis-backups
+gcloud redis instances export gs://my-redis-backups/prod-cache.rdb prod-cache \
+  --region=us-central1
 
 # Monitor the export operation
 gcloud redis operations list \
@@ -43,15 +38,14 @@ gcloud redis operations list \
   --filter="metadata.target:prod-cache"
 ```
 
-This creates a file like `gs://my-redis-backups/dump.rdb` with a timestamp.
+This creates the RDB file at the specified Cloud Storage path.
 
 ## Importing Redis Data
 
 ```bash
 # Import into a new or existing instance
-gcloud redis instances import new-cache \
-  --region=us-central1 \
-  --gcs-bucket=gs://my-redis-backups/dump.rdb
+gcloud redis instances import gs://my-redis-backups/prod-cache.rdb new-cache \
+  --region=us-central1
 ```
 
 Note: Import replaces ALL data in the target instance. Use with caution on production instances.
@@ -60,9 +54,8 @@ Note: Import replaces ALL data in the target instance. Use with caution on produ
 
 ```bash
 # 1. Export from source
-gcloud redis instances export source-cache \
-  --region=us-central1 \
-  --gcs-bucket=gs://my-redis-migration
+gcloud redis instances export gs://my-redis-migration/source-cache.rdb source-cache \
+  --region=us-central1
 
 # 2. Create new instance (if needed)
 gcloud redis instances create target-cache \
@@ -72,9 +65,8 @@ gcloud redis instances create target-cache \
   --redis-version=redis_7_0
 
 # 3. Import to target
-gcloud redis instances import target-cache \
-  --region=us-east1 \
-  --gcs-bucket=gs://my-redis-migration/export-20260331-120000.rdb
+gcloud redis instances import gs://my-redis-migration/source-cache.rdb target-cache \
+  --region=us-east1
 
 # 4. Verify key count matches
 gcloud redis instances describe target-cache --region=us-east1
@@ -105,7 +97,7 @@ resource "google_cloud_scheduler_job" "redis_backup" {
 gsutil ls -l gs://my-redis-backups/
 
 # Check RDB file size
-gsutil du -sh gs://my-redis-backups/dump.rdb
+gsutil du -sh gs://my-redis-backups/prod-cache.rdb
 ```
 
 ## Summary
