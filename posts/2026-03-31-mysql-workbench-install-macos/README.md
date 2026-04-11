@@ -36,7 +36,7 @@ flowchart LR
    - **macOS 14 x86, 64-bit** for Intel Macs
 4. Click **Download** (you can skip the Oracle login).
 5. Open the downloaded `.dmg` file.
-6. Drag **MySQL Workbench.app** to the **Applications** folder.
+6. Drag **MySQLWorkbench.app** to the **Applications** folder.
 7. Eject the DMG.
 
 ## Method 2 - Install via Homebrew
