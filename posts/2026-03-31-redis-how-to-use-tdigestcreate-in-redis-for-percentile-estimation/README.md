@@ -38,11 +38,13 @@ TDIGEST.CREATE rough_latency COMPRESSION 50
 
 ## Understanding the Compression Parameter
 
-The compression parameter determines the maximum number of centroids (clusters of data points) the T-Digest can hold:
+The compression parameter affects the capacity (maximum number of centroids) the T-Digest can hold. In Redis's implementation, the capacity is calculated as:
 
 ```text
-max_centroids = compression * pi / 2 (approximately)
+capacity = compression * 6 + 10
 ```
+
+For example, a compression of 100 yields a capacity of 610 centroids.
 
 Higher compression:
 - More centroids stored
