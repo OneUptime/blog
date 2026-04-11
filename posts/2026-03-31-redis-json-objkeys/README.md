@@ -19,7 +19,7 @@ JSON.OBJKEYS key [path]
 ```
 
 - `key` - the Redis key
-- `path` - JSONPath expression pointing to an object (defaults to `$`)
+- `path` - JSONPath expression pointing to an object (defaults to `.`, the legacy root path)
 
 Returns an array of string field names, or nil if the path does not point to an object.
 
