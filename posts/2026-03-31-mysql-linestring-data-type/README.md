@@ -59,18 +59,18 @@ CREATE TABLE routes (
 ### Insert LINESTRING Values
 
 ```sql
--- A walking trail defined by GPS waypoints (longitude, latitude)
+-- A walking trail defined by GPS waypoints (latitude, longitude)
 INSERT INTO routes (name, description, path) VALUES
 (
     'Central Park Loop',
     'Main loop road around Central Park, New York',
     ST_GeomFromText(
         'LINESTRING(
-            -73.9730 40.7648,
-            -73.9495 40.7968,
-            -73.9735 40.8003,
-            -73.9818 40.7648,
-            -73.9730 40.7648
+            40.7648 -73.9730,
+            40.7968 -73.9495,
+            40.8003 -73.9735,
+            40.7648 -73.9818,
+            40.7648 -73.9730
         )',
         4326
     )
@@ -80,9 +80,9 @@ INSERT INTO routes (name, description, path) VALUES
     'Pedestrian path across the Brooklyn Bridge',
     ST_GeomFromText(
         'LINESTRING(
-            -73.9969 40.7061,
-            -73.9937 40.7081,
-            -73.9900 40.7106
+            40.7061 -73.9969,
+            40.7081 -73.9937,
+            40.7106 -73.9900
         )',
         4326
     )
@@ -92,10 +92,10 @@ INSERT INTO routes (name, description, path) VALUES
     'Elevated park path, section 1',
     ST_GeomFromText(
         'LINESTRING(
-            -74.0048 40.7481,
-            -74.0040 40.7493,
-            -74.0022 40.7510,
-            -74.0010 40.7524
+            40.7481 -74.0048,
+            40.7493 -74.0040,
+            40.7510 -74.0022,
+            40.7524 -74.0010
         )',
         4326
     )
@@ -108,20 +108,20 @@ INSERT INTO routes (name, description, path) VALUES
 SELECT
     name,
     ST_NumPoints(path)                  AS num_points,
-    ROUND(ST_Length(path), 6)           AS length_degrees,
+    ROUND(ST_Length(path))              AS length_meters,
     ST_AsText(ST_StartPoint(path))      AS start_wkt,
     ST_AsText(ST_EndPoint(path))        AS end_wkt
 FROM routes;
 ```
 
 ```text
-+----------------------+------------+----------------+-----------------------------+-----------------------------+
-| name                 | num_points | length_degrees | start_wkt                   | end_wkt                     |
-+----------------------+------------+----------------+-----------------------------+-----------------------------+
-| Central Park Loop    | 5          |       0.112000 | POINT(-73.973 40.7648)      | POINT(-73.973 40.7648)      |
-| Brooklyn Bridge Walk | 3          |       0.009500 | POINT(-73.9969 40.7061)     | POINT(-73.99 40.7106)       |
-| High Line Section 1  | 4          |       0.006900 | POINT(-74.0048 40.7481)     | POINT(-74.001 40.7524)      |
-+----------------------+------------+----------------+-----------------------------+-----------------------------+
++----------------------+------------+--------------+----------------------------+----------------------------+
+| name                 | num_points | length_meters| start_wkt                  | end_wkt                    |
++----------------------+------------+--------------+----------------------------+----------------------------+
+| Central Park Loop    | 5          |        10875 | POINT(40.7648 -73.973)     | POINT(40.7648 -73.973)     |
+| Brooklyn Bridge Walk | 3          |          768 | POINT(40.7061 -73.9969)    | POINT(40.7106 -73.99)      |
+| High Line Section 1  | 4          |          578 | POINT(40.7481 -74.0048)    | POINT(40.7524 -74.001)     |
++----------------------+------------+--------------+----------------------------+----------------------------+
 ```
 
 ### Extract a Specific Point from a LINESTRING
@@ -140,7 +140,7 @@ WHERE name = 'Brooklyn Bridge Walk';
 +----------------------+-------------------------+-------------------------+------------------------+
 | name                 | point_1                 | point_2                 | point_3                |
 +----------------------+-------------------------+-------------------------+------------------------+
-| Brooklyn Bridge Walk | POINT(-73.9969 40.7061) | POINT(-73.9937 40.7081) | POINT(-73.99 40.7106)  |
+| Brooklyn Bridge Walk | POINT(40.7061 -73.9969) | POINT(40.7081 -73.9937) | POINT(40.7106 -73.99)  |
 +----------------------+-------------------------+-------------------------+------------------------+
 ```
 
@@ -148,7 +148,7 @@ WHERE name = 'Brooklyn Bridge Walk';
 
 ```sql
 SET @manhattan_south = ST_GeomFromText(
-    'POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.72, -74.02 40.72, -74.02 40.70))',
+    'POLYGON((40.70 -74.02, 40.70 -73.97, 40.72 -73.97, 40.72 -74.02, 40.70 -74.02))',
     4326
 );
 
@@ -179,7 +179,7 @@ FROM routes;
 +----------------------+-----------+-----------+
 | name                 | is_closed | is_simple |
 +----------------------+-----------+-----------+
-| Central Park Loop    | 1         | 0         |
+| Central Park Loop    | 1         | 1         |
 | Brooklyn Bridge Walk | 0         | 1         |
 | High Line Section 1  | 0         | 1         |
 +----------------------+-----------+-----------+
@@ -195,6 +195,16 @@ SELECT
     ROUND(ST_Length(path)) AS length_meters
 FROM routes
 ORDER BY length_meters DESC;
+```
+
+```text
++----------------------+---------------+
+| name                 | length_meters |
++----------------------+---------------+
+| Central Park Loop    |         10875 |
+| Brooklyn Bridge Walk |           768 |
+| High Line Section 1  |           578 |
++----------------------+---------------+
 ```
 
 ## MULTILINESTRING Relationship
@@ -214,7 +224,7 @@ SELECT ST_AsText(
 ## Best Practices
 
 - Always specify an SRID. Use SRID 4326 for GPS-based geographic coordinates.
-- Store points in (longitude, latitude) order to follow the WKT convention (X before Y).
+- For SRID 4326 in MySQL 8.0, WKT coordinates are in (latitude, longitude) order, matching the SRS axis definition. Use the `axis-order=long-lat` option in `ST_GeomFromText` if you prefer (longitude, latitude) order.
 - Use `ST_Length` in MySQL 8.0 with SRID 4326 to get lengths in meters on the geodetic ellipsoid.
 - Add a `SPATIAL INDEX` for queries using `ST_Intersects`, `ST_Within`, or `MBRContains`.
 - Use `ST_IsClosed` to validate that a loop route actually closes.
