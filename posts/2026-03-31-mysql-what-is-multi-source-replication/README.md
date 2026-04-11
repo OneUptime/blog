@@ -57,7 +57,7 @@ SELECT
   CHANNEL_NAME,
   SERVICE_STATE,
   LAST_ERROR_MESSAGE
-FROM performance_schema.replication_applier_status
+FROM performance_schema.replication_applier_status_by_coordinator
 ORDER BY CHANNEL_NAME;
 ```
 
