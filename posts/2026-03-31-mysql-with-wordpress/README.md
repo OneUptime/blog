@@ -152,7 +152,7 @@ CREATE USER 'wordpress_user'@'10.0.1.50'
   IDENTIFIED BY 'strong_password_here';
 
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP,
-      INDEX, ALTER
+      INDEX, ALTER, CREATE TEMPORARY TABLES, LOCK TABLES
   ON wordpress_db.*
   TO 'wordpress_user'@'10.0.1.50';
 ```
