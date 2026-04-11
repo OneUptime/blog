@@ -41,9 +41,11 @@ When a transaction begins (or when the first consistent read executes, depending
 For each row version encountered, InnoDB checks whether `DB_TRX_ID` is visible to the current read view:
 
 ```text
-If DB_TRX_ID < m_up_limit_id        -> row was committed before snapshot, visible
-If DB_TRX_ID in m_ids               -> row was uncommitted at snapshot time, not visible
-If DB_TRX_ID >= m_low_limit_id      -> row was created after snapshot, not visible
+If DB_TRX_ID < m_up_limit_id                          -> row was committed before snapshot, visible
+If DB_TRX_ID >= m_low_limit_id                         -> row was created after snapshot, not visible
+If DB_TRX_ID in m_ids                                  -> row was uncommitted at snapshot time, not visible
+If m_up_limit_id <= DB_TRX_ID < m_low_limit_id
+   and DB_TRX_ID not in m_ids                          -> transaction committed before snapshot, visible
 ```
 
 If a version is not visible, InnoDB follows `DB_ROLL_PTR` to the previous version and checks again.
@@ -91,7 +93,7 @@ ORDER BY trx_started
 LIMIT 5;
 
 -- Check undo log size
-SELECT NAME, ROUND(SIZE_IN_PAGES * 16384 / 1024 / 1024, 1) AS mb
+SELECT NAME, ROUND(FILE_SIZE / 1024 / 1024, 1) AS mb
 FROM information_schema.INNODB_TABLESPACES
 WHERE NAME LIKE 'undo%';
 ```
