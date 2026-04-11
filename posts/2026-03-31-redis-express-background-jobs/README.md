@@ -13,7 +13,7 @@ Background jobs prevent slow operations - sending emails, resizing images, gener
 ## Install Dependencies
 
 ```bash
-npm install express bullmq redis ioredis
+npm install express bullmq ioredis
 ```
 
 ## Define Queues and Workers
