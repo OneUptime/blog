@@ -137,10 +137,10 @@ SHOW INDEX FROM products;
 +----------+------------+--------------------------+--------------+-------------+-----------+
 | products | 0          | PRIMARY                  | 1            | id          | 0         |
 | products | 0          | sku                      | 1            | sku         | 0         |
-| products | 1          | idx_products_price       | 1            | price       | 0         |
+| products | 1          | category_id              | 1            | category_id | 0         |
 | products | 1          | idx_products_category    | 1            | category_id | 0         |
 | products | 1          | idx_products_category    | 2            | is_active   | 0         |
-| products | 1          | category_id              | 1            | category_id | 0         |
+| products | 1          | idx_products_price       | 1            | price       | 0         |
 +----------+------------+--------------------------+--------------+-------------+-----------+
 ```
 
