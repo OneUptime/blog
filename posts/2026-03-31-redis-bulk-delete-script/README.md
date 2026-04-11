@@ -95,8 +95,8 @@ r = redis.Redis(
     decode_responses=True,
 )
 
-def bulk_delete(pattern: str, batch_size: int = 500,
-                dry_run: bool = True, use_unlink: bool = True) -> int:
+def bulk_delete(pattern: str, dry_run: bool = True,
+                use_unlink: bool = True) -> int:
     deleted = 0
     cursor = 0
     start = time.time()
@@ -136,8 +136,7 @@ Preview the count without deleting:
 # Count matching keys quickly
 redis-cli --scan --pattern "session:*" | wc -l
 
-# Or use a quick scan sample
-redis-cli -h localhost DEBUG SLEEP 0  # baseline
+# Or time a partial scan to estimate the full duration
 time redis-cli --scan --pattern "session:*" | head -10000 | wc -l
 ```
 
