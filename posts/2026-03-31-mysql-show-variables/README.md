@@ -102,7 +102,7 @@ SHOW VARIABLES LIKE 'sync_binlog';
 SHOW VARIABLES LIKE 'gtid_mode';
 ```
 
-## Reading Variables from information_schema
+## Reading Variables from performance_schema
 
 For programmatic access:
 
