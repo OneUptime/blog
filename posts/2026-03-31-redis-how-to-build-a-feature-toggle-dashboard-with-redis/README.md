@@ -16,7 +16,7 @@ Feature flags need to be evaluated on every request with minimal latency. Redis 
 
 ```text
 flag:{name}         -> Hash: enabled, rollout_pct, environments, description
-flag:{name}:users   -> Set: user IDs with explicit overrides
+flag:{name}:overrides -> Hash: user ID -> "1" or "0" for per-user overrides
 ```
 
 ## Creating and Managing Flags
@@ -122,8 +122,6 @@ For ultra-high-throughput scenarios, cache flag states locally in the applicatio
 
 ```python
 import threading
-from functools import lru_cache
-
 _flag_cache = {}
 _cache_lock = threading.Lock()
 FLAG_CACHE_TTL = 5  # seconds
@@ -144,7 +142,7 @@ def get_flag_cached(name: str) -> dict | None:
 ## FastAPI Integration
 
 ```python
-from fastapi import FastAPI, Depends, Cookie
+from fastapi import FastAPI, Cookie
 
 app = FastAPI()
 
