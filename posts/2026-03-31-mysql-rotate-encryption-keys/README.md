@@ -38,7 +38,7 @@ Binary log files use a separate encryption key:
 ALTER INSTANCE ROTATE BINLOG MASTER KEY;
 ```
 
-This generates a new binary log encryption key. Existing binary log files retain their old keys; only new log files use the new key.
+This generates a new binary log encryption key and re-encrypts the file passwords in all existing binary log and relay log files with the new key. After successful re-encryption, the old binary log master key is removed from the keyring.
 
 ## Verifying Keys in the Keyring
 
@@ -64,11 +64,11 @@ DO
   ALTER INSTANCE ROTATE INNODB MASTER KEY;
 ```
 
-## Checking Current Encryption Key IDs
+## Checking Encrypted Tablespaces
 
 ```sql
--- See which key ID is currently in use for each tablespace
-SELECT SPACE, NAME, ENCRYPTION_KEY_ID
+-- See which tablespaces are currently encrypted
+SELECT SPACE, NAME, ENCRYPTION
 FROM information_schema.INNODB_TABLESPACES
 WHERE ENCRYPTION = 'Y';
 ```
@@ -84,14 +84,14 @@ ALTER TABLE sensitive_orders ENCRYPTION='Y';
 
 This rewrites the tablespace with a new tablespace key encrypted under the current master key.
 
-## Using a Custom Key ID
+## Enabling Encryption on a New Table
 
 ```sql
--- Create a table encrypted with a specific key ID
+-- Create a table with encryption enabled
 CREATE TABLE financial_records (
   id INT AUTO_INCREMENT PRIMARY KEY,
   amount DECIMAL(12,2)
-) ENGINE=InnoDB ENCRYPTION='Y' ENCRYPTION_KEY_ID=2;
+) ENGINE=InnoDB ENCRYPTION='Y';
 ```
 
 ## Keyring Plugin Backup Before Rotation
