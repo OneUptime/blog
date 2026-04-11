@@ -51,8 +51,9 @@ Use ZADD with member names that encode the tiebreak factor:
 
 ```python
 def encode_member(player_id: str, achieved_at: float) -> str:
-    # Zero-pad timestamp to ensure correct lexicographic order
-    ts_str = f"{int(achieved_at):020d}"
+    # Invert timestamp so earlier achievers sort higher in reverse lex order
+    inverted = 10**20 - int(achieved_at)
+    ts_str = f"{inverted:020d}"
     return f"{ts_str}:{player_id}"
 
 def add_score_lex(player_id: str, score: int):
@@ -68,7 +69,7 @@ def get_top_lex(n: int = 10) -> list:
             "rank": i + 1,
             "player": pid,
             "score": int(score),
-            "achieved_at": int(ts_str),
+            "achieved_at": 10**20 - int(ts_str),
         })
     return results
 ```
@@ -112,8 +113,8 @@ def resolve_ties(players: list, secondary_key: str) -> list:
 Use [OneUptime](https://oneuptime.com) to monitor leaderboard API response times, which can increase under heavy tie-resolution logic if not cached.
 
 ```bash
-# Check for ties: multiple members with same score
-redis-cli ZRANGEBYSCORE leaderboard:tiebreak 1000 1000
+# Check for ties: members with the same base score (1000) using a range
+redis-cli ZRANGEBYSCORE leaderboard:tiebreak 1000 "(1001"
 ```
 
 ## Summary
