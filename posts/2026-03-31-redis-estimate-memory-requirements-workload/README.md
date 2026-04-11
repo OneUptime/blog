@@ -96,8 +96,8 @@ String      1         embstr      ~56 bytes (value <= 44 bytes)
 String      1         raw         ~80 bytes (value > 44 bytes)
 Hash        < 128     listpack    ~24 bytes/field-value
 Hash        > 128     hashtable   ~72 bytes/field-value
-List        < 512     listpack    ~16 bytes/element
-List        > 512     quicklist   ~40 bytes/element
+List        small     quicklist/listpack  ~16 bytes/element
+List        large     quicklist/listpack  ~40 bytes/element
 Set (int)   < 512     intset      ~4-8 bytes/element
 Set         < 128     listpack    ~24 bytes/element
 Set         > 128     hashtable   ~72 bytes/element
@@ -134,7 +134,7 @@ Total: ~146 MB
 
 With 30% headroom: set maxmemory 190m
 With 2 replicas: add 20 MB for replication buffers
-Final recommendation: 220 MB
+Final recommendation: 210 MB
 ```
 
 ## Validating Estimates in Production
