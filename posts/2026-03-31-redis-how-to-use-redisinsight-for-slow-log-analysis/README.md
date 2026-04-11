@@ -74,7 +74,7 @@ redis-cli SLOWLOG RESET
 ## Analyzing Slow Entries with a Script
 
 ```javascript
-const Redis = require('ioredis');
+import Redis from 'ioredis';
 const redis = new Redis({ host: process.env.REDIS_HOST || 'localhost' });
 
 async function analyzeSlowLog(count = 100) {
@@ -91,7 +91,7 @@ async function analyzeSlowLog(count = 100) {
   // Group by command to find patterns
   const commandCounts = {};
   for (const entry of parsed) {
-    const cmd = command[0].toUpperCase();
+    const cmd = entry.command.split(' ')[0].toUpperCase();
     if (!commandCounts[cmd]) {
       commandCounts[cmd] = { count: 0, totalDuration: 0, maxDuration: 0 };
     }
@@ -171,7 +171,7 @@ In RedisInsight's Slow Log view you can:
 - Filter entries by duration threshold
 - Sort by execution time, timestamp, or command
 - Export slow log entries to CSV
-- Set up alerts when slow log entries exceed a count
+- View client address and name for each slow entry
 
 To access: **Analysis Tools** -> **Slow Log** in the RedisInsight interface.
 
