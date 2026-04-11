@@ -27,7 +27,6 @@ CLUSTER INFO
 ```
 
 ```text
-cluster_enabled:1
 cluster_state:ok
 cluster_slots_assigned:16384
 cluster_slots_ok:16384
@@ -46,18 +45,18 @@ total_cluster_links_buffer_limit_exceeded:0
 
 | Field | Description |
 |-------|-------------|
-| `cluster_enabled` | 1 if cluster mode is enabled, 0 if standalone |
 | `cluster_state` | `ok` if healthy; `fail` if cluster cannot operate |
 | `cluster_slots_assigned` | Number of slots assigned to nodes (should be 16384) |
 | `cluster_slots_ok` | Number of slots in working state |
-| `cluster_slots_pfail` | Slots on nodes suspected to be down |
-| `cluster_slots_fail` | Slots on nodes confirmed to be down |
-| `cluster_known_nodes` | Total nodes known to this node |
-| `cluster_size` | Number of primary nodes handling slots |
+| `cluster_slots_pfail` | Slots on nodes in PFAIL (suspected down) state |
+| `cluster_slots_fail` | Slots on nodes in FAIL (confirmed down) state |
+| `cluster_known_nodes` | Total nodes known to this node, including nodes in HANDSHAKE state |
+| `cluster_size` | Number of primary nodes serving at least one slot |
 | `cluster_current_epoch` | Cluster-wide epoch (logical clock) |
 | `cluster_my_epoch` | This node's configuration epoch |
 | `cluster_stats_messages_sent` | Gossip messages sent |
 | `cluster_stats_messages_received` | Gossip messages received |
+| `total_cluster_links_buffer_limit_exceeded` | Count of cluster links freed due to exceeding buffer limit (Redis 7.0+) |
 
 ## Interpreting Cluster State
 
@@ -123,24 +122,32 @@ else
 fi
 ```
 
-## cluster_enabled:0
+## Standalone Mode
 
-If `cluster_enabled` is 0, the node is running in standalone mode. `CLUSTER INFO` still works but most fields reflect a non-clustered state:
+If cluster mode is not enabled (the `cluster-enabled` configuration directive is set to `no`), running `CLUSTER INFO` returns an error:
 
 ```text
+(error) ERR This instance has cluster support disabled
+```
+
+To check whether a node has cluster mode enabled, use the `INFO` command and look for the `cluster_enabled` field in the `# Cluster` section:
+
+```redis
+INFO cluster
+```
+
+```text
+# Cluster
 cluster_enabled:0
-cluster_state:ok
-cluster_slots_assigned:0
-cluster_known_nodes:0
-cluster_size:0
 ```
 
 ## cluster_state:fail Causes
 
 The cluster enters `fail` state when:
-1. A primary node fails and has no replica to promote
-2. More than half the primary nodes fail simultaneously
-3. A node cannot reach enough cluster members to maintain quorum
+1. Any slot is unassigned or its assigned primary is in FAIL state (when `cluster-require-full-coverage` is `yes`, which is the default)
+2. The node cannot reach a majority of primary nodes (reachable masters < quorum)
+
+If you set `cluster-require-full-coverage` to `no`, the cluster remains in `ok` state even when some slots are unserved, allowing the remaining slots to continue accepting traffic.
 
 ## Summary
 
