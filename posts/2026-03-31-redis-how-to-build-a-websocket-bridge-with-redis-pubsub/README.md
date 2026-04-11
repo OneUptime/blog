@@ -187,7 +187,7 @@ async def redis_listener():
                 except Exception:
                     subs.discard(ws)
 
-async def ws_handler(websocket, path):
+async def ws_handler(websocket):
     subscriptions = set()
     pub = redis.Redis(host='localhost', port=6379)
 
