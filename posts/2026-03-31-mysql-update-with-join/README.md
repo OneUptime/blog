@@ -101,7 +101,7 @@ SELECT name, location FROM employees;
 ### Update with a Computed Value from the JOIN
 
 ```sql
--- Assign salary_band based on salary relative to department budget
+-- Assign salary_band based on salary thresholds
 UPDATE employees e
 JOIN departments d ON e.department_id = d.id
 SET e.salary_band = CASE
@@ -243,7 +243,10 @@ UPDATE employees e
 JOIN departments d ON e.department_id = d.id
 SET e.location = d.location;
 
--- Using correlated subquery (equivalent but typically slower)
+-- Using correlated subquery (similar but typically slower)
+-- Note: the subquery version updates ALL rows, setting location to NULL
+-- for employees with no matching department, while the JOIN version
+-- only updates rows that have a match.
 UPDATE employees e
 SET e.location = (
     SELECT d.location FROM departments d WHERE d.id = e.department_id
