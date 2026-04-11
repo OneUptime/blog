@@ -42,7 +42,7 @@ print(f"Cache hit ratio: {ratio:.2%}")  # Cache hit ratio: 87.94%
 
 ## Tracking Hit Ratio Over Time
 
-Poll the INFO stats periodically and store the deltas:
+Poll the INFO stats periodically and print the cumulative ratio:
 
 ```python
 import redis
@@ -97,7 +97,7 @@ key = f"search:{query_string}:{page}:{sort_order}"
 
 # Better - normalize before hashing
 import hashlib
-normalized = f"{query.lower().strip()}:p{page}:s{sort_order}"
+normalized = f"{query_string.lower().strip()}:p{page}:s{sort_order}"
 key = f"search:{hashlib.md5(normalized.encode()).hexdigest()}"
 ```
 
