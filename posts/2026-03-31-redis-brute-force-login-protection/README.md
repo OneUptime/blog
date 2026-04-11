@@ -23,7 +23,6 @@ login:locked:ip:{ip}              -> String: lockout marker
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
