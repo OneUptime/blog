@@ -103,7 +103,7 @@ class SessionServiceIntegrationTest {
     }
 
     @AfterAll
-    static void stopRedis() {
+    static void stopRedis() throws Exception {
         redisServer.stop();
     }
 
