@@ -12,7 +12,7 @@ Running multiple MySQL versions side by side is useful when migrating from MySQL
 
 ## Why Run Both Versions Together
 
-MySQL 8.0 introduced breaking changes including the removal of the `utf8` alias, deprecated `GROUP BY ... ASC/DESC` syntax, stricter SQL mode defaults, and changes to the default authentication plugin from `mysql_native_password` to `caching_sha2_password`. Running both versions lets you identify compatibility issues without touching production.
+MySQL 8.0 introduced breaking changes including the deprecation of the `utf8` alias for `utf8mb3`, deprecated `GROUP BY ... ASC/DESC` syntax, stricter SQL mode defaults, and changes to the default authentication plugin from `mysql_native_password` to `caching_sha2_password`. Running both versions lets you identify compatibility issues without touching production.
 
 ## Setting Up with Docker Compose
 
@@ -90,7 +90,7 @@ mysqldump -h 127.0.0.1 -P 3306 -uroot -proot57 testdb > dump57.sql
 mysql -h 127.0.0.1 -P 3307 -uroot -proot80 testdb < dump57.sql
 ```
 
-If the dump contains `utf8mb3` or deprecated syntax, MySQL 8.0 will log warnings during import. Review them:
+If the dump contains `utf8` or deprecated syntax, MySQL 8.0 will log warnings during import. Review them:
 
 ```sql
 SHOW WARNINGS;
@@ -104,7 +104,8 @@ Run the same query on both servers to compare results and catch compatibility is
 # Test a query on both versions
 for PORT in 3306 3307; do
   echo "=== Port $PORT ==="
-  mysql -h 127.0.0.1 -P $PORT -uroot -p"root${PORT##330}" \
+  if [ "$PORT" = "3306" ]; then PASS="root57"; else PASS="root80"; fi
+  mysql -h 127.0.0.1 -P $PORT -uroot -p"$PASS" \
     -e "SELECT @@sql_mode, @@version;" 2>/dev/null
 done
 ```
