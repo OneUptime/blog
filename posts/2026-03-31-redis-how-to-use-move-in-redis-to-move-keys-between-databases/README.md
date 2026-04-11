@@ -133,18 +133,18 @@ archive_session("session:expired:abc123")
 | Source preserved | No | Yes | No |
 | Cross-database | Yes | Yes | No |
 | Overwrites destination | No (conditional) | With REPLACE | Yes |
-| Same DB operation | Possible | Yes | Yes |
+| Same DB operation | No | Yes | Yes |
 
 ## Limitations and Considerations
 
 - **Same server only** - `MOVE` only works between databases on the same Redis instance. For cross-server migration, use `DUMP` + `RESTORE` or `COPY` (if Redis 6.2+ is available).
 - **No multi-database support in cluster mode** - Redis Cluster only supports database 0, so `MOVE` is not available in cluster deployments.
-- **Not for high-traffic keys** - Moving a key while it is being actively accessed can cause brief visibility gaps between the delete from source and insert to destination (though the command itself is atomic).
+- **Not for high-traffic keys** - While `MOVE` is atomic (Redis executes it in a single-threaded event loop with no interleaving), moving frequently accessed keys between databases can complicate application logic that expects the key in a specific database.
 
 ```bash
 # MOVE fails in cluster mode
 MOVE mykey 1
-# CROSSSLOT Keys in request don't hash to the same slot
+# (error) ERR MOVE is not allowed in cluster mode
 ```
 
 ## Checking the Target Database Before Moving
