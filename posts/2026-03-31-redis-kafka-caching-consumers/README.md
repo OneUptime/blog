@@ -23,7 +23,6 @@ Kafka Topic --> Consumer --> Redis cache lookup --> (cache miss) --> Database
 from kafka import KafkaConsumer
 import redis
 import json
-import psycopg2
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
