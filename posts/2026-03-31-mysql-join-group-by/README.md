@@ -14,7 +14,7 @@ Description: Learn how to combine JOIN and GROUP BY in MySQL to produce grouped 
 
 Understanding the logical order helps avoid errors:
 
-```dockerfile
+```text
 FROM -> JOIN -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY -> LIMIT
 ```
 
