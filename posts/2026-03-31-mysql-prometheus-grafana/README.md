@@ -21,7 +21,7 @@ flowchart LR
     ALERT["Alertmanager\n:9093"]
     OPS["Operations Team"]
 
-    MySQL -- "scrape metrics" --> EXP
+    EXP -- "collect metrics" --> MySQL
     PROM -- "scrape /metrics" --> EXP
     GRAF -- "query" --> PROM
     PROM -- "fire alerts" --> ALERT
