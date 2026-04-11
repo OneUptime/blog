@@ -32,13 +32,11 @@ redis-cli --cluster info 10.0.0.1:6379
 Output:
 
 ```text
-10.0.0.1:6379 (node1) -> Primaries: 3, Replicas: 3, Slots: 16384, Errors: 0
-10.0.0.1:6379 - Master, 5461 slots (0-5460)
-10.0.0.2:6379 - Master, 5461 slots (5461-10921)
-10.0.0.3:6379 - Master, 5462 slots (10922-16383)
-10.0.0.4:6379 - Slave of 10.0.0.1:6379
-10.0.0.5:6379 - Slave of 10.0.0.2:6379
-10.0.0.6:6379 - Slave of 10.0.0.3:6379
+10.0.0.1:6379 (abc12345...) -> 0 keys | 5461 slots | 1 slaves.
+10.0.0.2:6379 (def67890...) -> 0 keys | 5462 slots | 1 slaves.
+10.0.0.3:6379 (ghi13579...) -> 0 keys | 5461 slots | 1 slaves.
+[OK] 0 keys in 3 masters.
+0.00 keys per slot on average.
 ```
 
 ## Checking Cluster Health
