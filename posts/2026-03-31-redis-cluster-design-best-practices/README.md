@@ -100,15 +100,15 @@ Resharding moves data live but consumes CPU and network bandwidth. Schedule it d
 Standard Redis clients will fail on cluster setups. Use cluster-aware clients:
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 client = RedisCluster(
     startup_nodes=[
-        {"host": "redis-node1", "port": 6379},
-        {"host": "redis-node2", "port": 6379},
+        ClusterNode("redis-node1", 6379),
+        ClusterNode("redis-node2", 6379),
     ],
     decode_responses=True,
-    skip_full_coverage_check=False
+    require_full_coverage=False
 )
 ```
 
