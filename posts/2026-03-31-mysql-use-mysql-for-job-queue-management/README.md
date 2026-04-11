@@ -56,7 +56,7 @@ VALUES (
 ```sql
 START TRANSACTION;
 
-SELECT id, payload
+SELECT id, payload INTO @job_id, @job_payload
 FROM jobs
 WHERE queue = 'email'
   AND status = 'pending'
