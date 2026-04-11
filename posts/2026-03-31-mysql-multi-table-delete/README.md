@@ -14,7 +14,7 @@ MySQL's multi-table `DELETE` extends the standard single-table form to allow fil
 
 ## Two Syntax Forms
 
-**Form 1 - target tables before FROM:**
+**Form 1 - DELETE ... FROM:**
 
 ```sql
 DELETE t1, t2
@@ -23,16 +23,20 @@ INNER JOIN t2 ON t1.id = t2.t1_id
 WHERE t1.status = 'expired';
 ```
 
-**Form 2 - target tables after DELETE, source tables in FROM:**
+Target tables to delete from are listed between `DELETE` and `FROM`. The `FROM` clause contains the full table references with joins.
+
+**Form 2 - DELETE FROM ... USING:**
 
 ```sql
-DELETE t1
-FROM t1
+DELETE FROM t1, t2
+USING t1
 INNER JOIN t2 ON t1.id = t2.t1_id
-WHERE t2.flag = 1;
+WHERE t1.status = 'expired';
 ```
 
-Only rows from tables named immediately after `DELETE` are removed. Tables used only for filtering appear in the `FROM` and `JOIN` clauses but are not modified.
+Target tables are listed between `DELETE FROM` and `USING`. The `USING` clause contains the full table references with joins. Both forms are equivalent and produce the same result.
+
+Only rows from tables named as targets are removed. Tables used only for filtering appear in the join clauses but are not modified.
 
 ## Deleting from One Table Using Another as a Filter
 
