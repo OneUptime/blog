@@ -18,7 +18,7 @@ The syntax is:
 QUOTE(str)
 ```
 
-`QUOTE()` escapes the following characters: single quote (`'`), backslash (`\`), and null bytes. It also wraps the entire result in single quotes.
+`QUOTE()` escapes the following characters: single quote (`'`), backslash (`\`), ASCII NUL (null bytes), and Control+Z (ASCII 26). It also wraps the entire result in single quotes.
 
 ## Basic Examples
 
@@ -33,7 +33,7 @@ SELECT QUOTE('back\\slash');
 -- Result: 'back\\slash'
 
 SELECT QUOTE(NULL);
--- Result: NULL
+-- Result: NULL  (the word NULL, not SQL NULL)
 ```
 
 ## Difference Between QUOTE() and Manual Escaping
@@ -69,11 +69,13 @@ The `QUOTE()` call ensures that if `p_name` contains a single quote, the constru
 
 ## NULL Handling
 
-`QUOTE()` returns `NULL` when the input is `NULL`, not the string `'NULL'`. Handle this with `COALESCE()` if you need to produce a SQL NULL literal:
+When the input is `NULL`, `QUOTE()` returns the word `NULL` without enclosing single quotes, rather than the SQL `NULL` value. This makes it suitable for direct embedding into dynamic SQL:
 
 ```sql
-SELECT COALESCE(QUOTE(some_column), 'NULL') AS quoted_value
-FROM some_table;
+SET @val = NULL;
+SET @sql = CONCAT('INSERT INTO t (name) VALUES (', QUOTE(@val), ')');
+SELECT @sql;
+-- Result: INSERT INTO t (name) VALUES (NULL)
 ```
 
 ## Using QUOTE() for Export Scripts
@@ -101,4 +103,4 @@ This produces ready-to-execute SQL rows for each inactive user.
 
 ## Summary
 
-`QUOTE()` wraps a string in single quotes and escapes single quotes, backslashes, and null bytes, making it safe to embed values into dynamically constructed SQL strings within stored procedures. It returns `NULL` for `NULL` input. Use it in stored procedures when building dynamic statements with `PREPARE`/`EXECUTE`. Always complement it with prepared statements in application code for robust SQL injection prevention.
+`QUOTE()` wraps a string in single quotes and escapes single quotes, backslashes, ASCII NUL, and Control+Z, making it safe to embed values into dynamically constructed SQL strings within stored procedures. For `NULL` input, it returns the unquoted word `NULL` (not the SQL NULL value), which integrates directly into dynamic SQL. Use it in stored procedures when building dynamic statements with `PREPARE`/`EXECUTE`. Always complement it with prepared statements in application code for robust SQL injection prevention.
