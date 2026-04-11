@@ -24,15 +24,15 @@ Returns an integer: the number of elements in the Vector Set, or 0 if the key do
 
 ```bash
 # Create a vector set and add some elements
-VADD products prod:1001 VALUES 4 0.1 0.2 0.3 0.4
-VADD products prod:1002 VALUES 4 0.5 0.6 0.7 0.8
-VADD products prod:1003 VALUES 4 0.2 0.3 0.4 0.5
+VADD products VALUES 4 0.1 0.2 0.3 0.4 prod:1001
+VADD products VALUES 4 0.5 0.6 0.7 0.8 prod:1002
+VADD products VALUES 4 0.2 0.3 0.4 0.5 prod:1003
 
 VCARD products
 # Returns: (integer) 3
 
 # After adding more
-VADD products prod:1004 VALUES 4 0.6 0.7 0.8 0.9
+VADD products VALUES 4 0.6 0.7 0.8 0.9 prod:1004
 
 VCARD products
 # Returns: (integer) 4
@@ -70,8 +70,8 @@ def get_index_stats(key: str) -> dict:
     }
 
 # Add some test vectors
-r.execute_command("VADD", "docs:index", "doc:1", "VALUES", "4", "0.1", "0.2", "0.3", "0.4")
-r.execute_command("VADD", "docs:index", "doc:2", "VALUES", "4", "0.5", "0.6", "0.7", "0.8")
+r.execute_command("VADD", "docs:index", "VALUES", "4", "0.1", "0.2", "0.3", "0.4", "doc:1")
+r.execute_command("VADD", "docs:index", "VALUES", "4", "0.5", "0.6", "0.7", "0.8", "doc:2")
 
 stats = get_index_stats("docs:index")
 print(f"Index '{stats['key']}': {stats['count']} vectors")
