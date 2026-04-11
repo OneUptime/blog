@@ -26,7 +26,7 @@ Returns an integer Unix timestamp (seconds since epoch).
 
 ```redis
 LASTSAVE
-# (integer) 1711900800
+# (integer) 1774958400
 ```
 
 ### Convert to human-readable time in bash
@@ -34,7 +34,7 @@ LASTSAVE
 ```bash
 TIMESTAMP=$(redis-cli LASTSAVE)
 date -d "@$TIMESTAMP"
-# Thu Mar 31 12:00:00 UTC 2026
+# Tue Mar 31 12:00:00 UTC 2026
 ```
 
 ### Trigger a save and verify it completes
@@ -45,7 +45,7 @@ BGSAVE
 
 # Wait a moment, then check
 LASTSAVE
-# (integer) 1711900810   (updated timestamp)
+# (integer) 1774958410   (updated timestamp)
 ```
 
 ### Compare against current time to detect stale saves
@@ -70,7 +70,7 @@ fi
 
 ```redis
 INFO persistence
-# rdb_last_save_time:1711900810
+# rdb_last_save_time:1774958410
 # rdb_bgsave_in_progress:0
 # rdb_last_bgsave_status:ok
 # rdb_last_bgsave_time_sec:2
