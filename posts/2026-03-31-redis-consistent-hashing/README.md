@@ -25,9 +25,9 @@ class ConsistentHashRing:
     def __init__(self, nodes: dict, vnodes: int = 150):
         self.ring = SortedDict()
         self.vnodes = vnodes
+        self.clients = {}
         for name, client in nodes.items():
             self.add_node(name, client)
-        self.clients = nodes
 
     def _hash(self, key: str) -> int:
         return int(hashlib.md5(key.encode()).hexdigest(), 16)
