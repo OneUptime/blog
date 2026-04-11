@@ -93,7 +93,7 @@ SELECT
   DIGEST_TEXT,
   COUNT_STAR,
   SUM_NO_INDEX_USED,
-  ROUND(AVG_TIMER_WAIT / 1000000000, 3) AS avg_sec
+  ROUND(AVG_TIMER_WAIT / 1000000000000, 3) AS avg_sec
 FROM performance_schema.events_statements_summary_by_digest
 WHERE SUM_NO_INDEX_USED > 0
 ORDER BY SUM_NO_INDEX_USED DESC
@@ -102,7 +102,7 @@ LIMIT 10;
 
 ## Hash Join in MySQL 8.0
 
-MySQL 8.0.18 introduced hash joins as a more memory-efficient alternative to BNL. Hash joins are automatically chosen by the optimizer when applicable:
+MySQL 8.0.18 introduced hash joins as a faster alternative to BNL. Hash joins are automatically chosen by the optimizer when applicable:
 
 ```sql
 -- Verify hash join usage
@@ -112,7 +112,7 @@ FROM orders o
 JOIN customers c ON o.customer_id = c.id\G
 ```
 
-Look for `"join_type": "hash"` in the JSON output to confirm a hash join is being used.
+Look for `"using_join_buffer": "hash join"` in the JSON output to confirm a hash join is being used.
 
 ## Summary
 
