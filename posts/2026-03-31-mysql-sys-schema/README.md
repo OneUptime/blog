@@ -39,11 +39,11 @@ SHOW TABLES;
 ```sql
 SELECT query,
        exec_count,
-       ROUND(avg_latency / 1000000, 2) AS avg_ms,
-       ROUND(total_latency / 1000000000, 2) AS total_sec,
+       ROUND(avg_latency / 1000000000, 2) AS avg_ms,
+       ROUND(total_latency / 1000000000000, 2) AS total_sec,
        rows_sent_avg,
        rows_examined_avg
-FROM   sys.statement_analysis
+FROM   sys.x$statement_analysis
 ORDER  BY total_latency DESC
 LIMIT  10;
 ```
@@ -53,9 +53,9 @@ LIMIT  10;
 ```sql
 SELECT query,
        exec_count,
-       ROUND(avg_latency / 1000000, 2) AS avg_ms,
-       ROUND(max_latency / 1000000, 2) AS max_ms
-FROM   sys.statement_analysis
+       ROUND(avg_latency / 1000000000, 2) AS avg_ms,
+       ROUND(max_latency / 1000000000, 2) AS max_ms
+FROM   sys.x$statement_analysis
 ORDER  BY avg_latency DESC
 LIMIT  10;
 ```
@@ -67,7 +67,7 @@ SELECT query,
        exec_count,
        no_index_used_count,
        no_good_index_used_count
-FROM   sys.statement_analysis
+FROM   sys.statements_with_full_table_scans
 WHERE  no_index_used_count > 0
 ORDER  BY no_index_used_count DESC
 LIMIT  20;
@@ -105,7 +105,7 @@ ORDER  BY table_schema, table_name;
 -- See sessions blocking other sessions
 SELECT blocking_pid,
        blocking_query,
-       blocking_lock_type,
+       blocking_lock_mode,
        waiting_pid,
        waiting_query,
        wait_age
@@ -118,8 +118,11 @@ Kill a blocking session:
 -- Find the thread ID
 SELECT * FROM sys.processlist WHERE conn_id = <blocking_pid>;
 
--- Kill it
-CALL sys.kill_query_or_connection(<blocking_pid>);
+-- Kill the blocking query
+KILL QUERY <blocking_pid>;
+
+-- Or kill the entire connection
+KILL <blocking_pid>;
 ```
 
 ## Memory Usage by Component
@@ -137,13 +140,12 @@ LIMIT  20;
 
 ```sql
 SELECT file,
-       io_read_requests,
-       io_read,
-       io_write_requests,
-       io_write,
-       io_misc_requests
+       count_read,
+       total_read,
+       count_write,
+       total_written,
+       total
 FROM   sys.io_global_by_file_by_bytes
-ORDER  BY io_read + io_write DESC
 LIMIT  20;
 ```
 
@@ -156,33 +158,21 @@ SELECT table_schema,
        io_read,
        io_write_requests,
        io_write
-FROM   sys.io_global_by_wait_by_bytes
+FROM   sys.schema_table_statistics
+ORDER  BY io_read_requests + io_write_requests DESC
 LIMIT  20;
 ```
 
 ## Waits Analysis
 
 ```sql
--- Overall wait analysis
-SELECT event_name,
+SELECT events,
+       total AS occurrences,
        total_latency,
        avg_latency,
-       max_latency,
-       count_star AS occurrences
+       max_latency
 FROM   sys.waits_global_by_latency
-ORDER  BY total_latency DESC
 LIMIT  20;
-
--- Wait analysis per table
-SELECT object_schema,
-       object_name,
-       total_latency,
-       count_read,
-       count_write,
-       count_fetch
-FROM   sys.table_lock_waits_summary_by_table
-ORDER  BY total_latency DESC
-LIMIT  10;
 ```
 
 ## Table Statistics
@@ -211,8 +201,8 @@ SELECT user,
        total_connections,
        current_connections,
        statements,
-       ROUND(statement_latency / 1000000000, 2) AS stmt_latency_sec
-FROM   sys.user_summary
+       ROUND(statement_latency / 1000000000000, 2) AS stmt_latency_sec
+FROM   sys.x$user_summary
 ORDER  BY statements DESC;
 ```
 
@@ -221,9 +211,9 @@ ORDER  BY statements DESC;
 ```sql
 SELECT host,
        statements,
-       ROUND(statement_latency / 1000000000, 2) AS stmt_latency_sec,
+       ROUND(statement_latency / 1000000000000, 2) AS stmt_latency_sec,
        current_connections
-FROM   sys.host_summary
+FROM   sys.x$host_summary
 ORDER  BY statements DESC;
 ```
 
@@ -235,10 +225,10 @@ Generate a performance report:
 CALL sys.diagnostics(60, 60, 'current');
 ```
 
-Get a formatted InnoDB buffer pool status:
+Show enabled Performance Schema instruments and threads:
 
 ```sql
-CALL sys.ps_setup_show_enabled(TRUE, TRUE, TRUE);
+CALL sys.ps_setup_show_enabled(TRUE, TRUE);
 ```
 
 Reset all performance_schema accumulated data:
@@ -258,4 +248,4 @@ CALL sys.ps_truncate_all_tables(FALSE);
 
 ## Summary
 
-The MySQL sys schema provides pre-built, human-readable views over `performance_schema` data, making performance diagnostics accessible without deep knowledge of raw instrumentation tables. Use `statement_analysis` for slow query identification, `schema_unused_indexes` for index cleanup, and `innodb_lock_waits` for deadlock investigation. The sys schema is available by default in MySQL 5.7.9+ and requires no additional installation.
+The MySQL sys schema provides pre-built, human-readable views over `performance_schema` data, making performance diagnostics accessible without deep knowledge of raw instrumentation tables. Use `statement_analysis` for slow query identification, `schema_unused_indexes` for index cleanup, and `innodb_lock_waits` for lock contention investigation. The sys schema is available by default in MySQL 5.7.9+ and requires no additional installation.
