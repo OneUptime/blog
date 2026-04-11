@@ -68,8 +68,8 @@ For POINT columns, extract lat/lng with `ST_X()` and `ST_Y()`:
 ```sql
 SELECT
   name,
-  ST_Y(coords) AS latitude,
-  ST_X(coords) AS longitude
+  ST_X(coords) AS latitude,
+  ST_Y(coords) AS longitude
 FROM locations_geo;
 ```
 
@@ -142,7 +142,7 @@ conn.commit()
 | Simplicity | High | Medium |
 | Spatial index support | No | Yes |
 | Built-in distance functions | No | Yes |
-| Compatibility | Universal | MySQL 5.7.6+ |
+| Compatibility | Universal | MySQL 8.0+ |
 
 Use `POINT` with SRID 4326 for new projects. Use `DECIMAL` when you need maximum compatibility or are working with a legacy schema.
 
