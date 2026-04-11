@@ -42,7 +42,7 @@ x  - Expired events (key TTL reached zero)
 e  - Evicted events (key removed by maxmemory)
 t  - Stream commands
 d  - Module key events
-A  - Alias for g$lshzxe (everything)
+A  - Alias for g$lshzxet (everything)
 ```
 
 Common combinations:
@@ -64,7 +64,7 @@ KE$
 ## Step 3: Enable at Runtime
 
 ```bash
-# Enable expiration + eviction events only
+# Enable expiration events only
 redis-cli CONFIG SET notify-keyspace-events "Ex"
 
 # Verify
