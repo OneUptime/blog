@@ -133,7 +133,7 @@ Errors: 0
 Warnings: 3
 ```
 
-Download the report as a JSON file for audit purposes.
+Save the report for audit purposes.
 
 ## Post-Migration Validation
 
