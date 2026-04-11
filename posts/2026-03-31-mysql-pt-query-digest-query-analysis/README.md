@@ -138,9 +138,6 @@ pt-query-digest --filter '$event->{fingerprint} =~ /orders/' slow.log
 # Report from a specific time range:
 pt-query-digest --since '2026-03-31 08:00:00' --until '2026-03-31 12:00:00' slow.log
 
-# Include query fingerprints in output:
-pt-query-digest --print slow.log
-
 # Analyze general query log:
 pt-query-digest --type genlog /var/log/mysql/general.log
 ```
