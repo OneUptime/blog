@@ -25,6 +25,7 @@ Many applications use Redis Lists as a simple job queue: producers push with `LP
 
 ```python
 import redis
+import json
 
 r = redis.Redis()
 
@@ -35,8 +36,9 @@ def enqueue_job(job_data):
 # Consumer (blocking pop)
 def consume_jobs():
     while True:
-        _, raw = r.brpop("jobs:queue", timeout=5)
-        if raw:
+        result = r.brpop("jobs:queue", timeout=5)
+        if result:
+            _, raw = result
             job = json.loads(raw)
             process_job(job)  # if this crashes, job is lost
 ```
