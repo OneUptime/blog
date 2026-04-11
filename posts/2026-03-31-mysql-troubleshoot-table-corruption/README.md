@@ -89,9 +89,10 @@ innodb_force_recovery = 1
 
 Start with level 1 and increase if needed (max 6). Higher levels skip more checks but risk data loss:
 
-- Level 1: Skip corrupted pages
+- Level 1: Ignore corrupt pages and let the server run
 - Level 3: Skip transaction rollback
-- Level 6: Do not look at undo logs
+- Level 5: Do not look at undo logs
+- Level 6: Do not do the redo log roll-forward
 
 Once MySQL starts, dump all tables immediately:
 
