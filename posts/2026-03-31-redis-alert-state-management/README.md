@@ -101,10 +101,13 @@ def evaluate_alert(alert_id: str, is_triggered: bool, for_duration: int = 60):
     if is_triggered:
         pending_key = f"alert_pending:{alert_id}"
         if not r.exists(pending_key):
-            r.setex(pending_key, for_duration, "1")
+            r.set(pending_key, str(int(time.time())))
             set_alert_state(alert_id, "pending")
-        elif r.ttl(pending_key) <= 0:
-            fire_alert(alert_id, "Condition persisted")
+        else:
+            pending_since = int(r.get(pending_key))
+            if int(time.time()) - pending_since >= for_duration:
+                fire_alert(alert_id, "Condition persisted")
+                r.delete(pending_key)
     else:
         r.delete(f"alert_pending:{alert_id}")
         resolve_alert(alert_id)
@@ -112,4 +115,4 @@ def evaluate_alert(alert_id: str, is_triggered: bool, for_duration: int = 60):
 
 ## Summary
 
-Redis provides a fast, expiry-aware state store for alerting systems. Hash fields capture alert status and metadata, sets track firing alerts for dashboards, and TTLs handle silence windows and resolved-alert cleanup automatically. Atomic operations prevent duplicate notifications even under concurrent evaluations.
+Redis provides a fast, expiry-aware state store for alerting systems. Hash fields capture alert status and metadata, sets track firing alerts for dashboards, and TTLs handle silence windows and resolved-alert cleanup automatically. The deduplication check reduces duplicate notifications during evaluations, though true atomicity for compound read-then-write operations would require Lua scripts or transactions.
