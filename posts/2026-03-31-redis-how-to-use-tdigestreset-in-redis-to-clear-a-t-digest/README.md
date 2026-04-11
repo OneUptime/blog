@@ -38,9 +38,9 @@ TDIGEST.RESET api:latency
 TDIGEST.INFO api:latency
 # Merged weight: 0, Merged nodes: 0
 
-# Queries return nil after reset
+# Queries return nan after reset
 TDIGEST.QUANTILE api:latency 0.99
-# Returns: (nil)
+# Returns: "nan"
 ```
 
 ## Implementing Rolling Minute Windows
@@ -148,7 +148,7 @@ print(f"Reset {count} T-Digest structures")
 ```python
 import threading
 
-def periodic_reset(key: str, interval_seconds: int):
+def periodic_reset(interval_seconds: int):
     """Periodically reset a T-Digest on a timer."""
     def _reset_loop():
         while True:
@@ -162,7 +162,7 @@ def periodic_reset(key: str, interval_seconds: int):
     return thread
 
 # Reset every 60 seconds
-reset_thread = periodic_reset("realtime:latency", 60)
+reset_thread = periodic_reset(60)
 ```
 
 ## Summary
