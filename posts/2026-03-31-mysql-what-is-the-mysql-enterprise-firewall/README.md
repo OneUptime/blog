@@ -14,32 +14,36 @@ The MySQL Enterprise Firewall is a security plugin included in MySQL Enterprise 
 
 ## How It Works
 
-The firewall operates in two modes: LEARNING and PROTECTING.
+The firewall operates in several modes, the most important being RECORDING, PROTECTING, and DETECTING.
 
-In LEARNING mode, the firewall records every query a given account executes and builds a digest of normalized patterns. For example, the statements `SELECT * FROM orders WHERE id = 1` and `SELECT * FROM orders WHERE id = 99` both normalize to `SELECT * FROM orders WHERE id = ?` and are stored as a single pattern.
+In RECORDING mode, the firewall records every query a given account executes and builds a digest of normalized patterns. For example, the statements `SELECT * FROM orders WHERE id = 1` and `SELECT * FROM orders WHERE id = 99` both normalize to `SELECT * FROM orders WHERE id = ?` and are stored as a single pattern.
 
 In PROTECTING mode, any incoming statement is normalized and checked against the allowlist. If no match is found, the statement is blocked and an error is returned to the client.
+
+In DETECTING mode, non-matching statements are allowed through but logged to the error log, which is useful for auditing before switching to full enforcement.
 
 ## Installation
 
 ```sql
-INSTALL PLUGIN MYSQL_FIREWALL SONAME 'mysql_firewall.so';
-INSTALL PLUGIN MYSQL_FIREWALL_USERS SONAME 'mysql_firewall.so';
-INSTALL PLUGIN MYSQL_FIREWALL_WHITELIST SONAME 'mysql_firewall.so';
+INSTALL PLUGIN MYSQL_FIREWALL SONAME 'firewall.so';
+INSTALL PLUGIN MYSQL_FIREWALL_USERS SONAME 'firewall.so';
+INSTALL PLUGIN MYSQL_FIREWALL_WHITELIST SONAME 'firewall.so';
 ```
 
-Verify the plugin is active:
+Verify the plugins are active:
 
 ```sql
-SHOW PLUGINS LIKE 'MYSQL_FIREWALL%';
+SELECT PLUGIN_NAME, PLUGIN_STATUS
+FROM INFORMATION_SCHEMA.PLUGINS
+WHERE PLUGIN_NAME LIKE 'MYSQL_FIREWALL%';
 ```
 
-## Configuring Learning Mode
+## Configuring Recording Mode
 
-Enable learning for a specific user account:
+Enable recording for a specific user account:
 
 ```sql
-CALL mysql.sp_set_firewall_mode('appuser@%', 'LEARNING');
+CALL mysql.sp_set_firewall_mode('appuser@%', 'RECORDING');
 ```
 
 Run your application through its normal flows - execute all expected queries. Then switch to PROTECTING mode:
@@ -68,19 +72,21 @@ Sample output shows each recorded normalized statement:
 
 ## Adding Manual Rules
 
-You can add patterns manually if certain queries were not captured during learning:
+You can add patterns manually if certain queries were not captured during recording. Insert the rule into the `mysql.firewall_whitelist` table and then reload:
 
 ```sql
-CALL mysql.sp_firewall_whitelist_add('appuser@%',
-  'SELECT `id` , `status` FROM `jobs` WHERE `queue` = ?');
+INSERT INTO mysql.firewall_whitelist (USERHOST, RULE)
+VALUES ('appuser@%', 'SELECT `id` , `status` FROM `jobs` WHERE `queue` = ?');
+
+CALL mysql.sp_reload_firewall_rules('appuser@%');
 ```
 
 ## Blocking Behavior
 
-When a statement is blocked, MySQL returns error 1289:
+When a statement is blocked in PROTECTING mode, MySQL returns an error:
 
 ```text
-ERROR 1289 (HY000): Statement was blocked by MySQL Enterprise Firewall
+ERROR HY000: Statement was blocked by Firewall
 ```
 
 You can also configure DETECTING mode to log violations without blocking, useful for auditing before enforcing:
@@ -89,15 +95,17 @@ You can also configure DETECTING mode to log violations without blocking, useful
 CALL mysql.sp_set_firewall_mode('appuser@%', 'DETECTING');
 ```
 
-Detected violations are written to the MySQL general log.
+Detected violations are written to the MySQL error log.
 
 ## Resetting an Allowlist
 
-To clear all recorded rules for an account and start over:
+To clear all recorded rules for an account and start over, set the mode to RESET:
 
 ```sql
-CALL mysql.sp_firewall_whitelist_reset('appuser@%');
+CALL mysql.sp_set_firewall_mode('appuser@%', 'RESET');
 ```
+
+This removes all allowlist entries for the account and sets its mode to OFF. You can then re-enable RECORDING to begin again.
 
 ## Limitations
 
@@ -105,4 +113,4 @@ The MySQL Enterprise Firewall is only available in MySQL Enterprise Edition. It 
 
 ## Summary
 
-The MySQL Enterprise Firewall adds a query allowlist layer directly inside the database engine. By running in LEARNING mode to capture expected query patterns and then switching to PROTECTING mode, you can block SQL injection attacks even if malicious input reaches the database layer. It is a practical complement to parameterized queries and network-level access controls.
+The MySQL Enterprise Firewall adds a query allowlist layer directly inside the database engine. By running in RECORDING mode to capture expected query patterns and then switching to PROTECTING mode, you can block SQL injection attacks even if malicious input reaches the database layer. It is a practical complement to parameterized queries and network-level access controls.
