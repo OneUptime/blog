@@ -121,12 +121,10 @@ require 'redis'
 redis = Redis.new(
   host: 'localhost',
   port: 6379,
-  connect_timeout: 2,       # Seconds to wait for connection
-  read_timeout: 1,          # Seconds to wait for reads
-  write_timeout: 1,         # Seconds to wait for writes
-  reconnect_attempts: 3,    # Number of reconnect attempts
-  reconnect_delay: 0.5,     # Seconds between reconnect attempts
-  reconnect_delay_max: 5.0  # Max delay between reconnects
+  connect_timeout: 2,                  # Seconds to wait for connection
+  read_timeout: 1,                     # Seconds to wait for reads
+  write_timeout: 1,                    # Seconds to wait for writes
+  reconnect_attempts: [0, 0.5, 1, 2]  # Array of sleep durations between retries
 )
 ```
 
