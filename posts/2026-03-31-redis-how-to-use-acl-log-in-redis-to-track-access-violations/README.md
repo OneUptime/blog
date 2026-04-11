@@ -45,11 +45,11 @@ AUTH restricted_user password
 
 # Try to access a forbidden key
 GET admin:secret
-# ERR No permissions to access a key
+# NOPERM this user has no permissions to access one of the keys used as arguments
 
 # Try a forbidden command
 FLUSHALL
-# ERR this user has no permissions to run the 'flushall' command
+# NOPERM this user has no permissions to run the 'flushall' command
 ```
 
 ## Reading the ACL Log
@@ -88,12 +88,15 @@ Each log entry contains:
 | Field | Description |
 |-------|-------------|
 | `count` | How many times this violation was triggered |
-| `reason` | `command`, `key`, or `channel` |
-| `context` | `toplevel`, `multi`, `lua`, etc. |
+| `reason` | `auth`, `command`, `key`, or `channel` |
+| `context` | `toplevel`, `multi`, `lua`, or `module` |
 | `object` | The specific command/key/channel denied |
 | `username` | The ACL username that triggered the violation |
 | `age-seconds` | How long ago this was first logged |
 | `client-info` | Client connection details |
+| `entry-id` | Unique entry identifier (Redis 7.2+) |
+| `timestamp-created` | When the entry was first created (Redis 7.2+) |
+| `timestamp-last-updated` | When the entry was last updated (Redis 7.2+) |
 
 ## Reading Last N Entries
 
@@ -156,7 +159,7 @@ for entry in log:
     print()
 
 # Clear the log
-client.acl_log(reset=True)
+client.acl_log_reset()
 print("ACL log cleared")
 ```
 
@@ -198,7 +201,7 @@ for (const entry of log) {
 }
 
 // Reset log
-await adminClient.aclLog({ count: 'RESET' });
+await adminClient.aclLogReset();
 console.log('Log cleared');
 ```
 
@@ -228,7 +231,7 @@ def monitor_acl_violations(interval_seconds=60, alert_threshold=10):
                 print(f"  {user}: {count} violation(s)")
 
         # Reset after reading
-        client.acl_log(reset=True)
+        client.acl_log_reset()
 
         time.sleep(interval_seconds)
 
