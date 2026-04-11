@@ -136,7 +136,7 @@ for key in keys:
     r.json().delete(key, "$.debug_info")
 ```
 
-## JSON.DEL vs EXPIRE vs UNLINK
+## JSON.DEL vs DEL vs UNLINK
 
 | Command | Effect |
 |---|---|
