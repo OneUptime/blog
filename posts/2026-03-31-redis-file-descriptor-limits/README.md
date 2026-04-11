@@ -24,7 +24,7 @@ cat /proc/$PID/limits | grep "open files"
 Redis also reports its configured limit:
 
 ```bash
-redis-cli info server | grep maxclients
+redis-cli info clients | grep maxclients
 redis-cli CONFIG GET maxclients
 ```
 
