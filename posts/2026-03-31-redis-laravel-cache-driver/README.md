@@ -84,8 +84,8 @@ Group related items for bulk invalidation:
 // Store with tags
 Cache::tags(['products', 'category:electronics'])->put('product:42', $product, 600);
 
-// Retrieve by tag
-$product = Cache::tags(['products'])->get('product:42');
+// Retrieve tagged item (use same tags as when stored)
+$product = Cache::tags(['products', 'category:electronics'])->get('product:42');
 
 // Invalidate all products at once
 Cache::tags('products')->flush();
@@ -118,9 +118,9 @@ if ($lock->get()) {
 ## Inspect Cache Keys
 
 ```bash
-redis-cli -n 1 keys "laravel_cache*"
-redis-cli -n 1 ttl "laravel_cache:product:42"
-redis-cli -n 1 get "laravel_cache:product:42"
+redis-cli -n 1 keys "laravel_cache_*"
+redis-cli -n 1 ttl "laravel_cache_product:42"
+redis-cli -n 1 get "laravel_cache_product:42"
 ```
 
 ## Summary
