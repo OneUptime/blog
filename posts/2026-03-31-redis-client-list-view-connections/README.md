@@ -32,7 +32,7 @@ The `TYPE` option filters output by connection type:
 # Show only pub/sub subscribers
 127.0.0.1:6379> CLIENT LIST TYPE pubsub
 
-# Show only cluster bus connections
+# Show only master connections (replication link from master)
 127.0.0.1:6379> CLIENT LIST TYPE master
 ```
 
@@ -56,7 +56,7 @@ addr      | Client IP and port
 name      | Name set via CLIENT SETNAME (empty if not set)
 age       | Connection age in seconds
 idle      | Seconds since last command
-flags     | Connection flags (N=normal, S=subscriber, etc.)
+flags     | Connection flags (N=normal, S=replica, P=pubsub, etc.)
 db        | Current database index
 sub       | Number of channel subscriptions
 psub      | Number of pattern subscriptions
