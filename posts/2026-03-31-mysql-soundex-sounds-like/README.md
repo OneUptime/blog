@@ -66,12 +66,14 @@ SELECT 'Alice' SOUNDS LIKE 'Bob';
 ```mermaid
 flowchart TD
     A[Input string] --> B[Keep first letter as prefix]
-    B --> C[Convert remaining letters to digits by consonant group]
-    C --> D[Remove adjacent duplicates]
-    D --> E[Remove vowels and H, W, Y]
-    E --> F[Pad with zeros or truncate to 4 characters total]
+    B --> C[Drop vowels, H, W, and Y from remaining letters]
+    C --> D[Convert remaining consonants to digits by group]
+    D --> E[Remove adjacent duplicate digits]
+    E --> F[Pad with zeros if fewer than 3 digits]
     F --> G[Return Soundex code, e.g. R163]
 ```
+
+Note: The standard Soundex algorithm truncates the result to 4 characters (first letter plus 3 digits), but MySQL's `SOUNDEX()` returns an arbitrarily long string. You can use `SUBSTRING(SOUNDEX(str), 1, 4)` to get a standard 4-character code.
 
 The digit encoding groups are:
 
@@ -156,7 +158,7 @@ SELECT 'alice' SOUNDS LIKE 'ALICE';
 ## Limitations of SOUNDEX()
 
 - Designed for English phonetics; performs poorly with non-English names.
-- Only the first letter plus three coded digits are used, so longer names may have collisions.
+- The standard Soundex algorithm uses only the first letter plus three coded digits, which can cause collisions. MySQL's `SOUNDEX()` returns longer codes, reducing but not eliminating this issue.
 - Homophones in other languages may not match.
 - Numbers and special characters at the start can produce unexpected codes.
 
