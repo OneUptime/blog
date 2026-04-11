@@ -142,7 +142,6 @@ await importCSVToSortedSet('sales.csv', 'leaderboard:sales', 'revenue', 'name');
 ```python
 import csv
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
