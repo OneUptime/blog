@@ -10,7 +10,7 @@ Description: Learn how to use the ECHO command in Redis to echo a message back f
 
 ## What Is the ECHO Command?
 
-The `ECHO` command in Redis returns the exact string you send to it. Unlike `PING` which returns a fixed `PONG` response, `ECHO` sends back whatever message you pass - making it useful for testing specific string encoding, connection proxies, and middleware behavior.
+The `ECHO` command in Redis returns the exact string you send to it. Unlike `PING` which returns `PONG` by default (or a custom message if one is provided), `ECHO` always sends back exactly the message you pass - making it useful for testing specific string encoding, connection proxies, and middleware behavior.
 
 ## Basic Syntax
 
@@ -64,10 +64,10 @@ If the output matches the input exactly, the proxy is passing data correctly.
 ## Testing Unicode and Special Characters
 
 ```bash
-redis-cli ECHO "cafe\xc3\xa9"
+redis-cli ECHO $'cafe\xc3\xa9'
 ```
 
-This helps confirm your connection is handling multi-byte characters correctly.
+This sends the UTF-8 bytes for "café" and helps confirm your connection is handling multi-byte characters correctly.
 
 ## Using ECHO in Application Code
 
