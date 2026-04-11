@@ -82,7 +82,7 @@ WHERE id = 5
   AND (first_name != 'Bob' OR email != 'bob@example.com');
 ```
 
-MySQL still matches the row but skips the write if both values are already correct, which is reflected in `ROW_COUNT()`.
+If both values already match, the additional conditions prevent the row from satisfying the `WHERE` clause at all, so MySQL skips it entirely—no lock acquired and no write attempted. The `ROW_COUNT()` function reflects this by returning zero affected rows.
 
 ## Verifying the Result
 
