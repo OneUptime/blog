@@ -47,9 +47,9 @@ JSON.GET log:1 $.events
 JSON.SET queue:1 $ '["task-A","task-B","task-C","task-D","task-E"]'
 
 JSON.ARRTRIM queue:1 $ 0 2
-# (integer) 3
+# 1) (integer) 3
 
-JSON.GET queue:1
+JSON.GET queue:1 $
 # [["task-A","task-B","task-C"]]
 ```
 
