@@ -76,6 +76,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install Flyway CLI
+        run: |
+          wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.8.1/flyway-commandline-10.8.1-linux-x64.tar.gz | tar xz
+          sudo ln -s $(pwd)/flyway-10.8.1/flyway /usr/local/bin/flyway
       - name: Run migrations on test database
         run: |
           flyway -url="jdbc:mysql://127.0.0.1:3306/testdb" \
@@ -93,7 +97,10 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-
+      - name: Install Flyway CLI
+        run: |
+          wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.8.1/flyway-commandline-10.8.1-linux-x64.tar.gz | tar xz
+          sudo ln -s $(pwd)/flyway-10.8.1/flyway /usr/local/bin/flyway
       - name: Run migrations on staging
         run: |
           flyway -url="${{ secrets.STAGING_DB_URL }}" \
@@ -110,7 +117,10 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-
+      - name: Install Flyway CLI
+        run: |
+          wget -qO- https://download.red-gate.com/maven/release/com/redgate/flyway/flyway-commandline/10.8.1/flyway-commandline-10.8.1-linux-x64.tar.gz | tar xz
+          sudo ln -s $(pwd)/flyway-10.8.1/flyway /usr/local/bin/flyway
       - name: Run migrations on production
         run: |
           flyway -url="${{ secrets.PROD_DB_URL }}" \
@@ -140,7 +150,7 @@ When a migration fails in production, the pipeline should alert and halt:
 
 ## Rollback Strategy
 
-Flyway does not support automatic rollback. Prepare undo scripts alongside migrations:
+Flyway Community edition does not support automatic rollback. The `flyway undo` command and `U`-prefixed undo scripts require Flyway Teams or Enterprise (paid). If you have a paid license, prepare undo scripts alongside migrations:
 
 ```sql
 -- U4__add_performance_indexes.sql (undo script)
