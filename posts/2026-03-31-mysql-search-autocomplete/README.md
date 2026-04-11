@@ -63,6 +63,7 @@ CREATE TABLE search_suggestions (
     entity_type VARCHAR(50) NOT NULL,  -- 'product', 'user', 'article'
     entity_id INT NOT NULL,
     weight INT NOT NULL DEFAULT 0,     -- Higher = more relevant
+    UNIQUE KEY uniq_entity (entity_type, entity_id),
     INDEX idx_suggestion (suggestion),
     INDEX idx_weight (weight DESC)
 );
