@@ -66,13 +66,8 @@ setupRedisSubscriber();
 ## Resolver Implementation
 
 ```javascript
-const { PubSub } = require('graphql-subscriptions');
-const Redis = require('ioredis');
-
-const publisher = new Redis({ host: process.env.REDIS_HOST });
-
-// Custom Redis PubSub for graphql-subscriptions
 const { RedisPubSub } = require('graphql-redis-subscriptions');
+const Redis = require('ioredis');
 
 const pubsub = new RedisPubSub({
   publisher: new Redis({ host: process.env.REDIS_HOST }),
