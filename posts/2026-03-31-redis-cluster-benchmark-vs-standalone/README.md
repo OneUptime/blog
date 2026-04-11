@@ -67,17 +67,18 @@ The `--cluster` flag makes redis-benchmark distribute keys across cluster nodes 
 ## Measuring Latency Distribution
 
 ```bash
-# Standalone latency histogram
+# Standalone latency percentiles (redis-benchmark reports percentiles by default)
 redis-benchmark -h standalone-host -p 6379 \
-  -n 1000000 -c 100 -t set \
-  --latency-history \
-  --latency-dist
+  -n 1000000 -c 100 -t set
 
-# Cluster latency histogram
+# Cluster latency percentiles
 redis-benchmark -h cluster-node-1 -p 7001 \
   --cluster \
-  -n 1000000 -c 100 -t set \
-  --latency-history
+  -n 1000000 -c 100 -t set
+
+# For detailed latency tracking over time, use redis-cli:
+redis-cli -h standalone-host -p 6379 --latency-history
+redis-cli -h standalone-host -p 6379 --latency-dist
 ```
 
 ## Comparing Multi-Key Operations
@@ -85,22 +86,22 @@ redis-benchmark -h cluster-node-1 -p 7001 \
 Multi-key operations are restricted in cluster mode. Compare pipeline performance:
 
 ```python
-import redis
-import redis.cluster
+from redis import Redis
+from redis.cluster import RedisCluster, ClusterNode
 import time
 
-# Standalone - MSET works fine
-standalone = redis.Redis(host='standalone', port=6379)
+# Standalone - pipelined SET
+standalone = Redis(host='standalone', port=6379)
 start = time.time()
 pipe = standalone.pipeline()
 for i in range(10000):
     pipe.set(f'key:{i}', i)
 pipe.execute()
-print(f"Standalone MSET: {time.time() - start:.3f}s")
+print(f"Standalone pipeline: {time.time() - start:.3f}s")
 
 # Cluster - must use hash tags for multi-key
-cluster = redis.cluster.RedisCluster(
-    startup_nodes=[{"host": "cluster-node-1", "port": 7001}]
+cluster = RedisCluster(
+    startup_nodes=[ClusterNode("cluster-node-1", 7001)]
 )
 start = time.time()
 pipe = cluster.pipeline()
