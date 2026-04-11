@@ -26,7 +26,7 @@ aws elasticache create-cache-parameter-group \
 ```bash
 aws elasticache describe-engine-default-parameters \
   --cache-parameter-group-family redis7 \
-  --query "EngineDefaults.Parameters[*].{Name:ParameterName,Default:DefaultValue,Type:DataType}" \
+  --query "EngineDefaults.Parameters[*].{Name:ParameterName,Default:ParameterValue,Type:DataType}" \
   --output table
 ```
 
