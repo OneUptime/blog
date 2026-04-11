@@ -34,9 +34,11 @@ DDL statements (ALTER TABLE, CREATE TABLE) are not transactional in MySQL. Howev
 START TRANSACTION;
 
 UPDATE users SET role = 'viewer' WHERE role = 'guest';
--- If something goes wrong before COMMIT:
-ROLLBACK;
 
+-- If something goes wrong, roll back:
+-- ROLLBACK;
+
+-- If everything looks good, commit:
 COMMIT;
 ```
 
@@ -66,10 +68,10 @@ Liquibase supports rollback if rollback blocks are defined in the changeset:
 
 ```bash
 # Roll back the last 1 changeset
-liquibase rollbackCount 1
+liquibase rollback-count --count=1
 
 # Roll back to a tag
-liquibase rollback v1.0
+liquibase rollback --tag=v1.0
 ```
 
 ## Manual Rollback for Failed ALTER TABLE
@@ -87,7 +89,7 @@ DROP TABLE IF EXISTS `_orders_new`;
 
 ## Handling a Failed NOT NULL Migration
 
-A common failure scenario: adding a NOT NULL column when existing rows have NULLs.
+A common failure scenario: converting a column to NOT NULL when existing rows have NULLs.
 
 ```sql
 -- This fails if any row has a NULL email
