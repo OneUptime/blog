@@ -10,7 +10,7 @@ Description: Learn how to perform a rolling online upgrade of MySQL NDB Cluster 
 
 ## What is a Rolling Upgrade?
 
-MySQL NDB Cluster supports online (rolling) upgrades, where each node is upgraded and restarted individually while the rest of the cluster continues to serve traffic. This ensures zero downtime during minor version upgrades and most patch upgrades. The upgrade order must follow the same sequence as startup: data nodes first (within a node group), then management nodes, then SQL nodes.
+MySQL NDB Cluster supports online (rolling) upgrades, where each node is upgraded and restarted individually while the rest of the cluster continues to serve traffic. This ensures zero downtime during minor version upgrades and most patch upgrades. The upgrade order must follow the same sequence as startup: management nodes first, then data nodes (one per node group at a time), then SQL nodes.
 
 ## Prerequisites
 
@@ -25,12 +25,25 @@ ndb_mgm -e "start backup"
 ## Upgrade Order
 
 ```text
-1. Data nodes (one node group at a time - never two nodes in the same group simultaneously)
-2. Management nodes
+1. Management nodes (ndb_mgmd)
+2. Data nodes (one node group at a time - never two nodes in the same group simultaneously)
 3. SQL nodes (mysqld)
 ```
 
-## Step 1: Upgrade Data Nodes
+## Step 1: Upgrade the Management Node
+
+```bash
+# Stop management node gracefully
+ndb_mgm -e "1 stop"
+
+# Install new package on management node host
+sudo dpkg -i mysql-cluster-community-management-server_8.0.37-debian12-x86_64.deb
+
+# Start management node
+ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini
+```
+
+## Step 2: Upgrade Data Nodes
 
 For a cluster with two node groups (nodes 2, 3 in group 0 and nodes 4, 5 in group 1):
 
@@ -64,19 +77,6 @@ ndbd
 
 Repeat for nodes in group 1 (nodes 4 and 5).
 
-## Step 2: Upgrade the Management Node
-
-```bash
-# Stop management node gracefully
-ndb_mgm -e "1 stop"
-
-# Install new package on management node host
-sudo dpkg -i mysql-cluster-community-management-server_8.0.37-debian12-x86_64.deb
-
-# Start management node
-ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini
-```
-
 ## Step 3: Upgrade SQL Nodes
 
 Upgrade SQL nodes one at a time. Remove each from load balancer rotation before upgrading:
@@ -108,7 +108,7 @@ From a SQL node:
 
 ```sql
 SELECT @@version;
-SHOW STATUS LIKE 'ndb_connected';
+SHOW STATUS LIKE 'Ndb_cluster_node_id';
 ```
 
 ## Upgrade Rollback
@@ -117,4 +117,4 @@ If an issue is detected after upgrading one node, stop the upgraded node and rei
 
 ## Summary
 
-MySQL NDB Cluster rolling upgrades allow zero-downtime version updates by cycling through nodes one at a time. Always upgrade data nodes first (respecting node group boundaries), then the management node, then SQL nodes. Take a backup before starting, verify each node rejoins the cluster before moving to the next, and confirm all nodes show the new version after completion.
+MySQL NDB Cluster rolling upgrades allow zero-downtime version updates by cycling through nodes one at a time. Always upgrade the management node first, then data nodes (respecting node group boundaries), then SQL nodes. Take a backup before starting, verify each node rejoins the cluster before moving to the next, and confirm all nodes show the new version after completion.
