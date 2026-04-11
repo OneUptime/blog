@@ -29,7 +29,6 @@ ZADD course:cs101:waitlist 1712000001 student-99 1712000002 student-100
 import redis
 import json
 import time
-import uuid
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -104,7 +103,7 @@ local enrolled_key = KEYS[2]
 local waitlist_key = KEYS[3]
 local channel = KEYS[4]
 local student_id = ARGV[1]
-local now = ARGV[2]
+local now = tonumber(ARGV[2])
 
 if redis.call('SREM', enrolled_key, student_id) == 0 then
     return redis.error_reply('NOT_ENROLLED')
