@@ -58,9 +58,6 @@ spec:
         app: redis
       annotations:
         sidecar.istio.io/inject: "true"
-        # Exclude Redis port from Envoy proxy for TCP traffic
-        traffic.sidecar.istio.io/excludeInboundPorts: "6379"
-        traffic.sidecar.istio.io/excludeOutboundPorts: "6379"
     spec:
       containers:
         - name: redis
@@ -152,9 +149,6 @@ spec:
       app: redis
   mtls:
     mode: STRICT  # Require mTLS for all traffic to Redis
-  portLevelMtls:
-    6379:
-      mode: DISABLE  # Disable mTLS on Redis port itself (handled by app-level TLS)
 ```
 
 ## AuthorizationPolicy - Restrict Who Can Access Redis
@@ -220,4 +214,4 @@ open http://localhost:20001
 
 ## Summary
 
-Running Redis in Istio requires careful configuration because Redis uses a custom binary protocol rather than HTTP. Use TCP service entries and destination rules for connection management, portLevelMtls to disable redundant encryption on the Redis port, and AuthorizationPolicy to restrict which service accounts can reach Redis. Istio then provides connection-level metrics and access control without any code changes.
+Running Redis in Istio requires careful configuration because Redis uses a custom binary protocol rather than HTTP. Name service ports with the `tcp-` prefix so Istio treats them as raw TCP, use destination rules for connection pooling and outlier detection, enforce mTLS with PeerAuthentication, and restrict access with AuthorizationPolicy. Istio then provides mTLS encryption, connection-level metrics, and access control without any code changes.
