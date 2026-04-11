@@ -18,15 +18,15 @@ This view is equivalent to `SHOW PLUGINS` but is more flexible for scripting and
 
 - `PLUGIN_NAME` - the plugin identifier
 - `PLUGIN_VERSION` - the plugin version string
-- `PLUGIN_STATUS` - `ACTIVE`, `INACTIVE`, `DISABLED`, or `DELETED`
-- `PLUGIN_TYPE` - category (e.g., `STORAGE ENGINE`, `AUTHENTICATION`, `AUDIT`, `FULL-TEXT PARSER`)
+- `PLUGIN_STATUS` - `ACTIVE`, `INACTIVE`, `DISABLED`, or `DELETING`
+- `PLUGIN_TYPE` - category (e.g., `STORAGE ENGINE`, `AUTHENTICATION`, `AUDIT`, `FTPARSER`)
 - `PLUGIN_TYPE_VERSION` - version of the plugin type API
 - `PLUGIN_LIBRARY` - shared library filename (NULL for built-in plugins)
 - `PLUGIN_LIBRARY_VERSION` - version of the library
 - `PLUGIN_AUTHOR` - author of the plugin
 - `PLUGIN_DESCRIPTION` - brief description
 - `PLUGIN_LICENSE` - license type
-- `LOAD_OPTION` - how the plugin was loaded (`ON`, `OFF`, `FORCE`)
+- `LOAD_OPTION` - how the plugin was loaded (`ON`, `OFF`, `FORCE`, `FORCE_PLUS_PERMANENT`)
 
 ## List All Active Plugins
 
