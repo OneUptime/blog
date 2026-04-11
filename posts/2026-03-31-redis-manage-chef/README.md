@@ -67,7 +67,7 @@ override_attributes(
         'address'          => '0.0.0.0',
         'maxmemory'        => '8gb',
         'maxmemory-policy' => 'allkeys-lru',
-        'requirepass'      => node['redis']['password'],
+        'requirepass'      => 'StrongProductionPassword123!',
         'appendonly'       => 'yes',
       }
     ]
@@ -75,7 +75,7 @@ override_attributes(
 )
 ```
 
-## Create a Custom Redis LWRP
+## Create a Custom Redis Resource
 
 For fine-grained control, write a custom resource:
 
