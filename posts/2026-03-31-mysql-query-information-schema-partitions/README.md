@@ -38,7 +38,7 @@ ORDER BY TABLE_NAME, PARTITION_ORDINAL_POSITION;
 |--------|-------------|
 | `PARTITION_NAME` | Partition name (NULL for non-partitioned tables) |
 | `PARTITION_ORDINAL_POSITION` | Partition number (1-based) |
-| `PARTITION_METHOD` | RANGE, LIST, HASH, KEY, LINEAR HASH, LINEAR KEY |
+| `PARTITION_METHOD` | RANGE, LIST, HASH, KEY, LINEAR HASH, LINEAR KEY, RANGE COLUMNS, LIST COLUMNS |
 | `PARTITION_EXPRESSION` | Column or expression used for partitioning |
 | `PARTITION_DESCRIPTION` | Boundary value for RANGE/LIST partitions |
 | `TABLE_ROWS` | Estimated row count for this partition |
