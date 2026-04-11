@@ -8,7 +8,7 @@ Description: Learn how to use BF.INSERT in Redis to add items to a Bloom filter 
 
 ---
 
-`BF.INSERT` is a powerful Redis command that combines filter creation and item insertion into a single atomic operation. Unlike `BF.ADD`, which requires you to first create a Bloom filter with `BF.RESERVE`, `BF.INSERT` can create the filter on the fly using parameters you specify inline. This makes it ideal for scenarios where you want to lazily initialize filters without a separate setup step.
+`BF.INSERT` is a powerful Redis command that combines filter creation and item insertion into a single atomic operation. Unlike `BF.ADD`, which also auto-creates filters but only with module-level defaults, `BF.INSERT` can create the filter on the fly using custom parameters you specify inline. This makes it ideal for scenarios where you want to lazily initialize filters with specific capacity and error rate settings without a separate `BF.RESERVE` step.
 
 ## Basic Syntax
 
@@ -116,7 +116,7 @@ process_event("order:1001")
 process_event("order:1002")
 ```
 
-`NONSCALING` prevents the filter from expanding past its initial capacity, which gives you predictable memory usage at the cost of higher false positives once full.
+`NONSCALING` prevents the filter from expanding past its initial capacity, which gives you predictable memory usage. Once the filter reaches capacity, additional insert attempts will return an error.
 
 ## Summary
 
