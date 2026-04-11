@@ -116,6 +116,7 @@ HMGET order:55 product_id quantity price status
 ```
 
 ```text
+(integer) 2
 1) "101"
 2) "2"
 3) (nil)
