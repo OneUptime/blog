@@ -72,7 +72,7 @@ INSERT INTO products_backup TABLE products;
 `VALUES` creates an inline row value constructor - essentially an ad-hoc table built directly from literal values:
 
 ```sql
--- Create an inline two-row table with columns named column_0, column_1
+-- Create an inline three-row table with columns named column_0, column_1
 VALUES ROW(1, 'alpha'), ROW(2, 'beta'), ROW(3, 'gamma');
 ```
 
