@@ -103,9 +103,12 @@ resource "azurerm_mysql_flexible_server" "mysql" {
   version                = "8.0.21"
   zone                   = "1"
 
-  high_availability {
-    mode                      = var.environment == "production" ? "ZoneRedundant" : "Disabled"
-    standby_availability_zone = "2"
+  dynamic "high_availability" {
+    for_each = var.environment == "production" ? [1] : []
+    content {
+      mode                      = "ZoneRedundant"
+      standby_availability_zone = "2"
+    }
   }
 
   storage {
