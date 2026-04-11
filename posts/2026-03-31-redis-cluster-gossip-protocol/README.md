@@ -8,7 +8,7 @@ Description: Learn how Redis Cluster uses the gossip protocol for node discovery
 
 ---
 
-Redis Cluster uses a gossip protocol (specifically a variant of Phi Accrual gossip) to propagate cluster state, detect node failures, and keep all nodes informed without central coordination. Understanding it helps you tune cluster-node-timeout and debug connectivity issues.
+Redis Cluster uses a gossip protocol to propagate cluster state, detect node failures, and keep all nodes informed without central coordination. Understanding it helps you tune cluster-node-timeout and debug connectivity issues.
 
 ## What the Gossip Protocol Does
 
@@ -121,8 +121,8 @@ In practice, FAIL messages are broadcast directly, so failures converge in secon
 # Check if nodes can reach each other on cluster bus
 telnet 192.168.1.11 17001
 
-# Look for disconnected links
-redis-cli -p 7001 CLUSTER LINKS | grep -A5 "disconnected"
+# Look for links with degraded events (missing "rw")
+redis-cli -p 7001 CLUSTER LINKS
 
 # Verify cluster epoch is consistent
 redis-cli -p 7001 CLUSTER INFO | grep cluster_current_epoch
