@@ -154,7 +154,7 @@ SELECT
     host,
     statements,
     statement_latency,
-    connections,
+    total_connections,
     current_connections,
     unique_users
 FROM sys.host_summary
@@ -179,12 +179,12 @@ WHERE command != 'Sleep'
 ORDER BY time DESC;
 ```
 
-**io_global_by_file_by_bytes - slowest file I/O:**
+**io_global_by_file_by_latency - slowest file I/O:**
 
 ```sql
-SELECT file, total, read_latency, write_latency
-FROM sys.io_global_by_file_by_bytes
-ORDER BY total DESC
+SELECT file, total_latency, read_latency, write_latency
+FROM sys.io_global_by_file_by_latency
+ORDER BY total_latency DESC
 LIMIT 10;
 ```
 
@@ -203,14 +203,14 @@ Or selectively:
 TRUNCATE performance_schema.table_io_waits_summary_by_table;
 ```
 
-## sys Schema Procedures
+## More Useful sys Views
 
 ```sql
 -- Show memory usage breakdown:
-CALL sys.memory_by_host_by_current_bytes();
+SELECT * FROM sys.memory_by_host_by_current_bytes;
 
 -- Show InnoDB lock waits:
-CALL sys.innodb_lock_waits();
+SELECT * FROM sys.innodb_lock_waits;
 
 -- Show queries that have caused the most temp tables:
 SELECT * FROM sys.statements_with_temp_tables LIMIT 10;
