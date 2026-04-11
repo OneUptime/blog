@@ -24,7 +24,7 @@ Both the input SRID and the target SRID must exist in the `INFORMATION_SCHEMA.ST
 
 ## Converting from SRID 4326 to a Projected System
 
-SRID 4326 uses degrees. For accurate distance and area calculations in meters, convert to a projected system like SRID 3857 (Web Mercator used by Google Maps and OpenStreetMap):
+SRID 4326 uses geographic (latitude/longitude) coordinates. To work with data in web mapping tools like Google Maps or OpenStreetMap, convert to SRID 3857 (Web Mercator):
 
 ```sql
 -- Convert a point from geographic (degrees) to Web Mercator (meters)
@@ -57,28 +57,28 @@ SELECT ST_AsText(
 ) AS geographic_point;
 ```
 
-## Practical Example: Computing Accurate Distances
+## Practical Example: Comparing Distance Methods
 
-Distances computed in SRID 4326 (degrees) are not accurate for long distances. Convert to a projected system first:
+In MySQL 8.0+, `ST_Distance()` on geometries with a geographic SRID like 4326 automatically computes geodesic distances in meters. `ST_Distance_Sphere()` also returns meters but uses a simpler spherical model. Projecting to Web Mercator (3857) and then computing Euclidean distance gives results in meters, but those values are distorted by the Mercator projection and are less accurate:
 
 ```sql
--- Distance in degrees (not useful)
+-- Geodesic distance in meters (accurate, uses ellipsoid model)
 SELECT ST_Distance(
   ST_GeomFromText('POINT(40.7128 -74.0060)', 4326),
   ST_GeomFromText('POINT(40.7580 -73.9855)', 4326)
-) AS dist_degrees;
+) AS dist_geodesic_meters;
 
--- Distance in meters using ST_Distance_Sphere (for geodetic)
+-- Spherical distance in meters (slightly less accurate, uses sphere model)
 SELECT ST_Distance_Sphere(
   ST_GeomFromText('POINT(40.7128 -74.0060)', 4326),
   ST_GeomFromText('POINT(40.7580 -73.9855)', 4326)
-) AS dist_meters;
+) AS dist_sphere_meters;
 
--- Distance after projecting to Web Mercator
+-- Euclidean distance after projecting to Web Mercator (distorted by projection)
 SELECT ST_Distance(
   ST_Transform(ST_GeomFromText('POINT(40.7128 -74.0060)', 4326), 3857),
   ST_Transform(ST_GeomFromText('POINT(40.7580 -73.9855)', 4326), 3857)
-) AS dist_projected_meters;
+) AS dist_mercator_meters;
 ```
 
 ## Checking Available SRIDs
@@ -113,4 +113,4 @@ CREATE SPATIAL INDEX idx_coords_3857 ON locations (coords_3857);
 
 ## Summary
 
-`ST_Transform()` reprojects geometry coordinates from one spatial reference system to another. Use it to unify data from different coordinate systems, compute accurate metric distances by converting geographic coordinates to a projected system, and interoperate with external GIS tools that use specific SRIDs. Always verify the target SRID exists in `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` before transforming.
+`ST_Transform()` reprojects geometry coordinates from one spatial reference system to another. Use it to unify data from different coordinate systems, prepare data for web mapping tools that expect a specific projection, and interoperate with external GIS tools that use specific SRIDs. For accurate distance calculations, use `ST_Distance()` directly on SRID 4326 geometries — MySQL 8.0+ computes geodesic distances in meters automatically. Always verify the target SRID exists in `INFORMATION_SCHEMA.ST_SPATIAL_REFERENCE_SYSTEMS` before transforming.
