@@ -79,7 +79,7 @@ for msg in messages:
         channel.basic_publish(
             exchange=msg['exchange'],
             routing_key=msg['routing_key'],
-            body=json.dumps(msg['payload']),
+            body=msg['payload'],
             properties=pika.BasicProperties(delivery_mode=2)  # persistent
         )
         cur.execute("UPDATE outbox_messages SET status='published', published_at=NOW() WHERE id=%s",
