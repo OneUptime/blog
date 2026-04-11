@@ -82,16 +82,20 @@ clusters:
     type: STRICT_DNS
     connect_timeout: 1s
     lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_version_config:
+          http2_protocol_options: {}
     load_assignment:
       cluster_name: rate_limit_cluster
       endpoints:
         - lb_endpoints:
-          - endpoint:
-              address:
-                socket_address:
-                  address: ratelimit
-                  port_value: 8081
+            - endpoint:
+                address:
+                  socket_address:
+                    address: ratelimit
+                    port_value: 8081
 ```
 
 ## Testing the Rate Limit
