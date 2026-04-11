@@ -79,7 +79,7 @@ LOAD MYSQL QUERY RULES TO RUNTIME;
 SAVE MYSQL QUERY RULES TO DISK;
 ```
 
-The `multiplex` field accepts: `0` (disable), `1` (enable), `2` (reset multiplexing after query).
+The `multiplex` field accepts: `0` (disable multiplexing), `1` (enable multiplexing), `2` (do not disable multiplexing for queries containing `@` variables).
 
 ## Monitoring Multiplexing Effectiveness
 
@@ -94,7 +94,7 @@ A high `ConnFree` and low `MaxConnUsed` relative to client connections confirms 
 
 ```sql
 SELECT * FROM stats_mysql_global
-WHERE variable_name IN ('Client_Connections_connected', 'Backend_query_num_init');
+WHERE variable_name IN ('Client_Connections_connected', 'Server_Connections_connected');
 ```
 
 ## Conditions That Break Multiplexing
@@ -104,12 +104,15 @@ The following session-level operations disable multiplexing for that connection:
 - `SET` statements that change session variables
 - `LOCK TABLES`
 - Multi-statement transactions without autocommit
-- User-defined functions and stored procedures using `GET_LOCK()`
+- `GET_LOCK()` calls
+- `CREATE TEMPORARY TABLE`
+- `SQL_CALC_FOUND_ROWS`
+- `PREPARE` statements via text protocol
 
 To verify which connections are being multiplexed:
 
 ```sql
-SELECT * FROM stats_mysql_processlist WHERE MultiplexDisabled = 1;
+SELECT * FROM stats_mysql_processlist WHERE extended_info LIKE '%MultiplexDisabled":true%';
 ```
 
 ## Summary
