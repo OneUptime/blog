@@ -45,7 +45,7 @@ def get_funnel_report(funnel_id: str) -> list:
         dest = f"funnel:{funnel_id}:through_step_{i}"
 
         if len(keys) == 1:
-            r.copy(keys[0], dest)
+            r.copy(keys[0], dest, replace=True)
         else:
             r.bitop("AND", dest, *keys)
 
