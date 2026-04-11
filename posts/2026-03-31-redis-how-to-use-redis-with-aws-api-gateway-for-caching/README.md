@@ -85,10 +85,13 @@ resources:
 
 ```javascript
 const Redis = require('ioredis');
-const AWS = require('aws-sdk');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
-// Reuse Redis connection across Lambda invocations
+// Reuse clients across Lambda invocations
 let redis;
+const ddbClient = new DynamoDBClient({});
+const dynamodb = DynamoDBDocumentClient.from(ddbClient);
 
 function getRedisClient() {
   if (!redis || redis.status === 'end') {
@@ -98,18 +101,16 @@ function getRedisClient() {
       lazyConnect: true,
       maxRetriesPerRequest: 2,
       connectTimeout: 2000,
-      commandTimeout: 1000,
     });
   }
   return redis;
 }
 
 async function getProductFromDB(productId) {
-  const dynamodb = new AWS.DynamoDB.DocumentClient();
-  const result = await dynamodb.get({
+  const result = await dynamodb.send(new GetCommand({
     TableName: process.env.PRODUCTS_TABLE,
     Key: { id: productId }
-  }).promise();
+  }));
   return result.Item;
 }
 
@@ -189,6 +190,7 @@ exports.handler = async (event) => {
 ```python
 import json
 import os
+import hashlib
 import redis
 import boto3
 from functools import wraps
@@ -215,7 +217,7 @@ def cache_response(ttl: int = 300, key_prefix: str = "api"):
         def wrapper(event, context):
             path = event.get('path', '')
             params = json.dumps(event.get('queryStringParameters', {}), sort_keys=True)
-            cache_key = f"{key_prefix}:{path}:{hash(params)}"
+            cache_key = f"{key_prefix}:{path}:{hashlib.md5(params.encode()).hexdigest()}"
 
             try:
                 r = get_redis()
