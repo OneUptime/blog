@@ -14,6 +14,7 @@ Stale connections - ones that appear open but are actually broken - cause myster
 
 ```python
 import redis
+import socket
 
 # health_check_interval runs PING on idle connections every N seconds
 client = redis.Redis(
@@ -22,9 +23,9 @@ client = redis.Redis(
     health_check_interval=30,  # seconds
     socket_keepalive=True,
     socket_keepalive_options={
-        "TCP_KEEPIDLE": 60,
-        "TCP_KEEPINTVL": 10,
-        "TCP_KEEPCNT": 5,
+        socket.TCP_KEEPIDLE: 60,
+        socket.TCP_KEEPINTVL: 10,
+        socket.TCP_KEEPCNT: 5,
     },
 )
 ```
@@ -66,7 +67,8 @@ def check_redis_health(client: redis.Redis) -> dict:
 ## HTTP Health Endpoint with FastAPI
 
 ```python
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 import redis
 
 app = FastAPI()
@@ -76,11 +78,7 @@ redis_client = redis.Redis(host="localhost", port=6379, socket_timeout=2)
 async def redis_health():
     health = check_redis_health(redis_client)
     status_code = 200 if health["status"] == "healthy" else 503
-    return Response(
-        content=str(health),
-        status_code=status_code,
-        media_type="application/json",
-    )
+    return JSONResponse(content=health, status_code=status_code)
 ```
 
 ## Kubernetes Readiness Probe
