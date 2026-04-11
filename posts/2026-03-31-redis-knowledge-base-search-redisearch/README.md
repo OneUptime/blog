@@ -101,8 +101,9 @@ Enable fuzzy matching to handle typos in user queries:
 
 ```python
 def fuzzy_search(query: str, fuzziness: int = 1):
-    # Wrap each word with % for fuzzy matching
-    fuzzy_query = " ".join(f"%{word}%" for word in query.split())
+    # Wrap each word with % for fuzzy matching (1-3 %'s for Levenshtein distance)
+    pct = "%" * fuzziness
+    fuzzy_query = " ".join(f"{pct}{word}{pct}" for word in query.split())
     return r.execute_command(
         'FT.SEARCH', 'kb_idx', fuzzy_query,
         'LIMIT', 0, 10
