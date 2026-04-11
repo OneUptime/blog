@@ -85,7 +85,6 @@ HGET user:risk:u123 score
 ```python
 import redis
 import time
-import json
 from dataclasses import dataclass
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
