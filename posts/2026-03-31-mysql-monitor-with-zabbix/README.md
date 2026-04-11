@@ -27,7 +27,7 @@ Zabbix Agent 2 includes a built-in MySQL plugin. Create the credentials file:
 ```bash
 sudo mkdir -p /var/lib/zabbix
 sudo tee /var/lib/zabbix/mysql.conf << 'EOF'
-[mysqld]
+[client]
 user=zbx_monitor
 password=zabbix_secret
 EOF
@@ -75,11 +75,11 @@ The official template includes triggers for common problems:
 
 ```text
 MySQL: Service is down
-MySQL: Too many connections (>80% of max_connections)
+MySQL: Refused connections
 MySQL: Replication: Slave I/O thread is not running
 MySQL: Replication: Slave SQL thread is not running
-MySQL: Replication lag is too high (>30s)
-MySQL: Buffer pool utilization is too high (>95%)
+MySQL: Replication lag is too high (>30m)
+MySQL: Buffer pool utilization is too low (<50%)
 ```
 
 ## Customizing Alert Thresholds
@@ -88,9 +88,9 @@ Override the default thresholds using host-level macros:
 
 ```text
 Macro                              Default   Your value
-{$MYSQL.REPL_LAG.MAX.WARN}        30s       10s
-{$MYSQL.CONNECTIONS.MAX.WARN}     80%       70%
-{$MYSQL.BUFF_POOL.PUSED.MAX.WARN} 95%       90%
+{$MYSQL.REPL_LAG.MAX.WARN}        30m       10m
+{$MYSQL.ABORTED_CONN.MAX.WARN}    3         5
+{$MYSQL.BUFF_UTIL.MIN.WARN}       50        30
 ```
 
 Set these under Host > Macros in the Zabbix UI.
