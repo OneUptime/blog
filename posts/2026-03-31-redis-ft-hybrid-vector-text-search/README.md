@@ -1,4 +1,4 @@
-# How to Use FT.HYBRID in Redis for Combined Vector and Text Search
+# How to Use FT.SEARCH for Hybrid Vector and Text Search in Redis
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ Hybrid search in RediSearch combines vector similarity (semantic search) with tr
 
 ## Prerequisites
 
-- Redis with RediSearch 2.6+ and vector support enabled
+- Redis with RediSearch 2.4+ and vector support enabled
 - An embedding model to generate float vectors (e.g., OpenAI, sentence-transformers)
 
 ## Creating an Index with Vector and Text Fields
@@ -56,7 +56,6 @@ FT.SEARCH <index> "(<filter_expression>)=>[KNN <k> @<vector_field> $query_vec]"
 
 ```python
 import redis
-import numpy as np
 import struct
 
 r = redis.Redis(host="127.0.0.1", port=6379, decode_responses=False)
