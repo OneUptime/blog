@@ -37,14 +37,11 @@ SCAN_COUNT=200
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
-cli_cmd() {
-    if [ -n "$REDIS_PASSWORD" ]; then
-        redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" \
-            --no-auth-warning "$@"
-    else
-        redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" "$@"
-    fi
-}
+# Build redis-cli base command (plain string so xargs can use it)
+CLI_CMD="redis-cli -h $REDIS_HOST -p $REDIS_PORT"
+if [ -n "$REDIS_PASSWORD" ]; then
+    CLI_CMD="$CLI_CMD -a $REDIS_PASSWORD --no-auth-warning"
+fi
 
 delete_pattern() {
     local pattern="$1"
@@ -54,7 +51,7 @@ delete_pattern() {
     log "Scanning pattern: $pattern (dry_run=$DRY_RUN)"
 
     while true; do
-        result=$(cli_cmd SCAN "$cursor" MATCH "$pattern" COUNT "$SCAN_COUNT")
+        result=$($CLI_CMD SCAN "$cursor" MATCH "$pattern" COUNT "$SCAN_COUNT")
         cursor=$(echo "$result" | head -1)
         keys=$(echo "$result" | tail -n +2)
 
@@ -62,7 +59,7 @@ delete_pattern() {
             count=$(echo "$keys" | wc -l)
             deleted=$((deleted + count))
             if [ "$DRY_RUN" != "true" ]; then
-                echo "$keys" | xargs -L "$BATCH_SIZE" cli_cmd DEL > /dev/null
+                echo "$keys" | xargs -L "$BATCH_SIZE" $CLI_CMD DEL > /dev/null
             else
                 log "[DRY RUN] Would delete $count keys (cursor=$cursor)"
             fi
