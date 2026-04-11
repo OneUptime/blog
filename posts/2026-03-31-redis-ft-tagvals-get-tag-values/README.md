@@ -78,7 +78,7 @@ FT.TAGVALS products tags
 6) "sql"
 ```
 
-Values are returned in alphabetical order.
+Values are returned in no guaranteed order.
 
 ### Get All Status Values
 
@@ -141,7 +141,7 @@ FT.TAGVALS users country
 
 ## Behavior Notes
 
-- Values are returned in alphabetical order, not by frequency
+- Values are returned in no guaranteed order (not sorted alphabetically or by frequency)
 - Multi-value TAG fields (using SEPARATOR) have each individual value listed
 - Values are case-normalized to lowercase in the tag index by default
 - If a document has no value for the field it is not represented
@@ -166,4 +166,4 @@ Use `FT.TAGVALS` when you only need the list of values. Use `FT.AGGREGATE` when 
 
 ## Summary
 
-`FT.TAGVALS` retrieves every distinct value stored in a TAG field of a RediSearch index. It is the fastest way to enumerate available filter options for faceted search UIs, validate index content after data imports, and monitor tag cardinality. Results are sorted alphabetically and reflect the current state of the index.
+`FT.TAGVALS` retrieves every distinct value stored in a TAG field of a RediSearch index. It is the fastest way to enumerate available filter options for faceted search UIs, validate index content after data imports, and monitor tag cardinality. Results are returned in no guaranteed order and reflect the current state of the index.
