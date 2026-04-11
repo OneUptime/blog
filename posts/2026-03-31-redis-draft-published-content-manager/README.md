@@ -16,7 +16,6 @@ Use a hash per content item to store its state and metadata, and sets to index c
 
 ```python
 import redis
-import json
 import time
 import secrets
 
