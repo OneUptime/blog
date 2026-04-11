@@ -124,13 +124,13 @@ Sentinel will not promote a replica that appears too far behind. Check replica l
 redis-cli -h <sentinel-host> -p 26379 SENTINEL replicas mymaster
 ```
 
-Look at `slave-repl-offset` and compare with `master-repl-offset`. Also check `flags` - a replica flagged `disconnected` or `s_down` is not eligible.
+Look at `slave-repl-offset` to compare how far behind each replica is. Also check `flags` - a replica flagged `disconnected` or `s_down` is not eligible. Check `master-link-status` to confirm each replica is connected to the primary.
 
-Configure the maximum allowed replica lag for promotion:
+Sentinel selects the best replica for promotion based on `replica-priority` (lowest non-zero value wins), then replication offset, then run ID. To prevent a specific replica from ever being promoted, set its priority to 0 on the replica itself:
 
 ```text
-# In sentinel.conf
-sentinel failover-timeout mymaster 30000
+# In redis.conf on the replica
+replica-priority 0
 ```
 
 ## Step 7 - Force a Manual Failover for Testing
