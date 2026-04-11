@@ -67,10 +67,8 @@ This is useful for auditing column sizes or enforcing document size limits.
 When MySQL performs an in-place partial update of a JSON column (via `JSON_SET()`, `JSON_REPLACE()`, or `JSON_REMOVE()`), it may leave gaps in the binary representation if the new value is smaller. `JSON_STORAGE_FREE()` reports how many bytes are wasted:
 
 ```sql
-SET @doc = CAST('{"name": "Alice", "score": 100}' AS JSON);
-
--- Simulate an in-place update by reducing a value
-UPDATE documents SET data = JSON_SET(data, '$.score', 5) WHERE id = 1;
+-- Simulate an in-place update by replacing a value with a shorter one
+UPDATE documents SET data = JSON_SET(data, '$.title', 'A1') WHERE id = 1;
 
 SELECT JSON_STORAGE_FREE(data) AS wasted_bytes FROM documents WHERE id = 1;
 ```
