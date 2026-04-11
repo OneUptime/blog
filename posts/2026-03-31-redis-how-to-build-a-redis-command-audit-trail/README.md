@@ -134,7 +134,7 @@ Or filter by specific command patterns:
 redis-cli MONITOR | grep -E "(SET|DEL|EXPIRE|RENAME)" | tee /tmp/redis-writes.log &
 ```
 
-**Warning**: MONITOR has a significant performance impact. Avoid using it in production for extended periods. Each MONITOR subscriber doubles the memory required for each command.
+**Warning**: MONITOR has a significant performance impact. Avoid using it in production for extended periods. A single MONITOR client can reduce throughput by more than 50%.
 
 ## Method 3 - Keyspace Notifications for Change Tracking
 
@@ -148,7 +148,7 @@ redis-cli CONFIG SET notify-keyspace-events KEA
 Notification flags:
 - `K` - Keyspace events (published in `__keyspace@N__` channel)
 - `E` - Keyevent events (published in `__keyevent@N__` channel)
-- `A` - All commands alias (`g$lzxedt`)
+- `A` - All commands alias (`g$lszhxetd`)
 - `g` - Generic commands (DEL, EXPIRE, RENAME, etc.)
 - `$` - String commands
 - `l` - List commands
