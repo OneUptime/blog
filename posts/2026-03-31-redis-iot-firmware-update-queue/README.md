@@ -64,6 +64,15 @@ HSET device:d-001:firmware_update status applying progress_pct 100
 HSET device:d-001:firmware_update status completed current_version 2.2.0
 ```
 
+When a device reports a successful update, mark it complete and add it to the completed set:
+
+```python
+def handle_update_success(device_id, new_version):
+    key = f"device:{device_id}:firmware_update"
+    r.hset(key, mapping={"status": "completed", "current_version": new_version})
+    r.sadd("firmware:update:completed", device_id)
+```
+
 ## Handling Failures
 
 On failure, increment retry count and re-queue or mark as failed:
