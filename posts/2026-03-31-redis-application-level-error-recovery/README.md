@@ -128,7 +128,7 @@ cache_errors = Counter('redis_cache_errors_total', 'Cache errors')
 def get_from_cache(key: str):
     try:
         value = redis_client.get(key)
-        if value:
+        if value is not None:
             cache_hits.inc()
             return value
         cache_misses.inc()
