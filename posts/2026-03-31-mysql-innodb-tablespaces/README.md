@@ -120,7 +120,7 @@ Note: you cannot shrink the system tablespace files once they have grown.
 Starting with MySQL 8.0, undo logs are stored in separate undo tablespace files. View them:
 
 ```sql
-SELECT space_name, file_name, space_type, state
+SELECT name, space_type, state
 FROM   information_schema.INNODB_TABLESPACES
 WHERE  space_type = 'Undo';
 ```
@@ -199,7 +199,7 @@ ORDER  BY total_mb DESC;
 - Do not let `ibdata1` grow unbounded; consider separating undo logs with dedicated undo tablespaces.
 - Use `OPTIMIZE TABLE` after large bulk deletes to reclaim disk space.
 - Monitor tablespace sizes with `information_schema.INNODB_TABLESPACES` and alert on growth.
-- Use tablespace import/export for fast, logical table migrations between servers.
+- Use tablespace import/export for fast, physical table migrations between servers.
 
 ## Summary
 
