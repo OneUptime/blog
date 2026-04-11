@@ -10,7 +10,7 @@ Description: Learn how to use the MySQL NDB Cluster Auto-Installer web-based too
 
 ## What is the NDB Cluster Auto-Installer?
 
-The MySQL NDB Cluster Auto-Installer is a web-based wizard introduced in MySQL Cluster 7.5 that simplifies the deployment of new NDB Clusters. It guides you through defining hosts, assigning node roles, configuring parameters, and deploying the cluster - all through a browser interface without manually editing `config.ini` files.
+The MySQL NDB Cluster Auto-Installer is a web-based wizard introduced in MySQL Cluster 7.3 that simplifies the deployment of new NDB Clusters. It guides you through defining hosts, assigning node roles, configuring parameters, and deploying the cluster - all through a browser interface without manually editing `config.ini` files.
 
 Note: The Auto-Installer is deprecated in later MySQL 8.0 NDB releases. This guide covers its use in MySQL Cluster 7.6 and early MySQL 8.0 NDB distributions.
 
@@ -25,7 +25,7 @@ ndb_setup.py
 Or with explicit host/port binding:
 
 ```bash
-ndb_setup.py --host=0.0.0.0 --port=8081
+ndb_setup.py --server-name=0.0.0.0 --port=8081
 ```
 
 Then open a browser and navigate to:
@@ -77,6 +77,8 @@ DataMemory:         512M
 IndexMemory:        128M
 MaxNoOfConcurrentOperations: 100000
 ```
+
+Note: `IndexMemory` is deprecated in NDB 7.6 and removed in NDB 8.0. In NDB 7.6+, size `DataMemory` to account for both data and index storage.
 
 It provides recommended values based on detected host memory. Adjust them for your workload.
 
