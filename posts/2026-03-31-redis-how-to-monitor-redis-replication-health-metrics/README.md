@@ -145,13 +145,11 @@ def check_all_replicas(primary_host, port=6379):
     print(f"Connected replicas: {num_replicas}")
 
     for i in range(num_replicas):
-        replica_info = info.get(f'slave{i}', '')
-        # Parse: ip=x,port=y,state=z,offset=n,lag=m
-        parts = dict(p.split('=') for p in replica_info.split(','))
-        ip = parts.get('ip', 'unknown')
-        state = parts.get('state', 'unknown')
-        offset = int(parts.get('offset', 0))
-        lag = int(parts.get('lag', -1))
+        replica_info = info.get(f'slave{i}', {})
+        ip = replica_info.get('ip', 'unknown')
+        state = replica_info.get('state', 'unknown')
+        offset = int(replica_info.get('offset', 0))
+        lag = int(replica_info.get('lag', -1))
 
         master_offset = info.get('master_repl_offset', 0)
         byte_lag = master_offset - offset
@@ -174,8 +172,11 @@ replicaof 10.0.0.1 6379
 
 # Optional: require replica to be read-only
 replica-read-only yes
+```
 
-# Minimum replicas before primary accepts writes
+In `redis.conf` on the primary (to require minimum replicas before accepting writes):
+
+```text
 min-replicas-to-write 1
 min-replicas-max-lag 10
 ```
