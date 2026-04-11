@@ -17,7 +17,7 @@ $redis = new RedisCluster(null, [
     '127.0.0.1:7000',
     '127.0.0.1:7001',
     '127.0.0.1:7002',
-], 1.5, 1.5, true); // read timeout, write timeout, persistent
+], 1.5, 1.5, true); // timeout, read timeout, persistent
 ```
 
 ## Connecting with Predis
@@ -100,11 +100,13 @@ $nodes = $redis->_masters();
 foreach ($nodes as $node) {
     $cursor = null;
     do {
-        [$cursor, $keys] = $redis->scan($cursor, $node, 'user:*', 100);
-        foreach ($keys as $key) {
-            echo $key . PHP_EOL;
+        $keys = $redis->scan($cursor, $node, 'user:*', 100);
+        if ($keys !== false) {
+            foreach ($keys as $key) {
+                echo $key . PHP_EOL;
+            }
         }
-    } while ($cursor != 0);
+    } while ($cursor > 0);
 }
 ```
 
