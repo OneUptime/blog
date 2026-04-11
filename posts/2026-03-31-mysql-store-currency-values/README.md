@@ -14,11 +14,12 @@ Storing money incorrectly is a common source of subtle bugs in financial applica
 
 ```sql
 -- Demonstration of floating-point imprecision
-SELECT 0.1 + 0.2;
+-- Use scientific notation (e0) to force DOUBLE type; bare decimals are exact in MySQL
+SELECT 0.1e0 + 0.2e0;
 -- Returns: 0.30000000000000004 (not 0.3)
 
-SELECT CAST(0.1 AS FLOAT) + CAST(0.2 AS FLOAT);
--- May return: 0.3 but cannot be relied upon for financial data
+SELECT CAST(0.1 AS DOUBLE) + CAST(0.2 AS DOUBLE);
+-- Returns: 0.30000000000000004
 ```
 
 `FLOAT` and `DOUBLE` are binary floating-point types that cannot exactly represent most decimal fractions. Even small errors accumulate across thousands of transactions.
@@ -51,7 +52,7 @@ Different use cases require different precision:
 -- Standard retail prices: up to 99,999,999.99
 amount DECIMAL(10, 2)
 
--- High-value transactions (real estate, stock trades): up to 9,999,999,999.99
+-- High-value transactions (real estate, stock trades): up to 999,999,999,999.99
 amount DECIMAL(14, 2)
 
 -- Cryptocurrency with sub-cent precision (e.g. Bitcoin satoshis)
