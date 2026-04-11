@@ -114,7 +114,7 @@ export class OrderService {
 
   async placeOrder(userId: number, productId: number) {
     await this.dataSource.transaction(async (manager) => {
-      await manager.decrement({ id: productId }, 'stock', 1);
+      await manager.decrement(Product, { id: productId }, 'stock', 1);
       await manager.save(Order, { userId, productId });
     });
   }
