@@ -33,9 +33,11 @@ CREATE TABLE article_views (
 
 Each MyISAM table consists of three files on disk:
 
-- `.frm` - table definition (format file)
+- `.frm` - table definition (format file, replaced by `.sdi` in MySQL 8.0)
 - `.MYD` - data file (MyISAM Data)
 - `.MYI` - index file (MyISAM Index)
+
+In MySQL 8.0 and later, the `.frm` file no longer exists. The data dictionary is stored internally, and MyISAM tables include a `.sdi` (Serialized Dictionary Information) file instead.
 
 This separation makes it straightforward to copy or back up individual tables by copying these files.
 
