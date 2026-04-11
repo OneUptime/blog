@@ -189,7 +189,7 @@ async function joinRoom(ws, sessionId, room) {
 
 async function rejoinRoom(ws, sessionId, session, room) {
   // Notify other room members of reconnection
-  await publisher.publish(`room:${room}:events`, JSON.stringify({
+  await redis.publish(`room:${room}:events`, JSON.stringify({
     type: 'user-reconnected',
     userId: session.userId,
     username: session.username,
