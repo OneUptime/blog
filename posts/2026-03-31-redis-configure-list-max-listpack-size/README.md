@@ -35,11 +35,11 @@ The setting accepts:
 
 ```text
 Value   Meaning
- 1      Max 4 KB per node
- 2      Max 8 KB per node (safe default)
- 3      Max 16 KB per node
- 4      Max 32 KB per node
- 5      Max 64 KB per node
+-1      Max 4 KB per node
+-2      Max 8 KB per node (safe default)
+-3      Max 16 KB per node
+-4      Max 32 KB per node
+-5      Max 64 KB per node
  128    Max 128 elements per node (positive = element count)
 ```
 
@@ -128,10 +128,10 @@ Compression uses LZF and reduces memory by 30-50% for compressible data with neg
 ```bash
 OBJECT ENCODING mylist
 # Always "quicklist" for standard lists
-# "listpack" for very short lists (Redis 7.0+, under list-max-listpack-size threshold)
+# "listpack" for very short lists (Redis 7.2+, under list-max-listpack-size threshold)
 ```
 
-Redis 7.0 introduced a small-list optimization: lists with few elements use a pure listpack (not quicklist). The `list-max-listpack-size` setting controls when this pure listpack is used vs. quicklist.
+Redis 7.2 introduced a small-list optimization: lists with few elements use a pure listpack (not quicklist). The `list-max-listpack-size` setting controls when this pure listpack is used vs. quicklist.
 
 ## Practical Recommendations
 
