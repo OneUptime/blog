@@ -30,7 +30,7 @@ async fn main() -> redis::RedisResult<()> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let mut con = client.get_multiplexed_async_connection().await?;
 
-    con.set("greeting", "hello").await?;
+    let _: () = con.set("greeting", "hello").await?;
     let val: String = con.get("greeting").await?;
     println!("{val}");
 
@@ -59,7 +59,7 @@ For heavier concurrency, use a pool so each task gets its own connection:
 
 ```toml
 [dependencies]
-deadpool-redis = "0.14"
+deadpool-redis = "0.15"
 redis = { version = "0.25", features = ["tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
 ```
@@ -121,11 +121,17 @@ match result {
 
 ## Async Pub/Sub
 
+Add `futures-util` to your dependencies:
+
+```toml
+[dependencies]
+futures-util = "0.3"
+```
+
 ```rust
 use futures_util::StreamExt;
 
-let sub_con = client.get_async_connection().await?;
-let mut pubsub = sub_con.into_pubsub();
+let mut pubsub = client.get_async_pubsub().await?;
 pubsub.subscribe("updates").await?;
 
 let mut stream = pubsub.on_message();
