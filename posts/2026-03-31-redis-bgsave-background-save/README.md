@@ -71,11 +71,11 @@ INFO persistence
 
 ```redis
 LASTSAVE
-# (integer) 1711900200
+# (integer) 1774960200
 
 # Convert to human-readable (in shell)
-# date -d @1711900200
-# Thu Mar 31 12:30:00 UTC 2026
+# date -d @1774960200
+# Tue Mar 31 12:30:00 UTC 2026
 ```
 
 ### Use SCHEDULE to avoid conflict with AOF rewrite
@@ -141,7 +141,7 @@ INFO persistence
 
 And in the Redis logs:
 
-```json
+```text
 [1234] 31 Mar 12:30:00.000 # Background saving error
 ```
 
