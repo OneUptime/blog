@@ -50,10 +50,10 @@ redis-cli ZRANGE result 0 -1 WITHSCORES
 2) "1"
 3) "c"
 4) "3"
-5) "d"
-6) "20"
-7) "b"
-8) "12"
+5) "b"
+6) "12"
+7) "d"
+8) "20"
 9) "e"
 10) "30"
 ```
@@ -106,12 +106,12 @@ r.zadd('engaged:push', {'user:2': 75, 'user:3': 85, 'user:4': 70})
 r.zadd('engaged:sms', {'user:1': 50, 'user:4': 60, 'user:5': 40})
 
 # All engaged users - sum scores across channels
-count = r.zunionstore('engaged:all', 3, 'engaged:email', 'engaged:push', 'engaged:sms')
+count = r.zunionstore('engaged:all', ['engaged:email', 'engaged:push', 'engaged:sms'])
 print(f"Total engaged users: {count}")
 
 top_users = r.zrange('engaged:all', 0, -1, withscores=True, desc=True)
 print(f"Users by engagement: {top_users}")
-# user:3 (90+85=175), user:1 (80+50=130), user:2 (60+75=135), user:4 (70+60=130), user:5 (40)
+# user:3 (90+85=175), user:2 (60+75=135), user:1 (80+50=130), user:4 (70+60=130), user:5 (40)
 ```
 
 ### Merge Daily Analytics
@@ -128,7 +128,7 @@ r.zadd('views:2026-03-31', {'page:home': 1100, 'page:docs': 950, 'page:pricing':
 
 # Weekly totals
 count = r.zunionstore('views:weekly',
-                       3, 'views:2026-03-29', 'views:2026-03-30', 'views:2026-03-31',
+                       ['views:2026-03-29', 'views:2026-03-30', 'views:2026-03-31'],
                        aggregate='SUM')
 
 weekly = r.zrange('views:weekly', 0, -1, withscores=True, desc=True)
@@ -150,7 +150,7 @@ r.zadd('tag:backend', {'art:1': 88, 'art:2': 92, 'art:4': 78, 'art:5': 65})
 def search_by_tags(*tags):
     """Find articles matching any of the given tags, ranked by total relevance."""
     keys = [f'tag:{tag}' for tag in tags]
-    r.zunionstore('search:results', len(keys), *keys, aggregate='SUM')
+    r.zunionstore('search:results', keys, aggregate='SUM')
     results = r.zrange('search:results', 0, -1, withscores=True, desc=True)
     r.delete('search:results')
     return results
@@ -173,7 +173,7 @@ r.zadd('inbox:charlie', {'msg:1': 1000, 'msg:5': 1040})
 
 def get_combined_feed(*user_ids):
     keys = [f'inbox:{uid}' for uid in user_ids]
-    r.zunionstore('feed:combined', len(keys), *keys, aggregate='MAX')
+    r.zunionstore('feed:combined', keys, aggregate='MAX')
     return r.zrange('feed:combined', 0, -1, withscores=True)
 
 feed = get_combined_feed('alice', 'bob', 'charlie')
