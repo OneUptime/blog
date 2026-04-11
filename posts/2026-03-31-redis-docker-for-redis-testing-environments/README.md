@@ -81,9 +81,10 @@ until docker compose -f docker-compose.test.yml exec redis redis-cli ping | grep
 done
 
 echo "Running tests..."
+set +e
 pytest tests/ -v
-
 EXIT_CODE=$?
+set -e
 
 echo "Stopping Redis..."
 docker compose -f docker-compose.test.yml down -v
