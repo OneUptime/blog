@@ -109,7 +109,7 @@ docker compose restart mysql
 
 ## Using MySQL init Scripts for Auto-Reset
 
-Place SQL and shell scripts in `/docker-entrypoint-initdb.d/` to run automatically on container start:
+Place SQL and shell scripts in `/docker-entrypoint-initdb.d/`. MySQL runs these automatically when the data directory is empty (first initialization):
 
 ```bash
 # Copy seed SQL into the init directory
@@ -117,7 +117,7 @@ cp tests/fixtures/schema.sql docker/init/01-schema.sql
 cp tests/fixtures/seed.sql docker/init/02-seed.sql
 ```
 
-Every container restart applies these scripts to a fresh database.
+When combined with `tmpfs` from Method 4, every container restart starts with an empty data directory, so these scripts run automatically each time.
 
 ## Summary
 
