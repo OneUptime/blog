@@ -53,9 +53,9 @@ Every node sends a PING to a random selection of nodes every 100ms (configurable
 ```text
 Gossip cycle (every 100ms):
 
-1. Select up to cluster-migration-barrier nodes to PING
+1. Select nodes to PING
    - Always PING nodes not heard from in > cluster-node-timeout/2
-   - Additionally PING a random subset of other nodes
+   - Pick 5 random nodes and PING the one with the oldest pong_received time
 
 2. PING includes:
    - Sender's current cluster view (node IDs, IPs, slots, states)
@@ -90,7 +90,7 @@ Phase 2: FAIL (Confirmed Failure)
 redis-cli CONFIG GET cluster-node-timeout
 
 # After node-timeout, node is marked PFAIL
-# After 2 * node-timeout, cluster gives up and marks FAIL
+# FAIL requires majority of masters to report PFAIL within 2 * node-timeout window
 ```
 
 ## Cluster State Information Per Node
@@ -99,7 +99,7 @@ Each node maintains a cluster view of all other nodes:
 
 ```text
 For each known node, a Redis node stores:
-- Node ID (40-byte hex string)
+- Node ID (40-character hex string)
 - IP address and port
 - Flags (master, slave, pfail, fail, myself, noaddr, etc.)
 - Master node ID (if this is a replica)
