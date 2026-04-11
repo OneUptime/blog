@@ -129,11 +129,11 @@ flowchart TD
 ```bash
 #!/bin/bash
 # Print a summary of slot ranges and their primaries
-redis-cli -p 7001 CLUSTER SLOTS | \
-  python3 -c "
-import sys, redis
+python3 -c "
+import redis
 r = redis.Redis(port=7001)
-for shard in r.cluster('SLOTS'):
+slots = r.execute_command('CLUSTER', 'SLOTS')
+for shard in slots:
     start, end, primary = shard[0], shard[1], shard[2]
     print(f'Slots {start}-{end}: {primary[0].decode()}:{primary[1]}')
 "
