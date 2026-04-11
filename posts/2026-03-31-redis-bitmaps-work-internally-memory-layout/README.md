@@ -73,7 +73,7 @@ BITCOUNT active:both
 # Find users active on either day (OR)
 BITOP OR active:either active:2024-01-15 active:2024-01-16
 
-# Find users active on day1 but NOT day2 (XOR then mask)
+# Find users whose activity changed between days (symmetric difference)
 BITOP XOR active:changed active:2024-01-15 active:2024-01-16
 ```
 
