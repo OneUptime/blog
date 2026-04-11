@@ -112,16 +112,16 @@ INNER JOIN departments d USING (department_id)
 WHERE department_id = 3;
 ```
 
-Using a table qualifier on a `USING` column raises an error in strict SQL mode:
+The SQL standard forbids qualifying a `USING` column with a table name. MySQL allows it as an extension, but other databases may reject it:
 
 ```sql
--- This can cause issues
-SELECT e.department_id  -- ambiguous with USING
+-- Works in MySQL, but not portable to other databases
+SELECT e.department_id
 FROM employees e
 INNER JOIN departments d USING (department_id);
 ```
 
-Prefer the unqualified column name or use an alias.
+For portability, prefer the unqualified column name.
 
 ## When USING works and when it does not
 
@@ -130,7 +130,7 @@ Prefer the unqualified column name or use an alias.
 | Column has the same name in both tables | Yes |
 | Column names differ (e.g. `emp_id` vs `id`) | No - use ON |
 | Join condition involves a function or expression | No - use ON |
-| Self-join on same table | No - use ON with aliases |
+| Self-join where join columns have different names | No - use ON with aliases |
 
 ## Summary
 
