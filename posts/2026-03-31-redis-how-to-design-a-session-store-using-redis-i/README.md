@@ -50,7 +50,6 @@ Fields:
 ```python
 import redis
 import secrets
-import json
 import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
