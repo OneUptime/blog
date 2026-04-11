@@ -48,7 +48,7 @@ builder.Services.AddSession(options =>
 });
 
 var app = builder.Build();
-app.UseSession(); // Must be before UseRouting/UseEndpoints
+app.UseSession(); // Must be before MapControllers/endpoint mapping
 app.MapControllers();
 app.Run();
 ```
