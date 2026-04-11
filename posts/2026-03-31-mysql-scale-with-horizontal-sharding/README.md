@@ -114,7 +114,7 @@ Monitor that data is distributed evenly across shards. An imbalanced shard (call
 
 ```sql
 -- Run on each shard
-SELECT COUNT(*) AS row_count, SUM(data_length + index_length) AS bytes
+SELECT SUM(TABLE_ROWS) AS row_count, SUM(data_length + index_length) AS bytes
 FROM information_schema.TABLES
 WHERE table_schema = 'mydb';
 ```
