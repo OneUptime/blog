@@ -125,7 +125,7 @@ systemctl status mysqlrouter
 tail -f /var/log/mysqlrouter/mysqlrouter.log
 
 # Check Router's view of cluster topology via the REST API (if enabled)
-curl http://router-host:8443/api/20190715/routes
+curl -k https://router-host:8443/api/20190715/routes
 ```
 
 ```sql
