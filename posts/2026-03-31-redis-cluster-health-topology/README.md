@@ -46,13 +46,13 @@ Parse the output to identify node roles:
 
 ```bash
 # List primaries only
-redis-cli -p 7001 CLUSTER NODES | grep " master "
+redis-cli -p 7001 CLUSTER NODES | grep master
 
 # List replicas only
-redis-cli -p 7001 CLUSTER NODES | grep " slave "
+redis-cli -p 7001 CLUSTER NODES | grep slave
 
 # Count expected vs actual
-MASTER_COUNT=$(redis-cli -p 7001 CLUSTER NODES | grep -c " master ")
+MASTER_COUNT=$(redis-cli -p 7001 CLUSTER NODES | grep -c master)
 echo "Primary count: $MASTER_COUNT"
 ```
 
@@ -76,8 +76,8 @@ done
 ## Detecting Disconnected Nodes
 
 ```bash
-# Nodes in PFAIL or FAIL state
-redis-cli -p 7001 CLUSTER NODES | grep -E "pfail|fail"
+# Nodes in PFAIL (fail?) or FAIL state
+redis-cli -p 7001 CLUSTER NODES | grep -E "fail\?|fail "
 ```
 
 Also check via CLUSTER SHARDS (Redis 7.0+):
@@ -90,6 +90,7 @@ redis-cli -p 7001 CLUSTER SHARDS
 ## Checking Link Status Between Nodes
 
 ```bash
+# Redis 7.0+
 redis-cli -p 7001 CLUSTER LINKS
 ```
 
