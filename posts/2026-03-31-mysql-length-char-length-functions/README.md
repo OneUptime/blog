@@ -37,7 +37,7 @@ SELECT LENGTH('こんにちは'), CHAR_LENGTH('こんにちは');
 -- 15, 5
 
 -- Emoji (4 bytes each in utf8mb4)
-SELECT LENGTH('Hello '), CHAR_LENGTH('Hello ');
+SELECT LENGTH('Hello 😊'), CHAR_LENGTH('Hello 😊');
 -- 10, 7
 ```
 
@@ -66,7 +66,7 @@ FROM users;
 |---|---|---|
 | alice | 11 | 11 |
 | tanaka | 7 | 21 |
-| smiley | 10 | 10 |
+| smiley | 9 | 9 |
 
 ## Enforcing character limits for input validation
 
