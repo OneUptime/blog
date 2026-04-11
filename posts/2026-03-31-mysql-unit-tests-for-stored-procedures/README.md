@@ -127,12 +127,17 @@ Wrap data-modifying test cases in a transaction to avoid polluting the database:
 DELIMITER $$
 CREATE PROCEDURE test_with_isolation()
 BEGIN
+  DECLARE v_last_id BIGINT;
+
   START TRANSACTION;
     -- Insert test data
     INSERT INTO orders (customer_id, total) VALUES (9999, 100.00);
-    -- Run assertions
-    CALL assert_not_null('Order inserted', LAST_INSERT_ID());
+    -- Capture values before rollback
+    SET v_last_id = LAST_INSERT_ID();
   ROLLBACK; -- Undo test data
+
+  -- Assert after rollback so the result is not rolled back
+  CALL assert_not_null('Order inserted', v_last_id);
 END$$
 DELIMITER ;
 ```
