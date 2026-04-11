@@ -110,10 +110,10 @@ Salt has built-in Redis execution modules:
 salt 'redis-*' redis.info
 
 # Get a specific key
-salt 'redis-server-01' redis.get mykey
+salt 'redis-server-01' redis.get_key mykey
 
 # Flush a specific database
-salt 'redis-server-01' redis.flushdb 0
+salt 'redis-server-01' redis.flushdb db=0
 
 # Get the number of keys in a database
 salt 'redis-server-01' redis.dbsize
@@ -155,7 +155,7 @@ salt-run state.orchestrate orch.redis_sentinel
 
 ## Monitor Compliance
 
-Use Salt's Audit module to verify Redis configuration compliance:
+Use Salt's remote execution and dry-run mode to verify Redis configuration compliance:
 
 ```bash
 # Check all Redis servers have correct maxmemory
