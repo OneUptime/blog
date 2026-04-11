@@ -100,7 +100,7 @@ Redis client libraries call `COMMAND` or `COMMAND INFO` at startup to understand
 redis-cli COMMAND INFO flushall
 ```
 
-This returns the `dangerous` flag among others, which is why `redis-cli` prompts for confirmation in interactive mode.
+The output includes the `@dangerous` ACL category among others, which is why `redis-cli` prompts for confirmation in interactive mode.
 
 ## Summary
 
