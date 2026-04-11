@@ -105,9 +105,9 @@ SELECT * FROM active_employee_details ORDER BY department, name;
 +----+-------+---------------+-------------+-----------+------------+
 | 1  | Alice | alice@co.com  | Engineering | 105000.00 | 2020-03-15 |
 | 5  | Eve   | eve@co.com    | Engineering |  98000.00 | 2023-02-28 |
-| 3  | Carol | carol@co.com  | Marketing   |  80000.00 | 2020-09-05 |
-| 2  | Bob   | bob@co.com    | Marketing   |  72000.00 | 2021-06-01 |
 | 4  | Dave  | dave@co.com   | Finance     |  88000.00 | 2022-01-10 |
+| 2  | Bob   | bob@co.com    | Marketing   |  72000.00 | 2021-06-01 |
+| 3  | Carol | carol@co.com  | Marketing   |  80000.00 | 2020-09-05 |
 +----+-------+---------------+-------------+-----------+------------+
 ```
 
