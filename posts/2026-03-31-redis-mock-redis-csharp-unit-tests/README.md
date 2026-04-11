@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, CSharp, Testing, Unit Test, Mock
 
-Description: Learn how to mock Redis in C# unit tests using FakeItEasy, Moq, or the dedicated MockRedis package to test Redis-dependent code without a live server.
+Description: Learn how to mock Redis in C# unit tests using Moq and StackExchange.Redis to test Redis-dependent code without a live server.
 
 ---
 
-Testing Redis-dependent code without a running Redis server keeps unit tests fast and isolated. In .NET, you have several options: mock the `IDatabase` interface with Moq, use `StackExchange.Redis.Extensions.Fake`, or use the dedicated `fakeredis` approach.
+Testing Redis-dependent code without a running Redis server keeps unit tests fast and isolated. In .NET, you have several options: mock the `IDatabase` interface with Moq, mock `IConnectionMultiplexer` to control database creation, or abstract Redis behind your own interface.
 
 ## Option 1 - Mocking IDatabase with Moq
 
@@ -79,28 +79,29 @@ public class CacheServiceTests
 
         _mockDb.Verify(db => db.StringSetAsync(
             "user:42", "alice", TimeSpan.FromMinutes(10),
-            It.IsAny<bool>(), It.IsAny<When>(), CommandFlags.None), Times.Once);
+            It.IsAny<When>(), It.IsAny<CommandFlags>()), Times.Once);
     }
 }
 ```
 
-## Option 2 - Using MockRedis (MINIREDIS-style in-memory)
+## Option 2 - Mocking IConnectionMultiplexer
 
-The `moq.contrib.redis` package provides an in-memory fake:
-
-```bash
-dotnet add package moq.contrib.redis
-```
+When your code depends on `IConnectionMultiplexer` instead of `IDatabase`, mock the multiplexer to return a mocked database:
 
 ```csharp
 using Moq;
 using StackExchange.Redis;
 
-var mock = new Mock<IConnectionMultiplexer>();
-mock.SetupDatabase(); // adds in-memory behavior
+var mockMultiplexer = new Mock<IConnectionMultiplexer>();
+var mockDb = new Mock<IDatabase>();
 
-var db = mock.Object.GetDatabase();
-await db.StringSetAsync("key", "value");
+mockMultiplexer.Setup(m => m.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+               .Returns(mockDb.Object);
+
+mockDb.Setup(db => db.StringGetAsync("key", CommandFlags.None))
+      .ReturnsAsync("value");
+
+var db = mockMultiplexer.Object.GetDatabase();
 var val = await db.StringGetAsync("key");
 Console.WriteLine(val); // value
 ```
