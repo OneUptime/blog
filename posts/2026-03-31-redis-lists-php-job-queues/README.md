@@ -43,7 +43,7 @@ while (true) {
     // Blocks up to 30 seconds for a job
     $result = $redis->brPop(['email:queue', 'sms:queue'], 30);
 
-    if ($result === null) {
+    if ($result === false) {
         // Timeout - loop again
         continue;
     }
@@ -76,7 +76,7 @@ function dequeueReliable(Redis $redis, string $queue, string $processingQueue): 
 function ackJob(Redis $redis, string $processingQueue, array $job): void
 {
     // Remove from processing after successful completion
-    $redis->lRem($processingQueue, 1, json_encode($job));
+    $redis->lRem($processingQueue, json_encode($job), 1);
 }
 
 $job = dequeueReliable($redis, 'email:queue', 'email:processing');
