@@ -36,7 +36,7 @@ redis-cli INFO server | grep multiplexing_api
 epoll uses a kernel-side data structure to track interest in file descriptors. Redis calls three system calls:
 
 ```text
-epoll_create1() - create the epoll instance once at startup
+epoll_create()  - create the epoll instance once at startup
 epoll_ctl()     - add/modify/remove file descriptors
 epoll_wait()    - block until one or more FDs are ready
 ```
@@ -59,19 +59,19 @@ Redis runs a tight loop:
 ```c
 // Simplified ae.c event loop
 while (server.running) {
-    // 1. Process time events (expiry, cron jobs)
-    processTimeEvents();
-
-    // 2. Wait for socket events (with timeout)
+    // 1. Wait for socket events (timeout derived from nearest time event)
     numEvents = epoll_wait(epfd, events, MAX_EVENTS, timeout_ms);
 
-    // 3. Dispatch each ready socket to its handler
+    // 2. Dispatch each ready socket to its handler
     for (int i = 0; i < numEvents; i++) {
         if (events[i].events & EPOLLIN)
             readHandler(events[i].data.fd);
         if (events[i].events & EPOLLOUT)
             writeHandler(events[i].data.fd);
     }
+
+    // 3. Process time events (expiry, cron jobs)
+    processTimeEvents();
 }
 ```
 
