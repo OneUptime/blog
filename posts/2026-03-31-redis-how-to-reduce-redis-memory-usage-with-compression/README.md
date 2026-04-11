@@ -102,9 +102,9 @@ def get_lz4(key: str) -> dict | None:
     return json.loads(lz4.frame.decompress(raw))
 ```
 
-## Using Redis Hash Ziplist Encoding
+## Using Redis Hash Listpack Encoding
 
-Redis automatically uses a compact ziplist encoding for small hashes. This provides significant memory savings over full hash tables.
+Redis automatically uses a compact listpack encoding for small hashes. This provides significant memory savings over full hash tables.
 
 Configure the thresholds in redis.conf:
 
@@ -190,7 +190,6 @@ Compare memory usage before and after:
 
 ```bash
 redis-cli INFO memory | grep used_memory_human
-redis-cli DEBUG SLEEP 0
 redis-cli OBJECT ENCODING somekey
 redis-cli OBJECT FREQ somekey
 redis-cli OBJECT IDLETIME somekey
