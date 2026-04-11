@@ -16,7 +16,7 @@ Description: pt-online-schema-change is a Percona tool that performs ALTER TABLE
 
 1. Creates a new table `_tablename_new` with the desired schema.
 2. Adds triggers on the original table - AFTER INSERT, AFTER UPDATE, and AFTER DELETE - that replicate changes to the new table.
-3. Copies existing rows in small chunks using a `SELECT ... INTO` loop.
+3. Copies existing rows in small chunks using an `INSERT ... SELECT` loop.
 4. Once the copy is complete, atomically renames the original table to `_tablename_old` and the new table to the original name.
 5. Drops the old table (or leaves it for manual cleanup).
 
@@ -43,8 +43,7 @@ pt-online-schema-change \
   --host=db.example.com \
   --user=admin \
   --password=secret \
-  --database=myapp \
-  --table=users \
+  D=myapp,t=users \
   --execute
 ```
 
