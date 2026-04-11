@@ -154,4 +154,4 @@ def get_leaderboard(quiz_id: str, top_n: int = 10) -> list:
 
 ## Summary
 
-A Redis live quiz application uses Pub/Sub to deliver synchronized questions to all participants, Lua scripts to atomically validate timing and prevent duplicate answers, and sorted sets for instant real-time leaderboards. Speed-based scoring and TTL-protected answer windows are handled entirely within Redis without additional backend logic.
+A Redis live quiz application uses Pub/Sub to deliver synchronized questions to all participants, Lua scripts to atomically validate timing and prevent duplicate answers, and sorted sets for instant real-time leaderboards. Speed-based scoring and time-limited answer windows are handled entirely within Redis without additional backend logic.
