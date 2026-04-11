@@ -67,10 +67,12 @@ MySQL 8.0 uses a component-based error logging system. The log includes:
 -- View current error log components
 SHOW VARIABLES LIKE 'log_error_services';
 
--- Use JSON format for structured logging
+-- Install and use JSON format for structured logging
+INSTALL COMPONENT 'file://component_log_sink_json';
 SET GLOBAL log_error_services = 'log_filter_internal; log_sink_json';
 
--- Use syslog instead of file
+-- Install and use syslog instead of file
+INSTALL COMPONENT 'file://component_log_sink_syseventlog';
 SET GLOBAL log_error_services = 'log_filter_internal; log_sink_syseventlog';
 ```
 
@@ -83,8 +85,8 @@ SET GLOBAL log_error_services = 'log_filter_internal; log_sink_syseventlog';
 [ERROR] [MY-010262] Can't start server: Bind on TCP/IP port: Address already in use
 -- Another process is already using port 3306
 
-[ERROR] [MY-011971] Redo log encryption is enabled. Table id: 5, space id: 4
--- Normal InnoDB message when encryption is active
+[Note] [MY-011971] Redo log encryption is enabled. Table id: 5, space id: 4
+-- Normal InnoDB note when encryption is active
 
 [Warning] [MY-010068] CA certificate ... is self signed.
 -- SSL certificate warning (non-fatal)
