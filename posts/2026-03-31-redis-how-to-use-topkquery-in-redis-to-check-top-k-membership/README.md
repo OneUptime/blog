@@ -124,7 +124,7 @@ print(page)
 
 | Operation | Use Case |
 |-----------|----------|
-| TOPK.QUERY | Check if specific items are trending (O(K)) |
+| TOPK.QUERY | Check if specific items are trending (O(n) where n = items queried) |
 | TOPK.LIST | Get the full ranked list of all top items (O(K)) |
 
 ```bash
@@ -156,4 +156,4 @@ def check_trending():
 
 ## Summary
 
-`TOPK.QUERY` provides O(K) membership testing for Redis Top-K structures, returning 1 for items currently in the Top-K and 0 for those that are not. It is ideal for adding trending indicators to UI components, implementing personalization logic, and making routing decisions based on item popularity. Query multiple items in a single call for efficiency, and use `TOPK.LIST` when you need to discover all top items rather than check specific ones.
+`TOPK.QUERY` provides O(n) membership testing (where n is the number of items queried) for Redis Top-K structures, returning 1 for items currently in the Top-K and 0 for those that are not. It is ideal for adding trending indicators to UI components, implementing personalization logic, and making routing decisions based on item popularity. Query multiple items in a single call for efficiency, and use `TOPK.LIST` when you need to discover all top items rather than check specific ones.
