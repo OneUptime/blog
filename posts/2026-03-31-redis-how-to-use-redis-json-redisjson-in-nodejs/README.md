@@ -102,7 +102,7 @@ class JsonRedis {
 
   async arrLen(key, path) {
     const result = await redis.call('JSON.ARRLEN', key, path);
-    return JSON.parse(result)[0];
+    return result[0];
   }
 }
 
@@ -164,13 +164,12 @@ async function advancedOperations() {
   const prices = await redis.call('JSON.GET', 'store:1', '$.products[?(@.inStock==true)].price');
   console.log('In-stock prices:', JSON.parse(prices)); // [999, 29]
 
-  // Update all prices (increase by 10%)
-  // Individual field updates require knowing the index
+  // Increase first product's price by 100
   await redis.call('JSON.NUMINCRBY', 'store:1', '$.products[0].price', 100);
 
   // Get count of products array
   const count = await redis.call('JSON.ARRLEN', 'store:1', '$.products');
-  console.log('Product count:', JSON.parse(count)[0]); // 3
+  console.log('Product count:', count[0]); // 3
 }
 
 advancedOperations();
