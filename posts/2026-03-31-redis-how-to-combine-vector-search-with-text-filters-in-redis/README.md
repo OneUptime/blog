@@ -24,7 +24,7 @@ FT.CREATE idx:hybrid
     in_stock TAG
     price NUMERIC SORTABLE
     published_at NUMERIC SORTABLE
-    embedding VECTOR HNSW 8
+    embedding VECTOR HNSW 10
       TYPE FLOAT32
       DIM 384
       DISTANCE_METRIC COSINE
