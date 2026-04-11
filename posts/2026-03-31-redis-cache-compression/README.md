@@ -85,8 +85,6 @@ lz4 compresses and decompresses 3-5x faster than zlib at slightly lower compress
 ## Measuring Compression Savings
 
 ```python
-import sys
-
 def compression_stats(value: dict) -> dict:
     raw = json.dumps(value).encode("utf-8")
     zlib_compressed = zlib.compress(raw, level=6)
