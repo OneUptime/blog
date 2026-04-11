@@ -40,7 +40,13 @@ GROUP BY format_detected;
 
 ## Converting Mixed Formats to a Single Standard
 
-Use `STR_TO_DATE` with the correct format string for each variant:
+Use `STR_TO_DATE` with the correct format string for each variant. First add a column to hold the converted values:
+
+```sql
+ALTER TABLE orders ADD COLUMN order_date_clean DATE;
+```
+
+Then convert each format:
 
 ```sql
 -- Convert MM/DD/YYYY to DATE
