@@ -12,7 +12,7 @@ Description: Learn how to use MEDIUMBLOB in MySQL to store binary data up to 16 
 
 `MEDIUMBLOB` is a binary large object type that stores up to 16,777,215 bytes (16 MB) of binary data. It fills the gap between `BLOB` (64 KB) and `LONGBLOB` (4 GB) in MySQL's BLOB family.
 
-Like all BLOB types, `MEDIUMBLOB` is stored off-page and does not contribute to the 65,535-byte per-row limit.
+Like all BLOB types, `MEDIUMBLOB` data is stored off-page in InnoDB (when using the default DYNAMIC row format). BLOB columns contribute only 9 to 12 bytes toward the 65,535-byte per-row limit because their contents are stored separately from the rest of the row.
 
 ## Declaring a MEDIUMBLOB Column
 
@@ -76,7 +76,7 @@ LIMIT 10;
 
 ## Streaming Large Values
 
-For files near the 16 MB limit, fetch data in chunks from your application to avoid loading everything into memory at once:
+For files near the 16 MB limit, you can write data to disk in chunks. Note that `fetchone()` still loads the full blob into memory; the chunked writing helps manage disk I/O:
 
 ```python
 cursor.execute(
@@ -106,7 +106,7 @@ SHOW VARIABLES LIKE 'max_allowed_packet';
 ```
 
 ```bash
-# Or set at session level before a large insert
+# Or set the client-side max packet size when connecting
 mysql -u root -p mydb --max_allowed_packet=20M
 ```
 
