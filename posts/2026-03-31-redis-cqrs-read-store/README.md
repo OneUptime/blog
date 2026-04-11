@@ -31,7 +31,7 @@ def create_order(order_id, user_id, items, total):
     db.execute("INSERT INTO orders ...", order_id, user_id, items, total)
     # Publish event
     event = {"type": "order.created", "order_id": order_id,
-             "user_id": user_id, "items": items, "total": total}
+             "user_id": user_id, "items": json.dumps(items), "total": total}
     r.xadd("events:orders", event)
 ```
 
@@ -58,7 +58,10 @@ Consume events and project:
 
 ```python
 def run_projection_worker():
-    r.xgroup_create("events:orders", "projection-workers", id="$", mkstream=True)
+    try:
+        r.xgroup_create("events:orders", "projection-workers", id="$", mkstream=True)
+    except redis.exceptions.ResponseError:
+        pass  # Group already exists
     while True:
         messages = r.xreadgroup("projection-workers", "worker-1",
                                 {"events:orders": ">"}, count=100, block=1000)
