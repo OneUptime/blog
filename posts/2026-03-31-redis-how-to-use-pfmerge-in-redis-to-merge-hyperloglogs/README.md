@@ -89,7 +89,7 @@ def build_monthly_rollup(year: int, month: int):
     """Merge weekly HLLs into a monthly aggregate."""
     # Collect week keys that fall within the month
     week_keys = [
-        f"visitors:week:2026-0{month}-{day:02d}"
+        f"visitors:week:{year}-{month:02d}-{day:02d}"
         for day in range(1, 32, 7)
         if day <= 28
     ]
@@ -128,7 +128,7 @@ PFMERGE users:global \
   users:region:eu-west
 
 PFCOUNT users:global
-# (integer) ~7
+# (integer) 7
 ```
 
 ## Merging Into an Existing HyperLogLog
@@ -136,7 +136,7 @@ PFCOUNT users:global
 `PFMERGE` can merge into a key that already has data. The destination is the union of itself and all source keys:
 
 ```bash
-PFADD yesterday-visitors user:101 user:102
+PFADD cumulative-visitors user:101 user:102
 PFADD today-visitors user:103 user:104
 
 # Append today's visitors into the cumulative total
