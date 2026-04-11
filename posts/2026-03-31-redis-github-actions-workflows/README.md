@@ -53,12 +53,12 @@ jobs:
 
 ## Redis with Password Authentication
 
-To run Redis with a password in CI:
+To run Redis with a password in CI, use the `bitnami/redis` image which supports password configuration through environment variables:
 
 ```yaml
 services:
   redis:
-    image: redis:7.2-alpine
+    image: bitnami/redis:7.2
     ports:
     - 6379:6379
     options: >-
@@ -120,7 +120,7 @@ def test_redis_set_get(redis_client):
 
 ## Redis Cluster Simulation
 
-For testing cluster-specific behavior, use Docker Compose via a setup step:
+For testing cluster-specific behavior, use Docker commands in a setup step:
 
 ```yaml
 - name: Start Redis Cluster
@@ -146,6 +146,9 @@ For testing cluster-specific behavior, use Docker Compose via a setup step:
 You can also use Redis to cache build metadata across workflow runs using `actions/cache` for files, but for runtime data caching within a job, use the service container directly:
 
 ```yaml
+- name: Install Redis CLI
+  run: sudo apt-get update && sudo apt-get install -y redis-tools
+
 - name: Seed Redis test data
   run: |
     redis-cli -h localhost set app:config '{"version":"1.0"}' EX 3600
