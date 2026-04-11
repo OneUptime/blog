@@ -57,17 +57,17 @@ CRDTs resolve conflicts automatically without human intervention:
 ### Counters (CRDT Increment)
 
 ```bash
-# In US-East
+# In US-East (counter is at 100)
 INCR page:views:home
 # 101
 
-# Simultaneously in EU-West
+# Simultaneously in EU-West (counter is also at 100)
 INCR page:views:home
 # 101  (both regions think it's 101)
 
 # After sync, both regions see
 GET page:views:home
-# 202  (CRDT merges by summing increments)
+# 102  (CRDT merges by summing independent increments: +1 and +1)
 ```
 
 ### Sets (CRDT Union)
@@ -112,7 +112,7 @@ region_us = redis.Redis(host='redis-us.example.com', port=6379)
 region_eu = redis.Redis(host='redis-eu.example.com', port=6379)
 
 def write_with_timestamp(key, value, region):
-    """Write with a vector clock timestamp for conflict resolution."""
+    """Write with a wall clock timestamp for conflict resolution."""
     data = json.dumps({
         'value': value,
         'ts': time.time(),
@@ -149,7 +149,7 @@ def update_counter_globally(key, increment):
 def get_counter(key):
     """Read from local region - may be slightly behind other regions."""
     local_redis = get_local_region_redis()
-    return local_redis.get(key) or 0
+    return int(local_redis.get(key) or 0)
 ```
 
 ## Monitoring Replication Health
