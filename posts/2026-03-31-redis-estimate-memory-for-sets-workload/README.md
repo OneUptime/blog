@@ -10,7 +10,7 @@ Description: Learn how to estimate Redis memory for set workloads by understandi
 
 Redis sets support fast membership testing, intersection, and union operations. Memory consumption varies dramatically based on whether elements are small integers or arbitrary strings, due to encoding differences.
 
-## Two Encodings for Sets
+## Three Encodings for Sets
 
 ### Intset Encoding (Very Efficient)
 
@@ -28,7 +28,7 @@ Memory cost for intset:
 Base overhead:  ~16 bytes
 Per 64-bit int: ~8 bytes
 
-1000 integer members: 16 + (1000 * 8) = ~8,016 bytes
+500 integer members: 16 + (500 * 8) = ~4,016 bytes
 ```
 
 ### Hashtable Encoding (General)
@@ -85,7 +85,7 @@ print(estimate_set_memory(100_000, 20, 15))
 
 # 100,000 user ID sets, 500 integer members each
 print(estimate_set_memory(100_000, 500, 0, all_integers=True))
-# {'encoding': 'intset', 'bytes_per_set': 4016, 'total_mb': 383.1}
+# {'encoding': 'intset', 'bytes_per_set': 4016, 'total_mb': 383.0}
 
 # 100,000 tag sets, 300 string tags each (10 bytes avg)
 print(estimate_set_memory(100_000, 300, 10))
@@ -96,7 +96,7 @@ print(estimate_set_memory(100_000, 300, 10))
 
 ```bash
 # Create test sets and measure
-redis-cli SADD test:intset $(seq 1 1000 | tr '\n' ' ')
+redis-cli SADD test:intset $(seq 1 500 | tr '\n' ' ')
 redis-cli MEMORY USAGE test:intset
 redis-cli OBJECT ENCODING test:intset
 
