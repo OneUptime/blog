@@ -163,7 +163,7 @@ else:
 | Approach | Command | Use Case |
 |---|---|---|
 | Single latest sample | `TS.GET key` | Dashboards, alerts |
-| Latest N samples | `TS.RANGE key - + COUNT N` | Sparklines, recent history |
+| Latest N samples | `TS.REVRANGE key - + COUNT N` | Sparklines, recent history |
 | Latest across many keys | `TS.MGET FILTER label=value` | Multi-host dashboards |
 
 ## Summary
