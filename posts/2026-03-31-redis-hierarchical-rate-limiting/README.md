@@ -38,6 +38,7 @@ local window = tonumber(ARGV[#KEYS + 1])
 local now = tonumber(redis.call('TIME')[1])
 local window_start = now - window
 
+-- First pass: clean old entries and check all limits
 for i = 1, #KEYS do
     local key = KEYS[i]
     local limit = tonumber(ARGV[i])
@@ -51,8 +52,11 @@ for i = 1, #KEYS do
     if count >= limit then
         return i  -- Return which level was exceeded
     end
+end
 
-    -- Add this request
+-- Second pass: all limits passed, add the request to all levels
+for i = 1, #KEYS do
+    local key = KEYS[i]
     redis.call('ZADD', key, now, now .. '-' .. math.random(1, 1000000))
     redis.call('EXPIRE', key, window)
 end
@@ -106,7 +110,8 @@ class HierarchicalRateLimiter:
 ## Flask Middleware Example
 
 ```python
-from flask import Flask, request, jsonify, g
+import redis
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 r = redis.Redis(host='localhost', decode_responses=True)
