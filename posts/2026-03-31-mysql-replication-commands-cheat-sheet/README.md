@@ -27,8 +27,11 @@ SHOW SLAVE STATUS\G
 ## Setting Up a Replica (Classic Binary Log)
 
 ```sql
--- On source: get binary log position
+-- On source: get binary log position (MySQL 8.2+)
 SHOW BINARY LOG STATUS;
+
+-- Legacy syntax (MySQL 8.0)
+-- SHOW MASTER STATUS;
 -- Note: File and Position values
 
 -- On replica: configure and start
@@ -111,7 +114,6 @@ RESET REPLICA ALL;
 ```sql
 CREATE USER 'repl_user'@'%' IDENTIFIED BY 'strong_pass';
 GRANT REPLICATION SLAVE ON *.* TO 'repl_user'@'%';
-FLUSH PRIVILEGES;
 ```
 
 ## Delayed Replication
