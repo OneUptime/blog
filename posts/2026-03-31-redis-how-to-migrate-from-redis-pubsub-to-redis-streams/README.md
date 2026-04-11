@@ -93,7 +93,6 @@ After (Streams consumer):
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379)
 
