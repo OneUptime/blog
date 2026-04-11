@@ -14,7 +14,7 @@ Binary log position-based replication is the traditional MySQL replication metho
 
 ## How It Works
 
-The source server writes every committed transaction to its binary log files (e.g., `mysql-bin.000001`, `mysql-bin.000002`). Each event in the log has a byte offset. The replica stores the current source log file name and position in a file called `relay-log.info` (or in the `mysql.slave_relay_log_info` table).
+The source server writes every committed transaction to its binary log files (e.g., `mysql-bin.000001`, `mysql-bin.000002`). Each event in the log has a byte offset. The replica's I/O thread stores the current source log file name and read position in a file called `master.info` (or in the `mysql.slave_master_info` table in MySQL 8.0+).
 
 When the replica SQL thread applies a transaction, it advances the stored position. If the replica disconnects and reconnects, it sends the stored file name and position to the source, which begins streaming from that point.
 
@@ -76,7 +76,7 @@ This is why GTID-based replication (which uses `SOURCE_AUTO_POSITION = 1`) is pr
 
 Position-based replication remains appropriate when:
 - Your MySQL version is older than 5.6 where GTIDs were introduced
-- You run statements that are incompatible with GTID mode (`CREATE TABLE ... SELECT`)
+- You run statements that are incompatible with GTID enforcement (note that MySQL 8.0.21 lifted many prior restrictions, including `CREATE TABLE ... SELECT`)
 - You need fine-grained control over exactly which transactions to replicate (e.g., skipping specific events)
 
 ## Summary
