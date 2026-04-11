@@ -10,7 +10,7 @@ Description: Learn how to use the LCS command in Redis to find the longest commo
 
 ## Introduction
 
-`LCS` (Longest Common Subsequence) was introduced in Redis 7.0. It computes the longest common subsequence between two strings - either provided directly as key names whose string values are compared. This is useful for similarity scoring, diff tools, DNA sequence analysis, and plagiarism detection.
+`LCS` (Longest Common Subsequence) was introduced in Redis 7.0. It computes the longest common subsequence between the string values stored at two keys. This is useful for similarity scoring, diff tools, DNA sequence analysis, and plagiarism detection.
 
 Note: LCS computes a common *subsequence* (characters do not need to be contiguous) not a common *substring* (contiguous characters only).
 
@@ -97,7 +97,6 @@ Each match now includes a third element: the length of that match segment.
             2) (integer) 7
          2) 1) (integer) 5
             2) (integer) 8
-         3) (integer) 4
 3) "len"
 4) (integer) 6
 ```
@@ -126,7 +125,7 @@ SET doc1 "the quick brown fox jumps over the lazy dog"
 SET doc2 "the fast brown fox leaped over the sleepy dog"
 
 LCS doc1 doc2 LEN
-# (integer) 35
+# (integer) 32
 ```
 
 ```python
