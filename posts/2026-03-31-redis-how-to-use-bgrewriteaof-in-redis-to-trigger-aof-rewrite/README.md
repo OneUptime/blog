@@ -103,38 +103,40 @@ trigger_aof_rewrite()
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
+(async () => {
+  const client = createClient();
+  await client.connect();
 
-async function rewriteAOF() {
-  // Check AOF status first
-  const infoBefore = await client.info('persistence');
-  console.log('Starting AOF rewrite...');
+  async function rewriteAOF() {
+    // Check AOF status first
+    const infoBefore = await client.info('persistence');
+    console.log('Starting AOF rewrite...');
 
-  // Trigger the rewrite
-  await client.bgRewriteAof();
-  console.log('BGREWRITEAOF started');
+    // Trigger the rewrite
+    await client.bgRewriteAof();
+    console.log('BGREWRITEAOF started');
 
-  // Poll for completion
-  let attempts = 0;
-  while (attempts < 60) {
-    await new Promise(r => setTimeout(r, 1000));
-    const info = await client.info('persistence');
-    const inProgress = info.includes('aof_rewrite_in_progress:1');
+    // Poll for completion
+    let attempts = 0;
+    while (attempts < 60) {
+      await new Promise(r => setTimeout(r, 1000));
+      const info = await client.info('persistence');
+      const inProgress = info.includes('aof_rewrite_in_progress:1');
 
-    if (!inProgress) {
-      console.log('AOF rewrite completed');
-      return;
+      if (!inProgress) {
+        console.log('AOF rewrite completed');
+        return;
+      }
+
+      attempts++;
+      console.log(`Rewrite in progress (${attempts}s elapsed)`);
     }
 
-    attempts++;
-    console.log(`Rewrite in progress (${attempts}s elapsed)`);
+    throw new Error('AOF rewrite timed out');
   }
 
-  throw new Error('AOF rewrite timed out');
-}
-
-await rewriteAOF();
+  await rewriteAOF();
+})();
 ```
 
 ## Checking AOF Status
@@ -190,7 +192,7 @@ CONFIG SET auto-aof-rewrite-min-size 128mb
 |---------|-------------|--------|
 | Output | Compacted AOF file | RDB snapshot |
 | Purpose | Shrink AOF | Create point-in-time backup |
-| Required | AOF enabled | RDB enabled |
+| Required | AOF enabled | Always available |
 | Frequency | As needed / auto | Periodic or manual |
 
 ## Memory Impact
@@ -198,7 +200,7 @@ CONFIG SET auto-aof-rewrite-min-size 128mb
 Like `BGSAVE`, `BGREWRITEAOF` uses `fork()`, which can cause temporary memory spikes due to Copy-on-Write. Check memory stats after rewriting:
 
 ```bash
-INFO memory
+INFO persistence
 # Look for: aof_rewrite_buffer_length (buffer size during rewrite)
 ```
 
