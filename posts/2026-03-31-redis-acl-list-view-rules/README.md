@@ -79,8 +79,8 @@ ACL LIST
 
 ### Count total users
 
-```redis
--- From redis-cli
+```bash
+# Count users from the command line
 redis-cli ACL LIST | wc -l
 ```
 
