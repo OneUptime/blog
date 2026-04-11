@@ -60,12 +60,12 @@ redis-cli --cluster reshard 192.168.1.10:7001 -a clusterpassword
 ```
 
 Redis CLI prompts for:
-1. How many slots to move: e.g., `1365` (to distribute evenly across 4 nodes)
+1. How many slots to move: e.g., `4096` (to distribute 16384 slots evenly across 4 nodes)
 2. The ID of the receiving node: the new node's ID from `CLUSTER NODES`
 3. Source node IDs: type `all` to take slots from all current primaries proportionally
 
 ```text
-How many slots do you want to move (from 1 to 16384)? 1365
+How many slots do you want to move (from 1 to 16384)? 4096
 What is the receiving node ID? <new-node-id>
 Please enter all the source node IDs.
   Type 'all' to use all the nodes as source nodes for the hash slots.
@@ -170,7 +170,7 @@ redis-cli --cluster check 192.168.1.10:7001 -a clusterpassword
 M: a1b2c3... 192.168.1.10:7001
    slots:[0-4095] (4096 slots) master
 M: new-id... 192.168.1.13:7007
-   slots:[4096-5460] (1365 slots) master
+   slots:[0-1364],[5462-6826],[10923-12288] (4096 slots) master
 ...
 [OK] All nodes agree about slots configuration.
 [OK] All 16384 slots covered.
