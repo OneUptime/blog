@@ -94,7 +94,7 @@ Look for `doc_flags: deprecated` in the output. `GETSET` was deprecated in Redis
 | Complexity | No | Yes |
 | Arguments | No | Yes (detailed) |
 | Since version | No | Yes |
-| Available from | Redis 1.0 | Redis 7.0 |
+| Available from | Redis 2.8.13 | Redis 7.0 |
 
 Use `COMMAND INFO` for cluster routing and key detection; use `COMMAND DOCS` for human-readable documentation.
 
