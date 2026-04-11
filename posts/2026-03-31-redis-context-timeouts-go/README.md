@@ -17,6 +17,7 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
     "log"
     "time"
@@ -33,7 +34,7 @@ func main() {
     defer cancel()
 
     val, err := rdb.Get(ctx, "my:key").Result()
-    if err == context.DeadlineExceeded {
+    if errors.Is(err, context.DeadlineExceeded) {
         log.Println("Redis GET timed out")
         return
     }
@@ -87,7 +88,7 @@ rdb := redis.NewClient(&redis.Options{
 Per-command context timeout overrides the client's global timeout when shorter:
 
 ```go
-// This command has a 100ms limit regardless of client ReadTimeout
+// This command uses a 100ms context timeout, shorter than the 2s client ReadTimeout
 ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 defer cancel()
 rdb.Get(ctx, "fast:key")
