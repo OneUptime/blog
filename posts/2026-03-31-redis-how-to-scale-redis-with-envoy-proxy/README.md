@@ -48,7 +48,7 @@ static_resources:
   - name: redis_cluster
     connect_timeout: 1s
     type: STRICT_DNS
-    lb_policy: MAGLEV
+    lb_policy: ROUND_ROBIN
     load_assignment:
       cluster_name: redis_cluster
       endpoints:
@@ -60,9 +60,9 @@ static_resources:
                 port_value: 6379
 ```
 
-## Read/Write Splitting with Multiple Upstream Clusters
+## Read/Write Splitting with Redis Cluster
 
-Route writes to the primary and reads to replicas:
+Route writes to the primary and reads to replicas using Envoy's Redis Cluster support. The `read_policy: REPLICA` setting requires the `envoy.clusters.redis` cluster type, which automatically discovers the cluster topology via `CLUSTER SLOTS` commands:
 
 ```yaml
 static_resources:
@@ -80,43 +80,39 @@ static_resources:
           stat_prefix: redis
           settings:
             op_timeout: 5s
+            enable_redirection: true
             read_policy: REPLICA    # reads go to replicas
           prefix_routes:
             catch_all_route:
-              cluster: redis_primary
+              cluster: redis_cluster
 
   clusters:
-  - name: redis_primary
+  - name: redis_cluster
     connect_timeout: 1s
-    type: STRICT_DNS
-    lb_policy: ROUND_ROBIN
+    cluster_type:
+      name: envoy.clusters.redis
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.redis.v3.RedisClusterConfig
+        cluster_refresh_rate: 30s
+        cluster_refresh_timeout: 0.5s
     load_assignment:
-      cluster_name: redis_primary
+      cluster_name: redis_cluster
       endpoints:
       - lb_endpoints:
         - endpoint:
             address:
               socket_address:
-                address: redis-primary.default.svc.cluster.local
-                port_value: 6379
-
-  - name: redis_replica
-    connect_timeout: 1s
-    type: STRICT_DNS
-    lb_policy: ROUND_ROBIN
-    load_assignment:
-      cluster_name: redis_replica
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: redis-replica-0.default.svc.cluster.local
+                address: redis-node-0.default.svc.cluster.local
                 port_value: 6379
         - endpoint:
             address:
               socket_address:
-                address: redis-replica-1.default.svc.cluster.local
+                address: redis-node-1.default.svc.cluster.local
+                port_value: 6379
+        - endpoint:
+            address:
+              socket_address:
+                address: redis-node-2.default.svc.cluster.local
                 port_value: 6379
 ```
 
@@ -191,11 +187,11 @@ spec:
 # View Redis proxy stats
 curl http://localhost:9901/stats | grep redis
 
-# Example metrics available:
-# redis.egress_redis.downstream_cx_total
-# redis.egress_redis.command.get.total
-# redis.egress_redis.command.set.total
-# redis.egress_redis.command.get.latency (histogram)
+# Example metrics available (prefixed with redis.<stat_prefix>):
+# redis.redis.downstream_cx_total
+# redis.redis.command.get.total
+# redis.redis.command.set.total
+# redis.redis.command.get.latency (histogram)
 ```
 
 ## Summary
