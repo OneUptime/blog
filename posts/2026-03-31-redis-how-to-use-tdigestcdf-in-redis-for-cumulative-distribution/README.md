@@ -10,7 +10,7 @@ Description: Learn how to use TDIGEST.CDF in Redis to compute the fraction of va
 
 ## What Is TDIGEST.CDF?
 
-`TDIGEST.CDF` computes the Cumulative Distribution Function (CDF) for a T-Digest structure. Given a value, it returns the fraction of all inserted samples that are less than or equal to that value.
+`TDIGEST.CDF` computes the Cumulative Distribution Function (CDF) for a T-Digest structure. Given a value, it returns an estimation of the fraction of observations smaller than that value (plus half the observations equal to it).
 
 This is the inverse of `TDIGEST.QUANTILE`: while QUANTILE asks "what value is at percentile X?", CDF asks "what percentile does value X correspond to?"
 
@@ -51,14 +51,14 @@ TDIGEST.ADD checkout:latency 110 89 94 88 77 99 490 512 480 503 495 1200 980
 
 # What percentage of checkout requests complete in under 200ms?
 TDIGEST.CDF checkout:latency 200
-# 0.8 = 80% - SLA requires 95%, so we're below target
+# 0.75 = 75% - SLA requires 95%, so we're below target
 
 # Check multiple thresholds
 TDIGEST.CDF checkout:latency 100 200 500 1000
-# 1) "0.55"  - 55% under 100ms
-# 2) "0.8"   - 80% under 200ms
-# 3) "0.93"  - 93% under 500ms
-# 4) "0.97"  - 97% under 1000ms
+# 1) "0.68"  - 68% under 100ms
+# 2) "0.75"  - 75% under 200ms
+# 3) "0.86"  - 86% under 500ms
+# 4) "0.96"  - 96% under 1000ms
 ```
 
 ## Anomaly Detection with CDF
@@ -76,7 +76,7 @@ TDIGEST.CDF baseline:cpu_usage 95
 
 # Threshold: flag if value is above the 95th historical percentile
 TDIGEST.CDF baseline:cpu_usage 60
-# Returns: 0.99 - 60% CPU is at the 99th percentile historically
+# Returns: 1.0 - 60% CPU is above all historical observations (max was 55%)
 ```
 
 ## Python Example: Real-Time Anomaly Detection
@@ -141,9 +141,11 @@ async function buildCDFHistogram(key, thresholds) {
     return histogram;
 }
 
-const thresholds = [50, 100, 200, 500, 1000, 2000];
-const cdf = await buildCDFHistogram("api:latency", thresholds);
-console.table(cdf);
+(async () => {
+    const thresholds = [50, 100, 200, 500, 1000, 2000];
+    const cdf = await buildCDFHistogram("api:latency", thresholds);
+    console.table(cdf);
+})();
 ```
 
 ## Comparing CDF vs QUANTILE
@@ -174,7 +176,7 @@ TDIGEST.CDF latency 999999
 # Empty T-Digest
 TDIGEST.CREATE empty COMPRESSION 100
 TDIGEST.CDF empty 100
-# Returns: (nil) - no data
+# Returns: nan - no data
 ```
 
 ## Summary
