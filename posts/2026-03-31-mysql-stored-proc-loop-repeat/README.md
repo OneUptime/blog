@@ -121,7 +121,7 @@ SELECT * FROM fibonacci ORDER BY position;
 
 ## LOOP with ITERATE (continue)
 
-`ITERATE` skips the rest of the current iteration and jumps back to the loop condition check.
+`ITERATE` skips the rest of the current iteration and jumps back to the beginning of the loop.
 
 ```sql
 DELIMITER $$
