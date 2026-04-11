@@ -15,7 +15,7 @@ An A/B testing framework needs three capabilities:
 2. Conversion tracking per variant
 3. Real-time result computation (conversion rates per variant)
 
-Redis Hashes store experiment config, Sorted Sets can distribute traffic, and HyperLogLog or counters track impressions and conversions.
+Redis Hashes store experiment config and variant assignments, and simple counters track impressions and conversions.
 
 ## Experiment Configuration
 
@@ -132,16 +132,18 @@ def record_user_conversion(user_id: str, exp_id: str, goal: str = "primary"):
 ## FastAPI Integration
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Cookie
 
-app = FastAPI()
-
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     create_experiment("homepage_cta", [
         {"name": "control", "weight": 50},
         {"name": "new_cta", "weight": 50}
     ], "Test new call-to-action button text")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/homepage")
 def homepage(user_id: str = Cookie(default="anonymous")):
