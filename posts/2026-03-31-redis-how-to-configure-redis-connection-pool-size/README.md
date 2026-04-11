@@ -63,7 +63,7 @@ client = redis.Redis(connection_pool=pool)
 
 # Check pool stats
 print(f"Max connections: {pool.max_connections}")
-print(f"Current connections: {len(pool._connections)}")
+print(f"Current connections: {pool._created_connections}")
 ```
 
 ### Go with go-redis
@@ -108,13 +108,13 @@ try (Jedis jedis = pool.getResource()) {
 A useful formula for synchronous applications:
 
 ```text
-Pool Size = (Average Command Latency in ms / 1000) * Target Requests Per Second / Threads
+Pool Size = (Average Command Latency in ms / 1000) * Target Requests Per Second
 ```
 
 For example, with 1ms average latency and 10,000 RPS:
 
 ```text
-Pool Size = (1 / 1000) * 10000 = 10 connections per thread
+Pool Size = (1 / 1000) * 10000 = 10 connections
 ```
 
 For async applications (Node.js, asyncio), a single connection can handle many concurrent requests because I/O is non-blocking. Keep pools smaller - typically 5-20.
