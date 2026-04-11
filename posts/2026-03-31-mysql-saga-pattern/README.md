@@ -57,27 +57,39 @@ COMMIT;
 USE inventory_svc;
 
 -- Triggered by ORDER_CREATED event
+-- The application checks ROW_COUNT() after the UPDATE
+-- and runs one of the two paths below.
+
+-- Path A: attempt reservation
 START TRANSACTION;
   UPDATE products
   SET reserved = reserved + 2,
       available = available - 2
   WHERE sku = 'SKU-001'
     AND available >= 2;
+  -- Application checks ROW_COUNT() here
+COMMIT;
+```
 
-  IF ROW_COUNT() = 0 THEN
-    -- Not enough stock - publish failure event
-    INSERT INTO outbox_events (event_type, aggregate_id, payload)
-    VALUES ('INVENTORY_RESERVATION_FAILED',
-      'SKU-001',
-      JSON_OBJECT('order_id', 101, 'reason', 'insufficient_stock'));
-    COMMIT;
-    -- LEAVE - stop processing
-  ELSE
-    INSERT INTO outbox_events (event_type, aggregate_id, payload)
-    VALUES ('INVENTORY_RESERVED', 'SKU-001',
-      JSON_OBJECT('order_id', 101, 'sku', 'SKU-001', 'quantity', 2));
-    COMMIT;
-  END IF;
+If `ROW_COUNT()` returns 0 (not enough stock), the application runs the failure path:
+
+```sql
+START TRANSACTION;
+  INSERT INTO outbox_events (event_type, aggregate_id, payload)
+  VALUES ('INVENTORY_RESERVATION_FAILED',
+    'SKU-001',
+    JSON_OBJECT('order_id', 101, 'reason', 'insufficient_stock'));
+COMMIT;
+```
+
+If `ROW_COUNT()` returns 1 or more (stock reserved), the application publishes the success event:
+
+```sql
+START TRANSACTION;
+  INSERT INTO outbox_events (event_type, aggregate_id, payload)
+  VALUES ('INVENTORY_RESERVED', 'SKU-001',
+    JSON_OBJECT('order_id', 101, 'sku', 'SKU-001', 'quantity', 2));
+COMMIT;
 ```
 
 ## Step 3 - Payment Service: Charge Customer
