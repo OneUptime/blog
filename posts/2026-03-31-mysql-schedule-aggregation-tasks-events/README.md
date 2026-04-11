@@ -77,8 +77,8 @@ BEGIN
         DATE_FORMAT(NOW() - INTERVAL 1 HOUR, '%Y-%m-%d %H:00:00'),
         COUNT(DISTINCT user_id)
     FROM user_activity
-    WHERE activity_time >= NOW() - INTERVAL 2 HOUR
-      AND activity_time <  NOW() - INTERVAL 1 HOUR
+    WHERE activity_time >= NOW() - INTERVAL 1 HOUR
+      AND activity_time <  NOW()
     ON DUPLICATE KEY UPDATE user_count = VALUES(user_count);
 END //
 
