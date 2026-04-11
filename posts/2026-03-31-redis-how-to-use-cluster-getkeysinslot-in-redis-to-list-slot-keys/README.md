@@ -40,10 +40,10 @@ Before using `CLUSTER GETKEYSINSLOT`, you can use `CLUSTER KEYSLOT` to find whic
 ```bash
 # Find slot for a key
 CLUSTER KEYSLOT user:1000
-# Returns: 5474
+# Returns: 1649
 
 # Then get other keys in that slot
-CLUSTER GETKEYSINSLOT 5474 20
+CLUSTER GETKEYSINSLOT 1649 20
 ```
 
 ## Counting Keys in a Slot
@@ -51,7 +51,7 @@ CLUSTER GETKEYSINSLOT 5474 20
 To check how many keys are in a slot without listing them, use `CLUSTER COUNTKEYSINSLOT`:
 
 ```bash
-CLUSTER COUNTKEYSINSLOT 5474
+CLUSTER COUNTKEYSINSLOT 1649
 # Returns: 42
 ```
 
@@ -61,11 +61,11 @@ If a slot contains many keys, retrieve them in batches:
 
 ```bash
 # Get first 100 keys
-CLUSTER GETKEYSINSLOT 5474 100
+CLUSTER GETKEYSINSLOT 1649 100
 
 # The cursor-like approach: use SCAN within the slot context
 # Or get all via large count
-CLUSTER GETKEYSINSLOT 5474 10000
+CLUSTER GETKEYSINSLOT 1649 10000
 ```
 
 ## Use Case: Slot Migration Verification
@@ -74,15 +74,15 @@ During a slot migration (moving a slot from one node to another), you can use th
 
 ```bash
 # Before migration: count keys in slot on source
-redis-cli -h source-node -p 6379 CLUSTER COUNTKEYSINSLOT 5474
+redis-cli -h source-node -p 6379 CLUSTER COUNTKEYSINSLOT 1649
 # Returns: 42
 
 # After migration: count on destination
-redis-cli -h dest-node -p 6379 CLUSTER COUNTKEYSINSLOT 5474
+redis-cli -h dest-node -p 6379 CLUSTER COUNTKEYSINSLOT 1649
 # Returns: 42 (all keys migrated)
 
 # Verify source has 0 keys in slot now
-redis-cli -h source-node -p 6379 CLUSTER COUNTKEYSINSLOT 5474
+redis-cli -h source-node -p 6379 CLUSTER COUNTKEYSINSLOT 1649
 # Returns: 0
 ```
 
@@ -90,7 +90,7 @@ redis-cli -h source-node -p 6379 CLUSTER COUNTKEYSINSLOT 5474
 
 ```bash
 # Get keys to migrate
-KEYS_IN_SLOT=$(redis-cli -h source -p 6379 CLUSTER GETKEYSINSLOT 5474 100)
+KEYS_IN_SLOT=$(redis-cli -h source -p 6379 CLUSTER GETKEYSINSLOT 1649 100)
 
 # Migrate each key
 for key in $KEYS_IN_SLOT; do
