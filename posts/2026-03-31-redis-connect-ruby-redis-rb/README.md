@@ -93,7 +93,7 @@ redis.incrby('page:views:home', 5)
 
 # Set if not exists
 acquired = redis.setnx('lock:resource', '1')
-redis.expire('lock:resource', 30) if acquired == 1
+redis.expire('lock:resource', 30) if acquired
 ```
 
 ## Hash Operations
@@ -182,17 +182,17 @@ end
 ```ruby
 def transfer_points(redis, from_user, to_user, amount)
   loop do
-    redis.watch("points:#{from_user}", "points:#{to_user}") do
+    result = redis.watch("points:#{from_user}", "points:#{to_user}") do
       current = redis.get("points:#{from_user}").to_i
       raise 'Insufficient points' if current < amount
 
-      result = redis.multi do |tx|
+      redis.multi do |tx|
         tx.decrby("points:#{from_user}", amount)
         tx.incrby("points:#{to_user}", amount)
       end
-
-      break if result  # nil means WATCH was triggered, retry
     end
+
+    break if result  # nil means WATCH was triggered, retry
   end
 end
 ```
