@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Installation, CentOS, Linux, Database
 
-Description: Install MySQL 8.0 on CentOS 9 Stream using the official MySQL RPM repository, configure firewalld, and prepare the server for production workloads.
+Description: Install MySQL 8.4 LTS or 8.0 on CentOS 9 Stream using the official MySQL RPM repository, configure firewalld, and prepare the server for production workloads.
 
 ---
 
@@ -132,7 +132,7 @@ mysql --version
 ```
 
 ```text
-mysql  Ver 8.0.x  Distrib 8.0.x, for Linux (x86_64)
+mysql  Ver 8.4.x  Distrib 8.4.x, for Linux (x86_64)
 ```
 
 Check the service status.
