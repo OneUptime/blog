@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Log Rotation, Logrotate, Linux, Operation
 
-Description: Configure log rotation for Redis using logrotate to prevent Redis log files from growing unbounded, with daily rotation, compression, and signal-based log reopening.
+Description: Configure log rotation for Redis using logrotate to prevent Redis log files from growing unbounded, with daily rotation and compression.
 
 ---
 
@@ -38,11 +38,6 @@ sudo tee /etc/logrotate.d/redis > /dev/null <<'EOF'
     missingok
     notifempty
     create 640 redis redis
-    sharedscripts
-    postrotate
-        redis-cli CONFIG SET loglevel notice
-        redis-cli DEBUG SLEEP 0
-    endscript
 }
 EOF
 ```
@@ -56,50 +51,11 @@ Options explained:
 - `notifempty` - do not rotate empty files.
 - `create 640 redis redis` - create the new log file with correct permissions.
 
-## Sending a Signal to Redis to Reopen the Log File
+## Why No Postrotate Script Is Needed
 
-Redis does not automatically reopen its log file after rotation. The standard approach is to use `CONFIG REWRITE` or send a `SIGUSR1` signal which causes Redis to reopen the log:
+Unlike many daemons, Redis does not keep the log file descriptor open between writes. It opens the log file, writes the message, and closes the file on every single log entry. This means that after logrotate renames the old log file, Redis will automatically create a new file at the configured path on the next log write. No signal or postrotate command is required.
 
-```bash
-sudo tee /etc/logrotate.d/redis > /dev/null <<'EOF'
-/var/log/redis/redis-server.log {
-    daily
-    rotate 14
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 640 redis redis
-    sharedscripts
-    postrotate
-        /bin/kill -USR1 $(cat /var/run/redis/redis-server.pid 2>/dev/null) 2>/dev/null || true
-    endscript
-}
-EOF
-```
-
-If Redis does not write a PID file, use:
-
-```bash
-postrotate
-    pkill -USR1 redis-server || true
-endscript
-```
-
-## Enable a PID File in Redis
-
-Add to redis.conf:
-
-```text
-pidfile /var/run/redis/redis-server.pid
-```
-
-Create the directory:
-
-```bash
-sudo mkdir -p /var/run/redis
-sudo chown redis:redis /var/run/redis
-```
+Note that `SIGUSR1` does not cause Redis to reopen its log file. In Redis, `SIGUSR1` is used to terminate the background RDB-saving child process. Sending `SIGUSR1` to the main Redis process has no effect on logging.
 
 ## Test the logrotate Configuration
 
@@ -127,13 +83,10 @@ If you run multiple Redis instances with separate log files, add them to the sam
     delaycompress
     missingok
     notifempty
-    sharedscripts
-    postrotate
-        pkill -USR1 redis-server || true
-    endscript
+    create 640 redis redis
 }
 ```
 
 ## Summary
 
-Configure Redis log rotation with logrotate by creating `/etc/logrotate.d/redis` with daily rotation, 14-file retention, and gzip compression. Send a `SIGUSR1` signal in the `postrotate` script so Redis reopens the log file after rotation. Enable a PID file in `redis.conf` for reliable signal targeting, and use `logrotate --force` to test your configuration without waiting for the scheduled run.
+Configure Redis log rotation with logrotate by creating `/etc/logrotate.d/redis` with daily rotation, 14-file retention, and gzip compression. No postrotate script is needed because Redis opens and closes the log file on every write, so it automatically starts writing to the new file after rotation. Use `logrotate --force` to test your configuration without waiting for the scheduled run.
