@@ -10,7 +10,7 @@ Description: Learn how to use ZCOUNT in Redis to efficiently count the number of
 
 ## What Is ZCOUNT
 
-`ZCOUNT` returns the count of members in a sorted set whose scores fall between a minimum and maximum value (inclusive by default). It is a constant-time-to-log-time operation that avoids fetching actual members, making it ideal for range-based analytics.
+`ZCOUNT` returns the count of members in a sorted set whose scores fall between a minimum and maximum value (inclusive by default). It is an O(log N) operation that avoids fetching actual members, making it ideal for range-based analytics.
 
 ## Syntax
 
@@ -85,10 +85,10 @@ redis-cli ZCOUNT scores "(20" "(60"
 ```
 
 ```text
-(integer) 2
+(integer) 3
 ```
 
-`charlie` (40) and `dave` (55) qualify; `bob` (25) and `dave` (55) boundaries are excluded by the exclusive lower but... let me recalculate: 20 is excluded so bob at 25 qualifies. Actually: charlie (40) and dave (55) and bob (25) all fall between (20, 60) exclusive = 3.
+`bob` (25), `charlie` (40), and `dave` (55) all have scores strictly between 20 and 60.
 
 ### No Members in Range
 
@@ -131,9 +131,9 @@ for tier, (low, high) in tiers.items():
     print(f"{tier.capitalize()}: {count} players")
 
 # Bronze: 2 players
-# Silver: 2 players
+# Silver: 1 player
 # Gold: 2 players
-# Platinum: 1 players
+# Platinum: 1 player
 ```
 
 ### Time-Based Event Counting
@@ -159,7 +159,7 @@ def count_events_in_window(minutes):
     return r.zcount('events', cutoff, '+inf')
 
 print(f"Events in last 10 min: {count_events_in_window(10)}")  # 2
-print(f"Events in last 30 min: {count_events_in_window(30)}")  # 3
+print(f"Events in last 30 min: {count_events_in_window(30)}")  # 4
 print(f"Events in last hour: {count_events_in_window(60)}")    # 5
 ```
 
