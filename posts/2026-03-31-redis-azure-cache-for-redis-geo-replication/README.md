@@ -39,16 +39,18 @@ az redis create \
 ## Linking for Geo-Replication
 
 ```bash
-# Link secondary to primary
-az redis geo-replication link create \
-  --name redis-secondary \
-  --resource-group rg-westus \
-  --server-to-link /subscriptions/<sub-id>/resourceGroups/rg-eastus/providers/Microsoft.Cache/Redis/redis-primary
+# Link secondary to primary (run against the primary cache)
+az redis server-link create \
+  --name redis-primary \
+  --resource-group rg-eastus \
+  --server-to-link /subscriptions/<sub-id>/resourceGroups/rg-westus/providers/Microsoft.Cache/Redis/redis-secondary \
+  --replication-role Secondary
 
 # Check link status
-az redis geo-replication link show \
-  --name redis-secondary \
-  --resource-group rg-westus
+az redis server-link show \
+  --name redis-primary \
+  --resource-group rg-eastus \
+  --linked-server-name redis-secondary
 ```
 
 ## Terraform Configuration
@@ -91,7 +93,7 @@ Geo-replication does NOT have automatic failover. During a regional outage:
 
 ```bash
 # 1. Unlink the secondary (makes it writable)
-az redis geo-replication link delete \
+az redis server-link delete \
   --name redis-secondary \
   --resource-group rg-westus \
   --linked-server-name redis-primary
