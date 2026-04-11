@@ -8,7 +8,7 @@ Description: Use Redis Streams for durable, ordered inter-service messaging with
 
 ---
 
-Redis Streams provide a persistent, ordered log that any number of services can read from at their own pace. Unlike Pub/Sub (which loses messages if a consumer is offline), Streams hold every message until explicitly acknowledged, making them suitable for reliable inter-service communication.
+Redis Streams provide a persistent, ordered log that any number of services can read from at their own pace. Unlike Pub/Sub (which loses messages if a consumer is offline), Streams retain every message until explicitly trimmed, and consumer groups track delivery and acknowledgment per message, making them suitable for reliable inter-service communication.
 
 ## Creating and Publishing Events
 
