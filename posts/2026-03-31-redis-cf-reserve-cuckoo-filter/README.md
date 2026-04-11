@@ -19,7 +19,7 @@ CF.RESERVE key capacity [BUCKETSIZE bucketsize] [MAXITERATIONS maxiterations] [E
 - `capacity` - Approximate number of items the filter can hold
 - `BUCKETSIZE` - Number of items per bucket (default: 2, max: 255)
 - `MAXITERATIONS` - Max number of attempts to swap items during insertion (default: 20)
-- `EXPANSION` - Expansion rate when the filter is full (default: 1 = double)
+- `EXPANSION` - Expansion rate when the filter is full (default: 1, meaning each new sub-filter equals the initial size)
 
 ## Creating a Basic Cuckoo Filter
 
@@ -32,12 +32,12 @@ OK
 ## Creating a Filter with Custom Parameters
 
 ```bash
-# Higher bucket size reduces false positive rate but uses more memory
+# Custom parameters for specific workload tuning
 127.0.0.1:6379> CF.RESERVE product:ids 500000 BUCKETSIZE 4 MAXITERATIONS 30 EXPANSION 2
 OK
 ```
 
-A `BUCKETSIZE` of 4 gives a typical false positive rate around 0.1%, while the default of 2 gives around 3%.
+With Redis's 1-byte fingerprints, the false positive rate increases linearly with bucket size. A `BUCKETSIZE` of 2 (the default) gives a typical false positive rate around 1.5%, while a `BUCKETSIZE` of 4 gives around 3%.
 
 ## Disabling Expansion
 
@@ -88,7 +88,7 @@ create_cuckoo_filter("test:filter", capacity=10_000)
 | Feature | Bloom Filter | Cuckoo Filter |
 |---|---|---|
 | Supports deletion | No | Yes |
-| False positive rate | Configurable | ~0.1-3% |
+| False positive rate | Configurable | ~1-3% (depends on bucket size) |
 | Memory efficiency | Better at low FPR | Better at moderate FPR |
 | Insertion speed | Faster | Slightly slower |
 
@@ -112,7 +112,7 @@ Use a Cuckoo filter when you need to remove items - for example, tracking active
 12) (integer) 2
 13) Expansion rate
 14) (integer) 1
-15) Max iterations
+15) Max iteration
 16) (integer) 20
 ```
 
