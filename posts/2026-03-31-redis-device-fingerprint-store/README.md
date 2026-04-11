@@ -29,7 +29,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 MAX_DEVICES_PER_USER = 20
 DEVICE_TTL = 90 * 86400  # 90 days
 
-def compute_fingerprint(user_agent, ip_address, accept_language=""):
+def compute_fingerprint(user_agent, accept_language=""):
     raw = f"{user_agent}|{accept_language}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -39,9 +39,10 @@ def record_device(user_id, fingerprint_hash, user_agent, ip_address):
     existing = r.hgetall(key)
 
     if existing:
-        # Update last seen and IP
+        # Update last seen, IP, and refresh TTL
         pipe = r.pipeline()
         pipe.hset(key, mapping={"last_seen": str(now), "ip": ip_address})
+        pipe.expire(key, DEVICE_TTL)
         pipe.zadd(f"devices:{user_id}", {fingerprint_hash: now})
         pipe.execute()
         return {"is_new": False, "trusted": existing.get("trusted") == "1"}
