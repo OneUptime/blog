@@ -12,7 +12,7 @@ Joomla is a popular PHP-based CMS that relies on MySQL for storing articles, use
 
 ## Prerequisites
 
-You need MySQL 8.0+ and PHP 8.1+ with the `mysqli` extension enabled. Joomla 4 and 5 both work well with MySQL 8.
+Joomla 5 requires MySQL 8.0.13+ and PHP 8.1+. Joomla 4 supports MySQL 5.6+ and PHP 7.2.5+, though MySQL 8.0+ is recommended. Both versions require the `mysqli` PHP extension.
 
 ```bash
 php -m | grep mysqli
@@ -40,7 +40,7 @@ public $db       = 'joomla_db';
 public $dbprefix = 'jos_';
 ```
 
-Joomla uses table prefixes (`jos_` by default) to allow multiple installations in one database. Keep a unique prefix per site.
+Joomla uses table prefixes to allow multiple installations in one database. The installer generates a random prefix automatically; `jos_` is shown here as a common example. Keep a unique prefix per site.
 
 ## Tuning MySQL for Joomla
 
@@ -75,14 +75,13 @@ OPTIMIZE TABLE jos_session;
 
 ## Enabling Joomla Database Debugging
 
-To log slow Joomla queries, enable the Database query log in `configuration.php`:
+To profile Joomla database queries, enable debug mode in `configuration.php`:
 
 ```php
-public $debug = 1;
-public $log_path = '/var/www/joomla/logs';
+public $debug = true;
 ```
 
-Then review `error.php` in the log path for SQL errors and slow queries.
+With the System - Debug plugin enabled, a debug console appears at the bottom of every page showing all executed queries, their execution times, and duplicate query detection. This helps identify slow or redundant queries during development.
 
 ## Verifying Joomla Tables
 
