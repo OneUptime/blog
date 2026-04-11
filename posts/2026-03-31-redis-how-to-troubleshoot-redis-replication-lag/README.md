@@ -107,7 +107,7 @@ Meaning: disconnect if over 256MB hard limit, or over 64MB for 60 seconds. Incre
 redis-cli CONFIG SET client-output-buffer-limit "slave 512mb 128mb 120"
 ```
 
-## Step 5 - Enable min-slaves-to-write for Write Guarantees
+## Step 5 - Enable min-replicas-to-write for Write Guarantees
 
 To prevent a primary from accepting writes when replicas are too far behind, configure minimum replica requirements:
 
