@@ -112,7 +112,7 @@ WITH RECURSIVE bom AS (
   FROM components c
   JOIN bom b ON c.parent_component_id = b.component_id
 )
-SELECT REPEAT('  ', level) || name AS indented_name, quantity
+SELECT CONCAT(REPEAT('  ', level), name) AS indented_name, quantity
 FROM bom;
 ```
 
