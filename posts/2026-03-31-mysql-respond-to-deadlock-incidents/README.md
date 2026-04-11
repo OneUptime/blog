@@ -52,6 +52,16 @@ lock_mode X locks rec but not gap
 *** (2) TRANSACTION:
 TRANSACTION 422, ACTIVE 0 sec starting index read
 UPDATE order_items SET status='shipped' WHERE order_id=101
+
+*** (2) HOLDS THE LOCK(S):
+RECORD LOCKS space id 43 page no 5 n bits 72 index PRIMARY
+lock_mode X locks rec but not gap
+
+*** (2) WAITING FOR THIS LOCK TO BE GRANTED:
+RECORD LOCKS space id 42 page no 3 index PRIMARY
+lock_mode X locks rec but not gap
+
+*** WE ROLL BACK TRANSACTION (2)
 ```
 
 Transaction 1 holds a lock on `orders` and wants `order_items`. Transaction 2 holds a lock on `order_items` and wants `orders`. Neither can proceed.
@@ -115,13 +125,13 @@ ORDER BY sum_lock_time DESC
 LIMIT 10;
 ```
 
-Also monitor the InnoDB status counter:
+Also monitor the InnoDB deadlock counter:
 
 ```sql
-SHOW GLOBAL STATUS LIKE 'Innodb_deadlocks';
+SELECT NAME, COUNT FROM information_schema.INNODB_METRICS WHERE NAME = 'lock_deadlocks';
 ```
 
-Set an alert if `Innodb_deadlocks` increases by more than a threshold per minute.
+Set an alert if `lock_deadlocks` increases by more than a threshold per minute.
 
 ## Prevention Checklist
 
