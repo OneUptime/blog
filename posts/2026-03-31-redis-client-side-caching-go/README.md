@@ -35,6 +35,7 @@ type ClientSideCache struct {
     subClient  redis.UniversalClient
     cache      sync.Map
     ctx        context.Context
+    subConnID  int64
 }
 
 func NewClientSideCache(addr string) (*ClientSideCache, error) {
@@ -44,15 +45,25 @@ func NewClientSideCache(addr string) (*ClientSideCache, error) {
         Addr: addr,
     })
 
-    subClient := redis.NewClient(&redis.Options{
-        Addr: addr,
-    })
-
     csc := &ClientSideCache{
         dataClient: dataClient,
-        subClient:  subClient,
         ctx:        ctx,
     }
+
+    // go-redis creates a dedicated connection for PubSub internally.
+    // Use OnConnect to capture that connection's client ID before it
+    // enters subscriber mode, so we can use it for REDIRECT.
+    csc.subClient = redis.NewClient(&redis.Options{
+        Addr: addr,
+        OnConnect: func(ctx context.Context, cn *redis.Conn) error {
+            id, err := cn.ClientID(ctx).Result()
+            if err != nil {
+                return err
+            }
+            csc.subConnID = id
+            return nil
+        },
+    })
 
     if err := csc.setupTracking(); err != nil {
         return nil, fmt.Errorf("setup tracking: %w", err)
@@ -62,18 +73,14 @@ func NewClientSideCache(addr string) (*ClientSideCache, error) {
 }
 
 func (c *ClientSideCache) setupTracking() error {
-    // Subscribe to Redis invalidation channel
+    // Subscribe to Redis invalidation channel.
+    // go-redis creates a dedicated connection for PubSub; the OnConnect
+    // callback captures its client ID before it enters subscriber mode.
     pubsub := c.subClient.Subscribe(c.ctx, "__redis__:invalidate")
 
-    // Get the sub client's ID for redirect
-    subClientID, err := c.subClient.ClientID(c.ctx).Result()
-    if err != nil {
-        return fmt.Errorf("get client id: %w", err)
-    }
-
-    // Enable tracking on data connection, redirect to sub connection
-    err = c.dataClient.Do(c.ctx,
-        "CLIENT", "TRACKING", "ON", "REDIRECT", subClientID,
+    // Enable tracking on data connection, redirect to PubSub connection
+    err := c.dataClient.Do(c.ctx,
+        "CLIENT", "TRACKING", "ON", "REDIRECT", c.subConnID,
     ).Err()
     if err != nil {
         return fmt.Errorf("enable tracking: %w", err)
@@ -87,12 +94,8 @@ func (c *ClientSideCache) setupTracking() error {
                 c.FlushLocal()
                 continue
             }
-
-            keys := []string{msg.Payload}
-            for _, key := range keys {
-                c.cache.Delete(key)
-                fmt.Printf("Invalidated key: %s\n", key)
-            }
+            c.cache.Delete(msg.Payload)
+            fmt.Printf("Invalidated key: %s\n", msg.Payload)
         }
     }()
 
