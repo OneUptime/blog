@@ -14,14 +14,14 @@ The Tuning-Primer script is a bash script originally developed by Matthew Montgo
 
 ## Downloading the Script
 
-The actively maintained fork lives on GitHub:
+Download the original version from Launchpad:
 
 ```bash
 wget https://launchpad.net/mysql-tuning-primer/trunk/1.6-r1/+download/tuning-primer.sh
 chmod +x tuning-primer.sh
 ```
 
-Alternatively, clone the GitHub fork:
+For the actively maintained fork, clone from GitHub:
 
 ```bash
 git clone https://github.com/BMDan/tuning-primer.sh.git
@@ -30,21 +30,13 @@ cd tuning-primer.sh
 
 ## Running the Script
 
-Run as root or a user with the MySQL SUPER privilege:
+Run as root or a MySQL user with sufficient privileges (PROCESS privilege is needed on MySQL 8.0+):
 
 ```bash
 ./tuning-primer.sh
 ```
 
-If prompted, enter the MySQL root password. The script auto-detects the MySQL socket.
-
-For a remote server:
-
-```bash
-MYSQL_HOST=192.168.1.10 MYSQL_PORT=3306 \
-  MYSQL_USER=root MYSQL_PASSWORD=root_secret \
-  ./tuning-primer.sh
-```
+If prompted, enter the MySQL username, password, and socket path. The script connects via the local MySQL socket by default.
 
 ## Sample Output and What It Means
 
@@ -98,14 +90,14 @@ SET GLOBAL thread_cache_size = 32;
 
 ## Checking Uptime Before Running
 
-The script itself warns you if MySQL has been running for less than 24 hours:
+The script itself warns you if MySQL has been running for less than 48 hours:
 
 ```text
-Warning: MySQL has only been running for 4:22:10 seconds.
-Some recommendations may be inaccurate.
+Warning: Server has not been running for at least 48hrs.
+It may not be safe to use these recommendations
 ```
 
-Wait until after a full business day of load before acting on recommendations.
+Wait until after at least 48 hours of representative load before acting on recommendations.
 
 ## Comparing Tuning-Primer vs MySQLTuner
 
@@ -122,4 +114,4 @@ For MySQL 8.0 production environments, MySQLTuner is generally more accurate bec
 
 ## Summary
 
-The Tuning-Primer script provides fast, readable MySQL configuration recommendations by analyzing runtime status variables. Run it after 24-48 hours of representative load, apply the most impactful recommendations first (InnoDB buffer pool, max connections, thread cache), then re-run to verify the improvements. Cross-reference with MySQLTuner on MySQL 8.0 systems for more complete coverage.
+The Tuning-Primer script provides fast, readable MySQL configuration recommendations by analyzing runtime status variables. Run it after at least 48 hours of representative load, apply the most impactful recommendations first (InnoDB buffer pool, max connections, thread cache), then re-run to verify the improvements. Cross-reference with MySQLTuner on MySQL 8.0 systems for more complete coverage.
