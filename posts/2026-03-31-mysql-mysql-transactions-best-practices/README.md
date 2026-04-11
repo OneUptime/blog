@@ -15,9 +15,9 @@ MySQL transactions guarantee ACID properties - Atomicity, Consistency, Isolation
 The single most important rule: open a transaction, do the minimum necessary work, and commit immediately. Long transactions hold row locks and delay garbage collection of old row versions:
 
 ```sql
--- Bad: fetching data inside a transaction that does not need a lock
+-- Bad: fetching data inside a transaction that does not need it
 START TRANSACTION;
-SELECT * FROM products;         -- holds shared locks unnecessarily
+SELECT * FROM products;         -- keeps MVCC snapshot open unnecessarily
 -- ... application logic ...
 UPDATE inventory SET qty = 5 WHERE product_id = 1;
 COMMIT;
@@ -38,7 +38,7 @@ MySQL defaults to `REPEATABLE READ`. Understand the trade-offs:
 -- Check current isolation level
 SHOW VARIABLES LIKE 'transaction_isolation';
 
--- Set per-session for a reporting query (avoids phantom reads concern, allows more concurrency)
+-- Set per-session for a reporting query (accepts phantom reads in exchange for more concurrency)
 SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 -- For financial operations, REPEATABLE READ prevents non-repeatable reads
