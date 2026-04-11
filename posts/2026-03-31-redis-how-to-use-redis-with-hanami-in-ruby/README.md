@@ -58,7 +58,7 @@ module MyApp
   module Actions
     module Products
       class Index < Hanami::Action
-        include Deps['redis.pool']
+        include Deps[redis_pool: 'redis.pool']
 
         def handle(request, response)
           cache_key = 'products:all'
@@ -72,7 +72,7 @@ module MyApp
 
           products = [{ id: 1, name: 'Widget' }] # Simulate repo fetch
           json = products.to_json
-          redis_pool.with { |r| r.setex(cache_key, 120, json) }
+          redis_pool.with { |r| r.set(cache_key, json, ex: 120) }
           response.headers['X-Cache'] = 'MISS'
           response.body = json
         end
