@@ -10,9 +10,9 @@ Description: Learn how to use MySQL prepared statements to improve query perform
 
 ## How Prepared Statements Work
 
-A prepared statement is a SQL query template compiled once by MySQL and then executed multiple times with different parameter values. MySQL parses and optimizes the query plan once, then reuses the compiled plan for each execution. This provides two key benefits:
+A prepared statement is a SQL query template that MySQL parses once and then executes multiple times with different parameter values. MySQL parses and validates the query during PREPARE, then reuses the parsed representation for each EXECUTE. This provides two key benefits:
 
-1. **Performance** - parsing and optimization cost is paid once, not on every execution.
+1. **Performance** - parsing and validation cost is paid once, not on every execution.
 2. **Security** - parameters are passed separately from the SQL text, preventing SQL injection.
 
 ```mermaid
@@ -20,7 +20,7 @@ sequenceDiagram
     participant App as Application
     participant MySQL as MySQL Server
     App->>MySQL: PREPARE stmt FROM "SELECT ... WHERE id = ?"
-    MySQL-->>App: Statement handle (compiled plan)
+    MySQL-->>App: Statement handle
     App->>MySQL: SET @id = 1; EXECUTE stmt USING @id
     MySQL-->>App: Result rows
     App->>MySQL: SET @id = 2; EXECUTE stmt USING @id
@@ -242,4 +242,4 @@ DEALLOCATE PREPARE safe_query;
 
 ## Summary
 
-MySQL prepared statements compile a query template once and execute it multiple times with different parameter values. They prevent SQL injection by treating parameters as data values, never as SQL code. At the SQL level, use PREPARE, EXECUTE, and DEALLOCATE PREPARE. In application code, use the MySQL driver's native prepared statement support - all major MySQL drivers (Python, Node.js, PHP, Java) support parameterized queries that map to server-side prepared statements. Prepared statements are a security requirement, not just a performance optimization.
+MySQL prepared statements parse a query template once and execute it multiple times with different parameter values. They prevent SQL injection by treating parameters as data values, never as SQL code. At the SQL level, use PREPARE, EXECUTE, and DEALLOCATE PREPARE. In application code, use the MySQL driver's native prepared statement support - all major MySQL drivers (Python, Node.js, PHP, Java) support parameterized queries that provide equivalent protection against SQL injection. Prepared statements are a security requirement, not just a performance optimization.
