@@ -26,7 +26,7 @@ Example:
 SHOW CREATE VIEW active_customers;
 ```
 
-MySQL returns a result set with columns including `View`, `Create View`, `character_set_client`, and `collation_connection`. The `Create View` column contains the full `CREATE OR REPLACE VIEW ... AS SELECT ...` statement.
+MySQL returns a result set with columns including `View`, `Create View`, `character_set_client`, and `collation_connection`. The `Create View` column contains the full `CREATE VIEW` statement, including the `ALGORITHM`, `DEFINER`, and `SQL SECURITY` clauses.
 
 To make the output more readable in the MySQL CLI, append `\G`:
 
@@ -111,15 +111,16 @@ CREATE OR REPLACE VIEW active_customers AS
 ```sql
 SELECT
     TABLE_NAME,
-    CREATED,
-    LAST_ALTERED,
+    CHECK_OPTION,
+    SECURITY_TYPE,
+    DEFINER,
     CHARACTER_SET_CLIENT,
     COLLATION_CONNECTION
 FROM information_schema.VIEWS
 WHERE TABLE_SCHEMA = 'shop';
 ```
 
-This is useful for auditing when views were last modified.
+This is useful for auditing view security settings and character set configuration.
 
 ## Checking Whether a View Is Updatable
 
