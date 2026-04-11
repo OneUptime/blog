@@ -44,7 +44,11 @@ class ResilientCacheClient:
 
     def _connect(self):
         try:
-            self.inv = redis.Redis(host=self.r.connection_pool.connection_kwargs['host'])
+            self.inv = redis.Redis(
+                host=self.r.connection_pool.connection_kwargs['host'],
+                port=self.r.connection_pool.connection_kwargs['port'],
+                decode_responses=True
+            )
             inv_id = self.inv.client_id()
             self.r.execute_command('CLIENT', 'TRACKING', 'ON', 'REDIRECT', str(inv_id))
 
