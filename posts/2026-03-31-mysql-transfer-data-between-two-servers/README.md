@@ -78,7 +78,7 @@ CONNECTION='mysql://user:pass@source-host:3306/source_db/customers';
 INSERT INTO local_customers SELECT * FROM remote_customers;
 ```
 
-## Method 5: mysqldump with mydumper for Speed
+## Method 5: Use mydumper/myloader for Speed
 
 For large databases, mydumper exports in parallel and myloader imports in parallel:
 
@@ -123,11 +123,11 @@ For zero-data-loss transfers on active servers, combine mysqldump with binary lo
 ```bash
 mysqldump \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   -h source-host -u root -p source_db > /tmp/full_dump.sql
 
-# The dump file contains a CHANGE MASTER TO comment with the binlog position
-head -50 /tmp/full_dump.sql | grep -i "MASTER_LOG"
+# The dump file contains a CHANGE REPLICATION SOURCE TO comment with the binlog position
+head -50 /tmp/full_dump.sql | grep -i "SOURCE_LOG"
 ```
 
 ## Summary
