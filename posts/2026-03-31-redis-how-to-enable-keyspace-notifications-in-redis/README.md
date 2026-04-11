@@ -38,10 +38,10 @@ The value is a combination of flags:
 | h | Hash commands (HSET, HDEL) |
 | z | Sorted set commands (ZADD, ZREM) |
 | x | Expired events (when key TTL reaches 0) |
-| d | Stream commands |
-| t | Stream XADD |
+| d | Module key type events |
+| t | Stream commands |
 | e | Evicted events (when key is evicted by maxmemory-policy) |
-| A | Alias for all events except `g$lshzxdt` |
+| A | Alias for `g$lshzxet` (all event types except key miss and module events) |
 
 Common configurations:
 
@@ -127,7 +127,7 @@ for message in pubsub.listen():
         channel = message['channel'].decode()
         event = message['data'].decode()
         # channel is __keyspace@0__:session:abc123
-        key = channel.split(':', 2)[2]  # Extract 'session:abc123'
+        key = channel.split(':', 1)[1]  # Extract 'session:abc123'
         print(f"Key: {key}, Event: {event}")
 ```
 
