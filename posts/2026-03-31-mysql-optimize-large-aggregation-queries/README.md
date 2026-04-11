@@ -24,7 +24,7 @@ GROUP BY region, month;
 
 Look for:
 - `type: ALL` - full table scan, needs an index
-- `Extra: Using filesort` - sort overflowed to disk
+- `Extra: Using filesort` - extra sort pass needed, may spill to disk
 - `Extra: Using temporary` - temp table created, may need more memory
 
 ## Add Covering Indexes
