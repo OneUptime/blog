@@ -43,7 +43,7 @@ redis-cli XLEN events
 ```bash
 redis-cli DEL events
 redis-cli XADD events '*' placeholder ""
-redis-cli XDEL events $(redis-cli XRANGE events - + COUNT 1 | head -1)
+redis-cli XDEL events $(redis-cli --raw XRANGE events - + COUNT 1 | head -1)
 redis-cli XLEN events
 ```
 
@@ -71,7 +71,7 @@ redis-cli XLEN mystream
 
 ```bash
 # Delete first message
-redis-cli XDEL mystream $(redis-cli XRANGE mystream - + COUNT 1 | awk 'NR==1')
+redis-cli XDEL mystream $(redis-cli --raw XRANGE mystream - + COUNT 1 | head -1)
 redis-cli XLEN mystream
 ```
 
