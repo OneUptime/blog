@@ -50,7 +50,7 @@ To force case-sensitive comparison, use `BINARY`:
 
 ```sql
 SELECT STRCMP(BINARY 'Hello', BINARY 'hello');
--- Result: 1 (H > h in binary)
+-- Result: -1 (H < h in binary, since uppercase letters have lower code points)
 ```
 
 ## Using STRCMP() in SELECT Queries
