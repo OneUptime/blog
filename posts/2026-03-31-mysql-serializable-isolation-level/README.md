@@ -10,7 +10,7 @@ Description: Learn how SERIALIZABLE isolation level in MySQL provides the strong
 
 ## What Is SERIALIZABLE?
 
-SERIALIZABLE is the highest and strictest transaction isolation level in MySQL. Under this level, InnoDB automatically converts all plain SELECT statements into SELECT ... LOCK IN SHARE MODE, acquiring shared locks on every row read. Transactions appear to execute serially - one after another - even when they run concurrently.
+SERIALIZABLE is the highest and strictest transaction isolation level in MySQL. Under this level, InnoDB automatically converts all plain SELECT statements into SELECT ... FOR SHARE, acquiring shared locks on every row read. Transactions appear to execute serially - one after another - even when they run concurrently.
 
 ## Setting SERIALIZABLE
 
@@ -93,15 +93,14 @@ SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 START TRANSACTION;
 
 SELECT quantity FROM inventory WHERE product_id = 42;
--- Guaranteed: no other session can read or modify this row concurrently
+-- Guaranteed: no other session can modify this row until this transaction commits
 
 UPDATE inventory SET quantity = quantity - 1 WHERE product_id = 42 AND quantity > 0;
 
-IF ROW_COUNT() = 0 THEN
-    ROLLBACK;
-ELSE
-    COMMIT;
-END IF;
+-- Check ROW_COUNT() in your application code:
+-- If 0 rows affected, ROLLBACK (item out of stock)
+-- Otherwise, COMMIT
+COMMIT;
 ```
 
 ## Deadlock Risk
