@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Statement, Table, Query, DDL
+Tags: MySQL, Statement, Table, Query, DML
 
 Description: Learn how to use the TABLE statement introduced in MySQL 8.0.19 as a shorthand for SELECT * FROM, supporting UNION, ORDER BY, and LIMIT.
 
@@ -102,12 +102,6 @@ CREATE TABLE employees_snapshot SELECT * FROM employees;
 CREATE TABLE employees_snapshot TABLE employees;
 ```
 
-Wait - the correct syntax for MySQL 8.0.19+ is:
-
-```sql
-CREATE TABLE employees_snapshot AS TABLE employees;
-```
-
 ## Practical Example
 
 Combine `TABLE` with `UNION ALL` to merge data from archive and current tables:
@@ -116,7 +110,7 @@ Combine `TABLE` with `UNION ALL` to merge data from archive and current tables:
 TABLE current_orders
 UNION ALL
 TABLE archived_orders
-ORDER BY column_0
+ORDER BY order_date
 LIMIT 100;
 ```
 
