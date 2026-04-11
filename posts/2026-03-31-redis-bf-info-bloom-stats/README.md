@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisBloom, Bloom Filter, Probabilistic, Command
 
-Description: Learn how to use BF.INFO in Redis to retrieve statistics about a Bloom filter including its capacity, current size, error rate, and number of inserted elements.
+Description: Learn how to use BF.INFO in Redis to retrieve statistics about a Bloom filter including its capacity, current size, expansion rate, and number of inserted elements.
 
 ---
 
 ## How BF.INFO Works
 
-`BF.INFO` returns detailed statistics about a Redis Bloom filter. It shows the filter's capacity, error rate, the number of elements inserted, the number of bits in the bit array, the number of hash functions, and whether the filter has expanded beyond its initial capacity. Use it to monitor filter health, detect capacity issues, and validate configuration.
+`BF.INFO` returns detailed statistics about a Redis Bloom filter. It shows the filter's capacity, memory size, the number of elements inserted, the number of sub-filters, and the expansion rate. Use it to monitor filter health, detect capacity issues, and validate configuration.
 
 ```mermaid
 graph TD
@@ -25,10 +25,11 @@ graph TD
 ## Syntax
 
 ```redis
-BF.INFO key
+BF.INFO key [CAPACITY | SIZE | FILTERS | ITEMS | EXPANSION]
 ```
 
 - `key` - the Bloom filter key
+- Optional: specify a single field name to return only that value
 
 Returns a flat array of field-value pairs. Returns an error if the key does not exist.
 
@@ -37,7 +38,7 @@ Returns a flat array of field-value pairs. Returns an error if the key does not 
 ### Inspect a Default Filter
 
 ```redis
-BF.ADD simple_filter "item1" "item2" "item3"
+BF.MADD simple_filter "item1" "item2" "item3"
 BF.INFO simple_filter
 ```
 
