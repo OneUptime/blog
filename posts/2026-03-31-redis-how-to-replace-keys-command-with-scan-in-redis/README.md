@@ -163,7 +163,7 @@ rename-command KEYS ""
 - SCAN may return the same key multiple times (especially after a resize)
 - SCAN may return keys that expire between the SCAN call and your processing
 - The `COUNT` hint is not a hard limit - Redis may return more or fewer
-- SCAN guarantees full iteration if the keyspace does not change during the scan
+- SCAN guarantees that all elements present from the start to the end of a full iteration are returned, even if the keyspace changes during the scan
 
 ## Summary
 
