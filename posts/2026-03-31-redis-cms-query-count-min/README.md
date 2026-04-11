@@ -56,6 +56,7 @@ CMS.QUERY events "login"
 ### Query Multiple Items at Once
 
 ```redis
+CMS.INITBYDIM api_calls 5000 7
 CMS.INCRBY api_calls "/users" 500 "/products" 1200 "/orders" 350
 
 CMS.QUERY api_calls "/users" "/products" "/orders" "/missing"
@@ -149,6 +150,8 @@ CMS.QUERY "user:42:views" "article:1" "article:2" "article:3"
 Check frequency of suspicious patterns:
 
 ```redis
+CMS.INITBYDIM failed_logins 1000 5
+
 -- Track failed login attempts per username
 CMS.INCRBY failed_logins "user:alice" 1
 CMS.INCRBY failed_logins "user:alice" 1
