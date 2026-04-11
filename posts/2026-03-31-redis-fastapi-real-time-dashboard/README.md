@@ -13,7 +13,7 @@ A real-time dashboard needs a way to push updates to connected clients without p
 ## Install Dependencies
 
 ```bash
-pip install fastapi uvicorn aioredis
+pip install fastapi uvicorn redis
 ```
 
 ## Publish Metrics to Redis
@@ -21,7 +21,7 @@ pip install fastapi uvicorn aioredis
 A background process or another service publishes metrics to a Redis channel:
 
 ```python
-import aioredis
+import redis.asyncio as aioredis
 import asyncio
 import json
 import random
@@ -44,7 +44,7 @@ async def publish_metrics():
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 import asyncio
-import aioredis
+import redis.asyncio as aioredis
 import json
 
 app = FastAPI()
@@ -76,9 +76,7 @@ async def stream_metrics():
 Persist the most recent snapshot so new clients get immediate data:
 
 ```python
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(publish_metrics())
+import redis.asyncio as aioredis
 
 redis_state = aioredis.from_url("redis://localhost:6379")
 
@@ -89,6 +87,10 @@ async def publish_and_store():
         await redis_state.set("dashboard:latest", raw, ex=10)
         await redis_state.publish("dashboard:metrics", raw)
         await asyncio.sleep(1)
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(publish_and_store())
 ```
 
 ## Client-Side JavaScript
