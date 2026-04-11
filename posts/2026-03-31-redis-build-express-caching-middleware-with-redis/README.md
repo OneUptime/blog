@@ -182,11 +182,11 @@ app.use(globalCache(300, ["/auth", "/admin"]));
 
 ```bash
 # First request - cache MISS
-curl -I http://localhost:3000/api/products
+curl -i http://localhost:3000/api/products
 # X-Cache: MISS
 
 # Second request - cache HIT
-curl -I http://localhost:3000/api/products
+curl -i http://localhost:3000/api/products
 # X-Cache: HIT
 ```
 
