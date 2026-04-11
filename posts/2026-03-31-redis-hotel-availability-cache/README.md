@@ -152,11 +152,14 @@ def confirm_reservation(hotel_id: str, room_id: str, check_in: str, guest_id: st
     hold_key = f"{HOLD_PREFIX}:{hotel_id}:{room_id}:{check_in}"
     avail_key = f"{HOTEL_PREFIX}:{hotel_id}:rooms:{check_in}"
 
-    result = confirm_booking(
-        keys=[hold_key, avail_key],
-        args=[guest_id, room_id, token]
-    )
-    return result == "CONFIRMED"
+    try:
+        result = confirm_booking(
+            keys=[hold_key, avail_key],
+            args=[guest_id, room_id, token]
+        )
+        return result == "CONFIRMED"
+    except redis.exceptions.ResponseError:
+        return False
 
 def get_hotels_in_city(city: str) -> list:
     return r.smembers(f"hotels:city:{city}") or []
