@@ -20,9 +20,9 @@ SRANDMEMBER key [count]
 
 - `key` - the set to sample from
 - `count` (optional):
-  - Omitted or `1` - returns a single random element (as a string)
-  - Positive integer - returns up to `count` unique random elements (no duplicates)
-  - Negative integer - returns exactly `|count|` elements, allowing duplicates
+  - Omitted - returns a single random element (as a bulk string, or nil if the set is empty)
+  - Positive integer - returns up to `count` unique random elements as an array (no duplicates)
+  - Negative integer - returns exactly `|count|` elements as an array, allowing duplicates
 
 Returns nil (or empty array) if the set is empty or the key does not exist.
 
@@ -136,7 +136,6 @@ print(f"Today's quiz: {session_questions}")
 
 ```python
 import redis
-import json
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -197,21 +196,20 @@ sample = sample_sessions(10)
 print(f"Sampled {len(sample)} sessions for analysis")
 ```
 
-### Weighted Random with Duplicates
+### Random Sampling with Replacement
 
-Use negative count for weighted sampling - duplicate entries in a set are not possible, but you can combine with multiple sets:
+Use negative count to sample with replacement - elements can repeat across draws, which is useful when you need more samples than the set size:
 
 ```python
 import redis
-import random
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-# Simulate weighted ads
+# Ad pool
 r.sadd('ads:pool', 'ad:premium_1', 'ad:premium_2', 'ad:standard_1',
        'ad:standard_2', 'ad:standard_3')
 
-# Get 10 random ad slots (with possible repeats for implicit weighting)
+# Get 10 random ad slots (with possible repeats)
 ad_slots = r.srandmember('ads:pool', -10)
 print(f"Ad slots: {ad_slots}")
 ```
