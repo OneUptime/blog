@@ -108,7 +108,7 @@ if ($db->transStatus() === false) {
 ## Running Migrations
 
 ```bash
-php spark migrate:create CreateProductsTable
+php spark make:migration CreateProductsTable
 php spark migrate
 ```
 
