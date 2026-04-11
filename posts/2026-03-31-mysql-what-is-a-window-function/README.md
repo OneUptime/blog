@@ -107,7 +107,7 @@ SELECT
   employee_id,
   salary,
   RANK() OVER dept_window AS dept_rank,
-  AVG(salary) OVER dept_window AS dept_avg
+  AVG(salary) OVER dept_window AS dept_running_avg
 FROM employees
 WINDOW dept_window AS (PARTITION BY department ORDER BY salary DESC);
 ```
