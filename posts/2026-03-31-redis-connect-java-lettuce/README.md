@@ -157,20 +157,20 @@ for (ScoredValue<String> sv : top3) {
 
 ```java
 RedisAsyncCommands<String, String> async = connection.async();
-async.setAutoFlushCommands(false);
+connection.setAutoFlushCommands(false);
 
 List<RedisFuture<String>> futures = new ArrayList<>();
 for (int i = 0; i < 100; i++) {
     futures.add(async.setex("key:" + i, 3600, "value:" + i));
 }
 
-async.flushCommands();
+connection.flushCommands();
 
 for (RedisFuture<String> f : futures) {
     System.out.println(f.get()); // "OK"
 }
 
-async.setAutoFlushCommands(true);
+connection.setAutoFlushCommands(true);
 ```
 
 ## Transactions
