@@ -77,7 +77,7 @@ WHERE email = 'alice@example.com'
 SELECT * FROM users WHERE email = 'alice@example.com'
 UNION ALL
 SELECT * FROM users WHERE phone = '555-1234'
-  AND email != 'alice@example.com'; -- Prevent duplicates
+  AND (email != 'alice@example.com' OR email IS NULL); -- Prevent duplicates
 ```
 
 ## Pattern 4: Replace NOT IN with LEFT JOIN IS NULL
@@ -110,8 +110,8 @@ FROM (
 ) summary
 WHERE total > 1000;
 
--- FAST: Same query, but MySQL optimizer usually handles this via derived_merge
--- Explicitly help with HAVING for non-mergeable cases:
+-- FAST: Eliminate the derived table with HAVING
+-- (derived_merge cannot optimize derived tables with GROUP BY):
 SELECT customer_id, SUM(amount) AS total
 FROM orders
 GROUP BY customer_id
