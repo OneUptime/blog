@@ -100,6 +100,7 @@ async function validateAccessToken(accessToken) {
     userId: data.userId,
     clientId: data.clientId,
     scopes: data.scopes.split(' '),
+    issuedAt: new Date(parseInt(data.issuedAt)),
     expiresAt: new Date(parseInt(data.expiresAt)),
   };
 }
@@ -193,7 +194,7 @@ app.post('/oauth/introspect', authenticateClient, async (req, res) => {
     client_id: result.clientId,
     scope: result.scopes.join(' '),
     exp: Math.floor(result.expiresAt.getTime() / 1000),
-    iat: Math.floor(Date.now() / 1000),
+    iat: Math.floor(result.issuedAt.getTime() / 1000),
   });
 });
 ```
