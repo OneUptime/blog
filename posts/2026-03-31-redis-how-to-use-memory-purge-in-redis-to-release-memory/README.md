@@ -119,7 +119,7 @@ print(f"Before: RSS={before['used_memory_rss']:,} bytes, "
       f"Fragmentation={before['fragmentation_ratio']:.2f}")
 
 # Purge
-r.memory('purge')
+r.memory_purge()
 
 # After purge
 after = get_memory_stats(r)
@@ -147,7 +147,7 @@ while True:
 
     if ratio > FRAGMENTATION_THRESHOLD:
         print(f"High fragmentation detected: {ratio:.2f}. Purging...")
-        r.memory('purge')
+        r.memory_purge()
 
     time.sleep(60)
 ```
