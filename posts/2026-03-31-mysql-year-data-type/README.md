@@ -35,7 +35,7 @@ flowchart LR
 column_name YEAR [NOT NULL] [DEFAULT value]
 ```
 
-Note: `YEAR(4)` is the same as `YEAR`; the display-width parameter is deprecated in MySQL 8.0.17+.
+Note: `YEAR(4)` is the same as `YEAR`; the display-width parameter is deprecated in MySQL 8.0.19+.
 
 ## Basic Usage
 
@@ -149,13 +149,13 @@ INSERT INTO vehicles (make, model, model_year) VALUES ('Test', 'Car', 1800);
 -- YEAR automatically validates the year range, SMALLINT does not
 ```
 
-## Two-Digit Year Input (Deprecated)
+## Two-Digit Year Input
 
-In older MySQL versions, 2-digit year inputs were interpreted as:
+MySQL converts 2-digit year inputs as follows:
 - 00-69 -> 2000-2069
 - 70-99 -> 1970-1999
 
-This behavior is deprecated. Always use 4-digit years.
+Note: The `YEAR(2)` display type was removed in MySQL 8.0, but 2-digit input values are still accepted and converted using the rules above. Always use 4-digit years to avoid ambiguity.
 
 ```sql
 -- Always use 4-digit years
