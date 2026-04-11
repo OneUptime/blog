@@ -61,6 +61,16 @@ import (
     "github.com/redis/go-redis/v9"
 )
 
+type responseCapture struct {
+    gin.ResponseWriter
+    body []byte
+}
+
+func (r *responseCapture) Write(data []byte) (int, error) {
+    r.body = append(r.body, data...)
+    return r.ResponseWriter.Write(data)
+}
+
 func CacheMiddleware(rdb *redis.Client, ttl time.Duration) gin.HandlerFunc {
     return func(c *gin.Context) {
         cacheKey := "cache:" + c.Request.URL.RequestURI()
