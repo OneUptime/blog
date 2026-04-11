@@ -21,7 +21,7 @@ appendfsync no        # let the OS decide when to flush
 
 ### always
 
-Every write command is immediately fsynced to disk before the client receives a reply. This provides the strongest durability guarantee - you lose at most one command on a crash - but at a severe performance cost. Throughput drops to the speed of your disk's fsync operation, typically a few hundred writes per second.
+Every write command is immediately fsynced to disk before the client receives a reply. This provides the strongest durability guarantee - you lose at most one command on a crash - but at a severe performance cost. Throughput drops to the speed of your disk's fsync operation, typically a few hundred writes per second on HDDs or a few thousand on SSDs.
 
 ### everysec (Default)
 
