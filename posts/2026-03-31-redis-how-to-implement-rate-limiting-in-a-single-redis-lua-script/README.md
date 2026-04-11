@@ -31,8 +31,8 @@ if current == 1 then
 end
 
 if current > limit then
-    -- Return remaining TTL and 0 (denied)
-    return {0, redis.call('TTL', key)}
+    -- Return -1 (denied) and remaining TTL
+    return {-1, redis.call('TTL', key)}
 end
 
 -- Return remaining requests and TTL
