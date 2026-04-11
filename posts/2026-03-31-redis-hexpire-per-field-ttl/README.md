@@ -40,11 +40,10 @@ HEXPIRE key seconds [NX | XX | GT | LT] FIELDS numfields field [field ...]
 - `FIELDS numfields field [field ...]` - the fields to apply the TTL to
 
 Returns an array of integers, one per field:
-- `2` - field was updated with the new expiry
-- `1` - field was updated (condition met)
-- `0` - field does not exist
-- `-1` - condition (NX/XX/GT/LT) was not met
-- `-2` - field does not exist in the hash
+- `2` - field was deleted because the specified expiration is in the past or zero
+- `1` - expiration time was set/updated successfully
+- `0` - condition (NX/XX/GT/LT) was not met; expiration was not set
+- `-2` - the specified field does not exist
 
 ## Examples
 
@@ -103,11 +102,11 @@ HTTL user:1 FIELDS 1 token
 ```text
 (integer) 1
 1) (integer) 1
-1) (integer) -1
+1) (integer) 0
 1) (integer) 3600
 ```
 
-The second `HEXPIRE NX` returned -1 (condition not met) because the field already had a TTL.
+The second `HEXPIRE NX` returned 0 (condition not met) because the field already had a TTL.
 
 ### Conditional expiry with GT (extend only)
 
@@ -125,11 +124,11 @@ HTTL cache:user:42 FIELDS 1 fragment
 (integer) 1
 1) (integer) 1
 1) (integer) 1
-1) (integer) -1
+1) (integer) 0
 1) (integer) 600
 ```
 
-The third call (100 seconds, less than current 600) returned -1 and was rejected by GT.
+The third call (100 seconds, less than current 600) returned 0 and was rejected by GT.
 
 ### Non-existent field
 
