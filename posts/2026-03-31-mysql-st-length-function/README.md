@@ -18,7 +18,7 @@ Description: Learn how to use MySQL's ST_Length() function to measure the length
 ST_Length(linestring [, unit])
 ```
 
-The optional `unit` parameter (MySQL 8.0.24+) accepts values like `'metre'`, `'kilometre'`, `'foot'`, `'mile'` etc.
+The optional `unit` parameter (MySQL 8.0.16+) accepts values like `'metre'`, `'kilometre'`, `'foot'`, `'mile'` etc.
 
 ## Simple Linestring Length
 
