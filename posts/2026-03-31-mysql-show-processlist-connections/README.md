@@ -155,7 +155,7 @@ Sorting result                ORDER BY sort in memory or on disk
 Copying to tmp table          Materializing subquery or GROUP BY
 Waiting for lock              Blocked on table-level lock
 Waiting for metadata lock     DDL conflicting with a DML query
-Locked                        Row-level lock contention
+Locked                        Waiting for table-level lock (MyISAM)
 Opening tables                Loading table definitions
 Writing to net                Sending rows to client (slow network)
 ```
@@ -191,7 +191,7 @@ ORDER BY time DESC;
 
 - Monitor `SHOW PROCESSLIST` during slow application response to identify blocking queries quickly.
 - Set `wait_timeout` and `interactive_timeout` in `my.cnf` to automatically kill idle connections: typically `wait_timeout=600` (10 minutes).
-- Never kill the thread with `Id=1` (main thread) or replication threads (`Command=Binlog Dump`).
+- Never kill replication threads (`Command=Binlog Dump`) or system user threads.
 - Use `KILL QUERY id` to cancel a query but preserve the connection; use `KILL id` to fully disconnect.
 - Query `information_schema.PROCESSLIST` from a monitoring script or dashboard for automated alerting on long-running queries.
 
