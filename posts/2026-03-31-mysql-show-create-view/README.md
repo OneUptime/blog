@@ -82,7 +82,7 @@ CREATE DEFINER = 'dba_user'@'localhost'
 -- INVOKER: runs with privileges of the calling user
 CREATE SQL SECURITY INVOKER
   VIEW my_orders AS
-  SELECT * FROM orders WHERE customer_id = USER_ID();
+  SELECT * FROM orders WHERE user = CURRENT_USER();
 ```
 
 ## Modifying a View
