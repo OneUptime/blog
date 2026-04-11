@@ -35,7 +35,8 @@ Last_SQL_Error: Could not execute Write_rows event on table myapp.orders;
                Duplicate entry '101' for key 'PRIMARY', Error_code: 1062;
                handler error HA_ERR_FOUND_DUPP_KEY
 ...
-Executing_Gtid: 3E11FA47-71CA-11E1-9E33-C80AA9429562:55
+Retrieved_Gtid_Set: 3E11FA47-71CA-11E1-9E33-C80AA9429562:1-55
+Executed_Gtid_Set: 3E11FA47-71CA-11E1-9E33-C80AA9429562:1-54
 ...
 */
 ```
@@ -48,8 +49,9 @@ With GTIDs, inject an empty transaction with the offending GTID to tell MySQL "I
 -- Step 1: Stop the SQL thread
 STOP REPLICA SQL_THREAD;
 
--- Step 2: Note the failing GTID from SHOW REPLICA STATUS
--- Executing_Gtid: 3E11FA47-71CA-11E1-9E33-C80AA9429562:55
+-- Step 2: Determine the failing GTID from SHOW REPLICA STATUS
+-- Retrieved_Gtid_Set minus Executed_Gtid_Set = the failing transaction
+-- In this example: 3E11FA47-71CA-11E1-9E33-C80AA9429562:55
 
 -- Step 3: Set gtid_next to the failing GTID
 SET GTID_NEXT = '3E11FA47-71CA-11E1-9E33-C80AA9429562:55';
@@ -70,14 +72,14 @@ SHOW REPLICA STATUS\G
 
 ## Method 2 - Skip with position-based replication
 
-When GTIDs are not enabled, use `SQL_SKIP_COUNTER` to skip one event:
+When GTIDs are not enabled, use `sql_replica_skip_counter` to skip one event:
 
 ```sql
 -- Stop the SQL thread
 STOP REPLICA SQL_THREAD;
 
 -- Skip one event (the failing transaction)
-SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 1;
+SET GLOBAL sql_replica_skip_counter = 1;
 
 -- Restart the SQL thread
 START REPLICA SQL_THREAD;
@@ -90,7 +92,7 @@ To skip multiple events:
 
 ```sql
 STOP REPLICA SQL_THREAD;
-SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 3; -- skip next 3 events
+SET GLOBAL sql_replica_skip_counter = 3; -- skip next 3 events
 START REPLICA SQL_THREAD;
 ```
 
@@ -191,4 +193,4 @@ flowchart TD
 
 ## Summary
 
-To skip a failing GTID transaction: stop the SQL thread, set `GTID_NEXT` to the offending GTID, commit an empty transaction, reset `GTID_NEXT` to `AUTOMATIC`, and restart the SQL thread. For position-based replication use `SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 1` instead. Always verify that the skipped data is consistent on the replica after the skip, using `pt-table-checksum` to detect any divergence. Avoid using `replica_skip_errors` in production as it silently hides data integrity issues.
+To skip a failing GTID transaction: stop the SQL thread, set `GTID_NEXT` to the offending GTID, commit an empty transaction, reset `GTID_NEXT` to `AUTOMATIC`, and restart the SQL thread. For position-based replication use `SET GLOBAL sql_replica_skip_counter = 1` instead. Always verify that the skipped data is consistent on the replica after the skip, using `pt-table-checksum` to detect any divergence. Avoid using `replica_skip_errors` in production as it silently hides data integrity issues.
