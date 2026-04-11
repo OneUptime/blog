@@ -113,8 +113,7 @@ journalctl -u redis -f
 
 ```text
 Reading RDB preamble from AOF file...
-RDB loaded, now reading AOF tail...
-AOF rewritten in 2 seconds
+Reading the remaining AOF tail...
 DB loaded from append only file: 2.534 seconds
 ```
 
