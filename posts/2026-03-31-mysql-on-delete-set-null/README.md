@@ -91,7 +91,7 @@ With this setup: if a department is deleted, employees lose the reference (NULL)
 If the FK column is `NOT NULL`, MySQL will reject the `ON DELETE SET NULL` action at the point of table creation:
 
 ```sql
--- This will fail at DELETE time or at table creation
+-- This will fail at table creation
 dept_id INT UNSIGNED NOT NULL,
 CONSTRAINT fk_emp_dept FOREIGN KEY (dept_id) REFERENCES departments (dept_id)
 ON DELETE SET NULL  -- Error: column is NOT NULL
@@ -133,7 +133,7 @@ This is useful for building a dashboard of unassigned items or for triggering re
 |---|---|
 | CASCADE | Child row is deleted |
 | SET NULL | FK column set to NULL |
-| SET DEFAULT | FK column set to its default value |
+| SET DEFAULT | FK column set to its default value (parsed but not supported by InnoDB) |
 | RESTRICT | Parent delete rejected if children exist |
 | NO ACTION | Same as RESTRICT in MySQL |
 
