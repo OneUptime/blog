@@ -10,7 +10,7 @@ Description: Learn how to use pt-table-sync to repair data differences between M
 
 ## What is pt-table-sync?
 
-`pt-table-sync` is a Percona Toolkit utility that resolves data differences between MySQL servers by generating and applying `INSERT`, `UPDATE`, and `DELETE` statements. It is typically used after `pt-table-checksum` has identified inconsistencies between a primary and its replicas, bringing the replica data back in sync without requiring a full rebuild.
+`pt-table-sync` is a Percona Toolkit utility that resolves data differences between MySQL servers by generating and applying `REPLACE` and `DELETE` statements. It is typically used after `pt-table-checksum` has identified inconsistencies between a primary and its replicas, bringing the replica data back in sync without requiring a full rebuild.
 
 ## Prerequisites
 
