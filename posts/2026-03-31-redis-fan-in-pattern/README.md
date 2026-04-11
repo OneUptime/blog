@@ -79,8 +79,8 @@ def fan_in_with_tracking(job_id: str, worker_ids: list):
 
     # Simulate parallel workers
     workers = [
-        threading.Thread(target=worker, args=(f"w{i}", list(range(i * 10, i * 10 + 10))))
-        for i in range(len(worker_ids))
+        threading.Thread(target=worker, args=(wid, list(range(i * 10, i * 10 + 10))))
+        for i, wid in enumerate(worker_ids)
     ]
     for w in workers:
         w.start()
@@ -111,7 +111,7 @@ def all_workers_done(job_id: str, expected: int) -> bool:
 # Check list length (results waiting)
 redis-cli LLEN fanin:results:job-abc
 
-# Pop one result to inspect
+# View the first result (non-destructive)
 redis-cli LRANGE fanin:results:job-abc 0 0
 
 # Check completion tracker
