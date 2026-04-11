@@ -84,36 +84,38 @@ for key in ['session:abc123', 'permanent_key', 'nonexistent']:
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
+(async () => {
+  const client = createClient();
+  await client.connect();
 
-await client.set('token:xyz', 'value');
-await client.expire('token:xyz', 3600);
+  await client.set('token:xyz', 'value');
+  await client.expire('token:xyz', 3600);
 
-// Get absolute expiry time
-const expiryUnix = await client.expireTime('token:xyz');
-if (expiryUnix >= 0) {
-  const expiryDate = new Date(expiryUnix * 1000);
-  console.log(`Token expires at: ${expiryDate.toISOString()}`);
-}
+  // Get absolute expiry time
+  const expiryUnix = await client.expireTime('token:xyz');
+  if (expiryUnix >= 0) {
+    const expiryDate = new Date(expiryUnix * 1000);
+    console.log(`Token expires at: ${expiryDate.toISOString()}`);
+  }
 
-// Millisecond precision
-const expiryMs = await client.pExpireTime('token:xyz');
-console.log(`Expires at (ms): ${expiryMs}`);
+  // Millisecond precision
+  const expiryMs = await client.pExpireTime('token:xyz');
+  console.log(`Expires at (ms): ${expiryMs}`);
 
-// Handle special return values
-async function getExpiryInfo(key) {
-  const ts = await client.expireTime(key);
-  if (ts === -2) return { status: 'missing' };
-  if (ts === -1) return { status: 'persistent' };
-  return {
-    status: 'expiring',
-    expiresAt: new Date(ts * 1000).toISOString(),
-    ttlSeconds: Math.round(ts - Date.now() / 1000),
-  };
-}
+  // Handle special return values
+  async function getExpiryInfo(key) {
+    const ts = await client.expireTime(key);
+    if (ts === -2) return { status: 'missing' };
+    if (ts === -1) return { status: 'persistent' };
+    return {
+      status: 'expiring',
+      expiresAt: new Date(ts * 1000).toISOString(),
+      ttlSeconds: Math.round(ts - Date.now() / 1000),
+    };
+  }
 
-console.log(await getExpiryInfo('token:xyz'));
+  console.log(await getExpiryInfo('token:xyz'));
+})();
 ```
 
 ## Practical Example in Go
