@@ -41,7 +41,7 @@ WHERE MATCH(title, body) AGAINST('MySQL performance tuning')
 ORDER BY relevance DESC;
 ```
 
-MySQL calculates a relevance score based on word frequency, inverse document frequency, and other factors. Words that appear in more than 50% of rows (the InnoDB default threshold) are considered "too common" and ignored.
+MySQL calculates a relevance score based on word frequency, inverse document frequency, and other factors. For MyISAM tables, words that appear in more than 50% of rows are treated as stopwords and ignored. InnoDB does not apply this 50% threshold but uses document frequency as part of its BM25-based ranking.
 
 ## Boolean Mode
 
