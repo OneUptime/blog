@@ -69,14 +69,14 @@ ALTER TABLE events
 Some operations use `INPLACE` but still perform an internal table rebuild. They support concurrent DML (with `LOCK=NONE`), but they take longer than truly in-place operations because the data files are rewritten:
 
 ```sql
--- Adding a stored generated column (rebuilds, but allows DML)
+-- Dropping a column (rebuilds, but allows DML)
 ALTER TABLE orders
-  ADD COLUMN order_year INT AS (YEAR(order_date)) STORED,
+  DROP COLUMN legacy_notes,
   ALGORITHM=INPLACE, LOCK=NONE;
 
--- Converting a column character set
+-- Adding NOT NULL to a column (rebuilds, but allows DML)
 ALTER TABLE products
-  MODIFY COLUMN description VARCHAR(500) CHARACTER SET utf8mb4,
+  MODIFY COLUMN description VARCHAR(500) NOT NULL,
   ALGORITHM=INPLACE, LOCK=NONE;
 
 -- Changing the ROW_FORMAT
@@ -104,7 +104,7 @@ You can also check the InnoDB online DDL status:
 SHOW ENGINE INNODB STATUS\G
 ```
 
-Look for the `ROW OPERATIONS` section, which reports the number of rows processed during an in-place rebuild.
+Look for the `SEMAPHORES` and `TRANSACTIONS` sections, which may show activity related to an in-progress DDL operation. For precise row-level progress tracking, use the Performance Schema query shown above.
 
 ## LOCK Options with INPLACE
 
