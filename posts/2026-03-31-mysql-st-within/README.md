@@ -56,23 +56,23 @@ CREATE TABLE delivery_zones (
 );
 
 INSERT INTO stores (name, location) VALUES
-    ('Store A', ST_GeomFromText('POINT(-74.000 40.715)', 4326)),
-    ('Store B', ST_GeomFromText('POINT(-73.975 40.755)', 4326)),
-    ('Store C', ST_GeomFromText('POINT(-87.630 41.878)', 4326)),
-    ('Store D', ST_GeomFromText('POINT(-73.940 40.680)', 4326));
+    ('Store A', ST_GeomFromText('POINT(40.715 -74.000)', 4326)),
+    ('Store B', ST_GeomFromText('POINT(40.755 -73.975)', 4326)),
+    ('Store C', ST_GeomFromText('POINT(41.878 -87.630)', 4326)),
+    ('Store D', ST_GeomFromText('POINT(40.680 -73.940)', 4326));
 
 INSERT INTO delivery_zones (zone, boundary) VALUES
 (
     'NYC Downtown',
-    ST_GeomFromText('POLYGON((-74.020 40.700, -73.960 40.700, -73.960 40.730, -74.020 40.730, -74.020 40.700))', 4326)
+    ST_GeomFromText('POLYGON((40.700 -74.020, 40.700 -73.960, 40.730 -73.960, 40.730 -74.020, 40.700 -74.020))', 4326)
 ),
 (
     'NYC Midtown',
-    ST_GeomFromText('POLYGON((-74.010 40.740, -73.960 40.740, -73.960 40.770, -74.010 40.770, -74.010 40.740))', 4326)
+    ST_GeomFromText('POLYGON((40.740 -74.010, 40.740 -73.960, 40.770 -73.960, 40.770 -74.010, 40.740 -74.010))', 4326)
 ),
 (
     'Chicago Loop',
-    ST_GeomFromText('POLYGON((-87.645 41.868, -87.620 41.868, -87.620 41.890, -87.645 41.890, -87.645 41.868))', 4326)
+    ST_GeomFromText('POLYGON((41.868 -87.645, 41.868 -87.620, 41.890 -87.620, 41.890 -87.645, 41.868 -87.645))', 4326)
 );
 ```
 
@@ -95,13 +95,13 @@ ORDER BY s.name;
 +---------+--------------+
 ```
 
-Store D (`-73.940 40.680`) falls outside all zones and does not appear.
+Store D (`40.680 -73.940`) falls outside all zones and does not appear.
 
 ### Test a Single Point Against a Polygon
 
 ```sql
 -- Is a specific coordinate inside the NYC Downtown zone?
-SET @delivery_point = ST_GeomFromText('POINT(-73.990 40.718)', 4326);
+SET @delivery_point = ST_GeomFromText('POINT(40.718 -73.990)', 4326);
 SET @downtown_zone  = (SELECT boundary FROM delivery_zones WHERE zone = 'NYC Downtown');
 
 SELECT ST_Within(@delivery_point, @downtown_zone) AS is_in_downtown;
@@ -120,11 +120,11 @@ SELECT ST_Within(@delivery_point, @downtown_zone) AS is_in_downtown;
 ```sql
 -- Find all stores within a rough bounding area (cross-country delivery study)
 SET @east_coast = ST_GeomFromText(
-    'POLYGON((-80.000 38.000, -70.000 38.000, -70.000 45.000, -80.000 45.000, -80.000 38.000))',
+    'POLYGON((38.000 -80.000, 38.000 -70.000, 45.000 -70.000, 45.000 -80.000, 38.000 -80.000))',
     4326
 );
 
-SELECT name, ST_X(location) AS lon, ST_Y(location) AS lat
+SELECT name, ST_Longitude(location) AS lon, ST_Latitude(location) AS lat
 FROM stores
 WHERE ST_Within(location, @east_coast);
 ```
@@ -135,6 +135,7 @@ WHERE ST_Within(location, @east_coast);
 +---------+----------+---------+
 | Store A | -74.000  | 40.715  |
 | Store B | -73.975  | 40.755  |
+| Store D | -73.940  | 40.680  |
 +---------+----------+---------+
 ```
 
@@ -177,7 +178,7 @@ DELIMITER ;
 
 -- Test the function
 SELECT is_in_delivery_zone(
-    ST_GeomFromText('POINT(-74.000 40.715)', 4326)
+    ST_GeomFromText('POINT(40.715 -74.000)', 4326)
 ) AS assigned_zone;
 ```
 
@@ -195,7 +196,7 @@ A point exactly on the boundary of a polygon returns 0 with `ST_Within` (the poi
 
 ```sql
 -- Corner point of the NYC Downtown polygon boundary
-SET @corner = ST_GeomFromText('POINT(-74.020 40.700)', 4326);
+SET @corner = ST_GeomFromText('POINT(40.700 -74.020)', 4326);
 SET @downtown = (SELECT boundary FROM delivery_zones WHERE zone = 'NYC Downtown');
 
 SELECT
