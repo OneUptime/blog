@@ -19,7 +19,7 @@ redis-cli --intrinsic-latency 10
 # Benchmark with pipelining
 redis-benchmark -q -n 100000 -P 16 -c 50
 
-# Latency histogram (Redis 7+)
+# Latency monitoring (Redis 2.8.13+)
 redis-cli LATENCY LATEST
 redis-cli LATENCY HISTORY event
 ```
