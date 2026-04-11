@@ -168,7 +168,7 @@ redis-cli ACL LOG
 redis-cli ACL LOG RESET
 
 # Get a specific number of recent entries
-redis-cli ACL LOG COUNT 10
+redis-cli ACL LOG 10
 ```
 
 ## Summary
