@@ -67,6 +67,7 @@ const { getRedisClient } = require('../shared/redisClient');
 app.http('getProduct', {
   methods: ['GET'],
   authLevel: 'anonymous',
+  route: 'products/{id}',
   handler: async (request, context) => {
     const id = request.params.id;
     const redis = await getRedisClient();
@@ -74,7 +75,7 @@ app.http('getProduct', {
 
     const cached = await redis.get(cacheKey);
     if (cached) {
-      return { body: cached, headers: { 'X-Cache': 'HIT' } };
+      return { jsonBody: JSON.parse(cached), headers: { 'X-Cache': 'HIT' } };
     }
 
     // Fetch from database
