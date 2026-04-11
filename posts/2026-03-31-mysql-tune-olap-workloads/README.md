@@ -90,27 +90,22 @@ innodb_read_ahead_threshold = 56      # default 56; lower for smaller tables
 innodb_random_read_ahead    = OFF
 ```
 
-## Parallel query with hash joins (MySQL 8.0+)
+## Hash joins (MySQL 8.0.18+)
 
 ```sql
--- Enable hash joins (default ON in MySQL 8.0.18+)
-SHOW VARIABLES LIKE 'optimizer_switch%' \G
--- Look for: hash_join=on
+-- Hash joins are always enabled from MySQL 8.0.19+
+-- No optimizer_switch flag or hint is needed
 
--- Force a hash join hint for a specific query
-SELECT /*+ HASH_JOIN(s, d) */
+-- Verify hash join usage with EXPLAIN FORMAT=TREE
+EXPLAIN FORMAT=TREE
+SELECT
   d.year,
   d.quarter,
   SUM(s.revenue) AS total
 FROM sales_fact s
 JOIN date_dim d ON s.date_id = d.id
-GROUP BY d.year, d.quarter;
-
--- Check if hash join was used
-EXPLAIN FORMAT=TREE
-SELECT d.year, SUM(s.revenue)
-FROM sales_fact s JOIN date_dim d ON s.date_id = d.id
-GROUP BY d.year\G
+GROUP BY d.year, d.quarter\G
+-- Look for: "Inner hash join" in the output
 ```
 
 ## OLAP-friendly table design
@@ -245,4 +240,4 @@ flowchart TD
 
 ## Summary
 
-Tuning MySQL for OLAP requires increasing `innodb_buffer_pool_size` to cache analytical working sets, raising session-level `sort_buffer_size`, `join_buffer_size`, `tmp_table_size`, and `max_heap_table_size` for complex queries, leveraging hash joins (MySQL 8.0), and designing tables with range partitioning and covering indexes for common filter/aggregate patterns. For heavy analytical workloads, direct queries to a dedicated read replica configured with a large buffer pool and relaxed durability settings, leaving the primary server for OLTP traffic.
+Tuning MySQL for OLAP requires increasing `innodb_buffer_pool_size` to cache analytical working sets, raising session-level `sort_buffer_size`, `join_buffer_size`, `tmp_table_size`, and `max_heap_table_size` for complex queries, leveraging hash joins (MySQL 8.0.18+), and designing tables with range partitioning and covering indexes for common filter/aggregate patterns. For heavy analytical workloads, direct queries to a dedicated read replica configured with a large buffer pool and relaxed durability settings, leaving the primary server for OLTP traffic.
