@@ -51,7 +51,7 @@ redis-benchmark -n 1000000 -c 200 -q
 
 ```text
 # redis.conf
-tcp-backlog 511
+tcp-backlog 65535
 maxclients 10000
 tcp-keepalive 300
 ```
@@ -130,7 +130,7 @@ redis-benchmark -n 1000000 -q
 redis-benchmark -n 1000000 -q -P 16
 
 # Test specific command with multiple clients
-redis-benchmark -n 100000 -c 50 -q GET
+redis-benchmark -n 100000 -c 50 -q -t get
 ```
 
 Sample output:
