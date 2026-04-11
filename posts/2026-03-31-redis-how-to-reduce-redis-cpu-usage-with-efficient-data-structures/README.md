@@ -21,7 +21,7 @@ Common CPU-intensive mistakes:
 ## Check Current CPU Usage
 
 ```bash
-redis-cli INFO stats | grep -E "used_cpu|total_commands|instantaneous_ops"
+redis-cli INFO | grep -E "used_cpu|total_commands|instantaneous_ops"
 ```
 
 ```text
@@ -110,7 +110,7 @@ ZADD ranked_items 1.0 "item:a"
 ZRANGE ranked_items 0 -1 WITHSCORES  # O(log N + M)
 ```
 
-## Use BITFIELD and BITCOUNT for Analytics
+## Use Bitmaps and BITCOUNT for Analytics
 
 For boolean flags or counters, bit operations are extremely CPU-efficient:
 
