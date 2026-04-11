@@ -49,8 +49,8 @@ innodb_redo_log_capacity = 4294967296
 
 ```ini
 [mysqld]
-innodb_log_file_size     = 2G   -- each file
-innodb_log_files_in_group = 2   -- total = 4 GB
+innodb_log_file_size     = 2G   # each file
+innodb_log_files_in_group = 2   # total = 4 GB
 ```
 
 Verify the setting after restart:
@@ -68,10 +68,10 @@ The log buffer holds redo log data in memory before flushing to disk. Increase i
 innodb_log_buffer_size = 64M
 ```
 
-At high write rates, flush the log more frequently than once per second:
+Ensure the log flush interval is at the default minimum of 1 second:
 
 ```ini
-innodb_flush_log_at_timeout = 1  -- flush every 1 second (default)
+innodb_flush_log_at_timeout = 1  # flush every 1 second (default)
 ```
 
 ## Durability vs. Performance Trade-off
@@ -110,7 +110,7 @@ sync_binlog                    = 1
 ```ini
 [mysqld]
 innodb_buffer_pool_size      = 24G
-innodb_buffer_pool_instances = 16   -- one per GB
+innodb_buffer_pool_instances = 16   # each instance ≥ 1 GB
 ```
 
 ### Dirty Page Flush Rate
@@ -119,10 +119,10 @@ Configure how aggressively InnoDB flushes dirty pages:
 
 ```ini
 [mysqld]
-innodb_max_dirty_pages_pct        = 75   -- default 90; reduce for more frequent flushing
-innodb_max_dirty_pages_pct_lwm    = 10   -- start flushing when dirty pages exceed 10%
-innodb_io_capacity                = 2000  -- I/O operations per second (for SSD)
-innodb_io_capacity_max            = 4000  -- max burst I/O
+innodb_max_dirty_pages_pct        = 75   # default 90; reduce for more frequent flushing
+innodb_max_dirty_pages_pct_lwm    = 10   # start flushing when dirty pages exceed 10%
+innodb_io_capacity                = 2000  # I/O operations per second (for SSD)
+innodb_io_capacity_max            = 4000  # max burst I/O
 ```
 
 Adaptive flushing algorithm:
@@ -165,7 +165,7 @@ On Linux with EXT4 or XFS and SSD, `O_DIRECT` consistently improves write throug
 For very fast NVMe storage:
 
 ```ini
-innodb_flush_method = O_DIRECT_NO_FSYNC  -- skip fsync, OS guarantees order
+innodb_flush_method = O_DIRECT_NO_FSYNC  # skip fsync; requires storage with battery-backed cache
 ```
 
 ## Change Buffering
@@ -175,7 +175,7 @@ Enable the change buffer to defer secondary index updates:
 ```ini
 [mysqld]
 innodb_change_buffering       = all
-innodb_change_buffer_max_size = 25  -- up to 25% of buffer pool
+innodb_change_buffer_max_size = 25  # up to 25% of buffer pool
 ```
 
 For SSD storage where random I/O is fast, disable the change buffer:
@@ -225,7 +225,7 @@ For high-throughput INSERT workloads, use `innodb_autoinc_lock_mode = 2`:
 
 ```ini
 [mysqld]
-innodb_autoinc_lock_mode = 2  -- interleaved mode (fastest); requires binlog_format=ROW
+innodb_autoinc_lock_mode = 2  # interleaved mode (fastest); requires binlog_format=ROW
 binlog_format            = ROW
 ```
 
@@ -237,13 +237,13 @@ The doublewrite buffer prevents partial page writes. It adds overhead but ensure
 
 ```ini
 [mysqld]
-innodb_doublewrite = ON  -- default; disable only on ZFS or other journaling FS
+innodb_doublewrite = ON  # default; disable only on ZFS or other copy-on-write FS
 ```
 
 On ZFS or Btrfs (atomic writes):
 
 ```ini
-innodb_doublewrite = OFF  -- ZFS handles atomicity
+innodb_doublewrite = OFF  # ZFS handles atomicity
 ```
 
 ## Monitoring Write Performance
@@ -278,7 +278,7 @@ innodb_buffer_pool_size          = 24G
 innodb_buffer_pool_instances     = 16
 
 # Redo Log (MySQL 8.0.30+)
-innodb_redo_log_capacity         = 4294967296  -- 4 GB
+innodb_redo_log_capacity         = 4294967296  # 4 GB
 innodb_log_buffer_size           = 64M
 
 # Durability (sacrifice 1 second of data for throughput)
