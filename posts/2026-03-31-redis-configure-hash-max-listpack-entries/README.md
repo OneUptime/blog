@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Hash, Memory, Listpack
 
-Description: Configure hash-max-listpack-entries and hash-max-listpack-value to keep Redis hashes in memory-efficient listpack encoding and reduce memory by up to 5x.
+Description: Configure hash-max-listpack-entries and hash-max-listpack-value to keep Redis hashes in memory-efficient listpack encoding and reduce memory by up to 2.5x.
 
 ---
 
@@ -18,7 +18,7 @@ HSET user:1 name Alice age 30
 OBJECT ENCODING user:1  # "listpack"
 
 # Add more fields to cross the threshold
-HSET user:1 f1 v1 f2 v2 ... f200 v200
+HSET user:1 f1 v1 f2 v2 ... f600 v600
 OBJECT ENCODING user:1  # "hashtable"
 ```
 
@@ -35,7 +35,7 @@ Ratio: listpack uses ~2.5x less memory
 
 ```bash
 redis-cli CONFIG GET hash-max-listpack-entries
-# 128 (max fields before switching to hashtable)
+# 512 (max fields before switching to hashtable)
 
 redis-cli CONFIG GET hash-max-listpack-value
 # 64 (max field or value size in bytes)
@@ -47,14 +47,14 @@ If either threshold is exceeded, Redis converts the hash to hashtable encoding p
 
 ```bash
 # Allow larger hashes to stay as listpack
-redis-cli CONFIG SET hash-max-listpack-entries 256
+redis-cli CONFIG SET hash-max-listpack-entries 1024
 redis-cli CONFIG SET hash-max-listpack-value 128
 ```
 
 In `redis.conf`:
 
 ```text
-hash-max-listpack-entries 256
+hash-max-listpack-entries 1024
 hash-max-listpack-value 128
 ```
 
@@ -75,8 +75,8 @@ def create_test_hash(key, num_fields):
     enc = r.object_encoding(key)
     return mem, enc
 
-# Default threshold = 128 fields
-for n in [50, 100, 128, 129, 200]:
+# Default threshold = 512 fields
+for n in [100, 300, 512, 513, 700]:
     mem, enc = create_test_hash("test_hash", n)
     per_field = mem / n
     print(f"Fields: {n:4d}  Encoding: {enc:12s}  Memory: {mem:6d}  Per field: {per_field:.0f}")
@@ -85,26 +85,26 @@ for n in [50, 100, 128, 129, 200]:
 Output (approximate):
 
 ```text
-Fields:   50  Encoding: listpack     Memory:   1450  Per field: 29
 Fields:  100  Encoding: listpack     Memory:   2850  Per field: 29
-Fields:  128  Encoding: listpack     Memory:   3650  Per field: 29
-Fields:  129  Encoding: hashtable    Memory:   9400  Per field: 73
-Fields:  200  Encoding: hashtable    Memory:  14500  Per field: 73
+Fields:  300  Encoding: listpack     Memory:   8650  Per field: 29
+Fields:  512  Encoding: listpack     Memory:  14850  Per field: 29
+Fields:  513  Encoding: hashtable    Memory:  37450  Per field: 73
+Fields:  700  Encoding: hashtable    Memory:  51100  Per field: 73
 ```
 
-The jump at 129 fields is dramatic - 2.5x more memory per field.
+The jump at 513 fields is dramatic - 2.5x more memory per field.
 
 ## Practical Recommendations
 
 For user profiles, configuration objects, and small documents:
 
 ```text
-If most hashes have < 500 fields and values < 256 bytes:
-  hash-max-listpack-entries 512
+If most hashes have < 1000 fields and values < 256 bytes:
+  hash-max-listpack-entries 1024
   hash-max-listpack-value   256
 
 If performance is critical and hashes are frequently updated:
-  hash-max-listpack-entries 128  (default, less CPU for writes)
+  hash-max-listpack-entries 256  (lower than default, less CPU for writes)
   hash-max-listpack-value   64
 ```
 
@@ -136,4 +136,4 @@ done
 
 ## Summary
 
-Setting `hash-max-listpack-entries` to a value that covers your typical hash size keeps hashes in listpack encoding, reducing memory by ~2.5x compared to hashtable. The default of 128 is conservative - if your hashes stay under 300-500 fields, raising the threshold to 256 or 512 provides significant memory savings with minimal performance impact for typical access patterns.
+Setting `hash-max-listpack-entries` to a value that covers your typical hash size keeps hashes in listpack encoding, reducing memory by ~2.5x compared to hashtable. The default of 512 works well for most use cases - if your hashes stay under 700-1000 fields, raising the threshold to 1024 provides additional memory savings with minimal performance impact for typical access patterns.
