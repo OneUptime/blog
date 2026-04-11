@@ -21,10 +21,10 @@ SCRIPT EXISTS sha1 [sha1 ...]
 ```bash
 # Load a script first
 SCRIPT LOAD "return 'hello'"
-# Returns: "2067d915024a3e1657c4169c84f809f8ec75b9a7"
+# Returns: "1b936e3fe509bcbc9cd0664897bbe8fd0cac101b"
 
 # Check if it exists
-SCRIPT EXISTS 2067d915024a3e1657c4169c84f809f8ec75b9a7
+SCRIPT EXISTS 1b936e3fe509bcbc9cd0664897bbe8fd0cac101b
 # 1) (integer) 1
 
 # Check a non-existent SHA
