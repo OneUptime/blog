@@ -41,7 +41,7 @@ Edit `/etc/mysql/mysql.conf.d/mysqld.cnf` (or `/etc/my.cnf`) on the source:
 server-id         = 1
 log_bin           = /var/log/mysql/mysql-bin.log
 binlog_do_db      = myapp_db
-expire_logs_days  = 7
+binlog_expire_logs_seconds = 604800
 max_binlog_size   = 100M
 ```
 
@@ -83,7 +83,7 @@ The output will look like:
 Note the `File` and `Position` values. In a separate shell, dump the database:
 
 ```bash
-mysqldump -u root -p --all-databases --master-data > /tmp/source_dump.sql
+mysqldump -u root -p --all-databases --source-data > /tmp/source_dump.sql
 ```
 
 Unlock the tables after the dump completes:
