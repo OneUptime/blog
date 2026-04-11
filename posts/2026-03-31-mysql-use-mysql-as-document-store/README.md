@@ -31,15 +31,15 @@ In MySQL Shell JavaScript mode:
 ```javascript
 \js
 const schema = session.getSchema('mydb');
-const products = await schema.createCollection('products');
+const products = schema.createCollection('products');
 ```
 
-This creates an InnoDB table called `products` with two columns: `_id` (VARCHAR primary key) and `doc` (JSON).
+This creates an InnoDB table called `products` with two columns: `_id` (VARBINARY(32) primary key) and `doc` (JSON).
 
 ## Adding Documents
 
 ```javascript
-await products.add([
+products.add([
   { name: 'Widget A', price: 19.99, category: 'hardware', inStock: true },
   { name: 'Widget B', price: 34.50, category: 'hardware', inStock: false },
   { name: 'Gizmo Pro', price: 99.00, category: 'electronics', inStock: true }
@@ -53,14 +53,14 @@ Each document gets an auto-generated `_id` if one is not provided.
 Find all in-stock products:
 
 ```javascript
-const result = await products.find('inStock = true').execute();
+const result = products.find('inStock = true').execute();
 result.fetchAll().forEach(doc => console.log(doc));
 ```
 
 Find by multiple conditions:
 
 ```javascript
-const result = await products.find('category = :cat AND price < :max')
+const result = products.find('category = :cat AND price < :max')
   .bind('cat', 'hardware')
   .bind('max', 50)
   .fields(['name', 'price'])
@@ -70,7 +70,7 @@ const result = await products.find('category = :cat AND price < :max')
 ## Modifying Documents
 
 ```javascript
-await products.modify('name = :name')
+products.modify('name = :name')
   .set('price', 22.99)
   .set('inStock', true)
   .bind('name', 'Widget B')
@@ -80,7 +80,7 @@ await products.modify('name = :name')
 ## Removing Documents
 
 ```javascript
-await products.remove('inStock = false').execute();
+products.remove('inStock = false').execute();
 ```
 
 ## Using SQL to Query Collections
@@ -98,7 +98,7 @@ WHERE doc->>'$.category' = 'electronics';
 Improve query performance by adding indexes on frequently queried JSON paths:
 
 ```javascript
-await products.createIndex('idx_category', {
+products.createIndex('idx_category', {
   fields: [{ field: '$.category', type: 'TEXT(64)' }]
 });
 ```
@@ -113,7 +113,7 @@ ADD INDEX idx_category ((CAST(doc->>'$.category' AS CHAR(64))));
 ## Listing Collections
 
 ```javascript
-const collections = await schema.getCollections();
+const collections = schema.getCollections();
 collections.forEach(c => console.log(c.getName()));
 ```
 
