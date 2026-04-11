@@ -117,9 +117,9 @@ Before registering a new version, verify the change is backward compatible:
 def check_backward_compatible(old_schema: dict, new_schema: dict) -> bool:
     old_required = set(old_schema.get("required", []))
     new_required = set(new_schema.get("required", []))
-    removed = old_required - new_required
-    if removed:
-        print(f"Breaking change: removed required fields {removed}")
+    added = new_required - old_required
+    if added:
+        print(f"Breaking change: added required fields {added}")
         return False
     return True
 ```
