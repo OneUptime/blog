@@ -15,7 +15,7 @@ Redis ACL (Access Control List) system, introduced in Redis 6.0, allows you to d
 - Individual passwords
 - Allowed or denied commands
 - Allowed or denied key patterns
-- Allowed Pub/Sub channel patterns
+- Allowed Pub/Sub channel patterns (Redis 6.2+)
 
 ACLs replace the single `requirepass` approach with fine-grained, per-user access control.
 
@@ -88,11 +88,17 @@ user admin on >AdminSecurePass789 ~* &* +@all
 user worker on >WorkerPass321 ~jobs:* ~queue:* &* +@read +@write +BLPOP +BRPOP
 ```
 
-Reload without restart:
+After editing `redis.conf`, restart Redis to apply changes:
 
 ```bash
+sudo systemctl restart redis
+```
+
+To apply changes at runtime without editing `redis.conf`, use `ACL SETUSER` commands directly, then persist them with `CONFIG REWRITE`:
+
+```bash
+redis-cli ACL SETUSER appuser on >StrongAppPassword123 ~app:* &app:* +@read +@write +DEL +EXPIRE +TTL
 redis-cli CONFIG REWRITE
-redis-cli ACL LOAD
 ```
 
 ## Using an External ACL File
@@ -135,7 +141,7 @@ Sample output:
 
 ```text
 user default off resetchannels -@all
-user appuser on #sha256hash... ~app:* &* +@read +@write -DEL
+user appuser on #sha256hash... ~app:* &* +@read +@write +DEL
 user admin on #sha256hash... ~* &* +@all
 ```
 
@@ -153,7 +159,7 @@ Output:
  3) "passwords"
  4) 1) "(sha256 hash)"
  5) "commands"
- 6) "+@read +@write -DEL"
+ 6) "+@read +@write +DEL"
  7) "keys"
  8) "~app:*"
  9) "channels"
@@ -162,7 +168,7 @@ Output:
 
 ## Testing Permissions with ACL DRYRUN
 
-Before enforcing ACLs, test whether a command would succeed for a user:
+Available since Redis 7.0, `ACL DRYRUN` tests whether a command would succeed for a user without executing it:
 
 ```bash
 redis-cli ACL DRYRUN appuser SET app:key "value"
