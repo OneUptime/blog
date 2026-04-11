@@ -20,13 +20,13 @@ NDB Cluster nodes must be started in a specific order. Starting nodes out of ord
 
 ## Step 1: Start the Management Node
 
-On the management node host:
+On the management node host (first time, to load the initial configuration):
 
 ```bash
-ndb_mgmd --config-file=/var/lib/mysql-cluster/config.ini
+ndb_mgmd --initial --config-file=/var/lib/mysql-cluster/config.ini
 ```
 
-On subsequent starts (after initial configuration):
+On subsequent starts (configuration is cached):
 
 ```bash
 systemctl start ndb_mgmd
@@ -45,15 +45,14 @@ Data and SQL nodes will show as `not connected, accepting connect`.
 On each data node host:
 
 ```bash
-# First-time initialization
-ndbd --initial
-
-# Normal start
+# Start the data node
 ndbd
 
 # Or for multi-threaded nodes
 ndbmtd
 ```
+
+> **Warning:** The `ndbd --initial` flag erases all data node files and redo logs. It is not needed for first-time startup. Only use `--initial` when performing a software upgrade that changes file formats, or as a last resort when normal restarts fail repeatedly.
 
 Using systemd:
 
@@ -119,7 +118,7 @@ ndb_mgm -e "2 stop"
 # Restart node 2 without stopping the cluster
 ndb_mgm -e "2 restart"
 
-# Force restart if node is unresponsive
+# Force restart even if it would result in an incomplete cluster
 ndb_mgm -e "2 restart -f"
 ```
 
