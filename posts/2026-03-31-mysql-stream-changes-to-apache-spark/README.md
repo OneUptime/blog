@@ -45,7 +45,11 @@ curl -X POST http://kafka-connect:8083/connectors \
       "topic.prefix": "cdc",
       "database.include.list": "orders_db",
       "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
-      "schema.history.internal.kafka.topic": "schema-changes.orders_db"
+      "schema.history.internal.kafka.topic": "schema-changes.orders_db",
+      "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+      "key.converter.schemas.enable": "false",
+      "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+      "value.converter.schemas.enable": "false"
     }
   }'
 ```
