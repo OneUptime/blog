@@ -91,7 +91,7 @@ async function createOrder(userId, total) {
 }
 ```
 
-Alternatively, use `SELECT MASTER_POS_WAIT()` to block until a replica catches up to a known binlog position.
+Alternatively, use `SELECT SOURCE_POS_WAIT()` to block until a replica catches up to a known binlog position. (In MySQL versions before 8.0.26, this function was called `MASTER_POS_WAIT()`.)
 
 ## Transaction Pinning
 
