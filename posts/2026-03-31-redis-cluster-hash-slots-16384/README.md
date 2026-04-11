@@ -34,7 +34,7 @@ def redis_slot(key):
         if end != -1 and end > start + 1:
             key = key[start+1:end]  # Hash only the part inside {}
 
-    crc = 0xFFFF
+    crc = 0
     for byte in key.encode('utf-8'):
         crc = (crc ^ (byte << 8)) & 0xFFFF
         for _ in range(8):
@@ -46,17 +46,17 @@ def redis_slot(key):
     return crc % 16384
 
 # Examples
-print(redis_slot("user:1001"))   # e.g., 4092
-print(redis_slot("session:abc")) # e.g., 9187
+print(redis_slot("user:1001"))   # e.g., 5712
+print(redis_slot("session:abc")) # e.g., 14788
 ```
 
 Using Redis directly:
 
 ```bash
 redis-cli CLUSTER KEYSLOT user:1001
-# 4092
+# 5712
 redis-cli CLUSTER KEYSLOT session:abc
-# 9187
+# 14788
 ```
 
 ## Slot Distribution Across Nodes
@@ -89,20 +89,20 @@ When a client issues a command, the cluster node receiving it checks if the key 
 
 ```text
 Client: SET user:1001 "Alice"
--> Compute slot: CRC16("user:1001") % 16384 = 4092
--> Slot 4092 is on Node A
--> If request went to Node B: MOVED 4092 192.168.1.10:7001
--> Client redirects to Node A
+-> Compute slot: CRC16("user:1001") % 16384 = 5712
+-> Slot 5712 is on Node B
+-> If request went to Node C: MOVED 5712 192.168.1.11:7001
+-> Client redirects to Node B
 ```
 
 ## Keys Per Slot
 
 ```bash
 # Count keys in a specific slot
-redis-cli CLUSTER COUNTKEYSINSLOT 4092
+redis-cli CLUSTER COUNTKEYSINSLOT 5712
 
 # List keys in a slot (useful for debugging)
-redis-cli CLUSTER GETKEYSINSLOT 4092 10
+redis-cli CLUSTER GETKEYSINSLOT 5712 10
 ```
 
 ## Slot Coverage and Availability
