@@ -39,10 +39,12 @@ TDIGEST.INFO api:latency
 # 10) "10"
 # 11) "Unmerged weight"
 # 12) "0"
-# 13) "Total compressions"
-# 14) (integer) 1
-# 15) "Memory usage"
-# 16) (integer) 9944
+# 13) "Observations"
+# 14) (integer) 10
+# 15) "Total compressions"
+# 16) (integer) 1
+# 17) "Memory usage"
+# 18) (integer) 9944
 ```
 
 ## Understanding Each Field
@@ -55,6 +57,7 @@ TDIGEST.INFO api:latency
 | Unmerged nodes | Pending centroids not yet compressed |
 | Merged weight | Total number of samples that have been merged (compressed) |
 | Unmerged weight | Samples added but not yet merged into centroids |
+| Observations | Total number of observations added to the sketch |
 | Total compressions | How many times compression has run |
 | Memory usage | Bytes used by the structure |
 
