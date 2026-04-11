@@ -95,7 +95,9 @@ public class Product {
     @Indexed
     private String category;
 
+    @Indexed
     private double price;
+
     private int stock;
 
     // getters and setters
