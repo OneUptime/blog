@@ -67,7 +67,7 @@ CREATE TABLE users (
     name       VARCHAR(100) NOT NULL,
     email      VARCHAR(150) NOT NULL UNIQUE,
     role       VARCHAR(20)  NOT NULL DEFAULT 'user',
-    created_at DATETIME     NOT NULL DEFAULT NOW()
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -193,7 +193,7 @@ $objects = $stmt->fetchAll(PDO::FETCH_OBJ);
 // Map into a specific class:
 $users = $stmt->fetchAll(PDO::FETCH_CLASS, UserModel::class);
 
-// Column 0 only:
+// Name column (index 1):
 $names = $stmt->fetchAll(PDO::FETCH_COLUMN, 1);
 ```
 
