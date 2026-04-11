@@ -80,10 +80,12 @@ def get_unread_count(user_id):
 
 ```python
 def mark_read(user_id, notif_id):
-    r.hset(f"notif:item:{notif_id}", "read", "1")
-    r.decr(f"notif:unread:{user_id}")
-    r.set(f"notif:unread:{user_id}",
-          max(int(r.get(f"notif:unread:{user_id}") or 0), 0))
+    prev = r.hget(f"notif:item:{notif_id}", "read")
+    if prev == "0":
+        r.hset(f"notif:item:{notif_id}", "read", "1")
+        new_count = r.decr(f"notif:unread:{user_id}")
+        if new_count < 0:
+            r.set(f"notif:unread:{user_id}", 0)
 
 def mark_all_read(user_id):
     notif_ids = r.lrange(f"notif:feed:{user_id}", 0, -1)
