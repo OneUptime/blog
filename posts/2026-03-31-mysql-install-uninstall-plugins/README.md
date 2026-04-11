@@ -58,12 +58,12 @@ ORDER BY PLUGIN_NAME;
 Expected output:
 
 ```text
-+--------------------+---------------+-----------------+
-| PLUGIN_NAME        | PLUGIN_STATUS | PLUGIN_TYPE     |
-+--------------------+---------------+-----------------+
-| CONNECTION_CONTROL | ACTIVE        | AUDIT           |
-| validate_password  | ACTIVE        | VALIDATE PASSWORD|
-+--------------------+---------------+-----------------+
++--------------------+---------------+-------------------+
+| PLUGIN_NAME        | PLUGIN_STATUS | PLUGIN_TYPE       |
++--------------------+---------------+-------------------+
+| CONNECTION_CONTROL | ACTIVE        | AUDIT             |
+| validate_password  | ACTIVE        | VALIDATE PASSWORD |
++--------------------+---------------+-------------------+
 ```
 
 ## Installing MySQL 8.0 Components
@@ -106,16 +106,16 @@ plugin-load-add = validate_password.so
 plugin-load-add = connection_control.so
 ```
 
-## Disabling Without Uninstalling
+## Controlling Plugin Activation at Startup
 
-Disable a plugin at startup without uninstalling it:
+Control how a plugin is activated at startup without uninstalling it:
 
 ```ini
 [mysqld]
 validate_password = FORCE_PLUS_PERMANENT
 ```
 
-`FORCE_PLUS_PERMANENT` prevents the plugin from being uninstalled while the server is running. Use `OFF` to disable a plugin or `FORCE` to load it and prevent disabling.
+`FORCE_PLUS_PERMANENT` forces the plugin to load and prevents it from being uninstalled while the server is running. Use `OFF` to disable a plugin at startup, or `FORCE` to require successful plugin initialization (the server will not start if the plugin fails to load).
 
 ## Troubleshooting Failed Installation
 
