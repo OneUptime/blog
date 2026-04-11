@@ -60,7 +60,7 @@ CREATE TABLE orders (
 );
 ```
 
-Always add an index on the foreign key column. MySQL does not do this automatically.
+InnoDB automatically creates an index on the foreign key column if one does not already exist. Defining it explicitly, as shown above, gives you control over the index name and makes the schema self-documenting.
 
 ## Index for Your Query Patterns
 
