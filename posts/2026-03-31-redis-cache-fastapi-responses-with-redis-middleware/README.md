@@ -15,7 +15,7 @@ Caching API responses reduces database load and improves response times for read
 ## Installation
 
 ```bash
-pip install fastapi uvicorn redis[asyncio]
+pip install fastapi uvicorn redis
 ```
 
 ## Redis Client Setup
@@ -154,15 +154,15 @@ async def get_categories():
 For more granular control, use a decorator:
 
 ```python
+import json
 import functools
-from fastapi import Depends
 from redis_client import get_redis
-import redis.asyncio as aioredis
 
 def cache_response(ttl: int = 60):
     def decorator(func):
         @functools.wraps(func)
-        async def wrapper(*args, redis: aioredis.Redis = Depends(get_redis), **kwargs):
+        async def wrapper(*args, **kwargs):
+            redis = await get_redis()
             cache_key = f"route:{func.__name__}:{str(kwargs)}"
             cached = await redis.get(cache_key)
             if cached:
