@@ -18,8 +18,8 @@ FCALL function_name numkeys [key [key ...]] [arg [arg ...]]
 
 - `function_name` - the name passed to `redis.register_function`
 - `numkeys` - number of key arguments that follow
-- `key ...` - key arguments, accessible as `KEYS[1]`, `KEYS[2]`, etc. in Lua
-- `arg ...` - additional arguments, accessible as `ARGV[1]`, `ARGV[2]`, etc.
+- `key ...` - key arguments, received as the first parameter (`keys[1]`, `keys[2]`, etc.) of the Lua callback
+- `arg ...` - additional arguments, received as the second parameter (`args[1]`, `args[2]`, etc.) of the Lua callback
 
 ## Calling a Function from redis-cli
 
@@ -99,13 +99,7 @@ func main() {
 
 ## Error Handling
 
-If the function does not exist:
-
-```text
-ERR Library not loaded
-```
-
-If the function name is wrong:
+If the function name does not match any registered function:
 
 ```text
 ERR Function not found
@@ -119,7 +113,7 @@ from redis.exceptions import ResponseError
 try:
     result = r.fcall('my_function', 1, 'key', 'arg1')
 except ResponseError as e:
-    if 'Function not found' in str(e) or 'Library not loaded' in str(e):
+    if 'Function not found' in str(e):
         # Load the library and retry
         load_library(r)
         result = r.fcall('my_function', 1, 'key', 'arg1')
@@ -136,7 +130,7 @@ In Redis Cluster, `FCALL` must follow the same slot rules as regular commands. A
 FCALL transfer_points 2 "{user:123}:points" "{user:123}:history" 50
 ```
 
-Functions are replicated to all nodes automatically when loaded - you do not need to load the library on every node separately.
+Functions are replicated from masters to their replicas automatically. However, in a Redis Cluster you must load the library on each master node separately - this is not handled automatically by the cluster.
 
 ## Passing Complex Arguments
 
@@ -146,8 +140,7 @@ FCALL arguments are always strings. For complex data, serialize to JSON in the c
 -- In the function library
 redis.register_function('batch_set', function(keys, args)
     -- args[1] is a JSON string of key-value pairs
-    -- Note: Redis Lua does not have built-in JSON,
-    -- use cjson library
+    -- Redis includes cjson as a built-in Lua library
     local data = cjson.decode(args[1])
     local ttl = tonumber(args[2])
 
@@ -183,4 +176,4 @@ for lib in libraries:
 
 ## Summary
 
-`FCALL` is the standard way to invoke Redis Functions, with syntax identical to `EVAL` but using a function name instead of a script body. Keys and args are passed positionally and accessed as `KEYS` and `ARGV` tables in Lua. Unlike EVALSHA, functions require no SHA management or NOSCRIPT error handling - they are persistent and available after restart. In Redis Cluster, ensure all keys in a function use the same hash slot.
+`FCALL` is the standard way to invoke Redis Functions, with syntax similar to `EVAL` but using a function name instead of a script body. Keys and args are passed positionally and received as the two parameters (`keys` and `args`) of the Lua callback function. Unlike EVALSHA, functions require no SHA management or NOSCRIPT error handling - they are persistent and available after restart. In Redis Cluster, ensure all keys in a function use the same hash slot.
