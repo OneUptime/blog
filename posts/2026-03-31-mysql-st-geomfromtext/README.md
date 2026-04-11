@@ -16,7 +16,7 @@ Description: Learn how to use ST_GeomFromText() to convert Well-Known Text strin
 
 ```mermaid
 flowchart LR
-    A["WKT string\n'POINT(lon lat)'"] --> B["ST_GeomFromText(wkt, srid)"]
+    A["WKT string\n'POINT(lat lon)'"] --> B["ST_GeomFromText(wkt, srid)"]
     B --> C["Binary geometry value\nstored in column"]
     C --> D["Spatial functions:\nST_Distance, ST_Within, ST_Intersects"]
 ```
@@ -37,31 +37,31 @@ ST_MPolyFromText(wkt_string [, srid])
 ST_GeomCollFromText(wkt_string [, srid])
 ```
 
-The WKT format uses X (longitude) first, then Y (latitude).
+For SRID 0 (Cartesian), WKT coordinates are in X, Y order. For geographic SRIDs like 4326 (WGS 84), MySQL 8.0 follows the SRS-defined axis order: latitude first, longitude second.
 
 ## WKT Reference
 
 ```sql
--- POINT: single coordinate
-ST_GeomFromText('POINT(-74.006 40.7128)', 4326)
+-- POINT: single coordinate (lat lon for SRID 4326)
+ST_GeomFromText('POINT(40.7128 -74.006)', 4326)
 
 -- LINESTRING: ordered sequence of points
-ST_GeomFromText('LINESTRING(-74.006 40.7128, -73.985 40.758)', 4326)
+ST_GeomFromText('LINESTRING(40.7128 -74.006, 40.758 -73.985)', 4326)
 
 -- POLYGON: closed ring (first = last point)
-ST_GeomFromText('POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.73, -74.02 40.73, -74.02 40.70))', 4326)
+ST_GeomFromText('POLYGON((40.70 -74.02, 40.70 -73.97, 40.73 -73.97, 40.73 -74.02, 40.70 -74.02))', 4326)
 
 -- MULTIPOINT: set of points
-ST_GeomFromText('MULTIPOINT((-74.006 40.7128), (-73.985 40.758))', 4326)
+ST_GeomFromText('MULTIPOINT((40.7128 -74.006), (40.758 -73.985))', 4326)
 
 -- MULTILINESTRING: set of line segments
-ST_GeomFromText('MULTILINESTRING((-74.006 40.71, -73.99 40.72), (-73.98 40.75, -73.97 40.76))', 4326)
+ST_GeomFromText('MULTILINESTRING((40.71 -74.006, 40.72 -73.99), (40.75 -73.98, 40.76 -73.97))', 4326)
 
 -- MULTIPOLYGON: set of polygons
-ST_GeomFromText('MULTIPOLYGON(((-74.02 40.70, -73.97 40.70, -73.97 40.73, -74.02 40.73, -74.02 40.70)), ((-73.96 40.74, -73.94 40.74, -73.94 40.76, -73.96 40.76, -73.96 40.74)))', 4326)
+ST_GeomFromText('MULTIPOLYGON(((40.70 -74.02, 40.70 -73.97, 40.73 -73.97, 40.73 -74.02, 40.70 -74.02)), ((40.74 -73.96, 40.74 -73.94, 40.76 -73.94, 40.76 -73.96, 40.74 -73.96)))', 4326)
 
 -- GEOMETRYCOLLECTION: mix of types
-ST_GeomFromText('GEOMETRYCOLLECTION(POINT(-74.006 40.7128), LINESTRING(-74.006 40.71, -73.99 40.72))', 4326)
+ST_GeomFromText('GEOMETRYCOLLECTION(POINT(40.7128 -74.006), LINESTRING(40.71 -74.006, 40.72 -73.99))', 4326)
 ```
 
 ## Examples
@@ -77,17 +77,17 @@ CREATE TABLE places (
 );
 
 INSERT INTO places (name, location) VALUES
-    ('Times Square',      ST_GeomFromText('POINT(-73.9855 40.7580)', 4326)),
-    ('Empire State Bldg', ST_GeomFromText('POINT(-73.9857 40.7484)', 4326)),
-    ('Central Park S',    ST_GeomFromText('POINT(-73.9730 40.7648)', 4326)),
-    ('Brooklyn Bridge',   ST_GeomFromText('POINT(-73.9969 40.7061)', 4326));
+    ('Times Square',      ST_GeomFromText('POINT(40.7580 -73.9855)', 4326)),
+    ('Empire State Bldg', ST_GeomFromText('POINT(40.7484 -73.9857)', 4326)),
+    ('Central Park S',    ST_GeomFromText('POINT(40.7648 -73.9730)', 4326)),
+    ('Brooklyn Bridge',   ST_GeomFromText('POINT(40.7061 -73.9969)', 4326));
 ```
 
 ### Use ST_GeomFromText in a WHERE Clause
 
 ```sql
 SET @search_zone = ST_GeomFromText(
-    'POLYGON((-74.010 40.740, -73.960 40.740, -73.960 40.770, -74.010 40.770, -74.010 40.740))',
+    'POLYGON((40.740 -74.010, 40.740 -73.960, 40.770 -73.960, 40.770 -74.010, 40.740 -74.010))',
     4326
 );
 
@@ -102,6 +102,7 @@ WHERE ST_Within(location, @search_zone);
 +--------------------+
 | Times Square       |
 | Empire State Bldg  |
+| Central Park S     |
 +--------------------+
 ```
 
@@ -111,7 +112,7 @@ WHERE ST_Within(location, @search_zone);
 -- ST_GeomFromText raises an error if the WKT is malformed
 -- Use ST_IsValid to verify geometry after creation
 SELECT ST_IsValid(
-    ST_GeomFromText('POLYGON((-74.02 40.70, -73.97 40.70, -73.97 40.73, -74.02 40.73, -74.02 40.70))', 4326)
+    ST_GeomFromText('POLYGON((40.70 -74.02, 40.70 -73.97, 40.73 -73.97, 40.73 -74.02, 40.70 -74.02))', 4326)
 ) AS valid_polygon;
 ```
 
@@ -130,7 +131,7 @@ SELECT ST_IsValid(
 SELECT ST_SRID(ST_GeomFromText('POINT(1 2)')) AS srid_no_arg;
 
 -- With SRID 4326: WGS84 geographic coordinates
-SELECT ST_SRID(ST_GeomFromText('POINT(-74.006 40.7128)', 4326)) AS srid_4326;
+SELECT ST_SRID(ST_GeomFromText('POINT(40.7128 -74.006)', 4326)) AS srid_4326;
 
 -- SRID mismatch causes error in MySQL 8.0+
 -- Both geometries in a spatial function must have the same SRID
@@ -153,7 +154,7 @@ SELECT ST_SRID(ST_GeomFromText('POINT(-74.006 40.7128)', 4326)) AS srid_4326;
 
 ```sql
 -- Distance from Times Square to each place
-SET @times_square = ST_GeomFromText('POINT(-73.9855 40.7580)', 4326);
+SET @times_square = ST_GeomFromText('POINT(40.7580 -73.9855)', 4326);
 
 SELECT
     name,
@@ -167,9 +168,9 @@ ORDER BY distance_meters;
 | name               | distance_meters |
 +--------------------+-----------------+
 | Times Square       | 0               |
-| Empire State Bldg  | 1069            |
-| Central Park S     | 1488            |
-| Brooklyn Bridge    | 6094            |
+| Empire State Bldg  | 1068            |
+| Central Park S     | 1296            |
+| Brooklyn Bridge    | 5849            |
 +--------------------+-----------------+
 ```
 
@@ -181,22 +182,22 @@ When building WKT dynamically, always validate coordinates and use parameterized
 -- Good: use a prepared statement with ? for the WKT string
 PREPARE stmt FROM 'INSERT INTO places (name, location) VALUES (?, ST_GeomFromText(?, 4326))';
 SET @name = 'Rockefeller Center';
-SET @wkt  = 'POINT(-73.9787 40.7587)';
+SET @wkt  = 'POINT(40.7587 -73.9787)';
 EXECUTE stmt USING @name, @wkt;
 DEALLOCATE PREPARE stmt;
 ```
 
-## ST_GeomFromText vs ST_MakePoint
+## ST_GeomFromText vs Point()
 
 | Function          | Input Format           | Use Case                         |
 |-------------------|------------------------|----------------------------------|
 | ST_GeomFromText   | WKT string             | Any geometry type from text      |
-| ST_MakePoint(x,y) | Two numeric arguments  | POINT only, cleaner for coords   |
+| Point(x, y)       | Two numeric arguments  | POINT only, cleaner for coords   |
 
 ```sql
 -- Equivalent POINT creation
-ST_GeomFromText('POINT(-73.9855 40.7580)', 4326)
-ST_SRID(ST_MakePoint(-73.9855, 40.7580), 4326)
+ST_GeomFromText('POINT(40.7580 -73.9855)', 4326)
+ST_SRID(Point(40.7580, -73.9855), 4326)
 ```
 
 ## Best Practices
@@ -204,8 +205,8 @@ ST_SRID(ST_MakePoint(-73.9855, 40.7580), 4326)
 - Always pass an SRID when working with real-world geographic data. Use 4326 for GPS/WGS84 coordinates.
 - Use type-specific functions (`ST_PointFromText`, `ST_PolyFromText`) to get an error when the WKT type does not match what the column expects.
 - Store WKT generation in the application layer and use parameterized queries to avoid SQL injection.
-- Remember the WKT order is X (longitude) first, Y (latitude) second.
+- Remember that for SRID 4326 in MySQL 8.0, the default axis order is latitude first, longitude second.
 
 ## Summary
 
-`ST_GeomFromText(wkt, srid)` converts a WKT string into a MySQL binary geometry value. It supports all geometry types and accepts an optional SRID for coordinate reference system context. Use it to insert spatial data into geometry columns, build query predicates with `ST_Within` and `ST_Intersects`, and calculate distances with `ST_Distance_Sphere`. Always include SRID 4326 for geographic coordinates.
+`ST_GeomFromText(wkt, srid)` converts a WKT string into a MySQL binary geometry value. It supports all geometry types and accepts an optional SRID for coordinate reference system context. Use it to insert spatial data into geometry columns, build query predicates with `ST_Within` and `ST_Intersects`, and calculate distances with `ST_Distance_Sphere`. Always include SRID 4326 for geographic coordinates, and remember that MySQL 8.0 expects latitude before longitude for SRID 4326.
