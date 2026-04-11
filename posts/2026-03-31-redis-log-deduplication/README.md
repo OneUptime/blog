@@ -18,7 +18,6 @@ For low-cardinality logs like startup messages or config warnings, use a Redis s
 import redis
 import hashlib
 import json
-import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -77,8 +76,6 @@ def emit_with_count(log: dict, window_seconds: int = 60) -> bool:
 When log volume is very high, a bloom filter uses far less memory than a full set. Use the RedisBloom module:
 
 ```python
-from redis.commands.bf import BFCommands
-
 bf = r.bf()
 
 def dedup_with_bloom(log: dict, filter_name: str = "logbloom") -> bool:
