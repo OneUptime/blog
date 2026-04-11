@@ -135,9 +135,12 @@ Practical steps to reduce MySQL network bandwidth:
 - Enable `--compress` on MySQL connections for large result sets
 - Use `pt-query-digest` to find and optimize high-bandwidth query patterns
 
-```sql
--- Enable compression for a session
-SET SESSION net_compression_level = 1;
+```bash
+# Enable compression when connecting to MySQL
+mysql --compress -u user -p -h hostname
+
+# MySQL 8.0.18+ supports additional compression algorithms
+mysql --compression-algorithms=zstd,zlib -u user -p -h hostname
 ```
 
 ## Summary
