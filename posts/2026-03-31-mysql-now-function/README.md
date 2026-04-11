@@ -36,7 +36,7 @@ SELECT NOW() AS current_datetime;
 -- Result: 2026-03-31 14:22:07
 
 SELECT NOW() + 0;
--- Result: 20260331142207  (converts to numeric format)
+-- Result: 20260331142207.000000  (converts to numeric format)
 ```
 
 ## Inserting Timestamps
@@ -130,7 +130,7 @@ SELECT SYSDATE(), SLEEP(2), SYSDATE();
 -- Second SYSDATE() is 2 seconds later
 ```
 
-For logging and auditing, `NOW()` is preferred because it gives a consistent timestamp for the entire transaction.
+For logging and auditing, `NOW()` is preferred because it gives a consistent timestamp for the entire statement.
 
 ## Using NOW() in Stored Procedures
 
