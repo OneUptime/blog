@@ -70,7 +70,7 @@ redis-cli -p 7001 CLUSTER SLOTS
 
 ## Error Conditions
 
-`CLUSTER ADDSLOTSRANGE` returns an error if any slot in the specified range is already assigned to another node:
+`CLUSTER ADDSLOTSRANGE` returns an error if any slot in the specified range is already assigned:
 
 ```bash
 redis-cli -p 7001 CLUSTER ADDSLOTSRANGE 0 100
