@@ -13,21 +13,22 @@ Description: Use Redis 8.0 native Vector Sets with VADD, VDIM, and VSIM commands
 Redis 8.0 introduced native Vector Sets as a first-class data type for storing and searching high-dimensional vectors. Unlike RediSearch's vector search (which requires a module), Vector Sets are built into Redis 8.0 core.
 
 Key commands:
-- `VADD key FP32|FP64|INT8 numElements vector element` - add a vector
+- `VADD key VALUES numElements val1 val2 ... element` - add a vector
 - `VDIM key` - get vector dimensionality
 - `VCARD key` - get count of vectors
-- `VGET key element` - retrieve a vector by element name
-- `VSIM key element [COUNT n] [WITHSCORES]` - find similar vectors
-- `VDEL key element` - delete a vector
+- `VEMB key element` - retrieve a vector by element name
+- `VSIM key ELE element [COUNT n] [WITHSCORES]` - find similar vectors by element
+- `VSIM key VALUES numElements val1 val2 ... [COUNT n] [WITHSCORES]` - find similar vectors by raw vector
+- `VREM key element` - delete a vector
 - `VISMEMBER key element` - check if element exists
 
 ## Adding Vectors
 
 ```bash
-# Add a 3-dimensional vector (FP32 format)
-redis-cli VADD myvectors FP32 3 0.1 0.2 0.3 item1
-redis-cli VADD myvectors FP32 3 0.4 0.5 0.6 item2
-redis-cli VADD myvectors FP32 3 0.1 0.21 0.31 item3
+# Add a 3-dimensional vector
+redis-cli VADD myvectors VALUES 3 0.1 0.2 0.3 item1
+redis-cli VADD myvectors VALUES 3 0.4 0.5 0.6 item2
+redis-cli VADD myvectors VALUES 3 0.1 0.21 0.31 item3
 
 # Check dimensionality
 redis-cli VDIM myvectors
@@ -42,7 +43,7 @@ redis-cli VCARD myvectors
 
 ```bash
 # Find the 2 most similar vectors to item1
-redis-cli VSIM myvectors item1 COUNT 2 WITHSCORES
+redis-cli VSIM myvectors ELE item1 COUNT 2 WITHSCORES
 
 # Output (cosine similarity):
 # 1) "item1"
@@ -61,7 +62,7 @@ const redis = new Redis({ host: process.env.REDIS_HOST || 'localhost' });
 async function addVector(setKey, element, vector) {
   const dims = vector.length;
   await redis.call(
-    'VADD', setKey, 'FP32', dims,
+    'VADD', setKey, 'VALUES', dims,
     ...vector.map(String),
     element
   );
@@ -70,7 +71,7 @@ async function addVector(setKey, element, vector) {
 // Helper to find similar items
 async function findSimilar(setKey, element, count = 10) {
   const results = await redis.call(
-    'VSIM', setKey, element,
+    'VSIM', setKey, 'ELE', element,
     'COUNT', count,
     'WITHSCORES'
   );
@@ -111,9 +112,7 @@ console.log('Similar products:', similar);
 Search for items similar to a query vector (not just existing elements):
 
 ```bash
-# Search by providing a raw vector (using VSIM with vector instead of element)
-# Note: syntax may vary by Redis 8.0 release - check official docs
-
+# Search by providing a raw vector (using VSIM with VALUES instead of ELE)
 redis-cli VSIM myvectors VALUES 3 0.11 0.21 0.29 COUNT 5
 ```
 
@@ -127,7 +126,7 @@ const ARTICLE_VECTORS = 'articles:vectors';
 
 async function indexArticle(articleId, embedding) {
   await redis.call(
-    'VADD', ARTICLE_VECTORS, 'FP32', embedding.length,
+    'VADD', ARTICLE_VECTORS, 'VALUES', embedding.length,
     ...embedding.map(String),
     `article:${articleId}`
   );
@@ -183,14 +182,14 @@ RediSearch VSS (Vector Similarity Search):
 
 ```bash
 # Get a specific vector by element name
-redis-cli VGET myvectors item1
+redis-cli VEMB myvectors item1
 
 # Check if an element exists
 redis-cli VISMEMBER myvectors item1
 # Returns: 1 (exists) or 0 (not found)
 
 # Delete a specific vector
-redis-cli VDEL myvectors item1
+redis-cli VREM myvectors item1
 
 # Delete the entire vector set
 redis-cli DEL myvectors
