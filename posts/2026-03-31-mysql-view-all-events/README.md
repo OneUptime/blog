@@ -30,7 +30,7 @@ Filter by name pattern:
 SHOW EVENTS LIKE '%cleanup%';
 ```
 
-The output columns include: `Db`, `Name`, `Definer`, `Time zone`, `Type`, `Execute at`, `Interval value`, `Interval field`, `Starts`, `Ends`, `Status`, `Originator`, `character_set_client`, `collation_connection`.
+The output columns include: `Db`, `Name`, `Definer`, `Time zone`, `Type`, `Execute at`, `Interval value`, `Interval field`, `Starts`, `Ends`, `Status`, `Originator`, `character_set_client`, `collation_connection`, `Database Collation`.
 
 ## SHOW CREATE EVENT
 
