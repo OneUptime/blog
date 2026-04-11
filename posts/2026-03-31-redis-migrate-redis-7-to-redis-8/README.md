@@ -16,7 +16,7 @@ Redis 8 is a significant release that reintegrates previously separate modules (
 - `HGETDEL` and `HGETEX` commands for atomic hash operations
 - Vector similarity search built-in
 - Improved cluster management commands
-- Licensing change: Redis 8 is dual-licensed under RSALv2 and SSPLv1
+- Licensing change: Redis 8 is tri-licensed under RSALv2, SSPLv1, and AGPLv3
 
 ## Pre-Migration Checklist
 
@@ -121,7 +121,7 @@ redis-cli -p 6380 HSET myhash field1 value1 field2 value2
 redis-cli -p 6380 HGETDEL myhash FIELDS 1 field1
 
 # Atomic hash field get-and-set-expiry
-redis-cli -p 6380 HGETEX myhash FIELDS 1 field2 EX 60
+redis-cli -p 6380 HGETEX myhash EX 60 FIELDS 1 field2
 ```
 
 ## Application Updates
