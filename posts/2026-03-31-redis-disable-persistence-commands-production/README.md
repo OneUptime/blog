@@ -23,6 +23,7 @@ Redis persistence commands like `BGSAVE`, `BGREWRITEAOF`, `CONFIG`, and `DEBUG` 
 | `SLAVEOF` / `REPLICAOF` | Redirect replication to an attacker-controlled server |
 | `FLUSHALL` | Delete all data across all databases |
 | `FLUSHDB` | Delete all data in the current database |
+| `MONITOR` | Stream all commands received by the server, exposing sensitive data |
 
 ## Disabling Commands with rename-command
 
@@ -64,7 +65,7 @@ ACLs provide more granular control and are preferred over `rename-command` in mo
 
 ```bash
 # Create a restricted application user
-ACL SETUSER appuser on >securepassword ~* &* +@all -CONFIG -DEBUG -SHUTDOWN -FLUSHALL -FLUSHDB -BGSAVE -BGREWRITEAOF -SLAVEOF -MONITOR
+ACL SETUSER appuser on >securepassword ~* &* +@all -CONFIG -DEBUG -SHUTDOWN -FLUSHALL -FLUSHDB -BGSAVE -BGREWRITEAOF -SLAVEOF -REPLICAOF -MONITOR
 
 # Create an admin user with full access
 ACL SETUSER adminuser on >adminpassword ~* &* +@all
