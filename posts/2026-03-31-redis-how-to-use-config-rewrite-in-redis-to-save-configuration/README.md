@@ -85,17 +85,15 @@ apply_and_persist_config({
 ## Practical Example in Node.js
 
 ```javascript
-const { createClient } = require('redis');
+import { createClient } from 'redis';
 
 const client = createClient();
 await client.connect();
 
 // Apply runtime configuration changes
-await client.configSet({
-  maxmemory: '1gb',
-  'maxmemory-policy': 'volatile-lru',
-  hz: '15',
-});
+await client.configSet('maxmemory', '1gb');
+await client.configSet('maxmemory-policy', 'volatile-lru');
+await client.configSet('hz', '15');
 
 console.log('Configuration updated in memory');
 
@@ -105,7 +103,7 @@ console.log('Configuration saved to redis.conf');
 
 // Verify
 const maxmem = await client.configGet('maxmemory');
-console.log('maxmemory:', maxmem);
+console.log('maxmemory:', maxmem.maxmemory);
 ```
 
 ## What CONFIG REWRITE Changes
@@ -196,7 +194,7 @@ load_and_apply_config('config.yaml')
 | Method | Pros | Cons |
 |--------|------|------|
 | `CONFIG REWRITE` | Atomic, no restart needed | Requires config file |
-| Manual file edit | Full control | Requires restart or `CONFIG RESETSTAT` |
+| Manual file edit | Full control | Requires restart to take effect |
 | `CONFIG SET` only | Instant, no restart | Lost on restart |
 
 The best practice is to combine `CONFIG SET` + `CONFIG REWRITE` for zero-downtime configuration changes.
@@ -204,8 +202,8 @@ The best practice is to combine `CONFIG SET` + `CONFIG REWRITE` for zero-downtim
 ## Verifying the Rewrite
 
 ```bash
-# Confirm changes are in the file
-CONFIG RESETSTAT  # Not needed, just checking
+# Verify the current in-memory config
+CONFIG GET maxmemory
 
 # On Linux, verify the file contents
 # cat /etc/redis/redis.conf | grep maxmemory
