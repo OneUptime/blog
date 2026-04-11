@@ -23,7 +23,7 @@ They do NOT deliver:
 - The new value
 - The client identity (username or IP)
 
-For value-level auditing, supplement with `OBJECT ENCODING` reads or use Redis 7.4+ ACL logging.
+For value-level auditing, read the current value in the notification handler using the appropriate command (`GET`, `HGETALL`, etc.), keeping in mind that a race condition exists if the key is modified again before the read completes.
 
 ## Configuration
 
@@ -125,12 +125,12 @@ ship_to_s3(entry)
 
 ## Using Redis ACL LOG for Identity Tracking
 
-Keyspace notifications do not reveal client identity. Redis ACL logging does, but it only logs command denials. For allowed commands, use the `COMMAND GETKEYS` approach or enable `latency-tracking`:
+Keyspace notifications do not reveal client identity. Redis ACL logging captures some client context, but only for denied commands. For allowed commands, use the `CLIENT SETNAME` convention or the metadata key approach shown below:
 
 ```bash
 # Redis 7+ command logging via ACL
 redis-cli ACL LOG RESET
-redis-cli ACL LOG COUNT
+redis-cli ACL LOG 10
 redis-cli ACL LOG
 ```
 
