@@ -106,7 +106,7 @@ flowchart TD
     C -- Yes --> D["Count fields"]
     D --> E["Return integer"]
     C -- "Not object" --> F["Return nil"]
-    C -- "Path not found" --> G["Return nil"]
+    C -- "Path not found" --> G["Return empty array"]
 ```
 
 ## JSON.OBJLEN vs JSON.OBJKEYS
