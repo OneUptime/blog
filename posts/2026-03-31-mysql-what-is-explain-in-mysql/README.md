@@ -65,10 +65,11 @@ EXPLAIN SELECT * FROM users WHERE YEAR(created_at) = 2026;
 ```
 
 ```text
-+----+-------------+-------+------+---------------+------+-----+------+--------+-------------+
-| id | select_type | table | type | possible_keys | key  | key_len | ref | rows   | Extra       |
-+----+-------------+-------+------+---------------+------+---------+-----+--------+-------------+
-|  1 | SIMPLE      | users | ALL  | NULL          | NULL | NULL    | NULL| 500000 | Using where |
++----+-------------+-------+------+---------------+------+---------+------+--------+-------------+
+| id | select_type | table | type | possible_keys | key  | key_len | ref  | rows   | Extra       |
++----+-------------+-------+------+---------------+------+---------+------+--------+-------------+
+|  1 | SIMPLE      | users | ALL  | NULL          | NULL | NULL    | NULL | 500000 | Using where |
++----+-------------+-------+------+---------------+------+---------+------+--------+-------------+
 ```
 
 The `type: ALL` and `rows: 500000` indicate a full table scan. Fix:
