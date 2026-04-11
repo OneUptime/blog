@@ -55,7 +55,6 @@ When a matching message arrives:
 
 ```python
 import redis
-import threading
 
 r = redis.Redis(host='localhost', port=6379)
 pubsub = r.pubsub()
