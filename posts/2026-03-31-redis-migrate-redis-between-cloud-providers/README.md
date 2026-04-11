@@ -52,7 +52,7 @@ gsutil cp s3://my-bucket/dump.rdb gs://my-gcs-bucket/dump.rdb
 # Or use scp/rsync between VMs with a VPN tunnel
 rsync -avz -e "ssh -i key.pem" \
   ubuntu@aws-host:/var/lib/redis/dump.rdb \
-  user@gcp-host:/var/lib/redis/dump.rdb
+  user@gcp-host:/tmp/dump.rdb
 ```
 
 **Step 3: Load into target Redis**
