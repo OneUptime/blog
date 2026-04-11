@@ -96,7 +96,7 @@ Fetch a value and set it to expire at a specific Unix timestamp.
 
 ```redis
 SET promo "SAVE20"
-GETEX promo EXAT 1751328000
+GETEX promo EXAT 1782864000
 TTL promo
 ```
 
