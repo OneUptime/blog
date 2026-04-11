@@ -60,7 +60,7 @@ JSON.ARRPOP stack:1 $ -2
 # "4"
 
 JSON.GET stack:1
-# [[1,2,3,5]]
+# [1,2,3,5]
 ```
 
 ## Pop an Object Element
