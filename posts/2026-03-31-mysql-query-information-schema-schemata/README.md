@@ -120,7 +120,7 @@ Copy the output and run it to standardize character sets across all databases.
 
 ## Required Privileges
 
-To view schemas you do not own, you need the `SELECT` privilege on `INFORMATION_SCHEMA` or any global privilege like `SHOW DATABASES`. Users without global privileges see only the schemas where they hold at least one privilege.
+Any MySQL user can query `INFORMATION_SCHEMA.SCHEMATA`, but each user sees only the databases on which they hold at least one privilege. Users with any global privilege (such as `SHOW DATABASES`) can see all databases.
 
 ## Summary
 
