@@ -20,7 +20,7 @@ Run this command on the **primary** to direct it to fail over to a specific or a
 
 ## Basic Failover to Any Replica
 
-Running `FAILOVER` on the primary with no arguments tells the primary to hand off to its best-connected replica:
+Running `FAILOVER` on the primary with no arguments tells the primary to hand off to the first replica that catches up to the current replication offset:
 
 ```bash
 redis-cli -p 6379 FAILOVER
@@ -28,10 +28,10 @@ redis-cli -p 6379 FAILOVER
 ```
 
 Redis will:
-1. Stop accepting new writes
+1. Stop accepting new writes (via CLIENT PAUSE WRITE)
 2. Wait for a replica to catch up to the primary's replication offset
-3. Instruct the replica to promote itself
-4. The primary demotes itself to a replica of the promoted node
+3. The primary demotes itself to a replica (without discarding data)
+4. Send a PSYNC FAILOVER to the target replica, instructing it to become the new primary
 
 ## Failover to a Specific Replica
 
@@ -55,10 +55,10 @@ redis-cli -p 6379 FAILOVER TIMEOUT 10000
 If you want to force failover to a specific replica even if it has not fully caught up:
 
 ```bash
-redis-cli -p 6379 FAILOVER TO 127.0.0.1 6380 FORCE
+redis-cli -p 6379 FAILOVER TO 127.0.0.1 6380 FORCE TIMEOUT 5000
 ```
 
-This may cause a small amount of data loss if the replica is behind.
+The `FORCE` flag requires both `TO` and `TIMEOUT` to be set. When the timeout elapses and the replica has not caught up, the primary will forcefully fail over instead of aborting. This may cause a small amount of data loss if the replica is behind.
 
 ## Aborting an In-Progress Failover
 
@@ -68,7 +68,7 @@ If the failover is taking too long, cancel it:
 redis-cli -p 6379 FAILOVER ABORT
 ```
 
-This restores the primary to normal write-accepting state.
+If the failover is still in the `waiting-for-sync` state, this safely restores the primary to normal write-accepting state. However, if the failover has already reached the `failover-in-progress` state, aborting may result in a multi-master scenario that requires manual remediation.
 
 ## Monitoring Failover Progress
 
