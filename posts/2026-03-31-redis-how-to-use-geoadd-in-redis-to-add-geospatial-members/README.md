@@ -42,7 +42,7 @@ GEOADD restaurants \
 
 ## Coordinate Precision and Valid Ranges
 
-Redis stores coordinates with approximately 0.6mm precision. Valid ranges are:
+Redis stores coordinates with approximately 0.6m precision. Valid ranges are:
 
 - Longitude: -180 to 180 degrees
 - Latitude: -85.05112878 to 85.05112878 degrees (close to but not exactly the poles)
@@ -147,4 +147,4 @@ print(f"Loaded {sum(results)} new landmarks")
 
 ## Summary
 
-`GEOADD` stores longitude/latitude pairs in a Redis sorted set using Geohash encoding, enabling fast geospatial queries without a dedicated spatial database. It supports bulk inserts, conditional updates with `NX`/`XX`, and integrates with `GEOSEARCH`, `GEODIST`, and `GEOPOS` for building location-aware features. The coordinate precision of approximately 0.6mm makes it suitable for most real-world use cases including ride-sharing, store finders, and asset tracking.
+`GEOADD` stores longitude/latitude pairs in a Redis sorted set using Geohash encoding, enabling fast geospatial queries without a dedicated spatial database. It supports bulk inserts, conditional updates with `NX`/`XX`, and integrates with `GEOSEARCH`, `GEODIST`, and `GEOPOS` for building location-aware features. The coordinate precision of approximately 0.6m makes it suitable for most real-world use cases including ride-sharing, store finders, and asset tracking.
