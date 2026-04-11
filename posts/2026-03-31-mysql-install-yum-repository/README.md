@@ -23,7 +23,7 @@ flowchart LR
 
 ## Prerequisites
 
-- RHEL 8/9, CentOS Stream 8/9, Rocky Linux 8/9, AlmaLinux 8/9, Fedora 38+
+- RHEL 8/9, CentOS Stream 8/9, Rocky Linux 8/9, AlmaLinux 8/9, Fedora 42+
 - User with `sudo` or root access
 - Internet connectivity
 
@@ -32,19 +32,19 @@ flowchart LR
 Download the repository RPM for your distribution. The following example targets EL9 (RHEL 9 / CentOS 9 Stream / Rocky Linux 9 / AlmaLinux 9).
 
 ```bash
-sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm
+sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-3.noarch.rpm
 ```
 
 For EL8:
 
 ```bash
-sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el8-1.noarch.rpm
+sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el8-2.noarch.rpm
 ```
 
-For Fedora 40:
+For Fedora 42:
 
 ```bash
-sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-fc40-1.noarch.rpm
+sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-fc42-1.noarch.rpm
 ```
 
 ## Step 2 - Import the MySQL GPG Key
@@ -52,7 +52,7 @@ sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-fc40-1.n
 The repository RPM includes the key, but you can also import it manually for verification.
 
 ```bash
-sudo rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2023
+sudo rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2025
 ```
 
 ## Step 3 - Select the MySQL Version
