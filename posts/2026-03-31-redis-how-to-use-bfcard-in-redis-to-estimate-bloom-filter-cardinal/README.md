@@ -145,7 +145,7 @@ print(f"Unique visitors this hour: {get_unique_visitor_count()}")
 
 ## Cardinality Estimate Accuracy
 
-The estimate from `BF.CARD` is derived from the number of set bits in the filter. For a well-configured filter (not over-capacity), the estimate is usually very close to the actual count. Accuracy decreases as the filter approaches its configured capacity.
+The count from `BF.CARD` is based on a stored internal counter that is incremented each time an insertion causes at least one new bit to be set. For a well-configured filter (not over-capacity), the count is usually very close to the actual number of unique items inserted. The count can diverge slightly because Bloom filters may treat a genuinely new item as already present (a false positive during insertion), causing the counter not to increment.
 
 ```python
 def check_filter_accuracy(filter_name, expected_count):
