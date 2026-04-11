@@ -42,7 +42,7 @@ echo "New connections per second: $RATE"
 
 ## Using Performance Schema for Connection Metrics
 
-Performance Schema provides richer data. The `events_statements_summary_global_by_event_name` and account summary tables let you break down connections by user or host:
+Performance Schema provides richer data. The `accounts` table lets you break down connections by user or host:
 
 ```sql
 SELECT
