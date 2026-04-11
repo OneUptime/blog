@@ -130,6 +130,7 @@ increment_login_count(42)
 ```javascript
 const redis = require('redis');
 const client = redis.createClient();
+await client.connect();
 
 async function saveProduct(productId, data) {
   await client.hSet(`product:${productId}`, data);
