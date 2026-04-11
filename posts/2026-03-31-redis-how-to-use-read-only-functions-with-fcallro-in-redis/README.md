@@ -81,7 +81,7 @@ cat readlib.lua | redis-cli -x FUNCTION LOAD
 redis-cli -h replica-host -p 6379 FCALL_RO get_user_summary 1 user:123
 ```
 
-On a replica with `replica-read-only yes`, regular `FCALL` would fail if the function writes. `FCALL_RO` is allowed because Redis trusts the `no-writes` flag.
+On a replica with `replica-read-only yes`, `FCALL` is rejected because Redis classifies it as a write command, regardless of what the function actually does. `FCALL_RO` is the read-only variant that is allowed on replicas, provided the function has the `no-writes` flag.
 
 ## Step 3 - Using FCALL_RO from Python
 
