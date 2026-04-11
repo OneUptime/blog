@@ -31,7 +31,7 @@ graph TD
 CMS.MERGE destination numkeys source [source ...] [WEIGHTS weight [weight ...]]
 ```
 
-- `destination` - key to store the merged result (created or overwritten)
+- `destination` - key to store the merged result (must already exist; overwritten)
 - `numkeys` - number of source sketches
 - `source [source ...]` - source sketch keys (must all have the same dimensions)
 - `WEIGHTS weight [weight ...]` - multiply each source's counters by the given weight before merging (default 1 for each)
@@ -92,7 +92,7 @@ CMS.QUERY combined "item"
 
 ### Weighted Merge
 
-Weight recent data more heavily when merging time windows:
+Weight recent data more heavily when merging time windows (weights must be integers):
 
 ```redis
 CMS.INITBYDIM hourly_old 2000 7
@@ -101,17 +101,17 @@ CMS.INITBYDIM hourly_new 2000 7
 CMS.INCRBY hourly_old "search:redis" 1000
 CMS.INCRBY hourly_new "search:redis" 800
 
--- Weight old at 0.5 (half), new at 1.0 (full)
+-- Weight new data 2x more than old data
 CMS.INITBYDIM weighted_combined 2000 7
-CMS.MERGE weighted_combined 2 hourly_old hourly_new WEIGHTS 0.5 1.0
+CMS.MERGE weighted_combined 2 hourly_old hourly_new WEIGHTS 1 2
 
 CMS.QUERY weighted_combined "search:redis"
--- (integer) 1300 (1000*0.5 + 800*1.0)
+-- (integer) 2600 (1000*1 + 800*2)
 ```
 
 ## Merging into an Existing Non-Empty Sketch
 
-If the destination already contains data, `CMS.MERGE` adds the source counters to the existing values:
+`CMS.MERGE` overwrites the destination counters with the weighted sum of the source sketches. If the destination already contains data and you want to include it in the merge, list the destination itself as one of the sources:
 
 ```redis
 CMS.INITBYDIM total 2000 7
@@ -120,10 +120,11 @@ CMS.INCRBY total "base" 100
 CMS.INITBYDIM addition 2000 7
 CMS.INCRBY addition "base" 50
 
-CMS.MERGE total 1 addition
+-- Include total as a source to preserve its existing data
+CMS.MERGE total 2 total addition
 
 CMS.QUERY total "base"
--- (integer) 150 (100 original + 50 merged)
+-- (integer) 150 (100 from total + 50 from addition)
 ```
 
 ## Use Cases
@@ -177,7 +178,7 @@ All source sketches and the destination must have identical width and depth:
 CMS.INITBYDIM sketch_a 1000 5
 CMS.INITBYDIM sketch_b 2000 5  -- Different width!
 CMS.MERGE result 2 sketch_a sketch_b
--- (error) ERR width/depth mismatch
+-- (error) CMS: width/depth is not equal
 ```
 
 Plan your dimensions consistently across all nodes when designing a distributed counting system.
