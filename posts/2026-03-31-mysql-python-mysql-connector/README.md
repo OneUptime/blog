@@ -145,7 +145,7 @@ def update_stock(product_id: int, delta: int) -> int:
         conn.close()
 ```
 
-## Prepared Statements with Named Parameters
+## Prepared Statements
 
 ```python
 def search_products(name_pattern: str, max_price: float) -> list[dict]:
