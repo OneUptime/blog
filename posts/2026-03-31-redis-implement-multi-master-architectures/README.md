@@ -34,7 +34,7 @@ A key is mapped to a slot using CRC16:
 ```bash
 redis-cli --cluster check 127.0.0.1:7001
 redis-cli -c -p 7001 SET user:1 "alice"
-# -> Redirected to slot [9925] located at 127.0.0.1:7002
+# -> Redirected to slot [10778] located at 127.0.0.1:7002
 ```
 
 ## Client-Side Multi-Primary Writes
@@ -63,7 +63,7 @@ rc.set('{session}:user', 'alice')
 rc.set('{session}:cart', '[item1, item2]')
 rc.set('{session}:expiry', '1800')
 
-# Atomic multi-key operation on same shard
+# Batched multi-key operation on same shard
 pipe = rc.pipeline()
 pipe.get('{session}:user')
 pipe.get('{session}:cart')
@@ -75,8 +75,8 @@ results = pipe.execute()
 When a key slot migrates during rebalancing, clients receive redirect errors:
 
 ```bash
-(error) MOVED 9925 127.0.0.1:7002
-(error) ASK 9925 127.0.0.1:7003
+(error) MOVED 10778 127.0.0.1:7002
+(error) ASK 10778 127.0.0.1:7003
 ```
 
 Smart clients handle this automatically. If using raw `redis-cli`, pass the `-c` flag for auto-redirection:
