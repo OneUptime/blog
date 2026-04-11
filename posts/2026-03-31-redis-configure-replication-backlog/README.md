@@ -103,8 +103,7 @@ A high `sync_full` count relative to `sync_partial_ok` suggests the backlog is t
 The backlog consumes memory on the primary. Verify it is accounted for in your `maxmemory` planning:
 
 ```bash
-redis-cli INFO memory | grep mem_allocator
-redis-cli MEMORY USAGE __REPLICATION_ID__
+redis-cli INFO memory | grep mem_replication_backlog
 ```
 
 For production systems, set backlog size alongside `maxmemory` to avoid OOM situations.
