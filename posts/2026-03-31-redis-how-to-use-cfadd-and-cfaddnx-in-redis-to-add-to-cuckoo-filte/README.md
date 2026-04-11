@@ -10,7 +10,7 @@ Description: Learn how to use CF.ADD and CF.ADDNX in Redis to insert items into 
 
 ## Overview
 
-Cuckoo filters are a probabilistic data structure similar to Bloom filters but with the added ability to delete items. Redis provides `CF.ADD` to insert an item (including duplicates) and `CF.ADDNX` to insert only if the item does not already exist. Both commands are O(k) and auto-create the filter if it does not exist.
+Cuckoo filters are a probabilistic data structure similar to Bloom filters but with the added ability to delete items. Redis provides `CF.ADD` to insert an item (including duplicates) and `CF.ADDNX` to insert only if the item does not already exist. Both commands are O(k + i), where k is the number of sub-filters and i is maxIterations, and auto-create the filter if it does not exist.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ While `CF.ADD` auto-creates a filter, use `CF.RESERVE` for explicit configuratio
 
 ```bash
 CF.RESERVE myfilter 10000
-# Capacity of 10000 buckets
+# Estimated capacity of 10000 items
 ```
 
 ## Using CF.ADD
