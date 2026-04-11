@@ -135,20 +135,20 @@ ElastiCache Serverless charges in ECPUs (ElastiCache Processing Units). Differen
 
 ```text
 Command pricing (approximate):
-- GET (hit):     0.5 ECPU
-- GET (miss):    0.5 ECPU
-- SET (1 KB):    1.0 ECPU
-- SET (100 KB):  ~12 ECPUs
+- GET (hit):     1 ECPU
+- GET (miss):    1 ECPU
+- SET (1 KB):    1 ECPU
+- SET (100 KB):  ~100 ECPUs
 - HGETALL:       depends on hash size
 - SCAN:          1 ECPU per 10 keys returned
 
 Pricing example (us-east-1):
 - ECPUs: $0.0000034 per ECPU
-- Storage: $0.125 per GB-hour
+- Storage: $0.125 per GB-month
 
 At 1,000 GET commands/sec (all hits):
-- 500 ECPUs/sec = 43.2M ECPUs/day
-- Cost: 43.2M x $0.0000034 = ~$147/day in ECPUs
+- 1,000 ECPUs/sec = 86.4M ECPUs/day
+- Cost: 86.4M x $0.0000034 = ~$294/day in ECPUs
 ```
 
 Compare this to provisioned nodes to decide which is cheaper.
@@ -234,7 +234,7 @@ aws elasticache describe-snapshots \
 aws elasticache create-serverless-cache \
   --serverless-cache-name my-serverless-redis \
   --engine redis \
-  --snapshot-names-to-restore migration-to-serverless \
+  --snapshot-arns-to-restore arn:aws:elasticache:us-east-1:123456789012:snapshot:migration-to-serverless \
   --subnet-ids subnet-abc123 subnet-def456 \
   --security-group-ids sg-xyz789
 ```
