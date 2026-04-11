@@ -155,8 +155,8 @@ After running the script, consider these additional hardening steps:
 CREATE USER 'appuser'@'localhost' IDENTIFIED BY 'StrongAppPassword1!';
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp.* TO 'appuser'@'localhost';
 
--- Revoke unnecessary global privileges
-REVOKE SUPER ON *.* FROM 'appuser'@'localhost';
+-- Verify the user has only the intended privileges
+SHOW GRANTS FOR 'appuser'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
