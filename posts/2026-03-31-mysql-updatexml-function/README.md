@@ -22,7 +22,7 @@ UpdateXML(xml_target, xpath_expr, new_xml)
 - `xpath_expr` - an XPath expression identifying the node to replace
 - `new_xml` - the replacement XML fragment
 
-The function returns the modified XML string, or the original string unchanged if the XPath does not match any node.
+The function returns the modified XML string. If the XPath does not match any node, or if it matches more than one node, the original string is returned unchanged.
 
 ## Simple Examples
 
@@ -118,7 +118,7 @@ SELECT UpdateXML(
 ## Limitations and Alternatives
 
 - `UpdateXML()` works on string representations, not a native XML type.
-- Only the first matching node is replaced.
+- If the XPath matches more than one node, no replacement is performed and the original XML is returned unchanged.
 - For complex XML workflows, consider storing data as JSON instead, which has richer native support in MySQL 5.7 and later with `JSON_SET()`, `JSON_REPLACE()`, and other dedicated functions.
 
 ## Summary
