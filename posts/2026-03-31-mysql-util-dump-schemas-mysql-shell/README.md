@@ -44,7 +44,7 @@ util.dumpSchemas(["mydb"], "/backups/mydb_dump", {
 })
 ```
 
-Setting `threads` to a higher value speeds up exports for large schemas with many tables. The `consistent: true` option acquires a global read lock for a point-in-time consistent dump.
+Setting `threads` to a higher value speeds up exports for large schemas with many tables. The `consistent: true` option ensures a point-in-time consistent dump by using `FLUSH TABLES WITH READ LOCK` (or `LOCK TABLES` if the user lacks the `RELOAD` privilege), starting consistent snapshot transactions across all threads, and then issuing `LOCK INSTANCE FOR BACKUP` before releasing the initial lock. Note that `consistent` defaults to `true`, so this is explicitly shown here for clarity.
 
 ## Exporting Only DDL
 
@@ -91,19 +91,20 @@ util.dumpSchemas(["mydb"], "/backups/mydb_active", {
 })
 ```
 
-## Limiting Rows per Table
+## Limiting Rows with a Condition
+
+You can approximate row limiting by using a WHERE condition that restricts the result set:
 
 ```javascript
 util.dumpSchemas(["mydb"], "/backups/mydb_sample", {
-  partitionByCount: 1,
-  where: {"mydb.events": "1=1 LIMIT 10000"}
+  where: {"mydb.events": "id <= 10000"}
 })
 ```
 
 ## Dumping to Cloud Storage
 
 ```javascript
-util.dumpSchemas(["mydb"], "s3://my-bucket/schema-dumps/mydb", {
+util.dumpSchemas(["mydb"], "schema-dumps/mydb", {
   s3BucketName: "my-bucket",
   s3Region: "eu-west-1",
   threads: 16
