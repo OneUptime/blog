@@ -8,7 +8,7 @@ Description: Learn how to use MySQL Performance Schema table I/O instrumentation
 
 ---
 
-The MySQL Performance Schema tracks I/O activity at the table and index level, making it possible to identify which tables generate the most disk reads, which indexes are slow, and where I/O latency is concentrated. This data guides index optimization and storage planning.
+The MySQL Performance Schema tracks I/O activity at the table and index level, making it possible to identify which tables generate the most I/O operations, which indexes are slow, and where I/O latency is concentrated. This data guides index optimization and storage planning.
 
 ## Enabling Table I/O Instrumentation
 
@@ -86,7 +86,7 @@ WHERE OBJECT_SCHEMA = 'mydb'
 ORDER BY SUM_TIMER_FETCH DESC;
 ```
 
-A `NULL` index name means a full table scan. High counts here indicate a missing index.
+A `NULL` index name means no index was used. For fetch operations, this indicates a full table scan. Note that all inserts also appear under `NULL` since they do not use an index for the write itself. High fetch counts here indicate a missing index.
 
 ## Detecting Full Table Scans
 
