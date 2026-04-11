@@ -245,9 +245,9 @@ response = logs_client.start_query(
     startTime=int((datetime.utcnow() - timedelta(hours=1)).timestamp()),
     endTime=int(datetime.utcnow().timestamp()),
     queryString="""
-        fields @timestamp, command, execution_time_microseconds
-        | filter execution_time_microseconds > 10000
-        | sort execution_time_microseconds desc
+        fields @timestamp, Command, `Duration (us)`
+        | filter `Duration (us)` > 10000
+        | sort `Duration (us)` desc
         | limit 20
     """
 )
