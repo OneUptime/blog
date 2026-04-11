@@ -16,10 +16,11 @@ redis-rb raises errors under `Redis::BaseError`:
 
 ```text
 Redis::BaseError
-  Redis::ConnectionError   - cannot connect to Redis
-  Redis::TimeoutError      - connection or read timed out
-  Redis::CommandError      - Redis rejected the command
-  Redis::CannotConnectError - same as ConnectionError in some cases
+  Redis::CommandError          - Redis rejected the command
+  Redis::BaseConnectionError   - base class for connection-related errors
+    Redis::CannotConnectError  - cannot establish a connection
+    Redis::ConnectionError     - connection lost after being established
+    Redis::TimeoutError        - connection or read timed out
 ```
 
 ## Basic Error Handling
