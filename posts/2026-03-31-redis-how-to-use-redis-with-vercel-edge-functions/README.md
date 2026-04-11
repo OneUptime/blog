@@ -48,7 +48,7 @@ const redis = new Redis({
 });
 
 export async function GET(request, { params }) {
-  const { id } = params;
+  const { id } = await params;
   const cacheKey = `product:${id}`;
 
   const cached = await redis.get(cacheKey);
