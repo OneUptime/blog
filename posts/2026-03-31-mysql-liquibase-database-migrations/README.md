@@ -46,7 +46,7 @@ databaseChangeLog:
   - include:
       file: db/changelog/001-create-users.yaml
   - include:
-      file: db/changelog/002-create-orders.yaml
+      file: db/changelog/002-create-orders.sql
 ```
 
 ## Writing a Changeset in YAML
