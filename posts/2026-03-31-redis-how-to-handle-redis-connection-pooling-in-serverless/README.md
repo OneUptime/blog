@@ -36,7 +36,6 @@ function getRedisClient() {
     port: parseInt(process.env.REDIS_PORT || '6379'),
     maxRetriesPerRequest: 3,
     connectTimeout: 5000,
-    commandTimeout: 3000,
     enableOfflineQueue: false,
     lazyConnect: false,
   });
@@ -76,7 +75,6 @@ const redis = new Redis({
   enableOfflineQueue: false,
   // Short timeouts suitable for serverless
   connectTimeout: 3000,
-  commandTimeout: 2000,
 });
 ```
 
@@ -146,8 +144,8 @@ Track your Redis connections in CloudWatch or via Redis INFO:
 # Check current connections
 redis-cli INFO clients | grep connected_clients
 
-# Monitor in real time
-redis-cli MONITOR
+# Monitor connection count in real time (refreshes every second)
+watch -n 1 'redis-cli INFO clients | grep connected_clients'
 ```
 
 ```javascript
