@@ -139,7 +139,7 @@ npx knex migrate:rollback
 ## Raw SQL When Needed
 
 ```javascript
-const rows = await knex.raw(
+const [rows] = await knex.raw(
   'SELECT * FROM products WHERE MATCH(name) AGAINST(? IN BOOLEAN MODE)',
   ['laptop*']
 );
