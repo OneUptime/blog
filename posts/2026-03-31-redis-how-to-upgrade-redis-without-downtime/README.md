@@ -66,8 +66,8 @@ redis-cli -p 6380 INFO replication | grep master_link_status
 Step 2 - Failover to the upgraded replica:
 
 ```bash
-# On the PRIMARY, initiate a graceful failover to the replica
-redis-cli -p 6379 DEBUG SLEEP 0  # Ensure primary is responsive
+# On the PRIMARY, ensure it is responsive before proceeding
+redis-cli -p 6379 PING  # Should return PONG
 
 # Trigger failover: the replica will promote itself
 redis-cli -p 6380 REPLICAOF NO ONE
@@ -163,8 +163,8 @@ redis-cli DBSIZE
 Run a canary test by connecting to the new version with a copy of your data:
 
 ```bash
-# Start new Redis version on a different port
-redis-server --port 6399 --version
+# Verify the new Redis version installed correctly
+redis-server --version
 
 # Load a snapshot from the primary
 redis-cli -p 6379 BGSAVE
