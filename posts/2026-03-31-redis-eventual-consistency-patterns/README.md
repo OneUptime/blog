@@ -105,8 +105,9 @@ def update_with_version(entity_id, data, node_id):
 
 def is_concurrent_update(version_a, version_b):
     """Returns True if the versions are concurrent (conflict)"""
-    a_dominates = any(version_a.get(k, 0) > version_b.get(k, 0) for k in version_b)
-    b_dominates = any(version_b.get(k, 0) > version_a.get(k, 0) for k in version_a)
+    all_keys = set(version_a) | set(version_b)
+    a_dominates = any(version_a.get(k, 0) > version_b.get(k, 0) for k in all_keys)
+    b_dominates = any(version_b.get(k, 0) > version_a.get(k, 0) for k in all_keys)
     return a_dominates and b_dominates
 ```
 
