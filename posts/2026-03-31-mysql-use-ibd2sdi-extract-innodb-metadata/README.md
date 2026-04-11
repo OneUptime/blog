@@ -48,19 +48,27 @@ ibd2sdi --type=2 /var/lib/mysql/mydb/orders.ibd
 
 ## Listing SDI IDs Without Full Output
 
-To see available SDI record IDs without dumping the full JSON:
+To see available SDI record IDs without dumping the full JSON, use `--skip-data`:
 
 ```bash
-ibd2sdi --list /var/lib/mysql/mydb/orders.ibd
+ibd2sdi --skip-data /var/lib/mysql/mydb/orders.ibd
 ```
 
 Example output:
 
-```text
-ibd2sdi: SDI version: 1
-id type
-2  1
-1  2
+```json
+["ibd2sdi"
+,
+{
+    "type": 1,
+    "id": 2
+}
+,
+{
+    "type": 2,
+    "id": 1
+}
+]
 ```
 
 You can then fetch a specific record by ID:
@@ -105,13 +113,13 @@ ibd2sdi /var/lib/mysql/mydb/orders.ibd > orders_sdi.json
 
 ## Checking the MySQL Version that Created the Tablespace
 
-The SDI output also includes version metadata:
+The SDI output also includes version metadata inside each record's `object` field:
 
 ```bash
-ibd2sdi /var/lib/mysql/mydb/orders.ibd | jq '.[0]'
+ibd2sdi /var/lib/mysql/mydb/orders.ibd | jq '.[1].object | {mysqld_version_id, dd_version, sdi_version}'
 ```
 
-This prints the SDI header with the MySQL version that last wrote the file, useful for cross-version recovery scenarios.
+This prints the MySQL version ID that last wrote the file, along with the data dictionary and SDI versions, useful for cross-version recovery scenarios.
 
 ## Common Recovery Scenario
 
