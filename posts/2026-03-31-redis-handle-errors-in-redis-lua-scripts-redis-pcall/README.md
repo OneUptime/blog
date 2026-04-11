@@ -23,7 +23,7 @@ redis-cli EVAL "
 # Script is aborted
 ```
 
-`redis.pcall()` - catches error, returns error table:
+Lua's native `pcall()` wrapping `redis.call()` - also catches errors:
 
 ```bash
 redis-cli EVAL "
@@ -41,7 +41,7 @@ A simpler pattern using `redis.pcall` directly:
 
 ```lua
 local result = redis.pcall('EXPIRE', 'mykey', 'not-a-number')
-if result.err then
+if type(result) == 'table' and result.err then
     return redis.error_reply('Command failed: ' .. result.err)
 end
 ```
@@ -65,7 +65,7 @@ end
 ## Practical Example - Safe Multi-Key Update
 
 ```lua
--- Try to update multiple keys, roll back on any error
+-- Try to update multiple keys, collect errors
 local errors = {}
 
 for i = 1, #KEYS do
