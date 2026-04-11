@@ -63,6 +63,7 @@ while True:
         WHERE created_at < '2024-01-01' AND archived = 0
         LIMIT 1000
     """)
+    connection.commit()  # Commit each batch to release locks
     if cursor.rowcount == 0:
         break
     time.sleep(0.01)  # Brief pause to reduce lock pressure
