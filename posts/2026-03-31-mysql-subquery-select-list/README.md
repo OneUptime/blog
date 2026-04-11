@@ -66,7 +66,7 @@ SELECT
 FROM employees e;
 ```
 
-This is equivalent to a `LEFT JOIN` but avoids duplicate rows if the join could produce multiple matches.
+This is equivalent to a `LEFT JOIN` on a unique key. If the subquery matches more than one row, MySQL raises error 1242 (`Subquery returns more than 1 row`), so the correlated condition must match at most one row.
 
 ## Aggregate comparison per row
 
@@ -90,7 +90,7 @@ FROM employees e;
 
 ## Using an alias from SELECT in ORDER BY
 
-Aliases defined in the `SELECT` list can be used in `ORDER BY` but not in `WHERE` or `HAVING`:
+Aliases defined in the `SELECT` list can be used in `ORDER BY` and, as a MySQL extension, in `HAVING`, but not in `WHERE`:
 
 ```sql
 SELECT
