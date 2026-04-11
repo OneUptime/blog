@@ -36,7 +36,7 @@ Redis CLI supports tab completion for commands and subcommands:
 ```bash
 # In interactive mode, press Tab after typing the beginning of a command:
 127.0.0.1:6379> cl<TAB>
-CLIENT   CLUSTER  CLOSE
+CLIENT   CLUSTER
 
 127.0.0.1:6379> CLIENT <TAB>
 CLIENT CACHING       CLIENT GETNAME    CLIENT INFO
@@ -111,7 +111,7 @@ redis-cli -h localhost -a mypassword --no-auth-warning ping
 redis-cli -3
 
 # Pretty-print output
-redis-cli --resp3 HGETALL mykey
+redis-cli -3 HGETALL mykey
 ```
 
 ## Useful One-Liner Commands
@@ -126,11 +126,11 @@ redis-cli --scan --pattern "temp:*" | xargs redis-cli DEL
 # Get all fields of a hash
 redis-cli HGETALL user:1
 
-# Watch key changes in real time
+# Test system intrinsic latency for 10 seconds (run on Redis host)
 redis-cli --intrinsic-latency 10
 
-# Run a command repeatedly every N seconds
-redis-cli -i 1 INFO memory | grep used_memory_human
+# Run a command repeatedly every 1 second (-r -1 means infinite repeats)
+redis-cli -r -1 -i 1 INFO memory | grep used_memory_human
 ```
 
 ## Formatting Output
@@ -139,14 +139,14 @@ redis-cli -i 1 INFO memory | grep used_memory_human
 # Raw output (useful for scripting)
 redis-cli --raw GET mykey
 
-# No formatting (show as-is)
-redis-cli --no-auth-warning --raw LRANGE mylist 0 -1
+# Raw output for lists (useful for scripting)
+redis-cli --raw LRANGE mylist 0 -1
 
 # CSV output
 redis-cli --csv SMEMBERS myset
 
-# Quoted strings (avoid ambiguity)
-redis-cli --quoted-output GET mykey
+# JSON output with quoted strings (Redis 7.0+)
+redis-cli --quoted-json GET mykey
 ```
 
 ## Working with Binary Data
@@ -155,8 +155,8 @@ redis-cli --quoted-output GET mykey
 # Set a key with binary content
 redis-cli SET mykey $'\x00\x01\x02binary\xff'
 
-# Read with hex output
-redis-cli --hex GET mykey
+# Read with hex output (pipe through xxd)
+redis-cli --raw GET mykey | xxd
 
 # Use quoted input for special characters
 redis-cli SET "key with spaces" "value with spaces"
