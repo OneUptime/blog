@@ -103,7 +103,7 @@ LPOP stack
 
 # Circular buffer
 RPUSH buffer "data"
-LTRIM buffer 0 99   # keep last 100 items
+LTRIM buffer -100 -1   # keep last 100 items
 ```
 
 ## Summary
