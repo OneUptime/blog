@@ -20,9 +20,9 @@ TS.ADD key timestamp value
   [ENCODING [COMPRESSED | UNCOMPRESSED]]
   [CHUNK_SIZE chunkSize]
   [DUPLICATE_POLICY policy]
-  [LABELS {label value}...]
-  [IGNORE ignoreMaxTimeDiff ignoreMaxValDiff]
   [ON_DUPLICATE policy]
+  [IGNORE ignoreMaxTimeDiff ignoreMaxValDiff]
+  [LABELS {label value}...]
 ```
 
 Key parameters:
@@ -128,7 +128,7 @@ TS.ADD sensor:temp 1700000000000 23.1 ON_DUPLICATE LAST
 # Returns: 1700000000000 (accepted, overwrote previous)
 
 TS.ADD sensor:temp 1700000000000 21.0 ON_DUPLICATE MAX
-# Returns: 1700000000000 (accepted if 21.0 > current, rejected otherwise)
+# Returns: 1700000000000 (keeps the higher value: max(current, 21.0))
 ```
 
 ## Adding Out-of-Order Samples
