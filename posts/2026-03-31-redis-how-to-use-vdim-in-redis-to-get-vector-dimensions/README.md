@@ -26,8 +26,8 @@ Returns an integer: the number of dimensions, or an error if the key does not ex
 
 ```bash
 # Create a vector set with 4-dimensional vectors
-VADD my_vectors item1 VALUES 4 0.1 0.2 0.3 0.4
-VADD my_vectors item2 VALUES 4 0.5 0.6 0.7 0.8
+VADD my_vectors VALUES 4 0.1 0.2 0.3 0.4 item1
+VADD my_vectors VALUES 4 0.5 0.6 0.7 0.8 item2
 
 # Check dimensions
 VDIM my_vectors
@@ -59,8 +59,10 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 def get_index_dimension(key: str) -> int:
     """Get the dimension of an existing vector index."""
-    result = r.execute_command("VDIM", key)
-    return int(result) if result else 0
+    try:
+        return int(r.execute_command("VDIM", key))
+    except Exception:
+        return 0
 
 def validate_and_add_vector(key: str, element_id: str, embedding: list) -> bool:
     """Add a vector only if its dimensions match the index."""
@@ -77,15 +79,16 @@ def validate_and_add_vector(key: str, element_id: str, embedding: list) -> bool:
         )
 
     cmd = (
-        ["VADD", key, element_id, "VALUES", str(len(embedding))]
+        ["VADD", key, "VALUES", str(len(embedding))]
         + [str(v) for v in embedding]
+        + [element_id]
     )
     r.execute_command(*cmd)
     return True
 
 # Create an index with 8-dim vectors
-r.execute_command("VADD", "docs:index", "doc1", "VALUES", "8",
-                  "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8")
+r.execute_command("VADD", "docs:index", "VALUES", "8",
+                  "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "doc1")
 
 dim = get_index_dimension("docs:index")
 print(f"Index dimension: {dim}")  # 8
@@ -125,8 +128,8 @@ def get_model_name(key: str) -> str:
     return MODEL_DIMENSIONS.get(dim, f"unknown-{dim}d")
 
 # Create indexes for different models
-r.execute_command("VADD", "docs:small", "doc1", "VALUES", "4",
-                  "0.1", "0.2", "0.3", "0.4")
+r.execute_command("VADD", "docs:small", "VALUES", "4",
+                  "0.1", "0.2", "0.3", "0.4", "doc1")
 
 model = get_model_name("docs:small")
 print(f"docs:small uses: {model}")
