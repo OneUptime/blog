@@ -123,7 +123,7 @@ Enabling all of these significantly reduces latency spikes caused by large key e
 Monitor the lazy free background queue:
 
 ```bash
-redis-cli INFO memory | grep lazyfree
+redis-cli INFO stats | grep lazyfree
 ```
 
 Output:
@@ -148,7 +148,7 @@ cursor=0
 while true; do
   result=$(redis-cli HSCAN $KEY $cursor COUNT 1000)
   cursor=$(echo "$result" | head -1)
-  fields=$(echo "$result" | tail -n +2 | grep -v '^$')
+  fields=$(echo "$result" | tail -n +2 | awk 'NR % 2 == 1')
 
   if [ -n "$fields" ]; then
     redis-cli HDEL $KEY $fields
