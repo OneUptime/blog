@@ -72,7 +72,7 @@ INSTALL PLUGIN keyring_udf SONAME 'keyring_udf.so';
 -- Generate a new AES 256-bit key
 SELECT keyring_key_generate('MyAppKey', 'AES', 32);
 
--- Fetch a key (returns base64-encoded value)
+-- Fetch a key (returns raw binary value)
 SELECT keyring_key_fetch('MyAppKey');
 
 -- Remove a key
@@ -117,9 +117,10 @@ chmod 600 /secure-backup/keyring-*
 ## Migrating Between Keyring Plugins
 
 ```bash
-mysql --keyring-migration-source=keyring_file.so \
+mysqld --keyring-migration-source=keyring_file.so \
   --keyring-migration-destination=keyring_encrypted_file.so \
-  --keyring-migration-destination-password=NewPassword
+  --keyring_encrypted_file_data=/var/lib/mysql-keyring/keyring.enc \
+  --keyring_encrypted_file_password=NewPassword
 ```
 
 ## Summary
