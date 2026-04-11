@@ -47,7 +47,7 @@ pipe.set("key2", "value2")
 results = pipe.execute()
 ```
 
-With MULTI/EXEC, if the connection drops before EXEC, the server discards the entire transaction via DISCARD.
+With MULTI/EXEC, if the connection drops before EXEC, the server discards the queued commands as part of connection cleanup and EXEC is never performed.
 
 ## Detecting and Handling Errors
 
