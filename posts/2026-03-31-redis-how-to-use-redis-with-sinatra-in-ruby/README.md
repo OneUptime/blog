@@ -58,7 +58,7 @@ get '/products' do
 
   products = [{ id: 1, name: 'Widget' }] # Simulate DB fetch
   result = products.to_json
-  REDIS.setex(cache_key, 120, result) # 2-minute TTL
+  REDIS.set(cache_key, result, ex: 120) # 2-minute TTL
   headers['X-Cache'] = 'MISS'
   result
 end
@@ -71,10 +71,10 @@ end
 
 ## Session Storage with Redis
 
-Use `rack-session-redis` for Redis-backed sessions in Sinatra.
+Use `redis-rack` for Redis-backed sessions in Sinatra.
 
 ```bash
-bundle add rack-session-redis
+bundle add redis-rack
 ```
 
 ```ruby
@@ -134,4 +134,4 @@ end
 
 ## Summary
 
-Sinatra works with Redis through the `redis` gem for direct key-value operations and `rack-session-redis` for persistent sessions. Use `INCR` with `EXPIRE` for atomic rate limiting, `SETEX` for TTL-based caching, and attach cleanup to `at_exit` for graceful shutdown.
+Sinatra works with Redis through the `redis` gem for direct key-value operations and `redis-rack` for persistent sessions. Use `INCR` with `EXPIRE` for atomic rate limiting, `SET` with `EX` for TTL-based caching, and attach cleanup to `at_exit` for graceful shutdown.
