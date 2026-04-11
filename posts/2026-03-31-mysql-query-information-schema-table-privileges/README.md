@@ -10,7 +10,7 @@ Description: Learn how to query INFORMATION_SCHEMA.TABLE_PRIVILEGES in MySQL to 
 
 ## What Is INFORMATION_SCHEMA.TABLE_PRIVILEGES?
 
-The `INFORMATION_SCHEMA.TABLE_PRIVILEGES` table shows privileges granted to MySQL users at the individual table level. This is the most granular of the privilege views - it covers grants made with syntax like `GRANT SELECT ON mydb.mytable TO 'user'@'host'`. The data originates from the `mysql.tables_priv` system table.
+The `INFORMATION_SCHEMA.TABLE_PRIVILEGES` table shows privileges granted to MySQL users at the individual table level. It covers grants made with syntax like `GRANT SELECT ON mydb.mytable TO 'user'@'host'`. The data originates from the `mysql.tables_priv` system table.
 
 Use this view when you need fine-grained visibility into which users can access specific tables, not just entire databases.
 
