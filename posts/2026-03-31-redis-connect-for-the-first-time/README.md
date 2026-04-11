@@ -92,7 +92,7 @@ const Redis = require('ioredis');
 const redis = new Redis();
 
 // Connect to remote with auth
-const redis = new Redis({
+const remoteRedis = new Redis({
   host: 'redis.myapp.com',
   port: 6379,
   password: 'secret',
@@ -102,9 +102,12 @@ const redis = new Redis({
 redis.ping().then(result => console.log(result)); // PONG
 
 // Basic set and get
-await redis.set('name', 'Alice');
-const name = await redis.get('name');
-console.log(name); // Alice
+async function main() {
+  await redis.set('name', 'Alice');
+  const name = await redis.get('name');
+  console.log(name); // Alice
+}
+main();
 ```
 
 ## Connecting from Go
