@@ -31,7 +31,7 @@ gcloud functions deploy cache-function \
   --trigger-http \
   --allow-unauthenticated \
   --vpc-connector=redis-connector \
-  --vpc-egress=private-ranges-only \
+  --egress-settings=private-ranges-only \
   --set-env-vars="REDIS_HOST=10.0.0.3,REDIS_PORT=6379"
 ```
 
@@ -128,4 +128,4 @@ gcloud redis instances describe my-redis \
 
 ## Summary
 
-Cloud Functions connect to Memorystore Redis via a VPC Access Connector that bridges the serverless environment to your VPC. Deploy with `--vpc-connector` and `--vpc-egress=private-ranges-only` to route only private traffic through the connector. Initialize the Redis client at module level to reuse connections across warm invocations and minimize per-request overhead.
+Cloud Functions connect to Memorystore Redis via a VPC Access Connector that bridges the serverless environment to your VPC. Deploy with `--vpc-connector` and `--egress-settings=private-ranges-only` to route only private traffic through the connector. Initialize the Redis client at module level to reuse connections across warm invocations and minimize per-request overhead.
