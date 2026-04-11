@@ -10,6 +10,8 @@ Description: Learn how to use mysqlpump to perform parallel database backups in 
 
 `mysqlpump` is a backup utility introduced in MySQL 5.7 that extends `mysqldump` with parallel processing capabilities. While `mysqldump` processes databases and tables sequentially, `mysqlpump` uses multiple threads to dump tables simultaneously, dramatically reducing backup time for servers with many tables or large databases.
 
+**Note:** `mysqlpump` was deprecated in MySQL 8.0.34 and removed in MySQL 8.4. For MySQL 8.4 and later, use `mysqldump` or MySQL Shell's dump utilities (`util.dumpInstance()`, `util.dumpSchemas()`) instead.
+
 ## mysqlpump vs mysqldump
 
 | Feature | mysqldump | mysqlpump |
@@ -41,23 +43,38 @@ mysqlpump -u root -p \
 
 ## Consistent Backup with Single Transaction
 
+**Important:** When using `--single-transaction` with multiple parallel threads, each thread opens its own transaction at a potentially different point in time. This means cross-table consistency is not guaranteed. For a fully consistent snapshot, use `--default-parallelism=0` (single-threaded) with `--single-transaction`.
+
 ```bash
+# Consistent but single-threaded backup
 mysqlpump -u root -p \
-  --default-parallelism=4 \
+  --default-parallelism=0 \
   --single-transaction \
   --all-databases \
   > /backup/all_databases_consistent.sql
 ```
 
-## Including Routines and Events
+## Routines and Events
+
+Unlike `mysqldump`, `mysqlpump` includes stored routines and events by default. No extra flags are needed:
+
+```bash
+# Routines and events are included by default
+mysqlpump -u root -p \
+  --default-parallelism=4 \
+  --all-databases \
+  > /backup/all_databases_full.sql
+```
+
+To exclude them, use `--skip-routines` or `--skip-events`:
 
 ```bash
 mysqlpump -u root -p \
   --default-parallelism=4 \
-  --routines \
-  --events \
+  --skip-routines \
+  --skip-events \
   --all-databases \
-  > /backup/all_databases_full.sql
+  > /backup/all_databases_no_routines.sql
 ```
 
 ## Built-in Compression
@@ -81,12 +98,14 @@ mysqlpump -u root -p \
 
 ## Decompressing mysqlpump Output
 
+Use the `lz4_decompress` and `zlib_decompress` utilities included with MySQL:
+
 ```bash
 # Decompress LZ4 output
-mysqlpump --decompress < /backup/all_databases.lz4 > /backup/all_databases.sql
+lz4_decompress /backup/all_databases.lz4 /backup/all_databases.sql
 
 # Decompress ZLIB output
-mysqlpump --decompress < /backup/all_databases.zlib > /backup/all_databases.sql
+zlib_decompress /backup/all_databases.zlib /backup/all_databases.sql
 ```
 
 ## Excluding Specific Databases
