@@ -24,7 +24,7 @@ Each key maps to a slot via:
 slot = CRC16(key) % 16384
 ```
 
-Moving a slot means moving all keys belonging to that slot. Redis does this atomically - keys remain accessible during migration.
+Moving a slot means moving all keys belonging to that slot. Redis handles this online — keys remain accessible during migration through ASK redirects.
 
 ## Checking Current Slot Distribution
 
@@ -131,7 +131,7 @@ redis-cli --cluster rebalance 192.168.1.11:7001 \
 While migration is running, you can see slots in MIGRATING or IMPORTING state:
 
 ```bash
-redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER NODES | grep -E "migrating|importing"
+redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER NODES | grep -E "\[.*->-.*\]|\[.*-<-.*\]"
 ```
 
 Or watch the slot count change:
@@ -143,7 +143,7 @@ watch -n 2 "redis-cli --cluster info 192.168.1.11:7001 -a clusterPassword"
 Check how many keys remain in a migrating slot on a specific node:
 
 ```bash
-redis-cli -h 192.168.1.12 -p 7002 -a clusterPassword CLUSTER GETKEYSINSLOT 500 10
+redis-cli -h 192.168.1.12 -p 7002 -a clusterPassword CLUSTER COUNTKEYSINSLOT 500
 ```
 
 ## What Happens During Migration
