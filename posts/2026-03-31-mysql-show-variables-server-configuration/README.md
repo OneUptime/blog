@@ -47,12 +47,12 @@ The `%` wildcard matches any sequence of characters.
 
 ## Use information_schema for Programmatic Access
 
-`SHOW VARIABLES` is convenient for interactive use. For scripting or application queries, use the `information_schema.global_variables` and `session_variables` tables:
+`SHOW VARIABLES` is convenient for interactive use. For scripting or application queries, use the `performance_schema.global_variables` and `session_variables` tables:
 
 ```sql
 -- Programmatic query with filtering
 SELECT VARIABLE_NAME, VARIABLE_VALUE
-FROM information_schema.GLOBAL_VARIABLES
+FROM performance_schema.global_variables
 WHERE VARIABLE_NAME IN ('max_connections', 'wait_timeout', 'innodb_buffer_pool_size')
 ORDER BY VARIABLE_NAME;
 ```
@@ -82,7 +82,7 @@ SHOW SESSION VARIABLES LIKE 'sort_buffer_size';
 SHOW VARIABLES LIKE 'sort_buffer_size';
 ```
 
-When a session starts, it inherits the global value. If a DBA runs `SET SESSION sort_buffer_size = 8M`, only that session is affected.
+When a session starts, it inherits the global value. If a DBA runs `SET SESSION sort_buffer_size = 8*1024*1024`, only that session is affected.
 
 ## Use performance_schema.variables_info for Source Information
 
@@ -102,10 +102,10 @@ ORDER BY v.VARIABLE_NAME;
 
 `VARIABLE_SOURCE` values:
 - `COMPILED` - hardcoded default
-- `GLOBAL` - set with `SET GLOBAL`
-- `PERSISTED` - set with `SET PERSIST`
-- `COMMAND_LINE` - set via startup option
-- `CONFIG` - set in `my.cnf`
+- `GLOBAL` - set from a global option file (e.g., `/etc/my.cnf`)
+- `PERSISTED` - set with `SET PERSIST` (stored in `mysqld-auto.cnf`)
+- `COMMAND_LINE` - set via command-line option
+- `DYNAMIC` - set at runtime with `SET GLOBAL` or `SET SESSION`
 
 ## Find Variables Different from Defaults
 
@@ -143,4 +143,4 @@ SHOW VARIABLES LIKE '%ssl%';
 
 ## Summary
 
-`SHOW VARIABLES` is the primary command for inspecting MySQL server configuration. Use `LIKE` patterns to filter relevant variables. For scripts, prefer `information_schema.GLOBAL_VARIABLES`. In MySQL 8.0, `performance_schema.variables_info` provides the source and timestamp of each variable's last change, making it easier to audit configuration drift from compiled defaults.
+`SHOW VARIABLES` is the primary command for inspecting MySQL server configuration. Use `LIKE` patterns to filter relevant variables. For scripts, prefer `performance_schema.global_variables`. In MySQL 8.0, `performance_schema.variables_info` provides the source and timestamp of each variable's last change, making it easier to audit configuration drift from compiled defaults.
