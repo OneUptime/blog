@@ -91,7 +91,7 @@ def calculate_ri_savings(
 # Example: cache.r6g.large in us-east-1
 # On-demand: ~$0.166/hr
 # 1-year All Upfront: ~$730 upfront, $0/mo
-# 1-year No Upfront: $0 upfront, ~$0.103/mo * 730 = ~$75.19/mo
+# 1-year No Upfront: $0 upfront, ~$0.103/hr * 730 hrs = ~$75.19/mo
 
 all_upfront = calculate_ri_savings(
     on_demand_hourly=0.166,
@@ -140,7 +140,7 @@ aws elasticache purchase-reserved-cache-nodes-offering \
 
 ```bash
 aws elasticache describe-reserved-cache-nodes \
-  --query 'ReservedCacheNodes[*].{ID:ReservedCacheNodeId, Type:CacheNodeType, State:State, Start:StartTime, End:Duration}' \
+  --query 'ReservedCacheNodes[*].{ID:ReservedCacheNodeId, Type:CacheNodeType, State:State, Start:StartTime, Duration:Duration}' \
   --output table
 ```
 
@@ -151,16 +151,17 @@ Azure offers reserved capacity for Azure Cache for Redis via the Azure portal or
 ```bash
 # List available Redis reserved capacity offers
 az reservations catalog show \
-  --service "Microsoft.Cache" \
+  --reserved-resource-type "RedisCache" \
   --location eastus \
   --query '[*].{Name:name, Sku:properties.skuProperties}'
 
 # Purchase reserved capacity
 az reservations reservation-order purchase \
   --reservation-order-id "$(uuidgen)" \
+  --reserved-resource-type "RedisCache" \
   --sku "C2" \
   --location "eastus" \
-  --applied-scope "Shared" \
+  --applied-scope-type "Shared" \
   --billing-scope "/subscriptions/YOUR-SUBSCRIPTION-ID" \
   --term "P1Y" \
   --quantity 1
