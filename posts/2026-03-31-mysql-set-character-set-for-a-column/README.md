@@ -40,7 +40,7 @@ ALTER TABLE users
 
 This command changes both the column definition and re-encodes any existing data. If the new character set cannot represent some stored characters MySQL raises an error - test on a copy of the data first.
 
-To change the definition without data conversion, use `ALTER TABLE ... CHANGE COLUMN` with explicit types, or use `ALTER COLUMN` for default changes only.
+Note that `ALTER TABLE ... CHANGE COLUMN` also re-encodes data (it differs from `MODIFY COLUMN` only in allowing a column rename). To change the stored bytes without conversion, first convert the column to its binary equivalent (e.g., `VARBINARY`), then convert it to the target character set.
 
 ## Adding a New Column with a Specific Character Set
 
