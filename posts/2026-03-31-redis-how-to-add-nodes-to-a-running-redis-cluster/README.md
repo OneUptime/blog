@@ -148,10 +148,16 @@ Do you want to proceed with the proposed reshard plan (yes/no)? yes
 
 ## Monitoring Migration Progress
 
-During resharding, monitor slot migration:
+During resharding, monitor slot assignment progress:
 
 ```bash
-redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER INFO | grep -E "cluster_slots|migrating"
+redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER INFO | grep cluster_slots
+```
+
+To see which specific slots are being migrated, check `CLUSTER NODES` where migrating slots appear as `[slot->-node_id]`:
+
+```bash
+redis-cli -h 192.168.1.11 -p 7001 -a clusterPassword CLUSTER NODES | grep "\->"
 ```
 
 You can also watch cluster node slot assignments:
@@ -173,9 +179,17 @@ Look for:
 ```text
 cluster_enabled:1
 cluster_state:ok
-cluster_slots_assigned:4096
+cluster_slots_assigned:16384
 cluster_known_nodes:8
 ```
+
+Note that `cluster_slots_assigned` reports the cluster-wide total, not the per-node count. A healthy cluster always shows `16384`. To check how many slots are assigned to this specific node, use:
+
+```bash
+redis-cli -h 192.168.1.17 -p 7006 -a clusterPassword CLUSTER NODES | grep myself
+```
+
+The output will show the slot ranges assigned to this node.
 
 Test with a key that hashes to the new node's slots:
 
