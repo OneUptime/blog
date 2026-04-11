@@ -34,7 +34,7 @@ SELECT * FROM orders ORDER BY created_at DESC LIMIT 10;
 
 -- SQL Server uses TOP
 SELECT TOP 10 * FROM orders ORDER BY created_at DESC;
--- or FETCH (ANSI standard, supported by both)
+-- SQL Server also supports OFFSET/FETCH (ANSI SQL:2008, SQL Server 2012+)
 SELECT * FROM orders ORDER BY created_at DESC
 OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY;
 ```
