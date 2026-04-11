@@ -150,7 +150,7 @@ stats = r.memory_stats()
 
 print(f"Dataset:        {stats['dataset.bytes'] / 1024 / 1024:.2f} MB")
 print(f"Overhead:       {stats['overhead.total'] / 1024 / 1024:.2f} MB")
-print(f"Fragmentation:  {stats['mem_fragmentation_ratio']:.2f}")
+print(f"Fragmentation:  {stats['mem.fragmentation.ratio']}")
 print(f"Peak allocated: {stats['peak.allocated'] / 1024 / 1024:.2f} MB")
 ```
 
