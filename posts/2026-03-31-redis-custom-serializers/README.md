@@ -111,7 +111,6 @@ class EncryptingSerializer(RedisSerializer):
 ## Composing Serializers
 
 ```python
-import os
 import redis
 
 # Chain: JSON -> compress -> encrypt
