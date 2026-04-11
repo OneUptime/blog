@@ -19,7 +19,6 @@ import redis
 import time
 import uuid
 from dataclasses import dataclass
-from collections import deque
 
 @dataclass
 class LockMetrics:
