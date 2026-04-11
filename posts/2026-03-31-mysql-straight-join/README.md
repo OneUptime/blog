@@ -127,7 +127,7 @@ FROM products p
 JOIN categories c ON p.category_id = c.id\G
 ```
 
-The `id` and `rows` columns in EXPLAIN output show which table is accessed first and how many rows are estimated. The table listed first in EXPLAIN output is the driving table.
+The order of rows in the EXPLAIN output shows which table is accessed first, and the `rows` column shows how many rows are estimated for each table. The table listed first in EXPLAIN output is the driving table.
 
 ## When STRAIGHT_JOIN Helps
 
