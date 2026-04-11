@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Memory, Fragmentation, Performance, Operation
 
-Description: Learn how to detect, diagnose, and fix Redis memory fragmentation using the mem_allocator_frag_ratio metric and active defragmentation settings.
+Description: Learn how to detect, diagnose, and fix Redis memory fragmentation using the mem_fragmentation_ratio metric and active defragmentation settings.
 
 ---
 
@@ -97,8 +97,7 @@ active_defrag_running:1
 active_defrag_hits:1423782
 active_defrag_misses:48291
 active_defrag_key_hits:95847
-active_defrag-key_misses:1293
-active_defrag_compactions:12
+active_defrag_key_misses:1293
 ```
 
 ## Reducing Fragmentation Without Restart
