@@ -71,7 +71,7 @@ ALTER TABLE orders
 -- Show active locks and waiting queries
 SHOW OPEN TABLES WHERE In_use > 0;
 
--- Check for table lock waits in Performance Schema
+-- Check for InnoDB lock waits (MySQL 8.0+)
 SELECT
     r.trx_id AS waiting_trx,
     r.trx_mysql_thread_id AS waiting_thread,
@@ -79,9 +79,9 @@ SELECT
     b.trx_id AS blocking_trx,
     b.trx_mysql_thread_id AS blocking_thread,
     b.trx_query AS blocking_query
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 ```
 
 ## Table Lock Statistics
