@@ -12,7 +12,7 @@ The `HAVING` clause filters groups after `GROUP BY` aggregation. A subquery in `
 
 ## How HAVING with a subquery differs from WHERE
 
-```dockerfile
+```text
 FROM -> JOIN -> WHERE (row filter) -> GROUP BY -> HAVING (group filter) -> SELECT
 ```
 
@@ -26,7 +26,8 @@ CREATE TABLE employees (
     employee_id   INT PRIMARY KEY,
     name          VARCHAR(100),
     department_id INT,
-    salary        DECIMAL(10,2)
+    salary        DECIMAL(10,2),
+    active        TINYINT DEFAULT 1
 );
 
 -- Departments whose average salary exceeds the company-wide average
@@ -87,6 +88,7 @@ HAVING AVG(salary) >= 0.8 * (
 CREATE TABLE orders (
     order_id    INT PRIMARY KEY,
     customer_id INT,
+    order_date  DATE,
     total       DECIMAL(10,2)
 );
 
@@ -116,7 +118,7 @@ HAVING SUM(total) > (
     FROM (
         SELECT customer_id, SUM(total) AS monthly_total
         FROM orders
-        WHERE MONTH(order_date) = MONTH(CURDATE()) - 1
+        WHERE MONTH(order_date) = MONTH(CURDATE() - INTERVAL 1 MONTH)
         GROUP BY customer_id
     ) AS last_month
 );
