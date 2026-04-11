@@ -101,6 +101,7 @@ export class Product {
 ```typescript
 import { AppDataSource } from './data-source';
 import { Product } from './entity/Product';
+import { MoreThan } from 'typeorm';
 
 await AppDataSource.initialize();
 
