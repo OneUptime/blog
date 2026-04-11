@@ -18,6 +18,7 @@ InnoDB has a built-in concurrency throttle controlled by `innodb_thread_concurre
 -- View current concurrency settings
 SHOW GLOBAL VARIABLES LIKE 'innodb_thread%';
 SHOW GLOBAL VARIABLES LIKE 'innodb_concurrency%';
+SHOW GLOBAL VARIABLES LIKE 'innodb_adaptive%';
 ```
 
 ```text
@@ -78,11 +79,11 @@ With `innodb_adaptive_max_sleep_delay` set (non-zero), InnoDB automatically adju
 ## Monitoring Thread Contention
 
 ```sql
--- Check for thread concurrency waits
+-- Check for InnoDB synchronization waits
 SELECT EVENT_NAME, COUNT_STAR, SUM_TIMER_WAIT / 1e9 AS total_ms
 FROM performance_schema.events_waits_summary_global_by_event_name
-WHERE EVENT_NAME LIKE '%concurrency_ticket%'
-   OR EVENT_NAME LIKE '%innodb_mutex%'
+WHERE EVENT_NAME LIKE 'wait/synch/mutex/innodb%'
+   OR EVENT_NAME LIKE 'wait/synch/sxlock/innodb%'
 ORDER BY SUM_TIMER_WAIT DESC
 LIMIT 10;
 
@@ -93,7 +94,7 @@ GROUP BY STATE
 ORDER BY count DESC;
 ```
 
-Threads stuck in "waiting for innodb thread concurrency" indicate the limit is too low.
+Threads stuck waiting to enter InnoDB indicate the concurrency limit is too low. You can also check `SHOW ENGINE INNODB STATUS` and look for "queries in queue" in the SEMAPHORES section.
 
 ## When to Increase vs. Decrease the Limit
 
