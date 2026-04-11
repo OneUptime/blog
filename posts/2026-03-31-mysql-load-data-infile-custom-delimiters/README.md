@@ -10,7 +10,7 @@ Description: Learn how to configure LOAD DATA INFILE with custom field delimiter
 
 ## Introduction
 
-`LOAD DATA INFILE` is MySQL's high-performance bulk import mechanism. While CSV and TSV are the most common formats, real-world data files often use pipe characters, semicolons, tildes, or multi-character delimiters. MySQL's `FIELDS TERMINATED BY` clause accepts any single character, giving you full control over flat-file parsing.
+`LOAD DATA INFILE` is MySQL's high-performance bulk import mechanism. While CSV and TSV are the most common formats, real-world data files often use pipe characters, semicolons, tildes, or multi-character delimiters. MySQL's `FIELDS TERMINATED BY` clause accepts strings of any length (including multi-character delimiters like `'::'` or `'||'`), giving you full control over flat-file parsing.
 
 ## Syntax Overview
 
