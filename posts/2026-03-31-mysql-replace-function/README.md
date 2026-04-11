@@ -90,7 +90,7 @@ INSERT INTO phone_numbers VALUES
 -- Strip all non-numeric characters (chained REPLACE)
 SELECT
     contact_id,
-    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), '-', ''), '.', ''), ' ', '') AS digits_only
+    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), '-', ''), '.', ''), ' ', ''), '+', '') AS digits_only
 FROM phone_numbers;
 ```
 
