@@ -41,7 +41,7 @@ maxmemory-policy allkeys-lfu
 Without an LFU policy, `OBJECT FREQ` returns an error:
 
 ```text
-ERR object freq is not allowed when maxmemory-policy is not set to an LFU policy.
+An LFU maxmemory policy is not selected, access frequency not tracked. Please note that when switching between policies at runtime LRU and LFU data will take some time to adjust.
 ```
 
 ## LFU Eviction Policies
@@ -57,20 +57,19 @@ ERR object freq is not allowed when maxmemory-policy is not set to an LFU policy
 CONFIG SET maxmemory-policy allkeys-lfu
 
 SET popular:key "hot data"
-# Access it many times
+# Access it many times to build up frequency
 GET popular:key
-GET popular:key
-GET popular:key
+# ... repeat many times ...
 
 SET rarely:used:key "cold data"
 # Access only once
 GET rarely:used:key
 
 OBJECT FREQ popular:key
-# (integer) 4   <- higher frequency
+# (integer) 10   <- higher frequency
 
 OBJECT FREQ rarely:used:key
-# (integer) 1   <- lower frequency - more likely to be evicted
+# (integer) 5    <- lower frequency (initial value) - more likely to be evicted
 ```
 
 ## How the LFU Counter Works
@@ -80,7 +79,7 @@ The counter is logarithmic and probabilistic, not a direct access count. It rang
 - Starts at 5 for new keys
 - Increases logarithmically with access (harder to increase at higher values)
 - Decays over time based on `lfu-decay-time` (default 1 minute)
-- A counter of 100 might represent millions of accesses
+- A counter of 100 might represent tens of thousands of accesses (with default factor of 10)
 
 ```bash
 # Configure LFU parameters
@@ -92,7 +91,6 @@ CONFIG SET lfu-decay-time 1         # Default: 1 (minutes between decay)
 
 ```python
 import redis
-import time
 
 # Must use allkeys-lfu or volatile-lfu policy
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -116,7 +114,7 @@ client.get('cold:key')  # Just once
 keys = ['hot:key', 'warm:key', 'cold:key']
 print("LFU Frequency Counters:")
 for key in keys:
-    freq = client.object_freq(key)
+    freq = client.object("freq", key)
     print(f"  {key}: {freq}")
 ```
 
@@ -125,30 +123,34 @@ for key in keys:
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
+(async () => {
+  const client = createClient();
+  await client.connect();
 
-// Enable LFU policy
-await client.configSet('maxmemory-policy', 'allkeys-lfu');
+  // Enable LFU policy
+  await client.configSet('maxmemory-policy', 'allkeys-lfu');
 
-// Set and access keys with different frequency
-await client.set('hot', 'data');
-await client.set('cold', 'data');
+  // Set and access keys with different frequency
+  await client.set('hot', 'data');
+  await client.set('cold', 'data');
 
-// Access 'hot' many times
-for (let i = 0; i < 50; i++) {
-  await client.get('hot');
-}
+  // Access 'hot' many times
+  for (let i = 0; i < 50; i++) {
+    await client.get('hot');
+  }
 
-// Access 'cold' once
-await client.get('cold');
+  // Access 'cold' once
+  await client.get('cold');
 
-// Check frequencies
-const hotFreq = await client.objectFreq('hot');
-const coldFreq = await client.objectFreq('cold');
+  // Check frequencies
+  const hotFreq = await client.objectFreq('hot');
+  const coldFreq = await client.objectFreq('cold');
 
-console.log(`Hot key frequency: ${hotFreq}`);
-console.log(`Cold key frequency: ${coldFreq}`);
+  console.log(`Hot key frequency: ${hotFreq}`);
+  console.log(`Cold key frequency: ${coldFreq}`);
+
+  await client.quit();
+})();
 ```
 
 ## Finding Keys Most Likely to Be Evicted
@@ -168,7 +170,7 @@ def get_lowest_freq_keys(pattern='*', sample_size=100):
         cursor, keys = client.scan(cursor, match=pattern, count=sample_size)
         for key in keys:
             try:
-                freq = client.object_freq(key)
+                freq = client.object("freq", key)
                 key_freqs.append((key, freq))
             except redis.ResponseError:
                 pass  # Key may have expired
@@ -226,7 +228,7 @@ print(f"Decay Time: {config['lfu_decay_time_minutes']} minutes")
 | Command | Works With | Returns |
 |---------|-----------|---------|
 | `OBJECT FREQ` | LFU policies | Access frequency counter |
-| `OBJECT IDLETIME` | LRU policies | Seconds since last access |
+| `OBJECT IDLETIME` | All non-LFU policies | Seconds since last access |
 
 You can only use one at a time effectively since you choose either LRU or LFU eviction policy.
 
