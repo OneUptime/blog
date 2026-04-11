@@ -62,7 +62,7 @@ LIMIT 20 OFFSET 0;
 SELECT FOUND_ROWS() AS total;
 ```
 
-Note: `SQL_CALC_FOUND_ROWS` was deprecated in MySQL 8.0.17 because it performs a full table scan to count rows regardless of the limit. The separate `COUNT(*)` query with an index is usually faster.
+Note: `SQL_CALC_FOUND_ROWS` was deprecated in MySQL 8.0.17 because it disables the LIMIT early-termination optimization, forcing MySQL to process all matching rows to determine the total count. The separate `COUNT(*)` query with an index is usually faster.
 
 ## Efficient Pagination with Keyset (Cursor-Based)
 
