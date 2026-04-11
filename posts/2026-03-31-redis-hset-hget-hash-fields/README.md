@@ -150,7 +150,7 @@ HGET session:abc123 user_id
 | Store each field as separate string key (`user:1:name`) | Higher overhead per key | O(1) per field |
 | Store all fields in a hash (`user:1`) | Compact (ziplist for small hashes) | O(1) per field |
 
-For objects with fewer than 128 fields and values under 64 bytes each (configurable), Redis uses a memory-optimized listpack encoding.
+For objects with no more than 128 fields and values no longer than 64 bytes each (configurable), Redis uses a memory-optimized listpack encoding.
 
 ## Use Cases
 
