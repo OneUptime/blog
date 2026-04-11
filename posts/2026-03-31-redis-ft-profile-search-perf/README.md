@@ -31,7 +31,7 @@ FT.PROFILE index SEARCH|AGGREGATE [LIMITED] QUERY query [query options]
 
 - `index` - the RediSearch index name
 - `SEARCH|AGGREGATE` - which command to profile
-- `LIMITED` - reduces profiling overhead by only collecting top-level stats
+- `LIMITED` - reduces output by omitting detailed reader iterator data in union expansions
 - `QUERY` - the query string followed by any options valid for FT.SEARCH or FT.AGGREGATE
 
 Returns an array: `[search_results, profile_data]`.
@@ -100,7 +100,7 @@ When profiling in production use `LIMITED` to reduce overhead:
 FT.PROFILE products SEARCH LIMITED QUERY "@title:redis"
 ```
 
-`LIMITED` skips per-node timing, returning only the total time and top-level counters.
+`LIMITED` omits detailed reader iterator data within unions, reducing output size while retaining time and counter for each top-level iterator.
 
 ### Profile an Aggregation
 
@@ -165,7 +165,7 @@ FT.PROFILE products AGGREGATE QUERY "*"
 | `Loader` | Fetches field values from hashes or JSON |
 | `Sorter` | Sorts results by score or field |
 | `Grouper` | Groups results for aggregations |
-| `Reducer` | Applies aggregate functions (COUNT, SUM, etc.) |
+| `Projector` | Applies field transformations (FT.AGGREGATE) |
 
 ## Interpreting Results for Optimization
 
@@ -185,11 +185,15 @@ A large `Counter` in an early iterator that shrinks dramatically in a later INTE
 
 A WILDCARD iterator scans all documents. Ensure your query has at least one specific filter to avoid full scans:
 
-```redis
--- Full scan - avoid for large indexes
-FT.PROFILE products SEARCH QUERY "*"
+Full scan (avoid for large indexes):
 
--- Targeted - add a filter
+```redis
+FT.PROFILE products SEARCH QUERY "*"
+```
+
+Targeted (add a filter):
+
+```redis
 FT.PROFILE products SEARCH QUERY "@category:{book}"
 ```
 
