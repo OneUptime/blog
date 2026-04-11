@@ -81,7 +81,7 @@ def update_product(product_id: str, updates: dict) -> bool:
         # Invalidate cache
         r.delete(f"product:{product_id}")
         # Also invalidate any list caches that might include this product
-        r.delete("products:list:*")  # Pattern delete (requires SCAN)
+        invalidate_pattern("products:list:*")
         return True
     return False
 
@@ -147,10 +147,11 @@ def get_products_by_category(category: str, page: int = 1, limit: int = 20) -> l
         {"name": 1, "price": 1, "sku": 1, "thumbnail": 1}
     ).sort("created_at", -1).skip(skip).limit(limit))
 
-    serialized = json.dumps([serialize_doc(d) for d in docs])
+    serializable_docs = [json.loads(serialize_doc(d)) for d in docs]
+    serialized = json.dumps(serializable_docs)
     # Short TTL for paginated lists (data changes more frequently)
     r.setex(cache_key, 120, serialized)
-    return json.loads(serialized)
+    return serializable_docs
 ```
 
 ## Node.js Implementation
