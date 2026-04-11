@@ -18,7 +18,7 @@ MySQL supports several tablespace types:
 
 | Type | Description |
 |------|-------------|
-| System Tablespace | Shared storage for data dictionary and undo logs |
+| System Tablespace | Shared storage for change buffer and system data |
 | File-Per-Table | Each table gets its own `.ibd` file |
 | General Tablespace | A shared tablespace for multiple tables |
 | Undo Tablespace | Dedicated storage for undo logs |
@@ -152,6 +152,7 @@ You can move a file-per-table tablespace between servers for fast data migration
 -- On source server: flush and export
 FLUSH TABLES orders FOR EXPORT;
 -- Copy orders.ibd and orders.cfg to target server
+UNLOCK TABLES;
 
 -- On target server: create matching table structure, discard, then import
 CREATE TABLE orders (...);
