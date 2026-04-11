@@ -10,17 +10,17 @@ Description: Learn how to enable and configure Redis clustering on Azure Cache f
 
 ## What Redis Clustering Provides
 
-Redis clustering on Azure Cache for Redis (Premium tier) distributes data across multiple shards using consistent hashing. Each shard handles a subset of the 16,384 hash slots, enabling:
+Redis clustering on Azure Cache for Redis distributes data across multiple shards using CRC16 hashing over 16,384 hash slots. Each shard handles a subset of these slots, enabling:
 
-- Horizontal scaling beyond the single-node memory limit (up to 53 GB per shard)
+- Horizontal scaling beyond the single-node memory limit (up to 120 GB per shard on P5)
 - Write scaling across shards
 - Higher aggregate throughput
 
-Azure Cache for Redis supports 1-10 shards in cluster mode, with optional zone redundancy per shard.
+Azure Cache for Redis supports up to 10 shards (GA) in cluster mode on the Premium tier, with up to 30 shards available in preview. Clustering is also available on the Enterprise and Enterprise Flash tiers. Optional zone redundancy is supported per shard.
 
 ## Prerequisites
 
-Clustering is only available on the Premium tier. You need:
+Clustering is available on the Premium, Enterprise, and Enterprise Flash tiers. This post focuses on the Premium tier. You need:
 
 - Premium tier cache (P1 or higher)
 - Client libraries that support Redis Cluster protocol
@@ -42,10 +42,10 @@ az redis create \
 az redis update \
   --name my-existing-premium-cache \
   --resource-group myRG \
-  --shard-count 3
+  --set shardCount=3
 ```
 
-Enabling clustering on an existing cache requires a restart, which causes brief downtime.
+Enabling clustering on an existing cache may cause brief connection blips, but the cache remains available during the operation.
 
 ## Terraform Configuration
 
@@ -181,7 +181,8 @@ def get_user_data(client, user_id):
     ]
     return client.mget(keys)
 
-# Pipeline works within same shard (same hash tag)
+# Pipelines work across shards - commands are automatically routed to the correct shard
+# Multi-key commands within a pipeline still require all keys on the same shard
 pipeline = client.pipeline()
 pipeline.set(f"{{user:1001}}:profile", "Alice")
 pipeline.set(f"{{user:1001}}:orders", "[]")
@@ -212,10 +213,11 @@ pipeline.execute()  # Works - each command goes to its own shard
 ## Monitoring Cluster Health
 
 ```bash
-# View shard distribution and memory per shard
-az redis list-upgrade-notifications \
-  --name my-clustered-cache \
-  --resource-group myRG
+# View cache metrics per shard via Azure Monitor
+az monitor metrics list \
+  --resource /subscriptions/{sub-id}/resourceGroups/myRG/providers/Microsoft.Cache/redis/my-clustered-cache \
+  --metric UsedMemoryPercentage \
+  --dimension ShardId
 
 # Check cluster info via redis-cli
 redis-cli \
@@ -249,11 +251,11 @@ You can add or remove shards while the cache is online (though brief disruption 
 az redis update \
   --name my-clustered-cache \
   --resource-group myRG \
-  --shard-count 5
+  --set shardCount=5
 ```
 
 Azure rebalances slot assignments automatically when you change shard count.
 
 ## Summary
 
-Azure Cache for Redis clustering (Premium tier) enables horizontal scaling across 1-10 shards using Redis Cluster protocol. Use hash tags (`{tag}:key`) to co-locate related keys on the same shard when you need multi-key operations or pipelines. Connect using cluster-aware clients like StackExchange.Redis for .NET, redis-py with cluster support for Python, or ioredis for Node.js. Monitor per-shard memory usage to detect key distribution imbalances.
+Azure Cache for Redis clustering (Premium, Enterprise, and Enterprise Flash tiers) enables horizontal scaling across up to 10 shards (GA) using Redis Cluster protocol, with up to 30 shards available in preview. Use hash tags (`{tag}:key`) to co-locate related keys on the same shard when you need multi-key operations or pipelines. Connect using cluster-aware clients like StackExchange.Redis for .NET, redis-py with cluster support for Python, or ioredis for Node.js. Monitor per-shard memory usage to detect key distribution imbalances.
