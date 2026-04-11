@@ -50,9 +50,12 @@ SHOW BINARY LOGS;
 Before purging, verify that no replicas are behind on reading from the logs you plan to remove. Purging a log file that a replica still needs will break replication.
 
 ```sql
--- On the source server, check all replica positions
+-- On each replica, check its replication position
 SHOW REPLICA STATUS\G
--- Look at: Relay_Master_Log_File and Exec_Master_Log_Pos
+-- Look at: Relay_Source_Log_File and Exec_Source_Log_Pos
+
+-- On the source server, list connected replicas
+SHOW REPLICAS;
 ```
 
 Only purge logs that all replicas have already processed.
@@ -108,9 +111,8 @@ MYSQL_PASS_FILE="/etc/mysql/mysql.pass"
 RETAIN_DAYS=7
 
 mysql -u "$MYSQL_USER" -p"$(cat $MYSQL_PASS_FILE)" <<EOF
--- Check replicas are not lagging
-SELECT MAX(Seconds_Behind_Source) AS max_lag
-FROM (SELECT 0 AS Seconds_Behind_Source) AS dummy;
+-- List connected replicas (verify they are caught up before purging)
+SHOW REPLICAS;
 
 -- Purge logs older than RETAIN_DAYS
 PURGE BINARY LOGS BEFORE DATE_SUB(NOW(), INTERVAL $RETAIN_DAYS DAY);
