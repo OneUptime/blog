@@ -85,7 +85,7 @@ Truncate history to fit within LLM token limits:
 def get_context_window(session_id: str,
                        max_chars: int = 12000) -> list:
     all_messages = get_history(session_id)
-    # Always include the system message and build from most recent
+    # Build context from most recent messages backwards
     messages = []
     total_chars = 0
 
