@@ -34,8 +34,9 @@ VALUES ('Alice', '2026-04-01', '09:00:00', '17:30:00');
 
 -- Short formats are accepted
 INSERT INTO work_shifts (employee, shift_date, start_time, end_time)
-VALUES ('Bob', '2026-04-01', '830', '1600');
--- Interpreted as 08:30:00 and 16:00:00
+VALUES ('Bob', '2026-04-01', '8:30', '16:00:00');
+-- '8:30' is interpreted as 08:30:00 (colon-delimited shorthand)
+-- Without colons, '830' would mean 00:08:30 (8 min 30 sec), not 08:30:00
 ```
 
 ## Querying TIME Data
