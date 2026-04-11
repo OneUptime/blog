@@ -107,4 +107,4 @@ Redis cache introduces eventual consistency. Data can be stale between the last 
 
 ## Summary
 
-System design Redis interviews test your ability to select the right data structure (sorted sets for leaderboards, Lua scripts for rate limiting, Streams for event queues) and understand the consistency trade-offs. Always discuss TTL strategies, cache invalidation, and horizontal scaling via Cluster when answering these questions.
+System design Redis interviews test your ability to select the right data structure (sorted sets for leaderboards and rate limiting, Streams for event queues) and understand the consistency trade-offs. Always discuss TTL strategies, cache invalidation, and horizontal scaling via Cluster when answering these questions.
