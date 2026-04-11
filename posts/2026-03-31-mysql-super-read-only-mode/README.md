@@ -82,7 +82,7 @@ SET GLOBAL read_only = OFF;
 SHOW GLOBAL VARIABLES WHERE Variable_name IN ('read_only', 'super_read_only');
 ```
 
-In automated failover tools like Orchestrator or Patroni for MySQL, this sequence runs automatically when promoting a replica.
+In automated failover tools like Orchestrator or MHA (Master High Availability), this sequence runs automatically when promoting a replica.
 
 ## Using super_read_only in MySQL InnoDB Cluster
 
