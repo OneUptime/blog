@@ -83,7 +83,7 @@ redis-cli XREVRANGE logs + - COUNT 2
 
 ### Range by Timestamp
 
-Use millisecond timestamps as partial IDs (Redis auto-completes with -0):
+Use millisecond timestamps as partial IDs (Redis auto-completes the start with -0 and the end with the maximum sequence number):
 
 ```bash
 # Messages from a specific millisecond timestamp range
