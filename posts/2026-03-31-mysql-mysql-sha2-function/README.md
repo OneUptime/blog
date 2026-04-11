@@ -19,7 +19,7 @@ SHA2(str, hash_length)
 ```
 
 - `str` - the input string to hash
-- `hash_length` - the desired output bit length: `224`, `256`, `384`, `512`, or `0` (defaults to 512)
+- `hash_length` - the desired output bit length: `224`, `256`, `384`, `512`, or `0` (equivalent to 256)
 - Returns a lowercase hexadecimal string
 - Returns `NULL` if either argument is `NULL` or `hash_length` is not a valid value
 
@@ -30,7 +30,8 @@ SHA2(str, hash_length)
 | SHA-224   | 224         | 56                |
 | SHA-256   | 256         | 64                |
 | SHA-384   | 384         | 96                |
-| SHA-512   | 512 or 0    | 128               |
+| SHA-256   | 0           | 64                |
+| SHA-512   | 512         | 128               |
 
 ## Basic Examples
 
@@ -119,7 +120,7 @@ For most applications, SHA-256 (256-bit) provides sufficient security. Use SHA-5
 
 ## HMAC with SHA2()
 
-MySQL does not have a built-in HMAC function, but you can construct one using the `AES_ENCRYPT()` function or implement HMAC logic in your application layer. For simple keyed hashing (not true HMAC):
+MySQL does not have a built-in HMAC function. HMAC should be implemented in your application layer. For simple keyed hashing (not true HMAC):
 
 ```sql
 SELECT SHA2(CONCAT('secret_key', 'message_to_sign'), 256) AS keyed_hash;
