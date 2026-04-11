@@ -65,7 +65,7 @@ FLUSHDB ASYNC
 
 The main event loop returns immediately. A background thread handles the actual memory reclamation.
 
-### Flush a specific database without switching
+### Flush a specific database by switching temporarily
 
 ```redis
 # From db 0, flush db 1 by switching first
