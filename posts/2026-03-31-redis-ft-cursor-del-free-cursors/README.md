@@ -88,7 +88,7 @@ FT.CURSOR DEL orders 99999
 ```
 
 ```text
-(error) ERR Cursor not found
+(error) Cursor does not exist
 ```
 
 ## Why Cursor Cleanup Matters
