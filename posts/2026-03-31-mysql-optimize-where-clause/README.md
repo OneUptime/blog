@@ -68,9 +68,8 @@ SELECT * FROM orders WHERE status = 'shipped';
 -- Uses index (consecutive from left)
 SELECT * FROM orders WHERE status = 'shipped' AND region = 'west';
 
--- Does NOT use index (skips 'region')
+-- Uses only the 'status' part of the index (skips 'region', so 'order_date' cannot be used)
 SELECT * FROM orders WHERE status = 'shipped' AND order_date > '2025-01-01';
--- Actually this will use only the status part of the index
 ```
 
 ## Avoid Leading Wildcards in LIKE
