@@ -82,8 +82,8 @@ WINDOW w AS (PARTITION BY region ORDER BY revenue DESC);
 +-------+--------+-----------+-----+----------+
 | Alice | East   | 120000.00 |   1 |   0.0000 |
 | Carol | East   | 120000.00 |   1 |   0.0000 |
-| Dave  | East   |  95000.00 |   3 |   0.6667 |
-| Bob   | East   |  80000.00 |   4 |   1.0000 |
+| Bob   | East   |  95000.00 |   3 |   0.6667 |
+| Dave  | East   |  80000.00 |   4 |   1.0000 |
 | Eve   | West   | 200000.00 |   1 |   0.0000 |
 | Frank | West   | 155000.00 |   2 |   0.3333 |
 | Grace | West   | 155000.00 |   2 |   0.3333 |
@@ -91,7 +91,7 @@ WINDOW w AS (PARTITION BY region ORDER BY revenue DESC);
 +-------+--------+-----------+-----+----------+
 ```
 
-Alice and Carol are tied at rank 1, so both get `PERCENT_RANK = 0`. Bob is the last in the East partition, so he gets `PERCENT_RANK = 1`.
+Alice and Carol are tied at rank 1, so both get `PERCENT_RANK = 0`. Dave is the last in the East partition, so he gets `PERCENT_RANK = 1`.
 
 ## CUME_DIST() Example
 
@@ -113,8 +113,8 @@ WINDOW w AS (PARTITION BY region ORDER BY revenue DESC);
 +-------+--------+-----------+-----------+
 | Alice | East   | 120000.00 |    0.5000 |
 | Carol | East   | 120000.00 |    0.5000 |
-| Dave  | East   |  95000.00 |    0.7500 |
-| Bob   | East   |  80000.00 |    1.0000 |
+| Bob   | East   |  95000.00 |    0.7500 |
+| Dave  | East   |  80000.00 |    1.0000 |
 | Eve   | West   | 200000.00 |    0.2500 |
 | Frank | West   | 155000.00 |    0.7500 |
 | Grace | West   | 155000.00 |    0.7500 |
@@ -122,7 +122,7 @@ WINDOW w AS (PARTITION BY region ORDER BY revenue DESC);
 +-------+--------+-----------+-----------+
 ```
 
-Alice and Carol both have a `CUME_DIST` of 0.50, meaning 50% of East reps have revenue at or below 120000.
+Alice and Carol both have a `CUME_DIST` of 0.50, meaning 50% of East reps have revenue at or above 120000.
 
 ## Comparing PERCENT_RANK and CUME_DIST Side by Side
 
