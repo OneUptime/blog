@@ -49,8 +49,6 @@ Per element cost:
 ## Memory Estimation Formula
 
 ```python
-import math
-
 def estimate_zset_memory(
     num_zsets: int,
     members_per_zset: int,
@@ -80,11 +78,11 @@ def estimate_zset_memory(
 
 # 50,000 user leaderboards, 100 members each (10 bytes avg username)
 print(estimate_zset_memory(50_000, 100, 10))
-# {'encoding': 'listpack', 'bytes_per_zset': 3970, 'total_mb': 189.2}
+# {'encoding': 'listpack', 'bytes_per_zset': 3970, 'total_mb': 189.3}
 
 # 50,000 leaderboards, 500 members each (10 bytes avg)
 print(estimate_zset_memory(50_000, 500, 10))
-# {'encoding': 'skiplist+hashtable', 'bytes_per_zset': 73160, 'total_mb': 3488.7}
+# {'encoding': 'skiplist+hashtable', 'bytes_per_zset': 73160, 'total_mb': 3488.5}
 ```
 
 ## Real-World Measurement
