@@ -32,8 +32,8 @@ SET PERSIST_ONLY innodb_log_file_size = 536870912;  -- 512 MB
 -- Number of InnoDB log files
 SET PERSIST_ONLY innodb_log_files_in_group = 2;
 
--- Disable binary logging (requires restart)
-SET PERSIST_ONLY skip_log_bin = ON;
+-- Number of InnoDB buffer pool instances (requires restart)
+SET PERSIST_ONLY innodb_buffer_pool_instances = 8;
 
 -- Change the data directory (requires restart)
 -- SET PERSIST_ONLY datadir = '/new/data/dir';  -- use with caution
@@ -46,17 +46,17 @@ SET PERSIST_ONLY skip_log_bin = ON;
 
 ```sql
 -- Check that the value appears in persisted_variables
-SELECT VARIABLE_NAME, SET_VALUE
+SELECT VARIABLE_NAME, VARIABLE_VALUE
 FROM performance_schema.persisted_variables
 WHERE VARIABLE_NAME = 'innodb_log_file_size';
 ```
 
 ```text
-+----------------------+-----------+
-| VARIABLE_NAME        | SET_VALUE |
-+----------------------+-----------+
-| innodb_log_file_size | 536870912 |
-+----------------------+-----------+
++----------------------+----------------+
+| VARIABLE_NAME        | VARIABLE_VALUE |
++----------------------+----------------+
+| innodb_log_file_size | 536870912      |
++----------------------+----------------+
 ```
 
 The current runtime value is unchanged:
