@@ -103,7 +103,7 @@ Monitor tmpdir space usage to catch large temporary file accumulation:
 watch -n 5 'df -h /var/tmp/mysql && ls -lh /var/tmp/mysql/ 2>/dev/null | tail -20'
 ```
 
-If tmpdir fills up, MySQL returns error 1 (ER_CANT_CREATE_FILE) and the affected query fails.
+If tmpdir fills up, MySQL returns error 1004 (ER_CANT_CREATE_FILE) and the affected query fails.
 
 ## Handling Large Sort Operations
 
