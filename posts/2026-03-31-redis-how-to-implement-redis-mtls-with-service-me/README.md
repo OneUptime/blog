@@ -208,12 +208,18 @@ spec:
               readOnly: true
           command:
             - redis-server
-            - --tls-port 6380
-            - --port 0
-            - --tls-cert-file /etc/redis/tls/tls.crt
-            - --tls-key-file /etc/redis/tls/tls.key
-            - --tls-ca-cert-file /etc/redis/tls/ca.crt
-            - --tls-auth-clients yes
+            - --tls-port
+            - "6380"
+            - --port
+            - "0"
+            - --tls-cert-file
+            - /etc/redis/tls/tls.crt
+            - --tls-key-file
+            - /etc/redis/tls/tls.key
+            - --tls-ca-cert-file
+            - /etc/redis/tls/ca.crt
+            - --tls-auth-clients
+            - "yes"
 ```
 
 ## Certificate Rotation
