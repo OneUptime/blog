@@ -44,7 +44,7 @@ Always trim to a point older than the oldest unacknowledged message:
 # Find the oldest pending message ID
 redis-cli XPENDING mystream mygroup - + 1
 
-# Trim to keep entries older than that ID
+# Trim entries older than that ID, keeping it and newer ones
 redis-cli XTRIM mystream MINID <oldest-pending-id>
 ```
 
@@ -63,18 +63,14 @@ The `~` allows Redis to trim in full radix-tree nodes, which is significantly fa
 
 ## What Happens to Orphaned Pending Messages
 
-If a trimmed message is still in the PEL, the consumer group references a message ID that no longer exists in the stream. When a consumer tries to claim or acknowledge it:
+If a trimmed message is still in the PEL, the consumer group references a message ID that no longer exists in the stream. However, `XACK` still works on orphaned entries because it operates on the PEL, not the stream data:
 
 ```bash
 redis-cli XACK mystream mygroup <orphaned-id>
-# Returns: 0 (nothing was acknowledged)
+# Returns: 1 (PEL entry removed successfully)
 ```
 
-The acknowledgment silently fails. To clean up orphaned PEL entries, remove them manually:
-
-```bash
-redis-cli XDEL mystream <orphaned-id>
-```
+The acknowledgment succeeds and removes the orphaned entry from the PEL. To clean up all orphaned PEL entries, acknowledge them with `XACK`. Note that `XDEL` does not help here since it operates on stream data, not the PEL.
 
 ## Monitoring Stream Size
 
