@@ -131,6 +131,7 @@ class ReadThroughCache {
 }
 
 const client = redis.createClient({ url: process.env.REDIS_URL });
+await client.connect();
 const cache = new ReadThroughCache(client);
 
 async function getUser(userId) {
