@@ -61,7 +61,7 @@ def consume_trial_quota(user_id: str, limit: int = 100) -> dict:
 For a true sliding window (not aligned to clock boundaries), use a timestamp-based approach:
 
 ```python
-def sliding_window_count(key: str, window_seconds: int, increment: int = 1) -> int:
+def sliding_window_count(key: str, window_seconds: int) -> int:
     now = int(time.time() * 1000)
     window_start = now - window_seconds * 1000
 
