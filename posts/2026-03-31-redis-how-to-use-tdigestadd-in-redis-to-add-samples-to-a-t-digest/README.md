@@ -106,7 +106,7 @@ r.execute_command("TDIGEST.CREATE", "app:request_duration", "COMPRESSION", 200)
 samples = []
 for _ in range(1000):
     # Simulate log-normal distribution (realistic for latencies)
-    latency = random.lognormvariate(3.5, 0.8)  # mean ~33ms
+    latency = random.lognormvariate(3.5, 0.8)  # median ~33ms
     samples.append(round(latency, 2))
 
 # Batch insert in chunks of 100
@@ -145,7 +145,7 @@ console.log(`p99 latency: ${p99[0]}ms`);
 
 ## Performance Considerations
 
-- TDIGEST.ADD has O(n log n) complexity where n is the number of values being added
+- TDIGEST.ADD has O(n) complexity where n is the number of values being added
 - Batching multiple values in a single call is more efficient than individual calls
 - The T-Digest periodically compresses centroids; this happens automatically
 - For high-throughput scenarios, use pipeline or batch inserts
