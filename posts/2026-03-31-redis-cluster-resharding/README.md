@@ -110,16 +110,17 @@ During resharding, Redis uses a three-phase slot migration protocol:
 
 ```mermaid
 sequenceDiagram
+    participant Operator
     participant Source
     participant Destination
-    participant Client
-    Source->>Destination: CLUSTER SETSLOT slot MIGRATING
-    Destination->>Source: CLUSTER SETSLOT slot IMPORTING
+    Operator->>Destination: CLUSTER SETSLOT slot IMPORTING source-id
+    Operator->>Source: CLUSTER SETSLOT slot MIGRATING dest-id
     loop For each key in slot
         Source->>Destination: MIGRATE key
     end
-    Source->>Cluster: CLUSTER SETSLOT slot NODE dest-id
-    Note over Cluster: Slot now owned by Destination
+    Operator->>Destination: CLUSTER SETSLOT slot NODE dest-id
+    Operator->>Source: CLUSTER SETSLOT slot NODE dest-id
+    Note over Source,Destination: Slot now owned by Destination
 ```
 
 During migration, clients receive `ASK` redirects for keys being migrated and `MOVED` redirects after migration completes.
