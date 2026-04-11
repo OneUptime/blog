@@ -75,7 +75,7 @@ Here is a practical reference:
 InnoDB    - Default engine; ACID transactions, foreign keys, row-level locking
 MyISAM    - Legacy engine; no transactions; faster for read-heavy workloads
 MEMORY    - Stores data in RAM; extremely fast; data lost on restart
-ARCHIVE   - Compressed storage; only INSERT and SELECT; no index support
+ARCHIVE   - Compressed storage; only INSERT and SELECT; indexes only on AUTO_INCREMENT columns
 CSV       - Stores data as CSV files; useful for data exchange
 BLACKHOLE - Accepts writes but discards them; useful for replication filtering
 ```
