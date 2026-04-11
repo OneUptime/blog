@@ -83,7 +83,7 @@ DELIMITER ;
 
 ## Nested Loops with Labels
 
-Labels are critical when loops are nested, because `LEAVE` and `ITERATE` without a label target the innermost loop only. With labels, you can exit any outer loop from an inner one:
+Labels are critical when loops are nested. Since `LEAVE` and `ITERATE` both require a label, you must choose which loop to target by name. With labels on each loop, you can exit or restart any outer loop from within an inner one:
 
 ```sql
 DELIMITER $$
