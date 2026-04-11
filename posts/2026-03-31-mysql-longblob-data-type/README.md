@@ -12,7 +12,7 @@ Description: Learn how LONGBLOB stores up to 4 GB of binary data in MySQL, with 
 
 `LONGBLOB` is the largest binary type in MySQL, capable of storing up to 4,294,967,295 bytes (4 GB) of binary data. It is at the top of the BLOB hierarchy: `TINYBLOB`, `BLOB`, `MEDIUMBLOB`, and `LONGBLOB`.
 
-`LONGBLOB` data is stored entirely off-page and does not affect the main row size.
+In InnoDB with the default DYNAMIC row format, `LONGBLOB` data is stored off-page with only a 20-byte pointer kept in the row, so it has minimal impact on the main row size.
 
 ## Declaring a LONGBLOB Column
 
@@ -38,7 +38,7 @@ Before inserting large BLOBs, you must increase `max_allowed_packet` to match or
 ```
 
 ```sql
--- Check and set at the session level
+-- Check the current value, then set at the global level
 SHOW VARIABLES LIKE 'max_allowed_packet';
 
 SET GLOBAL max_allowed_packet = 1073741824;  -- 1 GB
@@ -52,8 +52,7 @@ import mysql.connector
 conn = mysql.connector.connect(
     host='localhost',
     user='root',
-    database='media_db',
-    max_allowed_packet=1073741824  # 1 GB
+    database='media_db'
 )
 cursor = conn.cursor()
 
