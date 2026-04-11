@@ -49,7 +49,7 @@ This generates and executes:
 CREATE USER 'analyst'@'%' IDENTIFIED BY 'SecurePass1!';
 ```
 
-In the **Administrative Roles** tab, grant roles like `DBA`, `BackupAdmin`, or `ReadOnly`. In the **Schema Privileges** tab, grant specific schema-level permissions:
+In the **Administrative Roles** tab, grant roles like `DBA`, `BackupAdmin`, or `MonitorAdmin`. In the **Schema Privileges** tab, grant specific schema-level permissions:
 
 ```sql
 GRANT SELECT, INSERT ON mydb.* TO 'analyst'@'%';
@@ -78,7 +78,7 @@ Access logs via **Server > Server Logs**. Available logs include:
 - Error Log
 - General Query Log
 - Slow Query Log
-- Binary Log entries (via **Data Export** or `mysqlbinlog`)
+- Binary Log entries (viewable in the Server Logs section, or externally via `mysqlbinlog`)
 
 ## Starting and Stopping the Server
 
@@ -106,10 +106,10 @@ These reports help identify slow queries without manually querying `performance_
 For InnoDB-specific diagnostics, run from the SQL editor:
 
 ```sql
-SHOW ENGINE INNODB STATUS\G
+SHOW ENGINE INNODB STATUS;
 ```
 
-Or use the **InnoDB Status** dashboard under the Administration panel for a graphical view of lock waits, transaction activity, and buffer pool statistics.
+Or use the **Performance Dashboard** under the Performance section for a graphical view of InnoDB metrics including lock waits, transaction activity, and buffer pool statistics.
 
 ## Summary
 
