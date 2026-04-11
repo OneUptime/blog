@@ -32,7 +32,7 @@ FT.CREATE idx:embeddings
   PREFIX 1 emb:
   SCHEMA
     label TEXT
-    embedding VECTOR HNSW 10
+    embedding VECTOR HNSW 12
       TYPE FLOAT32
       DIM 768
       DISTANCE_METRIC COSINE
