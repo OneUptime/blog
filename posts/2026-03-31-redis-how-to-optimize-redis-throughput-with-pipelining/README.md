@@ -172,11 +172,11 @@ func main() {
 | Feature | Pipeline | MULTI/EXEC |
 |---------|----------|------------|
 | Atomicity | No | Yes |
-| Error handling | Per-command errors | All or nothing |
+| Error handling | Per-command errors | Per-command errors (no rollback) |
 | RTT reduction | Yes | Yes (1 RTT) |
 | Watch support | No | Yes (WATCH) |
 
-Use pipelining when you need throughput and don't need atomicity. Use MULTI/EXEC when you need atomicity.
+Use pipelining when you need throughput and don't need atomicity. Use MULTI/EXEC when you need atomic execution (all commands run sequentially without interleaving). Note that MULTI/EXEC does not provide rollback - if a command fails at runtime, the other commands still execute.
 
 ## Combining Pipelining with Read Operations
 
