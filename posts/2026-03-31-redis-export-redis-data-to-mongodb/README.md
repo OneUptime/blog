@@ -15,8 +15,7 @@ Exporting Redis data to MongoDB lets you persist in-memory data to durable docum
 ```python
 import redis
 import pymongo
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 r = redis.Redis(host="localhost", port=6379, password="redis-password", decode_responses=True)
 client = pymongo.MongoClient("mongodb://user:password@localhost:27017/")
@@ -36,7 +35,7 @@ def export_key_to_mongo(key):
         "_id": key,
         "type": key_type,
         "ttl": ttl if ttl > 0 else None,
-        "exported_at": datetime.utcnow()
+        "exported_at": datetime.now(timezone.utc)
     }
 
     if key_type == "string":
@@ -100,7 +99,7 @@ def export_user_hashes(key_pattern="user:*"):
         data = r.hgetall(key)
         doc = {
             "redis_key": key,
-            "exported_at": datetime.utcnow(),
+            "exported_at": datetime.now(timezone.utc),
             **data  # flatten hash fields as top-level document fields
         }
 
@@ -133,7 +132,7 @@ def export_strings_batch(key_pattern="session:*", batch_size=500):
                 "_id": key,
                 "value": value,
                 "ttl": ttl if ttl > 0 else None,
-                "exported_at": datetime.utcnow()
+                "exported_at": datetime.now(timezone.utc)
             },
             upsert=True
         ))
@@ -180,8 +179,11 @@ def validate_export():
 
     # Spot check a key
     sample_key = r.randomkey()
-    mongo_doc = db["strings"].find_one({"_id": sample_key}) or \
-                db["hashes"].find_one({"_id": sample_key})
+    mongo_doc = None
+    for col_name in ["strings", "hashes", "lists", "sets", "sorted_sets"]:
+        mongo_doc = db[col_name].find_one({"_id": sample_key})
+        if mongo_doc:
+            break
 
     if mongo_doc:
         print(f"Sample key '{sample_key}' found in MongoDB")
