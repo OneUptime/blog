@@ -26,7 +26,7 @@ flowchart TD
 
 - At least 3 primary nodes (Redis minimum for cluster mode)
 - For fault tolerance: 3 primaries + 3 replicas (6 nodes total)
-- Redis 3.0+
+- Redis 5.0+ (the `redis-cli --cluster` commands used below require Redis 5.0 or later)
 
 ## Node Configuration
 
@@ -144,9 +144,9 @@ CLUSTER NODES
 a1b2c3... 192.168.1.10:7001@17001 master - 0 1711900000000 1 connected 0-5460
 d4e5f6... 192.168.1.11:7002@17002 master - 0 1711900000100 2 connected 5461-10922
 g7h8i9... 192.168.1.12:7003@17003 master - 0 1711900000200 3 connected 10923-16383
-j1k2l3... 192.168.1.10:7004@17004 slave a1b2c3... 0 1711900000300 1 connected
-m4n5o6... 192.168.1.11:7005@17005 slave d4e5f6... 0 1711900000400 2 connected
-p7q8r9... 192.168.1.12:7006@17006 slave g7h8i9... 0 1711900000500 3 connected
+j1k2l3... 192.168.1.10:7004@17004 slave d4e5f6... 0 1711900000300 2 connected
+m4n5o6... 192.168.1.11:7005@17005 slave g7h8i9... 0 1711900000400 3 connected
+p7q8r9... 192.168.1.12:7006@17006 slave a1b2c3... 0 1711900000500 1 connected
 ```
 
 ## Hash Tags for Co-location
