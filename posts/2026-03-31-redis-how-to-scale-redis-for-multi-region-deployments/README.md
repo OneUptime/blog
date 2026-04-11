@@ -92,9 +92,10 @@ Partition the keyspace so each region owns specific hash slots:
 
 ```bash
 # Create cluster nodes in each region
-# Region A: nodes handling slots 0-5460
+# Region A: 3 masters + 3 replicas, all 16384 slots start here
 redis-cli --cluster create \
   redis-a1:6379 redis-a2:6379 redis-a3:6379 \
+  redis-a4:6379 redis-a5:6379 redis-a6:6379 \
   --cluster-replicas 1
 
 # Region B: add new nodes for slots 5461-10922
