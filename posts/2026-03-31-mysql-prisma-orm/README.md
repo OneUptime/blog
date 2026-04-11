@@ -130,8 +130,8 @@ main()
 ```typescript
 const results = await prisma.$queryRaw<{ name: string; total: number }[]>`
   SELECT c.name, SUM(p.stock) as total
-  FROM categories c
-  JOIN products p ON p.category_id = c.id
+  FROM Category c
+  JOIN Product p ON p.categoryId = c.id
   GROUP BY c.id
   HAVING total > 0
 `;
