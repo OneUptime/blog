@@ -30,13 +30,7 @@ bind 127.0.0.1 192.168.1.10
 bind 0.0.0.0
 ```
 
-To apply changes without restarting, use CONFIG SET:
-
-```bash
-redis-cli CONFIG SET bind "127.0.0.1 192.168.1.10"
-```
-
-Note: Changing `bind` via CONFIG SET requires a CONFIG REWRITE to persist and may not work in all Redis versions. Editing `redis.conf` and restarting is more reliable for bind changes.
+Note: The `bind` directive cannot be changed at runtime via `CONFIG SET` — it is an immutable parameter. You must edit `redis.conf` and restart Redis for bind changes to take effect.
 
 ## Configuring Redis for a Specific IPv4 Address
 
