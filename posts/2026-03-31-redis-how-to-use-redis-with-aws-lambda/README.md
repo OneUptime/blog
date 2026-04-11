@@ -109,10 +109,7 @@ export const handler = async (event) => {
 # Set environment variables via AWS CLI
 aws lambda update-function-configuration \
   --function-name my-function \
-  --environment Variables="{
-    REDIS_HOST=my-cluster.abc123.ng.0001.use1.cache.amazonaws.com,
-    REDIS_PORT=6379
-  }"
+  --environment "Variables={REDIS_HOST=my-cluster.abc123.ng.0001.use1.cache.amazonaws.com,REDIS_PORT=6379}"
 ```
 
 ## Handling Connection Pooling
@@ -130,7 +127,7 @@ function getClient() {
     redisClient = new Redis({
       host: process.env.REDIS_HOST,
       port: 6379,
-      // Reduce max connections since Lambda has limited concurrency per instance
+      // Limit retries to avoid blocking Lambda during transient Redis failures
       maxRetriesPerRequest: 2,
       enableReadyCheck: false,
       enableOfflineQueue: false,
@@ -161,15 +158,18 @@ Ensure the Lambda security group allows outbound TCP on port 6379 to the ElastiC
 Cold starts add latency when a new Lambda instance initializes. Minimize this with:
 
 ```javascript
-// Use connection pooling with small pool size
-const redis = new Redis.Cluster([
-  { host: process.env.REDIS_HOST, port: 6379 }
-], {
-  clusterRetryStrategy: (times) => Math.min(times * 50, 500),
-  slotsRefreshTimeout: 2000,
+const Redis = require('ioredis');
+
+// Use lazyConnect to avoid blocking during cold start initialization
+const redis = new Redis({
+  host: process.env.REDIS_HOST,
+  port: 6379,
+  lazyConnect: true,
+  connectTimeout: 5000,
+  retryStrategy: (times) => Math.min(times * 50, 500),
 });
 
-// Pre-warm the connection
+// Pre-warm the connection on first command
 exports.handler = async (event) => {
   // This ensures the connection is ready before processing
   await redis.ping();
