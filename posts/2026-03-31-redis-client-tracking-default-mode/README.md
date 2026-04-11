@@ -103,7 +103,11 @@ Inspect the current tracking state with `CLIENT TRACKINGINFO`:
 redis-cli CLIENT TRACKINGINFO
 ```
 
-That reply includes the active flags, redirect client ID, and prefixes. In Redis Open Source, there is no `CONFIG SET tracking-table-max-keys` knob for client tracking, so cache sizing is an application-side concern.
+That reply includes the active flags, redirect client ID, and prefixes. Redis provides the `tracking-table-max-keys` configuration option (default 1,000,000) to limit the number of keys stored in the invalidation table. When the limit is reached, Redis evicts entries and sends false invalidation messages to reclaim memory. Set it to `0` to disable the limit entirely:
+
+```bash
+CONFIG SET tracking-table-max-keys 2000000
+```
 
 ## OPTIN Mode: Track Only Specific Keys
 
