@@ -25,10 +25,10 @@ There are three main types of schema validation to add to your pipeline:
 `sqlfluff` validates SQL syntax and style:
 
 ```bash
-pip install sqlfluff sqlfluff-templater-jinja
+pip install sqlfluff
 ```
 
-```yaml
+```ini
 # .sqlfluff
 [sqlfluff]
 dialect = mysql
@@ -85,6 +85,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Flyway
+        run: |
+          curl -sL https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.0.0/flyway-commandline-10.0.0-linux-x64.tar.gz | tar xz
+          sudo ln -s "$(pwd)/flyway-10.0.0/flyway" /usr/local/bin/flyway
 
       - name: Run all migrations from scratch
         run: |
