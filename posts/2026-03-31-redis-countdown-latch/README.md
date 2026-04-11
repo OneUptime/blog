@@ -57,19 +57,21 @@ def latch_await(latch_id: str, timeout: float = 30.0) -> bool:
     Block until latch reaches 0 or timeout expires.
     Returns True if latch reached 0, False if timed out.
     """
-    # Fast path: already done
-    if r.exists(f"latch:{latch_id}:done") or latch_get_count(latch_id) <= 0:
-        return True
-
     pubsub = r.pubsub()
     pubsub.subscribe(f"latch:{latch_id}:signal")
 
-    deadline = time.time() + timeout
     try:
-        for message in pubsub.listen():
-            if time.time() > deadline:
-                return False
-            if message["type"] == "message" and message["data"] == "done":
+        # Check after subscribing to avoid missing the signal
+        if r.exists(f"latch:{latch_id}:done") or latch_get_count(latch_id) <= 0:
+            return True
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            message = pubsub.get_message(timeout=min(remaining, 1.0))
+            if message and message["type"] == "message" and message["data"] == "done":
                 return True
     finally:
         pubsub.unsubscribe()
