@@ -57,7 +57,10 @@ package main
 
 import (
     "log"
+
+    "myapp/actions"
     redisclient "myapp/redis"
+
     "github.com/gobuffalo/buffalo"
 )
 
@@ -66,7 +69,7 @@ func main() {
         log.Fatalf("Redis init failed: %v", err)
     }
     app := buffalo.New(buffalo.Options{Env: "development"})
-    app.GET("/products", ProductsHandler)
+    app.GET("/products", actions.ProductsHandler)
     log.Fatal(app.Serve())
 }
 ```
@@ -123,8 +126,11 @@ import (
     "time"
 
     "github.com/gobuffalo/buffalo"
+    "github.com/gobuffalo/buffalo/render"
     redisclient "myapp/redis"
 )
+
+var r = render.New(render.Options{})
 
 func RateLimit(next buffalo.Handler) buffalo.Handler {
     return func(c buffalo.Context) error {
@@ -159,7 +165,11 @@ For session persistence beyond the default cookie store, store session IDs mappe
 ```go
 func Login(c buffalo.Context) error {
     ctx := context.Background()
-    sessionID := c.Session().ID
+    sessionID, _ := c.Session().Get("session_id").(string)
+    if sessionID == "" {
+        sessionID = fmt.Sprintf("%d", time.Now().UnixNano())
+        c.Session().Set("session_id", sessionID)
+    }
     userData, _ := json.Marshal(map[string]string{"user": "alice"})
     redisclient.Client.SetEx(ctx, "session:"+sessionID, string(userData), 24*time.Hour)
     return c.Render(200, r.JSON(map[string]string{"message": "logged in"}))
