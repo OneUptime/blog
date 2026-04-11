@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, State Machine, Distributed System, Workflow, Backend
 
-Description: Build a distributed state machine with Redis strings and Lua scripts to manage workflow states with atomic transitions and conflict-free concurrency across services.
+Description: Build a distributed state machine with Redis hashes and Lua scripts to manage workflow states with atomic transitions and conflict-free concurrency across services.
 
 ---
 
@@ -29,7 +29,6 @@ Use a Redis hash per workflow instance to store state and metadata:
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -109,5 +108,5 @@ def get_workflows_in_state(state: str) -> set:
 
 ## Summary
 
-Redis Lua scripts guarantee atomic compare-and-swap transitions that prevent race conditions in concurrent distributed workflows. State indexes built from sets allow O(1) queries for all workflows in a given state. Streams provide a full, ordered history of every transition for debugging and audit.
+Redis Lua scripts guarantee atomic compare-and-swap transitions that prevent race conditions in concurrent distributed workflows. State indexes built from sets allow O(N) membership listing via `SMEMBERS` and O(1) single-member checks via `SISMEMBER`. Streams provide a full, ordered history of every transition for debugging and audit.
 
