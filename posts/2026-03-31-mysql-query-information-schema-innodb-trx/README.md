@@ -33,9 +33,9 @@ ORDER BY TRX_STARTED;
 | Column | Description |
 |--------|-------------|
 | `TRX_ID` | Internal InnoDB transaction ID |
-| `TRX_STATE` | RUNNING, LOCK WAIT, or ROLLING BACK |
+| `TRX_STATE` | RUNNING, LOCK WAIT, ROLLING BACK, or COMMITTING |
 | `TRX_STARTED` | Transaction start time |
-| `TRX_WEIGHT` | Number of locked rows + modified rows |
+| `TRX_WEIGHT` | Reflects the number of locked rows and modified rows (not an exact count). Transactions that changed nontransactional tables are weighted heavier. Used by InnoDB to pick the deadlock victim |
 | `TRX_MYSQL_THREAD_ID` | MySQL processlist ID |
 | `TRX_QUERY` | Currently executing SQL |
 | `TRX_LOCK_STRUCTS` | Number of lock structures held |
