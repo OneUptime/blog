@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, RedisBloom, Cuckoo Filter, Probabilistic, Command
 
-Description: Learn how to use CF.EXISTS in Redis to check whether an element is present in a Cuckoo filter with no false negatives and a configurable false positive rate.
+Description: Learn how to use CF.EXISTS in Redis to check whether an element is present in a Cuckoo filter with no false negatives and a low false positive rate.
 
 ---
 
@@ -154,14 +154,14 @@ CF.EXISTS revoked_tokens "token:eyJ..."
 
 ## Understanding the False Positive Rate
 
-The false positive rate depends on the filter's configured `BUCKETSIZE` and how full the filter is. As the filter fills beyond 95% capacity, the false positive rate rises above the configured target. Monitor fill rate with:
+The false positive rate depends on the fingerprint size (set internally by RedisBloom), the `BUCKETSIZE`, and how full the filter is. As the filter fills beyond 95% capacity, the false positive rate increases. Monitor fill rate with:
 
 ```redis
 CF.INFO myfilter
 ```
 
-Look at "Number of items inserted" vs "Number of buckets" to gauge fill rate.
+Compare "Number of items inserted" against "Number of buckets" × "Bucket size" to gauge fill rate.
 
 ## Summary
 
-`CF.EXISTS` checks membership in a Redis Cuckoo filter with zero false negatives and a small configurable false positive rate. Unlike Bloom filters, Cuckoo filter lookups correctly reflect element deletions made with `CF.DEL`. Use it for dynamic membership sets where items need to be both added and removed, such as session validation, block lists, negative caches, and token revocation.
+`CF.EXISTS` checks membership in a Redis Cuckoo filter with zero false negatives and a small false positive rate. Unlike Bloom filters, Cuckoo filter lookups correctly reflect element deletions made with `CF.DEL`. Use it for dynamic membership sets where items need to be both added and removed, such as session validation, block lists, negative caches, and token revocation.
