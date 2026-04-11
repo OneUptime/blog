@@ -127,9 +127,9 @@ sudo ip6tables -A INPUT -s fd00::/8 -p tcp --dport 6379 -j ACCEPT
 redis-cli CONFIG GET bind
 ```
 
-## Redis 6.2+ bind-source-addr
+## Redis 7.0+ bind-source-addr
 
-Redis 6.2 added `bind-source-addr` to control the source address used for outbound connections (replication, cluster bus):
+Redis 7.0 added `bind-source-addr` to control the source address used for outbound connections (replication, cluster bus):
 
 ```text
 bind-source-addr ""
