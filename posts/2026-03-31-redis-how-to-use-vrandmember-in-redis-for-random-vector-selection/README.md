@@ -28,11 +28,11 @@ VRANDMEMBER key [count]
 
 ```bash
 # Build a small vector set
-VADD items item:1 VALUES 4 0.1 0.2 0.3 0.4
-VADD items item:2 VALUES 4 0.5 0.6 0.7 0.8
-VADD items item:3 VALUES 4 0.9 0.8 0.7 0.6
-VADD items item:4 VALUES 4 0.2 0.3 0.4 0.5
-VADD items item:5 VALUES 4 0.6 0.7 0.8 0.9
+VADD items VALUES 4 0.1 0.2 0.3 0.4 item:1
+VADD items VALUES 4 0.5 0.6 0.7 0.8 item:2
+VADD items VALUES 4 0.9 0.8 0.7 0.6 item:3
+VADD items VALUES 4 0.2 0.3 0.4 0.5 item:4
+VADD items VALUES 4 0.6 0.7 0.8 0.9 item:5
 
 # Get one random element
 VRANDMEMBER items
@@ -75,7 +75,6 @@ VRANDMEMBER huge_index 1000
 
 ```python
 import redis
-import random
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -109,11 +108,11 @@ def evaluate_search_quality(key: str, sample_size: int = 100) -> dict:
     }
 
 # Build test index
-r.execute_command("VADD", "test:index", "doc:1", "VALUES", "4", "0.1", "0.2", "0.3", "0.4")
-r.execute_command("VADD", "test:index", "doc:2", "VALUES", "4", "0.5", "0.6", "0.7", "0.8")
-r.execute_command("VADD", "test:index", "doc:3", "VALUES", "4", "0.9", "0.8", "0.7", "0.6")
-r.execute_command("VADD", "test:index", "doc:4", "VALUES", "4", "0.2", "0.3", "0.4", "0.5")
-r.execute_command("VADD", "test:index", "doc:5", "VALUES", "4", "0.6", "0.7", "0.8", "0.9")
+r.execute_command("VADD", "test:index", "VALUES", "4", "0.1", "0.2", "0.3", "0.4", "doc:1")
+r.execute_command("VADD", "test:index", "VALUES", "4", "0.5", "0.6", "0.7", "0.8", "doc:2")
+r.execute_command("VADD", "test:index", "VALUES", "4", "0.9", "0.8", "0.7", "0.6", "doc:3")
+r.execute_command("VADD", "test:index", "VALUES", "4", "0.2", "0.3", "0.4", "0.5", "doc:4")
+r.execute_command("VADD", "test:index", "VALUES", "4", "0.6", "0.7", "0.8", "0.9", "doc:5")
 
 # Run evaluation
 quality = evaluate_search_quality("test:index", sample_size=5)
@@ -153,20 +152,20 @@ for item, count in list(sample_freqs.items())[:5]:
 
 ## Building an Element ID Catalog
 
-If you need to iterate over all elements in a large Vector Set, VRANDMEMBER is the primary way:
+If you need to retrieve all element IDs from a Vector Set, you can use VRANDMEMBER with a positive count. For deterministic enumeration, consider `VRANGE` (available since Redis 8.4.0):
 
 ```python
 def get_all_element_ids(key: str, batch_size: int = 10000) -> set:
     """
-    Attempt to retrieve all element IDs using VRANDMEMBER.
-    Note: not guaranteed to return all elements for very large sets.
+    Retrieve all element IDs using VRANDMEMBER.
+    With a positive count >= cardinality, all distinct elements are returned.
     """
     total = int(r.execute_command("VCARD", key) or 0)
     if total == 0:
         return set()
 
-    # Request slightly more than total to maximize coverage
-    result = r.execute_command("VRANDMEMBER", key, str(min(total * 2, batch_size)))
+    # Request exactly total to get all distinct elements
+    result = r.execute_command("VRANDMEMBER", key, str(total))
     if not result:
         return set()
     if isinstance(result, str):
@@ -179,4 +178,4 @@ print(f"Retrieved {len(all_ids)} element IDs")
 
 ## Summary
 
-`VRANDMEMBER` randomly samples element names from a Redis Vector Set. Use a positive count for distinct random samples and a negative count to allow duplicates for statistical draws. It is the primary mechanism for listing element IDs in a Vector Set, evaluating index recall, bootstrapping tests, and building data exploration tools. For large indexes, combine with `VCARD` to understand total size and request the appropriate sample count.
+`VRANDMEMBER` randomly samples element names from a Redis Vector Set. Use a positive count for distinct random samples and a negative count to allow duplicates for statistical draws. It is useful for evaluating index recall, bootstrapping tests, and building data exploration tools. For deterministic enumeration of all elements, use `VRANGE` (Redis 8.4.0+). For large indexes, combine with `VCARD` to understand total size and request the appropriate sample count.
