@@ -62,7 +62,7 @@ To dump the entire MySQL instance:
 util.dumpInstance("/backups/full_instance_dump")
 ```
 
-This exports all schemas except system schemas (`information_schema`, `performance_schema`, `mysql`, `sys`). To include user accounts:
+This exports all schemas except system schemas (`information_schema`, `mysql`, `ndbinfo`, `performance_schema`, `sys`). To include user accounts:
 
 ```javascript
 util.dumpInstance("/backups/full_instance_dump", {
@@ -96,7 +96,7 @@ util.dumpTables("mydb", ["orders"], "/backups/orders_dump", {
 MySQL Shell can dump directly to S3:
 
 ```javascript
-util.dumpInstance("s3://my-bucket/backups/instance_dump", {
+util.dumpInstance("backups/instance_dump", {
   s3BucketName: "my-bucket",
   s3Region: "us-east-1"
 })
