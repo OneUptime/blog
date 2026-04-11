@@ -10,7 +10,7 @@ Description: Learn proven strategies to prevent deadlocks in MySQL InnoDB, inclu
 
 ## What Causes Deadlocks?
 
-A deadlock occurs when two or more transactions each hold a lock that the other needs, creating a circular dependency. InnoDB detects deadlocks automatically and rolls back the transaction with the smallest undo log size. Prevention focuses on eliminating the circular dependency before it occurs.
+A deadlock occurs when two or more transactions each hold a lock that the other needs, creating a circular dependency. InnoDB detects deadlocks automatically and rolls back the transaction with the smallest weight, determined by the number of rows modified and locked. Prevention focuses on eliminating the circular dependency before it occurs.
 
 ## Strategy 1: Consistent Lock Ordering
 
@@ -80,14 +80,11 @@ Large batch updates acquire many locks simultaneously:
 UPDATE orders SET status = 'archived' WHERE created_at < '2025-01-01';
 
 -- GOOD: Process in smaller batches
-SET @batch_size = 1000;
-
-REPEAT
-    UPDATE orders SET status = 'archived'
-    WHERE created_at < '2025-01-01'
-      AND status != 'archived'
-    LIMIT 1000;
-UNTIL ROW_COUNT() = 0 END REPEAT;
+-- Run this statement repeatedly from application code until 0 rows are affected
+UPDATE orders SET status = 'archived'
+WHERE created_at < '2025-01-01'
+  AND status != 'archived'
+LIMIT 1000;
 ```
 
 ## Strategy 5: Use READ COMMITTED for Read-Intensive Workloads
@@ -104,6 +101,7 @@ SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
 Despite prevention, deadlocks can still occur. Always handle them with retry logic:
 
 ```python
+import time
 import mysql.connector
 from mysql.connector import errorcode
 
@@ -120,6 +118,7 @@ def execute_with_retry(conn, sql, params, max_retries=3):
                 if attempt == max_retries - 1:
                     raise
                 # Brief pause before retry
+                time.sleep(0.1 * (attempt + 1))
                 continue
             raise
 ```
@@ -128,7 +127,8 @@ def execute_with_retry(conn, sql, params, max_retries=3):
 
 ```sql
 -- Track cumulative deadlock count
-SHOW STATUS LIKE 'Innodb_deadlocks';
+SELECT COUNT FROM information_schema.INNODB_METRICS
+WHERE NAME = 'lock_deadlocks';
 
 -- View the most recent deadlock details
 SHOW ENGINE INNODB STATUS\G
