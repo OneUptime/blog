@@ -10,7 +10,7 @@ Description: Learn how to use MySQL SHOW STATUS to monitor connections, query ra
 
 ## How SHOW STATUS Works
 
-`SHOW STATUS` returns MySQL server status variables - counters and gauges that reflect the server's current operational state. These are cumulative counters (reset on restart) or current values (reset each second for rates).
+`SHOW STATUS` returns MySQL server status variables - counters and gauges that reflect the server's current operational state. These are either cumulative counters (incrementing since startup, reset on restart or `FLUSH STATUS`) or instantaneous gauges (reflecting the current value at the moment of query).
 
 There are two scopes:
 - `SHOW GLOBAL STATUS` - server-wide metrics since startup
@@ -185,11 +185,16 @@ SHOW GLOBAL STATUS LIKE 'Binlog%';
 SHOW REPLICA STATUS\G
 ```
 
-Monitor `Seconds_Behind_Source`. Also check:
+Monitor `Seconds_Behind_Source`. Also check replication thread status:
 
 ```sql
-SHOW GLOBAL STATUS LIKE 'Slave_running';  -- older versions
-SHOW GLOBAL STATUS LIKE 'Replica_running'; -- MySQL 8.0+
+-- MySQL 8.0.22+
+SHOW REPLICA STATUS\G
+-- Check Replica_IO_Running and Replica_SQL_Running fields
+
+-- Older versions
+SHOW SLAVE STATUS\G
+-- Check Slave_IO_Running and Slave_SQL_Running fields
 ```
 
 ## Creating a Status Snapshot Script
@@ -208,7 +213,7 @@ mysql -u root -p -e "SHOW GLOBAL STATUS;" > /tmp/mysql_status_$(date +%Y%m%d_%H%
 - Monitor `Aborted_clients` - high values indicate connection timeout or application bugs.
 - Use `performance_schema.global_status` for scripted monitoring (returns a result set).
 - Export metrics to Prometheus or Datadog via `mysqld_exporter` for dashboards and alerting.
-- Reset global status counters after server changes with `FLUSH STATUS`.
+- Use `FLUSH STATUS` to reset session counters and some global counters after server changes.
 
 ## Summary
 
