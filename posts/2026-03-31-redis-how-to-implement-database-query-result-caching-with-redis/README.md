@@ -45,7 +45,7 @@ import psycopg2
 import json
 import hashlib
 import functools
-from typing import Optional, Callable
+from typing import Callable
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 pg = psycopg2.connect("postgresql://user:password@localhost/mydb")
@@ -138,9 +138,9 @@ def get_products_page(category: str, page: int, per_page: int = 20, sort: str = 
 
     result = {
         'items': [
-            {'id': r[0], 'name': r[1], 'price': float(r[2]), 'sku': r[3],
-             'thumbnail_url': r[4], 'created_at': str(r[5])}
-            for r in rows
+            {'id': row[0], 'name': row[1], 'price': float(row[2]), 'sku': row[3],
+             'thumbnail_url': row[4], 'created_at': str(row[5])}
+            for row in rows
         ],
         'total': total,
         'page': page,
@@ -157,7 +157,7 @@ def get_products_page(category: str, page: int, per_page: int = 20, sort: str = 
 Group related cache keys with tags for bulk invalidation:
 
 ```python
-def cache_with_tags(key: str, value: dict, ttl: int, tags: list):
+def cache_with_tags(key: str, value, ttl: int, tags: list):
     pipe = r.pipeline()
     pipe.setex(key, ttl, json.dumps(value, default=str))
     for tag in tags:
@@ -193,7 +193,7 @@ def get_user_products(user_id: int) -> list:
         """, (user_id,))
         rows = cur.fetchall()
 
-    products = [{'id': r[0], 'name': r[1], 'price': float(r[2])} for r in rows]
+    products = [{'id': row[0], 'name': row[1], 'price': float(row[2])} for row in rows]
 
     # Tag with both user and product tags
     cache_with_tags(
