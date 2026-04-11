@@ -21,6 +21,7 @@ npm install express mysql2 dotenv
 Create `src/db.js`:
 
 ```javascript
+require('dotenv').config();
 const mysql = require('mysql2/promise');
 
 const pool = mysql.createPool({
