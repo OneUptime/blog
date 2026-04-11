@@ -19,7 +19,7 @@ This enables a tiered storage pattern: keep high-resolution raw data for a short
 ```text
 TS.CREATERULE sourceKey destKey
   AGGREGATION aggregator bucketDuration
-  [ALIGNTIMESTAMP alignTimestamp]
+  [alignTimestamp]
 ```
 
 Parameters:
@@ -51,16 +51,16 @@ Now when data is added to `sensor:temp:raw`, it is automatically aggregated into
 
 ```bash
 # Average temperature per minute
-TS.CREATERULE sensor:temp raw_series avg_1min AGGREGATION AVG 60000
+TS.CREATERULE sensor:temp:raw sensor:temp:avg_1min AGGREGATION AVG 60000
 
 # Maximum temperature per hour
-TS.CREATERULE sensor:temp raw_series max_1hour AGGREGATION MAX 3600000
+TS.CREATERULE sensor:temp:raw sensor:temp:max_1hour AGGREGATION MAX 3600000
 
 # Total request count per minute
-TS.CREATERULE requests:api raw_series sum_1min AGGREGATION SUM 60000
+TS.CREATERULE requests:api:raw requests:api:sum_1min AGGREGATION SUM 60000
 
 # Sample count per minute (useful for verifying data completeness)
-TS.CREATERULE sensor:temp raw_series count_1min AGGREGATION COUNT 60000
+TS.CREATERULE sensor:temp:raw sensor:temp:count_1min AGGREGATION COUNT 60000
 ```
 
 ## Ingesting Data and Observing Compaction
@@ -138,20 +138,19 @@ rules
 
 ## Aligning Compaction Buckets
 
-By default, buckets are aligned to Unix epoch boundaries. Use `ALIGNTIMESTAMP` to align to a specific time:
+By default, buckets are aligned to Unix epoch (timestamp 0). Use the optional `alignTimestamp` parameter to align to a specific time:
 
 ```bash
 # Align 1-hour buckets to the start of each calendar hour (midnight UTC)
 TS.CREATERULE sensor:temp:raw sensor:temp:1hour \
   AGGREGATION AVG 3600000 \
-  ALIGNTIMESTAMP 0
+  0
 ```
 
 ## Full Lifecycle Example
 
 ```python
 import redis
-import time
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 ts = r.ts()
