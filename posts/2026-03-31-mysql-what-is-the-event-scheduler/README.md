@@ -10,14 +10,14 @@ Description: The MySQL Event Scheduler is a built-in job scheduler that executes
 
 ## Overview
 
-The MySQL Event Scheduler is a component of the MySQL server that executes SQL code on a time-based schedule. Events are database objects stored in the `mysql` schema and managed with `CREATE EVENT`, `ALTER EVENT`, and `DROP EVENT` statements. The event scheduler runs in the background as a separate thread and can trigger one-time or recurring tasks without any external scheduler.
+The MySQL Event Scheduler is a component of the MySQL server that executes SQL code on a time-based schedule. Events are named database objects associated with the schema in which they are created and managed with `CREATE EVENT`, `ALTER EVENT`, and `DROP EVENT` statements. The event scheduler runs in the background as a separate thread and can trigger one-time or recurring tasks without any external scheduler.
 
 ## Enabling the Event Scheduler
 
 The event scheduler must be enabled before events can run:
 
 ```sql
--- Enable for the current session (temporary)
+-- Enable globally (persists until server restart)
 SET GLOBAL event_scheduler = ON;
 
 -- Check status
@@ -92,7 +92,7 @@ SELECT
   INTERVAL_FIELD,
   STARTS,
   LAST_EXECUTED,
-  COMMENT
+  EVENT_COMMENT
 FROM information_schema.EVENTS
 WHERE EVENT_SCHEMA = DATABASE()
 ORDER BY EVENT_NAME;
