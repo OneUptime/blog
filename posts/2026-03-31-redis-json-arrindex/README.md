@@ -20,7 +20,7 @@ JSON.ARRINDEX key path value [start [stop]]
 
 - `key` - the Redis key
 - `path` - JSONPath pointing to an array
-- `value` - the JSON value to search for (must be valid JSON)
+- `value` - the JSON scalar to search for (string, number, boolean, or null)
 - `start` - optional start index (default 0, negative counts from end)
 - `stop` - optional stop index (exclusive, default 0 means end of array)
 
@@ -74,17 +74,6 @@ JSON.ARRINDEX playlist:1 $.tracks '"Song C"' 1 3
 JSON.ARRINDEX playlist:1 $.tracks '"Song C"' 1 2
 # 1) (integer) -1
 ```
-
-## Searching for Objects
-
-```redis
-JSON.SET orders:1 $ '{"items":[{"sku":"A1"},{"sku":"B2"},{"sku":"C3"}]}'
-
-JSON.ARRINDEX orders:1 $.items '{"sku":"B2"}'
-# 1) (integer) 1
-```
-
-The value must exactly match the JSON representation of the object.
 
 ## Wildcard Path
 
