@@ -80,7 +80,7 @@ Expected output:
 
 ## Application Configuration for Failover
 
-Use the cluster configuration endpoint (not a node-specific endpoint) so your client automatically routes to the new primary after failover:
+Use the replication group's primary endpoint (not a node-specific endpoint) so your client automatically routes to the new primary after failover:
 
 ```python
 import redis
