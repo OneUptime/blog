@@ -85,10 +85,10 @@ SELECT settings FROM app_settings WHERE user_id = 1;
 ```
 
 ```text
-{"theme": "dark", "lang": "en", "notifications": {"email": false}, "beta": true}
+{"theme": "dark", "lang": "en", "notifications": {"email": false, "sms": false}, "beta": true}
 ```
 
-Note: The `notifications` object was merged recursively. `sms: false` was lost because the patch replaced the entire `notifications` sub-object with only the provided keys. For preserving unmentioned sub-keys, see `JSON_MERGE_PRESERVE()`.
+Note: The `notifications` object was merged recursively because both the original and patch values are JSON objects. `sms: false` is preserved because it is absent from the patch. If the patch value were a non-object (e.g., a string or array), it would replace the entire original value instead of merging.
 
 ## Removing a Key with null
 
