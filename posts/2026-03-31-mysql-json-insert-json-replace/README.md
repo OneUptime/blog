@@ -120,12 +120,13 @@ A practical use case is providing default values for keys that may be missing wi
 
 ```sql
 -- Set default notification preferences for users who do not have them yet
+-- Note: JSON_INSERT cannot auto-create intermediate objects, so insert
+-- the notifications object as a whole rather than using nested paths
 UPDATE user_profiles
 SET profile = JSON_INSERT(
     profile,
-    '$.notifications.email', TRUE,
-    '$.notifications.sms',   FALSE,
-    '$.timezone',            'UTC'
+    '$.notifications', JSON_OBJECT('email', CAST(TRUE AS JSON), 'sms', CAST(FALSE AS JSON)),
+    '$.timezone',      'UTC'
 );
 ```
 
