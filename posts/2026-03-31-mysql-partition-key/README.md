@@ -10,12 +10,12 @@ Description: Learn how to use MySQL KEY partitioning, which uses MySQL's interna
 
 ## How KEY Partitioning Works
 
-KEY partitioning is similar to HASH partitioning but uses MySQL's internal MD5-based hash function instead of a user-defined expression. KEY partitioning can work with any column data type (including strings and dates), unlike HASH which requires an integer expression.
+KEY partitioning is similar to HASH partitioning but uses MySQL's internal hashing function instead of a user-defined expression. KEY partitioning can work with most column data types (including strings and dates), unlike HASH which requires an integer expression. Note that TEXT and BLOB columns are not supported as partition keys.
 
 ```mermaid
 flowchart LR
     R["New Row\nemail = 'alice@example.com'"]
-    H["MySQL Internal Hash\nMD5-based hash"]
+    H["MySQL Internal Hash\nServer hashing function"]
     MOD["MOD(hash, 4)"]
     P0["Partition p0"]
     P1["Partition p1"]
@@ -29,7 +29,7 @@ flowchart LR
 
 Key characteristics:
 - Uses MySQL's built-in hashing - no need to write a custom hash expression
-- Works with all MySQL-supported column types: INTEGER, VARCHAR, DATE, etc.
+- Works with most MySQL-supported column types: INTEGER, VARCHAR, DATE, etc. (TEXT and BLOB are not supported)
 - If no column is specified, MySQL uses the primary key column(s)
 - Good for even distribution when the partition column has high cardinality
 
@@ -152,13 +152,16 @@ ORDER  BY partition_ordinal_position;
 
 ## Partition Pruning with KEY
 
-KEY partitioning supports pruning only on exact equality:
+KEY partitioning supports pruning on equality, IN() lists, and short ranges:
 
 ```sql
--- Pruning WORKS
+-- Pruning WORKS - equality
 EXPLAIN SELECT * FROM sensor_readings WHERE sensor_id = 42\G
 
--- Pruning does NOT work - all partitions scanned
+-- Pruning WORKS - IN() list
+EXPLAIN SELECT * FROM sensor_readings WHERE sensor_id IN (1, 2, 3)\G
+
+-- Pruning does NOT work - open-ended range scans all partitions
 EXPLAIN SELECT * FROM sensor_readings WHERE sensor_id > 100\G
 ```
 
@@ -182,9 +185,9 @@ Use HASH when:
 - Keep the partition count at a power of 2 for predictable distribution with LINEAR KEY.
 - Monitor distribution with `information_schema.PARTITIONS` after data load.
 - KEY partitioning on the primary key (no column specified) is the simplest setup.
-- Avoid very high cardinality column expressions - KEY works best when the partition key has diverse values.
+- Choose a partition key with high cardinality (many distinct values) for even distribution across partitions.
 - Use LINEAR KEY in environments where partition counts change frequently.
 
 ## Summary
 
-MySQL KEY partitioning uses MySQL's internal hashing to distribute rows across a fixed number of partitions. Unlike HASH, it accepts any data type for the partition column, including VARCHAR, DATE, and DATETIME. It is the simplest form of hash-based partitioning and works well when you want even distribution without defining a custom hash expression. Partition pruning applies only to equality predicates on the partition column.
+MySQL KEY partitioning uses MySQL's internal hashing to distribute rows across a fixed number of partitions. Unlike HASH, it accepts most data types for the partition column, including VARCHAR, DATE, and DATETIME (but not TEXT or BLOB). It is the simplest form of hash-based partitioning and works well when you want even distribution without defining a custom hash expression. Partition pruning applies to equality predicates and IN() lists on the partition column.
