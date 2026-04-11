@@ -243,10 +243,12 @@ class MetricsCollector {
   }
 }
 
-const collector = new MetricsCollector();
-await collector.init();
+(async () => {
+  const collector = new MetricsCollector();
+  await collector.init();
 
-setInterval(() => collector.collect(), 10000);
+  setInterval(() => collector.collect(), 10000);
+})();
 ```
 
 ## Summary
