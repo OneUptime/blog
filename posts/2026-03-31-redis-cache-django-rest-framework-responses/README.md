@@ -77,6 +77,7 @@ For finer control, cache manually with custom keys:
 
 ```python
 from django.core.cache import cache
+from django.db.models import Sum
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
