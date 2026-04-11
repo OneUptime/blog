@@ -48,7 +48,7 @@ LEFT JOIN employees m ON e.manager_id = m.id;
 
 Rows where `manager_id` is NULL appear with `manager_name` as NULL rather than being excluded.
 
-## Three-Table JOIN View
+## Four-Table JOIN View
 
 ```sql
 CREATE VIEW order_line_details AS
@@ -67,7 +67,7 @@ JOIN products p     ON oi.product_id = p.id;
 
 ## Updatability of JOIN Views
 
-A JOIN view can be updatable if exactly one of the joined tables is "key-preserved" - meaning each row in that table appears at most once in the view result. Only columns from the key-preserved table can be updated through the view:
+A JOIN view can be updatable if at least one of the joined tables is "key-preserved" — meaning each row in that table appears at most once in the view result. Only columns from key-preserved tables can be updated through the view:
 
 ```sql
 -- Update allowed for employees columns only (key-preserved side)
@@ -79,7 +79,7 @@ WHERE id = 101;
 UPDATE employee_details
 SET department_name = 'Finance'
 WHERE id = 101;
--- ERROR 1288: target table is not updatable (for that column)
+-- ERROR 1288 (HY000): The target table 'employee_details' of the UPDATE is not updatable
 ```
 
 ## Checking if a JOIN View is Updatable
