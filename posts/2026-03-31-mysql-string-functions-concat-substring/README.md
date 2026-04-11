@@ -159,7 +159,7 @@ ORDER BY char_length DESC;
 
 ## REPLACE
 
-`REPLACE` substitutes all occurrences of a substring with a new value. The search is case-sensitive.
+`REPLACE` substitutes all occurrences of a substring with a new value. The search respects the column's collation — it is case-insensitive under default collations like `utf8mb4_0900_ai_ci`, and case-sensitive only with binary or `_bin` collations.
 
 **Syntax:**
 
@@ -178,13 +178,13 @@ WHERE email IS NOT NULL;
 ```
 
 ```text
-+----------+--------------------------------+
-| first_name | updated_email               |
-+----------+--------------------------------+
-| Alice    | alice.johnson@company.com      |
-| Bob      | bob.smith@company.com          |
-| Charlie  | charlie.williams@company.com   |
-+----------+--------------------------------+
++------------+------------------------------+
+| first_name | updated_email                |
++------------+------------------------------+
+| Alice      | alice.johnson@company.com    |
+| Bob        | bob.smith@company.com        |
+| Charlie    | charlie.williams@company.com |
++------------+------------------------------+
 ```
 
 **Example - sanitize text data:**
