@@ -93,7 +93,7 @@ def compute_monthly_unique(metric: str, year_month: str):
 ## Memory Comparison
 
 ```text
-Exact set with 1M users:   ~50MB (8 bytes per UUID)
+Exact set with 1M users:   ~50MB (~50 bytes per entry with Redis overhead)
 HyperLogLog with 1M users: 12KB (fixed size)
 Savings:                    ~4000x
 ```
