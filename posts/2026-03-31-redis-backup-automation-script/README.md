@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Backup, Script, Automation, Bash
 
-Description: Automate Redis RDB and AOF backups with a Bash script that copies dump files to S3, rotates old backups, and sends alerts on failure.
+Description: Automate Redis RDB backups with a Bash script that copies dump files to S3 and rotates old backups.
 
 ---
 
@@ -44,8 +44,6 @@ cli_cmd BGSAVE
 
 # Step 2: Wait for save to complete
 for i in $(seq 1 60); do
-    STATUS=$(cli_cmd LASTSAVE)
-    CURRENT_SAVE=$(cli_cmd LASTSAVE)
     IN_PROGRESS=$(cli_cmd INFO persistence | grep "rdb_bgsave_in_progress" | cut -d: -f2 | tr -d '\r ')
     if [ "$IN_PROGRESS" = "0" ]; then
         log "BGSAVE completed"
