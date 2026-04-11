@@ -58,11 +58,11 @@ The `--no-check-binlog-format` flag skips the binlog format check, useful when u
 After the run, query the checksum table to find differences:
 
 ```sql
-SELECT db, tbl, chunk, this_cnt, master_cnt, this_crc, master_crc
+SELECT db, tbl, chunk, this_cnt, source_cnt, this_crc, source_crc
 FROM percona.checksums
-WHERE master_cnt <> this_cnt
-   OR master_crc <> this_crc
-   OR ISNULL(master_crc) <> ISNULL(this_crc);
+WHERE source_cnt <> this_cnt
+   OR source_crc <> this_crc
+   OR ISNULL(source_crc) <> ISNULL(this_crc);
 ```
 
 The `DIFFS` column in the tool output summary also shows the number of differing chunks per table.
