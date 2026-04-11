@@ -108,7 +108,7 @@ def check_all_interactions(current_medications: list[str], new_drug: str) -> lis
         pipe.execute()
 
     # Filter to only interactions above "none"
-    return [r for r in results if r and SEVERITY_LEVELS.get(r["severity"], 0) > 0]
+    return [item for item in results if item and SEVERITY_LEVELS.get(item["severity"], 0) > 0]
 ```
 
 ## Severity Alerting
