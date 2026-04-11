@@ -47,7 +47,7 @@ Supported numeric target types:
 SELECT CAST('42' AS SIGNED);        -- Returns: 42
 SELECT CAST('-15' AS SIGNED);       -- Returns: -15
 SELECT CAST('42' AS UNSIGNED);      -- Returns: 42
-SELECT CAST('-1' AS UNSIGNED);      -- Returns: 0 (negative clipped to 0)
+SELECT CAST('-1' AS UNSIGNED);      -- Returns: 18446744073709551615 (wraps around)
 
 -- Convert string to decimal
 SELECT CAST('3.14159' AS DECIMAL(10,5));  -- Returns: 3.14159
