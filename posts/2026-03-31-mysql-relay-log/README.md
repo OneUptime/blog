@@ -28,7 +28,7 @@ The `.index` file tracks all relay log files currently in use. Relay log files a
 
 ## Viewing Relay Log Status
 
-On the replica, use `SHOW REPLICA STATUS` (MySQL 8.0+) or `SHOW SLAVE STATUS` (older versions):
+On the replica, use `SHOW REPLICA STATUS` (MySQL 8.0.22+) or `SHOW SLAVE STATUS` (older versions):
 
 ```sql
 SHOW REPLICA STATUS\G
@@ -39,8 +39,8 @@ Key fields related to the relay log:
 ```text
 Relay_Log_File: hostname-relay-bin.000003
 Relay_Log_Pos: 4152
-Relay_Master_Log_File: source-bin.000015
-Exec_Master_Log_Pos: 4152
+Relay_Source_Log_File: source-bin.000015
+Exec_Source_Log_Pos: 4152
 Seconds_Behind_Source: 0
 ```
 
@@ -84,7 +84,7 @@ SHOW RELAYLOG EVENTS IN 'hostname-relay-bin.000003' LIMIT 20;
 | Location | Source server | Replica server |
 | Written by | Source SQL execution | I/O thread from source |
 | Read by | Replica I/O thread | Replica SQL thread |
-| Retention | Manual or expire_logs_days | Auto-purged after apply |
+| Retention | Manual or binlog_expire_logs_seconds | Auto-purged after apply |
 
 ## Summary
 
