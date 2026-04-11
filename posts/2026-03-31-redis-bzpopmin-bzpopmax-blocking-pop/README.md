@@ -208,7 +208,7 @@ loop:
     process(task)
 ```
 
-## Comparison with BLPOP / BLMOVE
+## Comparison with BLPOP / BRPOP
 
 | Feature | BZPOPMIN / BZPOPMAX | BLPOP / BRPOP |
 |---|---|---|
