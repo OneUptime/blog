@@ -38,7 +38,7 @@ pg_dump \
   your_database > schema.sql
 ```
 
-Export data as CSV for easier import into MySQL:
+Export data as SQL INSERT statements for easier import into MySQL:
 
 ```bash
 pg_dump \
@@ -122,7 +122,7 @@ ALTER TABLE orders AUTO_INCREMENT = 100001;
 
 ## Migrate Stored Functions and Procedures
 
-PostgreSQL functions use `PL/pgSQL` syntax. You must rewrite these in MySQL's stored procedure syntax. A simple PostgreSQL function:
+PostgreSQL functions use syntax (such as `PL/pgSQL` or `LANGUAGE sql`) that differs from MySQL. You must rewrite these in MySQL's stored procedure syntax. A simple PostgreSQL function:
 
 ```sql
 CREATE FUNCTION get_order_count(uid INTEGER)
@@ -137,7 +137,7 @@ Equivalent MySQL stored function:
 DELIMITER $$
 CREATE FUNCTION get_order_count(uid INT)
 RETURNS INT
-DETERMINISTIC
+READS SQL DATA
 BEGIN
   DECLARE cnt INT;
   SELECT COUNT(*) INTO cnt FROM orders WHERE user_id = uid;
