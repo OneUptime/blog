@@ -60,7 +60,7 @@ GET nonexistent_key
 
 ### Retrieving a numeric string
 
-Redis stores everything as strings. A number set with `SET` is returned as a string.
+Values set with `SET` are stored as the string data type. A number set with `SET` is returned as a string.
 
 ```redis
 SET page_views "42"
