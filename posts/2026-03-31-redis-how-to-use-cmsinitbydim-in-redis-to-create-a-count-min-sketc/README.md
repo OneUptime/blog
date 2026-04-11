@@ -52,7 +52,7 @@ There are two ways to create a Count-Min Sketch:
 ```bash
 # Equivalent sketches (approximately)
 CMS.INITBYDIM sketch1 2000 7
-CMS.INITBYPROB sketch2 0.001 0.99
+CMS.INITBYPROB sketch2 0.001 0.01
 ```
 
 ## Using CMS.INITBYDIM in Python
@@ -63,7 +63,7 @@ import redis
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Create a sketch for tracking URL click frequencies
-# Width=5000 gives ~0.02% error, Depth=7 gives 99% confidence
+# Width=5000 gives ~0.04% error, Depth=7 gives ~99% confidence
 r.execute_command('CMS.INITBYDIM', 'url_clicks', 5000, 7)
 
 print("Count-Min Sketch created")
@@ -129,21 +129,20 @@ print(get_endpoint_frequency('/api/products')) # ~1
 
 ## Choosing Width and Depth
 
-As a rule of thumb:
-- For error rate `e` and confidence `1 - delta`:
-  - `width = ceil(e / epsilon)` where epsilon = desired max error fraction
-  - `depth = ceil(ln(1/delta))`
+As a rule of thumb (using the formulas that RedisBloom applies internally):
+- `width = ceil(2 / error)` where error = desired max error fraction
+- `depth = ceil(log2(1 / delta))` where delta = desired failure probability
 
 Common configurations:
 
 ```bash
-# Low memory, acceptable error (~1%)
+# Low memory, acceptable error (~2%)
 CMS.INITBYDIM small_sketch 100 5
 
-# Medium accuracy (~0.1% error)
+# Medium accuracy (~0.2% error)
 CMS.INITBYDIM medium_sketch 1000 7
 
-# High accuracy (~0.01% error)
+# High accuracy (~0.02% error)
 CMS.INITBYDIM precise_sketch 10000 10
 ```
 
