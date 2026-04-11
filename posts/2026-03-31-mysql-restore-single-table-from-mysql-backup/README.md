@@ -32,11 +32,11 @@ If you have an existing full database dump, you can extract a single table's DDL
 sed -n '/^-- Table structure for table `orders`/,/^-- Table structure for table/p' full_backup.sql > orders_extracted.sql
 ```
 
-A more reliable approach uses two separate `grep` passes - one for structure and one for data:
+A more reliable approach uses `sed` and `grep` separately - one for structure and one for data:
 
 ```bash
-# Extract CREATE TABLE statement
-sed -n '/^DROP TABLE IF EXISTS `orders`/,/^UNLOCK TABLES/p' full_backup.sql | head -n -1 > orders_restore.sql
+# Extract table structure and LOCK TABLES statement
+sed -n '/^DROP TABLE IF EXISTS `orders`/,/^LOCK TABLES/p' full_backup.sql > orders_restore.sql
 
 # Append INSERT statements
 grep "^INSERT INTO \`orders\`" full_backup.sql >> orders_restore.sql
@@ -49,8 +49,6 @@ echo "UNLOCK TABLES;" >> orders_restore.sql
 For reliability, a small Python script handles edge cases better than shell one-liners:
 
 ```python
-import sys
-
 def extract_table(dump_file, table_name, output_file):
     capture = False
     with open(dump_file, 'r') as infile, open(output_file, 'w') as outfile:
