@@ -118,7 +118,7 @@ sessions.update_field('abc123', 'last_seen', Time.now.to_i.to_s)
 
 ## Memory Efficiency
 
-Redis uses a compact ziplist/listpack encoding for small hashes (< 128 fields, values < 64 bytes by default). This makes hashes more memory-efficient than storing JSON strings:
+Redis uses a compact ziplist/listpack encoding for small hashes (up to 128 fields and values up to 64 bytes by default). This makes hashes more memory-efficient than storing JSON strings:
 
 ```ruby
 # Less efficient
