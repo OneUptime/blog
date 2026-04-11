@@ -115,12 +115,12 @@ import redis
 r = redis.Redis(host='127.0.0.1', port=7001, decode_responses=True)
 
 # Get node ID
-node_id = r.cluster('myid')
+node_id = r.execute_command('CLUSTER', 'MYID')
 print(f"Node ID: {node_id}")
 
 # Get shard ID (Redis 7.2+)
 try:
-    shard_id = r.cluster('myshardid')
+    shard_id = r.execute_command('CLUSTER', 'MYSHARDID')
     print(f"Shard ID: {shard_id}")
 except redis.ResponseError as e:
     print(f"MYSHARDID not supported (requires Redis 7.2+): {e}")
@@ -135,13 +135,13 @@ def get_node_identity(host, port):
     r = redis.Redis(host=host, port=port, decode_responses=True)
 
     identity = {
-        'node_id': r.cluster('myid'),
+        'node_id': r.execute_command('CLUSTER', 'MYID'),
         'host': host,
         'port': port,
     }
 
     try:
-        identity['shard_id'] = r.cluster('myshardid')
+        identity['shard_id'] = r.execute_command('CLUSTER', 'MYSHARDID')
     except redis.ResponseError:
         identity['shard_id'] = None
 
