@@ -34,7 +34,7 @@ aws elasticache modify-replication-group \
 # Check status
 aws elasticache describe-replication-groups \
   --replication-group-id my-cluster \
-  --query 'ReplicationGroups[0].{Status:Status,NodeType:MemberClusters}'
+  --query 'ReplicationGroups[0].{Status:Status,NodeType:CacheNodeType}'
 ```
 
 With `--apply-immediately`, the change starts immediately but causes a brief failover. Without it, the change happens during the next maintenance window.
@@ -119,10 +119,6 @@ resource "aws_elasticache_replication_group" "cluster" {
   automatic_failover_enabled = true
   transit_encryption_enabled = true
   auth_token                 = var.redis_auth_token
-
-  cluster_mode {
-    replicas_per_node_group = 1
-  }
 }
 ```
 
@@ -132,7 +128,7 @@ resource "aws_elasticache_replication_group" "cluster" {
 import boto3
 from datetime import datetime, timedelta
 
-def get_scaling_metrics(replication_group_id):
+def get_scaling_metrics(cache_cluster_id):
     cw = boto3.client('cloudwatch', region_name='us-east-1')
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(hours=1)
@@ -146,7 +142,7 @@ def get_scaling_metrics(replication_group_id):
         response = cw.get_metric_statistics(
             Namespace='AWS/ElastiCache',
             MetricName=metric,
-            Dimensions=[{'Name': 'ReplicationGroupId', 'Value': replication_group_id}],
+            Dimensions=[{'Name': 'CacheClusterId', 'Value': cache_cluster_id}],
             StartTime=start_time,
             EndTime=end_time,
             Period=3600,
@@ -158,13 +154,13 @@ def get_scaling_metrics(replication_group_id):
 
     return results
 
-# Run before scaling to establish baseline
-metrics_before = get_scaling_metrics('my-cluster')
+# Run before scaling to establish baseline (use a cache cluster ID, e.g., my-cluster-001)
+metrics_before = get_scaling_metrics('my-cluster-001')
 
 # Trigger scaling...
 
 # Run after scaling to verify improvement
-metrics_after = get_scaling_metrics('my-cluster')
+metrics_after = get_scaling_metrics('my-cluster-001')
 ```
 
 ## Scaling Recommendations by Metric
