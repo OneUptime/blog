@@ -96,16 +96,16 @@ The `cached: true` option reads all cache entries in one multi-get operation, fa
 <% cache product do %>
   <div class="product" data-id="<%= product.id %>">
     <h3><%= product.name %></h3>
-    <p class="price">$<%= number_to_currency(product.price) %></p>
+    <p class="price"><%= number_to_currency(product.price) %></p>
     <p class="stock"><%= product.stock %> in stock</p>
     <%= link_to "View", product_path(product) %>
   </div>
 <% end %>
 ```
 
-## Action Caching with Low-Level API
+## Controller-Level Caching with Low-Level API
 
-Cache entire action responses in the controller:
+Cache data in the controller using the low-level `Rails.cache` API:
 
 ```ruby
 class CategoriesController < ApplicationController
