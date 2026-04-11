@@ -81,14 +81,14 @@ $pdo->exec("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'");
 
 ## Difference Between SET NAMES and SET CHARACTER SET
 
-`SET CHARACTER SET` is similar but also changes `character_set_database`:
+`SET CHARACTER SET` is similar but differs in how it handles `character_set_connection`. While `SET NAMES` sets all three variables (`character_set_client`, `character_set_connection`, `character_set_results`) to the specified character set, `SET CHARACTER SET` sets `character_set_client` and `character_set_results` to the specified character set but sets `character_set_connection` to the value of `character_set_database`:
 
 ```sql
--- SET CHARACTER SET additionally affects character_set_database
+-- SET CHARACTER SET sets connection charset to the database default
 SET CHARACTER SET utf8mb4;
 ```
 
-`SET NAMES` is the more commonly used statement and matches driver behavior. Use `SET NAMES` unless you specifically need `character_set_database` changed.
+`SET NAMES` is the more commonly used statement and matches driver behavior. Use `SET NAMES` when you want all three variables set to the same character set.
 
 ## Verifying the Effect
 
