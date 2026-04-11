@@ -60,7 +60,6 @@ auth:
   password: "your-strong-redis-password"
 
 master:
-  count: 1
   resources:
     requests:
       memory: 256Mi
