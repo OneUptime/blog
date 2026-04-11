@@ -146,7 +146,7 @@ FCALL session_get 1 session:user:42
 ```
 
 ```text
-(error) ERR Library not loaded. Please use FUNCTION LOAD.
+(error) ERR Function not found
 ```
 
 ### FUNCTION DELETE - non-existent library
