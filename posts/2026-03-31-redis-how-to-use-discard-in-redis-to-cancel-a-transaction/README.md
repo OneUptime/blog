@@ -81,7 +81,7 @@ def safe_transfer(from_key, to_key, amount):
 
                 if balance < amount:
                     # Abort the transaction - insufficient funds
-                    pipe.reset()  # This calls DISCARD internally
+                    pipe.reset()  # This calls UNWATCH internally to release the watch
                     print("Insufficient funds - transaction cancelled")
                     return False
 
@@ -103,17 +103,20 @@ safe_transfer('user:1:balance', 'user:2:balance', 50)
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
-
 async function cancelTransaction() {
-  const multi = client.multi();
-  multi.set('key1', 'value1');
-  multi.set('key2', 'value2');
+  const client = createClient();
+  await client.connect();
 
-  // Decide to cancel before exec
-  await multi.discard();
+  // Enter transaction mode manually to demonstrate DISCARD
+  await client.sendCommand(['MULTI']);
+  await client.sendCommand(['SET', 'key1', 'value1']);
+  await client.sendCommand(['SET', 'key2', 'value2']);
+
+  // Decide to cancel before EXEC
+  await client.sendCommand(['DISCARD']);
   console.log('Transaction cancelled');
+
+  await client.disconnect();
 }
 
 cancelTransaction();
