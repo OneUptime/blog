@@ -15,10 +15,10 @@ Description: Learn how to use the MySQL ST_Area() function to calculate the area
 ## Basic Syntax
 
 ```sql
-ST_Area(geometry [, unit])
+ST_Area({poly|mpoly})
 ```
 
-The optional `unit` parameter (MySQL 8.0.24+) specifies the unit of measurement: `'square_metre'`, `'square_kilometre'`, `'square_foot'`, etc.
+The function accepts a single `Polygon` or `MultiPolygon` argument. For geographic spatial reference systems (e.g., SRID 4326), the result is in square meters.
 
 ## Calculating Area of a Polygon
 
@@ -55,14 +55,16 @@ SELECT ST_Area(
 
 Note: In SRID 4326, coordinates are (latitude, longitude) order. Always be consistent with axis order.
 
-## Using Unit Parameter
+## Converting Area Units
+
+`ST_Area()` does not accept a unit parameter. To convert from square meters to other units, use arithmetic:
 
 ```sql
 -- Return area in square kilometres
-SELECT ST_Area(
-  ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))', 4326),
-  'square_kilometre'
-) AS area_km2;
+SELECT
+  ST_Area(
+    ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))', 4326)
+  ) / 1000000 AS area_km2;
 ```
 
 ## Practical Example: Zone Area Calculation
@@ -116,15 +118,16 @@ SELECT ST_Area(
 
 Two 2x2 squares equal a total area of 8.
 
-## Null Handling
+## Error and Null Handling
 
-`ST_Area()` returns `NULL` for non-polygon geometries like points and linestrings:
+`ST_Area()` returns `NULL` if the argument is `NULL` or an empty geometry. Passing a non-polygon geometry like a point or linestring raises an `ER_UNEXPECTED_GEOMETRY_TYPE` error (MySQL 8.0.13+):
 
 ```sql
 SELECT ST_Area(ST_GeomFromText('POINT(0 0)', 0));
--- Returns NULL
+-- ERROR 3516 (HY000): Calling geometry function st_area
+-- with unsupported types of arguments.
 ```
 
 ## Summary
 
-`ST_Area()` computes the area of polygon and multipolygon geometries. For Cartesian data (SRID 0), the result is in coordinate units squared. For geographic data (SRID 4326), the result is in square meters by default, or you can specify a unit explicitly. Use `ST_Area()` for zone analysis, territory calculations, and any workflow that requires measuring the size of geographic regions.
+`ST_Area()` computes the area of polygon and multipolygon geometries. For Cartesian data (SRID 0), the result is in coordinate units squared. For geographic data (SRID 4326), the result is in square meters. Use arithmetic to convert to other units (e.g., divide by 1,000,000 for square kilometres). Use `ST_Area()` for zone analysis, territory calculations, and any workflow that requires measuring the size of geographic regions.
