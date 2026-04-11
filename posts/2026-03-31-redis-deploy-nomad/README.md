@@ -151,7 +151,7 @@ Nomad performs rolling updates automatically:
 nomad job run redis.nomad
 
 # Monitor the deployment
-nomad deployment status
+nomad deployment status <deployment-id>
 
 # Rollback if needed
 nomad job revert redis <previous-version>
