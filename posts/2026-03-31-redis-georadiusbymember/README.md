@@ -14,7 +14,7 @@ Description: Learn how to use GEORADIUSBYMEMBER to find all Redis geo members wi
 
 ## How GEORADIUSBYMEMBER Works
 
-Redis stores geographic coordinates as a sorted set using Geohash encoding. `GEORADIUSBYMEMBER` looks up the coordinates of the named member, then returns all other members within the specified radius.
+Redis stores geographic coordinates as a sorted set using Geohash encoding. `GEORADIUSBYMEMBER` looks up the coordinates of the named member, then returns all members within the specified radius, including the center member itself.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
 ## Syntax
 
 ```redis
-GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [COUNT count [ANY]] [ASC|DESC] [STORE key] [STOREDIST key]
+GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count [ANY]] [ASC|DESC] [STORE key] [STOREDIST key]
 ```
 
 - `key` - sorted set with geo data
