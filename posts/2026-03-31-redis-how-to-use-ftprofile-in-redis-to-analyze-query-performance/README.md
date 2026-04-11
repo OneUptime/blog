@@ -119,13 +119,13 @@ FT.PROFILE products SEARCH LIMITED QUERY "redis books"
 
 ```python
 import redis
+from redis.commands.search.query import Query
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Profile a search query
 result = r.ft('products').profile(
-    'SEARCH',
-    query=redis.commands.search.query.Query('redis').paging(0, 10)
+    Query('redis').paging(0, 10)
 )
 
 # result is a tuple: (search_results, profile_info)
