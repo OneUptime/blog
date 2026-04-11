@@ -42,7 +42,7 @@ r = Redis(host='localhost', port=6379, decode_responses=True)
 # Create a Bloom filter with target false positive rate and capacity
 r.bf().create(
     'email:blacklist',
-    error_rate=0.001,    # 0.1% false positive rate
+    errorRate=0.001,     # 0.1% false positive rate
     capacity=1000000     # Expected number of items
 )
 print("Bloom filter created")
@@ -67,8 +67,8 @@ emails = [
 ]
 results = r.bf().madd('email:blacklist', *emails)
 print(f"Items added: {results}")
-# [False, False, False, False] means all newly added (not seen before)
-# [True] would mean item was already in the filter
+# [1, 1, 1, 1] means all newly added (not seen before)
+# 0 would mean item was likely already in the filter
 ```
 
 ## Checking Membership
@@ -107,7 +107,7 @@ class EmailBlacklist:
     def __init__(self, key='email:blacklist', capacity=500000, error_rate=0.001):
         self.key = key
         try:
-            r.bf().create(key, error_rate=error_rate, capacity=capacity)
+            r.bf().create(key, errorRate=error_rate, capacity=capacity)
         except Exception:
             pass  # Already exists
 
@@ -146,7 +146,7 @@ r = Redis(host='localhost', port=6379, decode_responses=True)
 info = r.bf().info('email:blacklist')
 print(f"Capacity: {info.capacity}")
 print(f"Size (bytes): {info.size}")
-print(f"Number of filters: {info.filterCount}")
+print(f"Number of filters: {info.filterNum}")
 print(f"Items inserted: {info.insertedNum}")
 print(f"Expansion rate: {info.expansionRate}")
 ```
@@ -184,7 +184,7 @@ def get_event_fingerprint(event):
 def process_events(events):
     filter_key = 'events:seen'
     try:
-        r.bf().create(filter_key, error_rate=0.001, capacity=1000000)
+        r.bf().create(filter_key, errorRate=0.001, capacity=1000000)
     except Exception:
         pass
 
