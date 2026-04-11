@@ -16,7 +16,7 @@ Redis follows a primary-driven expiration model. When a key expires on the prima
 
 This means:
 - Replicas never independently decide to delete a key
-- Expired keys on replicas remain readable until the primary sends DEL
+- Before Redis 3.2, expired keys on replicas remained readable until the primary sent DEL. Since 3.2, replicas return nil for logically expired keys
 - The delay between expiration and DEL delivery depends on network latency and replication lag
 
 ## Why Replicas Can Serve Stale Data
@@ -32,8 +32,8 @@ If a key expires at time T:
 redis-cli -h primary SET mykey "value" PX 5000
 # After 5 seconds...
 
-# On replica: key may still be returned
-redis-cli -h replica GET mykey  # Might return "value"
+# On replica (before Redis 3.2): key may still be returned
+redis-cli -h replica GET mykey  # Returns "value" on Redis < 3.2, nil on Redis >= 3.2
 ```
 
 ## Checking Expiration on Replicas
@@ -42,10 +42,10 @@ You can check TTL on a replica and it will report the remaining time (negative i
 
 ```bash
 redis-cli -h replica TTL mykey
-# Returns: -2 if already deleted, or a positive number if still live
+# Returns: -2 if the key does not exist, -1 if no expiry is set, or a positive number for remaining TTL
 ```
 
-Note: TTL checks use the local clock on the replica and can return negative values for expired-but-not-yet-deleted keys.
+Note: Since Redis 3.2, the replica uses its local clock to determine if a key has logically expired. For expired-but-not-yet-deleted keys, `TTL` returns `-2` (treating the key as non-existent) rather than reporting the remaining time. The `TTL` command only returns `-2`, `-1`, or a positive integer — it never returns arbitrary negative values.
 
 ## Replica Expiration Logic Change in Redis 3.2
 
@@ -57,13 +57,13 @@ redis-cli INFO server | grep "redis_version"
 
 ## Implications for Read Workloads
 
-If your application reads exclusively from replicas with `slave_serve_stale_data no`, it may receive errors for keys during replication lag:
+If your application reads exclusively from replicas with `replica-serve-stale-data no`, replicas will return errors when they have lost connection to the primary or during initial synchronization:
 
 ```bash
-redis-cli CONFIG GET slave-serve-stale-data
+redis-cli CONFIG GET replica-serve-stale-data
 ```
 
-Setting `slave-serve-stale-data no` causes replicas to return errors when they are not in sync with the primary.
+Setting `replica-serve-stale-data no` causes replicas to return errors when the link to the primary is down or replication is still in progress. This does not apply during normal connected replication with minor lag.
 
 ## Monitoring Expiration Propagation
 
