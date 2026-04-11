@@ -87,6 +87,7 @@ HTTL user:1 FIELDS 4 name token cache role
 ```text
 (integer) 4
 1) (integer) 1
+2) (integer) 1
 1) (integer) -1
 2) (integer) 3600
 3) (integer) 3600
@@ -143,6 +144,7 @@ HTTL session:xyz FIELDS 4 user_id token temp_data perm_data
 ```text
 (integer) 4
 1) (integer) 1
+2) (integer) 1
 1) (integer) -1
 2) (integer) 60
 3) (integer) 60
