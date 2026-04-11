@@ -48,23 +48,33 @@ The `--purge` option deletes rows from the source without inserting them elsewhe
 
 ## Archiving to a File
 
-Archive rows to a CSV file for cold storage or offline analysis:
+Archive rows to a tab-delimited file for cold storage or offline analysis:
 
 ```bash
 pt-archiver \
   --source h=127.0.0.1,D=mydb,t=orders,u=root,p=secret \
-  --file /backup/archive/orders_%Y-%m-%d.csv \
+  --file /backup/archive/orders_%Y-%m-%d.tsv \
   --where "status='completed' AND created_at < '2024-01-01'" \
   --limit=500 \
   --commit-each \
   --statistics
 ```
 
-`%Y-%m-%d` in the filename is replaced with the current date.
+`%Y-%m-%d` in the filename is replaced with the current date. The output format is tab-delimited with `\N` for NULL values (similar to MySQL's SELECT INTO OUTFILE).
 
 ## Dry Run
 
-Use `--no-delete` combined with no destination to preview without changes. Or limit to a small test run:
+Use `--dry-run` to print the generated queries and exit without making any changes:
+
+```bash
+pt-archiver \
+  --source h=127.0.0.1,D=mydb,t=orders,u=root,p=secret \
+  --dest h=127.0.0.1,D=mydb_archive,t=orders_archive,u=root,p=secret \
+  --where "created_at < '2022-01-01'" \
+  --dry-run
+```
+
+This lets you examine the exact SQL statements pt-archiver will use. For a small live test run, add `--limit` and `--run-time`:
 
 ```bash
 pt-archiver \
@@ -89,11 +99,11 @@ pt-archiver \
   --purge \
   --where "created_at < DATE_SUB(NOW(), INTERVAL 180 DAY)" \
   --limit=200 \
-  --sleep=0.1 \
+  --sleep=1 \
   --commit-each
 ```
 
-`--sleep=0.1` waits 100ms between each chunk.
+`--sleep=1` waits 1 second between each chunk.
 
 ## Typical Statistics Output
 
@@ -107,8 +117,8 @@ Action             Count       Time        Pct
 sleep              399         39.90       12.10
 commit             400          3.20        0.97
 select             400          8.55        2.59
-insert             400         12.30        3.73
-delete             400         11.80        3.58
+inserting          400         12.30        3.73
+deleting           400         11.80        3.58
 ```
 
 ## Summary
