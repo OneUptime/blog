@@ -28,7 +28,7 @@ A complete Redis architecture document should include:
 ## Node Inventory Template
 
 ```text
-Redis Cluster Inventory - Updated: 2026-03-31
+Redis Deployment Inventory - Updated: 2026-03-31
 
 Node          | Role     | IP           | Port | RAM  | Version
 --------------|----------|--------------|------|------|--------
@@ -87,7 +87,7 @@ bind 10.0.1.10 127.0.0.1
 port 6379
 
 # Memory
-# Set to 80% of 16GB host RAM; leave room for OS and fork overhead
+# Set to 75% of 16GB host RAM; leave room for OS and fork overhead
 maxmemory 12gb
 # Use LRU for session data; volatile keys are sessions with TTL
 maxmemory-policy volatile-lru
@@ -133,15 +133,17 @@ rate-limiter    | production  | redis://redis-prod.internal:6379/3
                     |  via Sentinel)  |
                     +-------+-------+
                             |
-         +------------------+------------------+
-         |                  |                  |
-  +------+------+   +-------+------+   +-------+------+
-  | redis-prod-1|   | sentinel-1   |   | redis-prod-2 |
-  |  (Primary)  |   | sentinel-2   |   |  (Replica)   |
-  |  10.0.1.10  |   | sentinel-3   |   |  10.0.1.11   |
-  +------+------+   +--------------+   +-------+------+
-         |                                     |
-         +-----------replication---------------+
+      +-------------+------------------+-------------+
+      |             |                  |             |
++-----+------+ +---+----------+ +-----+------+ +---+----------+
+|redis-prod-1| | sentinel-1   | |redis-prod-2| |redis-prod-3  |
+| (Primary)  | | sentinel-2   | | (Replica)  | | (Replica)    |
+| 10.0.1.10  | | sentinel-3   | | 10.0.1.11  | | 10.0.1.12    |
++-----+------+ +--------------+ +-----+------+ +------+-------+
+      |                               |                |
+      +----------replication----------+                |
+      |                                                |
+      +-------------------replication------------------+
 ```
 
 ## Summary
