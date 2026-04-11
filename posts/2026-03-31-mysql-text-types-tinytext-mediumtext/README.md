@@ -44,7 +44,7 @@ column_name MEDIUMTEXT [CHARACTER SET charset] [COLLATE collation] [NOT NULL]
 column_name LONGTEXT   [CHARACTER SET charset] [COLLATE collation] [NOT NULL]
 ```
 
-TEXT columns cannot have a `DEFAULT` value other than `NULL`.
+Before MySQL 8.0.13, TEXT columns could not have a `DEFAULT` value other than `NULL`. Starting with MySQL 8.0.13, TEXT columns support explicit default values.
 
 ## Basic Usage
 
@@ -152,10 +152,10 @@ ORDER BY relevance DESC;
 | Feature | TEXT | VARCHAR |
 |---|---|---|
 | Max length | Up to 4 GB (LONGTEXT) | Up to 65,535 bytes |
-| DEFAULT value | Not supported | Supported |
-| Index without prefix | Not supported | Supported (up to 767 bytes) |
+| DEFAULT value | Supported (MySQL 8.0.13+) | Supported |
+| Index without prefix | Not supported | Supported (up to 3072 bytes with DYNAMIC row format) |
 | In-row storage | Off-page for large values | In-row (up to row limit) |
-| Sorting / GROUP BY | Requires prefix | Up to 65,535 bytes |
+| Sorting / GROUP BY | Uses `max_sort_length` bytes (default 1024) | Up to 65,535 bytes |
 
 ## Searching in TEXT Columns
 
@@ -181,7 +181,7 @@ ALTER TABLE comments
 
 ## Best Practices
 
-- Use `VARCHAR(255)` instead of `TINYTEXT` for short strings; VARCHAR has better index support and allows default values.
+- Use `VARCHAR(255)` instead of `TINYTEXT` for short strings; VARCHAR has better index support.
 - Use `TEXT` for user comments, product descriptions, and any content under 64 KB.
 - Use `MEDIUMTEXT` for article bodies, source code files, and documents that may reach a few MB.
 - Use `LONGTEXT` only for very large data like log aggregations or binary-encoded large content.
@@ -190,4 +190,4 @@ ALTER TABLE comments
 
 ## Summary
 
-MySQL TEXT types -- `TINYTEXT` (255 bytes), `TEXT` (64 KB), `MEDIUMTEXT` (16 MB), and `LONGTEXT` (4 GB) -- store large character strings. They differ from `VARCHAR` in that they do not support default values, require prefix lengths for non-FULLTEXT indexes, and store large values off-page in InnoDB. Choose the smallest TEXT type that fits your data to avoid unnecessary storage overhead. For full-text search, use `FULLTEXT` indexes rather than `LIKE` pattern matching.
+MySQL TEXT types -- `TINYTEXT` (255 bytes), `TEXT` (64 KB), `MEDIUMTEXT` (16 MB), and `LONGTEXT` (4 GB) -- store large character strings. They differ from `VARCHAR` in that they require prefix lengths for non-FULLTEXT indexes and store large values off-page in InnoDB. As of MySQL 8.0.13, TEXT columns also support default values. Choose the smallest TEXT type that fits your data to avoid unnecessary storage overhead. For full-text search, use `FULLTEXT` indexes rather than `LIKE` pattern matching.
