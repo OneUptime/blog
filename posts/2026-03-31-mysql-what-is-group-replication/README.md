@@ -24,9 +24,9 @@ Group Replication runs in one of two modes:
 
 When a transaction is committed on a group member:
 1. The member proposes the transaction to the group via the GCS (Group Communication System).
-2. All online members certify the transaction (check for write-set conflicts).
-3. If a majority certifies it, the transaction is committed globally.
-4. If a conflict is detected, one transaction is aborted and returns an error to the client.
+2. The GCS uses the Paxos-based protocol to deliver the transaction to all group members in the same total order (this step requires a majority of members to be reachable).
+3. Each member independently certifies the transaction by checking for write-set conflicts. Since certification is deterministic, all members reach the same commit or abort decision.
+4. If a conflict is detected, the conflicting transaction is aborted and returns an error to the client.
 
 This ensures every member has a consistent view of which transactions committed.
 
