@@ -77,7 +77,7 @@ WITH RECURSIVE category_tree AS (
         parent_id,
         0 AS depth,
         CAST(name AS CHAR(500)) AS path,
-        CAST(sort_order AS CHAR(10)) AS sort_path
+        CAST(LPAD(sort_order, 5, '0') AS CHAR(500)) AS sort_path
     FROM categories
     WHERE parent_id IS NULL
       AND is_active = 1
