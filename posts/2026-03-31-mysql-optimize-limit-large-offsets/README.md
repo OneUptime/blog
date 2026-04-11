@@ -78,7 +78,8 @@ SELECT o.*
 FROM orders o
 JOIN (
   SELECT id FROM orders ORDER BY id LIMIT 20 OFFSET 100000
-) AS page_ids ON o.id = page_ids.id;
+) AS page_ids ON o.id = page_ids.id
+ORDER BY o.id;
 ```
 
 The subquery scans only the narrow index, then full rows are fetched only for the 20 matching IDs.
