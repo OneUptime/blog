@@ -13,17 +13,17 @@ Redis Streams provide a persistent, ordered log of events with consumer group su
 ## Install Dependencies
 
 ```bash
-pip install fastapi uvicorn aioredis
+pip install fastapi uvicorn redis
 ```
 
 ## Publish Events from a FastAPI Endpoint
 
 ```python
-import aioredis
+from redis.asyncio import Redis
 from fastapi import FastAPI
 
 app = FastAPI()
-redis = aioredis.from_url("redis://localhost:6379")
+redis = Redis.from_url("redis://localhost:6379")
 
 @app.post("/events/order")
 async def create_order(order_id: str, amount: float):
