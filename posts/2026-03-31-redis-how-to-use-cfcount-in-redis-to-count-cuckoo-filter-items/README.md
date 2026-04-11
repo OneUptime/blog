@@ -164,8 +164,9 @@ def check_filter_health(filter_name):
     info = r.execute_command('CF.INFO', filter_name)
     info_dict = {info[i]: info[i+1] for i in range(0, len(info), 2)}
     inserted = info_dict.get('Number of items inserted', 0)
-    capacity = info_dict.get('Size', 1)
-    print(f"Items: {inserted}, consider expansion if near capacity")
+    deleted = info_dict.get('Number of items deleted', 0)
+    size = info_dict.get('Size', 0)
+    print(f"Items inserted: {inserted}, deleted: {deleted}, filter size: {size} bytes")
 ```
 
 ## Summary
