@@ -186,9 +186,13 @@ async function bulkGet(keys) {
   }, {});
 }
 
-const keys = Array.from({ length: 100 }, (_, i) => `item:${i}`);
-const values = await bulkGet(keys);
-console.log(`Retrieved ${Object.keys(values).length} items`);
+async function main() {
+  const keys = Array.from({ length: 100 }, (_, i) => `item:${i}`);
+  const values = await bulkGet(keys);
+  console.log(`Retrieved ${Object.keys(values).length} items`);
+}
+
+main();
 ```
 
 ## Pipeline with TTL
