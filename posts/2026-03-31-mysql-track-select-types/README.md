@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Query Optimization, Monitoring
 
-Description: Monitor MySQL Com_select and select type counters to identify full joins, full range joins, and other inefficient query patterns using global status.
+Description: Monitor MySQL select type counters to identify full joins, full range joins, and other inefficient query patterns using global status.
 
 ---
 
@@ -29,13 +29,13 @@ WHERE VARIABLE_NAME IN (
 | `Select_full_join` | JOIN without an index on the joined column - reads every row in the joined table |
 | `Select_full_range_join` | Range scan on the reference table in a join - partial scan |
 | `Select_range` | Range scan on the first table in a join (usually acceptable) |
-| `Select_range_check` | Re-evaluates key usage for each row of a join (very bad) |
+| `Select_range_check` | Joins without keys that re-evaluate key usage for each row (very bad) |
 | `Select_scan` | Full table scan on the first table (acceptable if table is small) |
 
 ## Spotting Problems
 
 ```sql
--- Delta over 60 seconds to detect rate of occurrence
+-- Snapshot query - run twice and compare to compute the delta
 SELECT
   VARIABLE_NAME,
   CAST(VARIABLE_VALUE AS UNSIGNED) AS value
@@ -60,13 +60,15 @@ JOIN customers c ON c.id = o.customer_id
 WHERE o.status = 'pending';
 ```
 
-Look for `type: ALL` in the EXPLAIN output - this corresponds to a full table scan or full join:
+Look for `type: ALL` on the joined table in the EXPLAIN output - this indicates a full join without an index:
 
 ```text
-+----+-------------+-----------+------+---------------+------+---------+------+------+-------------+
-| id | select_type | table     | type | possible_keys | key  | key_len | rows | Extra       |
-+----+-------------+-----------+------+---------------+------+---------+------+------+-------------+
-|  1 | SIMPLE      | customers | ALL  | NULL          | NULL | NULL    | 5000 | Using where |
++----+-------------+-----------+------+---------------+------+---------+------+-------+-------------+
+| id | select_type | table     | type | possible_keys | key  | key_len | ref  | rows  | Extra       |
++----+-------------+-----------+------+---------------+------+---------+------+-------+-------------+
+|  1 | SIMPLE      | customers | ALL  | NULL          | NULL | NULL    | NULL |  5000 | NULL        |
+|  1 | SIMPLE      | orders    | ALL  | NULL          | NULL | NULL    | NULL | 50000 | Using where |
++----+-------------+-----------+------+---------------+------+---------+------+-------+-------------+
 ```
 
 ## Fixing a Full Join
