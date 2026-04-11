@@ -135,7 +135,7 @@ redis_tcp_keepalive: 300
 # roles/redis/templates/redis.conf.j2
 bind {{ redis_bind }}
 port {{ redis_port }}
-daemonize yes
+daemonize no
 
 loglevel {{ redis_loglevel }}
 logfile {{ redis_log_dir }}/redis.log
@@ -169,7 +169,6 @@ timeout {{ redis_timeout }}
     owner: redis
     group: redis
     mode: '0640'
-    validate: "redis-server --test-memory 1"
   notify: Restart Redis
 
 - name: Enable and start Redis service
@@ -179,7 +178,9 @@ timeout {{ redis_timeout }}
     state: started
 
 - name: Verify Redis is responding
-  ansible.builtin.command: redis-cli -p {{ redis_port }} ping
+  ansible.builtin.command: >
+    redis-cli -p {{ redis_port }}
+    {{ '-a ' + redis_requirepass if redis_requirepass else '' }} ping
   register: redis_ping
   changed_when: false
   failed_when: redis_ping.stdout != 'PONG'
@@ -196,7 +197,8 @@ timeout {{ redis_timeout }}
     state: restarted
 
 - name: Reload Redis
-  ansible.builtin.command: redis-cli CONFIG REWRITE
+  ansible.builtin.command: >
+    redis-cli {{ '-a ' + redis_requirepass if redis_requirepass else '' }} CONFIG REWRITE
   ignore_errors: true
 ```
 
@@ -218,6 +220,7 @@ timeout {{ redis_timeout }}
     - name: Set replication source
       ansible.builtin.command: >
         redis-cli -p {{ redis_port }}
+        {{ '-a ' + redis_requirepass if redis_requirepass else '' }}
         REPLICAOF {{ hostvars[groups['redis_primary'][0]]['ansible_host'] }} {{ redis_port }}
       changed_when: false
 ```
@@ -232,11 +235,13 @@ timeout {{ redis_timeout }}
   become: true
   tasks:
     - name: Trigger RDB save
-      ansible.builtin.command: redis-cli BGSAVE
+      ansible.builtin.command: >
+        redis-cli {{ '-a ' + redis_requirepass if redis_requirepass else '' }} BGSAVE
       changed_when: false
 
     - name: Wait for save to complete
-      ansible.builtin.command: redis-cli LASTSAVE
+      ansible.builtin.command: >
+        redis-cli {{ '-a ' + redis_requirepass if redis_requirepass else '' }} LASTSAVE
       register: last_save
       until: last_save.stdout | int > ansible_date_time.epoch | int - 60
       retries: 10
@@ -255,9 +260,6 @@ timeout {{ redis_timeout }}
 ```bash
 # Install Redis on all hosts
 ansible-playbook -i inventory/hosts.ini playbooks/install.yml --ask-vault-pass
-
-# Apply configuration changes only
-ansible-playbook -i inventory/hosts.ini playbooks/install.yml --tags configure
 
 # Run backup
 ansible-playbook -i inventory/hosts.ini playbooks/backup.yml
