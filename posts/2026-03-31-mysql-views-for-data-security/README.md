@@ -19,11 +19,12 @@ Expose only non-sensitive columns to application users:
 ```sql
 -- Base table contains salary and SSN
 CREATE TABLE employees (
-  id        INT PRIMARY KEY,
-  name      VARCHAR(100),
+  id         INT PRIMARY KEY,
+  name       VARCHAR(100),
   department VARCHAR(50),
-  salary    DECIMAL(10,2),
-  ssn       CHAR(11)
+  salary     DECIMAL(10,2),
+  ssn        CHAR(11),
+  hire_date  DATE
 );
 
 -- Public view hides salary and SSN
@@ -52,13 +53,13 @@ WHERE department = 'HR';
 GRANT SELECT ON mydb.hr_employees TO 'hr_user'@'%';
 ```
 
-For dynamic row filtering based on the current user, combine views with `CURRENT_USER()`:
+For dynamic row filtering based on the current user, combine views with `CURRENT_USER()`. Note that `CURRENT_USER()` returns the MySQL account in `'user'@'host'` format, so the column must store values in the same format:
 
 ```sql
 CREATE VIEW my_orders AS
 SELECT order_id, amount, status
 FROM orders
-WHERE customer_email = CURRENT_USER();
+WHERE order_owner = CURRENT_USER();
 ```
 
 ## DEFINER vs. INVOKER Security
@@ -75,7 +76,7 @@ CREATE DEFINER='admin'@'localhost'
 -- INVOKER: view runs with the calling user's privileges
 CREATE SQL SECURITY INVOKER
   VIEW my_sales AS
-  SELECT * FROM sales WHERE rep_id = CURRENT_USER();
+  SELECT * FROM sales WHERE sales_owner = CURRENT_USER();
 ```
 
 `SQL SECURITY DEFINER` lets you give users access to aggregated results without granting access to the raw table. `SQL SECURITY INVOKER` enforces the caller's own privileges.
