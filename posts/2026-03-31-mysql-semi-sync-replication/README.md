@@ -16,7 +16,7 @@ MySQL supports three replication durability modes:
 |---|---|---|
 | Asynchronous (default) | Nothing | Data loss possible |
 | Semi-synchronous | At least one replica to acknowledge receipt | Zero data loss (acknowledged transactions) |
-| Synchronous (Group Replication / NDB) | All members to apply | No data loss, higher latency |
+| Synchronous (Group Replication / NDB) | Majority consensus (GR) or all data nodes (NDB) | No data loss, higher latency |
 
 Semi-synchronous replication is a middle ground: the source does not commit until at least one replica has written the event to its relay log and sent an acknowledgement. If no acknowledgement arrives within `rpl_semi_sync_source_timeout` milliseconds, the source falls back to asynchronous mode automatically.
 
@@ -39,8 +39,8 @@ sequenceDiagram
 
 ## Prerequisites
 
-- MySQL 8.0+ (uses `rpl_semi_sync_source` and `rpl_semi_sync_replica` plugin names)
-- MySQL 5.7: plugin names are `rpl_semi_sync_master` and `rpl_semi_sync_slave`
+- MySQL 8.0.26+ (uses `rpl_semi_sync_source` and `rpl_semi_sync_replica` plugin names)
+- MySQL 8.0.0–8.0.25 and 5.7: plugin names are `rpl_semi_sync_master` and `rpl_semi_sync_slave`
 - Existing asynchronous replication already configured, or start from a fresh setup
 
 ## Step 1 - Install the plugins on the source
