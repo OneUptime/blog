@@ -13,15 +13,15 @@ Description: Use Redis 7.4 per-field expiration commands to set individual TTLs 
 Before Redis 7.4, TTL could only be set on entire keys, not individual fields within a Hash. To expire individual fields, developers resorted to workarounds like separate keys or periodic cleanup jobs.
 
 Redis 7.4 introduced per-field expiration for Hashes with new commands:
-- `HEXPIRE key seconds field [field ...]`
-- `HEXPIREAT key unix-time-seconds field [field ...]`
-- `HPEXPIRE key milliseconds field [field ...]`
-- `HPEXPIREAT key unix-time-ms field [field ...]`
-- `HTTL key field [field ...]`
-- `HPTTL key field [field ...]`
-- `HEXPIRETIME key field [field ...]`
-- `HPEXPIRETIME key field [field ...]`
-- `HPERSIST key field [field ...]`
+- `HEXPIRE key seconds [NX|XX|GT|LT] FIELDS numfields field [field ...]`
+- `HEXPIREAT key unix-time-seconds [NX|XX|GT|LT] FIELDS numfields field [field ...]`
+- `HPEXPIRE key milliseconds [NX|XX|GT|LT] FIELDS numfields field [field ...]`
+- `HPEXPIREAT key unix-time-ms [NX|XX|GT|LT] FIELDS numfields field [field ...]`
+- `HTTL key FIELDS numfields field [field ...]`
+- `HPTTL key FIELDS numfields field [field ...]`
+- `HEXPIRETIME key FIELDS numfields field [field ...]`
+- `HPEXPIRETIME key FIELDS numfields field [field ...]`
+- `HPERSIST key FIELDS numfields field [field ...]`
 
 ## Setting Field Expiration
 
@@ -159,16 +159,19 @@ redis-cli HTTL user:cache:42 FIELDS 3 profile preferences avatar
 ## Return Value Codes
 
 `HEXPIRE`, `HEXPIREAT`, `HPEXPIRE`, and `HPEXPIREAT` return:
-- `2` - field does not exist in the hash
+- `2` - field was deleted because the specified expiration is in the past or zero
 - `1` - expiration was set successfully
 - `0` - conditions not met (e.g., NX/XX/GT/LT flags)
-- `-1` - field does not have a TTL (for HTTL/HPTTL)
-- `-2` - field does not exist (for HTTL/HPTTL)
+- `-2` - field does not exist in the hash
+
+`HTTL`, `HPTTL`, `HEXPIRETIME`, and `HPEXPIRETIME` return:
+- `-1` - field exists but does not have an expiration set
+- `-2` - field or key does not exist
 
 ```bash
 redis-cli HEXPIRE user:123 3600 FIELDS 2 existingField nonExistentField
-# 1) (integer) 1   <- existingField: success
-# 2) (integer) 2   <- nonExistentField: does not exist
+# 1) (integer) 1    <- existingField: success
+# 2) (integer) -2   <- nonExistentField: does not exist
 ```
 
 ## Summary
