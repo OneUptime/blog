@@ -51,9 +51,9 @@ Vitess is the technology behind PlanetScale's managed MySQL service.
 git clone https://github.com/vitessio/vitess
 cd vitess/examples/compose
 
-docker-compose up -d
+docker compose up -d
 
-# Access VTAdmin at http://localhost:15000
+# Access VTAdmin at http://localhost:14201
 ```
 
 ## Defining a Keyspace and Sharding
@@ -69,10 +69,10 @@ mysql -h 127.0.0.1 -P 15306 -u user
 
 ```bash
 # Unsharded keyspace
-vtctlclient CreateKeyspace commerce
+vtctldclient CreateKeyspace commerce
 
-# Sharded keyspace
-vtctlclient CreateKeyspace --sharding_column_name=customer_id   --sharding_column_type=hash commerce_sharded
+# Sharded keyspace (sharding is configured via VSchema, not at creation time)
+vtctldclient CreateKeyspace commerce_sharded
 ```
 
 ## VSchema - Routing Rules
@@ -125,8 +125,11 @@ cursor.execute("SELECT * FROM orders WHERE customer_id = %s", (42,))
 Vitess can run schema migrations without locking tables, managed by the control plane:
 
 ```sql
+-- Set the online DDL strategy
+SET @@ddl_strategy='vitess';
+
 -- Submit an online DDL migration
-ALTER TABLE orders ADD COLUMN notes TEXT, ALGORITHM=ONLINE;
+ALTER TABLE orders ADD COLUMN notes TEXT;
 
 -- Check migration status
 SHOW VITESS_MIGRATIONS LIKE 'orders'\G
@@ -150,9 +153,10 @@ When a shard grows too large, Vitess supports online resharding:
 
 ```bash
 # Reshard from 2 shards to 4
-vtctlclient Reshard create commerce.reshard_workflow
-vtctlclient Reshard switchTraffic commerce.reshard_workflow
-vtctlclient Reshard complete commerce.reshard_workflow
+vtctldclient Reshard --workflow reshard_workflow --target-keyspace commerce create \
+  --source-shards '-80,80-' --target-shards '-40,40-80,80-c0,c0-'
+vtctldclient Reshard --workflow reshard_workflow --target-keyspace commerce switchtraffic
+vtctldclient Reshard --workflow reshard_workflow --target-keyspace commerce complete
 ```
 
 ## Summary
