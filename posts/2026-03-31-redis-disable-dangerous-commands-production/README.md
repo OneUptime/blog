@@ -37,11 +37,11 @@ rename-command KEYS     ""
 
 An empty string `""` completely disables the command. A random string keeps it accessible to administrators who know the renamed form.
 
-Note: `rename-command` is deprecated in Redis 7.x and does not work with ACL files. Prefer ACL-based restrictions.
+Note: `rename-command` is deprecated as of Redis 6.2. Prefer ACL-based restrictions for Redis 6.2+.
 
 ## Method 2: Use ACL to Restrict Commands (Recommended)
 
-With Redis 6+, use ACL to deny dangerous commands per user:
+With Redis 6.2+, use ACL to deny dangerous commands per user:
 
 ```bash
 # Revoke dangerous commands from the default user
@@ -98,4 +98,4 @@ rename-command SHUTDOWN ""
 
 ## Summary
 
-Disable dangerous Redis commands using either `rename-command` in `redis.conf` (legacy) or ACL rules (recommended for Redis 6+). Use empty string `""` to fully remove a command, or deny it with `-COMMAND` in ACL rules. Always restrict `FLUSHALL`, `FLUSHDB`, `CONFIG`, `DEBUG`, and `SHUTDOWN` on production servers.
+Disable dangerous Redis commands using either `rename-command` in `redis.conf` (legacy) or ACL rules (recommended for Redis 6.2+). Use empty string `""` to fully remove a command, or deny it with `-COMMAND` in ACL rules. Always restrict `FLUSHALL`, `FLUSHDB`, `CONFIG`, `DEBUG`, and `SHUTDOWN` on production servers.
