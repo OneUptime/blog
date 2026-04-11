@@ -131,4 +131,4 @@ def tenant_memory_bytes(tenant_id, sample_size=500):
 
 ## Summary
 
-A strict key namespace hierarchy like `t:{tenant}:{service}:{entity}:{id}` prevents key collisions and makes tenant offboarding straightforward. Wrapping the Redis client in a tenant-aware proxy enforces the prefix everywhere, while Redis ACL users provide cryptographic tenant isolation when shared namespacing alone is insufficient.
+A strict key namespace hierarchy like `t:{tenant}:{service}:{entity}:{id}` prevents key collisions and makes tenant offboarding straightforward. Wrapping the Redis client in a tenant-aware proxy enforces the prefix everywhere, while Redis ACL users provide ACL-based tenant isolation when shared namespacing alone is insufficient.
