@@ -62,8 +62,6 @@ def rollup_hour_to_redis(metric: str, hour_ts: float) -> int:
 Run the rollup at the top of each hour using a cron job or scheduler:
 
 ```python
-import datetime
-
 def run_hourly_rollup(metrics: list):
     # Roll up the previous complete hour
     last_hour_ts = time.time() - 3600
