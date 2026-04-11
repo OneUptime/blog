@@ -10,7 +10,7 @@ Description: Learn how MySQL calculates full-text relevance scores and how to so
 
 ## How MySQL Ranks Full-Text Results
 
-MySQL uses the BM25 (Best Match 25) algorithm for InnoDB full-text search to calculate relevance scores. A higher score indicates a stronger match. The score reflects factors including term frequency in the document, inverse document frequency across the corpus, and document length normalization.
+MySQL uses a relevance ranking algorithm for InnoDB full-text search to calculate relevance scores. A higher score indicates a stronger match. The score is computed based on the number of words in the row, the number of unique words in the row, the total number of words in the collection, and the number of rows that contain a particular word.
 
 The relevance score is returned by the `MATCH(...) AGAINST(...)` expression itself when used in the `SELECT` list.
 
@@ -111,8 +111,8 @@ EXPLAIN SELECT * FROM articles
 WHERE MATCH(title, body) AGAINST('performance');
 ```
 
-Verify the `EXPLAIN` output shows `fulltext` as the key type.
+Verify the `EXPLAIN` output shows `fulltext` in the `type` column.
 
 ## Summary
 
-MySQL ranks full-text search results using the BM25 algorithm, returning a floating-point relevance score from the `MATCH AGAINST` expression. Sort results by score descending to surface the most relevant matches. Use Natural Language Mode for the most meaningful scores, combine relevance with other signals using weighted formulas, and add a minimum score filter to eliminate weak matches.
+MySQL ranks full-text search results using a relevance ranking algorithm, returning a floating-point relevance score from the `MATCH AGAINST` expression. Sort results by score descending to surface the most relevant matches. Use Natural Language Mode for the most meaningful scores, combine relevance with other signals using weighted formulas, and add a minimum score filter to eliminate weak matches.
