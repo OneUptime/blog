@@ -51,7 +51,7 @@ SELECT
     mdl.LOCK_TYPE,
     mdl.LOCK_DURATION,
     mdl.LOCK_STATUS,
-    pl.ID AS thread_id,
+    pl.ID AS process_id,
     pl.USER,
     pl.HOST,
     pl.DB,
