@@ -30,7 +30,7 @@ flowchart TD
 ## Syntax
 
 ```redis
-GEOSEARCH key FROMMEMBER member | FROMLONLAT longitude latitude BYRADIUS radius m|km|ft|mi | BYBOX width height m|km|ft|mi ASC|DESC [COUNT count [ANY]] [WITHCOORD] [WITHDIST]
+GEOSEARCH key FROMMEMBER member | FROMLONLAT longitude latitude BYRADIUS radius m|km|ft|mi | BYBOX width height m|km|ft|mi [ASC|DESC] [COUNT count [ANY]] [WITHCOORD] [WITHDIST] [WITHHASH]
 ```
 
 Key parameters:
@@ -50,7 +50,7 @@ GEOADD locations -73.9857 40.7484 "times-square"
 GEOADD locations -73.9654 40.7829 "central-park"
 GEOADD locations -74.0059 40.7128 "battery-park"
 GEOADD locations -73.9442 40.6782 "brooklyn-bridge"
-GEOADD locations -73.9851 40.6892 "coney-island"
+GEOADD locations -73.9787 40.5749 "coney-island"
 ```
 
 ## Examples
@@ -111,7 +111,7 @@ GEOSEARCH locations FROMLONLAT -73.9855 40.7580 BYRADIUS 10 km ASC COUNT 3 WITHC
 | Radius search | Yes | Yes | Yes |
 | Bounding box | No | No | Yes |
 | Store results | Yes | Yes | Use GEOSEARCHSTORE |
-| Redis version | All | All | 6.2+ |
+| Redis version | 3.2+ | 3.2+ | 6.2+ |
 
 ## Use Cases
 
