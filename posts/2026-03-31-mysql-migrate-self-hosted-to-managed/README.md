@@ -44,7 +44,7 @@ For databases under 50 GB, `mysqldump` with a short downtime window is the simpl
 # On source server - take a logical dump with consistent read
 mysqldump \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --routines \
   --triggers \
   --events \
@@ -80,11 +80,11 @@ For production databases requiring minimal downtime:
 
 ```bash
 # Step 1: Dump with binlog position
-mysqldump --single-transaction --master-data=1 \
+mysqldump --single-transaction --source-data=1 \
   --all-databases > dump_with_position.sql
 
-# The dump includes a CHANGE MASTER TO statement at the top
-head -30 dump_with_position.sql | grep "CHANGE MASTER"
+# The dump includes a CHANGE REPLICATION SOURCE TO statement at the top
+head -30 dump_with_position.sql | grep "CHANGE REPLICATION SOURCE"
 ```
 
 On the managed service side, configure it as a replica:
