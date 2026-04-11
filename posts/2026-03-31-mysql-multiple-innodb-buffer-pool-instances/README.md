@@ -33,8 +33,8 @@ SHOW VARIABLES LIKE 'innodb_buffer_pool_size';
 
 Key rules:
 - `innodb_buffer_pool_instances` only takes effect when `innodb_buffer_pool_size` is at least 1GB
-- Each instance must be at least 1GB (so max instances = total_size_in_GB)
-- MySQL documentation recommends 1 instance per GB of buffer pool, up to 64 instances
+- For best efficiency, each instance should be at least 1GB (so a practical upper limit is total_size_in_GB)
+- The maximum allowed value is 64 instances
 - For a 4GB buffer pool, use 4 instances; for 64GB, use 8-16 instances
 
 ## Applying the Configuration
@@ -70,8 +70,8 @@ SELECT
     FREE_BUFFERS,
     DATABASE_PAGES,
     HIT_RATE,
-    READ_REQUESTS,
-    WRITE_REQUESTS
+    NUMBER_PAGES_READ,
+    NUMBER_PAGES_WRITTEN
 FROM information_schema.INNODB_BUFFER_POOL_STATS
 ORDER BY POOL_ID;
 ```
@@ -98,9 +98,12 @@ A significant reduction in buffer pool mutex wait times after increasing instanc
 After a restart, buffer pool instances start cold. Warm them up using the dump/restore feature:
 
 ```sql
--- Automatically dump buffer pool on shutdown and restore on startup
+-- Automatically dump buffer pool on shutdown (dynamic variable)
 SET GLOBAL innodb_buffer_pool_dump_at_shutdown = ON;
-SET GLOBAL innodb_buffer_pool_load_at_startup = ON;
+
+-- To automatically load buffer pool at startup, add to my.cnf:
+-- innodb_buffer_pool_load_at_startup = ON
+-- (This variable is not dynamic and cannot be set at runtime)
 
 -- Manually trigger a dump
 SET GLOBAL innodb_buffer_pool_dump_now = ON;
