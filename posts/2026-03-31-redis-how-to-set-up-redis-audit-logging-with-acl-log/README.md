@@ -55,11 +55,8 @@ redis-cli CONFIG SET acllog-max-len 512
 ACL LOG captures denials automatically. You can test it:
 
 ```bash
-# Authenticate as read-only user
-redis-cli -a readonlypass AUTH readonly readonlypass
-
-# Try a write command - this will be denied and logged
-redis-cli -u redis://readonly:readonlypass@localhost:6379 SET mykey value
+# Try a write command as read-only user - this will be denied and logged
+redis-cli --user readonly --pass readonlypass SET mykey value
 
 # Try accessing a key outside the allowed pattern
 redis-cli -u redis://appuser:apppassword@localhost:6379 GET other:key
