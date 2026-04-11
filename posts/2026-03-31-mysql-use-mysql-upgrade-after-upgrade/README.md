@@ -36,7 +36,13 @@ mysql.db                                           OK
 mysql.user                                         OK
 ...
 Upgrade process completed successfully.
-Restarting the server, please wait...
+Checking if update is needed.
+```
+
+After `mysql_upgrade` completes, restart the server manually to apply all changes:
+
+```bash
+systemctl restart mysql
 ```
 
 ## Verifying the Upgrade Was Applied
@@ -56,7 +62,7 @@ SHOW VARIABLES LIKE 'innodb_version';
 
 ## Upgrading with mysql_upgrade in MySQL 8.0
 
-In MySQL 8.0, `mysql_upgrade` still exists but is effectively a no-op because the server handles upgrades during startup. However, you can still run it for compatibility:
+Starting with MySQL 8.0.16, `mysql_upgrade` is deprecated and effectively a no-op because the server handles upgrades automatically during startup. In earlier 8.0 releases (8.0.0 to 8.0.15), `mysql_upgrade` still needed to be run manually. In MySQL 8.4, the tool was removed entirely. If you are on 8.0.16 or later, you can still run it for compatibility:
 
 ```bash
 mysql_upgrade -u root -p --upgrade-system-tables
@@ -84,11 +90,13 @@ mysql_upgrade -u root -p --socket=/var/run/mysqld/mysqld.sock
 
 ## Handling Errors During Upgrade
 
-If `mysql_upgrade` reports errors on specific tables, you may need to repair them manually:
+If `mysql_upgrade` reports errors on specific tables, you may need to repair them manually. Note that `REPAIR TABLE` only works with MyISAM, ARCHIVE, and CSV storage engines — it does not work with InnoDB tables:
 
 ```sql
--- Check and repair a specific table
+-- Check a specific table for upgrade issues
 CHECK TABLE mydb.mytable FOR UPGRADE;
+
+-- Repair a MyISAM table
 REPAIR TABLE mydb.mytable;
 
 -- Check all tables in a database
@@ -120,4 +128,4 @@ systemctl status mysql
 
 ## Summary
 
-The `mysql_upgrade` tool updates MySQL system tables and checks user tables for compatibility after a binary version upgrade. In MySQL 5.7 and earlier, it must be run manually after every upgrade. In MySQL 8.0+, the server handles most of this automatically, but running the tool with `--upgrade-system-tables` is still useful for forcing privilege table updates and ensuring a clean transition.
+The `mysql_upgrade` tool updates MySQL system tables and checks user tables for compatibility after a binary version upgrade. In MySQL 5.7 and earlier, it must be run manually after every upgrade. In MySQL 8.0.16+, the server handles this automatically at startup and `mysql_upgrade` is deprecated. In MySQL 8.4, the tool was removed entirely.
