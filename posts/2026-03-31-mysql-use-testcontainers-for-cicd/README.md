@@ -35,7 +35,7 @@ For Java/Maven:
 For Node.js:
 
 ```bash
-npm install --save-dev testcontainers mysql2
+npm install --save-dev @testcontainers/mysql mysql2
 ```
 
 ## Java Integration Test Example
@@ -70,7 +70,7 @@ class OrderRepositoryTest {
 
 ```javascript
 // tests/order.integration.test.js
-const { MySqlContainer } = require('testcontainers');
+const { MySqlContainer } = require('@testcontainers/mysql');
 const mysql = require('mysql2/promise');
 
 let container;
@@ -85,7 +85,7 @@ beforeAll(async () => {
 
   connection = await mysql.createConnection({
     host:     container.getHost(),
-    port:     container.getFirstMappedPort(),
+    port:     container.getPort(),
     database: 'testdb',
     user:     'testuser',
     password: 'testpass',
