@@ -40,7 +40,7 @@ Test isolation:
 redis-cli -u redis://app-a-user:pass1@127.0.0.1:6379 SET app-a:session "data"
 # OK
 redis-cli -u redis://app-a-user:pass1@127.0.0.1:6379 GET app-b:session
-# (error) NOPERM No permissions to access a key
+# (error) NOPERM this user has no permissions to access one of the keys used as arguments
 ```
 
 ## Multiple Patterns for One User
@@ -87,7 +87,7 @@ ACL GETUSER app-a-user
 
 ```bash
 ACL DRYRUN app-a-user GET app-b:somekey
-# (error) ERR This user has no permissions to access one of the keys used
+# "This user has no permissions to access the 'app-b:somekey' key"
 ```
 
 ## Summary
