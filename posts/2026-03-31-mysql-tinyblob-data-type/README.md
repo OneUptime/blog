@@ -10,7 +10,7 @@ Description: Learn how TINYBLOB works in MySQL for storing small binary objects 
 
 ## What Is the TINYBLOB Data Type
 
-`TINYBLOB` is the smallest binary large object (BLOB) type in MySQL. It stores up to 255 bytes of binary data. Like all BLOB types, `TINYBLOB` is stored off-page and does not count against the 65,535-byte row-size limit.
+`TINYBLOB` is the smallest binary large object (BLOB) type in MySQL. It stores up to 255 bytes of binary data. Like all BLOB types, `TINYBLOB` stores its contents separately from the rest of the row and only contributes 9 bytes toward the 65,535-byte row-size limit.
 
 The BLOB family: `TINYBLOB` (255 bytes), `BLOB` (64 KB), `MEDIUMBLOB` (16 MB), `LONGBLOB` (4 GB).
 
@@ -73,7 +73,7 @@ with open('retrieved_thumb.png', 'wb') as f:
 |---|---|---|
 | Max size | 255 bytes | 255 bytes |
 | Storage location | Off-page | In-row |
-| Default value | Not allowed | Allowed |
+| Default value | Expression only (MySQL 8.0.13+) | Allowed |
 | Row-size contribution | Minimal (pointer) | Full value size |
 | Index support | Prefix only | Full or prefix |
 
