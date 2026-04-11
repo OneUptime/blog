@@ -62,8 +62,6 @@ def fetch_with_coalescing(cache_key: str, fetch_fn, ttl: int = 300):
 Polling adds latency. A cleaner approach publishes a notification when the result is ready, so waiters wake up immediately.
 
 ```python
-import threading
-
 def fetch_with_pubsub(cache_key: str, fetch_fn, ttl: int = 300):
     cached = r.get(cache_key)
     if cached:
@@ -82,19 +80,25 @@ def fetch_with_pubsub(cache_key: str, fetch_fn, ttl: int = 300):
         finally:
             r.delete(lock_key)
     else:
-        # Subscribe and wait for notification
         pubsub = r.pubsub()
         pubsub.subscribe(notify_channel)
         try:
-            for message in pubsub.listen():
-                if message["type"] == "message":
+            # Re-check cache after subscribing to avoid race condition
+            cached = r.get(cache_key)
+            if cached:
+                return json.loads(cached)
+            deadline = time.time() + POLL_TIMEOUT
+            while time.time() < deadline:
+                message = pubsub.get_message(timeout=1)
+                if message and message["type"] == "message":
                     cached = r.get(cache_key)
                     if cached:
                         return json.loads(cached)
+            # Fallback: fetch directly if notification was not received
+            return fetch_fn()
         finally:
             pubsub.unsubscribe(notify_channel)
             pubsub.close()
-        return fetch_fn()
 ```
 
 ## Handling Lock Expiry and Failures
@@ -115,7 +119,7 @@ def safe_fetch(cache_key: str, fetch_fn, ttl: int = 300):
 
 ```python
 import asyncio
-import aioredis
+from redis.asyncio import Redis
 import json
 
 async def fetch_coalesced(r, cache_key: str, async_fetch_fn, ttl: int = 300):
