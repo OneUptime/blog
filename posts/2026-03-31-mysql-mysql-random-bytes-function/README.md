@@ -63,7 +63,7 @@ The most common use of `RANDOM_BYTES()` in MySQL is generating IVs for AES encry
 
 ```sql
 SET block_encryption_mode = 'aes-256-cbc';
-SET @key = SHA2('my_encryption_key', 256);
+SET @key = UNHEX(SHA2('my_encryption_key', 256));
 SET @iv  = RANDOM_BYTES(16);  -- AES-CBC requires 16-byte IV
 
 -- Encrypt with random IV
