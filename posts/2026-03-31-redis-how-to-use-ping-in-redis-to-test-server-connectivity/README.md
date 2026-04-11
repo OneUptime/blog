@@ -44,7 +44,7 @@ redis-cli --latency
 # Continuous ping for latency monitoring
 redis-cli --latency-history
 
-# One-shot latency check
+# Color-coded latency spectrum (continuous)
 redis-cli --latency-dist
 ```
 
@@ -175,11 +175,12 @@ In subscriber mode, most commands are restricted. `PING` is one of the few allow
 ```bash
 SUBSCRIBE notifications
 
-# In subscriber mode, only these are allowed:
-PING                    # Returns PONG
-PING "subscriber alive" # Returns ("pong", "subscriber alive")
+# In subscriber mode, a limited set of commands is allowed:
+PING                    # Returns ["pong", ""]
+PING "subscriber alive" # Returns ["pong", "subscriber alive"]
 SUBSCRIBE ch2           # Add more subscriptions
 UNSUBSCRIBE             # Leave channels
+# Also allowed: PSUBSCRIBE, PUNSUBSCRIBE, SSUBSCRIBE, SUNSUBSCRIBE, RESET, QUIT
 ```
 
 This makes `PING` useful for keepalive checks in long-running subscriber connections:
