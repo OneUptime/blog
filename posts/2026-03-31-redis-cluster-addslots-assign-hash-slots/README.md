@@ -51,11 +51,14 @@ redis-cli -p 7001 CLUSTER INFO
 redis-cli -p 7001 CLUSTER SLOTS
 ```
 
+> **Note:** `CLUSTER SLOTS` is deprecated as of Redis 7.0.0. Use `CLUSTER SHARDS` instead for Redis 7.0+.
+
 ## Important Restrictions
 
 `CLUSTER ADDSLOTS` will return an error if:
-- The slot is already assigned to any node in the cluster
-- You try to assign a slot that is in a migrating or importing state
+- The slot is already assigned to any node in the cluster (including the current node)
+
+If a slot is currently in the `importing` state on the node, running `CLUSTER ADDSLOTS` for that slot will clear the importing state and assign the slot normally.
 
 ```bash
 # This will fail if slot 100 is already assigned elsewhere
