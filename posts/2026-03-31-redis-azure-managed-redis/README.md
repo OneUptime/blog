@@ -14,10 +14,10 @@ Azure Managed Redis (AMR) is Microsoft's latest Redis service, launched in 2024.
 
 | SKU | Use Case | Max Memory |
 |---|---|---|
-| Memory Optimized | General caching | 1.5 TB |
-| Balanced | Mixed read/write | 120 GB |
-| Compute Optimized | High throughput | 96 GB |
-| Flash Optimized | Large datasets | 1.5 TB (NVMe) |
+| Memory Optimized | General caching | 2 TB |
+| Balanced | Mixed read/write | 960 GB |
+| Compute Optimized | High throughput | 720 GB |
+| Flash Optimized | Large datasets | 4.5 TB (NVMe) |
 
 ## Creating via Azure CLI
 
@@ -26,11 +26,11 @@ Azure Managed Redis (AMR) is Microsoft's latest Redis service, launched in 2024.
 az provider register --namespace Microsoft.Cache
 
 # Create a Managed Redis instance
-az redis create \
+az redisenterprise create \
   --name my-managed-redis \
   --resource-group rg-prod \
   --location eastus \
-  --sku BalancedB5 \
+  --sku Balanced_B5 \
   --no-wait
 ```
 
@@ -39,7 +39,7 @@ az redis create \
 ```json
 {
   "type": "Microsoft.Cache/redisEnterprise",
-  "apiVersion": "2024-02-01",
+  "apiVersion": "2025-04-01",
   "name": "my-managed-redis",
   "location": "eastus",
   "sku": {
@@ -79,7 +79,7 @@ import redis
 import ssl
 
 client = redis.Redis(
-    host="my-managed-redis.eastus.redisenterprise.cache.azure.net",
+    host="my-managed-redis.eastus.redis.azure.net",
     port=10000,
     password="<access-key>",
     ssl=True,
@@ -94,7 +94,7 @@ print(client.get("hello"))  # world
 ## Key Differences from Azure Cache for Redis
 
 - Uses port 10000 instead of 6380
-- Active geo-replication available on all SKUs
+- Active geo-replication available on most SKUs (except Balanced B0, B1, and Flash Optimized)
 - Supports Redis modules (Search, Bloom, JSON) natively
 - Simplified capacity units (B1, B5, B10, etc.)
 - Redis OSS Cluster API available without Premium tier
@@ -102,12 +102,12 @@ print(client.get("hello"))  # world
 ## Enabling Zone Redundancy
 
 ```bash
-az redis create \
+az redisenterprise create \
   --name my-managed-redis \
   --resource-group rg-prod \
   --location eastus \
-  --sku BalancedB5 \
-  --availability-zones 1 2 3
+  --sku Balanced_B5 \
+  --zones "1" "2" "3"
 ```
 
 ## Summary
