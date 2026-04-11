@@ -107,13 +107,13 @@ mysqlcheck -u root -p --check --auto-repair mydb
 
 ## Checking Tables After an Upgrade
 
-After a MySQL version upgrade, check all tables for compatibility:
+In MySQL versions prior to 8.0.16, you could check all tables for compatibility after a version upgrade:
 
 ```bash
 mysqlcheck -u root -p --check-upgrade --all-databases
 ```
 
-This is the equivalent of running `CHECK TABLE ... FOR UPGRADE` on every table.
+This was the equivalent of running `CHECK TABLE ... FOR UPGRADE` on every table. Note that `--check-upgrade` was deprecated in MySQL 8.0.16 and removed in MySQL 8.4. In current versions, the MySQL server automatically performs the necessary upgrade checks during the upgrade process via `mysql_upgrade` or the server startup with `--upgrade=AUTO` (the default).
 
 ## Using --extended for Thorough Checks
 
@@ -138,4 +138,4 @@ mysqlcheck -u root -p"$MYSQL_PASSWORD" --analyze --all-databases \
 
 ## Summary
 
-`mysqlcheck` is a convenient command-line wrapper for MySQL table maintenance operations. Use `--check` to verify table integrity, `--analyze` to refresh optimizer statistics, `--optimize` to reclaim space and defragment InnoDB tables, and `--auto-repair` to automatically fix MyISAM tables after a check failure. Run `--check-upgrade` after MySQL version upgrades to ensure all tables are compatible with the new version.
+`mysqlcheck` is a convenient command-line wrapper for MySQL table maintenance operations. Use `--check` to verify table integrity, `--analyze` to refresh optimizer statistics, `--optimize` to reclaim space and defragment InnoDB tables, and `--auto-repair` to automatically fix MyISAM tables after a check failure. In older MySQL versions (before 8.0.16), run `--check-upgrade` after MySQL version upgrades to ensure all tables are compatible with the new version; in MySQL 8.4 and later, the server handles upgrade checks automatically.
