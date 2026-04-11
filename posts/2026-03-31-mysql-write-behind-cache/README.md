@@ -68,8 +68,8 @@ def flush_pending_writes(batch_size=50, max_age_seconds=5):
 
         product = json.loads(cached)
         cursor.execute(
-            'INSERT INTO products (id, name, price, stock) VALUES (%s, %s, %s, %s) '
-            'ON DUPLICATE KEY UPDATE name=VALUES(name), price=VALUES(price), stock=VALUES(stock)',
+            'INSERT INTO products (id, name, price, stock) VALUES (%s, %s, %s, %s) AS new '
+            'ON DUPLICATE KEY UPDATE name=new.name, price=new.price, stock=new.stock',
             (product['id'], product['name'], product['price'], product['stock'])
         )
 
