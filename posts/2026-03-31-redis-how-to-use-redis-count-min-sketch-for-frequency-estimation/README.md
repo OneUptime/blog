@@ -17,8 +17,8 @@ CMS uses far less memory than exact counting for high-cardinality data like URL 
 ## Creating a Count-Min Sketch in Redis
 
 ```bash
-# Create a CMS with error rate 0.001 (0.1%) and 0.999 confidence
-CMS.INITBYPROB cms:page_views 0.001 0.999
+# Create a CMS with error rate 0.001 (0.1%) and 0.01 probability of exceeding error
+CMS.INITBYPROB cms:page_views 0.001 0.01
 
 # Or specify width and depth directly
 CMS.INITBYDIM cms:api_calls 2000 10
@@ -46,13 +46,13 @@ from redis import Redis
 r = Redis(decode_responses=True)
 
 def init_sketch(sketch_name: str, error_rate: float = 0.001,
-                confidence: float = 0.999):
+                probability: float = 0.01):
     """Initialize a Count-Min Sketch with error bounds."""
-    r.cms().initbyprob(sketch_name, error_rate, confidence)
+    r.cms().initbyprob(sketch_name, error_rate, probability)
 
 def track_event(sketch_name: str, event: str, count: int = 1) -> int:
     """Increment the count for an event and return the new estimated count."""
-    result = r.cms().incrby(sketch_name, {event: count})
+    result = r.cms().incrby(sketch_name, [event], [count])
     return result[0]
 
 def get_frequency(sketch_name: str, *events: str) -> dict:
@@ -62,7 +62,9 @@ def get_frequency(sketch_name: str, *events: str) -> dict:
 
 def batch_track(sketch_name: str, events: dict):
     """Increment multiple events at once. events = {event_name: count}"""
-    r.cms().incrby(sketch_name, events)
+    items = list(events.keys())
+    increments = list(events.values())
+    r.cms().incrby(sketch_name, items, increments)
 ```
 
 ## Real-World Example - API Endpoint Tracking
@@ -76,7 +78,7 @@ SKETCH = "cms:api_calls"
 
 @app.on_event("startup")
 def startup():
-    init_sketch(SKETCH, error_rate=0.001, confidence=0.999)
+    init_sketch(SKETCH, error_rate=0.001, probability=0.01)
 
 @app.middleware("http")
 async def track_endpoints(request: Request, call_next):
@@ -102,8 +104,10 @@ import re
 def process_search_query(query: str, sketch_name: str = "cms:keywords"):
     words = re.findall(r'\w+', query.lower())
     if words:
-        word_counts = dict(Counter(words))
-        r.cms().incrby(sketch_name, word_counts)
+        word_counts = Counter(words)
+        items = list(word_counts.keys())
+        increments = list(word_counts.values())
+        r.cms().incrby(sketch_name, items, increments)
 
 def get_keyword_frequency(sketch_name: str, *keywords: str) -> dict:
     counts = r.cms().query(sketch_name, *keywords)
