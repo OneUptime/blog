@@ -123,7 +123,7 @@ SHOW TABLE STATUS FROM myapp_db
 WHERE Auto_increment > 2000000000;
 ```
 
-For an `INT` column, the maximum is ~2.1 billion for unsigned. Consider changing to `BIGINT` before hitting that limit.
+For a signed `INT` column, the maximum is ~2.1 billion (2,147,483,647). For an unsigned `INT`, it is ~4.3 billion (4,294,967,295). Consider changing to `BIGINT` before hitting that limit.
 
 ## Summary
 
