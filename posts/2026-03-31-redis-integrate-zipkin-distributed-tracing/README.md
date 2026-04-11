@@ -123,7 +123,7 @@ provider.add_span_processor(
 To find Redis operations in Zipkin:
 1. Go to `http://localhost:9411`
 2. Search by service name
-3. Filter by span name `redis GET` or `redis SET`
+3. Filter by span name `GET` or `SET`
 4. Click any trace to see the full request timeline
 
 Zipkin displays Redis spans with timing data showing exact command duration. Look for spans where Redis accounts for more than 20ms in a request - this often indicates a missing index, a large payload, or network issues.
@@ -131,11 +131,11 @@ Zipkin displays Redis spans with timing data showing exact command duration. Loo
 ## Common Redis Span Attributes in Zipkin
 
 ```text
-span.name:     redis GET
-db.type:       redis
-db.statement:  GET product:123
-peer.hostname: localhost
-peer.port:     6379
+span.name:     GET
+db.system:     redis
+db.statement:  GET ?
+net.peer.name: localhost
+net.peer.port: 6379
 ```
 
 ## Summary
