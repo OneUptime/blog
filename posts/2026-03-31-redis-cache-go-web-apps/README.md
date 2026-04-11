@@ -19,7 +19,6 @@ import (
     "context"
     "encoding/json"
     "errors"
-    "fmt"
     "time"
 
     "github.com/redis/go-redis/v9"
