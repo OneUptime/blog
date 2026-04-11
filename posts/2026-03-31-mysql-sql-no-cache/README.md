@@ -22,14 +22,14 @@ WHERE status = 'PENDING';
 ## Query Cache Removed in MySQL 8.0
 
 The MySQL query cache was deprecated in MySQL 5.7.20 and removed entirely in MySQL 8.0. Therefore:
-- `SQL_NO_CACHE` is no longer recognized in MySQL 8.0 and will raise a warning
+- `SQL_NO_CACHE` is deprecated as of MySQL 8.0.3 and will raise a deprecation warning
 - `SQL_CACHE` (the opposite hint) is also gone
 - The query cache variables (`query_cache_type`, `query_cache_size`) no longer exist
 
 ```sql
--- MySQL 8.0: this raises a warning, the hint is ignored
+-- MySQL 8.0: this raises a deprecation warning, the hint is ignored
 SELECT SQL_NO_CACHE id FROM users LIMIT 1;
--- Warning: Query cache is disabled; to enable it restart MySQL server with query_cache_type=1
+-- Warning 1681: 'SQL_NO_CACHE' is deprecated and will be removed in a future release.
 ```
 
 ## Why the Query Cache Was Removed
