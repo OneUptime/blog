@@ -12,19 +12,19 @@ Redis pipelining reduces network round trips. MULTI/EXEC transactions provide at
 
 ## How They Combine
 
-Without combining, a transaction requires at least 2 round trips:
+Without combining, a transaction requires a round trip per command:
 
 ```text
-Round trip 1:  MULTI
-Round trip 2:  SET a 1
-               INCR b
-               EXEC
+Round trip 1:  MULTI    -> +OK
+Round trip 2:  SET a 1  -> +QUEUED
+Round trip 3:  INCR b   -> +QUEUED
+Round trip 4:  EXEC     -> [results]
 ```
 
 With a pipeline wrapping the transaction, all commands go in one payload:
 
 ```text
-Round trip 1:  MULTI | SET a 1 | INCR b | EXEC
+Round trip 1:  MULTI | SET a 1 | INCR b | EXEC -> [results]
 ```
 
 ## Python - redis-py
