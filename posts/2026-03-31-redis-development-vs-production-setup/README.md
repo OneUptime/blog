@@ -146,7 +146,7 @@ maxmemory            | 512mb         | 80% of RAM
 appendonly           | no            | yes
 loglevel             | verbose       | notice
 rename-command FLUSH | enabled       | disabled
-slowlog-log-slower   | 0 (log all)   | 10000 (10ms)
+slowlog-log-slower-than | 0 (log all) | 10000 (10ms)
 ```
 
 ## Summary
