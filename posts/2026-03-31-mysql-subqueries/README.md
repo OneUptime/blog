@@ -142,7 +142,7 @@ ORDER BY t.total_revenue DESC;
 +---------+-------------+---------------+
 | Laptop  | Electronics |      4999.95  |
 | Monitor | Electronics |      3199.92  |
-| Mouse   | Electronics |       599.80  |
+| Desk    | Furniture   |      1049.97  |
 +---------+-------------+---------------+
 ```
 
