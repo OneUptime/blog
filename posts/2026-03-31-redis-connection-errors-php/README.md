@@ -28,11 +28,11 @@ try {
 }
 ```
 
-## Enabling Exceptions in phpredis
+## Handling Command Errors in phpredis
+
+phpredis throws `RedisException` by default on connection and communication errors. Wrap commands in try-catch blocks:
 
 ```php
-$redis->setOption(Redis::OPT_THROW_ON_ERROR, true);
-
 try {
     $redis->get('key');
 } catch (RedisException $e) {
@@ -161,7 +161,7 @@ function getCached(Redis $redis, string $key, callable $fallback): mixed
 function checkRedisHealth(Redis $redis): bool
 {
     try {
-        return $redis->ping() === '+PONG';
+        return $redis->ping() === true;
     } catch (RedisException $e) {
         return false;
     }
