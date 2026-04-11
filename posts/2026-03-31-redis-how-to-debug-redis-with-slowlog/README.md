@@ -87,7 +87,7 @@ def analyze_slowlog(threshold_ms=10):
             'timestamp': datetime.fromtimestamp(entry['start_time']).isoformat(),
             'duration_ms': round(duration_ms, 2),
             'command': command[:200],
-            'client': entry.get('client_addr', 'unknown'),
+            'client': entry.get('client_address', 'unknown'),
         })
 
     # Sort by slowest first
@@ -184,7 +184,7 @@ def continuous_slowlog_monitor(poll_interval=60, threshold_ms=50):
             duration_ms = entry['duration'] / 1000
 
             if duration_ms >= threshold_ms:
-                cmd = ' '.join(entry['command'].decode() if isinstance(c, bytes) else c
+                cmd = ' '.join(c.decode() if isinstance(c, bytes) else c
                                for c in entry['command'])
                 print(f"SLOW [{duration_ms:.1f}ms] {cmd[:100]}")
 
