@@ -127,7 +127,7 @@ RESTORE destination 0 <dump-payload>
 ```
 
 ```text
-(error) BUSYKEY Target key name already exists.
+(error) BUSYKEY Target key name is busy.
 ```
 
 ## Cross-Server Migration with DUMP and RESTORE
