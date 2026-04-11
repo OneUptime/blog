@@ -110,19 +110,15 @@ If the target index does not exist:
 (error) ERR Unknown index name
 ```
 
-## Listing All Aliases
+## Listing Aliases
 
-You can view all indexes (including aliases) using:
-
-```bash
-FT._LIST
-```
-
-To get details about a specific index including its aliases:
+Aliases are not listed by `FT._LIST`, which only returns index names. To see the aliases associated with a specific index, use:
 
 ```bash
 FT.INFO products_v1
 ```
+
+The output includes an `aliases` field showing all aliases that point to that index.
 
 ## Summary
 
