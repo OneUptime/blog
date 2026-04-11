@@ -27,10 +27,10 @@ gcloud redis instances create my-redis-ha \
   --size=5 \
   --region=us-central1 \
   --zone=us-central1-a \
-  --secondary-zone=us-central1-b \
+  --alternative-zone=us-central1-b \
   --tier=standard \
   --redis-version=redis_7_0 \
-  --auth-enabled \
+  --enable-auth \
   --transit-encryption-mode=SERVER_AUTHENTICATION \
   --network=projects/my-project/global/networks/my-vpc \
   --project=my-project
@@ -41,7 +41,7 @@ gcloud redis instances describe my-redis-ha \
   --project=my-project
 ```
 
-The `--zone` is where the primary runs, `--secondary-zone` is where the replica runs. Use zones in different failure domains for maximum resilience.
+The `--zone` is where the primary runs, `--alternative-zone` is where the replica runs. Use zones in different failure domains for maximum resilience.
 
 ### Via Terraform
 
@@ -137,10 +137,9 @@ client.on('error', (err) => console.error('Redis error:', err));
 package main
 
 import (
-    "context"
     "crypto/tls"
     "fmt"
-    "github.com/go-redis/redis/v9"
+    "github.com/redis/go-redis/v9"
 )
 
 func newRedisClient(host, password string) *redis.Client {
@@ -161,7 +160,7 @@ When the primary node fails, Memorystore automatically:
 1. Detects the primary is unreachable (within ~30 seconds)
 2. Promotes the replica to primary
 3. Creates a new replica in the original primary's zone
-4. Updates the instance endpoint IP
+4. Redirects the existing endpoint to the new primary (IP address stays the same)
 
 ```python
 import time
@@ -217,7 +216,7 @@ gcloud redis instances failover my-redis-ha \
   --project=my-project
 ```
 
-The `force-data-loss` mode will fail over regardless of replication lag. Use `limited-data-loss` for production - it only fails over if less than 30 minutes of data would be lost.
+The `force-data-loss` mode will fail over regardless of replication lag. Use `limited-data-loss` for production - it only fails over if less than 30 MB of data is pending replication.
 
 ## Monitoring Memorystore HA
 
