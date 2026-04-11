@@ -107,9 +107,6 @@ SendWelcomeEmail::dispatch($user)
     ->onQueue('emails')
     ->delay(now()->addMinutes(5));
 
-// Dispatch and get job ID
-$job = SendWelcomeEmail::dispatch($user);
-
 // Dispatch after database transaction commits
 SendWelcomeEmail::dispatch($user)->afterCommit();
 ```
@@ -144,11 +141,11 @@ php artisan queue:work redis
 # Process with priority order
 php artisan queue:work redis --queue=high,default,low
 
-# Process with specific concurrency
+# Process with specific retry and sleep settings
 php artisan queue:work redis --queue=emails --sleep=3 --tries=3
 
-# Run as daemon (production)
-php artisan queue:work redis --daemon --timeout=60
+# Run with a timeout (production)
+php artisan queue:work redis --timeout=60
 ```
 
 ## Supervisor Configuration for Production
