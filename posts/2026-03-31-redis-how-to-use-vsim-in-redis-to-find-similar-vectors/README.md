@@ -20,8 +20,8 @@ Description: Learn how to use VSIM in Redis to perform approximate nearest-neigh
 ## Syntax
 
 ```text
-VSIM key (ELE element | VALUES dim val [val ...]) [WITHSCORES] [COUNT count]
-  [EF ef] [FILTER filter] [FILTER-EF filteref] [TRUTH] [NOTHREAD]
+VSIM key (ELE element | FP32 vector | VALUES num val [val ...]) [WITHSCORES] [WITHATTRIBS] [COUNT count]
+  [EPSILON delta] [EF ef] [FILTER filter] [FILTER-EF filteref] [TRUTH] [NOTHREAD]
 ```
 
 Key options:
@@ -66,7 +66,7 @@ VSIM docs ELE doc1 COUNT 3 WITHSCORES
 # 6) "0.998..."
 ```
 
-Scores are cosine similarities from 0.0 (orthogonal) to 1.0 (identical direction).
+Scores are rescaled cosine similarities in the range 0.0 to 1.0, where 1.0 means identical direction, 0.5 means orthogonal, and 0.0 means opposite direction.
 
 ## Python Example: Semantic Search System
 
