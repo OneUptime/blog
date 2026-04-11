@@ -13,17 +13,15 @@ Contact centers need call queues that handle hundreds of simultaneous callers, r
 ## Data Model
 
 ```bash
-# Call queue sorted set (score = priority + timestamp)
-ZADD queue:support 1711900001 "call-abc123"
+# Call queue sorted set (score = priority + fractional timestamp)
+# Lower score = higher priority. Example: priority 1, entered_at 1711900001
+ZADD queue:support 1.900001 "abc12345"
 
-# Caller info hash
-HSET call:abc123 caller_id +15551234567 queue support priority 1 entered_at 1711900001 status queued
+# Caller info stored as JSON string
+SET call:abc12345 '{"id":"abc12345","caller_id":"+15551234567","queue":"support","priority":1,"entered_at":1711900001,"status":"queued"}'
 
 # Agent availability set
 SADD agents:support:available agent-42 agent-43
-
-# Agent-to-call assignment hash
-HSET assignment:agent-42 call_id abc123 started_at 1711900100
 ```
 
 ## Setup
