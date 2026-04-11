@@ -44,7 +44,7 @@ class ReliableSubscriber:
                 for channel in self.channels:
                     pubsub.subscribe(channel)
 
-                # Send a heartbeat key periodically to confirm connectivity
+                # listen() blocks; connection errors break out to the except clause
                 for message in pubsub.listen():
                     if message["type"] == "message":
                         self.handler(message)
@@ -78,6 +78,8 @@ def reconcile_since(r, last_known_version):
     while True:
         cursor, keys = r.scan(cursor, match="version:*", count=200)
         for vk in keys:
+            if vk == "version:global":
+                continue
             v = int(r.get(vk) or 0)
             if v > last_known_version:
                 original_key = vk[len("version:"):]
