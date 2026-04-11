@@ -32,7 +32,7 @@ While a slot is migrating, clients may get redirected. There are two types:
 -MOVED 1234 192.168.1.2:6379
 ```
 
-**ASK** - the key has not migrated yet, but the client should try the destination node for this one request:
+**ASK** - the key was not found on this node and may have already migrated. Try the destination node for this one request:
 
 ```text
 -ASK 1234 192.168.1.2:6379
@@ -62,7 +62,7 @@ During migration, if a client requests a key that still exists on the source, th
 Check which slots are currently migrating:
 
 ```bash
-redis-cli CLUSTER NODES | grep -E "migrating|importing"
+redis-cli CLUSTER NODES | grep -E "\->-|-<-"
 ```
 
 Use the cluster check tool:
