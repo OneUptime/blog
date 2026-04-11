@@ -83,7 +83,7 @@ kubectl annotate service redis \
   config.linkerd.io/opaque-ports="6379"
 ```
 
-This prevents Linkerd from attempting HTTP/2 protocol detection on the Redis port.
+This prevents Linkerd from attempting HTTP protocol detection on the Redis port.
 
 ## Verify mTLS is Active
 
@@ -92,7 +92,7 @@ Check that Linkerd is encrypting Redis connections:
 ```bash
 # Check mTLS status between pods
 linkerd viz tap deploy/redis-client -n app-ns \
-  --to deploy/redis -n redis-ns
+  --to deploy/redis --to-namespace redis-ns
 
 # View the mTLS status in Linkerd dashboard
 linkerd viz dashboard &
@@ -102,36 +102,22 @@ In the Linkerd dashboard, navigate to the Redis namespace. Connections with the 
 
 ## View Redis Traffic Metrics
 
-Linkerd automatically collects golden metrics for TCP connections to Redis:
+Linkerd automatically collects TCP metrics for connections to Redis:
 
 ```bash
 # View TCP traffic stats for Redis
-linkerd viz stat -n redis-ns deploy/redis
+linkerd viz stat -n redis-ns deploy/redis --tcp-stats
 
-# Output shows:
-# NAME    MESHED  SUCCESS   RPS   LATENCY_P50  LATENCY_P95  LATENCY_P99
-# redis   1/1     100.00%   45    2ms          8ms          15ms
+# Output shows TCP-level metrics (HTTP metrics are not available for opaque TCP):
+# NAME    MESHED  TCP_CONN  TCP_READ_BYTES/SEC  TCP_WRITE_BYTES/SEC
+# redis   1/1     5         1234                5678
 ```
 
-## Set Up Linkerd ServiceProfiles for Circuit Breaking
+## Traffic Management Limitations for TCP
 
-While Linkerd's ServiceProfiles are primarily for HTTP, you can define retry budgets for Redis client deployments:
+Linkerd's ServiceProfiles provide retries and timeouts for HTTP traffic only. Since Redis uses a binary TCP protocol (RESP) and is configured as opaque, ServiceProfile route-level features like retries, timeouts, and per-route metrics do not apply to Redis connections. Traffic management for Redis is limited to TCP-level connection handling and mTLS encryption.
 
-```yaml
-# ServiceProfile for the Redis client service
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
-metadata:
-  name: redis.redis-ns.svc.cluster.local
-  namespace: app-ns
-spec:
-  routes:
-    - name: redis-connection
-      condition:
-        method: POST
-        pathRegex: ".*"
-      isRetryable: false  # Don't retry Redis writes
-```
+For application-level retry logic and circuit breaking with Redis, implement these in your client code or use a Redis client library that supports retry policies.
 
 ## Monitor with Prometheus
 
@@ -147,4 +133,4 @@ kubectl port-forward -n linkerd-viz svc/prometheus 9090:9090
 
 ## Summary
 
-Linkerd adds mTLS encryption, traffic observability, and circuit breaking to Redis connections without any application code changes. The key configuration steps are enabling sidecar injection on Redis pods and annotating port 6379 as opaque to prevent protocol detection errors. Linkerd's dashboard and Prometheus metrics provide TCP-level visibility into Redis connection counts, latency percentiles, and success rates.
+Linkerd adds mTLS encryption and traffic observability to Redis connections without any application code changes. The key configuration steps are enabling sidecar injection on Redis pods and annotating port 6379 as opaque to prevent protocol detection delays. Linkerd's dashboard and Prometheus metrics provide TCP-level visibility into Redis connection counts and bytes transferred. Note that HTTP-level features like per-route metrics, retries, and timeouts do not apply to opaque TCP traffic.
