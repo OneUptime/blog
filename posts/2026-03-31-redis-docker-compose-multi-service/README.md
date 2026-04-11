@@ -126,8 +126,6 @@ loglevel notice
     depends_on:
       redis:
         condition: service_healthy
-    environment:
-      - REDIS_REPLICA_OF=redis:6379
 ```
 
 ## Connecting from Multiple Services
