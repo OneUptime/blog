@@ -54,7 +54,7 @@ Checking compatibility with MySQL Server 8.4.0...
   Description: The following tables use features that are not supported in 8.4.0
   More Information: https://dev.mysql.com/doc/...
 
-  mydb.old_table - uses obsolete column type 'SET'
+  mydb.old_table - uses pre-5.6.4 temporal type for column 'created_at'
 
 2) Usage of removed functions
   Found 3 occurrences
@@ -65,11 +65,18 @@ Checking compatibility with MySQL Server 8.4.0...
 
 ## Saving the Report to a File
 
+You can get JSON output by setting the `outputFormat` option, then redirect it to a file from the command line:
+
+```bash
+mysqlsh root@localhost -e "util.checkForServerUpgrade({targetVersion: '8.0.40', outputFormat: 'JSON'})" > /tmp/upgrade_report.json
+```
+
+Or within an interactive MySQL Shell session, use the `outputFormat` option and copy the output:
+
 ```javascript
 util.checkForServerUpgrade({
   targetVersion: "8.0.40",
-  outputFormat: "JSON",
-  outputFile: "/tmp/upgrade_report.json"
+  outputFormat: "JSON"
 })
 ```
 
@@ -98,23 +105,23 @@ If users still use `mysql_native_password`, you need to migrate them before upgr
 ALTER USER 'myuser'@'%' IDENTIFIED WITH caching_sha2_password BY 'new_password';
 ```
 
-## Automating Checks with Python Mode
+## Automating Checks with a Python Script
 
-In Python mode, you can capture the report programmatically:
+You can automate the upgrade check by invoking MySQL Shell from a Python script:
 
 ```python
 import json
+import subprocess
 
-util.checkForServerUpgrade({
-    "targetVersion": "8.4.0",
-    "outputFormat": "JSON",
-    "outputFile": "/tmp/report.json"
-})
+result = subprocess.run(
+    ["mysqlsh", "root@localhost", "-e",
+     "util.check_for_server_upgrade({'targetVersion': '8.4.0', 'outputFormat': 'JSON'})"],
+    capture_output=True, text=True
+)
 
-with open("/tmp/report.json") as f:
-    report = json.load(f)
-    errors = [c for c in report["checks"] if c["status"] == "ERROR"]
-    print(f"Found {len(errors)} blocking errors")
+report = json.loads(result.stdout)
+errors = [c for c in report["checksPerformed"] if c["status"] == "ERROR"]
+print(f"Found {len(errors)} blocking errors")
 ```
 
 ## Resolving Common Issues
