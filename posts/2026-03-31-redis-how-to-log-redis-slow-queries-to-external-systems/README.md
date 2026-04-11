@@ -15,7 +15,7 @@ Redis has a built-in slow log that records commands that exceed a configurable e
 ### Configure the Slow Log
 
 ```bash
-# Set threshold in microseconds (100ms = 100000 microseconds)
+# Set threshold in microseconds (10ms = 10000 microseconds)
 redis-cli CONFIG SET slowlog-log-slower-than 10000
 
 # Set maximum number of entries to keep
@@ -93,7 +93,7 @@ def ship_to_elasticsearch(entries):
             'duration_us': entry['duration'],
             'duration_ms': entry['duration'] / 1000,
             'command': ' '.join(str(a) for a in entry['command'])[:500],
-            'client_addr': entry.get('client_addr', ''),
+            'client_addr': entry.get('client_address', ''),
             'client_name': entry.get('client_name', ''),
             'redis_host': r.connection_pool.connection_kwargs['host']
         }
@@ -133,6 +133,7 @@ curl -X PUT "http://elasticsearch-host:9200/redis-slowlog" \
 ```python
 from datadog import initialize, statsd
 import redis
+import json
 import time
 
 initialize(api_key='YOUR_DATADOG_API_KEY')
@@ -154,14 +155,14 @@ def poll_and_ship():
             tags=[
                 f'command:{command_name}',
                 f'redis_host:localhost',
-                f'client:{entry.get("client_addr", "unknown")}'
+                f'client:{entry.get("client_address", "unknown")}'
             ]
         )
         # Also send as a log event
         print(json.dumps({
             'command': ' '.join(str(a) for a in entry['command'])[:200],
             'duration_ms': entry['duration'] / 1000,
-            'client': entry.get('client_addr', '')
+            'client': entry.get('client_address', '')
         }))
     if entries:
         last_id = entries[0]['id']
@@ -237,7 +238,7 @@ while True:
                 'id': entry['id'],
                 'duration_us': entry['duration'],
                 'command': ' '.join(str(a) for a in entry['command'])[:500],
-                'client': entry.get('client_addr', '')
+                'client': entry.get('client_address', '')
             }
             logging.info(json.dumps(record))
         if entries:
