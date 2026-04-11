@@ -15,25 +15,23 @@ RedisInsight is the official GUI for Redis, providing a visual interface for bro
 Download the DMG from the Redis website or use Homebrew:
 
 ```bash
-brew install --cask redisinsight
+brew install --cask redis-insight
 ```
 
-Launch it from your Applications folder. It opens a browser tab at `http://localhost:5540`.
+Launch it from your Applications folder. It opens a browser tab at `http://localhost:5530`.
 
-## Install on Linux (DEB)
+## Install on Linux (Snap)
 
 ```bash
-wget https://downloads.redislabs.com/redisinsight/latest/redisinsight-linux-amd64.deb
-sudo dpkg -i redisinsight-linux-amd64.deb
+sudo snap install redisinsight
 redisinsight &
 ```
 
-## Install on Linux (AppImage)
+## Install on Linux (Flatpak)
 
 ```bash
-wget https://downloads.redislabs.com/redisinsight/latest/RedisInsight-linux-x86_64.AppImage
-chmod +x RedisInsight-linux-x86_64.AppImage
-./RedisInsight-linux-x86_64.AppImage
+flatpak install flathub com.redis.RedisInsight
+flatpak run com.redis.RedisInsight
 ```
 
 ## Install with Docker
