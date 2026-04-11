@@ -86,9 +86,9 @@ const client = createClient();
 await client.connect();
 
 async function backgroundSaveAndWait(timeoutMs = 30000) {
-  // Record the last save time
+  // Record the last save time (lastSave returns a Date object in node-redis v4)
   const beforeSave = await client.lastSave();
-  console.log(`Last save: ${new Date(beforeSave * 1000).toISOString()}`);
+  console.log(`Last save: ${beforeSave.toISOString()}`);
 
   // Trigger background save
   await client.bgSave();
@@ -103,7 +103,7 @@ async function backgroundSaveAndWait(timeoutMs = 30000) {
     if (!inProgress) {
       const afterSave = await client.lastSave();
       if (afterSave > beforeSave) {
-        console.log(`Save completed: ${new Date(afterSave * 1000).toISOString()}`);
+        console.log(`Save completed: ${afterSave.toISOString()}`);
         return true;
       }
     }
@@ -136,7 +136,7 @@ Always prefer `BGSAVE` in production. `SAVE` should only be used when you need a
 
 ```bash
 # Monitor memory during BGSAVE
-INFO memory
+INFO persistence
 # Look for: rdb_last_cow_size (bytes copied during last BGSAVE)
 ```
 
