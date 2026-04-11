@@ -154,8 +154,8 @@ def reprocess_pending_messages(topic: str, group_name: str, idle_ms: int = 30000
     """Reclaim and reprocess messages idle for 30+ seconds."""
     stream_key = f"queue:{topic}"
 
-    # Check pending messages
-    pending = r.xpending(stream_key, group_name, '-', '+', count=100)
+    # Check pending messages (range form returns per-message details)
+    pending = r.xpending_range(stream_key, group_name, '-', '+', 100)
 
     for entry in pending:
         message_id = entry['message_id']
