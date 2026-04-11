@@ -8,7 +8,7 @@ Description: Configure and use Redis 7.0+ IO threading to offload network reads 
 
 ---
 
-Redis is fundamentally single-threaded for command execution, but since Redis 6.0 it has supported multi-threaded IO for reading client requests and writing responses. Redis 7.0 refined this further with better thread balancing and reduced lock contention. Here is how to enable and tune it.
+Redis is fundamentally single-threaded for command execution, but since Redis 6.0 it has supported multi-threaded IO for reading client requests and writing responses. Redis 7.0 continued to improve overall performance and stability of these features. Here is how to enable and tune it.
 
 ## How IO Threading Works
 
@@ -28,15 +28,15 @@ io-threads 4
 io-threads-do-reads yes
 ```
 
-The recommended thread count is one per CPU core minus one, leaving one core for the main thread. For an 8-core machine, use 7.
+The official recommendation is to use fewer threads than cores: for a 4-core machine, try 2-3 IO threads; for an 8-core machine, try 6 threads. Using more than 8 threads is unlikely to help.
 
 ## Checking if Threads Are Active
 
 ```bash
-redis-cli INFO server | grep io_threads
+redis-cli INFO stats | grep io_threaded
 ```
 
-Under load you should see non-zero values. Threads are only activated when there are more than a threshold of pending clients (default 2).
+Under load you should see non-zero values for `io_threaded_reads_processed` and `io_threaded_writes_processed`. IO threads are activated dynamically when there are enough pending clients to justify the overhead.
 
 ## Benchmarking the Difference
 
@@ -95,4 +95,4 @@ Use `INFO stats` to track `total_commands_processed` per second and compare acro
 
 ## Summary
 
-Redis 7.0+ IO threading lets you scale network throughput on multi-core machines without changing your application code. Enable it with `io-threads` and `io-threads-do-reads yes` in redis.conf, set the thread count to cores minus one, and benchmark your specific workload. The gains are most visible with many concurrent clients and large payloads.
+Redis 7.0+ IO threading lets you scale network throughput on multi-core machines without changing your application code. Enable it with `io-threads` and `io-threads-do-reads yes` in redis.conf, set the thread count based on your core count (e.g. 6 for 8 cores), and benchmark your specific workload. The gains are most visible with many concurrent clients and large payloads.
