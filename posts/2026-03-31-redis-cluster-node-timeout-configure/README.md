@@ -15,8 +15,8 @@ Description: Configure cluster-node-timeout to control how quickly Redis Cluster
 The timeout drives multiple cluster behaviors:
 
 - **Failure detection** - A node must be unreachable for `cluster-node-timeout` milliseconds before it is marked as PFAIL (probable failure)
-- **Failover trigger** - Replicas wait `cluster-node-timeout * cluster-replica-validity-factor` before attempting election
-- **Migration safety** - During slot migration, the `cluster-node-timeout` determines how long to wait before aborting
+- **Failover trigger** - PFAIL reports from a majority of masters within a `cluster-node-timeout * 2` window promote the state to FAIL, starting replica election
+- **Replica validity** - Replicas disconnected longer than `cluster-node-timeout * cluster-replica-validity-factor` are excluded from failover elections
 
 ```text
 # redis.conf
