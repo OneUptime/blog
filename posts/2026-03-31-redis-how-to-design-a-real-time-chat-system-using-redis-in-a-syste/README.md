@@ -49,6 +49,9 @@ const redis = require('redis');
 const pub = redis.createClient();
 const sub = redis.createClient();
 
+await pub.connect();
+await sub.connect();
+
 // When Alice sends a message
 async function sendMessage(roomId, userId, text) {
   const message = JSON.stringify({ from: userId, text, ts: Date.now() });
@@ -56,7 +59,7 @@ async function sendMessage(roomId, userId, text) {
 }
 
 // WebSocket server subscribes to room channels
-sub.subscribe('chat:room:42', (message) => {
+await sub.subscribe('chat:room:42', (message) => {
   const parsed = JSON.parse(message);
   // Broadcast to all connected WebSocket clients in room 42
   broadcastToRoom(42, parsed);
@@ -90,11 +93,11 @@ XADD chat:room:42:messages MAXLEN ~ 1000 * from alice text "Hello!"
 Track which users are online using a hash combined with key expiration:
 
 ```bash
-# Mark user as online (heartbeat every 30 seconds)
+# Mark user as online using a hash (note: EXPIRE applies to the whole key)
 HSET presence:room:42 user:alice "online"
-EXPIRE presence:room:42:alice 60
+EXPIRE presence:room:42 60
 
-# Using a separate key per user for fine-grained TTL
+# Using a separate key per user for fine-grained TTL (preferred)
 SET presence:user:alice:room:42 1 EX 60
 
 # Get all online users in a room
