@@ -125,16 +125,21 @@ def claim_next_job(conn):
 ## Combining NOWAIT with Error Handling
 
 ```sql
--- Use NOWAIT when you want to try a specific row and retry elsewhere on failure
-DECLARE EXIT HANDLER FOR SQLSTATE 'HY000'
+-- Use NOWAIT in a stored procedure with error handling
+DELIMITER //
+CREATE PROCEDURE try_claim_job(IN target_id INT)
 BEGIN
-    ROLLBACK;
-    -- retry logic here
-END;
+    DECLARE EXIT HANDLER FOR 3572
+    BEGIN
+        ROLLBACK;
+        -- Row was locked, retry logic here
+    END;
 
-START TRANSACTION;
-SELECT * FROM jobs WHERE id = :target_id FOR UPDATE NOWAIT;
--- If this errors, the handler catches it
+    START TRANSACTION;
+    SELECT * FROM jobs WHERE id = target_id FOR UPDATE NOWAIT;
+    -- If the row is locked, the handler catches error 3572
+END //
+DELIMITER ;
 ```
 
 ## Summary
