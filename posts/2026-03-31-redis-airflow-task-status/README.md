@@ -33,7 +33,6 @@ Airflow stores task states in Redis via Celery. You can read them directly:
 
 ```python
 from celery import Celery
-import redis
 
 # Connect to the result backend
 celery_app = Celery(
@@ -92,7 +91,6 @@ Instead of querying Airflow's REST API repeatedly, cache DAG status in Redis:
 import redis
 import json
 import requests
-from datetime import datetime
 
 cache = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
