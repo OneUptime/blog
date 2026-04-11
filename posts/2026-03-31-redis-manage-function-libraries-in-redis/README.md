@@ -15,10 +15,7 @@ Redis function libraries require active lifecycle management: listing what's loa
 View all libraries and their functions:
 
 ```bash
-# List library names only
-redis-cli FUNCTION LIST
-
-# Include function names
+# List all libraries and their functions
 redis-cli FUNCTION LIST
 
 # Include full source code
@@ -75,7 +72,7 @@ redis-cli FUNCTION LIST LIBRARYNAME mylib
 
 ## Get Function Statistics
 
-View memory usage and call counts:
+View running script info and engine details:
 
 ```bash
 redis-cli FUNCTION STATS
@@ -156,7 +153,7 @@ This lets you audit what code is running without needing the original file.
 
 ## Manage Functions in a Cluster
 
-Functions must be loaded on each shard in a Redis Cluster. Use `--cluster call` to execute on all nodes:
+Functions replicate automatically from masters to their replicas, but must be loaded on each master shard separately in a Redis Cluster:
 
 ```bash
 # Load function on all cluster nodes
@@ -167,4 +164,4 @@ done
 
 ## Summary
 
-Manage Redis function libraries with `FUNCTION LIST` to inspect, `FUNCTION LOAD REPLACE` to update, `FUNCTION DELETE` to remove, and `FUNCTION DUMP`/`RESTORE` for backup and migration. Include function loading in your CI/CD pipeline with `REPLACE` to enable zero-downtime updates. For Redis Cluster deployments, load functions to all shards explicitly since they do not auto-replicate across the cluster topology.
+Manage Redis function libraries with `FUNCTION LIST` to inspect, `FUNCTION LOAD REPLACE` to update, `FUNCTION DELETE` to remove, and `FUNCTION DUMP`/`RESTORE` for backup and migration. Include function loading in your CI/CD pipeline with `REPLACE` to enable zero-downtime updates. For Redis Cluster deployments, load functions on each master shard explicitly since they replicate to replicas but not across shards.
