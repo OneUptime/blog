@@ -196,12 +196,12 @@ sequenceDiagram
     participant PVC as PersistentVolume
     K8s->>Pod: Schedule redis-0
     Pod->>PVC: Mount /data volume
-    Pod->>Pod: redis-server loads dump.rdb
+    Pod->>Pod: redis-server loads data from AOF
     Note over Pod: Serving requests
     K8s->>Pod: Delete pod (restart)
     K8s->>Pod: Reschedule redis-0
     Pod->>PVC: Remount same PVC
-    Pod->>Pod: redis-server loads dump.rdb from PVC
+    Pod->>Pod: redis-server loads data from AOF on PVC
 ```
 
 ## Adding Authentication
