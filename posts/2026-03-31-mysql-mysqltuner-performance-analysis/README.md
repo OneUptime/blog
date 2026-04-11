@@ -41,7 +41,7 @@ For a remote server:
 
 ## Understanding the Output
 
-MySQLTuner output has three sections:
+MySQLTuner output is divided into multiple sections. Here is a sample:
 
 ```text
 -------- General Statistics --------------------------------------------------
@@ -54,7 +54,7 @@ MySQLTuner output has three sections:
 
 -------- Performance Metrics -------------------------------------------------
 [!!] InnoDB buffer pool / data size: 128.0M / 4.5G
-[!!] Query cache may be disabled by default due to mutex contention
+[!!] Slow queries: 5% (84/1673)
 [OK] Temporary tables created on disk: 1% (22 on disk / 1673 total)
 ```
 
