@@ -50,9 +50,8 @@ Output for a truncated file (safe to fix):
 
 ```text
 0x         3db: Expected \r\n, got: 6400
-AOF analyzed: size=987, ok_up_to=987, ok_up_to_line=4567, diff=12
-This will allow the last 2 commands to be replayed (0 bytes, 0 commands)
-Continue? [y/N]:
+AOF analyzed: size=999, ok_up_to=987, ok_up_to_line=4567, diff=12
+AOF is not valid. Use the --fix option to try fixing it.
 ```
 
 Output for a corrupted file (mid-file corruption):
@@ -109,7 +108,7 @@ systemctl restart redis
 
 ## Step 6 - Use AOF with RDB Preamble
 
-With `aof-use-rdb-preamble yes` (default in Redis 7+), the AOF file starts with an RDB snapshot followed by incremental AOF commands. Corruption in the AOF tail is limited to recent changes since the last rewrite.
+With `aof-use-rdb-preamble yes` (default since Redis 5+), the AOF file starts with an RDB snapshot followed by incremental AOF commands. Corruption in the AOF tail is limited to recent changes since the last rewrite.
 
 ```bash
 redis-cli CONFIG GET aof-use-rdb-preamble
