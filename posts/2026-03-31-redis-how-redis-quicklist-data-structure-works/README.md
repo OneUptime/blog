@@ -61,28 +61,28 @@ redis-cli CONFIG GET list-compress-depth
 ## Observing Quicklist Structure
 
 ```bash
-# Create a list and observe its structure
-redis-cli RPUSH mylist $(seq 1 20 | tr '\n' ' ')
+# Create a list with enough elements to exceed a single listpack node
+redis-cli RPUSH mylist $(seq 1 1000 | tr '\n' ' ')
 redis-cli OBJECT ENCODING mylist
 # quicklist
 
 # Get detailed debug info
 redis-cli DEBUG OBJECT mylist
-# Value at:0x7fa... refcount:1 encoding:quicklist serializedlength:40
+# Value at:0x7fa... refcount:1 encoding:quicklist serializedlength:...
 # lru:... type:list
-# ql_nodes:1 ql_avg_node:20.00 ql_ziplist_max:-2 ql_compressed:0 ql_uncompressed:1
+# ql_nodes:2 ql_avg_node:500.00 ql_ziplist_max:-2 ql_compressed:0 ql_uncompressed:2
 ```
 
 ## Quicklist Node Splitting
 
-When a listpack node reaches its maximum size, Redis splits it:
+When a listpack node reaches its maximum size, Redis creates a new node for the incoming element:
 
 ```text
-Before split (node full):
-[a, b, c, d, e, f, g, h, i, j]  <- 10 elements at max capacity
+Before (tail node full):
+[a, b, c, d, e, f, g, h, i, j]  <- node at max capacity
 
 After RPUSH x:
-[a, b, c, d, e]  [f, g, h, i, j, x]  <- split into 2 nodes
+[a, b, c, d, e, f, g, h, i, j]  [x]  <- new node created for x
 ```
 
 This keeps individual node operations fast (O(1) for head/tail) while maintaining bounded node size.
@@ -148,8 +148,8 @@ for LINDEX on lists with compression enabled.
 
 Before Redis 3.2:
 ```text
-Small list (<= 128 elements):   ziplist encoding
-Large list (> 128 elements):    linkedlist encoding (one malloc per element)
+Small list (<= 512 elements):   ziplist encoding
+Large list (> 512 elements):    linkedlist encoding (one malloc per element)
 ```
 
 With quicklist (Redis 3.2+):
@@ -165,14 +165,14 @@ Benefits:
 ## Verifying Configuration Is Applied
 
 ```javascript
-const redis = require('ioredis');
-const r = new redis.Redis({ host: 'localhost' });
+const Redis = require('ioredis');
+const r = new Redis({ host: 'localhost' });
 
 async function inspectList(key) {
   const [encoding, len, debug] = await Promise.all([
     r.object('ENCODING', key),
     r.llen(key),
-    r.sendCommand(new r.Command('DEBUG', ['OBJECT', key])),
+    r.call('DEBUG', 'OBJECT', key),
   ]);
 
   console.log({ encoding, length: len, debug });
