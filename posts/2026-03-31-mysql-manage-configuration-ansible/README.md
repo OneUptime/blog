@@ -37,7 +37,7 @@ mysql_config:
 ```yaml
 # group_vars/mysql_primary/main.yml
 # Override settings for primary servers only
-mysql_config:
+mysql_config_overrides:
   mysqld:
     read_only: "OFF"
     log_replica_updates: "ON"
@@ -61,8 +61,11 @@ mysql_config:
 - name: Manage MySQL configuration
   hosts: mysql_servers
   become: true
-  vars_files:
-    - "group_vars/{{ group_names[0] }}/main.yml"
+
+  pre_tasks:
+    - name: Merge base and override configuration
+      set_fact:
+        mysql_config: "{{ mysql_config | combine(mysql_config_overrides | default({}), recursive=True) }}"
 
   tasks:
     - name: Deploy MySQL configuration file
