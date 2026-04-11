@@ -118,7 +118,7 @@ CREATE OR REPLACE VIEW active_customers AS
 SELECT id, name, email FROM customers
 WHERE status = 'active' AND verified = 1;
 
--- Alter a view (equivalent to CREATE OR REPLACE)
+-- Alter a view (requires the view to already exist, unlike CREATE OR REPLACE)
 ALTER VIEW active_customers AS
 SELECT id, name, email, phone FROM customers
 WHERE status = 'active';
