@@ -8,7 +8,7 @@ Description: Implement a distributed barrier in Redis that blocks multiple servi
 
 ---
 
-A distributed barrier is a synchronization primitive that makes all participating processes wait until every participant has arrived at a common checkpoint before any of them proceeds. Redis makes this pattern easy with atomic increment operations and keyspace notifications.
+A distributed barrier is a synchronization primitive that makes all participating processes wait until every participant has arrived at a common checkpoint before any of them proceeds. Redis makes this pattern easy with atomic increment operations and simple polling.
 
 ## Core Barrier Implementation
 
@@ -90,9 +90,9 @@ class ReusableBarrier:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if int(r.get(key) or 0) >= self.parties:
-                if count == self.parties:
-                    # Last to arrive - bump generation for next use
-                    self.generation += 1
+                # All participants bump generation so every instance
+                # uses the next key on the following round
+                self.generation += 1
                 return True
             time.sleep(0.1)
         return False
