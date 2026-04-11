@@ -45,6 +45,7 @@ mymodule/
 #include "redismodule.h"
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 /*
  * COUNTER.INCRBY key increment [MAX max_value]
@@ -91,12 +92,6 @@ int CounterIncrBy_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
     /* Get current value */
     long long current = 0;
     if (type == REDISMODULE_KEYTYPE_STRING) {
-        RedisModuleString *current_str;
-        RedisModule_StringDMA(key, NULL, REDISMODULE_READ);
-        size_t len;
-        const char *ptr = RedisModule_StringPtrLen(RedisModule_GetExpire(key) >= 0 ?
-                           argv[1] : argv[1], &len);
-        /* Use GET to read current value */
         RedisModuleCallReply *reply = RedisModule_Call(ctx, "GET", "s", argv[1]);
         if (RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING) {
             RedisModuleString *val = RedisModule_CreateStringFromCallReply(reply);
@@ -144,7 +139,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
 ```makefile
 # Makefile
-REDIS_SRC=/path/to/redis/src
+REDIS_SRC ?= /path/to/redis/src
 
 CC=gcc
 CFLAGS=-Wall -fPIC -std=c99 -I$(REDIS_SRC)
