@@ -60,7 +60,7 @@ scheduler.scheduleAtFixedRate(() -> {
 
 ```java
 // Add dependency: io.micrometer:micrometer-core
-config.setMetricRegistry(new MicrometerMetricRegistry(meterRegistry));
+config.setMetricRegistry(meterRegistry);
 ```
 
 Then query via Actuator:
@@ -117,9 +117,9 @@ pool.on('release', () => activeConnections--);
 // Expose as health endpoint
 app.get('/health/db', (req, res) => {
   res.json({
-    pool_active: pool.pool._allConnections.length,
-    pool_free: pool.pool._freeConnections.length,
-    pool_queue: pool.pool._connectionQueue.length,
+    pool_active: pool._allConnections.length,
+    pool_free: pool._freeConnections.length,
+    pool_queue: pool._connectionQueue.length,
   });
 });
 ```
