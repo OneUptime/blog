@@ -18,8 +18,8 @@ FCALL function numkeys [key [key ...]] [arg [arg ...]]
 
 - `function` - the name of the registered function
 - `numkeys` - number of key arguments
-- `key` - key names accessible as `KEYS` table in Lua
-- `arg` - extra arguments accessible as `ARGS` table in Lua
+- `key` - key names accessible as the `keys` parameter in the Lua callback
+- `arg` - extra arguments accessible as the `args` parameter in the Lua callback
 
 ## Loading a Function Library First
 
