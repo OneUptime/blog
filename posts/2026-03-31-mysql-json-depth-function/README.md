@@ -104,10 +104,10 @@ CREATE TABLE controlled_docs (
     CONSTRAINT chk_depth CHECK (JSON_DEPTH(payload) <= 4)
 );
 
--- This succeeds (depth = 3)
+-- This succeeds (depth = 4)
 INSERT INTO controlled_docs (payload) VALUES ('{"a": {"b": {"c": 1}}}');
 
--- This fails (depth = 5)
+-- This fails (depth = 6)
 INSERT INTO controlled_docs (payload) VALUES ('{"a": {"b": {"c": {"d": {"e": 1}}}}}');
 -- ERROR 3819: Check constraint 'chk_depth' is violated.
 ```
