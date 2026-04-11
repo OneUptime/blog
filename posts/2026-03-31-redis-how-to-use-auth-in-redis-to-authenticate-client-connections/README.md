@@ -108,25 +108,29 @@ print(f"Authenticated as: {user}")
 ```javascript
 const { createClient } = require('redis');
 
-// Password-only auth
-const client = createClient({
-  socket: { host: 'localhost', port: 6379 },
-  password: 'mysecretpassword'
-});
+async function main() {
+  // Password-only auth
+  const client = createClient({
+    socket: { host: 'localhost', port: 6379 },
+    password: 'mysecretpassword'
+  });
 
-await client.connect();
-console.log('Connected with password auth');
+  await client.connect();
+  console.log('Connected with password auth');
 
-// ACL user auth
-const aclClient = createClient({
-  socket: { host: 'localhost', port: 6379 },
-  username: 'alice',
-  password: 'alicepassword'
-});
+  // ACL user auth
+  const aclClient = createClient({
+    socket: { host: 'localhost', port: 6379 },
+    username: 'alice',
+    password: 'alicepassword'
+  });
 
-await aclClient.connect();
-const user = await aclClient.aclWhoAmI();
-console.log(`Authenticated as: ${user}`);
+  await aclClient.connect();
+  const user = await aclClient.aclWhoAmI();
+  console.log(`Authenticated as: ${user}`);
+}
+
+main().catch(console.error);
 ```
 
 ## Practical Example in Go
@@ -234,7 +238,6 @@ For secure connections, combine `AUTH` with TLS:
 
 ```python
 import redis
-import ssl
 
 client = redis.Redis(
     host='redis.example.com',
