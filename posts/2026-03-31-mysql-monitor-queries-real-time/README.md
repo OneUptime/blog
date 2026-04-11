@@ -49,7 +49,7 @@ ORDER BY t.PROCESSLIST_TIME DESC;
 
 ## Finding the Most Expensive Recent Queries
 
-`events_statements_history_long` stores the last 10,000 statements (configurable). Use it to find queries with high execution time or row scans:
+`events_statements_summary_by_digest` aggregates statistics for each normalized query pattern. Use it to find queries with high execution time or row scans:
 
 ```sql
 SELECT DIGEST_TEXT,
