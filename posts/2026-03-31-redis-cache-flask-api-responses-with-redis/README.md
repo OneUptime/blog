@@ -37,13 +37,13 @@ cache = Cache(app)
 from flask import jsonify
 
 @app.route("/api/products")
-@cache.cached(timeout=120)
+@cache.cached(timeout=120, key_prefix="products_list")
 def get_products():
     products = Product.query.all()
     return jsonify([{"id": p.id, "name": p.name, "price": p.price} for p in products])
 
 @app.route("/api/product/<int:pid>")
-@cache.cached(timeout=60, key_prefix="product_%s")
+@cache.cached(timeout=60)
 def get_product(pid):
     product = Product.query.get_or_404(pid)
     return jsonify({"id": product.id, "name": product.name})
@@ -51,7 +51,7 @@ def get_product(pid):
 
 ## Cache Based on Query Parameters
 
-Flask-Caching uses the full URL as the default key, so query parameters are included automatically:
+Flask-Caching uses `request.path` as the default cache key, so query parameters are **not** included by default. Use `query_string=True` to include them:
 
 ```python
 @app.route("/api/search")
@@ -98,8 +98,8 @@ def update_product(pid):
     db.session.commit()
 
     # Bust related cache entries
-    cache.delete(f"product_{pid}")    # single product cache
-    cache.delete("api/products")       # product list cache (key = route path)
+    cache.delete(f"view//api/product/{pid}")  # default @cache.cached() key is "view/" + request.path
+    cache.delete("products_list")              # matches key_prefix used on get_products
 
     return jsonify({"status": "updated"})
 ```
