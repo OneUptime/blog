@@ -88,12 +88,12 @@ HPTTL user:42 FIELDS 1 session_token     # milliseconds
 # Remove field expiration
 HPERSIST user:42 FIELDS 1 session_token
 
-# Get and delete field in one operation
+# Get and delete field in one operation (Redis 8.0+)
 HGETDEL user:42 FIELDS 1 session_token
 
-# Get and set expiration
+# Get and set expiration (Redis 8.0+)
 HGETEX user:42 EX 60 FIELDS 1 session_token
-HSETEX user:42 60 FIELDS 1 session_token "abc123"
+HSETEX user:42 EX 60 FIELDS 1 session_token "abc123"
 ```
 
 ## Common Patterns
@@ -117,4 +117,4 @@ EXPIRE session:abc 3600
 
 ## Summary
 
-Redis hash commands provide field-level get, set, increment, and delete operations. For large hashes, use HSCAN for safe iteration. Redis 7.4+ added per-field TTL via HEXPIRE and HTTL, enabling fine-grained expiration without storing separate keys for each field.
+Redis hash commands provide field-level get, set, increment, and delete operations. For large hashes, use HSCAN for safe iteration. Redis 7.4+ added per-field TTL via HEXPIRE and HTTL, enabling fine-grained expiration without storing separate keys for each field. Redis 8.0 further added HGETDEL, HGETEX, and HSETEX for atomic get-and-modify operations on hash fields.
