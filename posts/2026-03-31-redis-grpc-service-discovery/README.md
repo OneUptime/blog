@@ -38,7 +38,7 @@ const (
 
 func register(ctx context.Context) error {
     key := fmt.Sprintf("grpc:discovery:%s:%s", serviceName, serviceAddr)
-    return rdb.SetEx(ctx, key, serviceAddr, ttl).Err()
+    return rdb.Set(ctx, key, serviceAddr, ttl).Err()
 }
 
 func startHeartbeat(ctx context.Context) {
@@ -87,6 +87,7 @@ func watchServiceChanges(ctx context.Context, service string) {
     pubsub := rdb.PSubscribe(ctx,
         fmt.Sprintf("__keyevent@0__:set"),
         fmt.Sprintf("__keyevent@0__:expired"),
+        fmt.Sprintf("__keyevent@0__:del"),
     )
     defer pubsub.Close()
 
