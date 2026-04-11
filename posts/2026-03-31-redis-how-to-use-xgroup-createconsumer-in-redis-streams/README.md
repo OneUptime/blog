@@ -32,7 +32,7 @@ Before creating a consumer, both the stream and the consumer group must exist. U
 # Create a stream by adding a message
 XADD orders * product "widget" quantity 10
 
-# Create a consumer group starting from the beginning of the stream
+# Create a consumer group starting from the latest message in the stream
 XGROUP CREATE orders processors $ MKSTREAM
 ```
 
@@ -107,7 +107,7 @@ When a consumer is no longer needed, remove it with `XGROUP DELCONSUMER`:
 XGROUP DELCONSUMER orders processors worker-1
 ```
 
-This returns the number of pending messages that were owned by the deleted consumer. Those messages remain in the pending entries list (PEL) but become orphaned and must be claimed by other consumers using `XCLAIM` or `XAUTOCLAIM`.
+This returns the number of pending messages that were owned by the deleted consumer. Those pending entries are removed from the pending entries list (PEL) when the consumer is deleted, so the messages will not be delivered again unless a consumer re-reads them from the stream.
 
 ## Summary
 
