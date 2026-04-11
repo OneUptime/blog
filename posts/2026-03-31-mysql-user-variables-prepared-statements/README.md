@@ -14,7 +14,7 @@ MySQL's `EXECUTE ... USING` clause accepts only user variables (prefixed with `@
 
 ```sql
 -- WRONG: literal in USING clause
-SET STMT = 'SELECT * FROM orders WHERE id = ?';
+SET @stmt = 'SELECT * FROM orders WHERE id = ?';
 PREPARE get_order FROM @stmt;
 EXECUTE get_order USING 42; -- ERROR
 
@@ -59,7 +59,7 @@ User variables can capture query results and pass them to subsequent prepared st
 
 ```sql
 -- Get the latest order ID
-SELECT @latest_id := MAX(id) FROM orders;
+SELECT MAX(id) INTO @latest_id FROM orders;
 
 -- Use it as a parameter
 PREPARE get_order_items FROM
@@ -124,11 +124,10 @@ SET @amount = '100'; -- String
 SET @amount = 100;   -- Integer
 SET @amount = 100.0; -- Float
 
-SELECT @amount, typeof(@amount); -- typeof() is not built-in
--- Use CAST if type matters
+-- MySQL has no built-in typeof(); use CAST to control types
 SET @amount = CAST(100 AS DECIMAL(10,2));
 ```
 
 ## Summary
 
-User variables (`@var`) are the only type of value accepted in the `USING` clause of `EXECUTE`. They serve as the parameter-passing mechanism for prepared statements in MySQL. Assign values to user variables with `SET`, capture query results with `SELECT @var := ...`, and use them across multiple prepared statements within the same session. Always be aware that user variables persist for the life of the session.
+User variables (`@var`) are the only type of value accepted in the `USING` clause of `EXECUTE`. They serve as the parameter-passing mechanism for prepared statements in MySQL. Assign values to user variables with `SET`, capture query results with `SELECT ... INTO @var`, and use them across multiple prepared statements within the same session. Always be aware that user variables persist for the life of the session.
