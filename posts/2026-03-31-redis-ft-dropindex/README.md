@@ -51,7 +51,7 @@ FT.DROPINDEX idx:users DD
 OK
 ```
 
-All keys that matched the index's prefix (`user:*`) are now also deleted.
+All documents that were successfully indexed under this index are now also deleted.
 
 ## Verify Documents Are Deleted
 
@@ -126,13 +126,13 @@ recreate_index(
 ```mermaid
 flowchart TD
     A["FT.DROPINDEX idx:users DD"] --> B["Delete index metadata\n+ inverted index structures"]
-    B --> C["Scan all keys matching\nindex prefix: user:*"]
-    C --> D["Delete each matching key\nfrom Redis"]
-    D --> E["All user:* data is GONE"]
+    B --> C["Look up all documents tracked\nas successfully indexed"]
+    C --> D["Delete each tracked document\nfrom Redis"]
+    D --> E["All indexed user:* data is GONE"]
     style E fill:#ff4444,color:#fff
 ```
 
-The `DD` flag is destructive. Use it only when you intend to remove both the index and the source data.
+The `DD` flag is destructive. It deletes only documents that were successfully indexed — keys that failed indexation or were not yet indexed (if async indexing was still in progress) are not deleted. Use it only when you intend to remove both the index and the source data.
 
 ## Summary
 
