@@ -144,6 +144,8 @@ subscriber.on('pmessage', (pattern, channel, message) => {
 
 wss.on('connection', async (ws, req) => {
   const userId = extractUserId(req);
+  ws.userId = userId;
+  ws.rooms = new Set();
 
   ws.on('message', async (data) => {
     const { action, roomId, payload } = JSON.parse(data.toString());
@@ -151,8 +153,7 @@ wss.on('connection', async (ws, req) => {
     switch (action) {
       case 'join': {
         await roomManager.joinRoom(roomId, userId);
-        ws.roomId = roomId;
-        ws.userId = userId;
+        ws.rooms.add(roomId);
 
         // Notify room members via Redis
         await pubsub.publish(`room:${roomId}:events`, JSON.stringify({
@@ -165,6 +166,7 @@ wss.on('connection', async (ws, req) => {
 
       case 'leave': {
         await roomManager.leaveRoom(roomId, userId);
+        ws.rooms.delete(roomId);
         await pubsub.publish(`room:${roomId}:events`, JSON.stringify({
           type: 'user-left',
           userId,
@@ -192,8 +194,8 @@ wss.on('connection', async (ws, req) => {
   });
 
   ws.on('close', async () => {
-    if (ws.roomId && ws.userId) {
-      await roomManager.leaveRoom(ws.roomId, ws.userId);
+    for (const roomId of ws.rooms) {
+      await roomManager.leaveRoom(roomId, ws.userId);
     }
   });
 });
