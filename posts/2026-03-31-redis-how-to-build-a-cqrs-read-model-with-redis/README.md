@@ -60,6 +60,9 @@ async function projectOrderEvent(event) {
     // Add to global orders sorted by time
     await redis.zadd('orders:by_date', Date.parse(createdAt), orderId);
 
+    // Add to pending orders set
+    await redis.sadd('orders:pending', orderId);
+
     // Update order count per user
     await redis.hincrby(`user:${userId}:stats`, 'orderCount', 1);
     await redis.hincrbyfloat(`user:${userId}:stats`, 'totalSpend', total);
@@ -163,8 +166,8 @@ async function startProjector() {
     for (const [, entries] of messages) {
       for (const [id, fields] of entries) {
         const event = {
-          type: fields[1],         // field name at index 1 (value at index 1)
-          payload: JSON.parse(fields[3]), // 'payload' key value
+          type: fields[1],         // value of the 'type' field (index 0=key, 1=value)
+          payload: JSON.parse(fields[3]), // value of the 'payload' field (index 2=key, 3=value)
         };
 
         try {
