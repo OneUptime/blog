@@ -58,7 +58,7 @@ Available actions:
 |---|---|
 | `RESTRICT` | Default. Block delete/update if child rows exist |
 | `CASCADE` | Automatically delete/update child rows |
-| `SET NULL` | Set child column to NULL when parent is deleted |
+| `SET NULL` | Set child column to NULL when parent is deleted/updated |
 | `NO ACTION` | Same as RESTRICT in MySQL |
 
 ```sql
