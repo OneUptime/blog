@@ -83,7 +83,7 @@ SELECT
   statement,
   total,
   total_latency,
-  avg_latency,
+  max_latency,
   rows_sent,
   rows_examined
 FROM sys.user_summary_by_statement_type
@@ -114,7 +114,7 @@ ORDER BY statement_latency DESC;
 ## Resetting User Statistics
 
 ```sql
--- Reset all Performance Schema counters
+-- Reset per-user statement statistics
 TRUNCATE TABLE performance_schema.events_statements_summary_by_user_by_event_name;
 ```
 
