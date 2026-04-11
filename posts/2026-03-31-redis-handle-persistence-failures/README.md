@@ -65,8 +65,6 @@ redis-cli BGSAVE
 
 ```text
 # Redis log
-Can't save in background: fork: Cannot allocate memory
-# or
 Failed opening the RDB file dump.rdb (in server root dir /var/lib/redis) for saving: Permission denied
 ```
 
@@ -180,4 +178,4 @@ Set disk space alerts at 70% full to act before Redis runs out of room for its t
 
 ## Summary
 
-Redis persistence failures fall into four categories: disk full, permission denied, fork failure, and AOF write errors. Diagnose using `INFO persistence` and Redis logs. Temporarily disable `stop-writes-on-bgsave-error` to restore writes during an outage, then fix the root cause (disk space, permissions, or `vm.overcommit_memory`) before re-enabling. Monitor disk usage proactively to prevent failures from occurring in the first place.
+Redis persistence failures fall into five categories: disk full, permission denied, write blocking from `stop-writes-on-bgsave-error`, fork failure, and AOF write errors. Diagnose using `INFO persistence` and Redis logs. Temporarily disable `stop-writes-on-bgsave-error` to restore writes during an outage, then fix the root cause (disk space, permissions, or `vm.overcommit_memory`) before re-enabling. Monitor disk usage proactively to prevent failures from occurring in the first place.
