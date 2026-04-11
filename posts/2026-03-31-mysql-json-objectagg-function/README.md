@@ -88,17 +88,18 @@ FROM (
 
 ## Handling Duplicate Keys
 
-If the same key appears multiple times in a group, the behavior is undefined - MySQL may use any of the values. Avoid duplicate keys by ensuring uniqueness:
+If the same key appears multiple times in a group, the behavior is undefined - MySQL may use any of the values. Avoid duplicate keys by deduplicating in a subquery first:
 
 ```sql
 SELECT
   user_id,
-  JSON_OBJECTAGG(DISTINCT setting_key, setting_value) AS settings
-FROM user_settings
+  JSON_OBJECTAGG(setting_key, setting_value) AS settings
+FROM (
+  SELECT DISTINCT user_id, setting_key, setting_value
+  FROM user_settings
+) deduped
 GROUP BY user_id;
 ```
-
-Note: `DISTINCT` with `JSON_OBJECTAGG()` is supported in MySQL 8.0+.
 
 ## NULL Key Error
 
