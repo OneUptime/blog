@@ -94,8 +94,8 @@ sequenceDiagram
 
 ```bash
 #!/bin/bash
-PRIMARY_OFFSET=$(redis-cli -h 192.168.1.10 -p 6379 INFO replication | grep "master_repl_offset" | awk -F: '{print $2}' | tr -d '\r')
-REPLICA_OFFSET=$(redis-cli -h 192.168.1.11 -p 6380 INFO replication | grep "slave_repl_offset" | awk -F: '{print $2}' | tr -d '\r')
+PRIMARY_OFFSET=$(redis-cli -h 192.168.1.10 -p 6379 INFO replication | grep "^master_repl_offset:" | awk -F: '{print $2}' | tr -d '\r')
+REPLICA_OFFSET=$(redis-cli -h 192.168.1.11 -p 6380 INFO replication | grep "^slave_repl_offset:" | awk -F: '{print $2}' | tr -d '\r')
 LAG=$((PRIMARY_OFFSET - REPLICA_OFFSET))
 echo "Replication lag: $LAG bytes"
 ```
