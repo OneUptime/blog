@@ -48,7 +48,9 @@ import redis
 
 def get_tenant_db_index(tenant_id: str) -> int:
     """Map tenant ID to database index 1-15 (0 reserved for default)"""
-    return (hash(tenant_id) % 15) + 1
+    import hashlib
+    digest = int(hashlib.sha256(tenant_id.encode()).hexdigest(), 16)
+    return (digest % 15) + 1
 
 def get_tenant_connection(tenant_id: str) -> redis.Redis:
     db_index = get_tenant_db_index(tenant_id)
@@ -71,7 +73,7 @@ tenant_b_r.set('user:100', 'bob')
 
 ## Strategy 3 - ACL Key Patterns (Enforced Isolation)
 
-Redis 6+ ACL allows creating users with access restricted to specific key patterns. This provides server-enforced isolation on a shared instance:
+Redis 6+ ACL allows creating users with access restricted to specific key patterns. Redis 6.2+ extends this to Pub/Sub channel restrictions. This provides server-enforced isolation on a shared instance:
 
 ```bash
 # Create dedicated users per tenant with restricted key access
