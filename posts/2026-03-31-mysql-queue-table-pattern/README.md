@@ -97,7 +97,8 @@ Workers that crash leave jobs in the `processing` state indefinitely. A periodic
 UPDATE job_queue
 SET status = 'pending', locked_at = NULL, locked_by = NULL
 WHERE status = 'processing'
-  AND locked_at < NOW() - INTERVAL 5 MINUTE;
+  AND locked_at < NOW() - INTERVAL 5 MINUTE
+  AND attempts < max_attempts;
 ```
 
 Run this as a scheduled event or cron job.
