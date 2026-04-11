@@ -33,7 +33,7 @@ redis-cli INFO memory | grep -E "used_memory_human|used_memory_peak_human|mem_fr
 Key fields:
 
 ```text
-used_memory_human:2.45G       # Current RSS memory
+used_memory_human:2.45G       # Current allocator memory usage
 used_memory_peak_human:3.10G  # Peak since start
 mem_fragmentation_ratio:1.85  # > 1.5 = high fragmentation
 maxmemory_human:4.00G         # Configured limit
