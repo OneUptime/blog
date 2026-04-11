@@ -114,7 +114,7 @@ def count_completions(prefix):
     return r.zlexcount('dictionary', f'[{prefix}', f'({upper}')
 
 print(f"Words starting with 'a': {count_completions('a')}")    # 3
-print(f"Words starting with 'c': {count_completions('c')}")    # 4
+print(f"Words starting with 'c': {count_completions('c')}")    # 5
 print(f"Words starting with 'ca': {count_completions('ca')}")  # 2
 print(f"Words starting with 'z': {count_completions('z')}")    # 0
 ```
