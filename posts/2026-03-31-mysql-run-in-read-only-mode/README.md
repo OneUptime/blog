@@ -55,7 +55,7 @@ This is the standard configuration for MySQL read replicas.
 With `read_only = ON`:
 - Regular application users receive error 1290: `The MySQL server is running with the --read-only option`
 - The replication SQL thread can still apply binary log events from the primary
-- Users with SUPER or SYSTEM_VARIABLES_ADMIN can still write
+- Users with SUPER or CONNECTION_ADMIN can still write
 - Temporary tables can still be created (they are session-local)
 
 Test the restriction with a regular user:
