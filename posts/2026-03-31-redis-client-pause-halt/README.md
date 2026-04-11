@@ -30,8 +30,8 @@ CLIENT PAUSE timeout [WRITE | ALL]
 ```
 
 - `timeout`: pause duration in milliseconds
-- `WRITE`: pause only write commands (default in Redis 7.0+)
-- `ALL`: pause both read and write commands
+- `WRITE`: pause only write commands (recommended since Redis 6.2)
+- `ALL`: pause both read and write commands (default)
 
 Returns `OK`.
 
@@ -74,7 +74,7 @@ OK
 | `WRITE` | Write commands | Still processed | Queued |
 | `ALL` | Everything | Queued | Queued |
 
-`WRITE` mode (the default since Redis 7.0) is preferred for failover scenarios because it allows reads to continue while preventing writes from going to a replica being promoted.
+`WRITE` mode (recommended since Redis 6.2, but `ALL` remains the default) is preferred for failover scenarios because it allows reads to continue while preventing writes from going to a replica being promoted.
 
 ## Failover Use Case
 
@@ -126,27 +126,18 @@ CLIENT UNPAUSE
 
 `CLIENT PAUSE` does not pause:
 - The admin connection that issued the command
-- Replica replication connections
-- Pub/Sub message delivery (in `WRITE` mode)
+- Pub/Sub delivery to subscribers (in `WRITE` mode, though `PUBLISH` itself is blocked)
 - `CLIENT UNPAUSE` from other admin connections
+
+Note: In `ALL` mode, replica interactions continue normally. In `WRITE` mode, replication traffic is paused to allow replicas to catch up before promotion.
 
 ## Queued Command Behavior
 
-While paused, clients remain connected. Their commands accumulate in the client output buffer. When the pause ends (via timeout or `CLIENT UNPAUSE`), all queued commands execute. Clients with large enough buffers will not experience errors; clients with full output buffers may be disconnected.
+While paused, clients remain connected. Their commands accumulate in the query buffer. When the pause ends (via timeout or `CLIENT UNPAUSE`), all queued commands execute. Clients with sufficient query buffer space will not experience errors; clients whose query buffers fill up may be disconnected.
 
 ## Checking Pause Status
 
-Use `CLIENT INFO` or `CLIENT LIST` to see if a pause is active:
-
-```redis
-INFO clients
-```
-
-```text
-...
-blocked_clients:5
-...
-```
+There is no dedicated `INFO` field that reports the number of paused clients. The `blocked_clients` field in `INFO clients` only counts clients in blocking operations like `BLPOP`, not clients paused by `CLIENT PAUSE`. To verify a pause is active, use `CLIENT LIST` and observe that client commands are not being processed during the pause window.
 
 ## Summary
 
