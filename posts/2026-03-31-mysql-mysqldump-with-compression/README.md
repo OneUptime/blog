@@ -84,18 +84,20 @@ xz      | Best        | Slow   | High      | .sql.xz
 zstd    | Good        | Fast   | Low-Med   | .sql.zst
 ```
 
-## Using --compress for Client-Server Communication
+## Compressing Client-Server Communication
 
-MySQL's `--compress` flag compresses the data transferred between `mysqldump` and the server (useful for remote backups), but this is separate from output file compression:
+MySQL can compress data transferred between `mysqldump` and the server (useful for remote backups). This is separate from output file compression. Use `--compression-algorithms` to enable it:
 
 ```bash
 mysqldump -u root -p \
-  --compress \
+  --compression-algorithms=zlib \
   --single-transaction \
   --host=remote-db.example.com \
   myapp \
   | gzip > /backup/myapp_remote_$(date +%Y%m%d).sql.gz
 ```
+
+Note: The older `--compress` flag was deprecated in MySQL 8.0.18 and removed in MySQL 8.4. Use `--compression-algorithms` (with values `zlib`, `zstd`, or `uncompressed`) instead. For zstd, you can also set `--zstd-compression-level` (1-22, default 3).
 
 ## Restoring from Compressed Backups
 
