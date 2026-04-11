@@ -45,6 +45,8 @@ async function getCachedIntrospection(schema) {
 ## Apollo Server Plugin for Introspection Caching
 
 ```javascript
+const { HeaderMap } = require('@apollo/server');
+
 function introspectionCachePlugin(redis) {
   return {
     async requestDidStart({ request }) {
@@ -59,8 +61,10 @@ function introspectionCachePlugin(redis) {
           const cached = await redis.get(cacheKey);
 
           if (cached) {
+            const headers = new HeaderMap();
+            headers.set('x-cache', 'HIT');
             return {
-              http: { headers: new Map([['x-cache', 'HIT']]) },
+              http: { headers },
               body: { kind: 'single', singleResult: JSON.parse(cached) }
             };
           }
@@ -97,6 +101,8 @@ const server = new ApolloServer({
 When you deploy a schema change, invalidate the old cache:
 
 ```javascript
+const { printSchema } = require('graphql');
+
 const schemaHash = require('crypto')
   .createHash('sha256')
   .update(printSchema(schema))
