@@ -32,13 +32,14 @@ FROM INFORMATION_SCHEMA.USER_PRIVILEGES
 ORDER BY GRANTEE, PRIVILEGE_TYPE;
 ```
 
-## Find Users with All Privileges (Superusers)
+## Find Users with the SUPER Privilege
+
+When `ALL PRIVILEGES` is granted, each privilege appears as individual rows in `USER_PRIVILEGES` rather than a single `ALL PRIVILEGES` entry. To find users with the `SUPER` privilege:
 
 ```sql
 SELECT DISTINCT GRANTEE
 FROM INFORMATION_SCHEMA.USER_PRIVILEGES
-WHERE PRIVILEGE_TYPE = 'SUPER'
-   OR PRIVILEGE_TYPE = 'ALL PRIVILEGES';
+WHERE PRIVILEGE_TYPE = 'SUPER';
 ```
 
 ## Find Users Who Can Grant Privileges
@@ -111,7 +112,7 @@ ORDER BY GRANTEE, level;
 
 ## Required Privileges
 
-To see rows for other users, you need the `SELECT_PRIV` privilege on the `mysql` system tables or a global `SELECT` privilege. Regular users see only their own privileges.
+To see rows for other users, you need the `SELECT` privilege on the `mysql` system tables or a global `SELECT` privilege. Regular users see only their own privileges.
 
 ## Summary
 
