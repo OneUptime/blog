@@ -25,7 +25,6 @@ Using a Redis Set per stream, where each member is a viewer's session ID, solves
 import redis
 import json
 import time
-import threading
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -142,4 +141,4 @@ def update_peak_viewers(stream_id: str, current_count: int):
 
 ## Summary
 
-A Redis live viewer counter uses sets for per-stream session tracking (enabling accurate deduplication), sorted sets for a real-time trending ranking, and Pub/Sub for instant count broadcasts. Heartbeat-based presence with short TTLs automatically removes stale sessions without any scheduled cleanup jobs.
+A Redis live viewer counter uses sets for per-stream session tracking (enabling accurate deduplication), sorted sets for a real-time trending ranking, and Pub/Sub for instant count broadcasts. Heartbeat-based presence refreshes the TTL on the entire set key, so the set expires only when all activity on a stream stops. Note that individual stale sessions within a set are not automatically removed — if a viewer disconnects without calling `viewer_leave`, their session ID remains until the whole set expires.
