@@ -20,10 +20,11 @@ Unlike `TS.ADD` (which takes an absolute value), these commands take a delta rel
 TS.INCRBY key value
   [TIMESTAMP timestamp]
   [RETENTION retentionPeriod]
-  [UNCOMPRESSED]
-  [CHUNK_SIZE chunkSize]
-  [LABELS {label value}...]
+  [ENCODING {COMPRESSED | UNCOMPRESSED}]
+  [CHUNK_SIZE size]
+  [DUPLICATE_POLICY policy]
   [IGNORE ignoreMaxTimeDiff ignoreMaxValDiff]
+  [LABELS {label value}...]
 
 TS.DECRBY key value
   [TIMESTAMP timestamp]
@@ -170,7 +171,7 @@ print(f"Error rate: {rate:.2f} errors/second")
 | Value type | Absolute value | Delta (relative to last) |
 | Use case | Point-in-time measurements | Running counters |
 | Example | CPU% = 72.5 | Requests += 100 |
-| Series shape | Can go up and down freely | Monotonically changes by delta |
+| Series shape | Can go up and down freely | Cumulative (changes by delta) |
 
 ## Getting the Current Counter Value
 
