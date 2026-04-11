@@ -10,7 +10,7 @@ Description: Learn how to use MySQL regular expression functions REGEXP_REPLACE 
 
 ## How MySQL Regular Expression Functions Work
 
-MySQL 8.0 introduced the `REGEXP_REPLACE`, `REGEXP_LIKE`, `REGEXP_INSTR`, and `REGEXP_SUBSTR` functions, which use the International Components for Unicode (ICU) regular expression engine. These functions provide full POSIX-compatible regex support including look-ahead, look-behind, and Unicode character classes.
+MySQL 8.0 introduced the `REGEXP_REPLACE`, `REGEXP_LIKE`, `REGEXP_INSTR`, and `REGEXP_SUBSTR` functions, which use the International Components for Unicode (ICU) regular expression engine. These functions provide full regex support including look-ahead, look-behind, and Unicode character classes.
 
 The older `REGEXP` and `RLIKE` operators also work for simple pattern matching but do not support capture groups or replacement.
 
@@ -59,8 +59,9 @@ REGEXP_LIKE(expr, pattern [, match_type])
 Match type flags:
 
 ```text
-c - case-sensitive (default)
+c - case-sensitive
 i - case-insensitive
+(default depends on the collation of the expression)
 m - multi-line mode (^ and $ match line boundaries)
 n - . also matches newline
 ```
