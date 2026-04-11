@@ -23,7 +23,7 @@ FLUSH PRIVILEGES;
 
 ## Installing mysqld_exporter
 
-Download the latest release from GitHub:
+Download a release from GitHub:
 
 ```bash
 # Download the binary
@@ -45,6 +45,7 @@ password=strong_password
 host=127.0.0.1
 port=3306
 EOF
+sudo chown prometheus:prometheus /etc/mysqld_exporter/.my.cnf
 sudo chmod 600 /etc/mysqld_exporter/.my.cnf
 ```
 
