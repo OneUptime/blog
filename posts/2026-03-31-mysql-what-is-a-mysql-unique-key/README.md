@@ -47,8 +47,8 @@ Naming unique keys (e.g., `uk_email`) makes them easier to reference when you ne
 
 CREATE TABLE contacts (
   id    INT AUTO_INCREMENT PRIMARY KEY,   -- PK
-  email VARCHAR(255) UNIQUE,              -- UK, allows one NULL
-  phone VARCHAR(20)  UNIQUE               -- UK, allows one NULL
+  email VARCHAR(255) UNIQUE,              -- UK, allows multiple NULLs
+  phone VARCHAR(20)  UNIQUE               -- UK, allows multiple NULLs
 ) ENGINE=InnoDB;
 ```
 
