@@ -32,18 +32,11 @@ flowchart TD
 
 ## Output Structure
 
-A typical FUNCTION STATS response looks like this:
+A typical FUNCTION STATS response when no function is running looks like this:
 
 ```text
 1) "running_script"
-2) 1) "duration_ms"
-   2) (integer) 0
-   3) "flags"
-   4) (empty array)
-   5) "name"
-   6) ""
-   7) "command"
-   8) (empty array)
+2) (nil)
 3) "engines"
 4) 1) "LUA"
    2) 1) "libraries_count"
@@ -77,7 +70,7 @@ When a function is actively running, `running_script` contains its details:
 FUNCTION STATS
 ```
 
-If `running_script` > `name` is an empty string, no function is executing. If it contains a name and a non-zero `duration_ms`, a function is in progress.
+If `running_script` is nil, no function is executing. If it contains a map with a name and a non-zero `duration_ms`, a function is in progress.
 
 ### Count loaded libraries and functions
 
@@ -94,7 +87,7 @@ sequenceDiagram
     participant R as Redis
 
     Admin->>R: FUNCTION STATS
-    R-->>Admin: running_script: {name: "", duration_ms: 0}
+    R-->>Admin: running_script: nil
     R-->>Admin: engines: {LUA: {libraries_count: 3, functions_count: 12}}
     Note over Admin: No function running, 3 libraries loaded
 
@@ -102,7 +95,7 @@ sequenceDiagram
     Note over R: Function starts executing...
     Admin->>R: FUNCTION STATS
     R-->>Admin: running_script: {name: "long_report", duration_ms: 2150}
-    Note over Admin: Identify and optionally kill with SCRIPT KILL
+    Note over Admin: Identify and optionally kill with FUNCTION KILL
 ```
 
 ### Identify a stuck function
@@ -114,8 +107,8 @@ FUNCTION STATS
 -- running_script > name: "batch_processor"
 -- running_script > duration_ms: 15430
 
--- If the function has not written data, kill it:
-SCRIPT KILL
+-- If the function has not performed writes, kill it:
+FUNCTION KILL
 ```
 
 ## Monitoring Over Time
@@ -152,7 +145,9 @@ The `flags` field in `running_script` reflects the flags the function was regist
 |---|---|
 | `no-writes` | Function declared it performs no writes |
 | `allow-oom` | Function is allowed to run even under OOM conditions |
-| `allow-repl` | Function can propagate commands to replicas |
+| `allow-stale` | Function is allowed to run on a stale replica |
+| `no-cluster` | Function is not allowed in cluster mode |
+| `allow-cross-slot-keys` | Function is allowed to access keys from multiple slots |
 
 ## Summary
 
