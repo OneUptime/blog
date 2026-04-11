@@ -21,7 +21,7 @@ A standard index lookup in MySQL involves two steps:
 A covering index eliminates step 2 by including all needed columns directly in the index.
 
 ```sql
--- Standard index: requires table lookup for name and email columns
+-- Standard index: requires table lookup for status and total columns
 CREATE INDEX idx_customer_id ON orders (customer_id);
 
 SELECT customer_id, status, total
