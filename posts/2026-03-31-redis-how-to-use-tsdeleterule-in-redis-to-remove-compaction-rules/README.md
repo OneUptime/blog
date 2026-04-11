@@ -128,10 +128,10 @@ ts = r.ts()
 def get_compaction_rules(key):
     """Return all compaction rules for a time series key."""
     info = ts.info(key)
-    return info.rules  # List of [dest_key, bucket_duration, aggregator]
+    return info.rules  # Dict of {dest_key: [bucket_duration, aggregator]}
 
 rules = get_compaction_rules('sensor:temp:raw')
-for dest, bucket_ms, aggregator in rules:
+for dest, (bucket_ms, aggregator) in rules.items():
     print(f"  -> {dest} (every {bucket_ms}ms, {aggregator})")
 ```
 
@@ -152,8 +152,7 @@ def remove_all_rules(source_key):
         print(f"No rules to remove from {source_key}")
         return
 
-    for rule in rules:
-        dest_key = rule[0]
+    for dest_key in rules:
         r.execute_command('TS.DELETERULE', source_key, dest_key)
         print(f"Removed rule: {source_key} -> {dest_key}")
 
