@@ -25,12 +25,15 @@ COPY redis.conf /etc/redis/redis.conf
 COPY docker-entrypoint-init.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint-init.sh
 
+# Ensure redis user can write environment config
+RUN chown redis:redis /etc/redis
+
 # Use non-root user
 USER redis
 
 EXPOSE 6379
 
-CMD ["redis-server", "/etc/redis/redis.conf"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-init.sh"]
 ```
 
 ## Pre-baked Configuration
@@ -79,16 +82,7 @@ exec redis-server /etc/redis/redis.conf "$@"
 Build image with RedisJSON and RediSearch:
 
 ```dockerfile
-FROM redis:7.2-alpine AS builder
-
-RUN apk add --no-cache build-base cmake git python3
-
-# Build RedisJSON
-RUN git clone --depth 1 https://github.com/RedisJSON/RedisJSON.git /tmp/RedisJSON
-WORKDIR /tmp/RedisJSON
-RUN cargo build --release 2>/dev/null || true
-
-# Use pre-built module binaries instead (production approach)
+# Use pre-built module binaries from redis-stack
 FROM redis/redis-stack-server:latest AS modules
 
 FROM redis:7.2-alpine
@@ -111,8 +105,8 @@ FROM redis:7.2-alpine
 # Run as non-root (redis user already exists in base image)
 RUN chown redis:redis /data
 
-# Remove shell access for redis user
-RUN usermod -s /sbin/nologin redis 2>/dev/null || true
+# Remove shell access for redis user (Alpine does not include usermod)
+RUN sed -i '/^redis:/s|[^:]*$|/sbin/nologin|' /etc/passwd
 
 # Copy hardened config
 COPY redis-hardened.conf /etc/redis/redis.conf
