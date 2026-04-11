@@ -45,7 +45,7 @@ The relevance score is a non-negative floating-point number. Higher values indic
 
 ## Understanding Relevance Scoring
 
-Relevance is based on the number of words in the row, the number of unique words, the total number of words in the collection, and how many rows contain the word. Words that appear in more than 50% of rows are treated as common and get a relevance of zero - this is called the 50% threshold.
+Relevance is based on the number of words in the row, the number of unique words, the total number of words in the collection, and how many rows contain the word. For MyISAM tables, words that appear in more than 50% of rows are treated as common and get a relevance of zero - this is called the 50% threshold. InnoDB does not apply the 50% threshold, which is one reason to prefer InnoDB for full-text search.
 
 To see scores alongside results:
 
@@ -99,6 +99,13 @@ INSERT INTO my_stopwords VALUES ('example'), ('test');
 SET GLOBAL innodb_ft_server_stopword_table = 'mydb/my_stopwords';
 ```
 
+After changing the stopword table, rebuild existing FULLTEXT indexes for the change to take effect:
+
+```sql
+ALTER TABLE articles DROP INDEX ft_content;
+ALTER TABLE articles ADD FULLTEXT INDEX ft_content (title, body);
+```
+
 ## Searching Multiple Columns
 
 You can include multiple columns in the MATCH clause, but they must use the same FULLTEXT index:
@@ -138,4 +145,4 @@ Look for `fulltext` in the `type` column in the output. If you see `ALL`, the FU
 
 ## Summary
 
-MySQL natural language full-text search uses `MATCH ... AGAINST` to return relevance-scored results from FULLTEXT indexed columns. Relevance is calculated based on word frequency across the collection, and words appearing in more than 50% of rows score zero. Key tuning factors include minimum token size and stopword configuration. Combine natural language search with regular WHERE filters for practical application search features.
+MySQL natural language full-text search uses `MATCH ... AGAINST` to return relevance-scored results from FULLTEXT indexed columns. Relevance is calculated based on word frequency across the collection. For MyISAM tables, words appearing in more than 50% of rows score zero, but this threshold does not apply to InnoDB. Key tuning factors include minimum token size and stopword configuration. Combine natural language search with regular WHERE filters for practical application search features.
