@@ -167,14 +167,6 @@ class TopicBroker {
     this.redis = redis;
     this.subscriber = redis.duplicate();
     this.topicClients = new Map(); // topic -> Set<WebSocket>
-  }
-
-  async subscribeClient(ws, topic) {
-    if (!this.topicClients.has(topic)) {
-      this.topicClients.set(topic, new Set());
-      await this.subscriber.subscribe(`topic:${topic}`);
-    }
-    this.topicClients.get(topic).add(ws);
 
     this.subscriber.on('message', (channel, message) => {
       const channelTopic = channel.replace('topic:', '');
@@ -189,6 +181,14 @@ class TopicBroker {
     });
   }
 
+  async subscribeClient(ws, topic) {
+    if (!this.topicClients.has(topic)) {
+      this.topicClients.set(topic, new Set());
+      await this.subscriber.subscribe(`topic:${topic}`);
+    }
+    this.topicClients.get(topic).add(ws);
+  }
+
   async publish(topic, data) {
     await this.redis.publish(`topic:${topic}`, JSON.stringify(data));
   }
@@ -198,7 +198,7 @@ class TopicBroker {
 ## Dead Letter Queue for Failed Deliveries
 
 ```javascript
-async function deliverWithRetry(userId, event, maxRetries = 3) {
+async function deliverWithRetry(userId, event) {
   const clients = connectedClients.get(userId);
 
   if (clients && clients.size > 0) {
@@ -210,7 +210,7 @@ async function deliverWithRetry(userId, event, maxRetries = 3) {
   }
 
   // User not connected - buffer for later delivery
-  await redis.lpush(
+  await redis.rpush(
     `pending:${userId}`,
     JSON.stringify({ event, retries: 0, timestamp: Date.now() })
   );
