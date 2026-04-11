@@ -37,7 +37,7 @@ CREATE TABLE votes (
 
 ## Adding a Vote (Like)
 
-Use `INSERT ... ON DUPLICATE KEY UPDATE` to handle vote changes atomically:
+Use a stored procedure to handle vote changes atomically within a transaction:
 
 ```sql
 DELIMITER $$
@@ -50,10 +50,13 @@ CREATE PROCEDURE cast_vote(
 BEGIN
     DECLARE existing_vote TINYINT DEFAULT NULL;
 
-    -- Get current vote if any
+    START TRANSACTION;
+
+    -- Get current vote if any (lock the row to prevent races)
     SELECT vote_type INTO existing_vote
     FROM votes
-    WHERE user_id = p_user_id AND post_id = p_post_id;
+    WHERE user_id = p_user_id AND post_id = p_post_id
+    FOR UPDATE;
 
     IF existing_vote IS NULL THEN
         -- New vote
@@ -93,6 +96,8 @@ BEGIN
             WHERE id = p_post_id;
         END IF;
     END IF;
+
+    COMMIT;
 END$$
 
 DELIMITER ;
@@ -156,7 +161,7 @@ GROUP BY post_id;
 ```sql
 -- Resync denormalized counters from source of truth
 UPDATE posts p
-JOIN (
+LEFT JOIN (
     SELECT
         post_id,
         SUM(CASE WHEN vote_type = 1 THEN 1 ELSE 0 END) AS likes,
@@ -164,8 +169,8 @@ JOIN (
     FROM votes
     GROUP BY post_id
 ) AS v ON p.id = v.post_id
-SET p.like_count = v.likes,
-    p.dislike_count = v.dislikes;
+SET p.like_count = COALESCE(v.likes, 0),
+    p.dislike_count = COALESCE(v.dislikes, 0);
 ```
 
 ## Summary
