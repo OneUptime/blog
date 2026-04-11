@@ -49,14 +49,16 @@ Use short connect timeouts (1-3s) and slightly longer read timeouts (3-10s) depe
 Long-lived idle connections can be silently dropped by firewalls or load balancers. Enable TCP keep-alive to detect dead connections early:
 
 ```python
+import socket
+
 client = redis.Redis(
     host='localhost',
     port=6379,
     socket_keepalive=True,
     socket_keepalive_options={
-        'TCP_KEEPIDLE': 60,
-        'TCP_KEEPINTVL': 10,
-        'TCP_KEEPCNT': 3
+        socket.TCP_KEEPIDLE: 60,
+        socket.TCP_KEEPINTVL: 10,
+        socket.TCP_KEEPCNT: 3
     }
 )
 ```
@@ -94,9 +96,9 @@ const client = new Redis({
 In languages without automatic resource management, always release connections back to the pool:
 
 ```python
-# Using context manager ensures proper release
-with pool.connection() as conn:
-    conn.set('key', 'value')
+# Using context manager ensures proper cleanup
+with redis.Redis(connection_pool=pool) as client:
+    client.set('key', 'value')
 # Connection automatically returned to pool here
 ```
 
