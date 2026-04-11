@@ -72,8 +72,8 @@ echo 0 > /proc/sys/vm/swappiness
 # Persist in /etc/sysctl.conf:
 echo "vm.swappiness=0" >> /etc/sysctl.conf
 
-# Lock Redis memory (add to redis.conf)
-# activerehashing yes
+# Disable overcommit to avoid background save failures
+# echo "vm.overcommit_memory=1" >> /etc/sysctl.conf
 ```
 
 In `redis.conf`, consider using `maxmemory` to keep Redis well within available RAM:
@@ -84,7 +84,7 @@ maxmemory-policy allkeys-lru
 
 ## Step 4: Use Slower fsync for AOF
 
-The default `everysec` AOF fsync blocks the main thread once per second. If you can tolerate up to 1 second of data loss, this is already a good trade-off. If you need faster responses and can tolerate more data loss:
+The default `everysec` AOF fsync is performed by a background thread once per second. The main thread can still stall if a previous background fsync has not completed in time. If you can tolerate up to 1 second of data loss, this is already a good trade-off. If you need faster responses and can tolerate more data loss:
 ```text
 appendfsync no
 ```
