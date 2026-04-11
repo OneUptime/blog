@@ -33,8 +33,8 @@ redis-cli DEBUG OBJECT mykey
 
 - Strings: stored inline if small (up to 44 bytes), otherwise heap-allocated
 - Hashes: use listpack (formerly ziplist) encoding for small hashes (up to 128 fields by default)
-- Lists: use listpack for small lists, quicklist for larger ones
-- Sets: use listpack for small integer sets, hashtable for larger ones
+- Lists: use quicklist encoding, which internally stores data in listpack nodes
+- Sets: use intset for small integer-only sets, listpack for small sets (Redis 7.2+), hashtable for larger ones
 - Sorted sets: use listpack for small ones, skiplist + hashtable for larger ones
 
 ## Eviction Units Are Keys, Not Fields
