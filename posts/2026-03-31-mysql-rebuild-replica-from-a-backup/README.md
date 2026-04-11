@@ -45,7 +45,7 @@ Take a fresh backup from the source (or another healthy replica):
 mysqldump -u root -p \
   --all-databases \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --flush-logs \
   --set-gtid-purged=ON \
   | gzip > /tmp/rebuild_snapshot.sql.gz
@@ -69,8 +69,8 @@ mysqld --initialize-insecure --user=mysql
 # Start MySQL
 systemctl start mysql
 
-# Get and set temporary root password, then restore
-zcat /tmp/rebuild_snapshot.sql.gz | mysql -u root -p
+# Restore the backup (no password after --initialize-insecure)
+zcat /tmp/rebuild_snapshot.sql.gz | mysql -u root
 ```
 
 ## Method 2: Rebuild Using Percona XtraBackup
@@ -164,6 +164,9 @@ RESET REPLICA ALL;
 
 CHANGE REPLICATION SOURCE TO
   SOURCE_HOST = '192.168.1.10',
+  SOURCE_PORT = 3306,
+  SOURCE_USER = 'repl_user',
+  SOURCE_PASSWORD = 'ReplPassword',
   SOURCE_AUTO_POSITION = 1;
 
 START REPLICA;
