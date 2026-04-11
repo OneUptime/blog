@@ -37,7 +37,8 @@ For counters that reset on demand (e.g., per-session event counts):
 
 ```python
 def reset_counter(name: str) -> int:
-    return r.getset(f"counter:{name}", 0)
+    old = r.set(f"counter:{name}", 0, get=True)
+    return int(old or 0)
 
 # Or atomically get and delete
 def consume_counter(name: str) -> int:
