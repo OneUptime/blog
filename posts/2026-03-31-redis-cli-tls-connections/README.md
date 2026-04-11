@@ -12,11 +12,10 @@ Redis supports TLS encryption for all client connections. When your Redis server
 
 ## Prerequisites
 
-Redis must be compiled with TLS support (`--BUILD_TLS=yes`). Verify:
+Redis must be compiled with TLS support (`BUILD_TLS=yes`). Verify:
 
 ```bash
-redis-cli INFO server | grep redis_build_id
-redis-server --version  # should mention TLS if supported
+redis-cli --help 2>&1 | grep "\-\-tls"
 ```
 
 ## Connecting with One-Way TLS (Server Certificate Only)
@@ -101,7 +100,7 @@ redis-cli -h redis.example.com -p 6380 --tls --cacert /etc/ssl/certs/ca.crt PING
 
 **Error: `SSL_connect: certificate verify failed`**
 - Provide the correct CA certificate with `--cacert`
-- Disable verify (development only): `--tls-no-verify` (not recommended for production)
+- Disable verify (development only): `--insecure` (not recommended for production)
 
 **Error: `SSL_connect: no shared cipher`**
 - Check TLS version compatibility between client and server
