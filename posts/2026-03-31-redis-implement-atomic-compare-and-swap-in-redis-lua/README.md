@@ -140,19 +140,24 @@ return 0
 def safe_increment(key: str, max_retries: int = 10) -> bool:
     for attempt in range(max_retries):
         current = r.get(key)
-        current_val = int(current) if current else 0
-        new_val = current_val + 1
+        if current is None:
+            # Key doesn't exist; use SETNX to atomically create it
+            if r.setnx(key, "1"):
+                return True
+        else:
+            current_val = int(current)
+            new_val = current_val + 1
 
-        result = r.eval(
-            CAS_SCRIPT, 1, key,
-            str(current_val),
-            str(new_val)
-        )
+            result = r.eval(
+                CAS_SCRIPT, 1, key,
+                str(current_val),
+                str(new_val)
+            )
 
-        if result == 1:
-            return True
+            if result == 1:
+                return True
 
-        # CAS failed - another client updated the value
+        # CAS or SETNX failed - another client updated the value
         time.sleep(0.001 * (2 ** attempt))  # Exponential backoff
 
     return False  # Max retries exceeded
