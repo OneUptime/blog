@@ -140,7 +140,10 @@ app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   await db.products.delete(id);
   await redis.del(`product:${id}`);
-  await redis.del(...(await redis.keys("products:page:*")));
+  const listKeys = await redis.keys("products:page:*");
+  if (listKeys.length > 0) {
+    await redis.del(...listKeys);
+  }
   res.status(204).send();
 });
 ```
