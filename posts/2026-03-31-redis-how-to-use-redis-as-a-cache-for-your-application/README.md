@@ -131,7 +131,7 @@ def update_user(user_id, new_data):
     # Invalidate cache
     r.delete(f'user:{user_id}')
     # Also invalidate any list caches that included this user
-    r.delete(f'users:list:page:*')  # use SCAN for pattern-based deletion
+    delete_pattern('users:list:page:*')  # DEL does not support wildcards, use SCAN
 ```
 
 For pattern-based deletion without blocking:
