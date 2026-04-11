@@ -96,26 +96,29 @@ Each change event looks like this:
 
 ```json
 {
-  "before": {
-    "id": 1,
-    "name": "Alice",
-    "email": "alice@example.com"
-  },
-  "after": {
-    "id": 1,
-    "name": "Alice Smith",
-    "email": "alice@example.com"
-  },
-  "source": {
-    "db": "myapp",
-    "table": "customers",
-    "ts_ms": 1743430800000,
-    "file": "mysql-bin.000042",
-    "pos": 12345,
-    "gtid": "3E11FA47-71CA-11E1-9E33-C80AA9429562:23"
-  },
-  "op": "u",
-  "ts_ms": 1743430800100
+  "schema": { ... },
+  "payload": {
+    "before": {
+      "id": 1,
+      "name": "Alice",
+      "email": "alice@example.com"
+    },
+    "after": {
+      "id": 1,
+      "name": "Alice Smith",
+      "email": "alice@example.com"
+    },
+    "source": {
+      "db": "myapp",
+      "table": "customers",
+      "ts_ms": 1743430800000,
+      "file": "mysql-bin.000042",
+      "pos": 12345,
+      "gtid": "3E11FA47-71CA-11E1-9E33-C80AA9429562:23"
+    },
+    "op": "u",
+    "ts_ms": 1743430800100
+  }
 }
 ```
 
