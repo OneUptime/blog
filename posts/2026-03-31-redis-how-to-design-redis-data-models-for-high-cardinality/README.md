@@ -64,7 +64,7 @@ pipeline.execute()
 When you have tens of millions of entities, even one key per entity is too many. Use hash buckets to group multiple entities into one key.
 
 ```python
-HASH_BUCKET_SIZE = 1000
+HASH_BUCKET_SIZE = 100
 
 def get_bucket_key(entity_id):
     bucket = int(entity_id) // HASH_BUCKET_SIZE
@@ -83,11 +83,11 @@ def get_user_score(user_id):
     field = get_field_name(user_id)
     return r.hget(bucket_key, field)
 
-# 10 million users = 10,000 hash keys instead of 10 million string keys
-# Redis hash compression kicks in for hashes with < 128 fields (ziplist encoding)
+# 10 million users = 100,000 hash keys instead of 10 million string keys
+# Redis uses memory-efficient listpack encoding for hashes with fewer entries than hash-max-listpack-entries (default 512)
 ```
 
-Redis automatically uses a memory-efficient ziplist encoding for small hashes, making this pattern extremely memory-efficient.
+Redis automatically uses a memory-efficient listpack encoding (called ziplist in older versions) for small hashes, making this pattern extremely memory-efficient when bucket sizes stay below the `hash-max-listpack-entries` threshold.
 
 ## Pattern 3: Sorted Sets for Ranked High-Cardinality Data
 
@@ -138,7 +138,7 @@ Instead of one key per time point, bucket time series data to reduce key count.
 import time
 
 def get_time_bucket(timestamp, bucket_seconds=3600):
-    """Round timestamp to nearest bucket boundary"""
+    """Floor timestamp to bucket boundary"""
     return int(timestamp // bucket_seconds) * bucket_seconds
 
 def record_metric(metric_name, value, timestamp=None):
@@ -194,7 +194,7 @@ def find_users_active_both_days(date1, date2):
 ```bash
 # redis.conf settings for high cardinality workloads
 
-# Hash encoding thresholds - keep small for ziplist savings
+# Hash encoding thresholds - keep small for listpack savings
 hash-max-listpack-entries 128
 hash-max-listpack-value 64
 
