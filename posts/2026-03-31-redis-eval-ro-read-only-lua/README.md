@@ -82,7 +82,7 @@ end
 
 ```redis
 EVAL_RO "redis.call('SET', KEYS[1], ARGV[1])" 1 mykey myvalue
--- ERR: ERR Write commands not allowed from read-only scripts.
+-- (error) ERR Write commands are not allowed from read-only scripts.
 ```
 
 This applies to all write commands including SET, DEL, INCR, LPUSH, ZADD, and any other command that modifies state.
@@ -98,7 +98,7 @@ sequenceDiagram
 
     C->>R: EVAL_RO "redis.call('SET', KEYS[1], 'x')" 1 user:1
     R->>R: Attempt SET inside script
-    R-->>C: ERR Write commands not allowed from read-only scripts.
+    R-->>C: ERR Write commands are not allowed from read-only scripts.
 ```
 
 ## Allowed Commands Inside EVAL_RO
