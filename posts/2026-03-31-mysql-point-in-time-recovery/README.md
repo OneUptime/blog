@@ -116,7 +116,7 @@ mysqlbinlog \
     /var/log/mysql/mysql-bin.000012 | grep -A 10 "DROP TABLE"
 ```
 
-Find the position number just before the DROP event. For example, if DROP is at position 4567, you want to restore up to position 4566.
+Find the position number where the DROP event starts. For example, if the DROP begins at position 4567, use `--stop-position=4567` since this option excludes events at and after the specified position.
 
 Alternatively, use datetime:
 
@@ -146,7 +146,7 @@ Using a stop position:
 ```bash
 mysqlbinlog \
     --start-position=154 \
-    --stop-position=4566 \
+    --stop-position=4567 \
     /var/log/mysql/mysql-bin.000012 | mysql -u root -p
 ```
 
