@@ -15,8 +15,6 @@ Moving data from Redis to PostgreSQL is a common task when you need to persist R
 ```python
 import redis
 import psycopg2
-import json
-from datetime import datetime
 
 r = redis.Redis(host="localhost", port=6379, password="your-password", decode_responses=True)
 pg = psycopg2.connect("postgresql://user:password@localhost:5432/mydb")
