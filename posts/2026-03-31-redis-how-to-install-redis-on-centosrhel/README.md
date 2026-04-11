@@ -121,7 +121,7 @@ sudo cp redis.conf /etc/redis/redis.conf
 Edit /etc/redis/redis.conf for production settings:
 
 ```text
-# Bind to all interfaces (or specific IP for security)
+# Bind to localhost only (recommended for security)
 bind 127.0.0.1
 
 # Set a strong password
@@ -194,8 +194,8 @@ getenforce
 # Allow Redis to bind to its port
 sudo setsebool -P redis_enable_notify 1
 
-# If using a custom port, add the context
-sudo semanage port -a -t redis_port_t -p tcp 6379
+# If using a custom port, add the SELinux context for it
+sudo semanage port -a -t redis_port_t -p tcp 6380
 
 # For custom data directories
 sudo semanage fcontext -a -t redis_var_lib_t "/var/lib/redis(/.*)?"
