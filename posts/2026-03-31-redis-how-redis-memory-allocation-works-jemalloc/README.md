@@ -10,7 +10,7 @@ Description: Understand how Redis uses jemalloc for memory allocation, why it wa
 
 ## Overview of Redis Memory Allocation
 
-Redis manages memory with high efficiency because it relies on jemalloc, a general-purpose memory allocator developed at Facebook. Unlike the standard glibc malloc, jemalloc is designed to minimize fragmentation and improve performance for workloads with many small allocations - exactly the pattern Redis exhibits.
+Redis manages memory with high efficiency because it relies on jemalloc, a general-purpose memory allocator originally created by Jason Evans for FreeBSD and later further developed at Facebook (Meta). Unlike the standard glibc malloc, jemalloc is designed to minimize fragmentation and improve performance for workloads with many small allocations - exactly the pattern Redis exhibits.
 
 When you start a Redis instance, jemalloc is loaded as the default allocator on Linux. You can verify this by running:
 
@@ -36,18 +36,19 @@ Redis previously used libc malloc but switched to jemalloc for several reasons:
 
 ## How jemalloc Organizes Memory
 
-jemalloc divides memory into three allocation categories based on size:
+jemalloc 5.x divides memory into two allocation categories based on size:
 
-- Small allocations: up to 14 KB, handled via thread-local caches and slabs
-- Large allocations: 14 KB to 4 MB, managed via arenas
-- Huge allocations: above 4 MB, mapped directly via mmap
+- Small allocations: up to approximately 14 KB, handled via thread-local caches and slab allocations (bins)
+- Large allocations: above 14 KB, each managed as an individual extent within arenas
 
-Each arena maintains independent free lists, reducing lock contention in multi-threaded environments. Redis uses multiple arenas by default, typically one per CPU core.
+Note: jemalloc versions prior to 5.0 had a third "huge" category for allocations above 4 MB. This was merged into the large category in jemalloc 5.0.
+
+Each arena maintains independent free lists, reducing lock contention in multi-threaded environments. jemalloc creates multiple arenas by default, typically four per CPU core.
 
 ```text
 jemalloc Arena Layout:
-  Arena 0 (CPU 0)  --> small bins --> large bins --> huge extents
-  Arena 1 (CPU 1)  --> small bins --> large bins --> huge extents
+  Arena 0  --> small bins --> large extents
+  Arena 1  --> small bins --> large extents
   ...
 ```
 
@@ -101,7 +102,7 @@ Example output from MEMORY STATS:
 
 You can influence jemalloc behavior through Redis configuration and environment variables.
 
-Enable active defragmentation to let jemalloc reclaim fragmented memory at runtime:
+Enable active defragmentation to let Redis identify fragmented allocations using jemalloc APIs and reallocate them to reduce fragmentation:
 
 ```bash
 CONFIG SET activedefrag yes
@@ -146,7 +147,7 @@ This prints a full jemalloc report including arena-level stats, bin sizes, and a
 To build Redis with tcmalloc instead:
 
 ```bash
-make USE_TCMALLOC=yes
+make MALLOC=tcmalloc
 ```
 
 For most production deployments, jemalloc is the right choice and requires no changes from the default.
