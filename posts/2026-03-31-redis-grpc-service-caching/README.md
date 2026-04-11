@@ -17,15 +17,15 @@ The most practical approach is to cache at the service implementation layer - ch
 ## Project Setup
 
 ```bash
-npm install @grpc/grpc-js @grpc/proto-loader redis protobufjs
+npm install @grpc/grpc-js @grpc/proto-loader redis
 ```
 
 ## Service Implementation with Redis Cache
 
 ```javascript
-const grpc = require('@grpc/grpc-js');
-const protoLoader = require('@grpc/proto-loader');
-const { createClient } = require('redis');
+import grpc from '@grpc/grpc-js';
+import protoLoader from '@grpc/proto-loader';
+import { createClient } from 'redis';
 
 const redis = createClient({ url: process.env.REDIS_URL });
 await redis.connect();
