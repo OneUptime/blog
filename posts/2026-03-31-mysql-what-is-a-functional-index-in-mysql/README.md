@@ -105,11 +105,11 @@ Internally, MySQL creates a hidden virtual generated column and indexes it. You 
 
 ```sql
 -- After creating a functional index, check generated columns
-SELECT COLUMN_NAME, GENERATION_EXPRESSION, IS_GENERATED
+SELECT COLUMN_NAME, GENERATION_EXPRESSION, EXTRA
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'users'
-  AND IS_GENERATED = 'ALWAYS';
+  AND EXTRA = 'VIRTUAL GENERATED';
 ```
 
 ## Limitations
