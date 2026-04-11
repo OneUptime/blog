@@ -96,7 +96,7 @@ FROM employees;
 
 ```sql
 SELECT LPAD('end', 12, 'ab');   -- 'ababababaend'
-SELECT RPAD('start', 12, 'xy'); -- 'startxyxyxy'
+SELECT RPAD('start', 12, 'xy'); -- 'startxyxyxyx'
 ```
 
 ## Combining LPAD and RPAD for centering
