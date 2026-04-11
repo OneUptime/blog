@@ -75,7 +75,7 @@ This can cause logical inconsistencies in complex transactions that read the sam
 
 ## Locking Behavior
 
-READ COMMITTED uses row-level locks only for DML (INSERT, UPDATE, DELETE). It does not use gap locks for reads, which reduces lock contention:
+READ COMMITTED uses row-level locks for locking reads (SELECT ... FOR UPDATE, SELECT ... FOR SHARE) and DML (INSERT, UPDATE, DELETE), but does not use gap locks, which reduces lock contention:
 
 ```sql
 -- Under READ COMMITTED, this only locks the specific row with id=5
