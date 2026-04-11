@@ -82,7 +82,7 @@ FROM catalog;
 +---------+-------------------+
 ```
 
-Item A finds `'sale'` in `$.tags[1]` first (the array search comes before the object path in internal ordering). Item B and C have no `'sale'` string.
+Item A finds `'sale'` at `$.tags[1]` (note: the order in which paths are matched with `'one'` mode is not defined per the MySQL documentation, so the first match returned may vary between versions). Item B and C have no `'sale'` string.
 
 ## Search All Matches: mode 'all'
 
@@ -152,6 +152,17 @@ SELECT title, JSON_SEARCH(data, 'all', 'electr%', NULL, '$.tags') AS elec_paths
 FROM catalog;
 ```
 
+```text
++---------+------------+
+| title   | elec_paths |
++---------+------------+
+| Item A  | "$.tags[0]"|
+| Item B  | NULL       |
+| Item C  | "$.tags[0]"|
+| Item D  | NULL       |
++---------+------------+
+```
+
 ## Restricting Search to a Specific Path
 
 Use the optional path argument to limit where the search occurs:
@@ -170,6 +181,8 @@ FROM catalog;
 | title   | tag_path   | meta_path        |
 +---------+------------+------------------+
 | Item A  | "$.tags[1]"| "$.meta.label"   |
+| Item B  | NULL       | NULL             |
+| Item C  | NULL       | NULL             |
 | Item D  | "$.tags[0]"| "$.meta.label"   |
 +---------+------------+------------------+
 ```
@@ -200,7 +213,7 @@ SELECT JSON_SEARCH('{"a": 1}', 'one', 'sale');  -- NULL (not found)
 ## Difference Between 'one' and 'all' Return Types
 
 - `'one'` returns a JSON string (scalar path): `"$.tags[1]"`
-- `'all'` returns a JSON array of strings (even if only one match): `["$.tags[1]"]`
+- `'all'` with multiple matches returns a JSON array of path strings: `["$.tags[1]", "$.meta.label"]`. With a single match, it returns a scalar path string like `'one'`
 
 When using the result downstream, `JSON_UNQUOTE()` removes the outer quotes from a `'one'` result so it can be used as a raw path string.
 
