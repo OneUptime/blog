@@ -104,7 +104,9 @@ pt-osc works by creating a shadow table, copying data in chunks, and using trigg
 
 ```bash
 gh-ost \
-  --mysql-password="secure_password" \
+  --user="admin" \
+  --password="secure_password" \
+  --host=localhost \
   --database="myapp" \
   --table="orders" \
   --alter="ADD COLUMN notes TEXT" \
