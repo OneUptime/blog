@@ -39,7 +39,7 @@ SELECT items->'$[0]' AS first_item FROM orders;
 SELECT items->>'$[1].sku' AS second_sku FROM orders WHERE id = 1;
 -- Result: B3
 
--- Get the last element using last keyword (MySQL 8.0.4+)
+-- Get the last element using last keyword (MySQL 8.0.21+)
 SELECT items->>'$[last].sku' AS last_sku FROM orders;
 ```
 
