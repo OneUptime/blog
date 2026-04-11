@@ -12,7 +12,7 @@ Description: Implement transaction deduplication with Redis to prevent double ch
 
 Financial transaction deduplication prevents duplicate charges caused by network retries, client bugs, or double-click submissions. Unlike general request deduplication, financial deduplication requires extra care: atomic operations, durable storage, and careful handling of concurrent submissions of the same transaction.
 
-## Core Deduplication with NX
+## Core Deduplication Setup
 
 ```python
 import json
@@ -165,7 +165,7 @@ def charge_card(
 
 # First call - charges the card
 result1 = charge_card("user_123", 9999, "usd", "tok_abc", "order_xyz")
-# {"status": "success", "transaction_id": "ch_...", "duplicate": False}
+# {"status": "success", "transaction_id": "ch_...", ...}
 
 # Retry (e.g. network timeout) - returns cached result, no second charge
 result2 = charge_card("user_123", 9999, "usd", "tok_abc", "order_xyz")
