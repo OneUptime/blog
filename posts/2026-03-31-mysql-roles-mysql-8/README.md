@@ -50,6 +50,7 @@ GRANT 'app_read' TO 'data_analyst'@'%';
 GRANT 'app_admin' TO 'db_admin'@'%';
 
 -- A user can hold multiple roles
+CREATE USER 'power_user'@'%' IDENTIFIED BY 'strong_password_4';
 GRANT 'app_read', 'app_write' TO 'power_user'@'%';
 ```
 
@@ -92,9 +93,9 @@ SHOW GRANTS FOR 'app_read';
 -- View roles granted to a specific user
 SHOW GRANTS FOR 'api_service'@'%' USING 'app_write';
 
--- View role membership from information_schema
+-- View role membership from the mysql system schema
 SELECT FROM_USER, FROM_HOST, TO_USER, TO_HOST
-FROM information_schema.ROLE_EDGES
+FROM mysql.role_edges
 WHERE TO_USER = 'api_service';
 ```
 
