@@ -24,7 +24,7 @@ CF.INSERT key [CAPACITY capacity] [NOCREATE] ITEMS item [item ...]
 3) (integer) 1
 ```
 
-Each returned value: `1` = newly inserted, `0` = item may already exist.
+Each returned value: `1` = successfully inserted. Since Cuckoo filters allow duplicates, `CF.INSERT` always returns `1` for each item (unless the filter is full, in which case `-1` is returned).
 
 ## CF.INSERTNX - Insert Only If Not Existing
 
@@ -103,7 +103,7 @@ print(f"Likely duplicates: {dupes}")
 | Batch support | No (one item) | Yes (multiple items) |
 | Auto-create filter | Yes (default capacity) | Yes (with CAPACITY param) |
 | Custom capacity | No | Yes |
-| NX variant | No | CF.INSERTNX |
+| NX variant | CF.ADDNX | CF.INSERTNX |
 
 ## Performance Comparison
 
