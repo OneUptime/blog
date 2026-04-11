@@ -36,7 +36,7 @@ The `node-id` is the 40-character hex ID from `CLUSTER NODES`. Returns `OK`.
 Before forgetting a node:
 1. The node must have 0 slots assigned (migrate all slots away first for primaries)
 2. You cannot forget yourself (the node you are connected to)
-3. You cannot forget a node whose primary you are (replicas must be freed first)
+3. A replica cannot forget its own master (reassign the replica first with `CLUSTER REPLICATE`)
 
 ## Getting the Node ID
 
@@ -96,7 +96,7 @@ CLUSTER FORGET <my-own-node-id>
 ```
 
 ```text
-(error) ERR I tried hard but I can't forget myself.
+(error) ERR I tried hard but I can't forget myself...
 ```
 
 ## Safe Removal Workflow
