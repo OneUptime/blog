@@ -83,7 +83,7 @@ Real-time delivery via Pub/Sub is fire-and-forget. For offline users, store noti
 ZADD inbox:user:bob 1711900000 '{"type":"like","from":"alice","post":"123"}'
 
 # Get latest 20 notifications
-ZREVRANGE inbox:user:bob 0 19 WITHSCORES
+ZRANGE inbox:user:bob 0 19 REV WITHSCORES
 
 # Count unread notifications
 ZCOUNT inbox:user:bob 1711800000 +inf
@@ -119,8 +119,9 @@ def enqueue_push(device_token, title, body):
 # Worker consuming the email queue
 def email_worker():
     while True:
-        _, raw = r.blpop('queue:email', timeout=5)
-        if raw:
+        result = r.blpop('queue:email', timeout=5)
+        if result:
+            _, raw = result
             job = json.loads(raw)
             send_email(job['user_id'], job['template'], job['context'])
 ```
@@ -142,7 +143,7 @@ ZPOPMIN queue:notifications
 
 ## Rate Limiting Notifications
 
-Prevent notification spam with a sliding window counter:
+Prevent notification spam with a fixed window counter:
 
 ```python
 def can_notify(user_id, max_per_hour=10):
@@ -177,6 +178,9 @@ For users with millions of followers (celebrities, major accounts), direct fan-o
 ```bash
 # Producer writes event
 XADD events:new_posts * user_id alice post_id 123
+
+# Create consumer group (run once)
+XGROUP CREATE events:new_posts fanout-workers $ MKSTREAM
 
 # Consumer group reads and distributes
 XREADGROUP GROUP fanout-workers worker-1 COUNT 10 STREAMS events:new_posts >
