@@ -60,7 +60,7 @@ min_examined_row_limit = 1000
 # Time: 2026-03-31T10:15:22.123456Z
 # User@Host: app_user[app_user] @ [10.0.0.5]  Id: 1042
 # Query_time: 3.456789  Lock_time: 0.000123  Rows_sent: 1  Rows_examined: 500000
-SET timestamp=1743419722;
+SET timestamp=1774952122;
 SELECT * FROM orders WHERE status = 'pending' AND created_at < '2026-01-01';
 ```
 
