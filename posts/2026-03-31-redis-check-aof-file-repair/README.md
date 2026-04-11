@@ -52,15 +52,15 @@ redis-check-aof /var/lib/redis/appendonly.aof
 Output when valid:
 
 ```text
-AOF analyzed: size=2048576, ok_up_to=2048576, diff=0
+AOF analyzed: size=2048576, ok_up_to=2048576, ok_up_to_line=15234, diff=0
 AOF is valid
 ```
 
 Output when corrupted:
 
 ```text
-AOF analyzed: size=2048576, ok_up_to=2041234, diff=7342
-AOF is not valid. Use --fix to fix it.
+AOF analyzed: size=2048576, ok_up_to=2041234, ok_up_to_line=14892, diff=7342
+AOF is not valid. Use the --fix option to try fixing it.
 ```
 
 ## Repairing a Corrupted AOF File
@@ -78,8 +78,8 @@ redis-check-aof --fix /var/lib/redis/appendonly.aof
 You will be prompted to confirm:
 
 ```text
-This will remove the tail of the AOF at 2041234.
-Are you sure you want to proceed? [y/N]: y
+This will shrink the AOF from 2048576 bytes, with 7342 bytes, to 2041234 bytes
+Continue? [y/N]: y
 Successfully truncated AOF
 ```
 
