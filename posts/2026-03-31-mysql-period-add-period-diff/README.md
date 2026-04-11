@@ -44,7 +44,7 @@ PERIOD_ADD(P, N)
 - `P` - period in `YYMM` or `YYYYMM` format.
 - `N` - number of months to add (can be negative).
 - Returns a period in `YYYYMM` format.
-- Returns `0` if `P` is `0`.
+- `P` must be a valid period value. Passing `0` raises an error in MySQL 8.0+.
 
 ### Basic Examples
 
@@ -205,7 +205,7 @@ SELECT
 - Periods have no concept of days, only year and month.
 - `PERIOD_ADD()` and `PERIOD_DIFF()` cannot handle weeks, days, hours, or seconds.
 - For full date arithmetic, use `DATE_ADD()`, `DATE_SUB()`, `TIMESTAMPDIFF()`, or `DATEDIFF()` instead.
-- Period `0` is treated specially and returns `0` from `PERIOD_ADD()`.
+- Passing `0` as a period to `PERIOD_ADD()` raises an error in MySQL 8.0+.
 
 ---
 
