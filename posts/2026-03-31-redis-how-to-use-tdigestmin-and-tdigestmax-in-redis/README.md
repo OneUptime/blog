@@ -156,8 +156,8 @@ print(f"Latency range: {min_latency}ms to {max_latency}ms")
 ```bash
 # Empty T-Digest
 TDIGEST.CREATE empty COMPRESSION 100
-TDIGEST.MIN empty    # Returns: (nil)
-TDIGEST.MAX empty    # Returns: (nil)
+TDIGEST.MIN empty    # Returns: "nan"
+TDIGEST.MAX empty    # Returns: "nan"
 
 # Single element
 TDIGEST.ADD empty 42.5
@@ -167,4 +167,4 @@ TDIGEST.MAX empty    # Returns: "42.5"
 
 ## Summary
 
-`TDIGEST.MIN` and `TDIGEST.MAX` provide exact minimum and maximum values from a Redis T-Digest, unlike probabilistic estimates from other T-Digest commands. They are useful for detecting outliers, validating data ranges, and setting alert thresholds. For empty structures, both return nil. Use them alongside `TDIGEST.QUANTILE` to build a complete picture of your data distribution from the extreme values to the center.
+`TDIGEST.MIN` and `TDIGEST.MAX` provide exact minimum and maximum values from a Redis T-Digest, unlike probabilistic estimates from other T-Digest commands. They are useful for detecting outliers, validating data ranges, and setting alert thresholds. For empty structures, both return nan. Use them alongside `TDIGEST.QUANTILE` to build a complete picture of your data distribution from the extreme values to the center.
