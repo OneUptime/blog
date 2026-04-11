@@ -127,7 +127,7 @@ SHOW VARIABLES LIKE 'version%';
 | Variable_name           | Value               |
 +-------------------------+---------------------+
 | version                 | 8.0.x               |
-| version_comment         | MySQL Community     |
+| version_comment         | (Ubuntu)            |
 | version_compile_os      | Linux               |
 +-------------------------+---------------------+
 ```
