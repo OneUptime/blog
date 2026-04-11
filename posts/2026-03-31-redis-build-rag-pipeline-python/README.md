@@ -133,8 +133,7 @@ Avoid redundant LLM calls by caching responses in Redis:
 
 ```python
 def answer_with_cache(question: str) -> str:
-    q_vec = model.encode(question).astype(np.float32).tobytes()
-    # Check cache (simplified - use redisvl SemanticCache for production)
+    # Check cache (simplified exact-match - use redisvl SemanticCache for production)
     cached = r.get(f"cache:{question}")
     if cached:
         return cached.decode()
