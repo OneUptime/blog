@@ -47,7 +47,7 @@ CREATE TABLE dim_product (
 
 -- Sales fact table
 CREATE TABLE fact_sales (
-  sale_id      BIGINT    NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sale_id      BIGINT    NOT NULL AUTO_INCREMENT,
   date_key     INT       NOT NULL,
   product_key  BIGINT    NOT NULL,
   customer_key BIGINT    NOT NULL,
@@ -56,6 +56,7 @@ CREATE TABLE fact_sales (
   cost         DECIMAL(12,2) NOT NULL,
   INDEX idx_date    (date_key),
   INDEX idx_product (product_key),
+  PRIMARY KEY (sale_id, date_key),
   INDEX idx_covering (date_key, product_key, revenue)
 ) ENGINE=InnoDB
   PARTITION BY RANGE (date_key) (
@@ -67,16 +68,18 @@ CREATE TABLE fact_sales (
 
 ## Loading Data Efficiently
 
-Use `LOAD DATA INFILE` or bulk `INSERT` with `innodb_autoinc_lock_mode=2` for fast loads. Disable indexes before loading and rebuild after:
+Use `LOAD DATA INFILE` or bulk `INSERT` with `innodb_autoinc_lock_mode=2` for fast loads. Disable foreign key and uniqueness checks during the load to reduce overhead:
 
 ```sql
-ALTER TABLE fact_sales DISABLE KEYS;
+SET foreign_key_checks = 0;
+SET unique_checks = 0;
 LOAD DATA INFILE '/tmp/sales_2025.csv'
   INTO TABLE fact_sales
   FIELDS TERMINATED BY ','
   LINES TERMINATED BY '\n'
   (date_key, product_key, customer_key, quantity, revenue, cost);
-ALTER TABLE fact_sales ENABLE KEYS;
+SET unique_checks = 1;
+SET foreign_key_checks = 1;
 ```
 
 ## Running Analytical Queries
@@ -98,7 +101,7 @@ GROUP BY d.year, d.month, p.category
 ORDER BY d.month, total_revenue DESC;
 ```
 
-Use `EXPLAIN PARTITIONS` to verify partition pruning is active before running large scans.
+Use `EXPLAIN` to verify partition pruning is active before running large scans (the `partitions` column in the output shows which partitions are accessed).
 
 ## Configuration for Analytics
 
