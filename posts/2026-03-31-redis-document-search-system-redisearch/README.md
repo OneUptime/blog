@@ -64,9 +64,10 @@ def search_documents(query_text: str, limit: int = 10,
                      offset: int = 0) -> dict:
     query = (
         Query(query_text)
+        .with_scores()
         .paging(offset, limit)
         .highlight(fields=["title", "body"], tags=["<b>", "</b>"])
-        .summarize(fields=["body"], num_frags=2, frag_len=50)
+        .summarize(fields=["body"], num_frags=2, context_len=50)
     )
     results = r.ft("idx:docs").search(query)
     return {
@@ -116,8 +117,8 @@ def search_in_date_range(query_text: str, start_ts: float,
 
 ```python
 def advanced_query_examples():
-    # AND: both terms required
-    r.ft("idx:docs").search(Query("redis AND search"))
+    # AND: both terms required (implicit with space-separated terms)
+    r.ft("idx:docs").search(Query("redis search"))
 
     # OR: either term
     r.ft("idx:docs").search(Query("redis|search"))
