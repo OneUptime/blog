@@ -86,23 +86,26 @@ WHERE CONSTRAINT_SCHEMA = 'your_database'
 
 ## Chained Cascades
 
-MySQL supports multi-level cascades. If table C references table B, which references table A, updating table A can cascade through B and into C automatically.
+MySQL supports multi-level cascades. When a cascaded update changes a column that is itself part of a key referenced by another foreign key, the cascade chains to the next table automatically.
 
 ```sql
 CREATE TABLE regions (id INT PRIMARY KEY, name VARCHAR(50));
 CREATE TABLE departments (
-    id INT PRIMARY KEY,
+    id INT,
     region_id INT,
+    name VARCHAR(100),
+    PRIMARY KEY (region_id, id),
     FOREIGN KEY (region_id) REFERENCES regions(id) ON UPDATE CASCADE
 );
 CREATE TABLE employees (
     id INT PRIMARY KEY,
+    region_id INT,
     department_id INT,
-    FOREIGN KEY (department_id) REFERENCES departments(id) ON UPDATE CASCADE
+    FOREIGN KEY (region_id, department_id) REFERENCES departments(region_id, id) ON UPDATE CASCADE
 );
 ```
 
-A single update to `regions.id` cascades through `departments` and then into `employees`.
+Updating `regions.id` cascades into `departments.region_id` (part of the composite primary key), which in turn cascades into `employees.region_id` (part of the composite foreign key referencing `departments`).
 
 ## Common Pitfalls
 
