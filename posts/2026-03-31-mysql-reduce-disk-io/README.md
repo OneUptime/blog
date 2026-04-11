@@ -35,12 +35,13 @@ WHERE variable_name IN (
   'Innodb_data_writes',
   'Innodb_data_fsyncs',
   'Innodb_buffer_pool_reads',
+  'Innodb_buffer_pool_read_requests',
   'Innodb_buffer_pool_wait_free',
   'Innodb_os_log_written'
 );
 ```
 
-High `Innodb_buffer_pool_reads` relative to `Innodb_data_reads` indicates insufficient buffer pool size.
+High `Innodb_buffer_pool_reads` relative to `Innodb_buffer_pool_read_requests` indicates insufficient buffer pool size.
 
 ## Increase Buffer Pool to Reduce Read I/O
 
@@ -90,14 +91,14 @@ CREATE TABLE logs (
   PRIMARY KEY (id)
 ) ENGINE=InnoDB ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
 
--- Monitor compression statistics
+-- Monitor compression statistics (aggregated by page size)
 SELECT
-  table_name,
+  page_size,
   compress_ops,
   compress_ops_ok,
   compress_time,
   uncompress_ops
-FROM information_schema.INNODB_CMP_RESET;
+FROM information_schema.INNODB_CMP;
 ```
 
 ## Eliminate I/O from Redundant Indexes
