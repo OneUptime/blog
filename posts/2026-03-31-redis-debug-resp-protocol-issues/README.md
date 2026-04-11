@@ -12,11 +12,11 @@ When Redis clients misbehave, the problem is often at the RESP protocol layer. T
 
 ## Using redis-cli in Raw RESP Mode
 
-`redis-cli` has a `--no-auth-warning` and `--resp` flag, but the most useful mode for debugging is `--resp3` combined with `--verbose`:
+`redis-cli` has a `--no-auth-warning` and `-3` (RESP3) flag, but the most useful mode for debugging is `-3` combined with `--verbose`:
 
 ```bash
 # See raw RESP bytes with --show-pushes
-redis-cli --resp3 --show-pushes
+redis-cli -3 --show-pushes yes
 
 # Print exact bytes sent and received
 redis-cli --raw GET mykey
@@ -59,7 +59,7 @@ And the response:
 To test what Redis returns for a manually crafted command:
 
 ```bash
-printf "*2\r\n\$3\r\nGET\r\n\$6\r\nmykey\r\n" | nc localhost 6379
+printf "*2\r\n\$3\r\nGET\r\n\$5\r\nmykey\r\n" | nc localhost 6379
 ```
 
 This bypasses any client library and confirms whether the server behavior is correct.
