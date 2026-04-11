@@ -119,11 +119,11 @@ consul intention list
 Check that connections are being proxied through Connect:
 
 ```bash
-# Check Connect certificate for Redis service
+# View the Connect CA provider configuration
 consul connect ca get-config
 
-# Monitor proxy activity
-consul connect proxy -sidecar-for redis-1 -log-level debug
+# Start Envoy sidecar with debug logging to inspect proxy activity
+consul connect envoy -sidecar-for redis-1 -- -l debug
 ```
 
 ## Kubernetes Integration with Consul Helm
