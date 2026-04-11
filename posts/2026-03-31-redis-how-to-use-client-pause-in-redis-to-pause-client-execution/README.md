@@ -17,8 +17,8 @@ CLIENT PAUSE timeout [WRITE | ALL]
 ```
 
 - `timeout` - pause duration in milliseconds
-- `WRITE` (default in Redis 7.0+) - pause only write commands; reads still work
-- `ALL` - pause all client commands including reads
+- `WRITE` - pause only write commands; reads still work (available since Redis 6.2)
+- `ALL` (default) - pause all client commands including reads
 
 Returns `OK` immediately, then pauses command processing.
 
@@ -73,10 +73,11 @@ CLIENT PAUSE 5000 WRITE
 ### Backup Window
 
 ```bash
-# Pause to ensure consistent snapshot
-CLIENT PAUSE 30000 ALL
+# Start background save, then pause writes to ensure consistency
 BGSAVE
-# After BGSAVE starts, clients resume
+CLIENT PAUSE 30000 WRITE
+# Writes are blocked while the snapshot completes
+# After maintenance, unpause early if needed
 CLIENT UNPAUSE
 ```
 
@@ -165,15 +166,16 @@ async function testDuringPause() {
 await pauseForMaintenance(3000);
 ```
 
-## Monitoring Pause State
+## Monitoring Client State
 
 ```bash
-# Check if clients are currently paused
-CLIENT INFO
-# Look for 'flags' field - 'P' indicates paused client
-
+# List all connected clients and their states
 CLIENT LIST
-# Shows all connected clients and their states
+# Shows id, addr, fd, name, flags, and other fields for each client
+
+# Check server client statistics
+INFO CLIENTS
+# Shows connected_clients, blocked_clients, and other metrics
 ```
 
 ## Coordinated Failover Script
