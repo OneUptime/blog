@@ -158,7 +158,7 @@ console.log('Snapshot:', snapshot);
 const crossDbCopied = await client.copy(
   'rankings:current',
   'rankings:current',
-  { destinationDb: 2 }
+  { DB: 2 }
 );
 console.log(`Cross-db copy: ${crossDbCopied}`);
 ```
