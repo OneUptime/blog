@@ -19,7 +19,7 @@ graph TD
     B --> C["redis"]
     B --> D["redisearch"]
     B --> E["redisbloom"]
-    C --> F["Returns sorted array of all terms"]
+    C --> F["Returns array of all terms"]
     D --> F
     E --> F
 ```
@@ -32,7 +32,7 @@ FT.DICTDUMP dict
 
 - `dict` - the name of the custom dictionary
 
-Returns an array of all terms in the dictionary in alphabetical order. Returns an empty array if the dictionary is empty or does not exist.
+Returns an array of all terms in the dictionary. Returns an empty array if the dictionary is empty or does not exist.
 
 ## Examples
 
@@ -46,11 +46,9 @@ FT.DICTDUMP brandnames
 ```text
 1) "redis"
 2) "redisbloom"
-3) "redistimeseries"
-4) "redisearch"
+3) "redisearch"
+4) "redistimeseries"
 ```
-
-Terms are returned in alphabetical order.
 
 ### View an Empty or Missing Dictionary
 
@@ -142,4 +140,4 @@ Dictionaries and synonym groups are separate concepts. Dictionaries affect spell
 
 ## Summary
 
-`FT.DICTDUMP` returns all terms stored in a RediSearch custom dictionary in alphabetical order. Use it to audit dictionary contents before applying them to spellcheck queries, verify that `FT.DICTADD` and `FT.DICTDEL` operations had the intended effect, and export dictionaries for backup or migration. The command returns an empty array for missing or empty dictionaries rather than an error.
+`FT.DICTDUMP` returns all terms stored in a RediSearch custom dictionary. Use it to audit dictionary contents before applying them to spellcheck queries, verify that `FT.DICTADD` and `FT.DICTDEL` operations had the intended effect, and export dictionaries for backup or migration. The command returns an empty array for missing or empty dictionaries rather than an error.
