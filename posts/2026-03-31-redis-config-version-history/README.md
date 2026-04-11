@@ -16,7 +16,6 @@ Every time a config value is updated, append an event to a stream:
 
 ```python
 import redis
-import json
 import time
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -81,10 +80,10 @@ def rollback_config(service: str, key: str, steps: int = 1):
     events = r.xrevrange(stream_key)
     key_changes = [(eid, f) for eid, f in events if f.get("key") == key]
 
-    if len(key_changes) <= steps:
+    if len(key_changes) < steps:
         raise ValueError("Not enough history to rollback")
 
-    target_event_id, target_fields = key_changes[steps]
+    target_event_id, target_fields = key_changes[steps - 1]
     previous_value = target_fields["old_value"]
     r.hset(f"config:{service}", key, previous_value)
     return previous_value
