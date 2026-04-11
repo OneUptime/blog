@@ -91,12 +91,13 @@ def deregister_service(service_name: str, instance_id: str):
 def start_heartbeat(service_name: str, instance_id: str, interval: int = 10):
     """Start a background thread to send heartbeats."""
     def send_heartbeats():
+        current_id = instance_id
         while True:
             try:
-                alive = heartbeat(service_name, instance_id)
+                alive = heartbeat(service_name, current_id)
                 if not alive:
                     # Re-register if TTL expired (recovery scenario)
-                    register_service(service_name)
+                    current_id = register_service(service_name)
             except Exception:
                 pass
             time.sleep(interval)
@@ -131,12 +132,12 @@ def get_service_instances(service_name: str) -> list[dict]:
     return instances
 
 def get_service_address(service_name: str) -> str | None:
-    """Get a single service address (round-robin via random member)."""
+    """Get a single service address (random selection)."""
     instances = get_service_instances(service_name)
     if not instances:
         return None
 
-    # Simple round-robin using Redis randomness
+    # Simple random selection from healthy instances
     import random
     instance = random.choice(instances)
     return instance.get("address")
