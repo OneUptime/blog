@@ -32,6 +32,7 @@ import (
     "time"
 
     "github.com/go-redsync/redsync/v4"
+    redsyncredis "github.com/go-redsync/redsync/v4/redis"
     "github.com/go-redsync/redsync/v4/redis/goredis/v9"
     goredislib "github.com/redis/go-redis/v9"
 )
@@ -47,7 +48,7 @@ func main() {
     }
 
     // Create redsync pools
-    pools := make([]redsync.Pool, len(clients))
+    pools := make([]redsyncredis.Pool, len(clients))
     for i, client := range clients {
         pools[i] = goredis.NewPool(client)
     }
@@ -92,6 +93,7 @@ import (
     "time"
 
     "github.com/go-redsync/redsync/v4"
+    redsyncredis "github.com/go-redsync/redsync/v4/redis"
     "github.com/go-redsync/redsync/v4/redis/goredis/v9"
     goredislib "github.com/redis/go-redis/v9"
 )
@@ -101,7 +103,7 @@ type DistributedLock struct {
 }
 
 func New(addrs []string) *DistributedLock {
-    pools := make([]redsync.Pool, len(addrs))
+    pools := make([]redsyncredis.Pool, len(addrs))
     for i, addr := range addrs {
         client := goredislib.NewClient(&goredislib.Options{Addr: addr})
         pools[i] = goredis.NewPool(client)
@@ -160,13 +162,6 @@ import (
     goredis "github.com/redis/go-redis/v9"
 )
 
-const acquireScript = `
-if redis.call('exists', KEYS[1]) == 0 then
-    return redis.call('set', KEYS[1], ARGV[1], 'px', ARGV[2])
-end
-return nil
-`
-
 const releaseScript = `
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('del', KEYS[1])
@@ -212,8 +207,8 @@ func (rl *Redlock) Acquire(ctx context.Context, resource string, ttl time.Durati
         acquired := 0
 
         for _, client := range rl.clients {
-            result, err := client.Eval(ctx, acquireScript, []string{resource}, value, ttl.Milliseconds()).Result()
-            if err == nil && result == "OK" {
+            ok, err := client.SetNX(ctx, resource, value, ttl).Result()
+            if err == nil && ok {
                 acquired++
             }
         }
