@@ -39,7 +39,7 @@ JSON.SET session:1 $ '{"user_id":42,"cart":{"items":[{"sku":"A1","qty":2}],"tota
 
 ```redis
 127.0.0.1:6379> JSON.CLEAR session:1 $
-1) (integer) 1
+(integer) 1
 
 JSON.GET session:1
 # [{}]
@@ -53,7 +53,7 @@ The key still exists but the root object is now empty.
 JSON.SET cart:1 $ '{"items":["A","B","C"],"totals":[10,20,30]}'
 
 JSON.CLEAR cart:1 $.items
-# 1) (integer) 1
+# (integer) 1
 
 JSON.GET cart:1 $.items
 # [[]]   (empty array)
@@ -68,7 +68,7 @@ JSON.GET cart:1 $.totals
 JSON.SET config:1 $ '{"db":{"host":"localhost","port":5432},"cache":{"host":"redis","port":6379}}'
 
 JSON.CLEAR config:1 $.db
-# 1) (integer) 1
+# (integer) 1
 
 JSON.GET config:1 $.db
 # [{}]   (empty object)
@@ -82,7 +82,7 @@ JSON.GET config:1 $.cache
 JSON.SET stats:1 $ '{"views":500,"likes":200,"shares":80}'
 
 JSON.CLEAR stats:1 $.views
-# 1) (integer) 1
+# (integer) 1
 
 JSON.GET stats:1 $.views
 # [0]
@@ -94,7 +94,7 @@ JSON.GET stats:1 $.views
 JSON.SET counters:1 $ '{"daily":100,"weekly":700,"monthly":3000}'
 
 JSON.CLEAR counters:1 '$.*'
-# 1) (integer) 3
+# (integer) 3
 
 JSON.GET counters:1
 # [{"daily":0,"weekly":0,"monthly":0}]
@@ -106,7 +106,7 @@ JSON.GET counters:1
 JSON.SET mixed:1 $ '{"count":10,"label":"hello","active":true,"data":null}'
 
 JSON.CLEAR mixed:1 '$.*'
-# 1) (integer) 1   (only "count" was clearable)
+# (integer) 1   (only "count" was clearable)
 
 JSON.GET mixed:1
 # [{"count":0,"label":"hello","active":true,"data":null}]
@@ -136,7 +136,7 @@ def reset_session(session_key):
     # Clear cart items and reset score without destroying the session structure
     cleared = r.json().clear(session_key, "$.cart.items")
     r.json().set(session_key, "$.score", 0)
-    print(f"Session reset: {cleared[0]} containers cleared")
+    print(f"Session reset: {cleared} containers cleared")
 
 r.json().set("session:5", "$", {
     "user_id": 99,
