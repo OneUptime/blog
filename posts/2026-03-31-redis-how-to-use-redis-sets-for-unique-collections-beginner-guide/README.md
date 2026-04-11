@@ -97,7 +97,7 @@ def unique_visitor_count(page_id, day=None):
 
 def has_visited(page_id, user_id, day=None):
     day = day or date.today().isoformat()
-    return r.sismember(f'visitors:{page_id}:{day}`, user_id)
+    return r.sismember(f'visitors:{page_id}:{day}', user_id)
 
 # Usage
 track_visit('home', 'user:42')
@@ -172,7 +172,7 @@ SMISMEMBER tags:post:101 "redis" "python" "beginner"
 # Pick 3 random tags (without removing)
 SRANDMEMBER tags:post:101 3
 
-# Weighted random: get 1 random winner from a set
+# Random selection: get 1 random winner from a set
 SPOP contest:entries 1
 ```
 
