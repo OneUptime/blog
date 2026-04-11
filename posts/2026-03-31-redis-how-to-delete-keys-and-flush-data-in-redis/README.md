@@ -50,16 +50,14 @@ DEL user:42
 Never use `KEYS *` to find keys to delete in production. KEYS blocks Redis while scanning. Use SCAN instead:
 
 ```bash
-# Scan for keys matching a pattern safely
-redis-cli SCAN 0 MATCH "session:*" COUNT 100
+# Scan for keys matching a pattern safely (--scan handles cursor iteration automatically)
+redis-cli --scan --pattern "session:*"
 
-# Delete all matching keys using scan + delete loop
-redis-cli SCAN 0 MATCH "session:*" COUNT 100 | while read cursor keys; do
-  for key in $keys; do
-    redis-cli UNLINK "$key"
-  done
-  # Continue until cursor = 0
-done
+# Delete all matching keys using scan + unlink
+redis-cli --scan --pattern "session:*" | xargs redis-cli UNLINK
+
+# Process in batches of 100 keys at a time
+redis-cli --scan --pattern "session:*" | xargs -L 100 redis-cli UNLINK
 ```
 
 ## Node.js: Delete Keys by Pattern
@@ -198,8 +196,8 @@ ZREM leaderboard "user:42"
 # Count all keys
 redis-cli DBSIZE
 
-# Count keys matching a pattern (approximate)
-redis-cli SCAN 0 MATCH "cache:*" COUNT 1000
+# Count keys matching a pattern
+redis-cli --scan --pattern "cache:*" | wc -l
 
 # Use a script for accurate count
 redis-cli EVAL "return #redis.call('keys', ARGV[1])" 0 "session:*"
