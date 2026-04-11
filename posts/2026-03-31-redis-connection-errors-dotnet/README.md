@@ -51,12 +51,12 @@ using Polly.Retry;
 
 AsyncRetryPolicy redisRetryPolicy = Policy
     .Handle<RedisTimeoutException>()
-    .Handle<RedisConnectionException>()
+    .Or<RedisConnectionException>()
     .WaitAndRetryAsync(
         retryCount: 3,
         sleepDurationProvider: attempt => TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt)),
         onRetry: (ex, delay, attempt, ctx) =>
-            Console.WriteLine($"Retry {attempt} after {delay.TotalMs}ms: {ex.Message}"));
+            Console.WriteLine($"Retry {attempt} after {delay.TotalMilliseconds}ms: {ex.Message}"));
 
 string? value = await redisRetryPolicy.ExecuteAsync(async () =>
     await db.StringGetAsync("my:key"));
