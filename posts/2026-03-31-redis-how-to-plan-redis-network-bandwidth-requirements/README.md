@@ -105,7 +105,7 @@ def calculate_bandwidth_mbps(
         'inbound_mbps': round(inbound_bytes_per_sec * 8 / 1_000_000, 2),
         'outbound_mbps': round(outbound_bytes_per_sec * 8 / 1_000_000, 2),
         'total_mbps': round(total_mbps, 2),
-        'recommended_nic_gbps': max(1, round(total_mbps / 1000 * 2, 0))  # 2x headroom
+        'recommended_nic_gbps': max(1, round(total_mbps / 1000 * 3, 0))  # 3x headroom
     }
 
 # Example: 100,000 ops/sec, 512-byte values, 80% reads
@@ -153,7 +153,7 @@ This is negligible for most deployments but worth accounting for in very large c
 |----------|---------|-----------|------------|-----------------|
 | Session cache | 50,000 | 256B | 90/10 | ~150 Mbps |
 | Product catalog | 20,000 | 4KB | 95/5 | ~700 Mbps |
-| Rate limiting | 200,000 | 50B | 50/50 | ~80 Mbps |
+| Rate limiting | 200,000 | 8B | 50/50 | ~150 Mbps |
 | Pub/Sub messaging | 100,000 | 1KB | 0/100* | ~800 Mbps |
 
 *Pub/Sub subscribers multiply outbound traffic by subscriber count.
@@ -172,8 +172,8 @@ Recommended NIC: 10 Gbps
 
 AWS/Azure network bandwidth by instance type:
 - `cache.t4g.micro` - Up to 5 Gbps
-- `cache.r6g.large` - Up to 12.5 Gbps
-- `cache.r6g.4xlarge` - Up to 25 Gbps
+- `cache.r6g.large` - Up to 10 Gbps
+- `cache.r6g.16xlarge` - 25 Gbps
 
 Check actual throughput:
 
@@ -222,7 +222,7 @@ Compression ratios of 4:1 to 10:1 for JSON reduce bandwidth by 75-90%.
 
 ### 3. Use RESP3 Protocol
 
-Redis 7+ with RESP3 protocol reduces some metadata overhead. Enable in client:
+Redis 6+ with RESP3 protocol reduces some metadata overhead. Enable in client:
 
 ```python
 r = redis.Redis(protocol=3)  # RESP3
