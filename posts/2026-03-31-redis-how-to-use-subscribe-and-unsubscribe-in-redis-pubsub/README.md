@@ -106,30 +106,32 @@ t.join(timeout=5)
 ```javascript
 const { createClient } = require('redis');
 
-const subscriber = createClient();
-const publisher = createClient();
+(async () => {
+  const subscriber = createClient();
+  const publisher = createClient();
 
-await subscriber.connect();
-await publisher.connect();
+  await subscriber.connect();
+  await publisher.connect();
 
-// Subscribe to channels
-await subscriber.subscribe('notifications', (message, channel) => {
-  console.log(`[${channel}] ${message}`);
-});
+  // Subscribe to channels
+  await subscriber.subscribe('notifications', (message, channel) => {
+    console.log(`[${channel}] ${message}`);
+  });
 
-await subscriber.subscribe('alerts', (message, channel) => {
-  console.log(`ALERT on [${channel}]: ${message}`);
-});
+  await subscriber.subscribe('alerts', (message, channel) => {
+    console.log(`ALERT on [${channel}]: ${message}`);
+  });
 
-// Publish messages
-await publisher.publish('notifications', 'Deployment complete');
-await publisher.publish('alerts', 'Memory usage high');
+  // Publish messages
+  await publisher.publish('notifications', 'Deployment complete');
+  await publisher.publish('alerts', 'Memory usage high');
 
-// Unsubscribe from one channel
-await subscriber.unsubscribe('alerts');
+  // Unsubscribe from one channel
+  await subscriber.unsubscribe('alerts');
 
-// Unsubscribe from all
-await subscriber.unsubscribe();
+  // Unsubscribe from all
+  await subscriber.unsubscribe();
+})();
 ```
 
 ## Practical Example in Go
