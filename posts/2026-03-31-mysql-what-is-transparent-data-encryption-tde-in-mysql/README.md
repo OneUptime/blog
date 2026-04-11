@@ -31,15 +31,27 @@ early-plugin-load = keyring_file.so
 keyring_file_data = /var/lib/mysql-keyring/keyring
 ```
 
-For MySQL 8.0.24+ with the component-based keyring:
+For MySQL 8.0.24+ with the component-based keyring, create a manifest file (`mysqld.my`) in the MySQL installation directory:
+
+```json
+{
+  "components": "file://component_keyring_file"
+}
+```
+
+Then create a configuration file (`component_keyring_file.cnf`) in the MySQL data directory:
+
+```json
+{
+  "path": "/var/lib/mysql-keyring/keyring",
+  "read_only": false
+}
+```
+
+Restart MySQL and verify the component is active:
 
 ```sql
-INSTALL COMPONENT 'file://component_keyring_file';
-
--- Configure keyring component
-SELECT keyring_file_configure(
-  '{"path": "/var/lib/mysql-keyring/keyring", "read_only": false}'
-);
+SELECT * FROM performance_schema.keyring_component_status;
 ```
 
 ## Enabling Encryption for a New Table
@@ -96,9 +108,9 @@ SELECT table_schema, table_name, create_options
 FROM information_schema.tables
 WHERE create_options LIKE '%ENCRYPTION%';
 
--- Via InnoDB tables
+-- Via InnoDB tablespaces
 SELECT name, encryption
-FROM information_schema.innodb_tables
+FROM information_schema.innodb_tablespaces
 WHERE encryption = 'Y';
 ```
 
