@@ -34,9 +34,8 @@ INSERT INTO products (id, name, price, stock) VALUES
 Execute in CI:
 
 ```bash
-mysql -h 127.0.0.1 -u testuser -ptestpass myapp_test \
-  < tests/fixtures/users.sql \
-  < tests/fixtures/products.sql
+cat tests/fixtures/users.sql tests/fixtures/products.sql | \
+  mysql -h 127.0.0.1 -u testuser -ptestpass myapp_test
 ```
 
 ## Method 2 - ORM Seeders (Node.js / Sequelize)
