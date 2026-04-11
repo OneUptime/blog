@@ -20,7 +20,7 @@ The result is a virtual table that behaves like any other table in a FROM clause
 JSON_TABLE(
   json_expression,
   path COLUMNS (
-    column_name type PATH column_path [on_error] [on_empty],
+    column_name type PATH column_path [on_empty] [on_error],
     ...
   )
 ) [AS] alias
@@ -108,8 +108,8 @@ JSON_TABLE(
   '$[*]'
   COLUMNS (
     price DECIMAL(8,2) PATH '$.price'
-      DEFAULT -1.00 ON ERROR
       DEFAULT 0.00  ON EMPTY
+      DEFAULT -1.00 ON ERROR
   )
 ) AS jt
 ```
@@ -124,7 +124,7 @@ Options for both ON ERROR and ON EMPTY are:
 `JSON_TABLE()` supports nested paths with `NESTED PATH`, letting you flatten multi-level arrays in one pass:
 
 ```sql
-SELECT c.name, ord.order_id, item.product
+SELECT c.name, ord.order_id, ord.product
 FROM customers c,
   JSON_TABLE(
     c.data,
@@ -135,10 +135,7 @@ FROM customers c,
         product VARCHAR(100) PATH '$.product'
       )
     )
-  ) AS ord
-  JOIN (
-    SELECT 1 -- placeholder for illustration
-  ) item ON TRUE;
+  ) AS ord;
 ```
 
 ## Aggregating JSON Data After Expansion
