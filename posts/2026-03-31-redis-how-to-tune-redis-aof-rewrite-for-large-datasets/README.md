@@ -60,7 +60,7 @@ For latency-sensitive applications with large datasets, this is often the right 
 
 ### aof-rewrite-incremental-fsync
 
-This setting causes the AOF rewrite to fsync incrementally as data is written (every 32 MB by default), which smooths out I/O pressure compared to one large fsync at the end:
+This setting causes the AOF rewrite to fsync incrementally as data is written (every 4 MB by default), which smooths out I/O pressure compared to one large fsync at the end:
 
 ```text
 aof-rewrite-incremental-fsync yes
@@ -87,7 +87,6 @@ aof_current_rewrite_time_sec:-1
 aof_last_bgrewrite_status:ok
 aof_current_size:2147483648
 aof_base_size:1073741824
-aof_pending_rewrite:0
 ```
 
 `aof_last_rewrite_time_sec` tells you how long the last rewrite took in seconds - useful for estimating resource usage.
@@ -178,7 +177,7 @@ Example failure message:
 # Can't save in background: fork: Cannot allocate memory
 ```
 
-This often means you need more available memory for the fork. Consider reducing `vm.overcommit_memory` on Linux:
+This often means you need more available memory for the fork. Consider setting `vm.overcommit_memory` to 1 on Linux to allow the kernel to always permit overcommit, which prevents fork failures:
 
 ```bash
 echo 1 > /proc/sys/vm/overcommit_memory
