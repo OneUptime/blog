@@ -115,7 +115,7 @@ INFO memory
 When using `allkeys-lfu` or `volatile-lfu`, tune the LFU decay rate:
 
 ```redis
-# Higher value = faster decay (more recent = more weight)
+# Higher value = slower decay (frequency counter retains history longer)
 CONFIG SET lfu-decay-time 1
 
 # Logarithmic counter saturation value
