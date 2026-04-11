@@ -55,8 +55,8 @@ SELECT
     progress,
     CONCAT(
         '[',
-        REPEAT('#', progress / 10),
-        REPEAT('.', 10 - progress / 10),
+        REPEAT('#', progress DIV 10),
+        REPEAT('.', 10 - progress DIV 10),
         '] ',
         progress, '%'
     ) AS bar
