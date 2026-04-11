@@ -105,7 +105,7 @@ ALTER TABLE inventory
 - A table cannot have only invisible columns - at least one visible column is required.
 - Invisible columns are still physically stored and occupy space.
 - They appear in `SHOW CREATE TABLE` output, so DBAs can always see them.
-- `DESCRIBE tablename` does not show invisible columns by default.
+- `DESCRIBE tablename` shows invisible columns with `INVISIBLE` in the `Extra` field.
 
 ## Summary
 
