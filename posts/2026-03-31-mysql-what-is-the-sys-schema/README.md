@@ -66,11 +66,11 @@ ORDER BY rows_full_scanned DESC;
 -- Summary of activity per user
 SELECT
   user,
+  statements,
   total_connections,
   current_connections,
   statement_latency,
-  rows_sent,
-  rows_examined
+  table_scans
 FROM sys.user_summary
 ORDER BY statement_latency DESC;
 
@@ -99,7 +99,7 @@ SELECT
   total,
   total_read,
   total_written,
-  total_latency
+  write_pct
 FROM sys.io_global_by_file_by_bytes
 ORDER BY total DESC
 LIMIT 10;
@@ -115,7 +115,7 @@ SELECT sys.format_bytes(1073741824);
 -- Returns '1.00 GiB'
 
 -- Convert picoseconds to human-readable
-SELECT sys.format_time(1250000000000);
+SELECT sys.format_time(1250000000);
 -- Returns '1.25 ms'
 
 -- Format a statement for display
@@ -129,7 +129,7 @@ SELECT sys.format_statement('SELECT a, b, c FROM t WHERE id = 1');
 CALL sys.diagnostics(120, 30, 'current');
 
 -- Generate a PS report for a specific thread
-CALL sys.ps_thread_trx_info(42);
+SELECT sys.ps_thread_trx_info(42)\G
 ```
 
 ## Summary
