@@ -16,7 +16,7 @@ Edit `redis.conf` or use `CONFIG SET`:
 
 ```bash
 # Enable generic commands (g) and keyspace events (K)
-# "g" includes DEL, EXPIRE, RENAME, LPUSH, etc.
+# "g" includes DEL, EXPIRE, RENAME, TYPE, PERSIST, etc.
 redis-cli CONFIG SET notify-keyspace-events "Kg"
 ```
 
@@ -32,6 +32,7 @@ s  - Set commands
 h  - Hash commands
 z  - Sorted set commands
 x  - Expired events
+e  - Evicted events (maxmemory policy)
 d  - Module key type events
 t  - Stream commands
 m  - Key miss events
