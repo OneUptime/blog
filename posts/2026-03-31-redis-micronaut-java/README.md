@@ -14,7 +14,7 @@ Micronaut is a JVM framework built for microservices with compile-time dependenc
 
 ```bash
 mn create-app com.example.redis-demo \
-  --features redis,http-server \
+  --features redis-lettuce,http-server \
   --build maven \
   --lang java
 
@@ -40,7 +40,7 @@ redis:
   timeout: 5s
   pool:
     enabled: true
-    max-active: 10
+    max-total: 10
     max-idle: 5
     min-idle: 1
 ```
@@ -83,7 +83,7 @@ Enable Redis as the cache backend:
 
 ```yaml
 # application.yml
-micronaut:
+redis:
   caches:
     products:
       expire-after-write: 60s
@@ -172,6 +172,7 @@ public class LoginController {
 // src/main/java/com/example/ReactiveController.java
 package com.example;
 
+import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
 import io.micronaut.http.annotation.*;
 import jakarta.inject.Inject;
@@ -180,8 +181,11 @@ import reactor.core.publisher.Mono;
 @Controller("/reactive")
 public class ReactiveController {
 
-    @Inject
-    RedisReactiveCommands<String, String> redisReactiveCommands;
+    private final RedisReactiveCommands<String, String> redisReactiveCommands;
+
+    public ReactiveController(StatefulRedisConnection<String, String> connection) {
+        this.redisReactiveCommands = connection.reactive();
+    }
 
     @Post("/set")
     public Mono<String> set(@QueryValue String key, @QueryValue String value) {
