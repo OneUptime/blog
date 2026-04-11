@@ -73,7 +73,7 @@ end)
 | Named identifier | SHA1 hash | Human-readable name |
 | Versioning | None | Library-level |
 | Backup | Not built-in | FUNCTION DUMP |
-| Read-only variant | No | FCALL_RO |
+| Read-only variant | EVAL_RO / EVALSHA_RO (7.0+) | FCALL_RO |
 
 ## Migration Example
 
