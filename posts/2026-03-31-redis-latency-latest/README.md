@@ -101,7 +101,7 @@ redis-cli LATENCY LATEST | awk '
 /\(integer\)/ {
   val = $2
   count++
-  if (count % 4 == 3 && val+0 > 100) {
+  if (count % 3 == 2 && val+0 > 100) {
     print "ALERT: recent latency " val " ms"
   }
 }'
