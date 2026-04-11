@@ -106,9 +106,11 @@ Example HAProxy configuration:
 ```text
 frontend redis_read
   bind *:6399
+  mode tcp
   default_backend redis_replicas
 
 backend redis_replicas
+  mode tcp
   balance roundrobin
   server replica1 192.168.1.11:6380 check
   server replica2 192.168.1.12:6381 check
