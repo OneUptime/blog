@@ -67,7 +67,8 @@ INSERT INTO transit_routes (route_name, route_type, segments) VALUES
             (-73.9730 40.7128, -73.9730 40.7480, -73.9730 40.7800),
             (-73.9600 40.7900, -73.9600 40.7600, -73.9600 40.7300)
         )',
-        4326
+        4326,
+        'axis-order=long-lat'
     )
 ),
 (
@@ -78,7 +79,8 @@ INSERT INTO transit_routes (route_name, route_type, segments) VALUES
             (-73.9857 40.7580, -73.9792 40.7614, -73.9723 40.7650),
             (-73.9620 40.7700, -73.9540 40.7760)
         )',
-        4326
+        4326,
+        'axis-order=long-lat'
     )
 ),
 (
@@ -89,7 +91,8 @@ INSERT INTO transit_routes (route_name, route_type, segments) VALUES
             (-74.0090 40.7074, -74.0090 40.7300, -74.0090 40.7600),
             (-74.0090 40.7800, -74.0090 40.8000)
         )',
-        4326
+        4326,
+        'axis-order=long-lat'
     )
 );
 ```
@@ -101,19 +104,19 @@ SELECT
     route_name,
     route_type,
     ST_NumGeometries(segments)     AS num_segments,
-    ROUND(ST_Length(segments), 6)  AS total_length_degrees
+    ROUND(ST_Length(segments))     AS total_length_meters
 FROM transit_routes
-ORDER BY total_length_degrees DESC;
+ORDER BY total_length_meters DESC;
 ```
 
 ```text
-+---------------------------------+-----------+--------------+----------------------+
-| route_name                      | route_type| num_segments | total_length_degrees |
-+---------------------------------+-----------+--------------+----------------------+
-| M15 Bus - North and South Runs  | Bus       | 2            |             0.132000 |
-| A Train - Express Stops         | Subway    | 2            |             0.024500 |
-| Hudson River Greenway           | Bike Path | 2            |             0.093000 |
-+---------------------------------+-----------+--------------+----------------------+
++---------------------------------+-----------+--------------+---------------------+
+| route_name                      | route_type| num_segments | total_length_meters |
++---------------------------------+-----------+--------------+---------------------+
+| M15 Bus - North and South Runs  | Bus       | 2            |               14125 |
+| Hudson River Greenway           | Bike Path | 2            |                8062 |
+| A Train - Express Stops         | Subway    | 2            |                2321 |
++---------------------------------+-----------+--------------+---------------------+
 ```
 
 ### Extract Individual Segments
@@ -128,11 +131,11 @@ WHERE route_name = 'A Train - Express Stops';
 ```
 
 ```text
-+-------------------------+--------------------------------------------+--------------------------------------------+
-| route_name              | segment_1                                  | segment_2                                  |
-+-------------------------+--------------------------------------------+--------------------------------------------+
-| A Train - Express Stops | LINESTRING(-73.9857 40.758,-73.979 40.765) | LINESTRING(-73.962 40.77,-73.954 40.776)   |
-+-------------------------+--------------------------------------------+--------------------------------------------+
++-------------------------+---------------------------------------------------------------+------------------------------------------+
+| route_name              | segment_1                                                     | segment_2                                |
++-------------------------+---------------------------------------------------------------+------------------------------------------+
+| A Train - Express Stops | LINESTRING(-73.9857 40.758,-73.9792 40.7614,-73.9723 40.765)  | LINESTRING(-73.962 40.77,-73.954 40.776) |
++-------------------------+---------------------------------------------------------------+------------------------------------------+
 ```
 
 ### Find Routes That Cross a Geographic Area
@@ -140,7 +143,8 @@ WHERE route_name = 'A Train - Express Stops';
 ```sql
 SET @midtown_box = ST_GeomFromText(
     'POLYGON((-74.010 40.745, -73.960 40.745, -73.960 40.770, -74.010 40.770, -74.010 40.745))',
-    4326
+    4326,
+    'axis-order=long-lat'
 );
 
 SELECT route_name, route_type
@@ -149,11 +153,13 @@ WHERE ST_Intersects(segments, @midtown_box);
 ```
 
 ```text
-+--------------------------+-----------+
-| route_name               | route_type|
-+--------------------------+-----------+
-| A Train - Express Stops  | Subway    |
-+--------------------------+-----------+
++---------------------------------+-----------+
+| route_name                      | route_type|
++---------------------------------+-----------+
+| M15 Bus - North and South Runs  | Bus       |
+| A Train - Express Stops         | Subway    |
+| Hudson River Greenway           | Bike Path |
++---------------------------------+-----------+
 ```
 
 ### Calculate Total Length in Meters for SRID 4326
