@@ -30,7 +30,7 @@ graph TD
 CMS.INCRBY key item increment [item increment ...]
 ```
 
-- `key` - the Count-Min Sketch key (auto-created if not present)
+- `key` - the Count-Min Sketch key (must already exist)
 - `item` - the element whose count to increment
 - `increment` - amount to add (positive integer)
 - Multiple `item increment` pairs can be provided in one call
@@ -53,6 +53,7 @@ CMS.INCRBY search_terms "redis" 1
 ### Increment by a Different Amount
 
 ```redis
+CMS.INITBYDIM page_views 2000 7
 -- Record 5 views at once (batch reporting)
 CMS.INCRBY page_views "/about" 5
 ```
@@ -64,6 +65,7 @@ CMS.INCRBY page_views "/about" 5
 ### Increment Multiple Items at Once
 
 ```redis
+CMS.INITBYDIM api_calls 2000 7
 CMS.INCRBY api_calls "/api/users" 1 "/api/products" 3 "/api/orders" 2
 ```
 
@@ -78,6 +80,7 @@ Returns the current estimate for each item.
 ### Repeated Increments
 
 ```redis
+CMS.INITBYDIM events 2000 7
 CMS.INCRBY events "click" 1
 CMS.INCRBY events "click" 1
 CMS.INCRBY events "click" 1
@@ -90,23 +93,22 @@ CMS.INCRBY events "click" 1
 1) (integer) 3
 ```
 
-## Auto-Creation on First Use
+## Initialization Required
 
-If the key does not exist, `CMS.INCRBY` auto-creates a sketch with default dimensions:
+The key must exist as a Count-Min Sketch before calling `CMS.INCRBY`. If the key does not exist, Redis returns an error. Always initialize the sketch first with `CMS.INITBYDIM` or `CMS.INITBYPROB`:
 
 ```redis
--- No CMS.INITBYDIM needed
+CMS.INITBYDIM word_count 2000 7
 CMS.INCRBY word_count "hello" 1
 ```
-
-For production use, always initialize explicitly with `CMS.INITBYDIM` or `CMS.INITBYPROB` to control dimensions and memory.
 
 ## Batch Reporting Pattern
 
 When event sources report in batches rather than one-by-one, increment by the batch count:
 
 ```redis
--- 1000 events logged in a batch
+CMS.INITBYDIM hourly_events 5000 7
+-- Events logged in a batch
 CMS.INCRBY hourly_events "login" 342 "logout" 289 "purchase" 47 "search" 512
 ```
 
@@ -162,6 +164,8 @@ CMS.INCRBY word_freq "the" 1
 Aggregate event counts from multiple producers:
 
 ```redis
+CMS.INITBYDIM daily_events 10000 7
+
 -- Producer 1
 CMS.INCRBY daily_events "page_view" 100 "purchase" 5 "signup" 12
 
@@ -188,7 +192,7 @@ True count: 1000 times
 Estimated count: 1003 (small overcount due to collisions)
 ```
 
-The overcount is bounded by `total_increments / width`.
+The overcount is bounded by `e * total_increments / width` (where e ≈ 2.718).
 
 ## Summary
 
