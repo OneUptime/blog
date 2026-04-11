@@ -105,10 +105,11 @@ ORDER BY duration_us DESC;
 +-------------+-------------+-------------+
 | endpoint    | duration_us | duration_ms |
 +-------------+-------------+-------------+
-| /api/search |      125000 |     1250.00 |  -- crosses a second boundary
-| /api/orders |      850200 |      850.20 |
-| /api/health |        1499 |        1.50 |
-| /api/users  |      333333 |      333.33 |
+| /api/search |     1250000 |    1250.000 |
+| /api/orders |      850200 |     850.200 |
+| /api/users  |      333333 |     333.333 |
+| /api/health |        1499 |       1.499 |
++-------------+-------------+-------------+
 ```
 
 ## Filtering by Microsecond Range
