@@ -40,16 +40,16 @@ Fork time is proportional to memory used. A 10GB dataset can take seconds to for
 
 ## Replication Buffer Pressure
 
-During RDB generation, new write commands are buffered in the replication backlog. If a large key write arrives while the RDB is being generated, it goes into this buffer. If the buffer overflows, the replica disconnects and triggers another full resync - a loop:
+During RDB generation, new write commands are accumulated in the replica's client output buffer. If a large key write arrives while the RDB is being generated, it goes into this buffer. If the buffer exceeds the configured limit, the replica disconnects and triggers another full resync - a loop:
 
 ```bash
-redis-cli CONFIG GET repl-backlog-size
-redis-cli CONFIG SET repl-backlog-size 512mb
+redis-cli CONFIG GET client-output-buffer-limit
+redis-cli CONFIG SET client-output-buffer-limit "replica 512mb 128mb 60"
 ```
 
 ## Streaming Large Keys
 
-Redis 7.0 introduced support for diskless replication, which streams the RDB directly to replicas without writing it to disk first. This helps with large key replication on systems with slow disks:
+Redis has supported diskless replication since version 2.8.18, and it became the default in Redis 7.0. It streams the RDB directly to replicas without writing it to disk first. This helps with large key replication on systems with slow disks:
 
 ```bash
 redis-cli CONFIG SET repl-diskless-sync yes
