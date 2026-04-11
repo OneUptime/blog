@@ -86,7 +86,7 @@ Some SQL modes were removed in MySQL 8.0. Check your current mode:
 SELECT @@sql_mode;
 ```
 
-Modes removed in 8.0 include `NO_AUTO_CREATE_USER` and `DB_TRUNCATE_TABLE`. If present, remove them from `my.cnf` before upgrading.
+Modes removed in 8.0 include `NO_AUTO_CREATE_USER` and `NO_FIELD_OPTIONS`. If present, remove them from `my.cnf` before upgrading.
 
 ## Checking Stored Objects for Compatibility
 
