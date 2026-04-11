@@ -111,8 +111,7 @@ redis-cli -p 7001 CLUSTER NODES
 ```bash
 # Use -c flag for cluster mode (handles MOVED redirects)
 redis-cli -c -p 7001 SET hello world
-# -> Redirected to slot [866] located at 127.0.0.1:7001
-# -> OK
+# -> OK (key "hello" hashes to slot 866, which is on node 7001)
 
 redis-cli -c -p 7001 GET hello
 # -> "world"
@@ -121,12 +120,12 @@ redis-cli -c -p 7001 GET hello
 ## Connecting from Application Code
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 rc = RedisCluster(
     startup_nodes=[
-        {"host": "127.0.0.1", "port": 7001},
-        {"host": "127.0.0.1", "port": 7002}
+        ClusterNode("127.0.0.1", 7001),
+        ClusterNode("127.0.0.1", 7002)
     ],
     decode_responses=True
 )
