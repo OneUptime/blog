@@ -18,7 +18,7 @@ Redis 6.0 introduced Access Control Lists (ACLs) and with them the `ACL LOG` com
 
 ```bash
 # View the last 10 ACL log entries
-redis-cli ACL LOG COUNT 10
+redis-cli ACL LOG 10
 
 # View all ACL log entries
 redis-cli ACL LOG
@@ -44,7 +44,7 @@ Sample ACL log output:
    8) "set"
    9) "username"
   10) "alice"
-  11) "age"
+  11) "age-seconds"
   12) "0.124"
   13) "client-info"
   14) "id=12 addr=127.0.0.1:54321 ..."
@@ -52,7 +52,7 @@ Sample ACL log output:
 
 ## Enabling the MONITOR Command for Real-Time Auditing
 
-The `MONITOR` command streams every command processed by Redis in real time. It is useful for short-term auditing sessions but should not be left running in production permanently - it doubles CPU usage.
+The `MONITOR` command streams every command processed by Redis in real time. It is useful for short-term auditing sessions but should not be left running in production permanently - it can reduce throughput by more than 50%.
 
 ```bash
 redis-cli MONITOR
