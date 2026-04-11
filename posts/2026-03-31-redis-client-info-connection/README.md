@@ -36,7 +36,7 @@ CLIENT INFO
 ```
 
 ```text
-id=42 addr=127.0.0.1:54321 laddr=127.0.0.1:6379 fd=8 name=api-server age=0 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=26 qbuf-free=40928 argv-mem=10 multi-mem=0 tot-mem=61466 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 events=r cmd=client|info user=default library-name= library-ver= resp=2 tot-cmds=5
+id=42 addr=127.0.0.1:54321 laddr=127.0.0.1:6379 fd=8 name=api-server age=0 idle=0 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 watch=0 qbuf=26 qbuf-free=40928 argv-mem=10 multi-mem=0 tot-mem=61466 rbs=16384 rbp=16384 obl=0 oll=0 omem=0 events=r cmd=client|info user=default lib-name= lib-ver= resp=2 tot-cmds=5
 ```
 
 ## Field Reference
@@ -76,10 +76,10 @@ The `flags` field is a string of single-character flags:
 | `M` | Primary (master) connection |
 | `x` | Executing a MULTI/EXEC block |
 | `b` | Waiting for a blocking command |
-| `t` | CLIENT NO-TOUCH enabled |
+| `t` | Tracking enabled (client-side cache) |
 | `e` | CLIENT NO-EVICT enabled |
 | `P` | Pub/Sub subscriber |
-| `T` | Tracking enabled (client-side cache) |
+| `T` | CLIENT NO-TOUCH enabled (won't touch LRU/LFU) |
 
 ## Practical Examples
 
