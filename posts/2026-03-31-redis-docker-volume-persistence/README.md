@@ -14,7 +14,7 @@ By default, Redis data in a Docker container is lost when the container is remov
 
 Redis stores data in two locations:
 - `/data/dump.rdb` - RDB snapshot file
-- `/data/appendonly.aof` - AOF log file
+- `/data/appendonlydir/` - AOF directory (Redis 7+ uses Multi Part AOF with manifest, base, and incremental files)
 
 The official Redis image sets `dir /data` and exposes `/data` as a volume.
 
