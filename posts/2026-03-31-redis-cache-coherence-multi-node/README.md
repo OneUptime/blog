@@ -25,7 +25,6 @@ When any node writes to the database, it publishes an invalidation event. All no
 import redis
 import json
 import threading
-from functools import lru_cache
 from typing import Optional
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
