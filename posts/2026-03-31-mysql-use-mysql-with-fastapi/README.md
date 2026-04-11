@@ -43,8 +43,9 @@ class Base(DeclarativeBase):
 ## Defining a Model
 
 ```python
+from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, DateTime, func
+from sqlalchemy import String, func
 
 class User(Base):
     __tablename__ = "users"
@@ -52,7 +53,7 @@ class User(Base):
     id:         Mapped[int]      = mapped_column(primary_key=True)
     name:       Mapped[str]      = mapped_column(String(100))
     email:      Mapped[str]      = mapped_column(String(255), unique=True)
-    created_at: Mapped[DateTime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 ```
 
 ## Dependency for Session Injection
@@ -108,7 +109,7 @@ DB_NAME=app_db
 
 ```bash
 pip install alembic
-alembic init alembic
+alembic init -t async alembic
 alembic revision --autogenerate -m "create users table"
 alembic upgrade head
 ```
