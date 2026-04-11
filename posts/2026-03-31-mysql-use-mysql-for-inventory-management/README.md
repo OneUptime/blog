@@ -89,25 +89,34 @@ DELIMITER ;
 When the order is paid, convert the reservation into a completed sale:
 
 ```sql
-START TRANSACTION;
+DELIMITER $$
+CREATE PROCEDURE confirm_sale(
+  IN p_product_id BIGINT UNSIGNED,
+  IN p_quantity INT,
+  IN p_order_id VARCHAR(100)
+)
+BEGIN
+  START TRANSACTION;
 
-UPDATE inventory
-SET
-  quantity_on_hand = quantity_on_hand - p_quantity,
-  quantity_reserved = quantity_reserved - p_quantity
-WHERE product_id = p_product_id
-  AND quantity_reserved >= p_quantity
-  AND quantity_on_hand >= p_quantity;
+  UPDATE inventory
+  SET
+    quantity_on_hand = quantity_on_hand - p_quantity,
+    quantity_reserved = quantity_reserved - p_quantity
+  WHERE product_id = p_product_id
+    AND quantity_reserved >= p_quantity
+    AND quantity_on_hand >= p_quantity;
 
-IF ROW_COUNT() = 0 THEN
-  ROLLBACK;
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stock adjustment failed';
-END IF;
+  IF ROW_COUNT() = 0 THEN
+    ROLLBACK;
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stock adjustment failed';
+  END IF;
 
-INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id)
-VALUES (p_product_id, 'sell', p_quantity, p_order_id);
+  INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id)
+  VALUES (p_product_id, 'sell', p_quantity, p_order_id);
 
-COMMIT;
+  COMMIT;
+END $$
+DELIMITER ;
 ```
 
 ## Receiving New Stock
