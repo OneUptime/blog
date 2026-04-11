@@ -43,21 +43,15 @@ SET GLOBAL interactive_timeout  = 600;
 
 ## Step 3: Detect Firewall or NAT Drops
 
-Firewalls and NAT gateways silently discard idle TCP connections. Enable TCP keepalive at the MySQL level:
-
-```bash
-# /etc/mysql/mysql.conf.d/mysqld.cnf
-[mysqld]
-tcp_keepalive_time = 120
-```
-
-At the OS level:
+Firewalls and NAT gateways silently discard idle TCP connections. Enable TCP keepalive at the OS level so MySQL connections send periodic probes:
 
 ```bash
 sysctl -w net.ipv4.tcp_keepalive_time=120
 sysctl -w net.ipv4.tcp_keepalive_intvl=10
 sysctl -w net.ipv4.tcp_keepalive_probes=6
 ```
+
+To make these settings persistent across reboots, add them to `/etc/sysctl.conf`.
 
 ## Step 4: max_connections Limit
 
@@ -114,7 +108,7 @@ Configure your connection pool to validate connections before use:
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   connectionLimit: 20,
-  // Ping the connection before using it
+  // Enable TCP keepalive to detect dead connections
   enableKeepAlive: true,
   keepAliveInitialDelay: 30000,
 });
