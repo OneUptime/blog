@@ -114,8 +114,6 @@ Serve stale cached data while refreshing in the background.
 ```python
 import threading
 
-STALE_TTL_PREFIX = "stale:"
-
 def get_stale_or_fresh(cache_key: str, fetch_fn: Callable, ttl: int = 300, stale_window: int = 60) -> Any:
     try:
         raw = r.get(cache_key)
