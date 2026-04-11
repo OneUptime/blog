@@ -92,7 +92,7 @@ def estimate_stream_memory(
         "total_gb": round(total_mb / 1024, 3),
     }
 
-# 1000 event streams, 10,000 entries each, 4 fields of 15 bytes each
+# 1000 event streams, 10,000 entries each, 4 fields (10-byte names, 15-byte values)
 result = estimate_stream_memory(
     num_streams=1_000,
     entries_per_stream=10_000,
@@ -102,7 +102,7 @@ result = estimate_stream_memory(
     num_consumer_groups=2
 )
 print(result)
-# {'bytes_per_entry': 112, 'bytes_per_stream': 1123600, 'total_mb': 1071.7}
+# {'bytes_per_entry': 112, 'bytes_per_stream': 1123664, 'total_mb': 1071.6, 'total_gb': 1.046}
 ```
 
 ## Controlling Memory with MAXLEN
