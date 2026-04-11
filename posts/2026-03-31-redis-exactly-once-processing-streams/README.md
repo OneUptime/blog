@@ -16,7 +16,7 @@ Redis Streams guarantee that a consumer group receives every message at least on
 
 ## The Idempotency Key Pattern
 
-Use the stream entry ID as a unique idempotency key. Store processed IDs in a Redis Set with a TTL:
+Use the stream entry ID as a unique idempotency key. Store processed IDs as Redis keys with a TTL:
 
 ```python
 import redis
