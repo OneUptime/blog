@@ -93,7 +93,7 @@ ORDER BY query_time DESC
 LIMIT 10;
 ```
 
-Enable slow query log in MySQL for this to work: `SET GLOBAL slow_query_log = 'ON'; SET GLOBAL long_query_time = 1;`
+Enable slow query log in MySQL and direct output to the table for this to work: `SET GLOBAL slow_query_log = 'ON'; SET GLOBAL log_output = 'TABLE'; SET GLOBAL long_query_time = 1;`
 
 ## Summary
 
