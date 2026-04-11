@@ -78,7 +78,7 @@ WINDOW
 
 ## Extending a Named Window
 
-A named window can inherit from another window and add or override the `ORDER BY` or frame clause. This is called a window extension:
+A named window can inherit from another window and add an `ORDER BY` or frame clause. This is called a window extension:
 
 ```sql
 SELECT
@@ -97,7 +97,7 @@ Here `w` defines only the partition; each usage adds its own `ORDER BY` and opti
 ## Rules for Window Extension
 
 - A window referenced in `OVER` can add an `ORDER BY` only if the named window does not already have one.
-- A window referenced in `OVER` can add a frame clause only if the named window has no frame clause and does include an `ORDER BY`.
+- A window referenced in `OVER` can add a frame clause only if the named window does not already have one.
 - You cannot change the `PARTITION BY` in a window extension.
 
 ```sql
