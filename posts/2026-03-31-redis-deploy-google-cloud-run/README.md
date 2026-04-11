@@ -55,20 +55,30 @@ FILESTORE_IP=$(gcloud filestore instances describe redis-storage \
   --location=$ZONE --format="value(networks[0].ipAddresses[0])")
 ```
 
+## Create a VPC Access Connector
+
+```bash
+gcloud compute networks vpc-access connectors create my-connector \
+  --region $REGION \
+  --network default \
+  --range 10.8.0.0/28
+```
+
 ## Deploy Redis to Cloud Run
 
 ```bash
 gcloud run deploy redis \
   --image redis:7-alpine \
   --region $REGION \
-  --platform managed \
   --no-allow-unauthenticated \
   --port 6379 \
   --memory 1Gi \
   --cpu 1 \
   --min-instances 1 \
   --max-instances 1 \
-  --args="redis-server,--requirepass,$(gcloud secrets versions access latest --secret=redis-password),--maxmemory,512mb,--maxmemory-policy,allkeys-lru,--appendonly,yes,--dir,/data" \
+  --set-secrets REDIS_PASSWORD=redis-password:latest \
+  --command sh \
+  --args="-c,exec redis-server --requirepass \$REDIS_PASSWORD --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes --dir /data" \
   --vpc-connector projects/$PROJECT/locations/$REGION/connectors/my-connector \
   --vpc-egress all-traffic \
   --add-volume name=redis-vol,type=nfs,location=$FILESTORE_IP:/redis_data \
@@ -77,23 +87,15 @@ gcloud run deploy redis \
 
 ## Connecting from Other Cloud Run Services
 
-Other Cloud Run services on the same VPC can connect by service URL:
+Cloud Run services only support HTTP-based ingress, so other services cannot connect to this Redis instance directly via the Redis protocol. For production inter-service Redis connectivity, use [Memorystore for Redis](https://cloud.google.com/memorystore/docs/redis) which provides a stable private IP accessible from Cloud Run via VPC.
 
-```bash
-# Get the internal URL
-REDIS_URL=$(gcloud run services describe redis \
-  --region $REGION --format="value(status.url)")
+If you need Redis only as a sidecar within the same Cloud Run service, add it as a secondary container using `--add-container` so the primary container can reach Redis at `localhost:6379`.
 
-# Or connect via VPC internal address
-# redis://:<password>@redis.internal:6379
-```
-
-Set the Redis URL as an environment variable or Secret Manager reference in dependent services:
+To pass the Redis password to dependent services that use Memorystore or an external Redis:
 
 ```bash
 gcloud run services update my-app \
   --region $REGION \
-  --set-env-vars REDIS_HOST=10.x.x.x \
   --set-secrets REDIS_PASSWORD=redis-password:latest
 ```
 
@@ -110,4 +112,4 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
 
 ## Summary
 
-Redis on Google Cloud Run uses a Cloud Filestore NFS volume for persistence and Secret Manager for password storage. VPC Connector ensures Redis is unreachable from the public internet while remaining accessible to other Cloud Run services. Setting min-instances to 1 prevents cold starts that would lose in-memory data between requests.
+This guide deploys a Redis container on Cloud Run with a Cloud Filestore NFS volume for persistence and Secret Manager for password storage. Note that Cloud Run services only support HTTP-based ingress, so this setup is suitable for single-service use (e.g., Redis as a sidecar) or experimentation. For inter-service Redis connectivity, use Memorystore for Redis with a VPC connector. Setting min-instances to 1 prevents cold starts that would lose in-memory data between requests.
