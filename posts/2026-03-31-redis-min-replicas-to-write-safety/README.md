@@ -102,14 +102,14 @@ except ResponseError as e:
 Enabling `min-replicas-to-write` converts Redis from an eventually consistent store to a semi-synchronous one. This:
 
 - Reduces the risk of data loss during primary failure
-- Increases write latency slightly (waiting for replication acknowledgment)
+- Does not add latency to accepted writes, but can cause sudden write failures when replicas fall behind
 - Can cause write failures if replicas become unavailable (network partition)
 
-For read-heavy workloads with a few critical writes, consider setting this directive only on keys that require durability, using Lua scripts or application logic to handle writes differently.
+For workloads where only some writes require durability guarantees, consider using separate Redis instances with different `min-replicas-to-write` configurations, since this directive applies server-wide and cannot be set per-key.
 
 ## Interaction with Sentinel and Cluster
 
-Redis Sentinel uses `min-replicas-to-write` during failover decisions. If writes are blocked due to this directive, Sentinel will trigger failover sooner rather than accepting a degraded primary.
+In a network partition, `min-replicas-to-write` prevents an isolated primary from accepting new writes, reducing data divergence before Sentinel completes failover. Sentinel itself does not use this directive in its failover decisions — failover timing is governed by Sentinel's own `down-after-milliseconds` configuration.
 
 In Redis Cluster, each shard is an independent primary-replica group. Set `min-replicas-to-write` in `redis.conf` on each primary node.
 
