@@ -112,7 +112,7 @@ util.loadDump("/backups/mydb_dump", {
 ## Loading from Amazon S3
 
 ```javascript
-util.loadDump("s3://my-bucket/backups/mydb_dump", {
+util.loadDump("backups/mydb_dump", {
   s3BucketName: "my-bucket",
   s3Region: "us-east-1",
   threads: 16
