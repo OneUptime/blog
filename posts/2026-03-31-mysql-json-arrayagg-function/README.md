@@ -15,8 +15,10 @@ Description: Learn how to use MySQL's JSON_ARRAYAGG() aggregate function to coll
 Syntax:
 
 ```sql
-JSON_ARRAYAGG(expr [ORDER BY ...])
+JSON_ARRAYAGG(col_or_expr) [over_clause]
 ```
+
+The optional `over_clause` allows `JSON_ARRAYAGG()` to be used as a window function (available since MySQL 8.0.14). Note that unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function call — the order of elements in the resulting array is undefined.
 
 ## Basic Usage
 
@@ -54,19 +56,23 @@ Result:
 +---------+-------------------------------+
 ```
 
-## Using ORDER BY Inside JSON_ARRAYAGG()
+## Controlling Element Order
 
-MySQL 8.0 supports `ORDER BY` within the aggregate to control element order:
+Unlike `GROUP_CONCAT()`, `JSON_ARRAYAGG()` does not support an `ORDER BY` clause inside the function — the element order is undefined by the MySQL specification. To produce a sorted JSON array, use a subquery that orders the rows before aggregation:
 
 ```sql
 SELECT
   post_id,
-  JSON_ARRAYAGG(tag ORDER BY tag ASC) AS sorted_tags
-FROM post_tags
+  JSON_ARRAYAGG(tag) AS sorted_tags
+FROM (
+  SELECT post_id, tag
+  FROM post_tags
+  ORDER BY tag ASC
+) AS sorted
 GROUP BY post_id;
 ```
 
-This ensures the resulting array is alphabetically ordered regardless of storage order.
+This approach relies on MySQL preserving the subquery row order during aggregation, which works in practice but is not formally guaranteed by the SQL standard.
 
 ## Aggregating Objects with JSON_OBJECT()
 
@@ -77,9 +83,12 @@ SELECT
   department_id,
   JSON_ARRAYAGG(
     JSON_OBJECT('id', id, 'name', name, 'salary', salary)
-    ORDER BY name
   ) AS employees
-FROM employees
+FROM (
+  SELECT department_id, id, name, salary
+  FROM employees
+  ORDER BY name
+) AS sorted
 GROUP BY department_id;
 ```
 
