@@ -12,7 +12,7 @@ Description: Learn how to use the perror utility to translate MySQL and operatin
 
 `perror` is a MySQL command-line utility that decodes numeric error codes into descriptive error messages. When MySQL logs show error numbers like `1045` or OS errors like `ERRNO 28`, `perror` lets you quickly find out what they mean without searching the documentation.
 
-Note: In MySQL 8.0.16+, `perror` was replaced by `mysql --verbose --help` and the `perror` functionality was merged into the `mysqld` binary. On those versions, use `mysql --verbose --help | grep 'ERROR '` or consult the MySQL error message reference directly.
+Note: The `--ndb` option for `perror` was removed in MySQL 8.0.13 and replaced by the separate `ndb_perror` utility for NDB Cluster error codes. The `perror` utility itself remains available in MySQL 8.0, 8.4, and later versions for looking up MySQL server and OS error codes.
 
 ## Basic Syntax
 
@@ -52,7 +52,7 @@ Deadlock found when trying to get lock; try restarting transaction
 
 ```bash
 # Look up OS error 28 (No space left on device)
-perror --ndb 28
+perror 28
 ```
 
 ```text
@@ -69,17 +69,15 @@ perror 32   # Broken pipe
 perror 111  # Connection refused
 ```
 
-## MySQL 8.0+ Alternative
+## MySQL Error Reference Documentation
 
-On MySQL 8.0.16+, use the mysqld binary:
+For a complete list of MySQL error codes and messages, consult the official MySQL Error Message Reference:
 
-```bash
-# Look up a MySQL error code
-mysqld --verbose --help 2>/dev/null | grep 'ER_ACCESS'
-
-# Or use the MySQL documentation directly
-# Error code reference: https://dev.mysql.com/doc/mysql-errors/8.0/en/
+```text
+https://dev.mysql.com/doc/mysql-errors/8.0/en/
 ```
+
+This is useful when you need to look up error codes on a system where `perror` is not installed, or when you need additional context such as the SQL state code.
 
 ## Looking Up Errors from the mysql Client
 
@@ -92,8 +90,10 @@ SHOW ERRORS;
 -- Show warnings alongside errors
 SHOW WARNINGS;
 
--- Get the error message for a specific code via a stored procedure
-SELECT * FROM performance_schema.events_errors_summary_global_by_error
+-- Check error occurrence statistics (MySQL 8.0+)
+-- This table tracks how often each error has occurred, not the error message text
+SELECT ERROR_NUMBER, ERROR_NAME, SQL_STATE, SUM_ERROR_RAISED
+FROM performance_schema.events_errors_summary_global_by_error
 WHERE ERROR_NUMBER = 1213;
 ```
 
@@ -130,4 +130,4 @@ grep "Got error" /var/log/mysql/error.log | \
 
 ## Summary
 
-`perror` is a simple but useful tool for translating numeric MySQL and OS error codes into human-readable messages. When you encounter an unfamiliar error number in logs or application output, run `perror <code>` to understand what MySQL is reporting. On MySQL 8.0.16 and later, the same information is accessible via the MySQL error message documentation or `mysqld --verbose --help`.
+`perror` is a simple but useful tool for translating numeric MySQL and OS error codes into human-readable messages. When you encounter an unfamiliar error number in logs or application output, run `perror <code>` to understand what MySQL is reporting. The same information is also accessible via the [MySQL Error Message Reference](https://dev.mysql.com/doc/mysql-errors/8.0/en/) documentation.
