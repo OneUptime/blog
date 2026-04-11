@@ -37,34 +37,36 @@ def create_facet_index():
 ## Computing Facet Counts with Aggregation
 
 ```python
-from redis.commands.search.aggregation import AggregateRequest, GroupBy, Reducer
+from redis.commands.search.aggregation import AggregateRequest, Desc
 import redis.commands.search.reducers as reducers
 
 def get_category_facets(base_query: str = "*") -> list:
     req = (
         AggregateRequest(base_query)
         .group_by("@category", reducers.count().alias("count"))
-        .sort_by("@count", asc=False)
+        .sort_by(Desc("@count"))
     )
     result = r.ft("idx:facets").aggregate(req)
-    return [{"category": row["category"], "count": int(row["count"])}
+    return [{"category": row[1], "count": int(row[3])}
             for row in result.rows]
 
 def get_brand_facets(base_query: str = "*") -> list:
     req = (
         AggregateRequest(base_query)
         .group_by("@brand", reducers.count().alias("count"))
-        .sort_by("@count", asc=False)
+        .sort_by(Desc("@count"))
         .limit(0, 20)
     )
     result = r.ft("idx:facets").aggregate(req)
-    return [{"brand": row["brand"], "count": int(row["count"])}
+    return [{"brand": row[1], "count": int(row[3])}
             for row in result.rows]
 ```
 
 ## Price Range Facets
 
 ```python
+from redis.commands.search.query import Query
+
 def get_price_range_facets(base_query: str = "*") -> dict:
     buckets = [
         ("under_25", "[0 25]"),
@@ -76,7 +78,7 @@ def get_price_range_facets(base_query: str = "*") -> dict:
     for name, price_range in buckets:
         q = f"({base_query}) @price:{price_range}"
         count = r.ft("idx:facets").search(
-            __import__("redis.commands.search.query", fromlist=["Query"]).Query(q).paging(0, 0)
+            Query(q).paging(0, 0)
         ).total
         result[name] = count
     return result
