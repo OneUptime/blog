@@ -69,7 +69,7 @@ If you only want to remove old binary logs without completely resetting the posi
 -- Delete logs before a specific date
 PURGE BINARY LOGS BEFORE NOW() - INTERVAL 7 DAY;
 
--- Delete logs up to and including a specific file
+-- Delete logs prior to a specific file (not including it)
 PURGE BINARY LOGS TO 'mysql-bin.000040';
 ```
 
@@ -102,7 +102,7 @@ When rebuilding replication after a `RESET MASTER`, you must reconfigure all rep
 ```sql
 -- On the primary
 RESET MASTER;
-SHOW MASTER STATUS;  -- note the new file and position (usually 1:4)
+SHOW MASTER STATUS;  -- note the new file and position
 ```
 
 ```sql
