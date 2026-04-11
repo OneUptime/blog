@@ -100,7 +100,7 @@ subscriber.on('pmessage', (pattern, channel, message) => {
   console.log(`Pattern: ${pattern}, Channel: ${channel}, Message: ${message}`);
 });
 
-// Also subscribe to a specific channel at the same time
+// Also subscribe to another pattern at the same time
 subscriber.psubscribe('user:*:events');
 ```
 
@@ -160,10 +160,12 @@ bus.watchUser('1001', (event) => {
 });
 
 // Publish events
-await bus.notify('1001', 'order_shipped', { orderId: 'ORD-123' });
-await bus.notify('1001', 'message_received', { from: 'support' });
+(async () => {
+  await bus.notify('1001', 'order_shipped', { orderId: 'ORD-123' });
+  await bus.notify('1001', 'message_received', { from: 'support' });
 
-setTimeout(() => bus.close(), 3000);
+  setTimeout(() => bus.close(), 3000);
+})();
 ```
 
 ## Unsubscribing
