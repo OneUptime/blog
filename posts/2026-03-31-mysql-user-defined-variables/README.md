@@ -27,6 +27,8 @@ SET @count = 0;
 SELECT @total := SUM(amount) FROM orders;
 ```
 
+Note: assigning user variables with `:=` inside `SELECT` statements is deprecated as of MySQL 8.0 and may be removed in a future release. Prefer using `SET` for variable assignment.
+
 ## Reading a User-Defined Variable
 
 ```sql
