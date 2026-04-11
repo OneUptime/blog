@@ -99,10 +99,10 @@ FROM orders;
 Functions meant for use in queries should be declared `DETERMINISTIC` (same inputs always produce the same output). This allows the optimizer to cache results and is required for use with binary logging in statement mode.
 
 ```sql
--- Safe for replication and query caching
+-- Not deterministic because CURDATE() changes daily
 CREATE FUNCTION days_until_expiry(p_expires DATE)
 RETURNS INT
-DETERMINISTIC
+NOT DETERMINISTIC
 BEGIN
     RETURN DATEDIFF(p_expires, CURDATE());
 END;
