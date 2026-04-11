@@ -29,10 +29,10 @@ CLUSTER NODES
 ```text
 a1b2c3d4e5f6 192.168.1.10:7001@17001 master - 0 1711900000000 1 connected 0-5460
 d4e5f678abcd 192.168.1.11:7002@17002 master - 0 1711900000100 2 connected 5461-10922
-g7h8i9j0ef12 192.168.1.12:7003@17003 master - 0 1711900000200 3 connected 10923-16383
-j1k2l3m4n5o6 192.168.1.10:7004@17004 slave a1b2c3d4e5f6 0 1711900000300 1 connected
-p7q8r9s0t1u2 192.168.1.11:7005@17005 slave d4e5f678abcd 0 1711900000400 2 connected
-v3w4x5y6z7a8 192.168.1.12:7006@17006 slave g7h8i9j0ef12 0 1711900000500 3 connected
+c7d8e9f0ef12 192.168.1.12:7003@17003 master - 0 1711900000200 3 connected 10923-16383
+f1a2b3c4d5e6 192.168.1.10:7004@17004 slave a1b2c3d4e5f6 0 1711900000300 1 connected
+a7b8c9d0e1f2 192.168.1.11:7005@17005 slave d4e5f678abcd 0 1711900000400 2 connected
+b3c4d5e6f7a8 192.168.1.12:7006@17006 slave c7d8e9f0ef12 0 1711900000500 3 connected
 ```
 
 ## Field Format
@@ -40,7 +40,7 @@ v3w4x5y6z7a8 192.168.1.12:7006@17006 slave g7h8i9j0ef12 0 1711900000500 3 connec
 Each line follows this structure:
 
 ```text
-<node-id> <ip:port@cluster-port> <flags> <primary-id> <ping-sent> <pong-received> <config-epoch> <link-state> <slot-range>
+<node-id> <ip:port@cluster-port> <flags> <primary-id> <ping-sent> <pong-recv> <config-epoch> <link-state> <slot-range>
 ```
 
 | Field | Description |
@@ -49,8 +49,8 @@ Each line follows this structure:
 | `ip:port@cluster-port` | Client port and cluster bus port |
 | `flags` | Comma-separated flags (see below) |
 | `primary-id` | For replicas: the ID of their primary. For primaries: `-` |
-| `ping-sent` | Timestamp of last PING sent |
-| `pong-received` | Timestamp of last PONG received |
+| `ping-sent` | Milliseconds unix time of the currently active ping, or 0 if no pending ping |
+| `pong-recv` | Milliseconds unix time of the last PONG received |
 | `config-epoch` | Configuration epoch of this node |
 | `link-state` | `connected` or `disconnected` |
 | `slot-range` | Slot ranges assigned (primaries only) |
@@ -66,6 +66,7 @@ Each line follows this structure:
 | `fail` | Node confirmed down (fail) |
 | `handshake` | Node being added, in handshake |
 | `noaddr` | Node address not yet known |
+| `nofailover` | Replica will not attempt failover |
 | `noflags` | No special flags |
 
 ## Identifying the Current Node
@@ -81,8 +82,8 @@ a1b2c3d4e5f6 192.168.1.10:7001@17001 myself,master - 0 0 1 connected 0-5460
 For each replica, the 4th field is the primary's node ID:
 
 ```text
-# This replica (j1k2l3...) replicates from primary a1b2c3...
-j1k2l3m4n5o6 192.168.1.10:7004@17004 slave a1b2c3d4e5f6 0 1711900000300 1 connected
+# This replica (f1a2b3...) replicates from primary a1b2c3...
+f1a2b3c4d5e6 192.168.1.10:7004@17004 slave a1b2c3d4e5f6 0 1711900000300 1 connected
 ```
 
 ## Detecting Node Issues
@@ -97,7 +98,7 @@ d4e5f678abcd 192.168.1.11:7002@17002 master,fail? - 0 0 2 connected 5461-10922
 d4e5f678abcd 192.168.1.11:7002@17002 master,fail - 0 0 2 connected 5461-10922
 
 # Node disconnected at cluster bus level
-g7h8i9j0ef12 192.168.1.12:7003@17003 master - 0 0 3 disconnected 10923-16383
+c7d8e9f0ef12 192.168.1.12:7003@17003 master - 0 0 3 disconnected 10923-16383
 ```
 
 ## Parsing CLUSTER NODES Output
