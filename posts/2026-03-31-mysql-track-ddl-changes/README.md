@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, DDL, Audit
 
-Description: Learn how to track DDL changes in MySQL using the general query log, performance schema, triggers on metadata tables, and Percona Audit Plugin.
+Description: Learn how to track DDL changes in MySQL using the general query log, binary log, INFORMATION_SCHEMA, and Percona Audit Plugin.
 
 ---
 
@@ -81,7 +81,7 @@ LIMIT 20;
 
 Note that `update_time` only reflects DML changes to InnoDB tables, not `ALTER TABLE` operations.
 
-## Method 4: DDL Audit Table with Event Scheduler
+## Method 4: DDL Audit Table with Schema Snapshots
 
 Create a DDL change log table and a stored event to snapshot schema state:
 
@@ -118,7 +118,7 @@ audit_log_file = /var/log/mysql/audit.json
 Filter DDL from the JSON audit log:
 
 ```bash
-jq 'select(.class == "query" and (.command | test("CREATE|ALTER|DROP|RENAME"; "i")))' \
+jq 'select(.audit_record.command_class | test("create|alter|drop|rename"))' \
   /var/log/mysql/audit.json
 ```
 
