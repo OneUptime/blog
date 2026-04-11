@@ -89,11 +89,11 @@ If a cart expires or a customer removes an item, release the reservation:
 ```python
 def release_reservation(sku: str, qty: int):
     pipe = r.pipeline()
-    new_qty = pipe.hincrby(f"inventory:{sku}", "qty", qty)
-    pipe.execute()
+    pipe.hincrby(f"inventory:{sku}", "qty", qty)
+    result = pipe.execute()
+    new_qty = result[0]
     # Update sorted set
-    current = int(r.hget(f"inventory:{sku}", "qty") or 0)
-    r.zadd("inventory:stock_levels", {sku: current})
+    r.zadd("inventory:stock_levels", {sku: new_qty})
 ```
 
 ## Cache Warm-Up from Database
