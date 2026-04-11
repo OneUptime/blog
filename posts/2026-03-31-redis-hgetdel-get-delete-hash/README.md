@@ -12,7 +12,7 @@ Description: Learn how to use the Redis HGETDEL command to atomically retrieve a
 
 `HGETDEL` retrieves the values of one or more fields from a hash and then deletes those fields - all in a single atomic operation. If the hash becomes empty after the deletion, the key is automatically removed. Fields that do not exist return nil in the result array.
 
-`HGETDEL` was introduced in Redis 7.4. Before this command existed, the pattern required a Lua script or a pipeline of `HMGET` + `HDEL` (which is not atomic).
+`HGETDEL` was introduced in Redis 8.0. Before this command existed, the pattern required a Lua script or a pipeline of `HMGET` + `HDEL` (which is not atomic).
 
 ```mermaid
 sequenceDiagram
@@ -103,6 +103,7 @@ HGETDEL user:1 FIELDS 3 token nonexistent_field another_missing
 ```
 
 ```text
+(integer) 2
 1) "abc"
 2) (nil)
 3) (nil)
@@ -153,4 +154,4 @@ sequenceDiagram
 
 ## Summary
 
-`HGETDEL` (Redis 7.4+) atomically retrieves and deletes one or more hash fields in a single operation. It eliminates the race condition inherent in a separate `HMGET` + `HDEL` sequence. Values for non-existent fields are returned as nil, and the hash key is automatically cleaned up if all fields are deleted. It is the hash-field equivalent of the string command `GETDEL`.
+`HGETDEL` (Redis 8.0+) atomically retrieves and deletes one or more hash fields in a single operation. It eliminates the race condition inherent in a separate `HMGET` + `HDEL` sequence. Values for non-existent fields are returned as nil, and the hash key is automatically cleaned up if all fields are deleted. It is the hash-field equivalent of the string command `GETDEL`.
