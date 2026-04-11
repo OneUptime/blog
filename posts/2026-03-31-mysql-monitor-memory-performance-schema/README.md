@@ -17,7 +17,7 @@ Memory instruments are enabled by default in MySQL 8.0 when `performance_schema 
 ```sql
 SELECT ENABLED
 FROM performance_schema.setup_instruments
-WHERE NAME = 'memory/sql/Query_cache'
+WHERE NAME = 'memory/sql/THD::main_mem_root'
 LIMIT 1;
 ```
 
@@ -91,7 +91,7 @@ SELECT
   ROUND(HIGH_NUMBER_OF_BYTES_USED / 1024 / 1024, 2) AS peak_mb
 FROM performance_schema.memory_summary_by_user_by_event_name
 WHERE EVENT_NAME = 'memory/sql/Filesort_buffer::sort_keys'
-   OR EVENT_NAME = 'memory/sql/Query_cache'
+   OR EVENT_NAME = 'memory/sql/THD::main_mem_root'
 ORDER BY current_mb DESC;
 ```
 
