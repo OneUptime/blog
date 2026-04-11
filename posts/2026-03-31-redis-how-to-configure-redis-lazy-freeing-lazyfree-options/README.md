@@ -33,11 +33,11 @@ With lazy freeing enabled, DEL schedules deallocation in a background thread and
 ```text
 # redis.conf
 
-# Lazy free for explicit user commands (DEL, UNLINK)
+# Lazy free configuration options
 lazyfree-lazy-eviction no    # Default
 lazyfree-lazy-expire no      # Default
 lazyfree-lazy-server-del no  # Default
-lazyfree-lazy-user-del no    # Default
+lazyfree-lazy-user-del no    # Default (Redis 6.0+)
 lazyfree-lazy-user-flush no  # Default (Redis 6.2+)
 ```
 
@@ -84,11 +84,11 @@ UNLINK bigkey
 
 ```bash
 # Check background deletion activity
-redis-cli INFO stats | grep lazyfree
+redis-cli INFO memory | grep lazyfree
 
 # Key fields:
 # lazyfree_pending_objects: objects waiting for background deallocation
-# lazyfreed_objects: total objects freed asynchronously (Redis 6.x)
+# lazyfreed_objects: total objects freed asynchronously (Redis 6.2+)
 ```
 
 If `lazyfree_pending_objects` grows indefinitely, background threads may be overwhelmed.
