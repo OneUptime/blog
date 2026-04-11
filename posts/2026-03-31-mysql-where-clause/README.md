@@ -158,8 +158,8 @@ ORDER BY category, name;
 +----------------+----------+
 | name           | category |
 +----------------+----------+
+| MySQL Cookbook  | Books    |
 | SQL Handbook   | Books    |
-| MySQL Cookbook | Books    |
 | Notepad        | Office   |
 | Pen Set        | Office   |
 +----------------+----------+
@@ -247,13 +247,12 @@ ORDER BY inventory_value DESC;
 ```
 
 ```text
-+----------+-------+-------+-----------------+
-| name     | price | stock | inventory_value |
-+----------+-------+-------+-----------------+
-| Notepad  |  2.99 |   200 |          598.00 |
-| Gadget   | 29.99 |    50 |         1499.50 |
-| Widget   |  9.99 |   100 |          999.00 |
-+----------+-------+-------+-----------------+
++---------+-------+-------+-----------------+
+| name    | price | stock | inventory_value |
++---------+-------+-------+-----------------+
+| Gadget  | 29.99 |    50 |         1499.50 |
+| USB Hub | 19.99 |    75 |         1499.25 |
++---------+-------+-------+-----------------+
 ```
 
 ## Best Practices
