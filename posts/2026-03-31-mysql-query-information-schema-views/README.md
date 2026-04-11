@@ -103,8 +103,11 @@ WHERE TABLE_SCHEMA = 'myapp'
 ```sql
 SELECT
   CONCAT(
-    'CREATE OR REPLACE DEFINER=`', DEFINER, '` ',
-    'SQL SECURITY ', SECURITY_TYPE, ' ',
+    'CREATE OR REPLACE DEFINER=`',
+    SUBSTRING_INDEX(DEFINER, '@', 1),
+    '`@`',
+    SUBSTRING_INDEX(DEFINER, '@', -1),
+    '` SQL SECURITY ', SECURITY_TYPE, ' ',
     'VIEW `', TABLE_SCHEMA, '`.`', TABLE_NAME, '` AS ',
     VIEW_DEFINITION, ';'
   ) AS create_view_sql
