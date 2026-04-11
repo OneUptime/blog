@@ -68,10 +68,12 @@ The buffer pool hit rate reflects warm-up progress. Query it every 30 seconds af
 ```sql
 SELECT
   ROUND(
-    (SUM(HIT_RATE) / COUNT(*)), 2
+    (SUM(HIT_RATE) / COUNT(*)) / 10, 2
   ) AS avg_hit_rate_pct
 FROM information_schema.INNODB_BUFFER_POOL_STATS;
 ```
+
+Note: The `HIT_RATE` column returns a value per 1000 page accesses (0-1000), so dividing by 10 converts it to a percentage.
 
 A healthy warm hit rate is 99%+. During warm-up, this starts lower and climbs as pages are loaded.
 
@@ -86,12 +88,11 @@ SELECT COUNT(*) FROM users;
 SELECT COUNT(*) FROM products;
 
 -- Scan recent data that is likely to be queried
-SELECT * FROM orders
-WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-LIMIT 0;
+SELECT COUNT(*) FROM orders
+WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY);
 ```
 
-The `LIMIT 0` or `COUNT(*)` forces MySQL to scan the index without returning rows to the client, loading pages efficiently.
+`COUNT(*)` forces MySQL to scan the index without returning full rows to the client, loading pages into the buffer pool efficiently.
 
 ## Gradual Traffic Ramp
 
@@ -106,7 +107,7 @@ def is_warm(threshold_pct: float = 90.0) -> bool:
     )
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT ROUND(AVG(HIT_RATE), 2) AS hit_rate
+        SELECT ROUND(AVG(HIT_RATE) / 10, 2) AS hit_rate
         FROM information_schema.INNODB_BUFFER_POOL_STATS
     """)
     hit_rate = cursor.fetchone()[0] or 0
