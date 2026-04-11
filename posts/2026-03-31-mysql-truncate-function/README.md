@@ -31,7 +31,7 @@ TRUNCATE(X, D)
 
 ```sql
 SELECT TRUNCATE(3.14159, 2);
--- Returns: 3.14  (not 3.14, because 3.14159 truncated, not rounded)
+-- Returns: 3.14  (digits beyond 2 decimal places are removed)
 
 SELECT TRUNCATE(3.149, 2);
 -- Returns: 3.14  (NOT 3.15 -- no rounding happens)
@@ -46,7 +46,7 @@ SELECT TRUNCATE(123.456, 0);
 -- Returns: 123
 
 SELECT TRUNCATE(123.456, -1);
--- Returns: 120  (rounds to nearest 10)
+-- Returns: 120  (truncates to nearest 10)
 
 SELECT TRUNCATE(123.456, -2);
 -- Returns: 100
@@ -154,7 +154,7 @@ SELECT TRUNCATE(987654, -3);
 SELECT TRUNCATE(987654, -4);
 -- Returns: 980000  (truncate to nearest ten-thousand)
 
--- Useful for rounding to display significant figures
+-- Useful for truncating to display significant figures
 SELECT
     sales_total,
     TRUNCATE(sales_total, -3) AS to_nearest_thousand
