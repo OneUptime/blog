@@ -53,7 +53,7 @@ SET GLOBAL validate_password.policy = 'STRONG';
 -- Require minimum 12 characters
 SET GLOBAL validate_password.length = 12;
 
--- Require at least 2 uppercase letters
+-- Require at least 2 uppercase and 2 lowercase letters
 SET GLOBAL validate_password.mixed_case_count = 2;
 
 -- Require at least 2 digits
@@ -105,7 +105,7 @@ Example output:
 +-------------------+----------+
 | password          | strength |
 +-------------------+----------+
-| password          |        0 |
+| password          |       25 |
 | MyPass1!          |       50 |
 | MyStr0ng!Pass#2024|      100 |
 +-------------------+----------+
