@@ -91,7 +91,7 @@ SELECT id, HEX(sha256) AS hex_hash FROM compact_hashes;
 
 -- Query by hex string
 SELECT * FROM compact_hashes
-WHERE sha256 = UNHEX('2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
+WHERE sha256 = UNHEX('3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7');
 ```
 
 ## BINARY() / CAST AS BINARY
@@ -124,7 +124,7 @@ SELECT CONVERT('Hello World' USING ascii);
 -- Returns: Hello World
 
 -- Non-ASCII becomes ?
-SELECT CONVERT('Cafe cafe' USING ascii);
+SELECT CONVERT('Café café' USING ascii);
 -- Returns: Caf? caf?
 ```
 
