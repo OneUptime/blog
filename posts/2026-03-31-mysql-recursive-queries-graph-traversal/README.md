@@ -35,9 +35,7 @@ Use a recursive CTE to visit every node reachable from a starting node:
 ```sql
 WITH RECURSIVE reachable AS (
   -- Anchor: starting node
-  SELECT from_node AS node, 0 AS depth
-  FROM edges
-  WHERE from_node = 1
+  SELECT 1 AS node, 0 AS depth
 
   UNION ALL
 
@@ -47,7 +45,7 @@ WITH RECURSIVE reachable AS (
   JOIN reachable r ON e.from_node = r.node
   WHERE r.depth < 10  -- cycle guard
 )
-SELECT DISTINCT node, MIN(depth) AS min_depth
+SELECT node, MIN(depth) AS min_depth
 FROM reachable
 GROUP BY node
 ORDER BY min_depth;
@@ -62,11 +60,9 @@ Track the path as a string to enumerate all routes:
 ```sql
 WITH RECURSIVE paths AS (
   SELECT
-    from_node AS current,
-    CAST(from_node AS CHAR(200)) AS path,
+    1 AS current,
+    CAST('1' AS CHAR(200)) AS path,
     0 AS total_weight
-  FROM edges
-  WHERE from_node = 1
 
   UNION ALL
 
@@ -92,9 +88,7 @@ To find the shortest path by hop count, stop as soon as the destination is first
 
 ```sql
 WITH RECURSIVE bfs AS (
-  SELECT from_node AS node, CAST(from_node AS CHAR(200)) AS path, 0 AS hops
-  FROM edges
-  WHERE from_node = 1
+  SELECT 1 AS node, CAST('1' AS CHAR(200)) AS path, 0 AS hops
 
   UNION ALL
 
@@ -117,15 +111,15 @@ For directed acyclic graphs (DAGs) like category hierarchies or package dependen
 
 ```sql
 WITH RECURSIVE ancestors AS (
-  SELECT to_node AS ancestor, from_node AS descendant, 1 AS level
+  SELECT from_node AS ancestor, to_node AS descendant, 1 AS level
   FROM edges
-  WHERE from_node = 5
+  WHERE to_node = 5
 
   UNION ALL
 
-  SELECT e.to_node, a.descendant, a.level + 1
+  SELECT e.from_node, a.descendant, a.level + 1
   FROM edges e
-  JOIN ancestors a ON e.from_node = a.ancestor
+  JOIN ancestors a ON e.to_node = a.ancestor
 )
 SELECT ancestor, level
 FROM ancestors
