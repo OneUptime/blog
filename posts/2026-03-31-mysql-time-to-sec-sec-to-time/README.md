@@ -157,12 +157,13 @@ Result:
 ## Total Hours Worked per Day
 
 ```sql
+-- Assumes a work_date DATE column has been added to work_sessions
 SELECT
-    DATE(start_time) AS work_date,
+    work_date,
     employee_id,
     SEC_TO_TIME(SUM(TIME_TO_SEC(TIMEDIFF(end_time, start_time)))) AS total_hours
 FROM work_sessions
-GROUP BY DATE(start_time), employee_id;
+GROUP BY work_date, employee_id;
 ```
 
 ---
