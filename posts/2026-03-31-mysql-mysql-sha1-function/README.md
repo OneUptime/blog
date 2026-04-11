@@ -30,7 +30,7 @@ SELECT SHA1('hello');
 -- Returns: aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d
 
 SELECT SHA('MySQL');
--- Returns: 5ae39e3e3d11bbf9cca2e2e8cb25e6b90ff1eb1d
+-- Returns: deaa0c393a6613972aaccbf1fecfdad67aa21e88
 
 SELECT SHA1('');
 -- Returns: da39a3ee5e6b4b0d3255bfef95601890afd80709
