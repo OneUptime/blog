@@ -62,7 +62,7 @@ Key characteristics:
 - Does not fire DML triggers
 - Much faster than `DELETE` for large tables - it deallocates data pages rather than removing rows one by one
 - Resets AUTO_INCREMENT counters to the table's initial value
-- Requires the `DROP` privilege in addition to `DELETE`
+- Requires the `DROP` privilege
 
 ```sql
 -- Check that AUTO_INCREMENT resets after TRUNCATE
