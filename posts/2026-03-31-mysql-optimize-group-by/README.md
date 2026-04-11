@@ -95,17 +95,20 @@ WHERE region != 'unknown'
 GROUP BY region;
 ```
 
-## Approximate COUNT with Loose Index Scan
+## Loose Index Scan for GROUP BY
 
-For counting distinct values in a GROUP BY, MySQL can use a "loose index scan" that skips directly between group boundaries:
+For certain aggregate functions like MIN(), MAX(), COUNT(DISTINCT), and SUM(DISTINCT), MySQL can use a "loose index scan" that skips directly between group boundaries instead of scanning every row:
 
 ```sql
+-- Requires an index on (category, price)
+CREATE INDEX idx_category_price ON products(category, price);
+
 -- Check if EXPLAIN shows "Using index for group-by"
 EXPLAIN SELECT category, MAX(price) FROM products GROUP BY category;
 -- Extra: Using index for group-by (very efficient)
 ```
 
-This requires a suitable index where the GROUP BY column is the leftmost prefix.
+This requires an index where the GROUP BY column is the leftmost prefix and the aggregated column is also part of the index.
 
 ## Summary
 
