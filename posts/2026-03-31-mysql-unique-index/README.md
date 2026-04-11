@@ -98,7 +98,7 @@ DROP INDEX uk_email ON users;
 ALTER TABLE users DROP INDEX uk_email;
 ```
 
-Note: You cannot use `DROP INDEX` to drop a primary key - use `ALTER TABLE ... DROP PRIMARY KEY` for that.
+Note: To drop a primary key, use `ALTER TABLE ... DROP PRIMARY KEY` or `DROP INDEX \`PRIMARY\` ON table_name` (the reserved word `PRIMARY` must be backtick-quoted).
 
 ## Performance Considerations
 
