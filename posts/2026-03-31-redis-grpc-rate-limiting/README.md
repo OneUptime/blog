@@ -58,6 +58,7 @@ function rateLimitInterceptor(call, callback, next) {
 import grpc
 import redis
 import time
+import os
 
 r = redis.Redis.from_url(os.environ['REDIS_URL'])
 
@@ -67,6 +68,8 @@ class RateLimitInterceptor(grpc.ServerInterceptor):
         self.window = window
 
     def intercept_service(self, continuation, handler_call_details):
+        handler = continuation(handler_call_details)
+
         def wrapper(request_or_iterator, servicer_context):
             peer = servicer_context.peer()
             method = handler_call_details.method
@@ -87,10 +90,8 @@ class RateLimitInterceptor(grpc.ServerInterceptor):
             except redis.RedisError:
                 pass  # Fail open
 
-            handler = continuation(handler_call_details)
             return handler.unary_unary(request_or_iterator, servicer_context)
 
-        original_handler = continuation(handler_call_details)
         return grpc.unary_unary_rpc_method_handler(wrapper)
 ```
 
@@ -113,8 +114,11 @@ async def get_method_limit(method):
     key = f"grpc:config:limit:{method}"
     limit = await redis.get(key)
     return int(limit) if limit else 100
+```
 
-# Set method-specific limits at runtime
+Set method-specific limits at runtime:
+
+```bash
 redis-cli set "grpc:config:limit:/product.ProductService/GetProduct" 200
 redis-cli set "grpc:config:limit:/product.ProductService/ListProducts" 50
 ```
