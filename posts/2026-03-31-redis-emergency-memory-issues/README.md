@@ -59,7 +59,6 @@ redis-cli UNLINK large-key-name  # UNLINK is async, safer than DEL
 redis-cli INFO keyspace
 
 # Flush only if it's safe (e.g., a temporary cache database)
-redis-cli SELECT 3
 redis-cli -n 3 FLUSHDB ASYNC
 ```
 
