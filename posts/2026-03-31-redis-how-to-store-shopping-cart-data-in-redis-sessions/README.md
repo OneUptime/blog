@@ -106,7 +106,7 @@ def get_rich_cart(user_id: int) -> list:
 ## REST API Example with FastAPI
 
 ```python
-from fastapi import FastAPI, Cookie
+from fastapi import FastAPI, Cookie, HTTPException
 
 app = FastAPI()
 
