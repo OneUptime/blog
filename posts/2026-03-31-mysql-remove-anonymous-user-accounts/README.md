@@ -43,13 +43,13 @@ If this query returns rows, anonymous users are present. A typical output after 
 
 ```sql
 -- Remove the anonymous user from localhost
-DROP USER ''@'localhost';
+DROP USER IF EXISTS ''@'localhost';
 
 -- Remove the anonymous user from IPv6 loopback
-DROP USER ''@'::1';
+DROP USER IF EXISTS ''@'::1';
 
 -- Remove anonymous user from any host if present
-DROP USER ''@'%';
+DROP USER IF EXISTS ''@'%';
 ```
 
 ## Using mysql_secure_installation
