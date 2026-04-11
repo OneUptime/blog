@@ -27,7 +27,7 @@ GEOSEARCH key FROMMEMBER member | FROMLONLAT longitude latitude
 ## Search by Radius from Coordinates
 
 ```bash
-# Find all restaurants within 500 meters of Times Square
+# Find all restaurants within 300 meters of Times Square
 GEOADD restaurants \
   -73.9857 40.7484 "Joe's Pizza" \
   -73.9851 40.7488 "Shake Shack" \
@@ -143,13 +143,15 @@ for store in nearby:
 ## Viewport Search (Box Mode)
 
 ```python
+import math
+
 def search_in_viewport(min_lon: float, min_lat: float, max_lon: float, max_lat: float):
     """Search for stores within a map viewport bounding box."""
     # Compute center and dimensions
     center_lon = (min_lon + max_lon) / 2
     center_lat = (min_lat + max_lat) / 2
-    width_km = abs(max_lon - min_lon) * 111  # rough km per degree longitude
-    height_km = abs(max_lat - min_lat) * 111  # rough km per degree latitude
+    width_km = abs(max_lon - min_lon) * 111 * math.cos(math.radians(center_lat))  # km per degree longitude
+    height_km = abs(max_lat - min_lat) * 111  # km per degree latitude
 
     return r.geosearch(
         "stores",
