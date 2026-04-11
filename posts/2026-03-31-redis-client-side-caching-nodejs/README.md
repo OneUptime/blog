@@ -36,6 +36,9 @@ class RedisClientSideCache {
   }
 
   async setupTracking() {
+    // Get client ID before entering subscriber mode
+    const invClientId = await this.invalidationConn.client('ID');
+
     // Subscribe to the invalidation channel
     await this.invalidationConn.subscribe('__redis__:invalidate');
 
@@ -44,12 +47,14 @@ class RedisClientSideCache {
         return;
       }
 
-      if (payload === null) {
+      // Flush invalidation (e.g. FLUSHDB) arrives as empty string
+      if (!payload) {
         this.localCache.clear();
         return;
       }
 
-      const keys = Array.isArray(payload) ? payload : [payload];
+      // ioredis delivers invalidated keys as a comma-separated string
+      const keys = payload.split(',');
       for (const key of keys) {
         if (this.localCache.has(key)) {
           this.localCache.delete(key);
@@ -59,7 +64,6 @@ class RedisClientSideCache {
     });
 
     // Enable CLIENT TRACKING with redirect
-    const invClientId = await this.invalidationConn.client('ID');
     await this.redis.call('CLIENT', 'TRACKING', 'ON', 'REDIRECT', invClientId);
 
     console.log(`Tracking enabled, redirecting to client ${invClientId}`);
