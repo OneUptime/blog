@@ -129,9 +129,17 @@ spec:
           args:
             - |
               cp /tmp/redis/redis.conf /etc/redis/redis.conf
+              echo "requirepass $REDIS_PASSWORD" >> /etc/redis/redis.conf
+              echo "masterauth $REDIS_PASSWORD" >> /etc/redis/redis.conf
               if [ "$(hostname)" != "redis-0" ]; then
                 echo "replicaof redis-0.redis-headless.redis.svc.cluster.local 6379" >> /etc/redis/redis.conf
               fi
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
           volumeMounts:
             - name: redis-config
               mountPath: /tmp/redis
@@ -143,6 +151,11 @@ spec:
           command: ["redis-server", "/etc/redis/redis.conf"]
           env:
             - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
+            - name: REDISCLI_AUTH
               valueFrom:
                 secretKeyRef:
                   name: redis-secret
