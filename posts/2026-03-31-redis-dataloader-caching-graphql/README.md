@@ -23,7 +23,9 @@ On the next request, a new DataLoader is created and the cache is empty again.
 
 ## Redis-Backed DataLoader Cache
 
-Replace the default in-memory cache with a Redis-aware cache map:
+DataLoader's `cacheMap` interface expects synchronous returns from `get()`, so plugging Redis in directly as a `cacheMap` will not correctly signal cache misses. Instead, check Redis inside the batch function and let DataLoader keep its default in-memory map for per-request deduplication.
+
+First, set up the Redis client:
 
 ```javascript
 const DataLoader = require('dataloader');
@@ -32,36 +34,8 @@ const { createClient } = require('redis');
 const redis = createClient({ url: process.env.REDIS_URL });
 await redis.connect();
 
-class RedisDataLoaderCache {
-  constructor(ttlSeconds = 300) {
-    this.ttl = ttlSeconds;
-    this.prefix = 'dl:';
-  }
-
-  get(key) {
-    // Returns a Promise or undefined
-    return redis.get(`${this.prefix}${key}`).then((val) =>
-      val ? JSON.parse(val) : undefined
-    );
-  }
-
-  set(key, value) {
-    value.then((resolved) => {
-      redis.setEx(`${this.prefix}${key}`, this.ttl, JSON.stringify(resolved));
-    });
-  }
-
-  delete(key) {
-    return redis.del(`${this.prefix}${key}`);
-  }
-
-  clear() {
-    // Clear all keys with prefix - use carefully
-    return redis.keys(`${this.prefix}*`).then((keys) => {
-      if (keys.length > 0) return redis.del(keys);
-    });
-  }
-}
+const CACHE_PREFIX = 'dl:';
+const CACHE_TTL = 300;
 ```
 
 ## Building the DataLoader with Redis Cache
@@ -70,15 +44,49 @@ class RedisDataLoaderCache {
 function createUserLoader() {
   return new DataLoader(
     async (ids) => {
-      const users = await db.query(
-        'SELECT * FROM users WHERE id = ANY($1)',
-        [ids]
-      );
-      const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-      return ids.map(id => userMap[id] || null);
+      // Check Redis for cached values
+      const cacheKeys = ids.map(id => `${CACHE_PREFIX}${String(id)}`);
+      const cached = await redis.mGet(cacheKeys);
+
+      const results = new Array(ids.length);
+      const uncachedIds = [];
+      const uncachedIndices = [];
+
+      ids.forEach((id, i) => {
+        if (cached[i] !== null) {
+          results[i] = JSON.parse(cached[i]);
+        } else {
+          uncachedIds.push(id);
+          uncachedIndices.push(i);
+        }
+      });
+
+      // Only query DB for IDs not found in Redis
+      if (uncachedIds.length > 0) {
+        const users = await db.query(
+          'SELECT * FROM users WHERE id = ANY($1)',
+          [uncachedIds]
+        );
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+        const pipeline = redis.multi();
+        uncachedIds.forEach((id, idx) => {
+          const user = userMap[id] || null;
+          results[uncachedIndices[idx]] = user;
+          if (user) {
+            pipeline.setEx(
+              `${CACHE_PREFIX}${String(id)}`,
+              CACHE_TTL,
+              JSON.stringify(user)
+            );
+          }
+        });
+        await pipeline.exec();
+      }
+
+      return results;
     },
     {
-      cacheMap: new RedisDataLoaderCache(300),
       cacheKeyFn: (key) => String(key)
     }
   );
@@ -89,6 +97,7 @@ function createUserLoader() {
 
 ```javascript
 const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@apollo/server/express4');
 
 const server = new ApolloServer({ typeDefs, resolvers });
 
@@ -128,4 +137,4 @@ async function updateUser(id, data) {
 
 ## Summary
 
-Backing GraphQL DataLoader with Redis extends its deduplication benefits beyond a single request to the entire server fleet. The custom cacheMap interface is straightforward to implement with Redis get, set, and delete operations. This pattern is especially valuable in horizontally scaled GraphQL APIs where repeated queries for the same objects - like post authors or product categories - would otherwise hit the database on every instance.
+Backing GraphQL DataLoader with Redis extends its deduplication benefits beyond a single request to the entire server fleet. Checking Redis in the batch function is straightforward using mGet for bulk lookups and multi/exec pipelines for writes. This pattern is especially valuable in horizontally scaled GraphQL APIs where repeated queries for the same objects - like post authors or product categories - would otherwise hit the database on every instance.
