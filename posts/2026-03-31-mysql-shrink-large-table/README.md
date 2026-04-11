@@ -43,7 +43,7 @@ For InnoDB, this is equivalent to `ALTER TABLE ... ENGINE=InnoDB`. It creates a 
 Monitor progress:
 
 ```sql
-SELECT STAGE, STATE, WORK_COMPLETED, WORK_ESTIMATED
+SELECT EVENT_NAME, WORK_COMPLETED, WORK_ESTIMATED
 FROM performance_schema.events_stages_current;
 ```
 
