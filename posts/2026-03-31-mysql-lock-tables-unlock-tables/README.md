@@ -50,7 +50,7 @@ UNLOCK TABLES;
 
 ## Interaction with Transactions
 
-`LOCK TABLES` implicitly commits any active transaction and disables autocommit for the duration of the lock:
+`LOCK TABLES` implicitly commits any active transaction before attempting to lock the tables. Note that autocommit is not disabled automatically — you must set it manually if needed:
 
 ```sql
 -- IMPORTANT: LOCK TABLES commits any open transaction
