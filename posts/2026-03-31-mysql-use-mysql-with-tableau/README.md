@@ -12,7 +12,7 @@ Tableau connects to MySQL through its built-in connector, offering both live que
 
 ## Prerequisites
 
-Tableau Desktop (2021.4+) includes a native MySQL connector. No additional ODBC driver is needed on macOS. On Windows, install the MySQL ODBC 8.0 driver if the built-in connector is unavailable.
+Tableau Desktop (2021.4+) includes a native MySQL connector. Install the MySQL Connector/ODBC 8.0 driver on both macOS and Windows before connecting.
 
 ## Creating a Read-Only MySQL Account
 
