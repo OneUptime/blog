@@ -27,6 +27,7 @@ CLIENT KILL ID client-id
 CLIENT KILL ADDR addr:port
 CLIENT KILL LADDR local-addr:port
 CLIENT KILL USER username
+CLIENT KILL TYPE normal|pubsub|replica|master|slave
 CLIENT KILL SKIPME yes|no
 CLIENT KILL MAXAGE seconds
 CLIENT KILL ID id [ADDR addr] [USER username] [SKIPME yes|no]
@@ -85,14 +86,14 @@ CLIENT KILL TYPE replica
 CLIENT KILL TYPE normal
 ```
 
-Valid types: `normal`, `pubsub`, `replica`, `master`, `multi`
+Valid types: `normal`, `pubsub`, `replica`, `master`, `slave`
 
 ## Killing by Maximum Age
 
 Disconnect connections older than a specified number of seconds:
 
 ```redis
-# Kill all connections idle for more than 3600 seconds (1 hour)
+# Kill all connections older than 3600 seconds (1 hour)
 CLIENT KILL MAXAGE 3600
 ```
 
@@ -146,13 +147,13 @@ ACL SAVE
 CLIENT KILL USER compromised_user
 
 # 3. Review recent ACL log entries
-ACL LOG COUNT 20
+ACL LOG 20
 ```
 
 ## Killing Stale Connections
 
 ```redis
-# Kill all connections idle for more than 30 minutes (1800 seconds)
+# Kill all connections older than 30 minutes (1800 seconds)
 CLIENT KILL MAXAGE 1800
 ```
 
@@ -164,4 +165,4 @@ For the old address form, it returns `OK` (one client killed) or an error.
 
 ## Summary
 
-`CLIENT KILL` terminates Redis client connections using flexible filter criteria: connection ID, remote address, username, client type, or maximum age. The modern multi-filter form is preferred over the deprecated address-only form. Use `CLIENT KILL USER` immediately after `ACL DELUSER` to close active sessions from deleted users. Use `CLIENT KILL MAXAGE` to clean up stale or idle connections. The `SKIPME` option controls whether the issuing connection itself is included in the kill set.
+`CLIENT KILL` terminates Redis client connections using flexible filter criteria: connection ID, remote address, username, client type, or maximum age. The modern multi-filter form is preferred over the deprecated address-only form. Use `CLIENT KILL USER` immediately after `ACL DELUSER` to close active sessions from deleted users. Use `CLIENT KILL MAXAGE` to clean up connections older than a given age. The `SKIPME` option controls whether the issuing connection itself is included in the kill set.
