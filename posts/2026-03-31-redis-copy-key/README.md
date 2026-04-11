@@ -142,7 +142,7 @@ COPY session:user:1 session:user:1 DB 1
 (integer) 1
 ```
 
-### COPY does not transfer TTL
+### COPY preserves TTL
 
 ```redis
 SET token:abc "jwt-data"
@@ -160,10 +160,10 @@ TTL token:backup
 ```
 
 ```text
-(integer) -1
+(integer) 3596
 ```
 
-The copy does not inherit the source's TTL. The destination is a persistent key.
+The copy inherits the source's remaining TTL. Both keys will expire around the same time.
 
 ## Use Cases
 
@@ -183,8 +183,8 @@ The copy does not inherit the source's TTL. The destination is a persistent key.
 |-----------|-------------|--------------------------|----------|
 | COPY | Preserved | Yes (unless REPLACE) | Yes (DB option) |
 | RENAME | Deleted | No (overwrites) | No |
-| DUMP + RESTORE | Preserved | Must not exist | Yes |
+| DUMP + RESTORE | Preserved | Yes (unless REPLACE) | Yes |
 
 ## Summary
 
-COPY creates an independent duplicate of a key at a new destination. The source is preserved, making it ideal for template-based provisioning, snapshots, and cross-database promotion. By default, COPY returns 0 if the destination already exists; use REPLACE to allow overwriting. Note that TTL is not copied to the destination. For copying between databases, use the DB option with the target database number.
+COPY creates an independent duplicate of a key at a new destination. The source is preserved, making it ideal for template-based provisioning, snapshots, and cross-database promotion. By default, COPY returns 0 if the destination already exists; use REPLACE to allow overwriting. The destination key inherits the source's remaining TTL. For copying between databases, use the DB option with the target database number.
