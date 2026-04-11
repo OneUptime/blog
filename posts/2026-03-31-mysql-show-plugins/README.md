@@ -34,7 +34,7 @@ SHOW PLUGINS;
 | InnoDB                     | ACTIVE   | STORAGE ENGINE     | NULL                         | GPL     |
 | MEMORY                     | ACTIVE   | STORAGE ENGINE     | NULL                         | GPL     |
 | MyISAM                     | ACTIVE   | STORAGE ENGINE     | NULL                         | GPL     |
-| validate_password          | ACTIVE   | VALIDATE PASSWORD  | component_validate_password  | GPL     |
+| validate_password          | ACTIVE   | VALIDATE PASSWORD  | validate_password.so         | GPL     |
 | mysql_native_password      | DISABLED | AUTHENTICATION     | NULL                         | GPL     |
 +----------------------------+----------+--------------------+------------------------------+---------+
 ```
@@ -43,7 +43,7 @@ SHOW PLUGINS;
 
 - **Name**: Plugin name
 - **Status**: `ACTIVE` (loaded and working), `INACTIVE` (loaded but not active), `DISABLED` (installed but disabled), or `DELETED` (marked for removal)
-- **Type**: Plugin category (`STORAGE ENGINE`, `AUTHENTICATION`, `AUDIT`, `FULL TEXT`, `VALIDATE PASSWORD`, `DAEMON`, etc.)
+- **Type**: Plugin category (`STORAGE ENGINE`, `AUTHENTICATION`, `AUDIT`, `FTPARSER`, `VALIDATE PASSWORD`, `DAEMON`, etc.)
 - **Library**: The shared library file (`NULL` for built-in plugins)
 - **License**: License type (`GPL`, `PROPRIETARY`, etc.)
 
