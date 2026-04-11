@@ -73,17 +73,17 @@ Use BYRANK to find the score at a specific leaderboard position:
 
 ```bash
 TDIGEST.CREATE game:scores COMPRESSION 500
-# Add 1000 player scores
+# Add 10 player scores
 TDIGEST.ADD game:scores 1200 3400 5600 7800 2300 4500 6700 8900 1100 9100
 
 # What score is at rank 0 (lowest)?
 TDIGEST.BYRANK game:scores 0
 
-# What score separates the top 10 from others? (rank 900 out of 1000)
-TDIGEST.BYRANK game:scores 900
+# What score is at rank 5 (middle of 10)?
+TDIGEST.BYRANK game:scores 5
 
-# Score at the 500th position (median)
-TDIGEST.BYRANK game:scores 500
+# What score is at rank 9 (highest)?
+TDIGEST.BYRANK game:scores 9
 ```
 
 ## Python Example: Distribution Analysis
@@ -97,7 +97,7 @@ def analyze_distribution(key: str, num_buckets: int = 10) -> list:
     """Get evenly spaced values across the distribution."""
     info = r.execute_command("TDIGEST.INFO", key)
     info_dict = dict(zip(info[::2], info[1::2]))
-    total = int(float(info_dict.get("Merged weight", 0)))
+    total = int(float(info_dict.get("Observations", 0)))
     if total == 0:
         return []
 
@@ -155,13 +155,13 @@ def get_histogram_boundaries(key: str, num_buckets: int) -> list:
     """Generate bucket boundaries for a histogram based on actual data distribution."""
     info = r.execute_command("TDIGEST.INFO", key)
     info_dict = dict(zip(info[::2], info[1::2]))
-    total = int(float(info_dict.get("Merged weight", 0)))
+    total = int(float(info_dict.get("Observations", 0)))
     if total < num_buckets:
         return []
 
     # Ranks that split data into equal-frequency buckets
     ranks = [int(i * total / num_buckets) for i in range(1, num_buckets)]
-    values = r.execute_command("TDIGEST.BYRANK", key, *[str(r) for r in ranks])
+    values = r.execute_command("TDIGEST.BYRANK", key, *[str(r_) for r_ in ranks])
     return [float(v) for v in values if v is not None]
 
 boundaries = get_histogram_boundaries("api:latency", 5)
