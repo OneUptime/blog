@@ -64,7 +64,7 @@ AUTH anypassword
 ```
 
 ```text
-(error) ERR Client sent AUTH, but no password is set. Did you mean ACL SETUSER with >password?
+(error) ERR AUTH <password> called without any password configured for the default user. Are you sure your configuration is correct?
 ```
 
 ## Username and Password Authentication (Redis 6.0+)
