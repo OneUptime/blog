@@ -63,10 +63,10 @@ The data dictionary is managed automatically. Most interactions are indirect:
 -- View table definition stored in data dictionary
 SHOW CREATE TABLE orders;
 
--- Rebuild the data dictionary cache for a specific table
+-- Close and reopen the table, refreshing cached table definitions
 FLUSH TABLES orders;
 
--- Check for dictionary inconsistencies (MySQL Enterprise)
+-- Check the table for errors and inconsistencies
 CHECK TABLE orders EXTENDED;
 ```
 
@@ -81,13 +81,7 @@ mysqlbackup --backup-dir=/backups/full backup
 
 ## Upgrading from MySQL 5.7
 
-When upgrading from MySQL 5.7 to 8.0, the upgrade process converts `.frm` files to data dictionary entries automatically. You can run a dry run:
-
-```bash
-mysql_upgrade --verbose
-```
-
-Or use MySQL Shell's upgrade checker:
+When upgrading from MySQL 5.7 to 8.0, the upgrade process converts `.frm` files to data dictionary entries automatically. Before upgrading, use MySQL Shell's upgrade checker to identify potential issues:
 
 ```javascript
 util.checkForServerUpgrade('root@localhost:3306')
