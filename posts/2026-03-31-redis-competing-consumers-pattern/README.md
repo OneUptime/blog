@@ -43,9 +43,10 @@ enqueue_job({"task": "send_email", "to": "user@example.com"})
 ## Consumer Worker
 
 ```python
+import os
 import time
 
-WORKER_ID = "worker-1"  # unique per process/pod
+WORKER_ID = os.environ.get("WORKER_ID", "worker-1")  # unique per process/pod
 GROUP = "mygroup"
 STREAM = "jobs"
 
@@ -102,7 +103,7 @@ Each worker picks up different messages. Redis delivers each message to only one
 # View pending (delivered but not ACKed) messages
 redis-cli XPENDING jobs mygroup - + 10
 
-# View per-consumer pending count
+# View pending messages for a specific consumer
 redis-cli XPENDING jobs mygroup - + 10 worker-1
 ```
 
