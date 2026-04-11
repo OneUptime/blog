@@ -84,11 +84,12 @@ SHOW VARIABLES LIKE 'innodb_ft_min_token_size';
 -- innodb_ft_min_token_size = 2
 ```
 
-After changing the setting, rebuild all FULLTEXT indexes:
+After changing the setting, rebuild all FULLTEXT indexes by dropping and recreating them:
 
 ```sql
-REPAIR TABLE articles QUICK;
--- or drop and recreate the FULLTEXT index
+-- For InnoDB tables, drop and recreate the FULLTEXT index
+ALTER TABLE articles DROP INDEX ft_content;
+ALTER TABLE articles ADD FULLTEXT INDEX ft_content (title, body);
 ```
 
 ## Combining FULLTEXT with Other Filters
