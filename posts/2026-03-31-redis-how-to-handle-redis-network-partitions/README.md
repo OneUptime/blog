@@ -166,6 +166,7 @@ def with_retry(func, max_retries=3, base_delay=0.1):
 ### Read-Through with Fallback
 
 ```python
+import json
 import redis
 
 r = redis.Redis()
