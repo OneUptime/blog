@@ -63,7 +63,7 @@ If more than 10-20% of temporary tables go to disk, consider increasing `tmp_tab
 For servers with 8-16 GB RAM, 64-256 MB per session is a common range. Since this is a per-session setting, be careful not to set it too high if you have many connections:
 
 ```sql
--- Check dynamically
+-- Set dynamically
 SET GLOBAL tmp_table_size = 67108864;  -- 64MB
 SET GLOBAL max_heap_table_size = 67108864;
 
@@ -106,7 +106,7 @@ Some conditions force MySQL to use on-disk temporary tables regardless of `tmp_t
 EXPLAIN SELECT name, description FROM products GROUP BY category;
 ```
 
-The `Extra` column will show `Using temporary; Using filesort` for disk-bound queries. In these cases, rewriting the query or adding an index is more effective than increasing the memory limit.
+The `Extra` column will show `Using temporary` when MySQL needs a temporary table for the query. This alone does not indicate whether the table is in memory or on disk — use the `Created_tmp_disk_tables` status variable or Performance Schema to determine that. When BLOB or TEXT columns are involved, rewriting the query or adding an index is more effective than increasing the memory limit.
 
 ## Memory Impact Calculation
 
