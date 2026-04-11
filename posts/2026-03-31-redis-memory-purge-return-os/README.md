@@ -73,7 +73,7 @@ jemalloc normally returns idle pages to the OS after a configurable decay period
 - `dirty_decay_ms` - time before dirty (recently freed) pages are returned
 - `muzzy_decay_ms` - time before muzzy (MADV_FREE) pages are returned
 
-Default for both is 10,000 ms (10 seconds). `MEMORY PURGE` bypasses the decay timer and forces immediate release.
+`dirty_decay_ms` defaults to 10,000 ms (10 seconds); `muzzy_decay_ms` defaults to 0 ms (immediate). `MEMORY PURGE` bypasses the decay timer and forces immediate release of any remaining dirty pages.
 
 ## Checking Purge Eligibility
 
@@ -85,7 +85,7 @@ MEMORY MALLOC-STATS
 # retained:  5242880     (5MB - never-returned pages)
 ```
 
-The gap between `resident` and `allocated` is what `MEMORY PURGE` reduces.
+The gap between `resident` and `active` is what `MEMORY PURGE` reduces (idle pages held by jemalloc but not backing any live allocation).
 
 ## Active Defragmentation vs MEMORY PURGE
 
@@ -93,7 +93,7 @@ The gap between `resident` and `allocated` is what `MEMORY PURGE` reduces.
 |---|---|---|
 | What it does | Compacts live objects to reduce fragmentation | Returns idle pages to OS |
 | When to use | High `mem_fragmentation_ratio` | High RSS after data deletion |
-| Continuous? | Yes (background thread) | No (one-shot command) |
+| Continuous? | Yes (runs incrementally in the main thread) | No (one-shot command) |
 | Impact on data | None | None |
 | CPU overhead | Configurable | Brief spike |
 
