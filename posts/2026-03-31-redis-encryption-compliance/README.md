@@ -66,6 +66,7 @@ Enable encryption at rest when creating ElastiCache via Terraform:
 ```hcl
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id       = "secure-redis"
+  description                = "Encrypted Redis replication group"
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
   auth_token                 = var.redis_auth_token
@@ -88,7 +89,6 @@ For compliance requirements beyond what Redis provides natively, encrypt sensiti
 
 ```python
 from cryptography.fernet import Fernet
-import base64
 import os
 import json
 import redis
