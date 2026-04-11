@@ -10,7 +10,7 @@ Description: Learn how to monitor Redis cluster slot coverage to detect missing 
 
 ## What Is Redis Cluster Slot Coverage?
 
-Redis Cluster divides the keyspace into 16,384 hash slots distributed across nodes. Every slot must be assigned to a live primary node. If any slot is uncovered (no live primary owns it), the cluster enters a CLUSTERDOWN state and rejects write commands.
+Redis Cluster divides the keyspace into 16,384 hash slots distributed across nodes. Every slot must be assigned to a live primary node. If any slot is uncovered (no live primary owns it), the cluster enters a CLUSTERDOWN state and rejects all commands (both reads and writes) by default.
 
 Monitoring slot coverage is essential to:
 - Detect partial cluster failures
@@ -82,7 +82,7 @@ ghi789 10.0.0.3:6379@16379 master - 0 1711900020 3 connected 10923-16383
 
 ```python
 import redis
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 def check_cluster_slot_coverage(startup_nodes):
     rc = RedisCluster(startup_nodes=startup_nodes, decode_responses=True)
@@ -131,8 +131,8 @@ def check_cluster_slot_coverage(startup_nodes):
             print(f"WARNING: Slot imbalance of {imbalance} slots detected")
 
 startup_nodes = [
-    {"host": "10.0.0.1", "port": 6379},
-    {"host": "10.0.0.2", "port": 6379},
+    ClusterNode("10.0.0.1", 6379),
+    ClusterNode("10.0.0.2", 6379),
 ]
 check_cluster_slot_coverage(startup_nodes)
 ```
