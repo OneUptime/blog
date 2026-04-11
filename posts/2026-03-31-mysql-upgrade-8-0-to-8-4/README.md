@@ -75,7 +75,6 @@ MySQL 8.4 runs in-place upgrade automatically and performs dictionary schema upg
 ```bash
 sudo yum install mysql-community-server-8.4
 sudo systemctl start mysqld
-sudo grep 'temporary password' /var/log/mysqld.log
 ```
 
 ## Post-Upgrade Validation
@@ -92,11 +91,7 @@ Verify table status:
 mysqlcheck -u root -p --all-databases --check --auto-repair
 ```
 
-Run the upgrade check post-install:
-
-```bash
-mysql_upgrade -u root -p
-```
+Note: `mysql_upgrade` was removed in MySQL 8.4. The server now performs all upgrade tasks automatically on first startup, so no manual upgrade step is needed.
 
 ## Checking Removed Variables
 
