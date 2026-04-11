@@ -44,8 +44,6 @@ log_bin = /var/lib/mysql/binlogs/mysql-bin
 relay_log = /var/lib/mysql/relaylogs/relay-bin
 gtid_mode = ON
 enforce_gtid_consistency = ON
-master_info_repository = TABLE
-relay_log_info_repository = TABLE
 ```
 
 **Create replication users on each source:**
@@ -109,7 +107,7 @@ SHOW REPLICA STATUS FOR CHANNEL 'source2'\G
 SELECT channel_name, service_state, last_error_message, last_heartbeat_timestamp
 FROM performance_schema.replication_connection_status;
 
-SELECT channel_name, service_state, last_applied_transaction
+SELECT channel_name, service_state, last_processed_transaction
 FROM performance_schema.replication_applier_status_by_coordinator;
 ```
 
@@ -145,7 +143,7 @@ Operations without a `FOR CHANNEL` clause apply to all channels:
 START REPLICA;
 STOP REPLICA;
 
--- Show status of default (unnamed) channel
+-- Show status of all channels
 SHOW REPLICA STATUS\G
 ```
 
@@ -154,7 +152,7 @@ SHOW REPLICA STATUS\G
 ```sql
 SELECT channel_name,
        TIMESTAMPDIFF(SECOND,
-         CONVERT_TZ(last_applied_transaction_end_apply_timestamp, '+00:00', @@global.time_zone),
+         last_applied_transaction_end_apply_timestamp,
          NOW()) AS seconds_behind
 FROM performance_schema.replication_applier_status_by_worker
 WHERE last_applied_transaction != '';
