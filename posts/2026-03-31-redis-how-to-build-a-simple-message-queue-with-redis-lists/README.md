@@ -78,7 +78,7 @@ thread.start()
 
 ## Reliable Queue Pattern with BRPOPLPUSH
 
-`BRPOP` removes the job immediately. If the worker crashes mid-processing, the job is lost. Use `BRPOPLPUSH` (or `LMOVE` in Redis 6.2+) to atomically move jobs to a "processing" list:
+`BRPOP` removes the job immediately. If the worker crashes mid-processing, the job is lost. Use `BRPOPLPUSH` (or `BLMOVE` in Redis 6.2+) to atomically move jobs to a "processing" list:
 
 ```python
 PROCESSING_KEY = "jobs:email:processing"
@@ -100,12 +100,11 @@ def reliable_worker():
             r.lpush(QUEUE_KEY, raw)
             r.lrem(PROCESSING_KEY, 1, raw)
 
-# Redis 6.2+ equivalent using LMOVE
-def reliable_worker_lmove():
+# Redis 6.2+ equivalent using BLMOVE
+def reliable_worker_blmove():
     while True:
-        raw = r.lmove(QUEUE_KEY, PROCESSING_KEY, "RIGHT", "LEFT")
+        raw = r.blmove(QUEUE_KEY, PROCESSING_KEY, 5, "RIGHT", "LEFT")
         if raw is None:
-            import time; time.sleep(0.1)
             continue
         job = json.loads(raw)
         try:
@@ -152,4 +151,4 @@ def multi_priority_worker():
 
 ## Summary
 
-Redis Lists provide a simple, efficient foundation for message queuing using LPUSH to enqueue and BRPOP to consume in a blocking, CPU-efficient manner. The reliable queue pattern with BRPOPLPUSH/LMOVE prevents job loss on worker failure by holding jobs in a processing list until completion. For priority handling, `BRPOP` on multiple keys processes higher-priority queues first.
+Redis Lists provide a simple, efficient foundation for message queuing using LPUSH to enqueue and BRPOP to consume in a blocking, CPU-efficient manner. The reliable queue pattern with BRPOPLPUSH/BLMOVE prevents job loss on worker failure by holding jobs in a processing list until completion. For priority handling, `BRPOP` on multiple keys processes higher-priority queues first.
