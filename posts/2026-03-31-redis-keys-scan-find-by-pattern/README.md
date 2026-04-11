@@ -167,7 +167,7 @@ This automatically handles the cursor loop and streams matching keys.
 | Returns | All matches at once | Batches via cursor |
 | Production safe | No | Yes |
 | Speed (small datasets) | Fast | Slightly slower (multiple calls) |
-| Guarantees | Returns exact set at moment of call | May return duplicates, misses keys added/removed mid-scan |
+| Guarantees | Returns exact set at moment of call | May return duplicates; keys added/removed mid-scan may or may not appear |
 
 ## Use Cases
 
