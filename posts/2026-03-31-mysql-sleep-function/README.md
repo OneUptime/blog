@@ -40,7 +40,7 @@ SELECT SLEEP(1) AS result;
 Use `SLEEP()` to trigger the `MAX_EXECUTION_TIME` query hint or `wait_timeout` / `interactive_timeout` settings:
 
 ```sql
--- Test MAX_EXECUTION_TIME hint (MySQL 5.7.4+)
+-- Test MAX_EXECUTION_TIME hint (MySQL 5.7.8+)
 SELECT /*+ MAX_EXECUTION_TIME(2000) */ SLEEP(5) AS result;
 -- Error 3024: Query execution was interrupted, maximum statement execution time exceeded
 
@@ -122,13 +122,16 @@ mysql -u root -p -e "SHOW VARIABLES LIKE '%timeout%';"
 ```
 
 ```sql
--- Set a short interactive timeout for the session
-SET SESSION interactive_timeout = 5;
+-- Set a short wait timeout for the session
 SET SESSION wait_timeout = 5;
 
--- Now do nothing (or SLEEP) longer than 5 seconds
--- The connection will be closed by the server
-SELECT SLEEP(10); -- connection will be killed at 5s
+-- These timeouts only apply to IDLE connections (between queries).
+-- An active SLEEP() is still an executing query, so it will NOT be interrupted.
+-- To test, run SLEEP, then after it completes, wait without sending another query:
+SELECT SLEEP(1); -- completes normally
+-- Now wait more than 5 seconds without sending a query...
+-- The server will close the idle connection.
+-- Your next query will fail with "MySQL server has gone away" (error 2006).
 ```
 
 ## SLEEP() return value reference
