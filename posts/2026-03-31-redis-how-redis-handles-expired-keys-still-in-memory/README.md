@@ -49,7 +49,7 @@ The algorithm works as follows: Redis picks 20 random keys from the set of keys 
 Monitor how many keys Redis is expiring:
 
 ```bash
-redis-cli INFO stats | grep -E "expired_keys|expires_per_second"
+redis-cli INFO stats | grep -E "expired_keys|expired_stale_perc"
 ```
 
 See how many keys currently have TTLs:
@@ -71,11 +71,11 @@ Higher hz means more frequent expiration cycles but higher CPU usage. Values abo
 
 ## Implications for Replicas
 
-Expiration is driven by the primary. Replicas do not independently expire keys - they wait for DEL commands from the primary that result from lazy or active expiration. This means replicas may serve stale expired data briefly:
+Expiration is driven by the primary. Replicas do not independently delete expired keys from memory - they wait for DEL commands from the primary that result from lazy or active expiration. However, since Redis 3.2, replicas perform a logical expiration check and will not return expired keys to clients, even if the DEL has not yet arrived from the primary:
 
 ```bash
 # On replica (secondary node)
-redis-cli GET expired-key  # May return value briefly after TTL expires
+redis-cli GET expired-key  # Returns (nil) after TTL expires, even before primary sends DEL
 ```
 
 ## Debugging Expired Key Behavior
