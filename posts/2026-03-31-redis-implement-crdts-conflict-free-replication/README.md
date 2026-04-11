@@ -113,7 +113,7 @@ print(lww_read(r, "username"))  # latest write wins
 
 ## Redis Enterprise Native CRDTs
 
-Redis Enterprise supports true CRDTs with `CRDT.COUNTER`, `CRDT.SET`, and `CRDT.REGISTER` commands across geo-distributed Active-Active databases, providing automatic merge without application-level logic.
+Redis Enterprise supports true CRDTs across geo-distributed Active-Active databases by applying CRDT semantics transparently to standard Redis data types. Counters use `INCR`/`DECR` with counter CRDT logic, sets use `SADD`/`SREM` with OR-Set semantics, and strings use `SET` with last-write-wins behavior - all without special commands or application-level merge logic.
 
 ## Summary
 
