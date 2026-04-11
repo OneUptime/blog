@@ -136,8 +136,8 @@ feature_enabled = config.get("feature.dark_mode", default=False)
 Use Redis keyspace notifications to watch for any config key change without explicit publishing:
 
 ```bash
-# Enable keyspace notifications in redis.conf
-CONFIG SET notify-keyspace-events Kh
+# Enable keyevent notifications for hash commands at runtime
+CONFIG SET notify-keyspace-events Eh
 ```
 
 ```python
