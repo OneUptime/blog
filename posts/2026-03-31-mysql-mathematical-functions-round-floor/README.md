@@ -42,7 +42,7 @@ INSERT INTO products (name, price, discount_pct, stock_qty) VALUES
 
 ## ROUND
 
-`ROUND` rounds a number to a specified number of decimal places. When the digit after the rounding position is exactly 5, MySQL rounds away from zero.
+`ROUND` rounds a number to a specified number of decimal places. For exact-value numbers (DECIMAL, integer), when the digit after the rounding position is exactly 5, MySQL rounds away from zero. For approximate-value numbers (FLOAT, DOUBLE), the result depends on the C library and is typically "round half to even."
 
 **Syntax:**
 
@@ -68,7 +68,7 @@ FROM products;
 | Laptop    | 1299.9999 | 1300.00       |
 | Headphones|   89.4950 |   89.50       |
 | Keyboard  |   49.9900 |   49.99       |
-| Mouse     |   29.9500 |   30.00       |
+| Mouse     |   29.9500 |   29.95       |
 | Monitor   |  499.5001 |  499.50       |
 +-----------+-----------+---------------+
 ```
@@ -105,7 +105,7 @@ FROM products;
 | name      | price     | discount_pct | floor_price |
 +-----------+-----------+--------------+-------------+
 | Laptop    | 1299.9999 | 10.5         | 1163        |
-| Headphones|   89.4950 |  5.0         |    84       |
+| Headphones|   89.4950 |  5.0         |    85       |
 | Keyboard  |   49.9900 | 15.75        |    42       |
 | Mouse     |   29.9500 |  0.0         |    29       |
 | Monitor   |  499.5001 | 20.0         |   399       |
