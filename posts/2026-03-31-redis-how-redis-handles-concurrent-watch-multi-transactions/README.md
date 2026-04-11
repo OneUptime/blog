@@ -78,7 +78,7 @@ WATCH monitors whether a key was written to, not whether its value changed. If a
 
 ## Combining WATCH with MULTI
 
-WATCH must be called before MULTI. Calling WATCH inside a MULTI block has no effect:
+WATCH must be called before MULTI. Calling WATCH inside a MULTI block returns an error (`ERR WATCH inside MULTI is not allowed`):
 
 ```bash
 WATCH key1 key2
