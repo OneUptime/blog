@@ -15,7 +15,7 @@ Encryption at rest for ElastiCache Redis protects data stored on disk - specific
 - Redis RDB snapshots (point-in-time backups)
 - AOF files (if persistence is enabled)
 - Swap files written during memory pressure
-- Data stored on the underlying EBS volumes of cache nodes
+- Backups stored in Amazon S3
 
 Data in memory is not encrypted at rest (that would require encryption in RAM, which is a separate hardware security concern). The protection kicks in when data is persisted to storage.
 
@@ -154,10 +154,10 @@ aws elasticache create-snapshot \
   --replication-group-id my-encrypted-cluster \
   --snapshot-name my-encrypted-snapshot
 
-# Verify snapshot encryption
+# Verify snapshot encryption (KmsKeyId presence confirms encryption)
 aws elasticache describe-snapshots \
   --snapshot-name my-encrypted-snapshot \
-  --query 'Snapshots[0].{Encrypted:EncryptionEnabled,KMSKey:KmsKeyId}'
+  --query 'Snapshots[0].KmsKeyId'
 ```
 
 ## KMS Key Policy Best Practices
@@ -205,7 +205,7 @@ aws elasticache describe-snapshots \
 Since encryption cannot be enabled on an existing cluster, migration requires:
 
 ```bash
-# Step 1: Create an encrypted snapshot of the unencrypted cluster
+# Step 1: Create a snapshot of the unencrypted cluster
 aws elasticache create-snapshot \
   --replication-group-id my-old-unencrypted-cluster \
   --snapshot-name migration-snapshot
