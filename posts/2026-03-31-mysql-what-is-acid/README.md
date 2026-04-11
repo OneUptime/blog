@@ -43,8 +43,8 @@ CREATE TABLE accounts (
 START TRANSACTION;
 -- This will fail if balance would go negative, preserving consistency
 UPDATE accounts SET balance = balance - 500 WHERE account_id = 1;
+-- ERROR 3819 if balance < 500: check constraint violation prevents inconsistency
 COMMIT;
--- ERROR if balance < 500: check constraint violation prevents inconsistency
 ```
 
 Consistency is partly enforced by the database (constraints, foreign keys) and partly the application's responsibility (ensuring business rules are followed within transactions).
