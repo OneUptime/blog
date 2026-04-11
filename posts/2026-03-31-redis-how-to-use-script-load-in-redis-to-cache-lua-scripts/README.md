@@ -22,13 +22,13 @@ Returns the SHA1 hex digest of the script.
 
 ```bash
 SCRIPT LOAD "return redis.call('GET', KEYS[1])"
-# Returns: "4e6d8fc8bb01276962cce5371fa795a7763fe051"
+# Returns: "d3c21d0c2b9ca22f82737626a27bcaf5d288f99f"
 ```
 
 Now use `EVALSHA` to run the cached script:
 
 ```bash
-EVALSHA 4e6d8fc8bb01276962cce5371fa795a7763fe051 1 mykey
+EVALSHA d3c21d0c2b9ca22f82737626a27bcaf5d288f99f 1 mykey
 ```
 
 ## Why Use SCRIPT LOAD + EVALSHA
@@ -209,7 +209,7 @@ print(result)
 
 Scripts in the cache survive connection drops but are cleared on:
 - `SCRIPT FLUSH` command
-- Server restart (unless AOF/RDB restores state)
+- Server restart
 - `DEBUG RELOAD`
 
 Best practice is to reload scripts at application startup.
