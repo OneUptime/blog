@@ -59,7 +59,7 @@ These are AOF sync times in seconds. Values above 10ms indicate slow disk.
 # Trace only AOF-related writes
 sudo strace -p $(pgrep redis-server) \
   -e trace=write,fdatasync \
-  -T 2>&1 | grep -E "(fdatasync|write.*appendonly)"
+  -yT 2>&1 | grep -E "(fdatasync|write.*appendonly)"
 ```
 
 If `fdatasync` takes > 20ms, consider:
@@ -112,10 +112,17 @@ If open FD count approaches the limit, you will see `EMFILE` errors in strace ou
 accept4(...) = -1 EMFILE (Too many open files)
 ```
 
-Fix with:
+Fix by raising the per-process file descriptor limit for Redis:
 
 ```bash
-sudo sh -c "echo 1048576 > /proc/sys/fs/file-max"
+# If Redis is managed by systemd
+sudo systemctl edit redis
+# Add under [Service]:
+# LimitNOFILE=1048576
+
+# Or set in /etc/security/limits.conf
+# redis soft nofile 1048576
+# redis hard nofile 1048576
 ```
 
 ## Summarizing System Call Counts
