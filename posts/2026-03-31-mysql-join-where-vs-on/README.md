@@ -12,7 +12,7 @@ One of the most common sources of subtle bugs in SQL is putting a filter conditi
 
 ## How the logical order works
 
-```dockerfile
+```text
 FROM / JOIN (including ON) -> WHERE -> GROUP BY -> HAVING -> SELECT
 ```
 
@@ -58,10 +58,9 @@ Result:
 |-------|----------|---------|
 | Alice | 101      | shipped |
 | Bob   | 103      | shipped |
-| Alice | NULL     | NULL    |
 | Carol | NULL     | NULL    |
 
-Alice appears twice: once with the matching shipped order, and once because the pending order did not match the `ON` condition and the left row is preserved with NULLs.
+Alice appears only with her shipped order (101). Her pending order (102) did not match the `ON` condition, but since Alice already has a match, no NULL-padded row is generated for her. Carol has no matching orders at all, so the `LEFT JOIN` preserves her with NULLs in the right-table columns.
 
 ```sql
 -- Filter in WHERE: excludes non-matching rows, effectively an INNER JOIN
