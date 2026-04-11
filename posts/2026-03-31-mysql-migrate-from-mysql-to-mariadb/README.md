@@ -35,7 +35,7 @@ SHOW PROCEDURE STATUS WHERE Db = 'your_database'\G
 Known compatibility considerations:
 
 - MariaDB does not support MySQL 8.0's `caching_sha2_password` authentication plugin by default. Use `mysql_native_password` or configure the equivalent MariaDB plugin.
-- `JSON` column type in MySQL differs slightly from MariaDB's dynamic columns. Test JSON-heavy schemas carefully.
+- `JSON` column type in MySQL uses a native binary storage format, while MariaDB's `JSON` type is an alias for `LONGTEXT`. Test JSON-heavy schemas carefully as this can affect storage efficiency and some JSON function behavior.
 - `INVISIBLE` columns and some `CHECK` constraint syntax differ between versions.
 
 ## Export Data from MySQL
