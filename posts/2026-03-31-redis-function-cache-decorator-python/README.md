@@ -113,13 +113,14 @@ get_user_profile.invalidate(1001)
 import redis.asyncio as aioredis
 
 def async_redis_cache(ttl: int = 300, prefix: str = "cache"):
+    ar = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            ar = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
             key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
             key_hash = hashlib.md5(key_data.encode()).hexdigest()
-            cache_key = f"{prefix}:{func.__qualname__}:{key_hash}"
+            cache_key = f"{prefix}:{func.__module__}.{func.__qualname__}:{key_hash}"
 
             cached = await ar.get(cache_key)
             if cached is not None:
