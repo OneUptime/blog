@@ -36,9 +36,9 @@ const io = new Server(httpServer, {
 const pubClient = createClient({ url: "redis://localhost:6379" });
 const subClient = pubClient.duplicate();
 
-await Promise.all([pubClient.connect(), subClient.connect()]);
-
-io.adapter(createAdapter(pubClient, subClient));
+Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+  io.adapter(createAdapter(pubClient, subClient));
+});
 ```
 
 ## Handle Socket Events
@@ -98,7 +98,7 @@ socket.emit("send-message", { room: "general", message: "Hello everyone!" });
 
 ```bash
 redis-cli pubsub channels "socket.io*"
-redis-cli pubsub numsub "socket.io#/"
+redis-cli pubsub numsub "socket.io#/#"
 ```
 
 ## Scale with Multiple Instances
