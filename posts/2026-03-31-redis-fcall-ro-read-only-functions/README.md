@@ -30,7 +30,7 @@ flowchart LR
 
 ### Running functions on replica nodes
 
-Replicas reject write commands. FCALL_RO explicitly declares read-only intent so Redis accepts the call on replica nodes without checking whether the underlying function accidentally writes.
+Replicas reject write commands. FCALL_RO explicitly declares read-only intent so Redis accepts the call on replica nodes. If the function attempts a write at runtime, Redis still blocks it with an error.
 
 ### Safely executing functions from untrusted sources
 
@@ -97,7 +97,7 @@ sequenceDiagram
 
 ## Declaring no-writes in the Function Library
 
-When registering a function, you can declare it has no writes using the `no-writes` flag. This allows the function to be called with FCALL_RO without runtime checking overhead, and also allows it to run during cluster failover:
+When registering a function, you can declare it has no writes using the `no-writes` flag. This tells Redis upfront that the function is safe for read-only contexts, and also allows it to run during cluster failover:
 
 ```redis
 FUNCTION LOAD "#!lua name=statslib\n
@@ -115,7 +115,7 @@ redis.register_function{
 With the `no-writes` flag:
 - The function can be called with both FCALL and FCALL_RO
 - Redis knows upfront there are no writes, enabling replica execution
-- No runtime write-check overhead
+- The function can also run during OOM conditions and write pauses
 
 ## FCALL_RO vs FCALL vs EVAL_RO
 
@@ -124,7 +124,7 @@ With the `no-writes` flag:
 | Executes | Named library function | Named library function | Inline Lua script |
 | Writes allowed | Yes | No | No |
 | Runs on replicas | No | Yes | Yes |
-| Script caching | Functions persist in RDB/AOF | Same | Requires SCRIPT LOAD |
+| Script caching | Functions persist in RDB/AOF | Same | Cached in memory, not persisted |
 | Replication of script code | Yes (functions survive restart) | Yes | No |
 
 ## Checking Function Flags
