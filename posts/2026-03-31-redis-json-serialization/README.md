@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, JSON, Serialization
 
-Description: Learn how to use JSON serialization with Redis across Python, Node.js, and Java, including tips for handling special types and schema versioning.
+Description: Learn how to use JSON serialization with Redis across Python and Node.js, including tips for handling special types and schema versioning.
 
 ---
 
@@ -16,7 +16,7 @@ JSON is the most widely used serialization format for Redis because it is human-
 import json
 import redis
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class Order:
@@ -31,7 +31,7 @@ order = Order(
     order_id="ORD-001",
     user_id=42,
     total=99.99,
-    created_at=datetime.utcnow().isoformat()
+    created_at=datetime.now(timezone.utc).isoformat()
 )
 
 # Store as JSON string
@@ -88,8 +88,9 @@ JSON does not natively handle `Date`, `BigInt`, `undefined`, or custom classes. 
 
 ```javascript
 function jsonStringify(obj) {
-  return JSON.stringify(obj, (key, value) => {
-    if (value instanceof Date) return { __type: "Date", value: value.toISOString() };
+  return JSON.stringify(obj, function (key, value) {
+    const rawValue = this[key];
+    if (rawValue instanceof Date) return { __type: "Date", value: rawValue.toISOString() };
     if (typeof value === "bigint") return { __type: "BigInt", value: value.toString() };
     return value;
   });
