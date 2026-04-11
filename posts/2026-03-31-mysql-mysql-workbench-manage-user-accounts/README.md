@@ -48,10 +48,10 @@ CREATE USER 'developer'@'%' IDENTIFIED BY 'SecurePass123!';
 The **Administrative Roles** tab provides shortcut role assignments:
 
 ```text
-[x] DBA          - Full administrative privileges
+[ ] DBA          - Full administrative privileges
 [ ] MaintenanceAdmin - Process, Reload, Shutdown
 [x] DBManager    - All schemas, no GRANT
-[ ] BackupAdmin  - SELECT, LOCK TABLES, FILE
+[ ] BackupAdmin  - SELECT, RELOAD, LOCK TABLES, SHOW DATABASES
 [ ] ReadOnly     - SELECT on all schemas
 ```
 
@@ -59,7 +59,10 @@ Selecting **DBManager** grants:
 
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP,
-      INDEX, ALTER ON *.* TO 'developer'@'%';
+      REFERENCES, INDEX, ALTER, CREATE TEMPORARY TABLES,
+      LOCK TABLES, EXECUTE, CREATE VIEW, SHOW VIEW,
+      CREATE ROUTINE, ALTER ROUTINE, EVENT, TRIGGER
+      ON *.* TO 'developer'@'%';
 ```
 
 ## Schema Privileges
