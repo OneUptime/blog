@@ -119,7 +119,7 @@ def create_index_with_popularity():
             TextField("title", weight=5.0),
             TagField("category"),
             NumericField("price"),
-            NumericField("popularity")
+            NumericField("popularity", sortable=True)
         ],
         definition=IndexDefinition(prefix=["product:"], index_type=IndexType.HASH)
     )
