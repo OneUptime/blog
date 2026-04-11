@@ -121,7 +121,7 @@ FROM stats_mysql_connection_pool;
 ProxySQL tracks query performance for every distinct query digest:
 
 ```sql
-SELECT digest_text, count_star, sum_time, min_time, max_time, avg_time
+SELECT digest_text, count_star, sum_time, min_time, max_time, sum_time/count_star AS avg_time
 FROM stats_mysql_query_digest
 ORDER BY sum_time DESC
 LIMIT 10;
