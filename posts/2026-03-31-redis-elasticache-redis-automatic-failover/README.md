@@ -58,7 +58,7 @@ resource "aws_elasticache_replication_group" "main" {
 
 ## Testing Failover
 
-Use the `test-failover` API to trigger a failover without causing a real outage:
+Use the `test-failover` API to trigger a real failover on your cluster so you can validate your application handles it correctly:
 
 ```bash
 aws elasticache test-failover \
@@ -107,9 +107,9 @@ aws elasticache modify-replication-group \
 Event types to watch:
 
 ```text
-- Failover from master to replica complete
-- Replication group minor version upgrade complete
-- Recovery from deletion protection
+- Automatic failover has been triggered for replication group
+- Failover from master node to replica node completed
+- Test Failover API called for node group
 ```
 
 ## CloudWatch Alarms
@@ -123,6 +123,7 @@ aws cloudwatch put-metric-alarm \
   --period 60 \
   --threshold 10 \
   --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
 ```
 
