@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Redis, Python, Caching, Backend, Performance
 
-Description: Learn how to connect to Redis from Python using the redis-py library, covering connection pools, pipelining, pub/sub, Lua scripting, and async support with aioredis.
+Description: Learn how to connect to Redis from Python using the redis-py library, covering connection pools, pipelining, pub/sub, Lua scripting, and async support with redis.asyncio.
 
 ---
 
@@ -18,7 +18,7 @@ Description: Learn how to connect to Redis from Python using the redis-py librar
 pip install redis
 ```
 
-For async support:
+For better performance (optional C parser):
 
 ```bash
 pip install redis[hiredis]
@@ -274,12 +274,12 @@ print(replica.get("key"))
 ## Redis Cluster
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 rc = RedisCluster(
     startup_nodes=[
-        {"host": "redis-node-1", "port": 6379},
-        {"host": "redis-node-2", "port": 6379},
+        ClusterNode("redis-node-1", 6379),
+        ClusterNode("redis-node-2", 6379),
     ],
     password="yourpassword",
     decode_responses=True,
