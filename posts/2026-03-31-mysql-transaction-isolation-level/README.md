@@ -115,7 +115,7 @@ With this level, Session B only sees committed data. If Session A has not commit
 SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
-Once Transaction B starts, it sees a consistent snapshot of the database as of the start of the transaction. Even if Transaction A commits changes during B's transaction, B always reads the same data.
+Once Transaction B performs its first read, it sees a consistent snapshot of the database as of that moment. Even if Transaction A commits changes afterward, B always reads the same data from this snapshot.
 
 ```sql
 -- Session B
@@ -128,7 +128,7 @@ SELECT quantity FROM inventory WHERE product = 'Laptop';
 -- Meanwhile, Session A commits: UPDATE inventory SET quantity = 100 WHERE product = 'Laptop'
 
 SELECT quantity FROM inventory WHERE product = 'Laptop';
--- Still returns 50 (consistent snapshot from transaction start)
+-- Still returns 50 (consistent snapshot from first read in transaction)
 
 COMMIT;
 ```
