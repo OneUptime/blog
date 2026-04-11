@@ -125,7 +125,6 @@ pubsub.close()
 ```python
 import redis
 import json
-import threading
 
 class NotificationSystem:
     def __init__(self, host='localhost', port=6379):
