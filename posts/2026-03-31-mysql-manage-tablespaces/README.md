@@ -14,7 +14,7 @@ MySQL InnoDB uses tablespaces to organize how data is physically stored on disk.
 
 InnoDB uses several types of tablespaces:
 
-- **System tablespace** (`ibdata1`) - Stores the data dictionary (MySQL 5.7 and below), undo logs (older configurations), and the doublewrite buffer
+- **System tablespace** (`ibdata1`) - Stores the data dictionary (MySQL 5.7 and below), undo logs (older configurations), and the doublewrite buffer (before MySQL 8.0.20)
 - **File-per-table tablespaces** - One `.ibd` file per table when `innodb_file_per_table` is ON
 - **General tablespaces** - Named tablespaces that can contain multiple tables
 - **Undo tablespaces** - Stores undo log segments for MVCC
@@ -118,7 +118,7 @@ For tables in file-per-table tablespaces, this rebuilds the `.ibd` file with onl
 MySQL 8.0 uses dedicated undo tablespaces by default. Check their status:
 
 ```sql
-SELECT TABLESPACE_NAME, FILE_NAME, STATE
+SELECT NAME, FILE_SIZE, STATE
 FROM information_schema.INNODB_TABLESPACES
 WHERE ROW_FORMAT = 'Undo';
 ```
