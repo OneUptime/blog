@@ -26,8 +26,8 @@ Example:
 redis-cli -c MSET user:1 "alice" user:2 "bob"
 ```
 
-- `user:1` hashes to slot 8106
-- `user:2` hashes to slot 8086
+- `user:1` hashes to slot 10778
+- `user:2` hashes to slot 6777
 - These are different slots on different nodes
 - Redis cannot process this as a single atomic operation
 
@@ -83,9 +83,9 @@ GET user:3
 Or use pipelines for efficiency:
 
 ```python
-import redis
+from redis.cluster import RedisCluster, ClusterNode
 
-r = redis.RedisCluster(startup_nodes=[{"host": "192.168.1.11", "port": 7001}])
+r = RedisCluster(startup_nodes=[ClusterNode("192.168.1.11", 7001)])
 
 # Use pipeline for multiple gets - no CROSSSLOT
 with r.pipeline() as pipe:
