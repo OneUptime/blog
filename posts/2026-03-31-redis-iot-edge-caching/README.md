@@ -101,7 +101,7 @@ def flush_outbox():
 When the cloud pushes a new config, invalidate the edge cache:
 
 ```bash
-DEL config:d-001
+redis-cli DEL config:d-001
 ```
 
 Or use Pub/Sub to broadcast invalidation:
