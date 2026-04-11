@@ -58,7 +58,7 @@ Results appear in a grid below the editor. You can export them to CSV, JSON, or 
 
 ## Visual EXPLAIN
 
-Click the lightning bolt with a magnifying glass icon (or press Shift+Ctrl+Enter) to run EXPLAIN and view the visual plan:
+Click the lightning bolt with a magnifying glass icon (or use Query > Explain Current Statement) to run EXPLAIN and view the visual plan:
 
 ```sql
 EXPLAIN SELECT * FROM orders
