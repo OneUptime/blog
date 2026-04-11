@@ -12,7 +12,7 @@ Redis downtime should not take your Django application down with it. By combinin
 
 ## Configure a Fallback Cache
 
-django-redis supports fallback to other backends when Redis is unavailable:
+django-redis can silently ignore connection errors when Redis is unavailable, allowing your application to continue without caching:
 
 ```python
 # settings.py
@@ -32,12 +32,13 @@ CACHES = {
 }
 ```
 
-With `IGNORE_EXCEPTIONS = True`, cache misses return `None` and sets are silently dropped. Views continue working, just without caching.
+With `IGNORE_EXCEPTIONS = True`, cache operations return `None` on connection errors and sets are silently dropped. Views continue working, just without caching.
 
 ## Graceful Degradation in Views
 
 ```python
 from django.core.cache import cache
+from django.http import JsonResponse
 import logging
 
 logger = logging.getLogger(__name__)
