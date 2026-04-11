@@ -37,13 +37,13 @@ SELECT * FROM performance_schema.persisted_variables;
 ```
 
 ```text
-+---------------------------+------------+
-| VARIABLE_NAME             | SET_VALUE  |
-+---------------------------+------------+
-| max_connections           | 300        |
-| wait_timeout              | 3600       |
-| innodb_buffer_pool_size   | 2147483648 |
-+---------------------------+------------+
++---------------------------+----------------+
+| VARIABLE_NAME             | VARIABLE_VALUE |
++---------------------------+----------------+
+| max_connections           | 300            |
+| wait_timeout              | 3600           |
+| innodb_buffer_pool_size   | 2147483648     |
++---------------------------+----------------+
 ```
 
 ## View the mysqld-auto.cnf File
