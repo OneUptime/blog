@@ -47,7 +47,7 @@ MySQL provides a richer type system including `DATETIME`, `TIMESTAMP`, `ENUM`, `
 -- MySQL JSON column with operator
 SELECT data->>'$.name' AS name FROM profiles WHERE data->>'$.active' = 'true';
 
--- SQLite uses JSON functions (available from 3.38+)
+-- SQLite uses JSON functions (extension since 3.9, built-in from 3.38+)
 SELECT json_extract(data, '$.name') AS name FROM profiles
 WHERE json_extract(data, '$.active') = 1;
 ```
