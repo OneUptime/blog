@@ -73,7 +73,7 @@ SORT_RO items LIMIT 3 3
 
 ## Sorting a Set
 
-`SORT_RO` works on regular sets (not sorted sets) by treating the members as sortable values.
+`SORT_RO` works on sets as well. Here is an example with a regular set, where members are treated as sortable values.
 
 ```bash
 SADD user_ids 105 23 87 42 66
