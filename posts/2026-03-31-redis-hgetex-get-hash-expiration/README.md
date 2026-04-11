@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, HGETEX, Hash, Expiration, TTL, Field, Command
 
-Description: Learn how to use the Redis HGETEX command (Redis 7.4+) to retrieve hash field values and simultaneously update or remove their expiration in a single atomic operation.
+Description: Learn how to use the Redis HGETEX command (Redis 8.0+) to retrieve hash field values and simultaneously update or remove their expiration in a single atomic operation.
 
 ---
 
@@ -16,7 +16,7 @@ Description: Learn how to use the Redis HGETEX command (Redis 7.4+) to retrieve 
 - Retrieve a field and remove its TTL (make it permanent)
 - Retrieve a field without changing its TTL (same as `HMGET`)
 
-`HGETEX` was introduced in Redis 7.4.
+`HGETEX` was introduced in Redis 8.0.
 
 ```mermaid
 flowchart TD
@@ -139,15 +139,16 @@ HTTL session:xyz FIELDS 3 user_id token cache
 ```text
 (integer) 3
 1) (integer) 1
+2) (integer) 1
 1) "99"
 2) "t1"
 3) "fragment"
-1) (integer) -1
+1) (integer) 1800
 2) (integer) 1800
 3) (integer) 1800
 ```
 
-`user_id` had no TTL set, so its TTL remains -1. `token` and `cache` were updated to 1800s.
+All three fields had their TTL set to 1800s by `HGETEX EX 1800`.
 
 ### Non-existent fields return nil
 
@@ -164,7 +165,7 @@ HGETEX user:1 EX 3600 FIELDS 2 name nonexistent_field
 
 | Command | Returns values | Modifies TTL |
 |---------|---------------|--------------|
-| `HMGET key FIELDS ...` | Yes | No |
+| `HMGET key field ...` | Yes | No |
 | `HGETEX key [EX/PX/PERSIST] FIELDS ...` | Yes | Yes (optionally) |
 
 ## Use Cases
@@ -177,4 +178,4 @@ HGETEX user:1 EX 3600 FIELDS 2 name nonexistent_field
 
 ## Summary
 
-`HGETEX` (Redis 7.4+) combines hash field retrieval with TTL modification in one atomic operation. It is the per-field equivalent of `GETEX` for string keys. Use it for sliding expiration patterns, token refreshes, and cache access with TTL reset. The `PERSIST` option makes fields permanent on read, and omitting an expiry option makes it behave identically to `HMGET`.
+`HGETEX` (Redis 8.0+) combines hash field retrieval with TTL modification in one atomic operation. It is the per-field equivalent of `GETEX` for string keys. Use it for sliding expiration patterns, token refreshes, and cache access with TTL reset. The `PERSIST` option makes fields permanent on read, and omitting an expiry option makes it behave identically to `HMGET`.
