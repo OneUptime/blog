@@ -128,8 +128,11 @@ def get_match_history(match_id: str, limit: int = 50) -> list[dict]:
 ```python
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import asyncio
+import redis.asyncio as aioredis
 
 app = FastAPI()
+
+ar = aioredis.Redis(host='localhost', port=6379, decode_responses=True)
 
 class ChatConnection:
     def __init__(self, websocket: WebSocket, player_id: str, player_name: str):
@@ -184,15 +187,15 @@ async def chat_websocket(websocket: WebSocket, player_id: str, player_name: str 
 
 async def subscribe_to_channel(conn: ChatConnection, channel: str):
     """Subscribe to a Redis channel and forward messages to WebSocket."""
-    sub = r.pubsub()
-    sub.subscribe(channel)
-    for message in sub.listen():
+    sub = ar.pubsub()
+    await sub.subscribe(channel)
+    async for message in sub.listen():
         if message["type"] == "message":
             try:
                 await conn.websocket.send_text(message["data"])
             except Exception:
                 break
-    sub.unsubscribe(channel)
+    await sub.unsubscribe(channel)
 ```
 
 ## Chat Moderation
