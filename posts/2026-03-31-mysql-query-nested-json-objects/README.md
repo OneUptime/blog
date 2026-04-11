@@ -76,7 +76,7 @@ The `*` wildcard matches all keys at a level:
 ```sql
 -- Extract all values from the scores object
 SELECT JSON_EXTRACT(profile, '$.scores.*') AS all_scores FROM users;
--- Result: [95, 88] or [72, 91] etc.
+-- Result: [88, 95] or [91, 72] etc. (keys sorted alphabetically)
 ```
 
 Use `**` for recursive descent:
