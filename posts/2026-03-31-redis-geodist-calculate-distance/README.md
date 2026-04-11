@@ -99,10 +99,10 @@ Output:
 Check if a customer is within delivery range of a store:
 
 ```redis
-GEOADD stores -73.9857 40.7484 "downtown-store"
-GEOADD customers -73.9950 40.7580 "customer-home"
+GEOADD locations -73.9857 40.7484 "downtown-store"
+GEOADD locations -73.9950 40.7580 "customer-home"
 
-GEODIST stores downtown-store customer-home km
+GEODIST locations downtown-store customer-home km
 # Returns 1.2345 - within 5km delivery range
 ```
 
@@ -110,7 +110,7 @@ GEODIST stores downtown-store customer-home km
 
 - `GEODIST` measures straight-line distance, not driving or walking distance
 - Returns `nil` if either member is absent - handle this in your application
-- Precision is limited by Geohash encoding (sub-millimeter accuracy)
+- Assumes a perfect sphere, so errors up to 0.5% are possible in edge cases
 
 ## Use Cases
 
