@@ -77,7 +77,7 @@ r.client_setinfo('LIB-VER', '1.2.3')
 ## Restrictions
 
 - Only the two fields `LIB-NAME` and `LIB-VER` are supported
-- Values must not contain spaces or special characters
+- Values must not contain spaces, newlines, or non-printable characters
 - The command was introduced in Redis 7.2
 
 ## Summary
