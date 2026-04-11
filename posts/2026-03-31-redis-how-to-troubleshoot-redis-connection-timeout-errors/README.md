@@ -39,7 +39,7 @@ Expected Redis latency on a LAN should be under 1ms. Cross-datacenter latency of
 ## Step 2 - Check Redis Server Load
 
 ```bash
-redis-cli -h <redis-host> INFO stats | grep -E 'blocked_clients|total_commands|instantaneous_ops'
+redis-cli -h <redis-host> INFO stats | grep -E 'total_commands|instantaneous_ops'
 redis-cli -h <redis-host> INFO clients | grep -E 'connected_clients|blocked_clients'
 redis-cli -h <redis-host> SLOWLOG GET 10
 ```
