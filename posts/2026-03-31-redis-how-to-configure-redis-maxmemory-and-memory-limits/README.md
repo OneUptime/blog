@@ -32,7 +32,7 @@ maxmemory 268435456
 maxmemory 0
 ```
 
-Supported suffixes: `b` (bytes), `kb`, `mb`, `gb`. Uppercase versions also work: `MB`, `GB`.
+A plain number without a suffix is interpreted as bytes. Supported suffixes: `k` (1000 bytes), `kb` (1024 bytes), `m` (1,000,000 bytes), `mb` (1024*1024 bytes), `g` (1,000,000,000 bytes), `gb` (1024*1024*1024 bytes). Suffixes are case-insensitive.
 
 ## Setting maxmemory at Runtime
 
@@ -94,7 +94,7 @@ maxmemory-samples 10
 # LFU decay factor (lower = faster decay of frequency counts)
 lfu-decay-time 1
 
-# LFU counter log factor (higher = less precision but tracks wider range)
+# LFU counter log factor (higher = more hits needed to saturate, better differentiation)
 lfu-log-factor 10
 ```
 
@@ -179,4 +179,4 @@ services:
 
 ## Summary
 
-`maxmemory` sets an upper bound on Redis memory consumption, and `maxmemory-policy` controls what happens when that limit is reached. For cache use cases, use `allkeys-lru` or `allkeys-lfu` to automatically evict old data. For session stores, use `volatile-lru` to only evict keyed with expiration times. For primary data stores, use `noeviction` and add alerting on memory pressure. Always set maxmemory in production to prevent OOM conditions.
+`maxmemory` sets an upper bound on Redis memory consumption, and `maxmemory-policy` controls what happens when that limit is reached. For cache use cases, use `allkeys-lru` or `allkeys-lfu` to automatically evict old data. For session stores, use `volatile-lru` to only evict keys with expiration times. For primary data stores, use `noeviction` and add alerting on memory pressure. Always set maxmemory in production to prevent OOM conditions.
