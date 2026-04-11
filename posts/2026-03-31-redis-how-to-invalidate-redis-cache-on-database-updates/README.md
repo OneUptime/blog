@@ -23,7 +23,6 @@ The simplest approach - delete the specific cache key when the underlying record
 ```python
 import redis
 import json
-from contextlib import contextmanager
 
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -61,7 +60,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def get_entity_version(entity: str, entity_id: str) -> int:
     version = r.get(f"version:{entity}:{entity_id}")
-    return int(version) if version else 1
+    return int(version) if version else 0
 
 def bump_version(entity: str, entity_id: str) -> int:
     new_version = r.incr(f"version:{entity}:{entity_id}")
