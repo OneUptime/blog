@@ -45,7 +45,7 @@ Return values:
 
 ## Deletion Impact on CF.EXISTS
 
-Unlike Bloom filters, items can be removed from Cuckoo filters. After deletion, `CF.EXISTS` correctly returns `0`:
+Unlike Bloom filters, items can be removed from Cuckoo filters. After deletion, `CF.EXISTS` correctly returns `0`. However, never delete an item that was not previously added — doing so may corrupt the filter and cause false negatives:
 
 ```bash
 CF.ADD inventory "item-101"
@@ -62,9 +62,9 @@ CF.EXISTS inventory "item-101"
 | Feature | CF.EXISTS | BF.EXISTS |
 |---------|-----------|-----------|
 | False positives | Yes | Yes |
-| False negatives | No | No |
+| False negatives | Possible after deleting non-added items | No |
 | Supports deletion | Yes | No |
-| Space efficiency | Slightly worse | Better |
+| Space efficiency | Better at typical FP rates (<3%) | Slightly worse |
 
 ## Using CF.EXISTS in Python
 
