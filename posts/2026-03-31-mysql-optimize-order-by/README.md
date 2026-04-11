@@ -30,10 +30,10 @@ No index is used, and MySQL sorts half a million rows.
 CREATE INDEX idx_created_at ON customers(created_at);
 
 EXPLAIN SELECT id, name, created_at FROM customers ORDER BY created_at DESC;
--- type: index, key: idx_created_at, Extra: Using index
+-- type: index, key: idx_created_at, Extra: Backward index scan
 ```
 
-`type: index` means MySQL is reading the index in order to return rows sorted - much better than `Using filesort`.
+MySQL reads the index in reverse order to return rows already sorted, avoiding `Using filesort`.
 
 ## Composite Index: WHERE + ORDER BY
 
@@ -53,7 +53,7 @@ EXPLAIN SELECT id, email FROM users WHERE status = 'active' ORDER BY created_at 
 
 ## Descending Index (MySQL 8.0+)
 
-Before MySQL 8.0, indexes could only be scanned in ascending order. Descending sorts required filesort. MySQL 8.0 introduced true descending indexes:
+Before MySQL 8.0, the `DESC` keyword in index definitions was accepted but ignored. MySQL could scan any index backwards for single-direction sorts, but mixed-direction multi-column sorts (e.g., `ORDER BY a ASC, b DESC`) required filesort. MySQL 8.0 introduced true descending indexes that store entries in descending order, solving mixed-direction sorts:
 
 ```sql
 -- MySQL 8.0+: explicitly specify DESC in the index
