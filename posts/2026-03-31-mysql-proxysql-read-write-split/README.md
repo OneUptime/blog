@@ -170,23 +170,19 @@ SELECT * FROM stats_mysql_processlist\G
 
 ## Advanced: Sticky Connections for Transactions
 
-When an application opens a transaction, all queries in that transaction must go to the primary. Enable transaction-aware routing:
+When an application opens a transaction, all queries in that transaction must go to the primary. ProxySQL automatically detects `BEGIN`/`START TRANSACTION` and disables multiplexing for the duration of the transaction. To ensure all queries within a transaction stay on the writer hostgroup, enable `transaction_persistent` for the application user:
 
 ```sql
-UPDATE global_variables
-SET    variable_value = 'true'
-WHERE  variable_name  = 'mysql-handle_warnings';
+-- In ProxySQL admin
+UPDATE mysql_users
+SET    transaction_persistent = 1
+WHERE  username = 'appuser';
 
--- Enable multiplexing control (default: ON)
-UPDATE global_variables
-SET    variable_value = '1'
-WHERE  variable_name  = 'mysql-multiplexing';
-
-LOAD MYSQL VARIABLES TO RUNTIME;
-SAVE MYSQL VARIABLES TO DISK;
+LOAD MYSQL USERS TO RUNTIME;
+SAVE MYSQL USERS TO DISK;
 ```
 
-ProxySQL automatically detects `BEGIN`/`START TRANSACTION` and routes the session to the writer hostgroup for the duration.
+With `transaction_persistent` enabled, once a transaction starts on the writer hostgroup, all subsequent queries in that session remain on that hostgroup until the transaction completes.
 
 ## Best Practices
 
