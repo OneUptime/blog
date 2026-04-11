@@ -22,7 +22,6 @@ REDIS_HOST="${REDIS_HOST:-localhost}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 MAX_MEMORY_PCT=80
-MAX_CONNECTED_CLIENTS=500
 
 cli_cmd() {
     if [ -n "$REDIS_PASSWORD" ]; then
@@ -41,8 +40,8 @@ fi
 echo "OK: Redis responding to PING"
 
 # 2. Memory check
-USED_MEM=$(cli_cmd INFO memory | grep "used_memory:" | cut -d: -f2 | tr -d '\r')
-MAX_MEM=$(cli_cmd INFO memory | grep "maxmemory:" | cut -d: -f2 | tr -d '\r')
+USED_MEM=$(cli_cmd INFO memory | grep "^used_memory:" | cut -d: -f2 | tr -d '\r')
+MAX_MEM=$(cli_cmd INFO memory | grep "^maxmemory:" | cut -d: -f2 | tr -d '\r')
 if [ "$MAX_MEM" -gt 0 ]; then
     MEM_PCT=$(( USED_MEM * 100 / MAX_MEM ))
     if [ "$MEM_PCT" -gt "$MAX_MEMORY_PCT" ]; then
