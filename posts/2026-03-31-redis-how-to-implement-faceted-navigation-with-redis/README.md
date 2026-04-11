@@ -107,6 +107,11 @@ def search_with_facets(filters: dict, price_min=None, price_max=None):
             r.sadd(price_key, *[pid.decode() for pid in price_ids])
             r.expire(price_key, 60)
             facet_keys.append(price_key)
+        else:
+            # Price range matched nothing — clean up and return empty
+            for key in temp_keys:
+                r.delete(key)
+            return []
 
     if not facet_keys:
         return []
@@ -172,7 +177,8 @@ Cache popular facet combinations to avoid recomputing:
 import hashlib
 
 def get_cached_facet_results(filters: dict, price_min=None, price_max=None):
-    cache_key = f"facet_cache:{hashlib.md5(str(sorted(filters.items())).encode()).hexdigest()}"
+    cache_input = str(sorted((k, sorted(str(x) for x in v)) for k, v in filters.items())) + f":{price_min}:{price_max}"
+    cache_key = f"facet_cache:{hashlib.md5(cache_input.encode()).hexdigest()}"
     cached = r.get(cache_key)
     if cached:
         return json.loads(cached)
