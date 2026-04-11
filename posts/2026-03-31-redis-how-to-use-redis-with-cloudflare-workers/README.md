@@ -17,7 +17,7 @@ Cloudflare Workers run at the network edge in over 300 data centers worldwide. C
 - Real-time feature flags
 - Session management at the edge
 
-Cloudflare Workers cannot use TCP connections (required by standard Redis clients), so the Upstash HTTP/REST API is the go-to solution.
+Cloudflare Workers support TCP via the `connect()` API, but HTTP-based clients like the Upstash REST API are preferred in serverless environments because they avoid connection management overhead.
 
 ## Setting Up Upstash Redis
 
@@ -67,7 +67,7 @@ export default {
     const data = await fetchOriginData(url.pathname);
 
     // Cache with TTL using waitUntil to avoid blocking response
-    ctx.waitUntil(redis.setex(cacheKey, 300, JSON.stringify(data)));
+    ctx.waitUntil(redis.set(cacheKey, JSON.stringify(data), { ex: 300 }));
 
     return new Response(JSON.stringify(data), {
       headers: {
@@ -194,4 +194,4 @@ export default {
 
 ## Summary
 
-Cloudflare Workers can use Redis through Upstash's HTTP REST API since TCP connections are not supported in the Workers runtime. This combination enables powerful edge computing patterns like distributed caching, global rate limiting, and real-time feature flags. Use `ctx.waitUntil()` for non-blocking cache writes to keep response times low.
+Cloudflare Workers can use Redis through Upstash's HTTP REST API, which is the preferred approach in serverless environments since it avoids TCP connection management overhead. This combination enables powerful edge computing patterns like distributed caching, global rate limiting, and real-time feature flags. Use `ctx.waitUntil()` for non-blocking cache writes to keep response times low.
