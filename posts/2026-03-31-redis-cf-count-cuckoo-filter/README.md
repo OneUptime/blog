@@ -63,11 +63,6 @@ CF.COUNT bag "red"
 ### Count After Partial Deletion
 
 ```redis
-CF.ADD bag "blue" "blue"   -- using MADD
--- Actually with CF.MADD:
--- CF.MADD bag blue blue
-
--- Or sequential:
 CF.ADD bag "blue"
 CF.ADD bag "blue"
 
