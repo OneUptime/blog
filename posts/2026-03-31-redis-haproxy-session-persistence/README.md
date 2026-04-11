@@ -66,25 +66,27 @@ const session = require('express-session');
 const { createClient } = require('redis');
 const RedisStore = require('connect-redis').default;
 
-const client = createClient({ url: 'redis://redis-host:6379' });
-await client.connect();
+(async () => {
+  const client = createClient({ url: 'redis://redis-host:6379' });
+  await client.connect();
 
-const app = express();
+  const app = express();
 
-app.use(session({
-  store: new RedisStore({ client }),
-  secret: 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 3600000 }
-}));
+  app.use(session({
+    store: new RedisStore({ client }),
+    secret: 'your-secret-key',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 3600000 }
+  }));
 
-app.get('/profile', (req, res) => {
-  if (!req.session.userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  res.json({ userId: req.session.userId });
-});
+  app.get('/profile', (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    res.json({ userId: req.session.userId });
+  });
+})();
 ```
 
 ## Verifying Session Data in Redis
