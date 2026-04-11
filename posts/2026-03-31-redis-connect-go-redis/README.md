@@ -19,7 +19,6 @@ import (
     "context"
     "fmt"
     "log"
-    "time"
 
     "github.com/redis/go-redis/v9"
 )
@@ -122,6 +121,8 @@ func main() {
 go-redis clients are safe for concurrent use. Create one instance and pass it through dependency injection or a package-level variable:
 
 ```go
+import "os"
+
 var rdb *redis.Client
 
 func init() {
