@@ -14,7 +14,7 @@ MySQL's default configuration accepts connections on port 3306 from any host tha
 
 ## Setting max_connect_errors
 
-MySQL blocks a host after it exceeds `max_connect_errors` consecutive failed connections. Once blocked, the host sees `ERROR 1129 (HY000): Host is blocked`.
+MySQL blocks a host after it exceeds `max_connect_errors` consecutive protocol-level connection errors (such as interrupted handshakes), not failed authentication attempts. Once blocked, the host sees `ERROR 1129 (HY000): Host is blocked`. Note that wrong-password attempts do not increment this counter — use the Connection Control plugin or account lockout policies (described below) for authentication-based brute force protection.
 
 ```ini
 [mysqld]
@@ -24,8 +24,10 @@ max_connect_errors = 5
 To unblock a host manually after investigating:
 
 ```sql
-FLUSH HOSTS;
+TRUNCATE TABLE performance_schema.host_cache;
 ```
+
+Note: The older `FLUSH HOSTS` command also works but is deprecated as of MySQL 8.0.23.
 
 To check currently blocked hosts:
 
@@ -109,16 +111,18 @@ sudo systemctl restart mysql
 
 ## Monitoring Failed Login Attempts
 
-Query the performance schema for failed logins:
+Query the performance schema for failed logins per host:
 
 ```sql
 SELECT
-  EVENT_NAME,
-  COUNT_STAR,
-  SUM_TIMER_WAIT/1000000000 AS wait_ms
-FROM performance_schema.events_statements_summary_by_digest
-WHERE DIGEST_TEXT LIKE '%Access denied%'
-ORDER BY COUNT_STAR DESC;
+  IP,
+  HOST,
+  COUNT_AUTHENTICATION_ERRORS,
+  COUNT_HANDSHAKE_ERRORS,
+  SUM_CONNECT_ERRORS
+FROM performance_schema.host_cache
+WHERE COUNT_AUTHENTICATION_ERRORS > 0
+ORDER BY COUNT_AUTHENTICATION_ERRORS DESC;
 ```
 
 Or use the error log directly:
