@@ -32,7 +32,7 @@ valkey-cli COMMAND COUNT
 **Step 1: Create an RDB snapshot on Valkey**
 
 ```bash
-# Trigger a synchronous save
+# Trigger a background save
 valkey-cli BGSAVE
 valkey-cli LASTSAVE  # Note the timestamp
 
@@ -113,10 +113,10 @@ redis-cli REPLICAOF NO ONE
 # List commands available in Valkey but not in equivalent Redis version
 valkey-cli COMMAND DOCS | grep -i valkey
 
-# Common Valkey additions to check:
+# Commands to verify exist in your target Redis version:
 # LPOS (available in Redis 6.0.6+)
 # OBJECT FREQ (Redis 4.0+)
-# WAITAOF (Valkey-specific, check Redis equivalent)
+# WAITAOF (available in Redis 7.2+)
 ```
 
 ## Validate After Migration
