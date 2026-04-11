@@ -185,10 +185,10 @@ ZADD user:1:following 1711920000 2
 ZADD user:1:following 1711930000 3
 
 # Get recently followed users
-ZREVRANGE user:1:following 0 9 WITHSCORES
+ZRANGE user:1:following 0 9 REV WITHSCORES
 
 # Get users followed since a specific date
-ZRANGEBYSCORE user:1:following 1711920000 +inf
+ZRANGE user:1:following 1711920000 +inf BYSCORE
 ```
 
 ## Summary
