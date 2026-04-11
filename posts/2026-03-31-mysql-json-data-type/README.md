@@ -15,7 +15,7 @@ MySQL 5.7 introduced a native `JSON` data type that validates JSON on insert, st
 ```mermaid
 flowchart LR
     A[INSERT JSON string] --> B[MySQL validates JSON]
-    B --> C[Stored as binary BSON-like format]
+    B --> C[Stored as optimized binary format]
     C --> D[JSON_EXTRACT / -> operator]
     D --> E[Returns typed value]
 ```
@@ -211,7 +211,7 @@ FROM products;
 -- Create table
 CREATE TABLE user_preferences (
     user_id    INT UNSIGNED PRIMARY KEY,
-    prefs      JSON NOT NULL DEFAULT (JSON_OBJECT()),
+    prefs      JSON NOT NULL,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                                  ON UPDATE CURRENT_TIMESTAMP
 );
