@@ -64,12 +64,12 @@ If INSTANT is not supported for your operation, MySQL will return an error so yo
 
 ## Monitoring Instant Columns
 
-MySQL tracks how many "instant" columns have been added via the `information_schema`:
+MySQL tracks instant column changes via the `information_schema`. In MySQL 8.0.29+, use `TOTAL_ROW_VERSIONS` to see how many row versions have been created by instant DDL operations:
 
 ```sql
 SELECT
     TABLE_NAME,
-    INSTANT_COLS
+    TOTAL_ROW_VERSIONS
 FROM information_schema.INNODB_TABLES
 WHERE NAME LIKE 'your_database/%';
 ```
@@ -83,7 +83,7 @@ ALTER TABLE products FORCE, ALGORITHM=INPLACE;
 
 ## Limitations
 
-Not every ADD COLUMN operation supports INSTANT. Columns must be added at the end of the table (in MySQL 8.0.29+, you can specify position with `AFTER column_name`). Columns with `FULLTEXT` indexes, spatial data types, and certain temporal types may not support INSTANT. Row format must be `DYNAMIC` or `COMPRESSED`.
+Not every ADD COLUMN operation supports INSTANT. Columns must be added at the end of the table (in MySQL 8.0.29+, you can specify position with `AFTER column_name`). Tables with a `FULLTEXT` index, tables in the data dictionary tablespace, and temporary tables do not support INSTANT. Row format must not be `COMPRESSED` (`DYNAMIC`, `COMPACT`, and `REDUNDANT` are supported).
 
 ```sql
 -- Check row format
