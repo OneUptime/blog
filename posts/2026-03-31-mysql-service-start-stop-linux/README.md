@@ -47,7 +47,7 @@ sudo systemctl start mysql
 sudo systemctl stop mysql
 ```
 
-Stopping waits for active connections to finish or for the configured `innodb_fast_shutdown` to flush buffers.
+Stopping sends `SIGTERM` to mysqld, which signals active threads to terminate. Each thread finishes its current statement and then disconnects. InnoDB flushes its buffers based on the `innodb_fast_shutdown` setting before the process exits.
 
 ## Restarting MySQL
 
@@ -57,15 +57,19 @@ sudo systemctl restart mysql
 
 A restart stops and immediately starts the service. Active connections are dropped.
 
-## Reloading Configuration Without Restart
-
-For some configuration changes (e.g., updating `max_connections` as a dynamic variable), you can reload rather than restart.
+## Reloading Without Restart
 
 ```bash
 sudo systemctl reload mysql
 ```
 
-Note: Not all `my.cnf` changes can be applied this way. Most require a full restart.
+This sends `SIGHUP` to mysqld, which flushes tables, rotates logs, and flushes the host cache. It does **not** re-read `my.cnf` or apply configuration changes. To change dynamic variables at runtime (e.g., `max_connections`), use `SET GLOBAL` from the MySQL client instead:
+
+```sql
+SET GLOBAL max_connections = 200;
+```
+
+Static variables still require a full restart after editing `my.cnf`.
 
 ## Checking the Service Status
 
