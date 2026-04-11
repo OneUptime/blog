@@ -59,9 +59,9 @@ class InstrumentedCache:
         self._setup_tracking()
 
     def _setup_tracking(self):
+        inv_id = self.inv_r.client_id()
         pubsub = self.inv_r.pubsub()
         pubsub.subscribe('__redis__:invalidate')
-        inv_id = self.inv_r.client_id()
         self.r.execute_command('CLIENT', 'TRACKING', 'ON', 'REDIRECT', str(inv_id))
 
         def listen():
