@@ -36,7 +36,7 @@ docker run -p 6379:6379 redis/redis-stack:latest
 ```python
 from redis import Redis
 from redis.commands.search.field import TextField, NumericField, TagField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 
 r = Redis(host='localhost', port=6379, decode_responses=True)
 
@@ -129,13 +129,13 @@ for doc in results.docs:
 
 ```python
 from redis import Redis
-from redis.commands.search.query import Query
+from redis.commands.search.query import Query, NumericFilter
 
 r = Redis(host='localhost', port=6379, decode_responses=True)
 
 # Search with numeric filter (price range)
 q = Query('bluetooth').add_filter(
-    Query.NumericFilter('price', 0, 100)
+    NumericFilter('price', 0, 100)
 )
 results = r.ft('products').search(q)
 print("Bluetooth products under $100:")
@@ -207,7 +207,7 @@ while True:
 
 ```python
 from redis import Redis
-from redis.commands.search.aggregation import AggregateRequest, Reducer
+from redis.commands.search.aggregation import AggregateRequest, Desc
 import redis.commands.search.reducers as reducers
 
 r = Redis(host='localhost', port=6379, decode_responses=True)
@@ -216,7 +216,7 @@ r = Redis(host='localhost', port=6379, decode_responses=True)
 req = (AggregateRequest('*')
        .group_by('@category', reducers.count().alias('count'),
                  reducers.avg('@price').alias('avg_price'))
-       .sort_by('@count', asc=False))
+       .sort_by(Desc('@count')))
 
 result = r.ft('products').aggregate(req)
 for row in result.rows:
