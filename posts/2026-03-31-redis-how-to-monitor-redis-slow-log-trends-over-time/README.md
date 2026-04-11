@@ -73,10 +73,10 @@ def collect_slowlog():
 
         ts = datetime.fromtimestamp(entry['start_time'])
         duration_us = entry['duration']
-        command_parts = entry['command']
+        command_parts = entry['command'].split()
         command = command_parts[0].upper() if command_parts else 'UNKNOWN'
-        args = json.dumps(list(command_parts[1:4]))  # first 3 args
-        client_addr = entry.get('client_addr', '')
+        args = json.dumps(command_parts[1:4])  # first 3 args
+        client_addr = entry.get('client_address', '')
         client_name = entry.get('client_name', '')
 
         cursor.execute("""
@@ -210,7 +210,7 @@ def get_slowlog_summary(minutes=5):
     if not recent:
         return None
 
-    counts = Counter(e['command'][0].upper() for e in recent)
+    counts = Counter(e['command'].split()[0].upper() for e in recent)
     return {
         'count': len(recent),
         'top_commands': counts.most_common(5),
