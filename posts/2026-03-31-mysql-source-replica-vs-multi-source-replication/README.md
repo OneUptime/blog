@@ -12,7 +12,7 @@ MySQL replication allows data to be copied from one server to another. The two m
 
 ## Source-Replica Replication
 
-Source-replica (formerly primary-replica) is the standard MySQL replication topology. One source server handles writes, and one or more replicas receive changes via the binary log.
+Source-replica (formerly master-slave) is the standard MySQL replication topology. One source server handles writes, and one or more replicas receive changes via the binary log.
 
 ```sql
 -- On the source server: check binary log position
