@@ -26,20 +26,20 @@ mysql -u root -p -e "SHOW VARIABLES;" > /backup/mysql56-variables.txt
 mysql -u root -p -e "SHOW GLOBAL STATUS;" > /backup/mysql56-status.txt
 ```
 
-## Run the Pre-Upgrade Check
+## Run Pre-Upgrade Checks
 
-MySQL 5.7 includes `mysql_upgrade` which checks for compatibility issues:
+Before upgrading, run compatibility checks on your 5.6 server:
 
 ```bash
-# After installing MySQL 5.7 binaries but before starting the new server
-mysql_upgrade --user=root --password
+# Check all databases for upgrade compatibility issues
+mysqlcheck -u root -p --all-databases --check-upgrade
 ```
 
 Check the output carefully for errors. Common 5.6 to 5.7 issues:
 
-- Tables using deprecated `TYPE=MyISAM` syntax (use `ENGINE=`)
-- Triggers with undefined DEFINER
+- Triggers or views with undefined or missing DEFINER
 - Views that use reserved words added in 5.7
+- Old temporal columns (`DATETIME`, `TIME`, `TIMESTAMP`) stored in pre-5.6 format that need rebuilding
 
 ## Installing MySQL 5.7
 
@@ -63,10 +63,8 @@ Update `/etc/mysql/mysql.conf.d/mysqld.cnf` before starting:
 
 ```ini
 [mysqld]
-# 5.6 apps often need this to avoid strict mode breakage
-sql_mode = NO_ENGINE_SUBSTITUTION
-
-# If using GROUP BY queries that worked loosely in 5.6
+# Relax strict mode for 5.6 compatibility
+# Add ONLY_FULL_GROUP_BY exclusion if your queries rely on loose GROUP BY behavior
 sql_mode = NO_ENGINE_SUBSTITUTION,NO_AUTO_CREATE_USER
 
 # Disable password validation if it breaks existing passwords
@@ -97,10 +95,10 @@ The most common 5.6 to 5.7 breakage is GROUP BY strictness. Queries like:
 SELECT user_id, name, MAX(created_at) FROM orders GROUP BY user_id;
 ```
 
-In 5.7 with `ONLY_FULL_GROUP_BY` mode, `name` must be in the GROUP BY or an aggregate function. Fix it:
+In 5.7 with `ONLY_FULL_GROUP_BY` mode, `name` must be in the GROUP BY or wrapped in an aggregate function. The idiomatic fix is to use `ANY_VALUE()`, which was introduced in MySQL 5.7 for this purpose:
 
 ```sql
-SELECT user_id, MAX(name), MAX(created_at) FROM orders GROUP BY user_id;
+SELECT user_id, ANY_VALUE(name), MAX(created_at) FROM orders GROUP BY user_id;
 ```
 
 Check for date zero values that 5.7 rejects in strict mode:
