@@ -29,9 +29,8 @@ Common flags:
 | `-c` | Concurrent clients | 50 |
 | `-d` | Data size in bytes | 3 |
 | `-t` | Commands to test (comma-separated) | all |
-| `--pipeline` | Pipelining factor | 1 (no pipeline) |
+| `-P` | Pipelining factor | 1 (no pipeline) |
 | `-q` | Quiet mode (one line per test) | off |
-| `--latency-history` | Show latency samples over time | off |
 | `--csv` | Output in CSV format | off |
 
 ## Running a Quick Benchmark
@@ -114,13 +113,13 @@ Pipelining batches multiple commands per network round-trip and dramatically inc
 
 ```bash
 # No pipelining (baseline)
-redis-benchmark -t set,get -n 100000 -q --pipeline 1
+redis-benchmark -t set,get -n 100000 -q -P 1
 
 # Pipeline 16 commands per request
-redis-benchmark -t set,get -n 100000 -q --pipeline 16
+redis-benchmark -t set,get -n 100000 -q -P 16
 
 # Pipeline 32 commands per request
-redis-benchmark -t set,get -n 100000 -q --pipeline 32
+redis-benchmark -t set,get -n 100000 -q -P 32
 ```
 
 ## Detailed Latency Report
@@ -169,8 +168,8 @@ redis-benchmark -n 100000 eval "return redis.call('set', KEYS[1], ARGV[1])" 1 my
 # Before change
 redis-benchmark -t set,get -n 500000 -c 100 -q > before.txt
 
-# Apply config change, e.g. enable TCP_NODELAY
-redis-cli config set tcp-nodelay yes
+# Apply config change, e.g. disable RDB snapshots for benchmarking
+redis-cli config set save ""
 
 # After change
 redis-benchmark -t set,get -n 500000 -c 100 -q > after.txt
@@ -211,10 +210,10 @@ A healthy Redis standalone instance typically achieves 100,000+ ops/sec for simp
 #!/usr/bin/env bash
 echo "=== Redis Benchmark $(date) ==="
 redis-benchmark -q -n 500000 -c 100 -t set,get,incr,lpush,rpop,zadd \
-  --pipeline 1 2>&1 | tee /var/log/redis-bench-$(date +%Y%m%d).log
+  -P 1 2>&1 | tee /var/log/redis-bench-$(date +%Y%m%d).log
 echo "=== Done ==="
 ```
 
 ## Summary
 
-`redis-benchmark` is the standard tool for measuring Redis throughput and latency. Run it with `-q` for a quick summary, vary `-c` (clients) and `-d` (data size) to understand performance at different loads, and use `--pipeline` to measure the throughput gains from batching. Always record baseline results before making configuration changes such as adjusting `maxmemory-policy`, `save`, or network settings.
+`redis-benchmark` is the standard tool for measuring Redis throughput and latency. Run it with `-q` for a quick summary, vary `-c` (clients) and `-d` (data size) to understand performance at different loads, and use `-P` to measure the throughput gains from batching. Always record baseline results before making configuration changes such as adjusting `maxmemory-policy`, `save`, or network settings.
