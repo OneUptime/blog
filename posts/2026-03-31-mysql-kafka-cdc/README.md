@@ -28,7 +28,7 @@ server-id         = 1
 log_bin           = /var/log/mysql/mysql-bin.log
 binlog_format     = ROW
 binlog_row_image  = FULL
-expire_logs_days  = 7
+binlog_expire_logs_seconds = 604800
 ```
 
 Restart MySQL after editing `my.cnf`.
