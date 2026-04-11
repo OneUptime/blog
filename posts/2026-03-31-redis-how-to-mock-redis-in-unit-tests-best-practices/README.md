@@ -157,7 +157,6 @@ For simple cases where you don't need Redis fidelity:
 
 ```python
 from unittest.mock import MagicMock, patch
-import pytest
 from myapp.service import UserService
 
 def test_cache_hit():
