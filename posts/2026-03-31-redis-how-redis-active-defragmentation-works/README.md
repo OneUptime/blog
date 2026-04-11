@@ -70,7 +70,7 @@ activedefrag yes
 redis-cli CONFIG GET active-defrag-ignore-bytes
 # 100mb (default: don't start defrag if wasted < 100MB)
 
-redis-cli CONFIG GET active-defrag-enabled
+redis-cli CONFIG GET activedefrag
 redis-cli CONFIG GET active-defrag-threshold-lower
 # 10 (start defrag when fragmentation exceeds 10%)
 
@@ -117,7 +117,7 @@ Each server cycle:
 6. Repeat for N objects (bounded by CPU budget)
 ```
 
-Key property: it only moves objects that jemalloc identifies as being in fragmented pages. Uses jemalloc's `MALLCTL_ARENAS_ALL` interface to identify candidate pages.
+Key property: it only moves objects that jemalloc identifies as being in fragmented regions. Uses jemalloc's `je_get_defrag_hint()` function (a custom extension in Redis's bundled jemalloc) to check whether a specific allocation resides in an underutilized slab and would benefit from relocation.
 
 ## Monitoring Defragmentation Progress
 
