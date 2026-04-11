@@ -139,10 +139,12 @@ Alternatively, add these directives to the beginning of the SQL file before impo
   echo "SET GLOBAL innodb_flush_log_at_trx_commit=0;"
   echo "SET GLOBAL sync_binlog=0;"
   echo "SET foreign_key_checks=0;"
+  echo "SET unique_checks=0;"
   cat /backups/myapp_db_20260331.sql
   echo "SET GLOBAL innodb_flush_log_at_trx_commit=1;"
   echo "SET GLOBAL sync_binlog=1;"
   echo "SET foreign_key_checks=1;"
+  echo "SET unique_checks=1;"
 } | mysql -u root -p myapp_db
 ```
 
