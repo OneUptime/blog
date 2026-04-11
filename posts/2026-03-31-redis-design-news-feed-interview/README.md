@@ -72,16 +72,17 @@ For users with millions of followers, fan-out on write would be too slow:
 
 ```python
 def get_feed(user_id):
-    # Get pre-built feed for normal users
-    feed = redis.lrange(f"feed:{user_id}", 0, 99)
+    # Get pre-built feed (post IDs) for normal users
+    feed_ids = redis.lrange(f"feed:user:{user_id}", 0, 99)
 
     # For each celebrity this user follows
     for celebrity_id in get_followed_celebrities(user_id):
         recent_posts = redis.lrange(f"posts:{celebrity_id}", 0, 9)
-        feed.extend(recent_posts)
+        feed_ids.extend(recent_posts)
 
-    # Sort by timestamp and return top 20
-    return sorted(feed, key=lambda p: p.timestamp, reverse=True)[:20]
+    # Fetch post details and sort by timestamp
+    posts = [get_post(post_id) for post_id in feed_ids]
+    return sorted(posts, key=lambda p: p["timestamp"], reverse=True)[:20]
 ```
 
 ## Caching Aggregated Feeds
