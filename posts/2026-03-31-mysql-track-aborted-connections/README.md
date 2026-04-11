@@ -8,7 +8,7 @@ Description: Monitor MySQL aborted connections and clients using global status v
 
 ---
 
-MySQL tracks two types of connection failures: `Aborted_connects` (connections that failed before authentication) and `Aborted_clients` (connections that were established but terminated abnormally). Both signal problems that degrade reliability.
+MySQL tracks two types of connection failures: `Aborted_connects` (failed connection attempts, including authentication failures) and `Aborted_clients` (connections that were established but terminated abnormally). Both signal problems that degrade reliability.
 
 ## The Two Key Counters
 
@@ -46,8 +46,8 @@ When a host exceeds `max_connect_errors`, MySQL blocks it:
 -- Check blocked hosts
 SELECT * FROM performance_schema.host_cache WHERE SUM_CONNECT_ERRORS > 0;
 
--- Unblock
-FLUSH HOSTS;
+-- Unblock (MySQL 8.0.23+ deprecates FLUSH HOSTS; use TRUNCATE instead)
+TRUNCATE TABLE performance_schema.host_cache;
 ```
 
 Or raise the threshold:
@@ -66,7 +66,7 @@ SHOW VARIABLES LIKE 'wait_timeout';
 SHOW VARIABLES LIKE 'interactive_timeout';
 ```
 
-When `wait_timeout` is low (e.g., 28800 seconds default), connection pools that hold idle connections longer than this will get them killed by MySQL, causing `Aborted_clients`.
+The default `wait_timeout` is 28800 seconds (8 hours). If connection pools hold idle connections longer than the configured `wait_timeout`, MySQL kills them, causing `Aborted_clients`.
 
 Fix by aligning application-side idle timeout with MySQL timeout:
 
