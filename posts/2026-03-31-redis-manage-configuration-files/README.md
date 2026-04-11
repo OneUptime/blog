@@ -87,18 +87,13 @@ appendonly yes
 
 ## Validating Configuration Changes
 
-Test a configuration file without restarting:
+Start Redis in the foreground to check for configuration errors:
 
 ```bash
-redis-server /etc/redis/redis.conf --test-memory 1024
 redis-server /etc/redis/redis.conf --daemonize no --loglevel debug
 ```
 
-Check for syntax errors before applying:
-
-```bash
-redis-server /etc/redis/redis.conf --sentinel 2>&1 | head -5
-```
+This starts Redis with your configuration and outputs any parsing errors to the terminal. Press Ctrl+C to stop the server once you have verified the configuration loads without errors.
 
 ## Backing Up Configuration
 
@@ -115,15 +110,15 @@ echo "Backed up to $BACKUP_DIR/redis.conf.$DATE"
 
 ## Reload Without Full Restart
 
-Send a SIGHUP signal to reload the configuration file without a full restart:
+Redis does not support reloading the configuration file via signals like SIGHUP. To change settings without restarting, use `CONFIG SET` to modify parameters at runtime:
 
 ```bash
-kill -HUP $(cat /var/run/redis/redis.pid)
-# or
-redis-cli DEBUG RELOAD
+redis-cli CONFIG SET loglevel warning
+redis-cli CONFIG SET hz 15
+redis-cli CONFIG REWRITE
 ```
 
-Note that not all directives can be reloaded this way - port and bind changes still require a restart.
+Not all parameters support runtime changes. Settings like `bind`, `port`, and `tls-port` require a full restart to take effect.
 
 ## Summary
 
