@@ -54,16 +54,33 @@ def acquire_lock(resource_id: str, session_id: str, hold_minutes: int = 10) -> s
     acquired = r.set(lock_key, lock_data, ex=hold_minutes * 60, nx=True)
     return lock_token if acquired else None
 
+RELEASE_LOCK_SCRIPT = """
+local lock_key = KEYS[1]
+local token = ARGV[1]
+
+local raw = redis.call('GET', lock_key)
+if not raw then
+    return 0
+end
+
+local data = cjson.decode(raw)
+if data.token == token then
+    redis.call('DEL', lock_key)
+    return 1
+end
+
+return 0
+"""
+
+release_lock_script = r.register_script(RELEASE_LOCK_SCRIPT)
+
 def release_lock(resource_id: str, lock_token: str) -> bool:
     lock_key = f"{LOCK_PREFIX}:{resource_id}"
-    lock_raw = r.get(lock_key)
-    if not lock_raw:
-        return False
-    lock = json.loads(lock_raw)
-    if lock.get("token") == lock_token:
-        r.delete(lock_key)
-        return True
-    return False
+    result = release_lock_script(
+        keys=[lock_key],
+        args=[lock_token]
+    )
+    return result == 1
 ```
 
 ## Extending a Lock
