@@ -18,20 +18,11 @@ Amazon Linux 2023 includes Redis via the standard package manager:
 sudo dnf install -y redis6
 
 # Verify
-redis-server --version
+redis6-server --version
 # Redis server v=6.2.x
 ```
 
-For Redis 7.x on AL2023, install from the Remi repository:
-
-```bash
-sudo dnf install -y https://rpms.remirepo.net/enterprise/remi-release-9.rpm
-sudo dnf module enable -y redis:remi-7.2
-sudo dnf install -y redis
-
-redis-server --version
-# Redis server v=7.2.x
-```
+For Redis 7.x on AL2023, the Remi repository is not compatible because AL2023 does not support DNF modules and the Remi EL9 RPM requires RHEL 9 dependencies that AL2023 does not provide. Instead, build Redis 7.x from source (see the [Installing via Building from Source](#installing-via-building-from-source) section below).
 
 ## Amazon Linux 2
 
@@ -47,10 +38,20 @@ redis-server --version
 
 ## Start and Enable Redis as a Service
 
+On Amazon Linux 2, the service is named `redis`:
+
 ```bash
 sudo systemctl start redis
 sudo systemctl enable redis
 sudo systemctl status redis
+```
+
+On Amazon Linux 2023 (with the `redis6` package), the service is named `redis6`:
+
+```bash
+sudo systemctl start redis6
+sudo systemctl enable redis6
+sudo systemctl status redis6
 ```
 
 ## Verify the Installation
@@ -62,13 +63,25 @@ redis-cli ping
 redis-cli info server | grep redis_version
 ```
 
+On Amazon Linux 2023, use `redis6-cli` instead:
+
+```bash
+redis6-cli ping
+# PONG
+
+redis6-cli info server | grep redis_version
+```
+
 ## Configure Redis for Production Use
 
 Edit the configuration file:
 
 ```bash
-sudo nano /etc/redis/redis.conf
-# On AL2 the path may be /etc/redis.conf
+# On Amazon Linux 2:
+sudo nano /etc/redis.conf
+
+# On Amazon Linux 2023 (redis6 package):
+sudo nano /etc/redis6/redis6.conf
 ```
 
 Key production settings:
@@ -138,4 +151,4 @@ sudo make install
 
 ## Summary
 
-On Amazon Linux 2023, install Redis using `dnf install redis6` or enable the Remi repository for Redis 7.x. On Amazon Linux 2, use `amazon-linux-extras enable redis6`. Always set a password, configure `maxmemory`, restrict the bind address to localhost or a private interface, and disable Transparent Huge Pages for consistent low-latency performance in production.
+On Amazon Linux 2023, install Redis using `dnf install redis6` (note that the binaries and service are namespaced as `redis6-server`, `redis6-cli`, and `redis6`). For Redis 7.x on AL2023, build from source. On Amazon Linux 2, use `amazon-linux-extras enable redis6`. Always set a password, configure `maxmemory`, restrict the bind address to localhost or a private interface, and disable Transparent Huge Pages for consistent low-latency performance in production.
