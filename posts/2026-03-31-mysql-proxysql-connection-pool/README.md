@@ -104,7 +104,7 @@ SAVE MYSQL USERS TO DISK;
 ## Connection Pool Tuning Parameters
 
 ```sql
--- Maximum backend connections ProxySQL will open per server (global default)
+-- Maximum client (frontend) connections ProxySQL will accept
 SET GLOBAL mysql-max_connections = 2048;
 
 -- How long an idle backend connection stays in the pool (ms)
@@ -116,7 +116,7 @@ SET GLOBAL mysql-connect_timeout_server = 3000;
 -- Timeout waiting for a backend connection from the pool (ms)
 SET GLOBAL mysql-connect_timeout_server_max = 10000;
 
--- How long a client connection can wait for a free backend connection
+-- Idle client session timeout (ms) - closes sessions idle longer than this
 SET GLOBAL mysql-wait_timeout = 28800000;  -- 8 hours
 
 -- Ping interval to keep backend connections alive (ms)
@@ -138,10 +138,10 @@ View current multiplexing state:
 ```sql
 SELECT hostgroup, srv_host, srv_port,
        status,
-       connused,    -- backend connections in use
-       connfree,    -- backend connections available in pool
-       connok,      -- total successful connections
-       connconn     -- current backend connections
+       ConnUsed,    -- backend connections in use
+       ConnFree,    -- backend connections available in pool
+       ConnOK,      -- total successful connections
+       ConnERR      -- total failed connections
 FROM   stats_mysql_connection_pool;
 ```
 
@@ -183,13 +183,12 @@ ORDER  BY hostgroup, srv_host;
 
 -- Client connection stats
 SELECT user,
-       client_host,
-       backend_host,
-       connected_at,
+       cli_host,
+       srv_host,
        time_ms AS session_duration_ms,
-       current_query
+       info AS current_query
 FROM   stats_mysql_processlist
-WHERE  current_query != ''
+WHERE  info != ''
 ORDER  BY time_ms DESC
 LIMIT  20;
 ```
@@ -211,13 +210,13 @@ ProxySQL continuously checks backend server health:
 
 ```sql
 -- View recent health check results
-SELECT hostname, port, time_start_us, ping_success, ping_error
+SELECT hostname, port, time_start_us, ping_success_time_us, ping_error
 FROM   monitor.mysql_server_ping_log
 ORDER  BY time_start_us DESC
 LIMIT  20;
 
 -- View connection check results
-SELECT hostname, port, time_start_us, connect_success, connect_error
+SELECT hostname, port, time_start_us, connect_success_time_us, connect_error
 FROM   monitor.mysql_server_connect_log
 ORDER  BY time_start_us DESC
 LIMIT  20;
