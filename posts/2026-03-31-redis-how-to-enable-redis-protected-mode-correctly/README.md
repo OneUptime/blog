@@ -10,7 +10,7 @@ Description: Understand Redis protected mode, when it activates, how to configur
 
 ## What Is Redis Protected Mode?
 
-Redis protected mode is a safety feature introduced in Redis 3.2 that prevents Redis from accepting connections from external hosts when it is not properly secured. When protected mode is active and Redis is bound to `0.0.0.0` (all interfaces) without a password, it only accepts connections from the loopback interface (127.0.0.1).
+Redis protected mode is a safety feature introduced in Redis 3.2 that prevents Redis from accepting connections from external hosts when it is not properly secured. When protected mode is active and no password is set, Redis only accepts connections from the loopback interfaces (127.0.0.1 and ::1).
 
 Protected mode is designed to protect against accidentally exposing an unsecured Redis instance to the internet.
 
@@ -18,8 +18,9 @@ Protected mode is designed to protect against accidentally exposing an unsecured
 
 Redis enters protected mode when ALL of the following are true:
 1. `protected-mode yes` is set in redis.conf (the default)
-2. No bind directive is configured, OR the server is bound to `0.0.0.0`
-3. No requirepass password is set
+2. No password is set for the default user (no `requirepass` and no ACL password)
+
+In Redis versions before 7.0, there was an additional condition: no `bind` directive was explicitly configured. Starting with Redis 7.0, the bind directive no longer affects whether protected mode activates — only the two conditions above matter.
 
 If any of those conditions is false, protected mode does not restrict connections.
 
@@ -128,7 +129,7 @@ Use a long random password:
 
 ```bash
 openssl rand -base64 32
-# Example output: xK3mP9qR2nL7vB4wT1yJ5sD8cF6hA0eN
+# Example output: K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=
 ```
 
 ## Layered Security Best Practices
@@ -151,7 +152,7 @@ redis-cli -h your-redis-host ping
 redis-cli -h your-redis-host -a yourPassword ping
 
 # Check all security-related settings
-redis-cli INFO server | grep -E "redis_version|tcp_port|bind"
+redis-cli INFO server | grep -E "redis_version|tcp_port"
 redis-cli CONFIG GET bind
 redis-cli CONFIG GET protected-mode
 redis-cli CONFIG GET requirepass
