@@ -46,7 +46,7 @@ PFADD page_views "user:1001"   # Duplicate - not counted again
 
 # Get cardinality estimate
 PFCOUNT page_views
-# Returns approximate count with <= 0.81% error
+# Returns approximate count with ~0.81% standard error
 
 # Merge multiple HLLs
 PFADD mobile_views "user:2001" "user:2002"
