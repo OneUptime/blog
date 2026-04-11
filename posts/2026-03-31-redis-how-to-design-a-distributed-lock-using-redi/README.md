@@ -91,7 +91,7 @@ class DistributedLock {
     return result === 1;
   }
 
-  async extend(additionalSeconds) {
+  async extend(ttlSeconds) {
     if (!this.ownerId) return false;
 
     const extendLua = `
@@ -102,7 +102,7 @@ class DistributedLock {
       end
     `;
 
-    const result = await redis.eval(extendLua, 1, this.key, this.ownerId, additionalSeconds);
+    const result = await redis.eval(extendLua, 1, this.key, this.ownerId, ttlSeconds);
     return result === 1;
   }
 }
