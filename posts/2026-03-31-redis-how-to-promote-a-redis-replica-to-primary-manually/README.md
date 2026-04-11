@@ -29,13 +29,13 @@ Before promoting a replica, confirm:
 
 ## Step 1 - Stop Writes to the Primary
 
-If the primary is still accessible, stop new writes. One way is to set it read-only:
+If the primary is still accessible, stop new writes. One way is to set an impossibly high minimum replica count so the primary rejects all writes:
 
 ```bash
-redis-cli -h primary-host CONFIG SET replica-read-only yes
+redis-cli -h primary-host CONFIG SET min-replicas-to-write 99
 ```
 
-For better control, use a client-side circuit breaker or maintenance page to halt writes before this step.
+This causes the primary to return errors on write commands because the replica threshold cannot be met. For better control, use a client-side circuit breaker or maintenance page to halt writes before this step.
 
 ## Step 2 - Verify the Replica Is Caught Up
 
