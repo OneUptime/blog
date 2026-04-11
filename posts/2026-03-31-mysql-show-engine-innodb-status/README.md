@@ -193,7 +193,7 @@ This writes every deadlock to the MySQL error log, providing a historical record
 -- Current lock waits (more readable than INNODB STATUS):
 SELECT * FROM sys.innodb_lock_waits\G
 
--- Full lock detail:
+-- Full lock detail (MySQL 8.0+):
 SELECT
     r.trx_id               AS waiting_trx_id,
     r.trx_mysql_thread_id  AS waiting_thread,
@@ -201,9 +201,9 @@ SELECT
     b.trx_id               AS blocking_trx_id,
     b.trx_mysql_thread_id  AS blocking_thread,
     b.trx_query            AS blocking_query
-FROM information_schema.INNODB_LOCK_WAITS w
-JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id
-JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.INNODB_TRX r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+JOIN information_schema.INNODB_TRX b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID;
 ```
 
 ## Best Practices
