@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Tornado, Python, Caching, Async
 
-Description: Learn how to integrate Redis with Tornado in Python for async caching, session management, and pub/sub using aioredis with practical examples.
+Description: Learn how to integrate Redis with Tornado in Python for async caching, session management, and pub/sub using redis.asyncio with practical examples.
 
 ---
 
@@ -21,7 +21,6 @@ pip install tornado redis
 ```python
 import redis.asyncio as aioredis
 import tornado.web
-import tornado.ioloop
 
 redis_client = None
 
