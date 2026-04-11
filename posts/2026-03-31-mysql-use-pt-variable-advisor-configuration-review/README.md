@@ -10,7 +10,7 @@ Description: Learn how to use pt-variable-advisor to analyze MySQL server variab
 
 ## What is pt-variable-advisor?
 
-`pt-variable-advisor` is a Percona Toolkit utility that inspects the current MySQL server variable settings and produces a report of potential problems, best practice violations, and optimization opportunities. It connects to a running MySQL instance, reads `SHOW VARIABLES` and `SHOW GLOBAL STATUS`, then applies a set of rules to identify configuration issues.
+`pt-variable-advisor` is a Percona Toolkit utility that inspects the current MySQL server variable settings and produces a report of potential problems, best practice violations, and optimization opportunities. It connects to a running MySQL instance, reads `SHOW VARIABLES`, then applies a set of rules to identify configuration issues.
 
 ## Basic Usage
 
@@ -27,14 +27,13 @@ pt-variable-advisor \
 
 ```text
 # WARN delay_key_write: MyISAM delay_key_write is enabled for some tables.
-# NOTE innodb_file_per_table: innodb_file_per_table is enabled.
 # WARN max_connect_errors: max_connect_errors is very high.
 # WARN query_cache_type: The query cache is enabled.
 # NOTE thread_cache_size: thread_cache_size is 0; this may cause excessive thread creation.
 # WARN log_bin: Binary logging is disabled; you will be unable to replicate or use point-in-time recovery.
 ```
 
-Each item is prefixed with a severity: `NOTE`, `WARN`, or (in some versions) `CRIT`.
+Each item is prefixed with a severity: `NOTE`, `WARN`, or `CRIT`.
 
 ## Saving the Report
 
@@ -66,15 +65,14 @@ After reviewing the output, apply fixes in `/etc/mysql/my.cnf`:
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_expire_logs_seconds = 604800
 
-# Disable the deprecated query cache (MySQL 8.0 removes it)
+# Disable the deprecated query cache (MySQL 5.7 only;
+# these variables were removed in MySQL 8.0.3+ and will
+# prevent the server from starting if included)
 query_cache_type = 0
 query_cache_size = 0
 
 # Tune thread cache to reduce thread creation overhead
 thread_cache_size = 16
-
-# InnoDB per-table files (already a default in 8.0)
-innodb_file_per_table = ON
 
 # Reduce max_connect_errors to a sensible value
 max_connect_errors = 100
