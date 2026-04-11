@@ -93,7 +93,6 @@ def get_content_rank(content_id):
 Combine vote score with age for a Reddit-style "hot" ranking:
 
 ```python
-import time
 import math
 
 def compute_hot_score(content_id, post_timestamp):
