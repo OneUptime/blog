@@ -55,7 +55,7 @@ import redis
 
 def check_cluster_health(host='localhost', port=6379):
     r = redis.Redis(host=host, port=port, decode_responses=True)
-    info = r.cluster('INFO')
+    info = r.cluster_info()
 
     state = info.get('cluster_state', 'unknown')
     failed_slots = int(info.get('cluster_slots_fail', 0))
@@ -91,7 +91,7 @@ pqr678... 10.0.0.6:6379@16379 slave ghi789... 0 1706000005 3 connected
 ```python
 def list_cluster_nodes(host='localhost', port=6379):
     r = redis.Redis(host=host, port=port, decode_responses=True)
-    nodes_raw = r.cluster('NODES')
+    nodes_raw = r.cluster_nodes()
 
     masters = []
     slaves = []
@@ -140,7 +140,7 @@ def find_key_location(key: str, startup_nodes: list):
     print(f"Key '{key}' maps to slot {slot}")
 
     # Count keys in that slot on the owning node
-    count = rc.cluster_count_keys_in_slot(slot)
+    count = rc.cluster_countkeysinslot(slot)
     print(f"Slot {slot} contains {count} key(s)")
 ```
 
@@ -181,7 +181,7 @@ redis-cli -h redis-node-1 CLUSTER SHARDS
 ```python
 def check_slot_coverage(host='localhost', port=6379):
     r = redis.Redis(host=host, port=port, decode_responses=True)
-    slots = r.cluster('SLOTS')
+    slots = r.cluster_slots()
 
     covered_slots = set()
     for slot_range in slots:
