@@ -84,7 +84,7 @@ DELIMITER ;
 
 ## Example 4 - Batch Deletion to Reduce Lock Pressure
 
-For very large tables, delete in small batches with a loop:
+For very large tables, delete in small batches using a frequently scheduled event:
 
 ```sql
 DELIMITER //
@@ -109,9 +109,9 @@ Running every 5 minutes with a 1,000-row limit spreads the delete load over time
 SELECT EVENT_NAME, STATUS, INTERVAL_VALUE, INTERVAL_FIELD, LAST_EXECUTED
 FROM information_schema.EVENTS
 WHERE EVENT_SCHEMA = 'mydb'
-  AND EVENT_NAME LIKE '%purge%'
-   OR EVENT_NAME LIKE '%cleanup%'
-   OR EVENT_NAME LIKE '%archive%';
+  AND (EVENT_NAME LIKE '%purge%'
+    OR EVENT_NAME LIKE '%cleanup%'
+    OR EVENT_NAME LIKE '%archive%');
 ```
 
 ## Summary
