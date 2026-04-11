@@ -41,7 +41,7 @@ exports.handler = async (event) => {
 };
 ```
 
-## Strategy 2: Connection Pooling with Minimum Pool Size
+## Strategy 2: Connection Pooling with Maximum Pool Size
 
 For runtimes that support it, pre-warm a connection pool:
 
@@ -92,7 +92,7 @@ async function redisSet(key, value, exSeconds) {
 Some runtimes allow you to run code before requests arrive. Use this to establish the connection early:
 
 ```javascript
-// AWS Lambda SnapStart or provisioned concurrency warm-up
+// AWS Lambda provisioned concurrency warm-up
 exports.warmUp = async () => {
   await client.connect();
   await client.ping();
