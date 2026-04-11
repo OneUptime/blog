@@ -19,11 +19,11 @@ CLUSTER INFO
 # List all nodes in the cluster
 CLUSTER NODES
 
-# List nodes in a compact format
-CLUSTER MYID          # returns this node's ID
+# Get this node's unique ID
+CLUSTER MYID
 
-# Get cluster configuration epoch
-CLUSTER INFO | grep cluster_current_epoch
+# Get cluster configuration epoch (run from shell)
+redis-cli CLUSTER INFO | grep cluster_current_epoch
 ```
 
 ## Hash Slot Management
