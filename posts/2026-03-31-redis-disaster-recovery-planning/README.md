@@ -59,8 +59,8 @@ DATE=$(date +%Y/%m/%d)
 # Sync RDB file
 aws s3 cp "$SOURCE/dump.rdb" "$S3_BUCKET/$DATE/dump-$(date +%H%M).rdb"
 
-# Sync AOF file (compressed)
-gzip -c "$SOURCE/appendonly.aof" | aws s3 cp - "$S3_BUCKET/$DATE/aof-$(date +%H%M).aof.gz"
+# Sync AOF directory (Redis 7.0+ uses multi-part AOF)
+tar czf - -C "$SOURCE" appendonlydir | aws s3 cp - "$S3_BUCKET/$DATE/aof-$(date +%H%M).tar.gz"
 
 echo "Backup sync complete at $(date)"
 ```
@@ -86,7 +86,7 @@ sentinel parallel-syncs mymaster 1
 ```bash
 # Check sentinel status
 redis-cli -p 26379 SENTINEL masters
-redis-cli -p 26379 SENTINEL slaves mymaster
+redis-cli -p 26379 SENTINEL replicas mymaster
 ```
 
 ## Recovery Procedures
