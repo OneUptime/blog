@@ -25,10 +25,10 @@ redis-cli CLUSTER KEYSLOT mykey
 # (integer) 14687
 
 redis-cli CLUSTER KEYSLOT user:1001
-# (integer) 4821
+# (integer) 5712
 
 redis-cli CLUSTER KEYSLOT order:5000
-# (integer) 2543
+# (integer) 6689
 ```
 
 ## Understanding Hash Tags
