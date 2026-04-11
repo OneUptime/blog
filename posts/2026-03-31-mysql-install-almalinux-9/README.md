@@ -53,6 +53,7 @@ sudo dnf install -y mysql-server
 
 ```bash
 sudo dnf install -y https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm
+sudo dnf module disable mysql -y
 sudo dnf install -y mysql-community-server
 ```
 
