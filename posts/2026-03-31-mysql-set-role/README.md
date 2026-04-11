@@ -16,6 +16,7 @@ In MySQL's role-based access control system, assigning a role to a user does not
 SET ROLE role_name;
 SET ROLE role1, role2;
 SET ROLE ALL;
+SET ROLE ALL EXCEPT role_name;
 SET ROLE NONE;
 SET ROLE DEFAULT;
 ```
@@ -103,9 +104,9 @@ SELECT CURRENT_ROLE();
 
 -- Now queries work but writes are blocked
 SELECT * FROM orders WHERE status = 'pending';  -- works
-DELETE FROM orders WHERE id = 1;  -- ERROR: permission denied
+DELETE FROM orders WHERE id = 1;  -- ERROR 1142: DELETE command denied
 
--- Later, activate writer to perform updates
+-- Later, switch to writer role (this replaces app_reader, not adds to it)
 SET ROLE 'app_writer';
 UPDATE orders SET status = 'reviewed' WHERE id = 1;  -- works now
 ```
