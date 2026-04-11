@@ -126,9 +126,11 @@ CHECKSUM TABLE orders;  -- compare on primary and replica
 
 ```sql
 -- Monitor lag with a scheduled check
--- Alert when Seconds_Behind_Source > 30
+-- Alert when replication lag > 30 seconds
 SELECT
-  VARIABLE_VALUE AS seconds_behind_source
+  TIMESTAMPDIFF(SECOND,
+    APPLYING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP,
+    NOW()) AS replication_lag_seconds
 FROM performance_schema.replication_applier_status_by_worker
 WHERE APPLYING_TRANSACTION != '';
 ```
