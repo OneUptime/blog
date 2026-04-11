@@ -28,7 +28,7 @@ flowchart TD
 JSON_TABLE(
     expr,
     path COLUMNS (
-        column_name type PATH col_path [on_error] [on_empty],
+        column_name type PATH col_path [on_empty] [on_error],
         column_name FOR ORDINALITY,
         NESTED PATH nested_path COLUMNS (...)
     )
