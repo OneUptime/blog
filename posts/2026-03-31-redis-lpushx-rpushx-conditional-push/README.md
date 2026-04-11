@@ -93,7 +93,7 @@ LRANGE queue 0 -1
 -- 4) "job:4"
 ```
 
-Elements are pushed left-to-right for `RPUSHX` and right-to-left for `LPUSHX`:
+For both commands, elements are pushed in argument order (left to right). With `RPUSHX`, each element is appended to the tail, so they appear in argument order. With `LPUSHX`, each element is prepended to the head, so they end up in reverse argument order:
 
 ```redis
 RPUSH log "entry:1"
