@@ -53,7 +53,7 @@ ZADD scores 150 alice             # Update score (uses hashtable to find, skipli
 The Redis C implementation (simplified):
 
 ```c
-// From redis/src/t_zset.c
+// From redis/src/server.h
 typedef struct zskiplistNode {
     sds ele;              // member string
     double score;         // sorting score
@@ -74,7 +74,7 @@ typedef struct zskiplist {
 ## Maximum Level and Probability
 
 Redis skip lists have:
-- Maximum level: 32 (can store 2^32 elements efficiently)
+- Maximum level: 32 (can store 2^64 elements efficiently)
 - Level promotion probability: 0.25 (each level has 25% chance of being promoted)
 
 This means on average:
@@ -99,7 +99,7 @@ const avgLevel = levels.reduce((a, b) => a + b, 0) / levels.length;
 console.log(`Average level: ${avgLevel.toFixed(2)}`); // ~1.33
 ```
 
-## Span Field for O(1) Rank Queries
+## Span Field for O(log N) Rank Queries
 
 Each level's forward pointer tracks the `span` (nodes skipped). This allows ZRANK to compute rank in O(log N) by summing spans:
 
@@ -109,7 +109,7 @@ Query: ZRANK scores "alice" (score=30)
 Level 2: HEAD [span=3] -> [50] -> NULL
          (head to 50 skips 3 nodes at level 2)
 Level 1: HEAD [span=1] -> [10] [span=1] -> [20] [span=1] -> [30="alice"]
-         Traverse: span=1 + span=1 + span=1 = rank 3 (0-indexed)
+         Traverse: span=1 + span=1 + span=1 = rank 2 (0-indexed)
 ```
 
 ## Observing Skip List Behavior
@@ -141,7 +141,7 @@ Skip List       | O(log N)| O(log N)| O(log N)| Medium
 AVL Tree        | O(log N)| O(log N)| O(log N)| High (pointers)
 B-Tree          | O(log N)| O(N)    | O(log N)| High
 Sorted Array    | O(N)    | O(log N)| O(N)    | Low
-Hash Table      | O(N log)| O(N)    | O(1)    | Low
+Hash Table      | O(N log N)| O(N)  | O(1)    | Low
 ```
 
 Redis chose skip lists over balanced trees because:
