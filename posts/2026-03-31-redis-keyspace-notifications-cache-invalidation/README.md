@@ -31,8 +31,8 @@ Write Service --SET product:123 price--> Redis
 ## Setup
 
 ```bash
-# Enable string command events and generic events (for DEL/EXPIRE)
-redis-cli CONFIG SET notify-keyspace-events "KE$g"
+# Enable string command events, generic events (for DEL/EXPIRE), and expired events
+redis-cli CONFIG SET notify-keyspace-events "KE$gx"
 ```
 
 ## Invalidation Listener in Python
@@ -113,18 +113,19 @@ If you flush many keys at once (e.g., a batch import), individual notifications 
 
 ```python
 import time
-from collections import defaultdict
 
 pending_invalidations = set()
 last_flush = time.time()
 
 def on_event(key):
+    global last_flush
     pending_invalidations.add(key)
     now = time.time()
     if now - last_flush > 0.1:  # flush every 100ms
         for k in pending_invalidations:
-            del local_cache[k]
+            local_cache.pop(k, None)
         pending_invalidations.clear()
+        last_flush = now
 ```
 
 ## Limitations to Know
