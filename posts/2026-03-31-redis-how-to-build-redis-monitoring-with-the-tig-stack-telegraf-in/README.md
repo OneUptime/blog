@@ -23,8 +23,8 @@ The TIG stack is often simpler to configure than Prometheus for straightforward 
 ```bash
 # Ubuntu/Debian
 wget -q https://repos.influxdata.com/influxdata-archive_compat.key
-echo "$(wget -qO- https://repos.influxdata.com/influxdata-archive_compat.key) influxdb" | sudo apt-key add -
-echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/ubuntu stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
+cat influxdata-archive_compat.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg > /dev/null
+echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
 sudo apt-get update && sudo apt-get install influxdb2
 
 sudo systemctl enable --now influxdb
@@ -110,7 +110,7 @@ influx query '
 from(bucket: "redis_metrics")
   |> range(start: -10m)
   |> filter(fn: (r) => r._measurement == "redis")
-  |> keys()
+  |> keep(columns: ["_field"])
   |> distinct(column: "_field")
 '
 ```
@@ -208,9 +208,9 @@ keyspace_misses         - failed key lookups
 evicted_keys            - keys removed due to memory limits
 expired_keys            - keys that expired
 total_commands_processed - cumulative commands executed
-replication_lag         - bytes behind master (on replica)
+master_repl_offset      - replication stream offset
 rdb_last_bgsave_status  - last RDB save result
-aof_current_size        - AOF file size
+aof_last_bgrewrite_status - last AOF rewrite result
 ```
 
 ## Summary
