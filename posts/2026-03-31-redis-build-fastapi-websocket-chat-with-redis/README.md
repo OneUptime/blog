@@ -15,7 +15,7 @@ A naive WebSocket chat implementation stores connections in memory, which breaks
 ## Installation
 
 ```bash
-pip install fastapi uvicorn redis[asyncio] websockets
+pip install fastapi uvicorn redis websockets
 ```
 
 ## Connection Manager
@@ -63,6 +63,7 @@ class RedisPubSub:
     def __init__(self, redis_url: str):
         self.redis_url = redis_url
         self.redis: aioredis.Redis = None
+        self._channels: dict = {}
 
     async def connect(self):
         self.redis = aioredis.from_url(self.redis_url, decode_responses=True)
@@ -71,11 +72,28 @@ class RedisPubSub:
         await self.redis.publish(f"chat:{room}", json.dumps(message))
 
     async def subscribe(self, room: str, callback):
+        channel = f"chat:{room}"
+        if channel in self._channels:
+            return  # Already subscribed to this room
         pubsub = self.redis.pubsub()
-        await pubsub.subscribe(f"chat:{room}")
-        async for msg in pubsub.listen():
-            if msg["type"] == "message":
-                await callback(msg["data"])
+        await pubsub.subscribe(channel)
+
+        async def _listener():
+            try:
+                async for msg in pubsub.listen():
+                    if msg["type"] == "message":
+                        await callback(msg["data"])
+            except asyncio.CancelledError:
+                await pubsub.unsubscribe(channel)
+                await pubsub.close()
+
+        self._channels[channel] = asyncio.create_task(_listener())
+
+    async def unsubscribe(self, room: str):
+        channel = f"chat:{room}"
+        task = self._channels.pop(channel, None)
+        if task:
+            task.cancel()
 ```
 
 ## FastAPI Application
@@ -100,14 +118,11 @@ async def startup():
 async def websocket_endpoint(websocket: WebSocket, room: str, username: str):
     await manager.connect(websocket, room)
 
-    # Subscribe to Redis channel and forward to local connections
+    # Subscribe to Redis channel (one subscription per room, shared across connections)
     async def on_redis_message(data: str):
         await manager.broadcast_to_room(data, room)
 
-    # Start Redis subscription in background
-    subscribe_task = asyncio.create_task(
-        pubsub.subscribe(room, on_redis_message)
-    )
+    await pubsub.subscribe(room, on_redis_message)
 
     try:
         while True:
@@ -121,19 +136,17 @@ async def websocket_endpoint(websocket: WebSocket, room: str, username: str):
             await pubsub.publish(room, message)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room)
-        subscribe_task.cancel()
-        await manager.broadcast_to_room(
-            json.dumps({"system": f"{username} left the room"}),
-            room
-        )
+        # Publish leave message through Redis so all servers see it
+        await pubsub.publish(room, {"system": f"{username} left the room"})
+        # Unsubscribe from Redis if no more local connections in this room
+        if not manager.rooms.get(room):
+            await pubsub.unsubscribe(room)
 ```
 
 ## HTML Client for Testing
 
 ```python
-@app.get("/")
-async def index():
-    return {"message": "WebSocket chat server running"}
+from fastapi.responses import HTMLResponse
 
 # Simple test client - serve as static HTML
 CHAT_HTML = """
@@ -164,12 +177,20 @@ function sendMsg() {
 </body>
 </html>
 """
+
+@app.get("/")
+async def index():
+    return HTMLResponse(CHAT_HTML)
 ```
 
 ## Running the Server
 
 ```bash
-uvicorn main:app --reload --workers 4
+# Development (single process with auto-reload)
+uvicorn main:app --reload
+
+# Production (multiple workers, no reload)
+uvicorn main:app --workers 4
 ```
 
 ## Summary
