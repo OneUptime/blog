@@ -77,8 +77,10 @@ CLUSTER SHARDS
 |-------|-------------|
 | `id` | 40-char node ID |
 | `port` | Client port |
+| `tls-port` | TLS port (optional; at least one of `port` or `tls-port` is present) |
 | `ip` | IP address |
 | `endpoint` | Endpoint (same as IP unless using hostnames) |
+| `hostname` | Announced hostname (optional) |
 | `role` | `master` or `replica` |
 | `replication-offset` | Replication offset for consistency checking |
 | `health` | `online`, `failed`, or `loading` |
