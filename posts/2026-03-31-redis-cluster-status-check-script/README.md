@@ -8,7 +8,7 @@ Description: Write a Redis Cluster status check script that validates cluster he
 
 ---
 
-Redis Cluster distributes data across nodes and automatically handles failover, but you need visibility into cluster health to catch partial failures before they become outages. A cluster status check script examines node states, slot coverage, and replication lag across all nodes.
+Redis Cluster distributes data across nodes and automatically handles failover, but you need visibility into cluster health to catch partial failures before they become outages. A cluster status check script examines node states, slot coverage, and fail flags across all nodes.
 
 ## Bash Cluster Status Script
 
