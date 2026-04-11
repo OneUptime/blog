@@ -10,7 +10,7 @@ Description: Learn how to use DEBUG QUICKLIST-PACKED-THRESHOLD to control the li
 
 ## Introduction
 
-Redis lists are internally stored as quicklists -- a doubly-linked list of listpack (formerly ziplist) nodes. Each node holds multiple list entries in a compact listpack encoding. The `DEBUG QUICKLIST-PACKED-THRESHOLD` command overrides the size threshold at which quicklist nodes switch from the packed (listpack) format to the individual node format. It is primarily a testing and debugging tool.
+Redis lists are internally stored as quicklists -- a doubly-linked list of listpack (formerly ziplist) nodes. Each node holds multiple list entries in a compact listpack encoding. The `DEBUG QUICKLIST-PACKED-THRESHOLD` command overrides the element size threshold that determines whether individual elements in a quicklist are stored inside packed (listpack) nodes or as separate PLAIN nodes. It is primarily a testing and debugging tool.
 
 ## Basic Syntax
 
@@ -18,7 +18,7 @@ Redis lists are internally stored as quicklists -- a doubly-linked list of listp
 DEBUG QUICKLIST-PACKED-THRESHOLD size
 ```
 
-- `size` - the new threshold in bytes. Nodes smaller than this size use the packed (listpack) encoding. Set to 0 to restore the default behavior.
+- `size` - the new threshold in bytes. Elements with a serialized size below this threshold are stored inside packed (listpack) nodes; elements at or above it are stored as individual PLAIN nodes. Set to 0 to restore the default behavior.
 
 Returns `OK`.
 
@@ -35,7 +35,7 @@ flowchart LR
     N2 <--> N3
 ```
 
-Each node is a listpack that stores multiple entries compactly. When a node grows beyond the threshold, it is split.
+Each node is a listpack that stores multiple entries compactly. When a new element's size meets or exceeds the packed threshold, it is stored in its own separate PLAIN node rather than being added to a packed (listpack) node.
 
 ## Examples
 
@@ -46,7 +46,7 @@ DEBUG QUICKLIST-PACKED-THRESHOLD 10
 # OK
 ```
 
-Now any listpack node larger than 10 bytes will use the plain encoding.
+Now any element with a serialized size of 10 bytes or more will be stored as a PLAIN node instead of inside a packed (listpack) node.
 
 ### Create a list and observe encoding
 
@@ -57,15 +57,25 @@ OBJECT ENCODING mylist
 # "listpack"   (small list fits in a single listpack node)
 ```
 
-### Lower threshold to trigger quicklist
+### Force quicklist encoding and observe packed threshold
+
+The `DEBUG QUICKLIST-PACKED-THRESHOLD` command controls packed vs. plain node storage within a quicklist, but does not itself trigger the listpack-to-quicklist encoding change. To force quicklist encoding, set `list-max-listpack-size` to a low positive value:
+
+```redis
+CONFIG SET list-max-listpack-size 1
+# OK
+
+DEL mylist
+RPUSH mylist "hello" "world" "foo" "bar" "baz"
+OBJECT ENCODING mylist
+# "quicklist"   (max 1 entry per node forces quicklist encoding)
+```
+
+With `DEBUG QUICKLIST-PACKED-THRESHOLD` set to a low value, elements within the quicklist are stored as individual PLAIN nodes rather than inside packed listpack nodes:
 
 ```redis
 DEBUG QUICKLIST-PACKED-THRESHOLD 1
 # OK
-
-RPUSH mylist "hello" "world" "foo" "bar" "baz"
-OBJECT ENCODING mylist
-# "quicklist"
 ```
 
 ### Reset to default
