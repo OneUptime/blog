@@ -69,7 +69,7 @@ Remove a user's ability to grant their privileges to others:
 REVOKE GRANT OPTION ON myapp_db.* FROM 'team_lead'@'localhost';
 ```
 
-To revoke both the privilege and the grant option in one statement:
+To revoke both the privileges and the grant option, use two statements:
 
 ```sql
 REVOKE INSERT, UPDATE ON myapp_db.* FROM 'team_lead'@'localhost';
@@ -152,11 +152,12 @@ SELECT user, host
 FROM   mysql.user
 WHERE  Super_priv = 'Y';
 
--- Find users with ALL PRIVILEGES at database level
-SELECT grantee, table_schema, privilege_type
-FROM   information_schema.SCHEMA_PRIVILEGES
-WHERE  privilege_type = 'ALL PRIVILEGES'
-ORDER  BY grantee;
+-- Find users with all major privileges at database level
+SELECT user, host, db
+FROM   mysql.db
+WHERE  Select_priv = 'Y' AND Insert_priv = 'Y' AND Update_priv = 'Y'
+AND    Delete_priv = 'Y' AND Create_priv = 'Y' AND Drop_priv = 'Y'
+ORDER  BY user, host;
 ```
 
 ## Revoking Across Multiple Users
