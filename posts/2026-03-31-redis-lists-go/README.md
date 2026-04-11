@@ -18,8 +18,6 @@ package main
 import (
     "context"
     "fmt"
-    "log"
-    "time"
 
     "github.com/redis/go-redis/v9"
 )
