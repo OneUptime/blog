@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, MaxScale, MariaDB, Proxy, Load Balancing, High Availability
 
-Description: MaxScale is an open-source database proxy from MariaDB Corporation that provides intelligent query routing, load balancing, and automatic failover for MySQL and MariaDB clusters.
+Description: MaxScale is a source-available database proxy from MariaDB Corporation that provides intelligent query routing, load balancing, and automatic failover for MySQL and MariaDB clusters.
 
 ---
 
@@ -97,13 +97,17 @@ port=3306
 ```sql
 -- User for the MaxScale monitor
 CREATE USER 'maxscale_monitor'@'%' IDENTIFIED BY 'monitorpass';
-GRANT REPLICATION CLIENT, SUPER, RELOAD ON *.* TO 'maxscale_monitor'@'%';
+GRANT REPLICATION CLIENT, SUPER, RELOAD, PROCESS ON *.* TO 'maxscale_monitor'@'%';
 
 -- User for the router (needs to see all databases and users)
 CREATE USER 'maxscale_router'@'%' IDENTIFIED BY 'routerpass';
 GRANT SELECT ON mysql.user TO 'maxscale_router'@'%';
 GRANT SELECT ON mysql.db TO 'maxscale_router'@'%';
 GRANT SELECT ON mysql.tables_priv TO 'maxscale_router'@'%';
+GRANT SELECT ON mysql.columns_priv TO 'maxscale_router'@'%';
+GRANT SELECT ON mysql.procs_priv TO 'maxscale_router'@'%';
+GRANT SELECT ON mysql.proxies_priv TO 'maxscale_router'@'%';
+GRANT SELECT ON mysql.roles_mapping TO 'maxscale_router'@'%';
 GRANT SHOW DATABASES ON *.* TO 'maxscale_router'@'%';
 FLUSH PRIVILEGES;
 ```
