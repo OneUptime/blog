@@ -254,13 +254,11 @@ cluster.set('foo', 'bar').then(() => {
 ## Verifying Slot Distribution
 
 ```bash
-# Check slot distribution
+# Check slot distribution across nodes
 redis-cli --cluster info 127.0.0.1:7001
 
-# Check which node owns a specific key's slot
-redis-cli -p 7001 CLUSTER KEYSLOT mykey
-
 # Check which slot a key maps to
+redis-cli -p 7001 CLUSTER KEYSLOT mykey
 redis-cli -p 7001 CLUSTER KEYSLOT "user:123"
 ```
 
