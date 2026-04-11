@@ -88,9 +88,7 @@ def print_pubsub_stats():
         counts = r.pubsub_numsub(*channel_names)
         print(f"\n{'Channel':<40} {'Subscribers':<12}")
         print('-' * 55)
-        for i in range(0, len(counts), 2):
-            channel = counts[i]
-            count = counts[i + 1]
+        for channel, count in counts:
             if isinstance(channel, bytes):
                 channel = channel.decode()
             print(f"{channel:<40} {count:<12}")
@@ -137,7 +135,7 @@ def log_publish_rates():
 
 ## Step 6 - Alert on Orphaned Subscribers
 
-An orphaned subscriber is connected but the publisher has stopped. Messages stop flowing but the subscriber stays connected, consuming memory.
+An orphaned subscriber is connected but the publisher has stopped. Messages stop flowing but the subscriber stays connected, holding an idle connection.
 
 ```python
 def find_orphaned_channels(inactivity_threshold=300):
@@ -163,6 +161,7 @@ def verify_channel(channel, timeout=5):
     sub_r = redis.Redis(host='localhost', port=6379)
     pubsub = sub_r.pubsub()
     pubsub.subscribe(channel)
+    pubsub.get_message(timeout=1)  # consume subscribe confirmation
 
     # Publish test message
     r.publish(channel, 'HEALTH_CHECK')
@@ -197,9 +196,9 @@ def update_metrics():
     if channels:
         channel_names = [c.decode() if isinstance(c, bytes) else c for c in channels]
         counts = r.pubsub_numsub(*channel_names)
-        for i in range(0, len(counts), 2):
-            channel = counts[i].decode() if isinstance(counts[i], bytes) else counts[i]
-            count = counts[i + 1]
+        for channel, count in counts:
+            if isinstance(channel, bytes):
+                channel = channel.decode()
             pubsub_subscribers.labels(channel=channel).set(count)
 ```
 
