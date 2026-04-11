@@ -79,7 +79,7 @@ Passwords are stored as SHA256 hashes. You can verify a password by hashing it a
 
 ```redis
 ACL GETUSER app_user
--- passwords: ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+-- passwords: ["89e01536ac207279409d4de1e5253e01f4a1769e696db0d6062ca9b8f56767c8"]
 ```
 
 ```bash
@@ -110,10 +110,10 @@ The `commands` field shows the effective permission set as a compact expression:
 |---|---|
 | `-@all +GET +SET` | Deny everything, then allow GET and SET |
 | `+@read -KEYS` | Allow all read commands except KEYS |
-| `allcommands` | Allow all commands |
-| `nocommands` | Deny all commands |
+| `+@all` | Allow all commands |
+| `-@all` | Deny all commands |
 
-To understand what commands are actually allowed, use ACL WHOAMI from the user's connection, or use ACL LOG to see what was denied.
+To understand what commands are actually allowed, use ACL GETUSER with the username from the user's connection, or use ACL LOG to see what was denied.
 
 ## Checking the Default User
 
@@ -138,7 +138,7 @@ ACL GETUSER read_replica_monitor
 
 ```mermaid
 flowchart TD
-    A[Security audit] --> B[ACL LIST: get all usernames]
+    A[Security audit] --> B[ACL USERS: get all usernames]
     B --> C[For each user: ACL GETUSER username]
     C --> D{Permissions match policy?}
     D -- Yes --> E[Pass]
@@ -152,7 +152,7 @@ ACL GETUSER nonexistent
 -- Returns: (nil)
 ```
 
-A nil response means the user was never created. Use ACL LIST to see all existing users.
+A nil response means the user was never created. Use ACL USERS to see all existing usernames, or ACL LIST to see all users with their full rules.
 
 ## Selectors (Redis 7.0+)
 
