@@ -148,7 +148,7 @@ ORDER BY q;
 ## MICROSECOND and TIME-based Extraction
 
 ```sql
-SELECT TIME(starts_at)          AS time_part;   -- Returns TIME portion
+SELECT TIME(starts_at)          AS time_part FROM events;   -- Returns TIME portion
 SELECT MICROSECOND('10:30:00.123456');           -- Returns 123456
 SELECT EXTRACT(HOUR_MINUTE FROM starts_at) AS hhmm FROM events;
 ```
