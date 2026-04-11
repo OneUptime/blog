@@ -200,7 +200,7 @@ If `max_connections` keeps getting exhausted even after increasing it, the real 
 
 ```text
 Scenario:       100 app servers x 20 connections each = 2000 connections
-Solution:       ProxySQL or PgBouncer-equivalent on each app server
+Solution:       ProxySQL or application-side connection pooling
                 -> 100 app servers x 20 = 2000 client connections
                 -> ProxySQL maintains only 100-200 backend connections to MySQL
 ```
