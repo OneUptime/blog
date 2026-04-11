@@ -45,7 +45,7 @@ def enqueue(payload: dict, priority: int = PRIORITY_NORMAL) -> str:
     job = {**payload, "id": job_id, "enqueued_at": time.time(), "priority": priority}
     # Lower score = processed first (ZPOPMIN); encode as (MAX-priority)*1e12 + ts
     score = (20 - priority) * 1e12 + time.time()
-    r.zadd(QUEUE_KEY, {json.dumps(job): score})
+    r.zadd(QUEUE_KEY, {json.dumps(job, sort_keys=True): score})
     return job_id
 
 def dequeue() -> dict | None:
@@ -99,20 +99,24 @@ Move jobs to a processing set atomically to prevent loss on worker crash:
 PROCESSING_KEY = "pqueue:processing"
 
 def dequeue_reliable() -> dict | None:
-    now = time.time()
-    raw_items = r.zrange(QUEUE_KEY, 0, 0)
-    if not raw_items:
-        return None
-    raw = raw_items[0]
-
-    # Atomic move: remove from queue, add to processing with acquisition time as score
-    pipe = r.pipeline(transaction=True)
-    pipe.watch(QUEUE_KEY)
-    pipe.multi()
-    pipe.zrem(QUEUE_KEY, raw)
-    pipe.zadd(PROCESSING_KEY, {raw: now})
-    pipe.execute()
-    return json.loads(raw)
+    while True:
+        try:
+            pipe = r.pipeline()
+            pipe.watch(QUEUE_KEY)
+            # Read inside the WATCH so changes are detected
+            raw_items = pipe.zrange(QUEUE_KEY, 0, 0)
+            if not raw_items:
+                pipe.unwatch()
+                return None
+            raw = raw_items[0]
+            now = time.time()
+            pipe.multi()
+            pipe.zrem(QUEUE_KEY, raw)
+            pipe.zadd(PROCESSING_KEY, {raw: now})
+            pipe.execute()
+            return json.loads(raw)
+        except redis.WatchError:
+            continue
 
 def complete_job(job: dict):
     raw = json.dumps(job, sort_keys=True)
@@ -135,7 +139,7 @@ For scheduled jobs, set the score to the Unix timestamp of when the job should r
 def enqueue_delayed(payload: dict, run_at: float) -> str:
     job_id = str(uuid.uuid4())
     job = {**payload, "id": job_id, "run_at": run_at}
-    r.zadd("pqueue:delayed", {json.dumps(job): run_at})
+    r.zadd("pqueue:delayed", {json.dumps(job, sort_keys=True): run_at})
     return job_id
 
 def poll_delayed_jobs():
