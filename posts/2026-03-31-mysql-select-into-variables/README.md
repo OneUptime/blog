@@ -37,7 +37,7 @@ Inside stored procedures, `SELECT INTO` stores query results into local declared
 
 ```sql
 DELIMITER //
-CREATE PROCEDURE get_customer_stats(IN customer_id INT)
+CREATE PROCEDURE get_customer_stats(IN p_customer_id INT)
 BEGIN
   DECLARE order_count INT;
   DECLARE total_spent DECIMAL(10,2);
@@ -45,7 +45,7 @@ BEGIN
   SELECT COUNT(*), SUM(total)
   INTO order_count, total_spent
   FROM orders
-  WHERE customer_id = customer_id;
+  WHERE customer_id = p_customer_id;
 
   SELECT
     order_count AS orders,
