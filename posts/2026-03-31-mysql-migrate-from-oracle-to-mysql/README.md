@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Oracle, Migration, Database, Schema Conversion
 
-Description: Migrate your Oracle database to MySQL by converting schema, rewriting Oracle-specific SQL, and migrating data using open-source and AWS tools.
+Description: Migrate your Oracle database to MySQL by converting schema, rewriting Oracle-specific SQL, and migrating data using open-source tools.
 
 ---
 
@@ -14,7 +14,7 @@ Before migrating, understand what needs to be rewritten:
 
 | Oracle Feature | MySQL Equivalent |
 |---|---|
-| `SEQUENCE` | `AUTO_INCREMENT` or sequences (MySQL 8.0+) |
+| `SEQUENCE` | `AUTO_INCREMENT` |
 | `SYSDATE` | `NOW()` |
 | `NVL(x, y)` | `IFNULL(x, y)` |
 | `CONNECT BY` | Recursive CTEs |
@@ -94,6 +94,7 @@ Export Oracle table data to CSV:
 sqlplus user/pass@orcl << EOF
 SET COLSEP ','
 SET PAGESIZE 0
+SET TRIMSPOOL ON
 SET FEEDBACK OFF
 SPOOL /tmp/orders.csv
 SELECT id, customer_id, total, created_at FROM orders;
