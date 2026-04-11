@@ -18,9 +18,9 @@ CockroachDB uses a distributed consensus model based on the Raft protocol. Every
 
 ```bash
 # Start a local CockroachDB cluster (3 nodes)
-cockroach start --insecure --store=node1 --listen-addr=localhost:26257 &
-cockroach start --insecure --store=node2 --listen-addr=localhost:26258 --join=localhost:26257 &
-cockroach start --insecure --store=node3 --listen-addr=localhost:26259 --join=localhost:26257 &
+cockroach start --insecure --store=node1 --listen-addr=localhost:26257 --http-addr=localhost:8080 --join=localhost:26257,localhost:26258,localhost:26259 &
+cockroach start --insecure --store=node2 --listen-addr=localhost:26258 --http-addr=localhost:8081 --join=localhost:26257,localhost:26258,localhost:26259 &
+cockroach start --insecure --store=node3 --listen-addr=localhost:26259 --http-addr=localhost:8082 --join=localhost:26257,localhost:26258,localhost:26259 &
 cockroach init --insecure --host=localhost:26257
 ```
 
@@ -33,11 +33,11 @@ CockroachDB is PostgreSQL-wire-compatible, not MySQL-compatible. Applications wr
 INSERT INTO users (email, name) VALUES ('alice@example.com', 'Alice');
 SELECT * FROM users WHERE email = 'alice@example.com';
 
--- CockroachDB supports PostgreSQL-style syntax
+-- Standard LIMIT/OFFSET syntax (supported by both MySQL and CockroachDB)
 SELECT * FROM users LIMIT 10 OFFSET 20;
 
--- MySQL-specific syntax (not supported in CockroachDB)
-SELECT * FROM users LIMIT 20, 10; -- MySQL offset syntax
+-- MySQL-specific comma syntax (not supported in CockroachDB)
+SELECT * FROM users LIMIT 20, 10; -- MySQL offset,count syntax
 ```
 
 ## Transactions and Consistency
