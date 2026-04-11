@@ -32,7 +32,7 @@ using StackExchange.Redis;
 var mux = await ConnectionMultiplexer.ConnectAsync("localhost:6379,password=yourpassword");
 var db = mux.GetDatabase();
 
-Console.WriteLine(await db.PingAsync()); // True
+Console.WriteLine(await db.PingAsync()); // e.g. 00:00:00.0023456
 ```
 
 ## Connection Architecture
@@ -240,7 +240,7 @@ var config = new ConfigurationOptions
 config.EndPoints.Add("sentinel-1:26379");
 config.EndPoints.Add("sentinel-2:26379");
 
-var mux = await ConnectionMultiplexer.SentinelConnectAsync(config);
+var mux = await ConnectionMultiplexer.ConnectAsync(config);
 var db = mux.GetDatabase();
 ```
 
