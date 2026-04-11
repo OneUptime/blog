@@ -70,15 +70,21 @@ SELECT * FROM active_users WHERE email = 'john@example.com';
 A common problem: you want unique emails, but soft-deleted users should not block re-registration. MySQL does not support conditional unique indexes natively, but you can work around this:
 
 ```sql
--- Option 1: Use a composite unique index
--- Include deleted_at in the uniqueness check
--- This allows multiple deleted rows with the same email
--- because NULL != NULL in unique indexes
-CREATE UNIQUE INDEX uq_email_active ON users (email, deleted_at);
--- Caveat: Only allows one active user per email (deleted_at IS NULL)
--- but multiple soft-deleted users can share an email
+-- Option 1: Use a generated column for conditional uniqueness
+ALTER TABLE users
+    ADD COLUMN active_email VARCHAR(255) GENERATED ALWAYS AS
+        (IF(deleted_at IS NULL, email, NULL)) STORED,
+    ADD UNIQUE INDEX uq_active_email (active_email);
+-- active_email holds the email for active records and NULL for deleted ones.
+-- MySQL allows multiple NULLs in unique indexes, so deleted records
+-- never conflict, while active records are enforced as unique.
 
--- Option 2: Overwrite deleted_at with a unique token on delete
+-- Note: A composite unique index on (email, deleted_at) does NOT work
+-- for this purpose because NULL != NULL in MySQL unique indexes,
+-- meaning multiple active rows (deleted_at IS NULL) with the same
+-- email would all be allowed.
+
+-- Option 2: Mutate the email on soft delete to avoid conflicts
 UPDATE users
 SET deleted_at = CURRENT_TIMESTAMP,
     email = CONCAT(email, '_deleted_', UNIX_TIMESTAMP())
