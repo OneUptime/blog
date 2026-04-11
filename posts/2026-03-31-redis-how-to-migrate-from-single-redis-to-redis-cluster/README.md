@@ -116,11 +116,11 @@ If you need to rename keys to add hash tags:
 
 ```python
 import redis
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 src = redis.Redis(host='localhost', port=6379)
 dst = RedisCluster(startup_nodes=[
-    {"host": "127.0.0.1", "port": 7000}
+    ClusterNode("127.0.0.1", 7000)
 ])
 
 def rename_key_with_hash_tag(old_key: str) -> str:
@@ -214,8 +214,8 @@ redis-cli -c -p 7000 KEYS "user:*"  # only returns keys on node 7000
 
 # Fix: use SCAN with cluster-aware client
 python3 -c "
-from redis.cluster import RedisCluster
-c = RedisCluster(startup_nodes=[{'host':'127.0.0.1','port':7000}])
+from redis.cluster import RedisCluster, ClusterNode
+c = RedisCluster(startup_nodes=[ClusterNode('127.0.0.1', 7000)])
 keys = list(c.scan_iter('user:*'))
 print(f'Total keys: {len(keys)}')
 "
