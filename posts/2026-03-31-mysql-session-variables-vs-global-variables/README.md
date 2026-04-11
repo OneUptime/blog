@@ -105,17 +105,16 @@ SET PERSIST long_query_time = 1;
 Some variables can only be set globally because they affect server-wide infrastructure:
 
 ```sql
--- innodb_buffer_pool_size, max_connections, bind_address
+-- innodb_buffer_pool_size, max_connections, table_open_cache
 -- These cannot be set at session scope
 SET SESSION max_connections = 100; -- ERROR
 ```
 
-## Variables That Are Session-Only
+## Variables Commonly Set at Session Scope
 
-Some variables only make sense at session scope:
+Some variables have both global and session scope but are most often adjusted per-session:
 
 ```sql
--- time_zone, autocommit, foreign_key_checks
 SET SESSION time_zone = 'America/New_York';
 SET SESSION autocommit = 0;
 SET SESSION foreign_key_checks = 0;
