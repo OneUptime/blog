@@ -134,8 +134,8 @@ Generated columns support a wide range of deterministic expressions:
 -- String operations
 full_name VARCHAR(255) GENERATED ALWAYS AS (CONCAT(first_name, ' ', last_name)) VIRTUAL,
 
--- Date arithmetic
-days_old INT GENERATED ALWAYS AS (DATEDIFF(CURDATE(), birth_date)) VIRTUAL,
+-- Conditional logic
+is_discounted TINYINT GENERATED ALWAYS AS (IF(price < original_price, 1, 0)) VIRTUAL,
 
 -- Mathematical operations
 bmi DECIMAL(5,2) GENERATED ALWAYS AS (weight / (height * height)) STORED,
@@ -146,7 +146,7 @@ city VARCHAR(100) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(address_json, '
 
 ## Limitations
 
-- Generated columns cannot reference other generated columns
+- Generated columns can only reference other generated columns defined earlier in the table (no forward references)
 - VIRTUAL columns cannot be part of a foreign key
 - Expressions must be deterministic (no `NOW()`, `RAND()`, subqueries)
 - STORED generated columns support all index types; VIRTUAL columns support secondary indexes only
