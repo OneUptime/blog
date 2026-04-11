@@ -85,8 +85,8 @@ redis-cli CONFIG SET notify-keyspace-events ""
 ## Analyzing Key Distribution
 
 ```bash
-# Scan keyspace without blocking (use --i for sleep between iterations)
-redis-cli --scan --count 100 --i 0.01 | head -1000 > /tmp/keys.txt
+# Scan keyspace without blocking (use -i for sleep between iterations)
+redis-cli --scan --count 100 -i 0.01 | head -1000 > /tmp/keys.txt
 
 # Analyze patterns
 awk -F: '{print $1}' /tmp/keys.txt | sort | uniq -c | sort -rn | head -20
@@ -118,7 +118,7 @@ KEYS *          # Blocks server, scans all keys - use SCAN instead
 FLUSHALL        # Deletes everything
 DEBUG SLEEP     # Intentionally delays responses
 DEBUG RELOAD    # Reloads RDB, blocks server
-OBJECT FREQ     # Only safe in testing
+OBJECT FREQ     # Only works with LFU eviction policy
 ```
 
 Safe alternative to KEYS:
