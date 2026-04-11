@@ -10,7 +10,7 @@ Description: Learn how to use FT.DICTADD in Redis to add terms to a custom RediS
 
 ## How FT.DICTADD Works
 
-`FT.DICTADD` adds one or more terms to a named custom dictionary in RediSearch. Custom dictionaries are referenced by `FT.SPELLCHECK` with the `TERMS INCLUDE` or `TERMS EXCLUDE` options to control which terms are treated as valid spellings. This lets you teach RediSearch about domain-specific vocabulary, brand names, technical jargon, and acronyms that are not in the standard index vocabulary.
+`FT.DICTADD` adds one or more terms to a named custom dictionary in RediSearch. Custom dictionaries are referenced by `FT.SPELLCHECK` with the `TERMS INCLUDE` or `TERMS EXCLUDE` options to control which additional terms appear in or are excluded from spelling suggestions. This lets you teach RediSearch about domain-specific vocabulary, brand names, technical jargon, and acronyms that are not in the standard index vocabulary.
 
 ```mermaid
 graph TD
@@ -20,7 +20,7 @@ graph TD
     B --> D["redisearch"]
     B --> E["bloomfilter"]
     E --> F["FT.SPELLCHECK idx query TERMS EXCLUDE brandnames"]
-    F --> G["brandnames terms never flagged as misspelled"]
+    F --> G["brandnames terms excluded from suggestions"]
 ```
 
 ## Syntax
@@ -76,7 +76,7 @@ FT.DICTADD techterms elasticsearch
 FT.DICTADD brandnames redis redisearch redisbloom redistimeseries
 ```
 
-Use this dictionary with `TERMS EXCLUDE` so these brand names are never flagged as misspelled:
+Use this dictionary with `TERMS EXCLUDE` to prevent these brand names from being offered as spelling suggestions for other misspelled words:
 
 ```redis
 FT.SPELLCHECK products "redisbloom performnce" TERMS EXCLUDE brandnames
@@ -92,7 +92,7 @@ FT.SPELLCHECK products "redisbloom performnce" TERMS EXCLUDE brandnames
          2) "performance"
 ```
 
-`redisbloom` is excluded so no suggestions are generated for it. `performnce` is still checked.
+`redisbloom` is not in the index so it is flagged with no suggestions. `performnce` gets `performance` as a suggestion. `TERMS EXCLUDE` prevents brandnames dictionary terms from being suggested as corrections for other words.
 
 ### Add Domain Vocabulary as Inclusion Suggestions
 
@@ -112,16 +112,23 @@ The custom dictionary terms become candidates for suggestions.
 
 ### Exclude List: Known Valid Terms
 
-Terms that are intentionally unusual and should never trigger a spellcheck warning:
+Terms that should not appear as spelling suggestions:
+
+Acronyms:
 
 ```redis
--- Acronyms
 FT.DICTADD acronyms API REST HTTP CRUD SQL NoSQL
+```
 
--- Product names
+Product names:
+
+```redis
 FT.DICTADD products iPhone iPad MacBook Kubernetes
+```
 
--- Company names
+Company names:
+
+```redis
 FT.DICTADD companies GitHub Atlassian Datadog Cloudflare
 ```
 
@@ -129,8 +136,9 @@ FT.DICTADD companies GitHub Atlassian Datadog Cloudflare
 
 Terms not in your index that should appear as suggestions when a user types something close:
 
+Competitor product names users might search for:
+
 ```redis
--- Competitor product names users might search for
 FT.DICTADD alternatives memcached dynamodb cassandra mongodb
 ```
 
@@ -156,17 +164,21 @@ FT.DICTDUMP techterms
 
 You can maintain separate dictionaries for different purposes:
 
+Separate dictionaries by category:
+
 ```redis
--- Separate dictionaries by category
 FT.DICTADD brands_tech apple google microsoft amazon
 FT.DICTADD brands_fashion gucci prada versace armani
 FT.DICTADD jargon_legal plaintiff defendant litigant
+```
 
--- Use the relevant dictionary per index or query
+Use the relevant dictionary per index or query:
+
+```redis
 FT.SPELLCHECK tech_products "gooogle" TERMS EXCLUDE brands_tech
 FT.SPELLCHECK fashion_catalog "pradi" TERMS INCLUDE brands_fashion
 ```
 
 ## Summary
 
-`FT.DICTADD` adds terms to a named custom dictionary in RediSearch. Custom dictionaries control spellcheck behavior: use them with `TERMS EXCLUDE` to prevent brand names or technical jargon from being flagged as misspelled, or with `TERMS INCLUDE` to add domain-specific suggestions. Returns the count of newly added terms so you can detect duplicates.
+`FT.DICTADD` adds terms to a named custom dictionary in RediSearch. Custom dictionaries control spellcheck behavior: use them with `TERMS EXCLUDE` to prevent specific terms from being offered as spelling suggestions, or with `TERMS INCLUDE` to add domain-specific terms as additional suggestion candidates. Returns the count of newly added terms so you can detect duplicates.
