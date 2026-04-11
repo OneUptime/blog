@@ -17,10 +17,9 @@ Description: Learn how to use TS.ALTER in Redis to modify an existing time serie
 ```text
 TS.ALTER key
   [RETENTION retentionPeriod]
-  [CHUNK_SIZE chunkSize]
-  [DUPLICATE_POLICY policy]
-  [IGNORE ignoreMaxTimeDiff ignoreMaxValDiff]
-  [LABELS {label value}... | LABELS]
+  [CHUNK_SIZE size]
+  [DUPLICATE_POLICY <BLOCK | FIRST | LAST | MIN | MAX | SUM>]
+  [LABELS [label value ...]]
 ```
 
 At least one option must be specified. Returns `OK` on success.
@@ -92,9 +91,14 @@ TS.INFO metrics:cpu
 10) (integer) 604800000         <- Updated retention
 11) chunkCount
 12) (integer) 2
-...
-25) labels
-26) 1) 1) "host"
+13) chunkSize
+14) (integer) 4096
+15) chunkType
+16) compressed
+17) duplicatePolicy
+18) (nil)
+19) labels
+20) 1) 1) "host"
        2) "server1"
     2) 1) "env"
        2) "production"          <- Updated label
