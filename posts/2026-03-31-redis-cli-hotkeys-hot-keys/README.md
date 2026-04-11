@@ -27,7 +27,7 @@ maxmemory-policy allkeys-lfu
 Without LFU, you get an error:
 
 ```text
-ERR: ERR object freq is not allowed when maxmemory-policy is not set to an LFU policy.
+Error: ERR object freq is not allowed when maxmemory-policy is not set to an LFU policy.
 ```
 
 ## Running --hotkeys
@@ -42,17 +42,17 @@ Output:
 # Scanning the entire keyspace to find hot keys as well as
 # average number of accesses per key type.
 
-[00.00%] Hot key '"session:abc123"' found so far with counter 1024
-[33.20%] Hot key '"config:global"' found so far with counter 892
-[66.40%] Hot key '"rate:limit:user:99"' found so far with counter 450
+[00.00%] Hot key '"session:abc123"' found so far with counter 255
+[33.20%] Hot key '"config:global"' found so far with counter 198
+[66.40%] Hot key '"rate:limit:user:99"' found so far with counter 142
 
 -------- summary -------
 
 Sampled 500000 keys in the keyspace!
 
-Hot key '"session:abc123"' has counter 1024
-Hot key '"config:global"' has counter 892
-Hot key '"rate:limit:user:99"' has counter 450
+Hot key '"session:abc123"' has counter 255
+Hot key '"config:global"' has counter 198
+Hot key '"rate:limit:user:99"' has counter 142
 ```
 
 ## Adding Rate Limiting During Scan
@@ -118,7 +118,7 @@ def get_total_counter(r, base_key, num_shards=10):
 
 ```bash
 redis-cli OBJECT FREQ session:abc123
-# (integer) 1024
+# (integer) 255
 ```
 
 ## Summary
