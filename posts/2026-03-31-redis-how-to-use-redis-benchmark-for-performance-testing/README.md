@@ -42,7 +42,6 @@ This runs 100,000 requests for the most common commands using 50 parallel client
 | `-n <requests>` | Total number of requests |
 | `-d <bytes>` | Data size of SET/GET values |
 | `-t <tests>` | Comma-separated list of tests to run |
-| `--pipe` | Use pipelining |
 | `-P <count>` | Number of requests per pipeline |
 | `-q` | Quiet mode (summary only) |
 | `--csv` | Output in CSV format |
@@ -130,10 +129,13 @@ Parse with Python:
 ```python
 import csv
 
+fieldnames = ['test', 'rps', 'avg_latency_ms', 'min_latency_ms',
+              'p50_latency_ms', 'p95_latency_ms', 'p99_latency_ms', 'max_latency_ms']
+
 with open('/tmp/redis_bench.csv', 'r') as f:
-    reader = csv.DictReader(f)
+    reader = csv.DictReader(f, fieldnames=fieldnames)
     for row in reader:
-        print(f"{row['test']}: {row['rps']} req/s, p99={row['p99']}ms")
+        print(f"{row['test']}: {row['rps']} req/s, p99={row['p99_latency_ms']}ms")
 ```
 
 ## Interpreting Results
