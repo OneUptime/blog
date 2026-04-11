@@ -10,23 +10,23 @@ Description: Learn how to use VREM in Redis to remove specific vector elements f
 
 ## What Is VREM?
 
-`VREM` removes one or more elements (and their associated vector embeddings) from a Redis Vector Set. This is essential for keeping your vector index synchronized with your data - for example, when a product is discontinued, a user account is deleted, or a document is unpublished.
+`VREM` removes a single element (and its associated vector embedding) from a Redis Vector Set. This is essential for keeping your vector index synchronized with your data - for example, when a product is discontinued, a user account is deleted, or a document is unpublished.
 
 ## Syntax
 
 ```text
-VREM key element [element ...]
+VREM key element
 ```
 
-Returns the number of elements successfully removed.
+Returns `1` if the element was removed, or `0` if the element does not exist.
 
 ## Basic Usage
 
 ```bash
 # First, add some vectors
-VADD products prod:1001 VALUES 4 0.1 0.2 0.3 0.4
-VADD products prod:1002 VALUES 4 0.5 0.6 0.7 0.8
-VADD products prod:1003 VALUES 4 0.2 0.3 0.4 0.5
+VADD products VALUES 4 0.1 0.2 0.3 0.4 prod:1001
+VADD products VALUES 4 0.5 0.6 0.7 0.8 prod:1002
+VADD products VALUES 4 0.2 0.3 0.4 0.5 prod:1003
 
 # Verify count
 VCARD products
@@ -43,10 +43,14 @@ VCARD products
 
 ## Removing Multiple Elements
 
+Since `VREM` accepts only one element at a time, remove multiple members with separate calls:
+
 ```bash
-# Remove multiple elements in one call
-VREM products prod:1001 prod:1003
-# Returns: (integer) 2  (both removed)
+VREM products prod:1001
+# Returns: (integer) 1
+
+VREM products prod:1003
+# Returns: (integer) 1
 
 # Check count
 VCARD products
@@ -55,14 +59,18 @@ VCARD products
 
 ## Handling Non-Existent Elements
 
-If an element does not exist, VREM ignores it and only counts the ones that were actually removed:
+If an element does not exist, VREM returns `0` without error:
 
 ```bash
-VADD products prod:1001 VALUES 4 0.1 0.2 0.3 0.4
+VADD products VALUES 4 0.1 0.2 0.3 0.4 prod:1001
 
-# Remove mix of existing and non-existing
-VREM products prod:1001 prod:9999
-# Returns: (integer) 1  (only prod:1001 was removed)
+# Remove existing element
+VREM products prod:1001
+# Returns: (integer) 1
+
+# Attempt to remove non-existing element
+VREM products prod:9999
+# Returns: (integer) 0
 ```
 
 ## Python Example: Keeping Index in Sync
@@ -76,8 +84,11 @@ def remove_from_index(key: str, element_ids: list) -> int:
     """Remove elements from the vector index. Returns count removed."""
     if not element_ids:
         return 0
-    result = r.execute_command("VREM", key, *element_ids)
-    return int(result)
+    pipe = r.pipeline()
+    for eid in element_ids:
+        pipe.execute_command("VREM", key, eid)
+    results = pipe.execute()
+    return sum(int(res) for res in results)
 
 def sync_deletions(vector_key: str, deleted_ids: list):
     """Sync deletions from primary database to vector index."""
@@ -85,9 +96,9 @@ def sync_deletions(vector_key: str, deleted_ids: list):
     print(f"Removed {removed}/{len(deleted_ids)} vectors from index '{vector_key}'")
 
 # Simulate product deletions
-r.execute_command("VADD", "products:vectors", "prod:1001", "VALUES", "4", "0.1", "0.2", "0.3", "0.4")
-r.execute_command("VADD", "products:vectors", "prod:1002", "VALUES", "4", "0.5", "0.6", "0.7", "0.8")
-r.execute_command("VADD", "products:vectors", "prod:1003", "VALUES", "4", "0.9", "0.8", "0.7", "0.6")
+r.execute_command("VADD", "products:vectors", "VALUES", "4", "0.1", "0.2", "0.3", "0.4", "prod:1001")
+r.execute_command("VADD", "products:vectors", "VALUES", "4", "0.5", "0.6", "0.7", "0.8", "prod:1002")
+r.execute_command("VADD", "products:vectors", "VALUES", "4", "0.9", "0.8", "0.7", "0.6", "prod:1003")
 
 print(f"Before: {r.execute_command('VCARD', 'products:vectors')} vectors")
 
@@ -113,7 +124,7 @@ def soft_delete_vector(key: str, element_id: str, graveyard_key: str):
 
     # Remove from active vector index
     removed = r.execute_command("VREM", key, element_id)
-    return removed > 0
+    return int(removed) > 0
 
 def restore_from_soft_delete(key: str, element_id: str, embedding: list, graveyard_key: str):
     """Restore a soft-deleted element back to the vector index."""
@@ -121,7 +132,7 @@ def restore_from_soft_delete(key: str, element_id: str, embedding: list, graveya
         return False
 
     dim = len(embedding)
-    cmd = ["VADD", key, element_id, "VALUES", str(dim)] + [str(v) for v in embedding]
+    cmd = ["VADD", key, "VALUES", str(dim)] + [str(v) for v in embedding] + [element_id]
     r.execute_command(*cmd)
     r.srem(graveyard_key, element_id)
     return True
@@ -129,16 +140,19 @@ def restore_from_soft_delete(key: str, element_id: str, embedding: list, graveya
 
 ## Batch Deletion with Pipeline
 
-For large-scale removals, use Redis pipelines:
+For large-scale removals, use Redis pipelines with individual VREM calls:
 
 ```python
 def batch_remove_vectors(key: str, element_ids: list, batch_size: int = 500) -> int:
-    """Remove many elements efficiently using VREM with batching."""
+    """Remove many elements efficiently using pipelined VREM calls."""
     total_removed = 0
     for i in range(0, len(element_ids), batch_size):
         batch = element_ids[i:i + batch_size]
-        removed = r.execute_command("VREM", key, *batch)
-        total_removed += int(removed)
+        pipe = r.pipeline()
+        for eid in batch:
+            pipe.execute_command("VREM", key, eid)
+        results = pipe.execute()
+        total_removed += sum(int(res) for res in results)
     return total_removed
 
 # Remove 1000 stale vectors
@@ -169,4 +183,4 @@ def safe_remove(key: str, element_id: str) -> bool:
 
 ## Summary
 
-`VREM` removes named vector elements from a Redis Vector Set, returning the count of successfully removed items. It handles non-existent elements gracefully, ignoring them without error. Use it to keep your vector index synchronized with your primary data store - removing discontinued products, deleted documents, or deactivated user profiles. For large-scale removals, batch multiple element names into a single VREM call or use iteration with batching for thousands of deletions.
+`VREM` removes a single named element from a Redis Vector Set, returning `1` if the element was removed or `0` if it did not exist. It handles non-existent elements gracefully, without error. Use it to keep your vector index synchronized with your primary data store - removing discontinued products, deleted documents, or deactivated user profiles. For large-scale removals, use Redis pipelines with individual VREM calls per element, batched for efficiency.
