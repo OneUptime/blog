@@ -105,13 +105,15 @@ def ecommerce_search(
 ## Autocomplete with Suggestion Index
 
 ```python
+from redis.commands.search.suggestion import Suggestion
+
 def add_autocomplete_suggestion(term: str, score: float = 1.0):
-    r.ft("idx:ecommerce").sugadd("ac:products", term, score)
+    r.ft("idx:ecommerce").sugadd("ac:products", Suggestion(term, score))
 
 def autocomplete(prefix: str, limit: int = 5) -> list:
     return r.ft("idx:ecommerce").sugget(
         "ac:products", prefix,
-        num=limit, fuzzy=True, withscores=True
+        num=limit, fuzzy=True, with_scores=True
     )
 ```
 
