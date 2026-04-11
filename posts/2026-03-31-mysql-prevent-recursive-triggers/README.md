@@ -2,45 +2,52 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Trigger, Recursive, innodb_recursive_triggers, Configuration
+Tags: MySQL, Trigger, Recursive, Error 1442, Configuration
 
-Description: Learn why MySQL triggers can become recursive, how the innodb_recursive_triggers variable controls this, and how to write triggers that avoid infinite loops.
+Description: Learn why MySQL triggers can cause recursive modification errors, how the storage engine prevents it, and how to structure triggers that avoid ERROR 1442.
 
 ---
 
-A recursive trigger occurs when a trigger fires, and the SQL inside the trigger body modifies the same table that the trigger is attached to, causing the trigger to fire again. Without a guard, this creates an infinite loop that eventually results in a "max recursion depth exceeded" error or, if recursion is disabled, silently does nothing.
+A recursive trigger situation occurs when a trigger fires, and the SQL inside the trigger body modifies the same table that the trigger is attached to (or a table whose trigger modifies the original table), causing a circular dependency. In MySQL, this does not result in an infinite loop — the storage engine detects the conflict and raises `ERROR 1442 (HY000): Can't update table in stored function/trigger body because it is already used by statement which invoked this stored function/trigger`.
 
 ## How MySQL Handles Trigger Recursion
 
-MySQL controls recursion with the `innodb_recursive_triggers` variable (effectively controlled by the session variable `@@innodb_lock_wait_timeout` indirectly, but the actual recursion guard is the internal MySQL setting). The relevant behavior is:
+MySQL prevents a trigger from modifying any table that is already being read or written by the statement that invoked the trigger. This restriction is documented in the [stored program restrictions](https://dev.mysql.com/doc/refman/8.0/en/stored-program-restrictions.html) and applies to all storage engines:
 
 ```sql
--- Check the current setting
-SHOW VARIABLES LIKE 'innodb_recursive_triggers';
+-- There is no system variable to enable or disable trigger recursion.
+-- MySQL unconditionally blocks it with ERROR 1442.
 ```
 
-By default MySQL **does not allow** a trigger to fire another trigger of the same type on the same table. If a `BEFORE UPDATE` trigger updates the same table, the nested `BEFORE UPDATE` trigger does not fire.
+This means:
 
-However, indirect recursion can still occur: a trigger on table A modifies table B, and a trigger on table B modifies table A.
+- A trigger on table A **cannot** issue an `UPDATE`, `INSERT`, or `DELETE` against table A.
+- A trigger on table A that modifies table B, where table B has a trigger that modifies table A, will also fail with ERROR 1442 because table A is still in use by the original statement.
 
 ## Direct Recursion Example
 
 ```sql
 DELIMITER //
 
--- This trigger updates the same table - the nested trigger will NOT fire by default
+-- This trigger tries to update the same table - MySQL will block it
 CREATE TRIGGER trg_employees_after_update
 AFTER UPDATE ON employees
 FOR EACH ROW
 BEGIN
-    -- This UPDATE on employees does NOT re-fire trg_employees_after_update
+    -- This UPDATE on employees raises ERROR 1442
     UPDATE employees SET last_modified = NOW() WHERE emp_id = NEW.emp_id;
 END //
 
 DELIMITER ;
 ```
 
-While the inner `UPDATE` does run, it does not recursively re-trigger because MySQL's default behavior suppresses it. The `last_modified` column will be updated, but the trigger will not fire a second time.
+When you run an `UPDATE` on the `employees` table, MySQL raises:
+
+```text
+ERROR 1442 (HY000): Can't update table 'employees' in stored function/trigger body because it is already used by statement which invoked this stored function/trigger.
+```
+
+The correct approach is to use a `BEFORE UPDATE` trigger and set the column directly on the `NEW` row, which does not require a separate `UPDATE` statement.
 
 ## Indirect Recursion - The Real Risk
 
@@ -53,7 +60,7 @@ BEGIN
     UPDATE table_b SET synced_val = NEW.value WHERE id = NEW.id;
 END;
 
--- Trigger on table_b updates table_a - INFINITE LOOP
+-- Trigger on table_b updates table_a - ERROR 1442
 CREATE TRIGGER trg_b_after_update
 AFTER UPDATE ON table_b
 FOR EACH ROW
@@ -62,54 +69,54 @@ BEGIN
 END;
 ```
 
-MySQL reports:
+When an `UPDATE` hits `table_a`, the trigger on `table_a` successfully updates `table_b`. But when `table_b`'s trigger tries to update `table_a`, MySQL blocks it because `table_a` is still in use by the original statement:
 
 ```text
-ERROR 1436 (HY000): Thread stack overrun
+ERROR 1442 (HY000): Can't update table 'table_a' in stored function/trigger body because it is already used by statement which invoked this stored function/trigger.
 ```
 
-## Prevention Strategy 1 - Guard with a Conditional Check
+## Prevention Strategy 1 - Use a BEFORE Trigger with SET NEW
 
-Only update the other table if the value actually changed:
+When you need to update a column on the same table, avoid a separate `UPDATE` statement. Use a `BEFORE` trigger and assign directly to the `NEW` row:
 
 ```sql
 DELIMITER //
 
-CREATE TRIGGER trg_b_after_update
-AFTER UPDATE ON table_b
+CREATE TRIGGER trg_employees_before_update
+BEFORE UPDATE ON employees
 FOR EACH ROW
 BEGIN
-    IF OLD.synced_val <> NEW.synced_val THEN
-        UPDATE table_a SET mirrored_val = NEW.synced_val WHERE id = NEW.id;
-    END IF;
+    SET NEW.last_modified = NOW();
 END //
 
 DELIMITER ;
 ```
 
-When `table_a` is updated, it sets `table_b.synced_val = NEW.value`. When `table_b` fires its trigger, `OLD.synced_val` equals `NEW.synced_val` (no real change) so the `UPDATE table_a` is skipped.
+The `SET NEW.column` syntax modifies the row being written without issuing a new `UPDATE`, so ERROR 1442 is never raised. This is the standard workaround for direct recursion scenarios.
 
-## Prevention Strategy 2 - Use a Session Variable as a Flag
+## Prevention Strategy 2 - Break the Cycle with Application Logic
+
+For indirect recursion (table A ↔ table B), you cannot solve ERROR 1442 inside triggers alone because the restriction is enforced before any trigger body logic runs. Instead, keep the trigger in one direction and handle the reverse synchronization in your application code:
 
 ```sql
 DELIMITER //
 
+-- Only keep the trigger in one direction
 CREATE TRIGGER trg_a_after_update
 AFTER UPDATE ON table_a
 FOR EACH ROW
 BEGIN
-    IF @trigger_running IS NULL THEN
-        SET @trigger_running = 1;
-        UPDATE table_b SET synced_val = NEW.value WHERE id = NEW.id;
-        SET @trigger_running = NULL;
-    END IF;
+    UPDATE table_b SET synced_val = NEW.value WHERE id = NEW.id;
 END //
 
 DELIMITER ;
+
+-- Remove the trigger on table_b that writes back to table_a.
+-- Handle the reverse sync in your application code or a stored procedure instead.
 ```
 
-The session variable `@trigger_running` acts as a reentrance guard. Set it to `NULL` when done so subsequent legitimate calls work correctly.
+Alternatively, use a stored procedure that performs both updates in the correct order without relying on trigger chains.
 
 ## Summary
 
-MySQL suppresses direct trigger recursion by default, but indirect recursion across two tables can still cause stack overflow errors. Prevent this by adding value-change guards (`IF OLD.col <> NEW.col`) or session variable flags to break the cycle and ensure triggers only fire when a genuine data change occurs.
+MySQL unconditionally prevents trigger recursion — both direct and indirect — by raising ERROR 1442 whenever a trigger attempts to modify a table already in use by the invoking statement. For direct cases, use `BEFORE` triggers with `SET NEW.col = value` to modify the current row without a separate `UPDATE`. For indirect cases, break the circular dependency by removing one trigger from the chain and handling that synchronization in application code or a stored procedure.
