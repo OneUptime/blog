@@ -22,7 +22,7 @@ npm install express express-session connect-redis redis
 const express = require("express");
 const session = require("express-session");
 const { createClient } = require("redis");
-const RedisStore = require("connect-redis").default;
+const { RedisStore } = require("connect-redis");
 
 const app = express();
 
@@ -83,7 +83,7 @@ app.post("/logout", (req, res) => {
 new RedisStore({
   client: redisClient,
   prefix: "myapp:sess:",   // key prefix in Redis
-  ttl: 1800,               // seconds; overrides cookie.maxAge
+  ttl: 1800,               // seconds; used when cookie has no expiry
   disableTouch: false,     // reset TTL on every request
 });
 ```
