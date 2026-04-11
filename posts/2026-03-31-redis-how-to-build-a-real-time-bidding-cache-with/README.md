@@ -96,7 +96,7 @@ Prevent showing the same ad too many times to the same user:
 async function checkAndIncrementFrequency(userId, campaignId, maxImpressions, windowSeconds) {
   const key = `freq:${campaignId}:${userId}`;
 
-  // Use pipeline for atomic check-and-increment
+  // Use pipeline to batch check-and-increment
   const result = await redis.pipeline()
     .incr(key)
     .expire(key, windowSeconds)
@@ -154,7 +154,6 @@ async function updateWinRate(campaignId, publisherId, won) {
 ```javascript
 async function decideBid(bidRequest) {
   const { userId, publisherId, placementId, campaignIds } = bidRequest;
-  const results = [];
 
   // Fetch user profile once
   const userProfile = await getUserProfile(userId);
