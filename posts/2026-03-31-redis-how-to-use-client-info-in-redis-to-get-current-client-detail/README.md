@@ -16,7 +16,7 @@ Description: Learn how to use CLIENT INFO in Redis to retrieve detailed informat
 CLIENT INFO
 ```
 
-Available since Redis 7.2.
+Available since Redis 6.2.0.
 
 ## Basic Usage
 
@@ -53,7 +53,7 @@ id=5 addr=127.0.0.1:54321 laddr=127.0.0.1:6379 fd=8 name=my-app age=42 idle=0 fl
 
 | Flag | Meaning |
 |------|---------|
-| `N` | CLIENT NO-EVICT is set |
+| `N` | No specific flag set |
 | `T` | CLIENT NO-TOUCH is set |
 | `S` | Replica/slave connection |
 | `M` | Master connection |
@@ -113,16 +113,22 @@ print(f"RESP version: {info.get('resp')}")
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
+async function main() {
+  const client = createClient();
+  await client.connect();
 
-// Name this client
-await client.clientSetName('my-node-app');
+  // Name this client
+  await client.clientSetName('my-node-app');
 
-// Get client info
-const info = await client.clientInfo();
-console.log('Client info:');
-console.log(info);
+  // Get client info
+  const info = await client.clientInfo();
+  console.log('Client info:');
+  console.log(info);
+
+  await client.disconnect();
+}
+
+main();
 ```
 
 ## Monitoring Memory Usage
@@ -155,19 +161,19 @@ print(f"Query buffer: {mem['query_buffer']} bytes")
 
 ```python
 import redis
-import threading
 
-sub_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-# Subscribe to some channels
-pubsub = sub_client.pubsub()
-pubsub.subscribe('ch1', 'ch2', 'ch3')
-
-# Check subscription info on the pubsub connection
-raw = sub_client.execute_command('CLIENT', 'INFO')
+# CLIENT INFO includes subscription counters for the current connection
+raw = client.execute_command('CLIENT', 'INFO')
 fields = dict(f.split('=', 1) for f in raw.strip().split() if '=' in f)
 print(f"Channel subscriptions: {fields.get('sub', 0)}")
 print(f"Pattern subscriptions: {fields.get('psub', 0)}")
+print(f"Shard subscriptions: {fields.get('ssub', 0)}")
+
+# Note: once a connection enters Pub/Sub mode, only subscription
+# commands are allowed. Use CLIENT LIST from another connection
+# to inspect a subscribing client's state.
 ```
 
 ## CLIENT INFO vs CLIENT LIST
