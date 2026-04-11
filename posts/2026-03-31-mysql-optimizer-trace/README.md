@@ -40,19 +40,39 @@ The trace is a large JSON document. The most important sections are:
 {
   "steps": [
     {
-      "join_preparation": { ... },
+      "join_preparation": { "select#": 1, "steps": [ "..." ] }
+    },
+    {
       "join_optimization": {
-        "table_scan": { "rows": 500000, "cost": 100234 },
-        "potential_range_indexes": [
-          { "index": "idx_status", "usable": true, "key_parts": ["status"] }
-        ],
-        "best_access_path": {
-          "considered_access_paths": [
-            { "access_type": "ref", "index": "idx_status", "rows": 25000, "cost": 5123 },
-            { "access_type": "scan", "cost": 100234 }
-          ],
-          "chosen_access_method": { "type": "ref", "index": "idx_status" }
-        }
+        "select#": 1,
+        "steps": [
+          {
+            "rows_estimation": [
+              {
+                "table": "`orders` `o`",
+                "range_analysis": {
+                  "table_scan": { "rows": 500000, "cost": 100234 },
+                  "potential_range_indexes": [
+                    { "index": "idx_status", "usable": true, "key_parts": ["status"] }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "considered_execution_plans": [
+              {
+                "table": "`orders` `o`",
+                "best_access_path": {
+                  "considered_access_paths": [
+                    { "access_type": "ref", "index": "idx_status", "rows": 25000, "cost": 5123, "chosen": true },
+                    { "access_type": "scan", "cost": 100234, "chosen": false }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       }
     }
   ]
@@ -94,9 +114,9 @@ When an index exists but is not used, the trace will show it was considered but 
 ## Tracing a Specific Query
 
 ```sql
--- Enable trace with specific pattern (optional, limits trace to matching queries)
+-- Enable trace with compact formatting disabled (one_line=off is the default)
 SET SESSION optimizer_trace = 'enabled=on,one_line=off';
-SET SESSION optimizer_trace_limit = 1;
+SET SESSION optimizer_trace_limit = 1;  -- Keep only the most recent trace (this is the default)
 
 -- Run the query
 EXPLAIN SELECT * FROM products WHERE price BETWEEN 100 AND 500 ORDER BY name;
