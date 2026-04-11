@@ -30,7 +30,7 @@ VALUES ROW(1, 'Alice', 'admin'),
        ROW(3, 'Carol', 'viewer');
 ```
 
-This returns a three-row result with columns named `column_0`, `column_1`, and `column_2`. You can use `ORDER BY` and `LIMIT` with the result:
+This returns a three-row result with columns named `column_0`, `column_1`, and `column_2`. You can use `ORDER BY` and `LIMIT` with the result. Note that `LIMIT` was silently ignored in MySQL 8.0.19 and 8.0.20 due to a bug and works correctly from 8.0.21 onward:
 
 ```sql
 VALUES ROW(3, 'Carol'),
