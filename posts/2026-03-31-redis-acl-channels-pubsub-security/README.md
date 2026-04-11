@@ -8,7 +8,7 @@ Description: Learn how to use Redis ACL channel permissions to control which pub
 
 ---
 
-Redis ACL includes channel permissions for pub/sub, introduced in Redis 6. Without channel restrictions, any authenticated user can subscribe to any channel and intercept messages. Channel ACL rules let you enforce namespace isolation in your pub/sub system.
+Redis ACL includes channel permissions for pub/sub, introduced in Redis 6.2. Without channel restrictions, any authenticated user can subscribe to any channel and intercept messages. Channel ACL rules let you enforce namespace isolation in your pub/sub system.
 
 ## Channel Permission Syntax
 
@@ -16,7 +16,7 @@ Channel rules use the `&` prefix in `ACL SETUSER`:
 
 ```text
 &pattern         Allow subscribe/publish to matching channels
-&*               Allow all channels (default for backward compatibility)
+&*               Allow all channels (default in Redis 6.2; Redis 7.0+ defaults to resetchannels)
 resetchannels    Deny all channels
 ```
 
@@ -25,7 +25,7 @@ resetchannels    Deny all channels
 Create a user that can only access channels in the `notifications:` namespace:
 
 ```bash
-ACL SETUSER notif-consumer on >pass1 ~* &notifications:* -@all +SUBSCRIBE +PSUBSCRIBE +UNSUBSCRIBE
+ACL SETUSER notif-consumer on >pass1 ~* resetchannels &notifications:* -@all +SUBSCRIBE +PSUBSCRIBE +UNSUBSCRIBE
 ```
 
 Test the restriction:
