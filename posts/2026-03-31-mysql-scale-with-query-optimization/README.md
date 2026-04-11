@@ -48,7 +48,8 @@ LIMIT 100\G
 Look for:
 - `type: ALL` - full table scan (bad)
 - `type: index` - full index scan (still potentially slow)
-- `type: ref` or `range` - index range scan (good)
+- `type: ref` - index lookup by value (good)
+- `type: range` - index range scan (good)
 - `rows` - estimated rows examined (lower is better)
 - `Extra: Using filesort` - sort cannot use an index (often bad for large datasets)
 
