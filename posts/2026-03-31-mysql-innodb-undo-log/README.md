@@ -62,9 +62,9 @@ CREATE UNDO TABLESPACE undo_003
 ADD DATAFILE 'undo_003.ibu';
 
 -- Check undo tablespace status
-SELECT NAME, STATE, SIZE
+SELECT NAME, STATE, FILE_SIZE
 FROM information_schema.INNODB_TABLESPACES
-WHERE ROW_FORMAT = 'Undo';
+WHERE SPACE_TYPE = 'Undo';
 ```
 
 ## Undo Log Purge
@@ -77,10 +77,10 @@ SHOW ENGINE INNODB STATUS\G
 -- Look for "History list length" in the TRANSACTIONS section
 -- A large history list (e.g., > 1000) indicates purge is falling behind
 
--- Monitor purge history length
-SELECT variable_value AS history_list_length
-FROM performance_schema.global_status
-WHERE variable_name = 'Innodb_purge_trx_id_age';
+-- Monitor history list length
+SELECT COUNT AS history_list_length
+FROM information_schema.INNODB_METRICS
+WHERE NAME = 'trx_rseg_history_len';
 ```
 
 A growing history list is often caused by an idle transaction that opened a read view and was abandoned:
