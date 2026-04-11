@@ -32,7 +32,7 @@ SIGNAL SQLSTATE 'sqlstate_value'
 
 Common `signal_information_item` options:
 - `MESSAGE_TEXT` - human-readable error description
-- `MYSQL_ERRNO` - MySQL error number (1000 to 65535)
+- `MYSQL_ERRNO` - MySQL error number (1 to 65535)
 - `CLASS_ORIGIN`, `SUBCLASS_ORIGIN` - for standards compliance
 - `CONSTRAINT_NAME`, `TABLE_NAME`, `COLUMN_NAME` - for constraint violation context
 
@@ -228,11 +228,13 @@ CREATE PROCEDURE SafeInsert (
     IN p_balance DECIMAL(12,2)
 )
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+    DECLARE v_msg VARCHAR(255);
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         -- Add context to the error before re-raising
-        RESIGNAL SET
-            MESSAGE_TEXT = CONCAT('SafeInsert failed for owner: ', p_owner);
+        SET v_msg = CONCAT('SafeInsert failed for owner: ', p_owner);
+        RESIGNAL SET MESSAGE_TEXT = v_msg;
     END;
 
     INSERT INTO accounts (owner, balance) VALUES (p_owner, p_balance);
