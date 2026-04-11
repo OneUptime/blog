@@ -99,6 +99,8 @@ Configure sessions to use Redis in `app/Config/Session.php`:
 // app/Config/Session.php
 namespace Config;
 
+use CodeIgniter\Config\BaseConfig;
+
 class Session extends BaseConfig
 {
     public string $driver = \CodeIgniter\Session\Handlers\RedisHandler::class;
