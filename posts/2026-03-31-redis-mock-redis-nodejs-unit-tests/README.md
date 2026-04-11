@@ -39,7 +39,6 @@ export async function setUser(id, user) {
 
 ```javascript
 // cache.test.js
-import RedisMock from 'ioredis-mock';
 import * as cache from './cache';
 
 jest.mock('ioredis', () => require('ioredis-mock'));
@@ -97,7 +96,7 @@ jest.mock('redis');
 beforeEach(() => __resetStore());
 
 it('increments page view counter', async () => {
-  const { incrementViews } = await import('./analytics');
+  const { incrementViews, getViews } = await import('./analytics');
   await incrementViews('homepage');
   await incrementViews('homepage');
   const views = await getViews('homepage');
