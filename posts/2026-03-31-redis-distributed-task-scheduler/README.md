@@ -31,7 +31,7 @@ schedule_task("send-report-101", {"type": "report", "user_id": 42}, time.time() 
 
 ## Dispatching Due Tasks
 
-A worker polls the sorted set for tasks whose score (run time) is in the past. Use `ZPOPMIN` to atomically remove the task so no other worker can claim it:
+A worker polls the sorted set for tasks whose score (run time) is in the past. Use `ZRANGEBYSCORE` to find due tasks and `ZREM` to atomically claim each one so no other worker can process it:
 
 ```python
 def dispatch_due_tasks(worker_fn):
@@ -76,7 +76,7 @@ def reschedule_failed(task: dict, error: Exception, max_attempts: int = 3):
     task["attempts"] = task.get("attempts", 0) + 1
     task["last_error"] = str(error)
     if task["attempts"] < max_attempts:
-        delay = 2 ** task["attempts"] * 60  # 2m, 4m, 8m
+        delay = 2 ** task["attempts"] * 60  # 2m, 4m
         r.zadd(SCHEDULER_KEY, {json.dumps(task): time.time() + delay})
     else:
         r.rpush("tasks:failed", json.dumps(task))
