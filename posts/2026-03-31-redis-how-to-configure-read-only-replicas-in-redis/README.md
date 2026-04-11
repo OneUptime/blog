@@ -146,12 +146,11 @@ Replicas may lag behind the primary. If you need strongly consistent reads, read
 
 ```python
 import redis
-import time
 
 primary = redis.Redis(host="primary", port=6379, password="pass")
 replica = redis.Redis(host="replica", port=6380, password="pass")
 
-def read_with_fallback(key, max_staleness_seconds=2):
+def read_with_fallback(key):
     value = replica.get(key)
     if value is None:
         # Fall back to primary for freshness
@@ -172,4 +171,4 @@ done
 
 ## Summary
 
-Redis replicas are read-only by default through the `replica-read-only yes` setting, which prevents data divergence from direct writes to a replica. In your application, route writes to the primary and reads to replicas using separate connection pools or a load balancer. When read-only replicas are needed for specialized use cases, carefully isolate replica-local keys from replicated keys to avoid overwrite conflicts.
+Redis replicas are read-only by default through the `replica-read-only yes` setting, which prevents data divergence from direct writes to a replica. In your application, route writes to the primary and reads to replicas using separate connection pools or a load balancer. When allowing writes to replicas for specialized use cases, carefully isolate replica-local keys from replicated keys to avoid overwrite conflicts.
