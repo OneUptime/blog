@@ -8,7 +8,7 @@ Description: Handle per-command errors in Redis pipelines correctly, distinguish
 
 ---
 
-Redis pipelines return one response per command. When a command fails inside a pipeline, it does not abort the other commands - you must inspect each response individually. This is a key difference from transactions.
+Redis pipelines return one response per command. When a command fails inside a pipeline, it does not abort the other commands - you must inspect each response individually. Note that Redis MULTI/EXEC transactions behave the same way for runtime errors (like WRONGTYPE) - they also do not roll back. The difference is that syntax errors detected during the queuing phase will cause a transaction to be discarded entirely, while pipelines have no such queuing phase.
 
 ## How Pipeline Errors Work
 
@@ -157,8 +157,8 @@ def safe_pipeline_execute(r, commands):
 
     try:
         results = pipe.execute(raise_on_error=False)
-    except redis.ConnectionError:
-        return [], list(range(len(commands)))  # all failed
+    except redis.ConnectionError as e:
+        return [], [(i, e) for i in range(len(commands))]  # all failed
 
     successes = []
     failures = []
