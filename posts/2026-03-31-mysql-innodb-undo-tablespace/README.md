@@ -75,11 +75,14 @@ WHERE ROW_FORMAT = 'Undo';
 
 ## Setting undo tablespace autoextend size
 
-```sql
--- Set autoextend increment for all undo tablespaces (MySQL 8.0.23+)
-ALTER UNDO TABLESPACE innodb_undo_001 SET AUTOEXTEND_SIZE = 67108864; -- 64 MB
+In MySQL 8.0.23+, `AUTOEXTEND_SIZE` can be specified when creating an undo tablespace, but cannot be altered after creation:
 
-SHOW VARIABLES LIKE 'innodb_undo_tablespaces';
+```sql
+-- Set autoextend size at creation time (MySQL 8.0.23+)
+CREATE UNDO TABLESPACE innodb_undo_004
+  ADD DATAFILE '/mnt/fast-ssd/mysql-undo/undo_004.ibu'
+  AUTOEXTEND_SIZE = 67108864; -- 64 MB
+
 SHOW VARIABLES LIKE 'innodb_max_undo_log_size';
 ```
 
@@ -121,7 +124,7 @@ ALTER UNDO TABLESPACE innodb_undo_002 SET INACTIVE;
 SELECT TABLESPACE_NAME, STATE
 FROM information_schema.INNODB_TABLESPACES
 WHERE ROW_FORMAT = 'Undo';
--- STATE will show: empty -> inactive -> active (once truncated)
+-- STATE will transition: inactive -> empty -> active (once re-activated)
 
 -- Re-activate after truncation
 ALTER UNDO TABLESPACE innodb_undo_002 SET ACTIVE;
@@ -141,7 +144,7 @@ History list length 1234
 ...
 */
 
--- Also available from Performance Schema
+-- Also available from Information Schema
 SELECT NAME, COUNT FROM information_schema.INNODB_METRICS
 WHERE NAME = 'trx_rseg_history_len';
 ```
@@ -171,7 +174,7 @@ stateDiagram-v2
     Active --> Inactive: ALTER UNDO TABLESPACE SET INACTIVE
     Inactive --> Empty: No more transactions reference old undo data
     Empty --> Active: Truncation complete, SET ACTIVE
-    Active --> [*]: DROP UNDO TABLESPACE (only when empty)
+    Empty --> [*]: DROP UNDO TABLESPACE
 ```
 
 ## Key variables reference
