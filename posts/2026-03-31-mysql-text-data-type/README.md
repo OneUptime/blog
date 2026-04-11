@@ -69,8 +69,8 @@ WHERE MATCH(body) AGAINST ('MySQL open-source' IN NATURAL LANGUAGE MODE);
 
 ## Limitations Compared to VARCHAR
 
-- `TEXT` columns cannot have a `DEFAULT` value.
-- `TEXT` cannot be used in `GROUP BY` without specifying a length.
+- `TEXT` columns cannot have a `DEFAULT` value in MySQL versions before 8.0.13. From MySQL 8.0.13 onward, `TEXT` and `BLOB` columns support default values.
+- Sorting and grouping on `TEXT` columns only considers the first `max_sort_length` bytes (default 1024).
 - Sorting on `TEXT` columns uses a temporary table on disk.
 
 ```sql
@@ -100,8 +100,8 @@ VALUES ('about', '## About Us\n\nWe build open-source monitoring tools...');
 | TINYTEXT | 255 bytes | Short descriptions, hints |
 | TEXT | 65 KB | Articles, blog posts, comments |
 | MEDIUMTEXT | 16 MB | Long documents, logs |
-| LONGTEXT | 4 GB | Binary-safe very large text |
+| LONGTEXT | 4 GB | Very large text, serialized data |
 
 ## Summary
 
-`TEXT` stores up to 65 KB of character data off-page and is ideal for article bodies, comments, and other mid-sized text fields. It cannot carry a default value or a full-column index, so plan your indexing strategy using prefix or full-text indexes. For strings under a few hundred characters, `VARCHAR` is usually more convenient.
+`TEXT` stores up to 65 KB of character data off-page and is ideal for article bodies, comments, and other mid-sized text fields. It cannot carry a full-column index, so plan your indexing strategy using prefix or full-text indexes. Note that default values for `TEXT` columns are supported from MySQL 8.0.13 onward. For strings under a few hundred characters, `VARCHAR` is usually more convenient.
