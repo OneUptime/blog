@@ -155,7 +155,7 @@ If you wait longer than `MAXIDLE` between reads, the cursor is deleted and the n
 FT.CURSOR READ orders 999999
 
 -- Returns error:
--- (error) ERR Cursor not found
+-- (error) Cursor does not exist
 ```
 
 Always check for this error in your application and restart the aggregation if needed.
