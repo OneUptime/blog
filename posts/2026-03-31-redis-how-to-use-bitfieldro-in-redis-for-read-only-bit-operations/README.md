@@ -12,7 +12,7 @@ Description: Learn how to use BITFIELD_RO in Redis to safely read bitfield value
 
 `BITFIELD_RO` is the read-only variant of `BITFIELD`. It supports only the `GET` subcommand, making it safe to run on Redis replicas and within Lua scripts that are intended to be read-only. This prevents accidental writes when querying bitfield data in distributed or scripted contexts.
 
-It was introduced in Redis 6.2.
+It was introduced in Redis 6.0.
 
 ## Syntax
 
@@ -24,7 +24,7 @@ BITFIELD_RO key [GET type offset [GET type offset ...]]
 - `GET type offset` - read an integer field at the given bit offset
 
 Integer types follow the same format as `BITFIELD`:
-- `u8`, `u16`, `u32`, `u64` - unsigned
+- `u8`, `u16`, `u32` - unsigned (up to `u63` max)
 - `i8`, `i16`, `i32`, `i64` - signed
 - `u<n>` or `i<n>` - arbitrary widths
 
@@ -102,17 +102,17 @@ primary = redis.Redis(host='redis-primary', port=6379, decode_responses=True)
 
 def set_player_stats(player_id, level, xp, health):
     key = f'player:{player_id}:stats'
-    primary.bitfield(key, 'SET', 'u8', '#0', level,
-                     'SET', 'u16', 8, xp,
-                     'SET', 'u8', 24, health)
+    bf = primary.bitfield(key)
+    bf.set('u8', '#0', level)
+    bf.set('u16', 8, xp)
+    bf.set('u8', 24, health)
+    bf.execute()
 
 def get_player_stats_readonly(player_id):
     key = f'player:{player_id}:stats'
     # Use BITFIELD_RO on replica - safe for read-only Redis instances
-    results = replica.bitfield_ro(key,
-        'GET', 'u8', '#0',
-        'GET', 'u16', '8',
-        'GET', 'u8', '24'
+    results = replica.bitfield_ro(key, 'u8', '#0',
+        items=[('u16', 8), ('u8', 24)]
     )
     return {
         'level': results[0],
@@ -129,15 +129,15 @@ import redis
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Simulate data written by another service
-r.bitfield('metrics:daily', 'SET', 'u16', '#0', 1420,  # page views
-                             'SET', 'u16', '#1', 382,   # signups
-                             'SET', 'u16', '#2', 91)    # purchases
+bf = r.bitfield('metrics:daily')
+bf.set('u16', '#0', 1420)  # page views
+bf.set('u16', '#1', 382)   # signups
+bf.set('u16', '#2', 91)    # purchases
+bf.execute()
 
 def get_daily_metrics():
-    results = r.bitfield_ro('metrics:daily',
-        'GET', 'u16', '#0',
-        'GET', 'u16', '#1',
-        'GET', 'u16', '#2'
+    results = r.bitfield_ro('metrics:daily', 'u16', '#0',
+        items=[('u16', '#1'), ('u16', '#2')]
     )
     return {
         'page_views': results[0],
@@ -158,19 +158,18 @@ import redis
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 # Flags written by config service using BITFIELD
-r.bitfield('features:v2', 'SET', 'u1', 0, 1,   # dark_mode on
-                           'SET', 'u1', 1, 0,   # new_checkout off
-                           'SET', 'u1', 2, 1,   # beta_search on
-                           'SET', 'u1', 3, 0)   # ai_assistant off
+bf = r.bitfield('features:v2')
+bf.set('u1', 0, 1)   # dark_mode on
+bf.set('u1', 1, 0)   # new_checkout off
+bf.set('u1', 2, 1)   # beta_search on
+bf.set('u1', 3, 0)   # ai_assistant off
+bf.execute()
 
 FEATURES = ['dark_mode', 'new_checkout', 'beta_search', 'ai_assistant']
 
 def get_all_feature_flags():
-    get_ops = []
-    for i in range(len(FEATURES)):
-        get_ops.extend(['GET', 'u1', str(i)])
-
-    results = r.bitfield_ro('features:v2', *get_ops)
+    items = [('u1', i) for i in range(1, len(FEATURES))]
+    results = r.bitfield_ro('features:v2', 'u1', 0, items=items)
     return {name: bool(val) for name, val in zip(FEATURES, results)}
 
 flags = get_all_feature_flags()
@@ -189,15 +188,15 @@ ACHIEVEMENTS = ['first_login', 'profile_complete', 'first_purchase', 'power_user
 
 def get_user_achievements(user_id):
     key = f'achievements:{user_id}'
-    get_ops = []
-    for i in range(len(ACHIEVEMENTS)):
-        get_ops.extend(['GET', 'u1', str(i)])
-
-    results = r.bitfield_ro(key, *get_ops)
+    items = [('u1', i) for i in range(1, len(ACHIEVEMENTS))]
+    results = r.bitfield_ro(key, 'u1', 0, items=items)
     return {name: bool(val) for name, val in zip(ACHIEVEMENTS, results)}
 
 # Simulate writing achievements
-r.bitfield('achievements:user:42', 'SET', 'u1', 0, 1, 'SET', 'u1', 2, 1)
+bf = r.bitfield('achievements:user:42')
+bf.set('u1', 0, 1)
+bf.set('u1', 2, 1)
+bf.execute()
 
 achievements = get_user_achievements('user:42')
 print(f"Achievements: {achievements}")
