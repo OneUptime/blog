@@ -10,7 +10,7 @@ Description: MySQL system variables are server configuration parameters that con
 
 ## Overview
 
-System variables in MySQL are built-in configuration parameters that control the behavior of the MySQL server. Unlike user-defined variables (which start with `@`), system variables are predefined by MySQL and cover everything from memory allocation to character encoding to query caching behavior.
+System variables in MySQL are built-in configuration parameters that control the behavior of the MySQL server. Unlike user-defined variables (which start with `@`), system variables are predefined by MySQL and cover everything from memory allocation to character encoding to query execution behavior.
 
 System variables can have two scopes:
 
@@ -29,7 +29,7 @@ SHOW VARIABLES;
 SHOW VARIABLES LIKE 'max_connections';
 SHOW VARIABLES LIKE 'innodb%';
 
--- Using information_schema
+-- Using performance_schema
 SELECT variable_name, variable_value
 FROM performance_schema.global_variables
 WHERE variable_name LIKE 'innodb_buffer_pool%';
@@ -99,7 +99,7 @@ SELECT @@wait_timeout;
 Variables are either dynamic (changeable at runtime) or non-dynamic (requiring a restart):
 
 ```sql
--- Find dynamic variables in performance_schema
+-- Find variables that have been changed from their compiled defaults
 SELECT variable_name, variable_source
 FROM performance_schema.variables_info
 WHERE variable_source != 'COMPILED'
