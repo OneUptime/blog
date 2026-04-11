@@ -8,7 +8,7 @@ Description: Add typo-tolerant fuzzy search to your application using RediSearch
 
 ---
 
-Users make typos. A search for "headphnes" should still find headphones. RediSearch supports fuzzy matching using Levenshtein distance - one tilde prefix per allowed edit distance - requiring no additional libraries or algorithms.
+Users make typos. A search for "headphnes" should still find headphones. RediSearch supports fuzzy matching using Levenshtein distance - one percent sign (`%`) per allowed edit distance - requiring no additional libraries or algorithms.
 
 ## Setting Up the Search Index
 
@@ -41,8 +41,8 @@ from redis.commands.search.query import Query
 import json
 
 def fuzzy_search(term: str, edit_distance: int = 1, limit: int = 10) -> list:
-    tilde = "%" * edit_distance
-    fuzzy_term = f"{tilde}{term}{tilde}"
+    pct = "%" * edit_distance
+    fuzzy_term = f"{pct}{term}{pct}"
 
     query = Query(fuzzy_term).paging(0, limit)
     results = r.ft("idx:fuzzy").search(query)
@@ -59,10 +59,10 @@ def fuzzy_search(term: str, edit_distance: int = 1, limit: int = 10) -> list:
 def multi_term_fuzzy_search(query_text: str,
                              edit_distance: int = 1) -> list:
     terms = query_text.strip().split()
-    tilde = "%" * edit_distance
+    pct = "%" * edit_distance
 
     # Wrap each term in fuzzy markers
-    fuzzy_terms = " ".join(f"{tilde}{t}{tilde}" for t in terms)
+    fuzzy_terms = " ".join(f"{pct}{t}{pct}" for t in terms)
     results = r.ft("idx:fuzzy").search(Query(fuzzy_terms).paging(0, 20))
     return [json.loads(doc.json) for doc in results.docs]
 ```
@@ -103,7 +103,7 @@ r.json().set("item:001", "$", {
 
 # These all return the headphones item:
 print(fuzzy_search("headphnes"))   # missing 'o'
-print(fuzzy_search("bluethooth"))  # extra 'o'
+print(fuzzy_search("bluethooth"))  # extra 'h'
 print(fuzzy_search("headphone"))   # missing 's'
 ```
 
