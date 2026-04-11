@@ -44,7 +44,7 @@ Stored functions can filter rows:
 DELIMITER //
 CREATE FUNCTION age_in_years(p_birthdate DATE)
 RETURNS INT
-DETERMINISTIC
+NOT DETERMINISTIC
 BEGIN
     RETURN TIMESTAMPDIFF(YEAR, p_birthdate, CURDATE());
 END //
