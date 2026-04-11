@@ -15,7 +15,6 @@ Fiber is an Express-inspired Go web framework built on top of Fasthttp. It ships
 ```bash
 go get github.com/gofiber/fiber/v2
 go get github.com/gofiber/storage/redis/v3
-go get github.com/gofiber/contrib/session
 ```
 
 ## Initialize the Redis Storage Adapter
@@ -71,7 +70,7 @@ The `Next` function lets you bypass the cache for specific requests - in this ca
 
 ```go
 import (
-    "github.com/gofiber/contrib/session"
+    "github.com/gofiber/fiber/v2/middleware/session"
 )
 
 func setupSessions(store fiber.Storage) *session.Store {
