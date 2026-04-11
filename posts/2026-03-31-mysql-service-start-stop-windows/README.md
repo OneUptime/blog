@@ -80,9 +80,9 @@ net stop MySQL80
 2. Scroll to find **MySQL80**.
 3. Right-click and select **Start**, **Stop**, or **Restart**.
 
-## Method 4 - MySQL Notifier
+## Method 4 - MySQL Notifier (Deprecated)
 
-MySQL Notifier is a tray application installed with MySQL Installer. It shows a MySQL icon in the system tray.
+MySQL Notifier was a tray application previously bundled with MySQL Installer. It is no longer included in current MySQL 8.0+ Installer packages. If you have an older installation that includes it, the steps are:
 
 1. Right-click the MySQL tray icon.
 2. Hover over the service name (e.g., `MySQL80`).
@@ -186,4 +186,4 @@ Remove the service:
 
 ## Summary
 
-MySQL on Windows runs as a service named `MySQL80` (or similar). Use PowerShell `Start-Service`, `Stop-Service`, and `Restart-Service` cmdlets, or the `net start` / `net stop` commands from an Administrator prompt. The Services console and MySQL Notifier tray application offer graphical alternatives. Configure `Automatic` startup type to ensure MySQL starts with Windows.
+MySQL on Windows runs as a service named `MySQL80` (or similar). Use PowerShell `Start-Service`, `Stop-Service`, and `Restart-Service` cmdlets, or the `net start` / `net stop` commands from an Administrator prompt. The Services console offers a graphical alternative. Configure `Automatic` startup type to ensure MySQL starts with Windows.
