@@ -112,7 +112,7 @@ ROUND(
 
 ## Multi-Metric YoY Comparison
 
-You can compute YoY for multiple metrics in one query:
+You can compute YoY for multiple metrics in one query. This example assumes the table has an additional `units_sold` column (`ALTER TABLE monthly_revenue ADD COLUMN units_sold INT;`):
 
 ```sql
 WITH base AS (
