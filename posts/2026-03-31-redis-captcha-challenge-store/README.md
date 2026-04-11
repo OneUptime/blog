@@ -13,7 +13,7 @@ Server-side CAPTCHAs generate a challenge on the server and validate the respons
 ## Data Model
 
 ```text
-captcha:{challengeId}        -> Hash: answer, ip, created_at
+captcha:{challengeId}        -> Hash: answer_hash, ip, created_at
 captcha:fails:{ip}           -> String: failure count within time window
 captcha:issued:{ip}          -> String: rate limit on challenge issuance
 ```
