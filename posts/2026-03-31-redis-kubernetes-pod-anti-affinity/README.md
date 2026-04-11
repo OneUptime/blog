@@ -33,6 +33,7 @@ kind: StatefulSet
 metadata:
   name: redis
 spec:
+  serviceName: redis
   replicas: 3
   selector:
     matchLabels:
@@ -90,7 +91,7 @@ This requires zone spreading (hard) and also prefers node spreading (soft).
 
 ## Combining with Node Affinity
 
-Require Redis to run on SSD nodes while maintaining anti-affinity:
+Require Redis to run on memory-optimized nodes while maintaining anti-affinity:
 
 ```yaml
 affinity:
