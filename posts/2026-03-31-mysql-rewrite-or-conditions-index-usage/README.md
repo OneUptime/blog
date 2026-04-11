@@ -54,7 +54,7 @@ UNION ALL
 SELECT id, name
 FROM users
 WHERE phone = '555-1234'
-  AND email != 'alice@example.com';
+  AND (email != 'alice@example.com' OR email IS NULL);
 ```
 
 Or use UNION (not UNION ALL) to automatically remove duplicates:
@@ -99,7 +99,7 @@ OR in JOIN conditions is particularly damaging to performance:
 
 ```sql
 -- VERY SLOW: OR in JOIN condition prevents index use
-SELECT p.id, p.name, o.id AS order_id
+SELECT p.id, p.name, oi.order_id
 FROM products p
 JOIN order_items oi ON p.id = oi.product_id
                     OR p.sku = oi.product_sku;
@@ -117,7 +117,7 @@ JOIN order_items oi ON p.sku = oi.product_sku
 
 ## Using Index Merge Hints
 
-If you prefer to keep the OR condition, you can hint at Index Merge:
+If you prefer to keep the OR condition, you can hint at Index Merge (MySQL 8.0.20+):
 
 ```sql
 -- Hint to force index merge optimization
