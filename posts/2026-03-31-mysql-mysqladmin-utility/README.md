@@ -88,19 +88,19 @@ mysqladmin -u root -p password 'NewSecurePassword123!'
 
 ## Flushing Server State
 
-Flush the binary logs (creates a new log file):
+Flush all logs (closes and reopens all log files, rotates binary logs):
 
 ```bash
 mysqladmin -u root -p flush-logs
 ```
 
-Flush all caches and close/reopen log files:
+Flush tables and close/reopen log files:
 
 ```bash
-mysqladmin -u root -p flush-all
+mysqladmin -u root -p refresh
 ```
 
-Close and reopen table files without flushing caches:
+Close all open tables and flush the table cache:
 
 ```bash
 mysqladmin -u root -p flush-tables
