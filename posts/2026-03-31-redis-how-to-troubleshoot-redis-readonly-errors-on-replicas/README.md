@@ -147,8 +147,11 @@ rc.set('foo', 'bar')  # Automatically routes to the correct primary
 In Redis Cluster, replicas only serve reads if the client issues a READONLY command first:
 
 ```bash
-redis-cli -h <replica-node> -p 6379 READONLY
-redis-cli -h <replica-node> -p 6379 GET mykey
+redis-cli -h <replica-node> -p 6379
+> READONLY
+OK
+> GET mykey
+"value"
 ```
 
 In client libraries this is often a configuration flag:
