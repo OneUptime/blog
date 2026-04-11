@@ -156,8 +156,8 @@ slave_selection_criteria=LEAST_CURRENT_OPERATIONS
 # Route reads to the replica with least replication lag
 slave_selection_criteria=LEAST_BEHIND_MASTER
 
-# Route to a random replica
-slave_selection_criteria=RANDOM
+# Route to the replica with fewest total connections
+slave_selection_criteria=LEAST_ROUTER_CONNECTIONS
 ```
 
 ## Summary
