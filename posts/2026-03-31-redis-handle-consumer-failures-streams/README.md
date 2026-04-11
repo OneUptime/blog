@@ -99,7 +99,7 @@ def send_to_dlq(msg_id, fields, delivery_count):
 When a consumer is permanently gone, clean it up to prevent confusion:
 
 ```bash
-# Delete the consumer (its pending messages go back to the group)
+# Delete the consumer (its pending entries are removed from the PEL)
 XGROUP DELCONSUMER orders:queue workers crashed-worker-3
 
 # Verify consumer is removed
