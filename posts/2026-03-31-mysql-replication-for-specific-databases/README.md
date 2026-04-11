@@ -31,15 +31,15 @@ binlog-do-db = myapp_audit
 # binlog-ignore-db = sys
 ```
 
-**Important caveat**: `binlog-do-db` filters based on the current default database (`USE db_name`), not the actual database in the statement. This can cause missed events:
+**Important caveat**: With statement-based logging, `binlog-do-db` filters based on the current default database (`USE db_name`), not the actual database in the statement. This can cause missed events:
 
 ```sql
 USE other_db;
 UPDATE myapp_db.orders SET status = 'shipped' WHERE id = 1;
--- This update is NOT logged because the default database is other_db
+-- With statement-based logging, this update is NOT logged because the default database is other_db
 ```
 
-Always use fully-qualified table names when source-side filtering is active.
+With row-based logging (the default in MySQL 8.0), `binlog-do-db` checks the database of the table being modified, so the above statement would be logged correctly. Always verify which binary logging format your server uses (`binlog_format`).
 
 ## Replica-Side Filtering
 
@@ -55,7 +55,7 @@ replicate-do-db = myapp_audit
 # replicate-ignore-db = internal_db
 ```
 
-The same `USE db_name` caveat applies to `replicate-do-db`. For safer filtering, use table-level filters:
+With statement-based logging, the same `USE db_name` caveat applies to `replicate-do-db`. With row-based logging (MySQL 8.0 default), `replicate-do-db` checks the database of the table being modified. For safer filtering regardless of binary log format, use table-level filters:
 
 ```ini
 [mysqld]
@@ -131,6 +131,7 @@ Confirm that changes to filtered databases are not applied:
 ```sql
 -- On source
 CREATE DATABASE should_not_replicate;
+CREATE TABLE should_not_replicate.test (id INT);
 INSERT INTO should_not_replicate.test VALUES (1);
 
 -- On replica (should not exist)
