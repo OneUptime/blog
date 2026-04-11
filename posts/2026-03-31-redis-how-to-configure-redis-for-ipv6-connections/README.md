@@ -206,6 +206,9 @@ redis-cli --cluster create \
   [2001:db8::1]:6379 \
   [2001:db8::2]:6379 \
   [2001:db8::3]:6379 \
+  [2001:db8::4]:6379 \
+  [2001:db8::5]:6379 \
+  [2001:db8::6]:6379 \
   --cluster-replicas 1
 ```
 
@@ -242,4 +245,4 @@ print(socket.getaddrinfo('redis-host', 6379, socket.AF_INET6))
 
 ## Summary
 
-Configure Redis for IPv6 by updating the `bind` directive with IPv6 addresses (`::`for all IPv6 interfaces, `::1` for loopback). For dual-stack support, use `bind 0.0.0.0 ::` to accept both protocols simultaneously. Always pair open bindings with `requirepass` and firewall rules to restrict which hosts can connect. Test connectivity with `redis-cli -h ::1` and verify the binding with `ss -tlnp6`.
+Configure Redis for IPv6 by updating the `bind` directive with IPv6 addresses (`::` for all IPv6 interfaces, `::1` for loopback). For dual-stack support, use `bind 0.0.0.0 ::` to accept both protocols simultaneously. Always pair open bindings with `requirepass` and firewall rules to restrict which hosts can connect. Test connectivity with `redis-cli -h ::1` and verify the binding with `ss -tlnp6`.
