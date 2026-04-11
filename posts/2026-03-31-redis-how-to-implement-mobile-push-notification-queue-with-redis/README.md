@@ -177,7 +177,7 @@ async function handleFailedNotification(notification) {
   }
 
   // Retry with delay using sorted set (score = future timestamp)
-  const retryAt = Date.now() + notification.attempts * 30000; // backoff: 30s, 60s
+  const retryAt = Date.now() + Math.pow(2, notification.attempts - 1) * 30000; // exponential backoff: 30s, 60s, 120s
   await redis.zadd(RETRY_QUEUE, retryAt, JSON.stringify(notification));
 }
 
