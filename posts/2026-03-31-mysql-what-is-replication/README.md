@@ -46,7 +46,7 @@ GRANT REPLICATION SLAVE ON *.* TO 'repl_user'@'%';
 FLUSH PRIVILEGES;
 
 -- Get the current binary log position (for position-based replication)
-SHOW MASTER STATUS\G
+SHOW BINARY LOG STATUS\G
 ```
 
 ```sql
@@ -99,7 +99,8 @@ SELECT
   CHANNEL_NAME,
   SERVICE_STATE,
   LAST_ERROR_MESSAGE,
-  COUNT_TRANSACTIONS_BEHIND_SOURCE
+  LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP,
+  APPLYING_TRANSACTION_ORIGINAL_COMMIT_TIMESTAMP
 FROM performance_schema.replication_applier_status_by_worker;
 ```
 
