@@ -10,7 +10,7 @@ Description: Learn how to query INFORMATION_SCHEMA.INNODB_LOCKS in MySQL 5.7 and
 
 ## Overview
 
-Lock visibility is critical for diagnosing deadlocks and blocking in MySQL. In MySQL 5.7 and earlier, `INFORMATION_SCHEMA.INNODB_LOCKS` showed all locks being held or requested. In MySQL 8.0, this view was replaced by `performance_schema.data_locks`, which provides the same information with more detail.
+Lock visibility is critical for diagnosing deadlocks and blocking in MySQL. In MySQL 5.7 and earlier, `INFORMATION_SCHEMA.INNODB_LOCKS` showed locks involved in lock-wait situations — specifically, locks requested but not yet acquired and locks blocking another transaction. In MySQL 8.0, this view was replaced by `performance_schema.data_locks`, which shows all locks held by every transaction, not just those involved in contention.
 
 ## MySQL 5.7: INNODB_LOCKS
 
@@ -99,16 +99,16 @@ ORDER BY lock_count DESC;
 ```sql
 -- MySQL 8.0: find blocker and waiter
 SELECT
-  r.ENGINE_TRANSACTION_ID AS waiting_trx,
-  r.OBJECT_NAME AS locked_table,
-  r.LOCK_MODE AS waiting_mode,
-  b.ENGINE_TRANSACTION_ID AS blocking_trx,
-  b.LOCK_MODE AS blocking_mode
-FROM performance_schema.data_locks r
-JOIN performance_schema.data_locks b
-  ON r.OBJECT_NAME = b.OBJECT_NAME
-  AND r.LOCK_STATUS = 'WAITING'
-  AND b.LOCK_STATUS = 'GRANTED';
+  w.REQUESTING_ENGINE_TRANSACTION_ID AS waiting_trx,
+  rl.OBJECT_NAME AS locked_table,
+  rl.LOCK_MODE AS waiting_mode,
+  w.BLOCKING_ENGINE_TRANSACTION_ID AS blocking_trx,
+  bl.LOCK_MODE AS blocking_mode
+FROM performance_schema.data_lock_waits w
+JOIN performance_schema.data_locks rl
+  ON w.REQUESTING_ENGINE_LOCK_ID = rl.ENGINE_LOCK_ID
+JOIN performance_schema.data_locks bl
+  ON w.BLOCKING_ENGINE_LOCK_ID = bl.ENGINE_LOCK_ID;
 ```
 
 ## Summary
