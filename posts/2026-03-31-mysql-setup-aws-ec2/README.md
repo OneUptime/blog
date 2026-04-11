@@ -35,6 +35,7 @@ sudo systemctl status mysql
 For Amazon Linux 2023:
 
 ```bash
+sudo dnf install -y https://dev.mysql.com/get/mysql80-community-release-el9-1.noarch.rpm
 sudo dnf install -y mysql-community-server
 sudo systemctl enable --now mysqld
 sudo grep 'temporary password' /var/log/mysqld.log
@@ -64,6 +65,9 @@ Update `/etc/mysql/mysql.conf.d/mysqld.cnf`:
 ```text
 [mysqld]
 datadir=/data/mysql
+socket=/data/mysql/mysql.sock
+
+[client]
 socket=/data/mysql/mysql.sock
 ```
 
