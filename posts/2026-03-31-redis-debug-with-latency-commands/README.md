@@ -15,7 +15,6 @@ Redis is designed for sub-millisecond response times. When latency spikes occur,
 ```bash
 # Enable latency monitoring with a 10ms threshold
 redis-cli CONFIG SET latency-monitor-threshold 10
-redis-cli CONFIG SET latency-tracking yes
 ```
 
 All events that take longer than the threshold are recorded in the latency history.
@@ -36,7 +35,7 @@ Output:
    3) (integer) 45
    4) (integer) 87
 
-2) 1) "aof-stat"
+2) 1) "aof-fsync-always"
    2) (integer) 1743427150
    3) (integer) 12
    4) (integer) 24
@@ -47,9 +46,9 @@ Fields per row: `event_name, timestamp, latest_latency_ms, max_latency_ms`
 Common event types:
 - `command` - slow command execution
 - `fork` - BGSAVE/BGREWRITEAOF fork latency
-- `aof-stat` - AOF file sync
-- `aof-rewrite-diff-flush` - AOF rewrite buffer flush
-- `loading-rdb-used-memory` - RDB load
+- `aof-fsync-always` - AOF fsync when appendfsync is set to always
+- `aof-rewrite-diff-write` - AOF rewrite buffer write
+- `rdb-unlink-temp-file` - temp RDB file cleanup
 
 ## LATENCY HISTORY
 
@@ -117,7 +116,7 @@ redis-cli LATENCY HISTORY fork
 Reduce fork latency by:
 
 ```bash
-# Enable transparent huge pages workaround
+# Disable transparent huge pages (recommended for Redis)
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
 
 # Enable background saving at lower frequency
@@ -126,10 +125,10 @@ redis-cli CONFIG SET save "3600 1 300 100"
 
 ## Diagnosing AOF Sync Latency
 
-If `aof-stat` spikes appear frequently:
+If `aof-fsync-always` spikes appear frequently:
 
 ```bash
-redis-cli LATENCY HISTORY aof-stat
+redis-cli LATENCY HISTORY aof-fsync-always
 redis-cli CONFIG GET appendfsync
 ```
 
@@ -164,7 +163,7 @@ def measure_command_latency(iterations=100):
         latencies.append((time.time() - start) * 1000)
 
     latencies.sort()
-    print(f"PING latency p50={latencies[50]:.2f}ms p99={latencies[99]:.2f}ms")
+    print(f"PING latency p50={latencies[49]:.2f}ms p99={latencies[98]:.2f}ms")
 
 check_latency()
 measure_command_latency()
