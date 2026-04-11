@@ -75,8 +75,8 @@ def get_product(product_id: str):
 
 def search_products(query: str):
     # Full-text search always goes to Elasticsearch
-    result = es.search(index='products', body={
-        "query": {"multi_match": {"query": query, "fields": ["name", "description"]}}
+    result = es.search(index='products', query={
+        "multi_match": {"query": query, "fields": ["name", "description"]}
     })
     return [hit['_source'] for hit in result['hits']['hits']]
 ```
@@ -124,7 +124,7 @@ def sync_worker():
             key = event
             if key.startswith('product:'):
                 product_id = key.split(':', 1)[1]
-                es.delete(index='products', id=product_id, ignore=[404])
+                es.options(ignore_status=[404]).delete(index='products', id=product_id)
                 print(f"Deleted {key} from Elasticsearch")
 
 # Run sync worker in background thread
@@ -180,7 +180,7 @@ def consume_and_sync():
                 if action == 'upsert':
                     es.index(index='products', id=product_id, document=data)
                 elif action == 'delete':
-                    es.delete(index='products', id=product_id, ignore=[404])
+                    es.options(ignore_status=[404]).delete(index='products', id=product_id)
 
                 # Acknowledge message after successful processing
                 r.xack(STREAM_KEY, CONSUMER_GROUP, entry_id)
