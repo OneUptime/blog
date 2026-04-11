@@ -133,7 +133,7 @@ groups:
           description: "{{ $value }} clients connected"
 
       - alert: RedisHighReplicationLag
-        expr: redis_replication_lag_seconds > 10
+        expr: redis_connected_slave_lag_seconds > 10
         for: 1m
         labels:
           severity: critical
@@ -211,7 +211,12 @@ Import the official Redis Grafana dashboard (ID: 763):
 ```bash
 curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
   -H 'Content-Type: application/json' \
-  -d '{"dashboard": {"id": null}, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}], "folderId": 0, "overwrite": false, "path": "grafana_763.json"}'
+  -d '{
+    "dashboard": '"$(curl -s https://grafana.com/api/dashboards/763 | jq '.json')"',
+    "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}],
+    "folderId": 0,
+    "overwrite": false
+  }'
 ```
 
 Or import dashboard ID 763 directly from grafana.com via the Grafana UI: Dashboards - Import - Enter 763.
@@ -234,7 +239,7 @@ rate(redis_keyspace_hits_total[5m]) /
 rate(redis_commands_processed_total[1m])
 
 # Replication lag
-redis_replication_lag_seconds
+redis_connected_slave_lag_seconds
 
 # Key count by database
 redis_db_keys
