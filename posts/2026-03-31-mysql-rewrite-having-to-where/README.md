@@ -68,17 +68,17 @@ GROUP BY region;
 
 ```sql
 -- BEFORE: Groups all rows for all time, then filters by year
-SELECT customer_id, COUNT(*) AS order_count
+SELECT YEAR(created_at) AS order_year, COUNT(*) AS order_count
 FROM orders
-GROUP BY customer_id
-HAVING YEAR(MIN(created_at)) = 2024;
+GROUP BY order_year
+HAVING order_year = 2024;
 
 -- AFTER: Only groups rows from 2024 (fewer rows aggregated)
-SELECT customer_id, COUNT(*) AS order_count
+SELECT YEAR(created_at) AS order_year, COUNT(*) AS order_count
 FROM orders
 WHERE created_at >= '2024-01-01'
   AND created_at < '2025-01-01'
-GROUP BY customer_id;
+GROUP BY order_year;
 ```
 
 ### Example 3: Mixed Conditions
