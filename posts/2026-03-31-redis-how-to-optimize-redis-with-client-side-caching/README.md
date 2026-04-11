@@ -89,7 +89,7 @@ print(cache.get('user:1'))  # From local cache - no Redis round trip
 
 ## Broadcasting Mode Example
 
-Broadcasting mode is simpler and more scalable - the server doesn't need to track individual clients:
+Broadcasting mode is simpler and more scalable - the server doesn't need to track individual clients. RESP2 still requires `REDIRECT`, so we use the same two-connection pattern:
 ```python
 import redis
 import threading
@@ -97,17 +97,23 @@ import threading
 class BroadcastCache:
     def __init__(self, prefixes, host='localhost', port=6379):
         self.r = redis.StrictRedis(host=host, port=port, decode_responses=True)
+        self.invalidation_conn = redis.StrictRedis(host=host, port=port, decode_responses=True)
         self.local_cache = {}
         self.prefixes = prefixes
         self._setup_tracking()
 
     def _setup_tracking(self):
+        # Redirect invalidations to the invalidation connection
+        invalidation_id = self.invalidation_conn.client_id()
         prefix_args = []
         for prefix in self.prefixes:
             prefix_args.extend(['PREFIX', prefix])
-        self.r.execute_command('CLIENT TRACKING', 'ON', 'BCAST', *prefix_args)
+        self.r.execute_command(
+            'CLIENT TRACKING', 'ON', 'REDIRECT', invalidation_id,
+            'BCAST', *prefix_args
+        )
 
-        pubsub = self.r.pubsub()
+        pubsub = self.invalidation_conn.pubsub()
         pubsub.subscribe('__redis__:invalidate')
 
         def listen():
@@ -133,27 +139,55 @@ cache = BroadcastCache(prefixes=['user:', 'product:'])
 
 ## Client-Side Caching in Node.js with node-redis
 
-The `node-redis` v4 client has built-in client-side caching support:
+You can implement the same two-connection pattern with `node-redis`:
 ```javascript
 const { createClient } = require('redis');
 
 async function main() {
-  const client = await createClient({
-    url: 'redis://localhost:6379',
-    // node-redis handles CLIENT TRACKING internally
-  }).connect();
+  // Main connection for commands
+  const client = await createClient({ url: 'redis://localhost:6379' }).connect();
+  // Separate connection for invalidation messages
+  const subscriber = await createClient({ url: 'redis://localhost:6379' }).connect();
 
-  // Enable client-side caching
-  await client.sendCommand(['CLIENT', 'TRACKING', 'ON', 'BCAST', 'PREFIX', 'user:']);
+  const localCache = new Map();
+
+  // Get subscriber's client ID for REDIRECT
+  const subscriberId = await subscriber.sendCommand(['CLIENT', 'ID']);
+
+  // Enable tracking with redirect to subscriber connection
+  await client.sendCommand([
+    'CLIENT', 'TRACKING', 'ON',
+    'REDIRECT', subscriberId.toString(),
+    'BCAST', 'PREFIX', 'user:'
+  ]);
+
+  // Listen for invalidation messages
+  await subscriber.subscribe('__redis__:invalidate', (message) => {
+    const keys = Array.isArray(message) ? message : [message];
+    keys.forEach(key => localCache.delete(key));
+  });
+
+  // Helper for cached reads
+  async function cachedGet(key) {
+    if (localCache.has(key)) {
+      return localCache.get(key);
+    }
+    const value = await client.get(key);
+    if (value !== null) {
+      localCache.set(key, value);
+    }
+    return value;
+  }
 
   // First GET - fetches from Redis
-  let val = await client.get('user:1');
+  let val = await cachedGet('user:1');
   console.log('From Redis:', val);
 
   // Second GET - served from local cache
-  val = await client.get('user:1');
+  val = await cachedGet('user:1');
   console.log('From cache:', val);
 
+  await subscriber.quit();
   await client.quit();
 }
 
