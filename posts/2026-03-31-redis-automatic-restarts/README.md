@@ -79,14 +79,14 @@ redis-cli ping
 journalctl -u redis --since "1 hour ago" | grep -E "Start|Stop|Restart|kill|OOM"
 ```
 
-## Alerting on Restart Events
+## Alerting on Persistent Failures
 
-Set up an alert when Redis restarts by using a systemd `OnFailure` override. Create a notification script:
+Set up an alert when Redis fails permanently (after all restart attempts are exhausted) by using a systemd `OnFailure` directive. Create a notification script:
 
 ```bash
 sudo tee /usr/local/bin/notify-redis-restart.sh > /dev/null <<'EOF'
 #!/bin/bash
-echo "Redis restarted at $(date)" | mail -s "Redis Restart Alert" ops@example.com
+echo "Redis failed at $(date) after exhausting all restart attempts" | mail -s "Redis Failure Alert" ops@example.com
 EOF
 sudo chmod +x /usr/local/bin/notify-redis-restart.sh
 ```
@@ -96,7 +96,7 @@ Create an alert service:
 ```bash
 sudo tee /etc/systemd/system/redis-restart-alert.service > /dev/null <<'EOF'
 [Unit]
-Description=Alert on Redis restart
+Description=Alert on Redis failure
 
 [Service]
 Type=oneshot
@@ -138,4 +138,4 @@ echo $?   # 0 = OK
 
 ## Summary
 
-Configure Redis automatic restarts via `Restart=on-failure` and `RestartSec=10` in the systemd unit file. Use `StartLimitBurst` and `StartLimitIntervalSec` to prevent infinite restart loops on persistent failures. Monitor restart events with `journalctl -u redis`, and add an `OnFailure` service to send alerts when Redis exits unexpectedly in production.
+Configure Redis automatic restarts via `Restart=on-failure` and `RestartSec=10` in the systemd unit file. Use `StartLimitBurst` and `StartLimitIntervalSec` to prevent infinite restart loops on persistent failures. Monitor restart events with `journalctl -u redis`, and add an `OnFailure` service to send alerts when Redis fails permanently after exhausting all restart attempts.
