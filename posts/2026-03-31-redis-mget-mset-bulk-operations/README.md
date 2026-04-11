@@ -113,7 +113,7 @@ OK
 
 ## MSET vs MSETNX
 
-`MSET` always overwrites existing keys. `MSETNX` is atomic and only sets all keys if none of them exist - if even one key exists, the entire operation is aborted.
+`MSET` always overwrites existing keys. `MSETNX` has all-or-nothing conditional semantics - it only sets all keys if none of them exist. If even one key exists, the entire operation is aborted. Both `MSET` and `MSETNX` are atomic.
 
 ```redis
 SET user:1:name "Alice"
@@ -141,7 +141,7 @@ For very large batches, Redis Pipelines or `MGET`/`MSET` produce similar latency
 
 ## Atomicity note
 
-`MSET` is atomic in that all keys are set together - no other client can read a partially updated set of keys. However, `MSET` does NOT use a transaction; it simply applies all writes sequentially within a single command execution. `MGET` is a read-only scan and not transactional.
+`MSET` is atomic in that all keys are set together - no other client can read a partially updated set of keys. However, `MSET` does NOT use a transaction; it simply applies all writes sequentially within a single command execution. `MGET` is also atomic - all values are read in a single operation, providing a consistent snapshot of the requested keys.
 
 ## Use Cases
 
