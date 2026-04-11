@@ -72,7 +72,7 @@ FROM uploaded_files;
 ```sql
 SELECT
   file_path,
-  SUBSTRING_INDEX(file_path, '/', 3) AS directory
+  SUBSTRING_INDEX(file_path, '/', 4) AS directory
 FROM uploaded_files;
 ```
 
