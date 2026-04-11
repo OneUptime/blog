@@ -82,7 +82,7 @@ When a user's password is expired, they can only run `SET PASSWORD` or `ALTER US
 
 ## Checking Password Policy Settings
 
-MySQL enforces password validation through the `validate_password` plugin:
+MySQL enforces password validation through the `validate_password` component:
 
 ```sql
 -- View password policy settings
