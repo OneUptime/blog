@@ -60,7 +60,7 @@ Pros:
 - Minimal performance impact - fork-based, non-blocking
 
 Cons:
-- Data loss between snapshots (up to 5 minutes by default)
+- Data loss between snapshots (up to 15 minutes with default save rules)
 - Fork can be slow with very large datasets
 
 ## Option 2: AOF (Append-Only File)
