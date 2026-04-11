@@ -21,7 +21,7 @@ JSON.DEBUG MEMORY key [path]
 - `key` - the Redis key holding a JSON document
 - `path` - JSONPath expression (defaults to `$` for the full document)
 
-Returns an integer (bytes), or an array of integers for wildcard paths.
+Returns an integer when using the legacy path (`.`), or an array of integers when using JSONPath (`$`) expressions.
 
 ## Setup
 
@@ -106,7 +106,7 @@ r = redis.Redis()
 keys = list(r.scan_iter("session:*"))
 results = []
 for key in keys:
-    size = r.json().debug_memory(key.decode())
+    size = r.json().debug("MEMORY", key.decode())
     results.append((size, key.decode()))
 
 results.sort(reverse=True)
@@ -125,13 +125,12 @@ r = redis.Redis()
 # Option A: store as JSON document
 data = {"metrics": [i * 1.5 for i in range(100)]}
 r.json().set("metrics:json:1", "$", data)
-json_size = r.json().debug_memory("metrics:json:1")
+json_size = r.json().debug("MEMORY", "metrics:json:1")
 
 # Option B: store as compressed string
 import zlib
 compressed = zlib.compress(json.dumps(data).encode())
 r.set("metrics:zlib:1", compressed)
-from redis.commands.core import MEMORY_USAGE
 raw_size = r.memory_usage("metrics:zlib:1")
 
 print(f"JSON document: {json_size} bytes")
