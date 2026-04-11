@@ -51,7 +51,6 @@ SHOW VARIABLES LIKE 'audit_log%';
 | `OLD` | XML format (legacy) |
 | `NEW` | Updated XML format |
 | `JSON` | JSON format (recommended) |
-| `CSV` | Comma-separated values |
 
 ## Audit Log Policies
 
@@ -109,9 +108,9 @@ SELECT audit_log_filter_set_filter('log_app_user',
 -- Assign filter to a user
 SELECT audit_log_filter_set_user('app_user@%', 'log_app_user');
 
--- Create a filter for specific events
+-- Create a filter for specific events (general class covers DDL statements)
 SELECT audit_log_filter_set_filter('log_ddl',
-  '{"filter": {"class": {"name": "table_ddl_access"}}}');
+  '{"filter": {"class": {"name": "general"}}}');
 
 -- Remove filter assignment
 SELECT audit_log_filter_remove_user('app_user@%');
@@ -136,7 +135,7 @@ Or via configuration:
 
 ```text
 [mysqld]
-audit_log_rotate_on_size = 1073741824  -- 1 GB
+audit_log_rotate_on_size = 1073741824  # 1 GB
 ```
 
 ## Community Edition Alternatives
