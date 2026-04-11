@@ -43,7 +43,7 @@ TOPK.INFO my_topk
 | k | Number of top items tracked |
 | width | Width of each counter array (affects accuracy) |
 | depth | Number of counter arrays (affects false positive rate) |
-| decay | Rate at which counts decay over time (0.0 to 1.0) |
+| decay | Probability of reducing a counter on collision, calculated as decay^counter (0.0 to 1.0) |
 
 ## Default Parameters
 
@@ -141,20 +141,20 @@ for c in configs:
 
 ## Checking Decay Setting Effects
 
-The decay parameter controls how quickly old counts fade:
+The decay parameter controls how easily counters are displaced on collision:
 
 ```text
-decay = 1.0  -> No decay, counts accumulate indefinitely
-decay = 0.9  -> Counts decay by 10% when a slot is displaced
-decay = 0.5  -> Aggressive decay, heavy hitters change quickly
+decay = 1.0  -> Every collision decrements; heavy hitters get no extra protection
+decay = 0.9  -> Default; heavy hitters with high counts are progressively harder to displace
+decay = 0.5  -> Strong protection for heavy hitters; top-k list is very stable
 ```
 
 ```bash
-# For real-time trending where recent events matter more
-TOPK.RESERVE realtime:trending 10 50 5 0.85  # Lower decay
+# For real-time trending where heavy hitters should be easy to displace
+TOPK.RESERVE realtime:trending 10 50 5 1.0  # Higher decay, more volatile
 
-# For historical aggregation where all counts matter equally
-TOPK.RESERVE historical:trending 10 50 5 1.0  # No decay
+# For stable tracking where heavy hitters should persist
+TOPK.RESERVE historical:trending 10 50 5 0.5  # Lower decay, more stable
 ```
 
 ## Validating Structure Exists
