@@ -108,12 +108,11 @@ The key metric for read replicas is `Seconds_Behind_Source`. If this grows, read
 SHOW REPLICA STATUS\G
 ```
 
-Query replication lag from the primary using Performance Schema:
+Query replication status and errors using Performance Schema:
 
 ```sql
-SELECT CHANNEL_NAME, SERVICE_STATE, LAST_ERROR_MESSAGE,
-       COUNT_TRANSACTIONS_BEHIND
-FROM performance_schema.replication_applier_status;
+SELECT CHANNEL_NAME, SERVICE_STATE, LAST_ERROR_NUMBER, LAST_ERROR_MESSAGE
+FROM performance_schema.replication_applier_status_by_coordinator;
 ```
 
 Set up an alert if lag exceeds your application's staleness tolerance (e.g., 5 seconds for a reporting workload, under 1 second for transactional reads).
@@ -133,4 +132,4 @@ SET GLOBAL rpl_semi_sync_source_enabled = ON;
 
 ## Summary
 
-Read replicas scale MySQL read capacity by distributing SELECT queries across multiple servers. Set up asynchronous replication with binary logging, route reads to replicas using your application's connection logic or a proxy layer, and monitor `Seconds_Behind_Source` to detect lag. For write-after-read consistency, consider semi-synchronous replication or primary fallback routing.
+Read replicas scale MySQL read capacity by distributing SELECT queries across multiple servers. Set up asynchronous replication with binary logging, route reads to replicas using your application's connection logic or a proxy layer, and monitor `Seconds_Behind_Source` to detect lag. For read-after-write consistency, consider semi-synchronous replication or primary fallback routing.
