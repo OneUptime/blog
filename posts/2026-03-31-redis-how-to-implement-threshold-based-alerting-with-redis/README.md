@@ -227,4 +227,4 @@ def get_metric_status(metric_name: str) -> dict:
 
 ## Summary
 
-Redis threshold alerting combines atomic metric storage with Pub/Sub notification dispatch to provide near-real-time alerting. Cooldown keys prevent alert storms during sustained incidents, while the alert history list provides an audit trail. The system is horizontally scalable since multiple application instances writing the same metric key are automatically deduplicated and thresholds are evaluated atomically.
+Redis threshold alerting combines metric storage with Pub/Sub notification dispatch to provide near-real-time alerting. Cooldown keys prevent alert storms during sustained incidents, while the alert history list provides an audit trail. Note that the cooldown check and set shown here are not atomic across multiple commands, so concurrent writers could produce duplicate alerts. For production use with multiple application instances, wrap the cooldown check and alert dispatch in a Lua script or use `SET NX` to atomically claim the cooldown key.
