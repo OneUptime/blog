@@ -51,16 +51,19 @@ def subscribe_with_reconnect(channel):
 
 Messages published during the reconnect gap are permanently lost.
 
-## Detecting Subscriber Disconnect Events
+## Detecting Subscriber Disconnects
 
-Redis emits keyspace events for subscribe and unsubscribe actions if configured:
+Redis does not emit events when subscribers disconnect from Pub/Sub channels. There is no built-in notification mechanism for subscription changes. To detect disconnects, you can poll subscriber counts periodically:
 
 ```bash
-redis-cli CONFIG SET notify-keyspace-events "Pg"
-redis-cli PSUBSCRIBE __keyevent@*__:*
+# Check subscriber counts per channel
+redis-cli PUBSUB NUMSUB notifications
+
+# List clients in Pub/Sub mode
+redis-cli CLIENT LIST TYPE pubsub
 ```
 
-You can use this to detect when subscribers leave channels, but you cannot recover missed messages.
+By comparing subscriber counts over time, your application can detect when subscribers drop off. For more reliable detection, implement application-level heartbeats where subscribers periodically publish to a health-check channel.
 
 ## Monitoring Active Subscribers
 
@@ -79,6 +82,9 @@ If your application cannot tolerate message loss, use Redis Streams. Streams per
 ```bash
 # Producer
 redis-cli XADD notifications '*' event "order-placed" id "123"
+
+# Create a consumer group (required before reading)
+redis-cli XGROUP CREATE notifications mygroup 0
 
 # Consumer (with acknowledgment)
 redis-cli XREADGROUP GROUP mygroup consumer1 COUNT 1 STREAMS notifications ">"
