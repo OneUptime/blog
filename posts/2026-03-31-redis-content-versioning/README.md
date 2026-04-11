@@ -40,8 +40,9 @@ def save_revision(content_id: str, body: str, author: str) -> int:
         "body": body,
         "author": author,
         "updated_at": str(time.time()),
-        "version": str(r.llen(revision_key) + 1),
     })
+    # Increment version counter atomically
+    pipe.hincrby(f"content:{content_id}", "version", 1)
     pipe.execute()
     return r.llen(revision_key)
 ```
