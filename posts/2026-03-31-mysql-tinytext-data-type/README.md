@@ -48,11 +48,11 @@ INSERT INTO product_hints (hint) VALUES (REPEAT(_utf8mb4 0xF09F8E89, 63));
 |---|---|---|
 | Max size | 255 bytes | 255 characters |
 | Row-size contribution | Off-page (minimal) | In-row |
-| Default value | Not allowed | Allowed |
+| Default value | Expression only (since 8.0.13) | Allowed |
 | Full-text index | Supported | Supported |
 | Prefix index required | Yes | No (for short lengths) |
 
-Because `TINYTEXT` cannot have a default value and requires a prefix index, most developers prefer `VARCHAR(255)` unless the off-page storage characteristic is specifically needed.
+Because `TINYTEXT` only supports expression defaults (e.g., `DEFAULT ('value')` since MySQL 8.0.13) and requires a prefix index, most developers prefer `VARCHAR(255)` unless the off-page storage characteristic is specifically needed.
 
 ## Indexing TINYTEXT
 
@@ -92,4 +92,4 @@ CREATE TABLE tags (
 
 ## Summary
 
-`TINYTEXT` stores up to 255 bytes off-page and is useful when you need a short text field without contributing to the row-size limit. However, because it does not support default values and requires prefix indexes, `VARCHAR(255)` is usually the more convenient choice for short strings. Use `TINYTEXT` when you specifically need TEXT semantics or are already working with a TEXT-family schema.
+`TINYTEXT` stores up to 255 bytes off-page and is useful when you need a short text field without contributing to the row-size limit. However, because it only supports expression defaults (since MySQL 8.0.13) and requires prefix indexes, `VARCHAR(255)` is usually the more convenient choice for short strings. Use `TINYTEXT` when you specifically need TEXT semantics or are already working with a TEXT-family schema.
