@@ -112,9 +112,9 @@ On large tables, the optimizer relies heavily on statistics to choose plans. Sta
 -- Update table statistics
 ANALYZE TABLE orders;
 
--- Check when statistics were last updated
-SELECT last_analyzed FROM information_schema.tables
-WHERE table_schema = 'mydb' AND table_name = 'orders';
+-- Check when InnoDB statistics were last updated
+SELECT last_update FROM mysql.innodb_table_stats
+WHERE database_name = 'mydb' AND table_name = 'orders';
 ```
 
 ## Summary
