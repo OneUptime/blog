@@ -36,7 +36,7 @@ Returns the moved element, or nil on timeout.
 # Add items to source
 redis-cli RPUSH inbox "message:1" "message:2"
 
-# Move from right of inbox to left of processing (non-blocking because inbox has data)
+# Move from left of inbox to left of processing (non-blocking because inbox has data)
 redis-cli BLMOVE inbox processing LEFT LEFT 5
 ```
 
@@ -76,7 +76,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 def reliable_worker():
     while True:
         # Atomically move from pending to processing
-        job = r.blmove('pending', 'processing', 'LEFT', 'LEFT', timeout=0)
+        job = r.blmove('pending', 'processing', 0, 'LEFT', 'LEFT')
         if job:
             try:
                 process_job(job)
@@ -129,7 +129,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 def router():
     """Move messages from central queue to worker-specific queues."""
     while True:
-        msg = r.blmove('central_queue', 'router_processing', 'LEFT', 'LEFT', timeout=5)
+        msg = r.blmove('central_queue', 'router_processing', 5, 'LEFT', 'LEFT')
         if msg:
             data = json.loads(msg)
             worker_id = data.get('worker_id', 'default')
@@ -147,7 +147,7 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 def worker_with_timeout():
     while True:
-        result = r.blmove('source', 'processing', 'LEFT', 'LEFT', timeout=5)
+        result = r.blmove('source', 'processing', 5, 'LEFT', 'LEFT')
         if result is None:
             print("No items in last 5 seconds - doing housekeeping")
             perform_housekeeping()
