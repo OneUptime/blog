@@ -27,9 +27,9 @@ sequenceDiagram
     participant Client
     participant Redis
     Client->>Redis: DEBUG RELOAD
-    Redis->>Redis: Serialize dataset to RDB (in memory)
+    Redis->>Redis: Serialize dataset to RDB file on disk
     Redis->>Redis: Flush current dataset
-    Redis->>Redis: Reload from RDB
+    Redis->>Redis: Reload from RDB file on disk
     Redis-->>Client: OK
 ```
 
@@ -75,8 +75,9 @@ OBJECT ENCODING small:hash
 ### Force encoding downgrade test
 
 ```redis
-# Add many fields to exceed listpack threshold
-HSET large:hash f1 v1 f2 v2 f3 v3 f4 v4 f5 v5 f6 v6
+# Lower listpack threshold so a small hash triggers promotion
+CONFIG SET hash-max-listpack-entries 3
+HSET large:hash f1 v1 f2 v2 f3 v3 f4 v4
 OBJECT ENCODING large:hash
 # "hashtable"
 
