@@ -123,7 +123,7 @@ pt-kill \
   --run-time=1
 ```
 
-`--run-time=1` makes pt-kill check once and exit.
+`--run-time=1` makes pt-kill run for 1 second and then exit. It checks the processlist once at startup and stops after the specified duration elapses.
 
 ## Logging Killed Queries
 
@@ -134,9 +134,12 @@ pt-kill \
   --password=secret \
   --busy-time=60 \
   --kill \
+  --daemonize \
   --log=/var/log/pt-kill.log \
   --interval=10
 ```
+
+`--log` requires `--daemonize` because it only captures output when pt-kill runs as a background daemon.
 
 ## Summary
 
