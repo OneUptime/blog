@@ -20,7 +20,7 @@ The `HELLO` command was introduced in Redis 6.0 to enable protocol negotiation b
 HELLO [protover [AUTH username password] [SETNAME clientname]]
 ```
 
-All arguments are optional. Calling `HELLO` with no arguments returns current connection info without changing the protocol.
+All arguments are optional. Since Redis 6.2, calling `HELLO` with no arguments returns current connection info without changing the protocol. (In Redis 6.0 and 6.1, the `protover` argument was required.)
 
 ## Getting Current Connection Info
 
@@ -28,7 +28,7 @@ All arguments are optional. Calling `HELLO` with no arguments returns current co
 redis-cli HELLO
 ```
 
-Example output (in RESP3 format):
+Example output (as displayed by redis-cli):
 
 ```text
 1) "server"
@@ -89,7 +89,7 @@ RESP3 adds native support for:
 - Verbatim strings (with encoding hint)
 - Push messages (for pub/sub and keyspace notifications)
 
-Modern clients like redis-py 4.x automatically use RESP3 when available.
+Modern clients like redis-py (5.0+) support RESP3, but it must be explicitly enabled (e.g., by passing `protocol=3`). The default remains RESP2.
 
 ## Using HELLO in Application Code
 
@@ -107,7 +107,7 @@ print(info['version'])
 - When building a custom Redis client and need to negotiate protocol
 - When authenticating and setting connection metadata in one round trip
 - When checking what protocol version a connection is currently using
-- When connecting to Redis Sentinel or Cluster to get topology info
+- When connecting to Redis Sentinel or Cluster to confirm server mode and role
 
 ## Summary
 
