@@ -24,7 +24,7 @@ XGROUP CREATE key groupname id [MKSTREAM] [ENTRIESREAD entries-read]
   - `$` - only new messages added after group creation
   - `0` - all existing messages from the start of the stream
   - Specific ID - messages after that ID
-- `MKSTREAM` - create the stream if it does not exist (Redis 6.2+)
+- `MKSTREAM` - create the stream if it does not exist (Redis 5.0+)
 - `ENTRIESREAD` - override the entries-read counter for lag calculation (Redis 7.0+)
 
 Returns `OK` on success.
