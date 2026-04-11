@@ -99,12 +99,33 @@ try {
 
 If Redis handles sessions, a failure will log out all users. Mitigate this by using database sessions as a fallback, or configure session redundancy with Redis Sentinel or Redis Cluster.
 
-```bash
-# .env for high availability
-SESSION_DRIVER=redis
-REDIS_CLIENT=predis
-REDIS_SENTINEL_HOST=sentinel1,sentinel2,sentinel3
-REDIS_SENTINEL_PORT=26379
+Redis Sentinel requires the Predis client and explicit configuration in `config/database.php`:
+
+```php
+// config/database.php
+'redis' => [
+    'client' => env('REDIS_CLIENT', 'predis'),
+
+    'options' => [
+        'replication' => 'sentinel',
+        'service' => env('REDIS_SENTINEL_SERVICE', 'mymaster'),
+    ],
+
+    'default' => [
+        [
+            'host' => 'sentinel1',
+            'port' => 26379,
+        ],
+        [
+            'host' => 'sentinel2',
+            'port' => 26379,
+        ],
+        [
+            'host' => 'sentinel3',
+            'port' => 26379,
+        ],
+    ],
+],
 ```
 
 ## Implement a Health Check Endpoint
