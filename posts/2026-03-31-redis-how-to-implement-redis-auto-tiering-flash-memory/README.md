@@ -28,13 +28,13 @@ The key components are:
 
 ### 1. Provision a Redis Enterprise Cluster
 
-On your servers, download and install Redis Enterprise:
+On your servers, download and install Redis Enterprise. Get the download link for your OS from the Redis Enterprise downloads page:
 
 ```bash
-curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
-sudo apt update
-sudo apt install -y redislabs
+# Download the Redis Enterprise package (get the URL from https://redis.io/downloads)
+wget https://s3.amazonaws.com/redis-enterprise-software-downloads/7.8.2/redislabs-7.8.2-58-focal-amd64.tar
+tar -xvf redislabs-*.tar
+sudo ./install.sh
 ```
 
 Start the cluster setup:
@@ -66,7 +66,7 @@ echo "/dev/nvme0n1 /var/opt/redislabs/flash ext4 defaults 0 0" | sudo tee -a /et
 Use the Redis Enterprise REST API or the admin UI to create a database with flash enabled:
 
 ```bash
-curl -u admin@example.com:AdminPass123 \
+curl -k -u admin@example.com:AdminPass123 \
   -X POST https://localhost:9443/v1/bdbs \
   -H "Content-Type: application/json" \
   -d '{
@@ -87,7 +87,7 @@ In this configuration:
 ### 4. Verify the Database Configuration
 
 ```bash
-curl -u admin@example.com:AdminPass123 \
+curl -k -u admin@example.com:AdminPass123 \
   https://localhost:9443/v1/bdbs \
   | python3 -m json.tool | grep -E "(name|bigstore|memory)"
 ```
@@ -132,7 +132,7 @@ redis-cli SET ref:country:US "United States"
 ### Using Redis Enterprise Metrics
 
 ```bash
-curl -u admin@example.com:AdminPass123 \
+curl -k -u admin@example.com:AdminPass123 \
   https://localhost:9443/v1/bdbs/1/stats/last \
   | python3 -m json.tool | grep -E "(flash|bigstore|ram)"
 ```
@@ -148,8 +148,8 @@ Key metrics to watch:
 ### Grafana Dashboard Query (Prometheus)
 
 ```text
-# Flash hit ratio
-redis_enterprise_bdb_bigstore_reads / (redis_enterprise_bdb_bigstore_reads + redis_enterprise_bdb_read_hits)
+# Flash read ratio (proportion of reads served from flash - lower is better)
+bdb_bigstore_io_read_bytes / (bdb_bigstore_io_read_bytes + bdb_read_hits)
 ```
 
 ## Simulating Tiering in Open-Source Redis
@@ -158,7 +158,6 @@ If you are running open-source Redis, you can approximate tiering by using two R
 
 ```python
 import redis
-import time
 
 hot_redis = redis.Redis(host='localhost', port=6379)  # RAM-only
 cold_redis = redis.Redis(host='localhost', port=6380)  # larger, disk-backed
