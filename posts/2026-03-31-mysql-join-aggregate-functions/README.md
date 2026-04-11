@@ -158,14 +158,14 @@ ORDER BY total_spent DESC;
 
 ## Common mistake: forgetting non-aggregated columns in GROUP BY
 
-Every column in `SELECT` that is not wrapped in an aggregate function must appear in `GROUP BY`:
+Every column in `SELECT` that is not wrapped in an aggregate function must either appear in `GROUP BY` or be functionally dependent on a `GROUP BY` column. MySQL 8 recognises functional dependencies from primary keys, so grouping by a table's primary key allows selecting any column from that table. However, grouping by a non-key column does not cover other columns:
 
 ```sql
--- Wrong: c.region not in GROUP BY
+-- Wrong: c.name is not functionally dependent on c.region
 SELECT c.name, c.region, COUNT(o.order_id)
 FROM customers c
 INNER JOIN orders o ON c.customer_id = o.customer_id
-GROUP BY c.customer_id, c.name;
+GROUP BY c.region;
 
 -- Correct
 SELECT c.name, c.region, COUNT(o.order_id)
