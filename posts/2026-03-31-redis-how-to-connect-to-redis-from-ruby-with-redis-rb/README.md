@@ -124,7 +124,7 @@ require 'redis'
 redis = Redis.new
 
 # Push to tail
-redis.rpush('tasks', 'task:1', 'task:2', 'task:3')
+redis.rpush('tasks', ['task:1', 'task:2', 'task:3'])
 
 # Push to head
 redis.lpush('tasks', 'urgent:task')
