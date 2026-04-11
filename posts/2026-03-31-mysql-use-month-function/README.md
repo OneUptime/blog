@@ -109,8 +109,8 @@ SELECT
   DATE_FORMAT(order_date, '%M %Y') AS period,
   SUM(amount) AS revenue
 FROM sales
-GROUP BY DATE_FORMAT(order_date, '%Y-%m')
-ORDER BY DATE_FORMAT(order_date, '%Y-%m');
+GROUP BY DATE_FORMAT(order_date, '%M %Y')
+ORDER BY MIN(order_date);
 ```
 
 ## Comparing Current Month
