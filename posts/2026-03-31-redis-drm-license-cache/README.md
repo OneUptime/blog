@@ -27,8 +27,6 @@ import redis
 import json
 import time
 import hashlib
-import hmac
-import os
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True, ssl=True)
 
@@ -159,7 +157,6 @@ def end_stream(user_id: str, stream_id: str):
 ```python
 def revoke_user_licenses(user_id: str):
     # Delete all cached licenses for a user
-    pattern = f"{LICENSE_PREFIX}:*"
     # Note: requires scanning all license keys
     # In production, maintain a per-user set of license keys
     r.delete(f"{STREAM_PREFIX}:{user_id}")
