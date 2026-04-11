@@ -21,8 +21,8 @@ OBJECT ENCODING ports  # "intset"
 SADD tags "redis" "cache" "backend"
 OBJECT ENCODING tags   # "listpack"
 
-# Large set: hashtable
-SADD large_set $(seq 1 200)
+# Large set: hashtable (exceeds set-max-intset-entries default of 512)
+SADD large_set $(seq 1 600)
 OBJECT ENCODING large_set  # "hashtable"
 ```
 
@@ -113,17 +113,17 @@ print(r.object_encoding("user_ids"))  # "intset"
 print(r.memory_usage("user_ids"))     # ~4 KB vs ~65 KB hashtable
 ```
 
-## Adding One Non-Integer Converts intset to hashtable
+## Adding One Non-Integer Converts intset to listpack
 
 ```bash
 SADD user_ids 100 200 300
 OBJECT ENCODING user_ids  # intset
 
 SADD user_ids "admin"
-OBJECT ENCODING user_ids  # hashtable (immediate conversion)
+OBJECT ENCODING user_ids  # listpack (immediate conversion, Redis 7.2+)
 ```
 
-intset only works when every member is an integer. Adding one string forces conversion to hashtable.
+intset only works when every member is an integer. Adding one string forces conversion — to `listpack` if the set is small enough (under `set-max-listpack-entries`), or to `hashtable` otherwise.
 
 ## Scanning for Over-Threshold Sets
 
