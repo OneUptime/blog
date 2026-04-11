@@ -40,29 +40,25 @@ Redis listens on both localhost and the internal network interface at `10.0.0.5`
 
 ## The protected-mode Directive
 
-`protected-mode` is an additional safety layer introduced in Redis 3.2. When enabled (the default), Redis refuses connections from non-loopback addresses unless:
+`protected-mode` is an additional safety layer introduced in Redis 3.2. When enabled (the default), Redis refuses connections from non-loopback addresses unless a password is set via `requirepass`.
 
-1. A `bind` address other than loopback is explicitly configured, **and**
-2. A password is set via `requirepass`
+In Redis 3.2 through 6.2, protected-mode only activated when no explicit `bind` directive was configured **and** no password was set — setting **either** one would disable the check. In Redis 7.0+, the `bind` directive is no longer part of the protected-mode check because the default bind already restricts to loopback. Setting a password alone is sufficient to allow remote connections through protected-mode.
 
 ```redis
 protected-mode yes   # default
 ```
 
-### When protected-mode blocks connections
+### When protected-mode blocks connections (Redis 7.0+)
 
 ```mermaid
 flowchart TD
-    A[Incoming connection from remote IP] --> B{bind includes\nnon-loopback?}
-    B -- No --> C[protected-mode check]
-    C --> D{requirepass set?}
-    D -- No --> E[DENIED\nprotected-mode reply]
-    D -- Yes --> F[Allowed]
-    B -- Yes --> G{protected-mode yes?}
-    G -- Yes --> H{requirepass set?}
-    H -- No --> I[DENIED]
-    H -- Yes --> J[Allowed]
-    G -- No --> K[Allowed\n(no protection)]
+    A[Incoming connection] --> B{Connection from\nloopback address?}
+    B -- Yes --> C[Allowed]
+    B -- No --> D{protected-mode yes?}
+    D -- No --> E[Allowed\nno protection]
+    D -- Yes --> F{requirepass set?}
+    F -- Yes --> G[Allowed]
+    F -- No --> H[DENIED\nprotected-mode reply]
 ```
 
 ## Secure Configuration Examples
