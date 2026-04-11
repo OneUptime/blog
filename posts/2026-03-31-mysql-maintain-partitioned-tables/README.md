@@ -34,7 +34,7 @@ Reclaims fragmented space and reorganizes physical data storage within the parti
 ALTER TABLE orders OPTIMIZE PARTITION p2024;
 ```
 
-For InnoDB tables, `OPTIMIZE PARTITION` rebuilds the partition in-place and reclaims `DATA_FREE` space. It can be slow for large partitions - run during low-traffic windows.
+Note: For InnoDB tables, `OPTIMIZE PARTITION` does not work correctly - it rebuilds the **entire table**, not just the specified partition. MySQL internally remaps it to a full table rebuild and analyze. For InnoDB, use `REBUILD PARTITION` followed by `ANALYZE PARTITION` instead to target specific partitions. It can be slow for large partitions - run during low-traffic windows.
 
 Check fragmentation before optimizing:
 
@@ -90,7 +90,7 @@ CREATE EVENT weekly_partition_maintenance
 ON SCHEDULE EVERY 1 WEEK
 STARTS '2025-01-06 02:00:00'
 DO BEGIN
-    -- Analyze the current and previous month's partitions
+    -- Analyze the current month's partition
     SET @cur = CONCAT('p', YEAR(CURDATE()) * 100 + MONTH(CURDATE()));
     SET @sql = CONCAT('ALTER TABLE orders ANALYZE PARTITION ', @cur);
     PREPARE stmt FROM @sql;
