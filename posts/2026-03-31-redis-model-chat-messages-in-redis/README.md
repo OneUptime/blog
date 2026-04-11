@@ -68,16 +68,16 @@ HSET read:receipts:general alice 1711900060-0
 HSET read:receipts:general bob 1711900060-0
 ```
 
-Count unread messages for a user:
+Count unread messages for a user by reading from their last-read position:
 
 ```bash
-XLEN chat:room:general
-# Then compare against the stored receipt position
+# Get unread messages for alice (messages after her last-read ID)
+XRANGE chat:room:general (1711900060-0 +
 ```
 
 ## Consumer Groups for Message Delivery
 
-Use consumer groups to ensure each subscriber processes every message exactly once:
+Use consumer groups to ensure each subscriber processes every message at least once:
 
 ```bash
 # Create consumer group
