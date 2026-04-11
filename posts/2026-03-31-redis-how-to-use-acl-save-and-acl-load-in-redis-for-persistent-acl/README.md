@@ -69,12 +69,12 @@ The ACL file uses one rule per line in `ACL SETUSER` format:
 
 ```text
 user default on nopass ~* &* +@all
-user alice on #5e884898da28047151d0e56f8dc62927773eddcd0f6a14cfa72b9af6f02a1b on ~data:* &* +@read +@write
-user bob on #abc123hash on ~reports:* &* +@read
-user readonly on >readpass ~* &* +@read -@dangerous
+user alice on #5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8 ~data:* &* +@read +@write
+user bob on #6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118090 ~reports:* &* +@read
+user readonly on #a3f8ebe7c0e5e0f4e3b4e9e6a2b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5 ~* &* +@read -@dangerous
 ```
 
-Passwords in the file are stored as SHA256 hashes.
+Passwords in the file are stored as SHA256 hashes (prefixed with `#`).
 
 ## Practical Example in Python
 
@@ -138,33 +138,35 @@ assert 'temp_user' not in user_names
 ```javascript
 const { createClient } = require('redis');
 
-const client = createClient();
-await client.connect();
+(async () => {
+  const client = createClient();
+  await client.connect();
 
-// Set the ACL file path
-await client.configSet('aclfile', '/etc/redis/users.acl');
+  // Set the ACL file path
+  await client.configSet('aclfile', '/etc/redis/users.acl');
 
-// Set up users
-await client.aclSetUser('api_user', [
-  'on',
-  '>apipassword',
-  '~api:*',
-  '+@read',
-  '+@write',
-  '-@dangerous'
-]);
+  // Set up users
+  await client.aclSetUser('api_user', [
+    'on',
+    '>apipassword',
+    '~api:*',
+    '+@read',
+    '+@write',
+    '-@dangerous'
+  ]);
 
-// Save current state
-await client.aclSave();
-console.log('ACL saved');
+  // Save current state
+  await client.aclSave();
+  console.log('ACL saved');
 
-// Show current users
-const users = await client.aclList();
-console.log('Users:', users);
+  // Show current users
+  const users = await client.aclList();
+  console.log('Users:', users);
 
-// Reload from file (useful after manual edits)
-await client.aclLoad();
-console.log('ACL reloaded from file');
+  // Reload from file (useful after manual edits)
+  await client.aclLoad();
+  console.log('ACL reloaded from file');
+})();
 ```
 
 ## Reload After External File Edit
@@ -184,7 +186,6 @@ redis-cli ACL LOAD
 
 ```python
 import redis
-import subprocess
 
 client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
