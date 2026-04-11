@@ -68,21 +68,22 @@ app.get("*", ssrCache, (req, res) => {
 
 ## Cache Angular HTTP Responses Server-Side
 
-Angular Universal's `TransferState` passes server-fetched data to the browser. Cache the data in Redis before setting it in TransferState:
+Cache HTTP response data in Redis on the server so repeated SSR renders skip redundant API calls:
 
 ```typescript
 // app.server.module.ts
 import { Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
-import { TransferState, makeStateKey } from "@angular/platform-browser";
 import { createClient } from "redis";
 import { firstValueFrom } from "rxjs";
 
 @Injectable({ providedIn: "root" })
 export class CachedHttpService {
   private redis = createClient({ url: process.env.REDIS_URL });
+  private redisReady = this.redis.connect();
 
   async get<T>(url: string, stateKey: string, ttl = 300): Promise<T> {
+    await this.redisReady;
     const key = `angular:data:${stateKey}`;
     const cached = await this.redis.get(key);
 
