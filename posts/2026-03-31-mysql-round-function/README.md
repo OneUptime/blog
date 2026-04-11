@@ -10,7 +10,7 @@ Description: Learn how MySQL's ROUND() function rounds a number to a specified n
 
 ## What is ROUND()?
 
-The `ROUND()` function in MySQL rounds a numeric value to a specified number of decimal places. It uses the "round half away from zero" rule: values exactly at the midpoint (0.5) are rounded away from zero. This is the most commonly used rounding function in financial reporting, statistical summaries, and display formatting.
+The `ROUND()` function in MySQL rounds a numeric value to a specified number of decimal places. For exact-value numbers (integers and `DECIMAL`), it uses the "round half away from zero" rule: values exactly at the midpoint (0.5) are rounded away from zero. For approximate-value numbers (`FLOAT` and `DOUBLE`), the result depends on the underlying C library and typically uses "round to nearest even" (banker's rounding). This is the most commonly used rounding function in financial reporting, statistical summaries, and display formatting.
 
 The syntax is:
 
@@ -106,11 +106,14 @@ SELECT ROUND(NULL, 2);
 
 ## Floating Point Precision Warning
 
-Due to floating-point representation, results may occasionally surprise:
+Due to floating-point representation, results may differ from exact-value rounding:
 
 ```sql
 SELECT ROUND(2.445, 2);
--- May return 2.44 on some platforms due to binary float representation
+-- Returns: 2.45 (literal is treated as exact-value DECIMAL)
+
+SELECT ROUND(2.445E0, 2);
+-- Returns: 2.44 (2.445E0 is a DOUBLE; binary representation is slightly less than 2.445)
 ```
 
 For monetary values, use `DECIMAL` columns rather than `FLOAT` or `DOUBLE`:
@@ -152,4 +155,4 @@ GROUP BY student_name;
 
 ## Summary
 
-`ROUND(X, D)` rounds `X` to `D` decimal places using the round-half-away-from-zero rule. Negative `D` rounds to powers of 10 (tens, hundreds, etc.). Use `DECIMAL` columns for money to avoid floating-point drift. Unlike `TRUNCATE()`, `ROUND()` considers the next digit when deciding direction. It is the standard choice for financial totals, averages, and any output where standard rounding semantics are expected.
+`ROUND(X, D)` rounds `X` to `D` decimal places, using the round-half-away-from-zero rule for exact-value types and the C library's rounding (often round-to-nearest-even) for approximate-value types. Negative `D` rounds to powers of 10 (tens, hundreds, etc.). Use `DECIMAL` columns for money to avoid floating-point drift. Unlike `TRUNCATE()`, `ROUND()` considers the next digit when deciding direction. It is the standard choice for financial totals, averages, and any output where standard rounding semantics are expected.
