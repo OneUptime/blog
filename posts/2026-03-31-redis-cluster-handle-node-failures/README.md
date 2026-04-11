@@ -64,15 +64,15 @@ T=8s:   New primary accepting writes
 
 ```bash
 # redis.conf (on all nodes)
-cluster-node-timeout 5000   # 5 seconds (default)
+cluster-node-timeout 15000  # 15 seconds (default)
 ```
 
 Lower values mean faster failover but more false positives:
 
 ```text
 cluster-node-timeout 2000   # Fast (2s), risk of false failover on slow network
-cluster-node-timeout 5000   # Balanced (default)
-cluster-node-timeout 15000  # Conservative, fewer false positives
+cluster-node-timeout 5000   # Moderate, faster failover
+cluster-node-timeout 15000  # Balanced (default)
 ```
 
 ## Replica Selection for Promotion
