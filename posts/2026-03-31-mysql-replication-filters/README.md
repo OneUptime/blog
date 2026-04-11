@@ -62,9 +62,9 @@ Restart MySQL for static changes to take effect:
 sudo systemctl restart mysql
 ```
 
-## Method 2 - Set filters at runtime (MySQL 5.7+)
+## Method 2 - Set filters at runtime (MySQL 8.0.22+)
 
-`CHANGE REPLICATION FILTER` lets you modify filters without restarting the replica or editing configuration files:
+`CHANGE REPLICATION FILTER` lets you modify filters without restarting the replica or editing configuration files. The `CHANGE REPLICATION FILTER` statement was introduced in MySQL 5.7, but the examples below use the modern `STOP REPLICA` / `START REPLICA` syntax available from MySQL 8.0.22. For MySQL 5.7 through 8.0.21, use `STOP SLAVE SQL_THREAD` / `START SLAVE SQL_THREAD` instead.
 
 ```sql
 -- Stop the SQL thread before changing filters
@@ -78,7 +78,7 @@ CHANGE REPLICATION FILTER
 CHANGE REPLICATION FILTER
   REPLICATE_IGNORE_TABLE = (myapp_production.sessions, myapp_production.cache_entries);
 
--- Wildcard ignore (use backtick-quoted strings)
+-- Wildcard ignore (use single-quoted strings)
 CHANGE REPLICATION FILTER
   REPLICATE_WILD_IGNORE_TABLE = ('myapp_production.tmp_%', '%_logs.%');
 
@@ -175,18 +175,13 @@ flowchart TD
     C -->|Yes| D{replicate_ignore_db set?}
     B -->|No| D
     D -->|DB in ignore list| SKIP
-    D -->|Not ignored| E{replicate_do_table set?}
-    E -->|Yes| F{Table in do_table list?}
-    F -->|No| SKIP
+    D -->|Not ignored| E{replicate_do_table or\nreplicate_wild_do_table set?}
+    E -->|Yes| F{Table matches any do rule?}
     F -->|Yes| APPLY[Apply event]
-    E -->|No| G{replicate_ignore_table?}
-    G -->|Table in ignore list| SKIP
-    G -->|Not ignored| H{replicate_wild_do_table?}
-    H -->|Yes and table matches| APPLY
-    H -->|Pattern set but no match| SKIP
-    H -->|Not set| I{replicate_wild_ignore_table?}
-    I -->|Table matches ignore pattern| SKIP
-    I -->|No match| APPLY
+    F -->|No| SKIP
+    E -->|No| G{replicate_ignore_table or\nreplicate_wild_ignore_table set?}
+    G -->|Table matches| SKIP
+    G -->|No match or not set| APPLY
 ```
 
 ## Removing all filters
