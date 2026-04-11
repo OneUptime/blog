@@ -91,11 +91,21 @@ vals, err := rdb.MGet(ctx, "{user:1}:name", "{user:1}:email", "{user:1}:age").Re
 
 ## Pipeline in Cluster Mode
 
-Pipelining works in cluster mode but commands must target the same slot:
+Pipelining works in cluster mode. go-redis automatically groups pipeline commands by their target node and executes each group in parallel, so cross-slot pipelines work without hash tags:
 
 ```go
-// Use hash tags to ensure same slot
 pipe := rdb.Pipeline()
+pipe.Set(ctx, "user:1:name", "Alice", time.Hour)
+pipe.Set(ctx, "user:2:name", "Bob", time.Hour)   // may be on a different slot
+pipe.Set(ctx, "user:3:name", "Charlie", time.Hour)
+_, err := pipe.Exec(ctx)
+```
+
+For transactions (`TxPipeline`), all commands must target the same slot since they run inside a MULTI/EXEC block:
+
+```go
+// Use hash tags to ensure same slot for transactions
+pipe := rdb.TxPipeline()
 pipe.Set(ctx, "{session:abc}:data", "payload", time.Hour)
 pipe.Set(ctx, "{session:abc}:last_seen", "1711900800", time.Hour)
 pipe.Expire(ctx, "{session:abc}:data", time.Hour)
