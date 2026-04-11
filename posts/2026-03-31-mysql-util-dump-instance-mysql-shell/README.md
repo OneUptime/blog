@@ -83,7 +83,7 @@ util.dumpInstance("mydb_backup", {
 ## Dumping to Amazon S3
 
 ```javascript
-util.dumpInstance("s3://my-bucket/backups/instance", {
+util.dumpInstance("backups/instance", {
   s3BucketName: "my-bucket",
   s3Region: "us-east-1",
   threads: 16
