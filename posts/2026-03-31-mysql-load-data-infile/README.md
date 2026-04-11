@@ -59,7 +59,7 @@ INTO TABLE table_name
     [TERMINATED BY 'line_end']
 ]
 [IGNORE n LINES]
-[(col1, col2, ...) | (@var1, @var2, ...)]
+[(col_name_or_user_var, ...)]
 [SET col = expression, ...];
 ```
 
@@ -206,10 +206,9 @@ INTO TABLE products
 
 ## Performance Tips
 
-For maximum performance on large files:
+For MyISAM tables, disable non-unique index updates during the load and rebuild them afterwards:
 
 ```sql
--- Disable indexes during load, rebuild afterwards
 ALTER TABLE products DISABLE KEYS;
 
 LOAD DATA INFILE '/var/lib/mysql-files/large_products.csv'
@@ -219,7 +218,7 @@ INTO TABLE products
 ALTER TABLE products ENABLE KEYS;
 ```
 
-For InnoDB tables, temporarily adjust settings.
+`DISABLE KEYS` / `ENABLE KEYS` only affects MyISAM tables. For InnoDB tables (the default engine), this command is silently ignored. Instead, temporarily adjust these settings.
 
 ```sql
 SET FOREIGN_KEY_CHECKS = 0;
@@ -241,12 +240,12 @@ For large files, monitor progress in another session.
 
 ```sql
 SELECT
-    stage,
-    source_file_size,
-    bytes_processed,
-    ROUND(bytes_processed / source_file_size * 100, 1) AS pct_done
+    EVENT_NAME,
+    WORK_COMPLETED,
+    WORK_ESTIMATED,
+    ROUND(WORK_COMPLETED / WORK_ESTIMATED * 100, 1) AS pct_done
 FROM performance_schema.events_stages_current
-WHERE event_name LIKE '%load%';
+WHERE EVENT_NAME LIKE '%load%';
 ```
 
 ## Best Practices
