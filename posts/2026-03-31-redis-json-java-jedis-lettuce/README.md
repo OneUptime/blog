@@ -65,7 +65,7 @@ List<Class<?>> types = jedis.jsonType("user:1", Path2.of("$.roles"));
 <dependency>
     <groupId>io.lettuce</groupId>
     <artifactId>lettuce-core</artifactId>
-    <version>6.3.2.RELEASE</version>
+    <version>6.8.0.RELEASE</version>
 </dependency>
 ```
 
