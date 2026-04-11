@@ -80,7 +80,7 @@ Check which algorithm MySQL uses:
 EXPLAIN SELECT * FROM active_customers WHERE city = 'Miami'\G
 ```
 
-The `MERGE` algorithm is preferred because it allows index use. A view using `GROUP BY`, `DISTINCT`, aggregate functions, `UNION`, or subqueries in `FROM` forces `TEMPTABLE`.
+The `MERGE` algorithm is preferred because it allows index use. A view using `GROUP BY`, `DISTINCT`, aggregate functions, `UNION`, or subqueries in the select list forces `TEMPTABLE`.
 
 ## Querying a View That Contains Aggregation
 
@@ -102,7 +102,7 @@ WHERE month BETWEEN '2026-01' AND '2026-03'
 ORDER BY month;
 ```
 
-Note: you cannot add a `WHERE` clause that filters on `revenue` directly because MySQL must materialize the aggregation first.
+Note: because this view uses aggregation, MySQL must materialize it first (`TEMPTABLE` algorithm). You can still filter on `revenue` in the outer query, but the filter is applied after materialization rather than being pushed down into the base table scan.
 
 ## Checking Available Views
 
