@@ -16,7 +16,7 @@ Common scenarios that produce runaway queries:
 
 - An analyst runs an ad-hoc report without a LIMIT clause on a large table
 - A deployment introduces a missing index, turning a fast lookup into a full table scan
-- Replication lag causes a read replica to execute queries in the wrong order
+- A large replicated transaction on a read replica holds locks while applying, blocking user queries and causing them to pile up
 - An ORM generates an unexpectedly expensive query after a model change
 
 ## Identifying Long-Running Queries
