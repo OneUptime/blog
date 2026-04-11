@@ -82,16 +82,16 @@ log_change() {
 }
 
 # Capture before state
-BEFORE=$(redis-cli CONFIG GET "${2}")
+BEFORE=$(redis-cli CONFIG GET "$1")
 
 # Execute change
-RESULT=$(redis-cli CONFIG SET "$1" "$2" "$3")
+RESULT=$(redis-cli CONFIG SET "$1" "$2")
 redis-cli CONFIG REWRITE > /dev/null
 
 # Capture after state
-AFTER=$(redis-cli CONFIG GET "${2}")
+AFTER=$(redis-cli CONFIG GET "$1")
 
-log_change "CONFIG SET $1 $2 $3" "$RESULT"
+log_change "CONFIG SET $1 $2" "$RESULT"
 echo "Before: $BEFORE"
 echo "After:  $AFTER"
 echo "Logged to $AUDIT_LOG"
@@ -141,8 +141,8 @@ git add /etc/redis/redis.conf
 git commit -m "RC-2026-042: increase maxmemory to 8gb"
 git push
 
-# CI/CD can validate changes before apply
-redis-server --test-memory 1024 /etc/redis/redis.conf
+# CI/CD can diff and lint changes before apply
+diff <(git show HEAD~1:etc/redis/redis.conf) /etc/redis/redis.conf
 ```
 
 ## Summary
