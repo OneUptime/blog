@@ -154,13 +154,14 @@ def search_new_arrivals(days: int = 7) -> list:
 RediSearch's FT.AGGREGATE can compute statistics per range bucket:
 
 ```python
-from redis.commands.search.aggregation import AggregateRequest, Reducer, reducers
+from redis.commands.search.aggregation import AggregateRequest, Asc
+import redis.commands.search.reducers as reducers
 
 def price_distribution() -> dict:
     request = AggregateRequest("*") \
         .apply(price_bucket="ceil(@price / 100) * 100") \
         .group_by("@price_bucket", reducers.count().alias("count")) \
-        .sort_by("@price_bucket", asc=True)
+        .sort_by(Asc("@price_bucket"))
     results = r.ft("idx:products").aggregate(request)
     return {row["price_bucket"]: int(row["count"]) for row in results.rows}
 ```
