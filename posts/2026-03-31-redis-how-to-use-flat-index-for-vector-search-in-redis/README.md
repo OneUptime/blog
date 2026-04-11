@@ -34,7 +34,7 @@ FT.CREATE idx:exact
   SCHEMA
     label TEXT
     category TAG
-    embedding VECTOR FLAT 6
+    embedding VECTOR FLAT 10
       TYPE FLOAT32
       DIM 384
       DISTANCE_METRIC COSINE
