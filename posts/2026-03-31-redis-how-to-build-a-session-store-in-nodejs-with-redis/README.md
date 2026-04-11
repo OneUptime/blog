@@ -190,22 +190,26 @@ const session = require('express-session');
 const redisClient = createClient({ url: 'redis://localhost:6379' });
 
 // Fall back to in-memory store if Redis is unavailable
-let sessionStore;
-try {
-  await redisClient.connect();
-  sessionStore = new RedisStore({ client: redisClient });
-  console.log('Using Redis session store');
-} catch (err) {
-  console.warn('Redis unavailable, using in-memory session store (not suitable for production)');
-  sessionStore = new session.MemoryStore();
+async function initializeSession(app) {
+  let sessionStore;
+  try {
+    await redisClient.connect();
+    sessionStore = new RedisStore({ client: redisClient });
+    console.log('Using Redis session store');
+  } catch (err) {
+    console.warn('Redis unavailable, using in-memory session store (not suitable for production)');
+    sessionStore = new session.MemoryStore();
+  }
+
+  app.use(session({
+    store: sessionStore,
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false
+  }));
 }
 
-app.use(session({
-  store: sessionStore,
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false
-}));
+initializeSession(app);
 ```
 
 ## Session Management Operations
