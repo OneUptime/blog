@@ -15,7 +15,7 @@ Puppet enables declarative, idempotent Redis management. By defining your Redis 
 Use the community Redis module from Puppet Forge:
 
 ```bash
-puppet module install arioch-redis
+puppet module install puppet-redis
 ```
 
 ## Basic Redis Installation
@@ -30,10 +30,10 @@ node 'redis-server.example.com' {
     requirepass      => lookup('redis::password'),
     maxmemory        => '2gb',
     maxmemory_policy => 'allkeys-lru',
-    save_db_to_disk  => true,
-    save             => ['900 1', '300 10', '60 10000'],
-    loglevel         => 'notice',
-    logfile          => '/var/log/redis/redis-server.log',
+    save_db_to_disk          => true,
+    save_db_to_disk_interval => { '900' => '1', '300' => '10', '60' => '10000' },
+    log_level                => 'notice',
+    log_file                 => '/var/log/redis/redis-server.log',
   }
 }
 ```
@@ -45,11 +45,12 @@ For fine-grained control, manage the configuration file directly:
 ```puppet
 # manifests/redis.pp
 class profile::redis (
-  String  $bind_address   = '127.0.0.1',
-  Integer $port           = 6379,
-  String  $maxmemory      = '1gb',
-  String  $eviction       = 'allkeys-lru',
-  Boolean $aof_enabled    = false,
+  String           $bind_address = '127.0.0.1',
+  Integer          $port         = 6379,
+  String           $maxmemory    = '1gb',
+  String           $eviction     = 'allkeys-lru',
+  Boolean          $aof_enabled  = false,
+  Optional[String] $replicaof    = undef,
 ) {
 
   package { 'redis-server':
@@ -98,18 +99,21 @@ appendonly no
 save 900 1
 save 300 10
 save 60 10000
+
+<% if @replicaof %>
+replicaof <%= @replicaof %>
+<% end %>
 ```
 
 ## Manage Redis Cluster Nodes
 
 Define multiple Redis nodes with different roles:
 
-```puppet
+```yaml
 # Hiera data for cluster nodes
 # data/nodes/redis-primary.yaml
 profile::redis::bind_address: '10.0.0.1'
 profile::redis::port: 6379
-profile::redis::cluster_enabled: true
 
 # data/nodes/redis-replica.yaml
 profile::redis::bind_address: '10.0.0.2'
@@ -119,15 +123,9 @@ profile::redis::replicaof: '10.0.0.1 6379'
 ```puppet
 # manifests/redis_cluster.pp
 class profile::redis_cluster {
+  # Hiera provides node-specific values for profile::redis parameters
+  # Replicas automatically get replicaof via Hiera data
   include profile::redis
-
-  if $facts['hostname'] =~ /redis-replica/ {
-    file_line { 'replicaof':
-      path  => '/etc/redis/redis.conf',
-      line  => "replicaof ${profile::redis::primary_host} 6379",
-      match => '^replicaof',
-    }
-  }
 }
 ```
 
