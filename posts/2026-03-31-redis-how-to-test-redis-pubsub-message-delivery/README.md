@@ -180,7 +180,7 @@ def test_subscriber_count(r):
     time.sleep(0.2)  # Allow subscriptions to register
 
     # Check subscriber count
-    count = r.pubsub_numsub(channel)[channel]
+    count = dict(r.pubsub_numsub(channel))[channel]
     assert count == 3, f"Expected 3 subscribers, got {count}"
 
     for t in threads:
@@ -207,9 +207,11 @@ def test_no_message_buffering(r):
         ready.set()
         # Poll briefly
         time.sleep(0.5)
-        for message in sub.listen_for_messages_nonblock():
-            if message['type'] == 'message':
-                received.append(message['data'])
+        msg = sub.get_message(timeout=0.1)
+        while msg is not None:
+            if msg['type'] == 'message':
+                received.append(msg['data'])
+            msg = sub.get_message(timeout=0.1)
         sub.close()
 
     thread = threading.Thread(target=subscriber, daemon=True)
@@ -254,7 +256,7 @@ async def test_async_pubsub():
 
     assert received == ["async message"]
     await pubsub.unsubscribe("test:async")
-    await pubsub.close()
+    await pubsub.aclose()
     await r.aclose()
 ```
 
