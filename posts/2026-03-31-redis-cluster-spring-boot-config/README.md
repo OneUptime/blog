@@ -81,6 +81,10 @@ public class ProductCache {
 
     private final StringRedisTemplate template;
 
+    public ProductCache(StringRedisTemplate template) {
+        this.template = template;
+    }
+
     public void put(String productId, String json) {
         template.opsForValue().set("product:" + productId, json, Duration.ofMinutes(30));
     }
