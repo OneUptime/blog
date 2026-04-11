@@ -12,7 +12,7 @@ Description: Learn how to use MySQL's ST_Centroid() function to find the geometr
 
 `ST_Centroid()` returns the geometric centroid of a geometry as a `POINT`. The centroid is the arithmetic mean position of all points in the shape - often described as the "center of mass". For a regular polygon, this is the same as the center. For irregular shapes, it is the weighted average of all coordinates.
 
-The centroid is computed in Cartesian space regardless of SRID, so results are coordinate-unit based.
+The centroid is computed using Cartesian math. In MySQL 8.0+, `ST_Centroid()` only supports Cartesian (projected) spatial reference systems. Passing a geometry with a geographic SRID (such as 4326) raises an `ER_NOT_IMPLEMENTED_FOR_GEOGRAPHIC_SRS` error.
 
 ## Basic Syntax
 
