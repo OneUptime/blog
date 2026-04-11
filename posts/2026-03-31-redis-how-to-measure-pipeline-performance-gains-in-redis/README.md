@@ -95,7 +95,7 @@ benchmark("Full pipeline (10k)", with_pipeline)
 benchmark("Chunked pipeline (500)", chunked_pipeline)
 ```
 
-## Measuring Mixed Read/Write Pipelines
+## Measuring Read Pipeline Performance
 
 ```python
 import redis
