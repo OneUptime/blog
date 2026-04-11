@@ -47,7 +47,7 @@ Example output:
 |-------|-------------|
 | direction | `to` (outbound) or `from` (inbound) |
 | node | The ID of the connected peer node |
-| create-time | Timestamp when the connection was established (milliseconds) |
+| create-time | Timestamp when the connection was created (milliseconds). For outbound (`to`) links, this is when the TCP link was initiated, not when it was fully established. |
 | events | `r` = readable, `w` = writable |
 | send-buffer-allocated | Bytes allocated in the send buffer |
 | send-buffer-used | Bytes currently in the send buffer waiting to be sent |
