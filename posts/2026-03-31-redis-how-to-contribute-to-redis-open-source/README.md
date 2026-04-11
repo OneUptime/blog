@@ -37,7 +37,7 @@ make test
 Redis uses a custom Tcl-based test framework. You can run a specific test file with:
 
 ```bash
-./runtest tests/unit/type/string.tcl
+./runtest --single tests/unit/type/string
 ```
 
 ## Finding Issues to Work On
