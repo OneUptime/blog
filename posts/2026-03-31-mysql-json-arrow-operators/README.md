@@ -17,13 +17,15 @@ MySQL provides two inline JSON path operators as syntactic sugar over function c
 | `->` | `JSON_EXTRACT(col, path)` | JSON-encoded value (strings include quotes) |
 | `->>` | `JSON_UNQUOTE(JSON_EXTRACT(col, path))` | Plain string (quotes stripped) |
 
-These operators were introduced in MySQL 5.7.9 and 5.7.13 respectively.
+The `->` operator was introduced in MySQL 5.7.9 and `->>` in MySQL 5.7.13, both for use with table columns. Support for user variables as the left-hand operand was added in MySQL 8.0.21.
 
 ```sql
-SELECT '{"city": "Paris"}'->>'$.city';
+SET @city_doc = '{"city": "Paris"}';
+
+SELECT @city_doc->>'$.city';
 -- Paris   (no surrounding quotes)
 
-SELECT '{"city": "Paris"}'->'$.city';
+SELECT @city_doc->'$.city';
 -- "Paris" (JSON string with quotes)
 ```
 
@@ -53,8 +55,8 @@ SELECT @doc->>'$.score';   -- 95
 For numeric values the difference is invisible in `SELECT` output, but it matters in comparisons:
 
 ```sql
--- Type mismatch: comparing JSON string "95" to integer 95
-SELECT @doc->'$.score' = 95;    -- 1 (MySQL coerces)
+-- -> returns a JSON value; MySQL coerces for comparison
+SELECT @doc->'$.score' = 95;    -- 1 (MySQL coerces JSON integer to SQL integer)
 
 -- String comparison: "95" vs "95" (both strings)
 SELECT @doc->>'$.score' = '95'; -- 1
