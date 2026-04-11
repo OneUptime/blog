@@ -25,10 +25,10 @@ RESP2 is the default protocol. Use two connections: one for data and one for inv
 
 ```bash
 # On connection 1 (subscriber)
-SUBSCRIBE __redis__:invalidate
-# Note the client ID
+# Get the client ID before subscribing (SUBSCRIBE enters subscriber mode)
 CLIENT ID
 # Returns: 10
+SUBSCRIBE __redis__:invalidate
 ```
 
 ### Step 2 - Enable Tracking on the Data Connection
@@ -141,19 +141,17 @@ data_conn.execute_command('CLIENT', 'TRACKING', 'ON', 'BCAST', 'PREFIX', 'user:'
 CLIENT INFO
 ```
 
-Look for `flags` field:
+Look for `flags` field (`t` = tracking on, `B` = broadcast mode) and `redir` field:
 
 ```text
-id=5 addr=127.0.0.1:54321 fd=8 name= age=0 idle=0 flags=N db=0 sub=0 psub=0 multi=-1
-...
-tracking=on tracking-bcast-ttl=0 tracking-keys=15
+id=5 addr=127.0.0.1:54321 fd=8 name= age=0 idle=0 flags=t db=0 sub=0 psub=0 multi=-1 redir=10
 ```
 
 Or:
 
 ```bash
-CLIENT NO-TOUCH    # Read key without tracking it
-CLIENT NO-EVICT ON # Prevent this client's tracking from being evicted
+CLIENT NO-TOUCH ON # Prevent this client from updating LRU/LFU idle time on key access (Redis 7.2+)
+CLIENT NO-EVICT ON # Prevent this client from being evicted under memory pressure (Redis 7.0+)
 ```
 
 ## Disabling Tracking
@@ -181,12 +179,15 @@ GET temp-key       # This access NOT tracked
 ## Verify Invalidations Work
 
 ```bash
-# Terminal 1 - subscriber
-redis-cli SUBSCRIBE __redis__:invalidate
+# Terminal 1 - subscriber (note the client ID printed at startup, e.g. id=42)
+redis-cli
+> CLIENT ID
+> SUBSCRIBE __redis__:invalidate
 
-# Terminal 2 - enable tracking
-redis-cli CLIENT TRACKING ON REDIRECT <sub-client-id>
-redis-cli GET mykey
+# Terminal 2 - enable tracking and read key (same interactive session)
+redis-cli
+> CLIENT TRACKING ON REDIRECT 42
+> GET mykey
 
 # Terminal 3 - modify the key
 redis-cli SET mykey newvalue
