@@ -40,13 +40,18 @@ Key metrics:
 ```sql
 SELECT
   FORMAT(@@innodb_buffer_pool_size / 1024 / 1024 / 1024, 2) AS buffer_pool_gb,
-  FORMAT(Innodb_buffer_pool_bytes_data / 1024 / 1024, 2)    AS data_mb,
-  FORMAT(Innodb_buffer_pool_bytes_dirty / 1024 / 1024, 2)   AS dirty_mb,
-  ROUND(Innodb_buffer_pool_pages_data /
-        Innodb_buffer_pool_pages_total * 100, 1)             AS fill_pct
-FROM information_schema.GLOBAL_STATUS
-PIVOT -- use individual SELECTs in practice
-;
+  (SELECT FORMAT(VARIABLE_VALUE / 1024 / 1024, 2)
+     FROM performance_schema.global_status
+    WHERE VARIABLE_NAME = 'Innodb_buffer_pool_bytes_data') AS data_mb,
+  (SELECT FORMAT(VARIABLE_VALUE / 1024 / 1024, 2)
+     FROM performance_schema.global_status
+    WHERE VARIABLE_NAME = 'Innodb_buffer_pool_bytes_dirty') AS dirty_mb,
+  (SELECT ROUND(
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status
+      WHERE VARIABLE_NAME = 'Innodb_buffer_pool_pages_data') /
+    (SELECT VARIABLE_VALUE FROM performance_schema.global_status
+      WHERE VARIABLE_NAME = 'Innodb_buffer_pool_pages_total') * 100, 1
+  )) AS fill_pct;
 ```
 
 A simpler approach:
