@@ -12,7 +12,7 @@ A MySQL prefix index indexes only the first N characters of a string column rath
 
 ## Why Prefix Indexes Exist
 
-MySQL imposes a maximum index key length of 767 bytes (InnoDB with `ROW_FORMAT=COMPACT`) or 3072 bytes (InnoDB with `innodb_large_prefix` enabled, the default in MySQL 8.0). Indexing full `TEXT` or `BLOB` columns directly is not allowed - a prefix length is required.
+MySQL imposes a maximum index key length of 767 bytes (InnoDB with `ROW_FORMAT=COMPACT` or `ROW_FORMAT=REDUNDANT`) or 3072 bytes (InnoDB with `ROW_FORMAT=DYNAMIC` or `ROW_FORMAT=COMPRESSED`, the default in MySQL 8.0). Indexing full `TEXT` or `BLOB` columns directly is not allowed - a prefix length is required.
 
 ```sql
 -- ERROR: TEXT column cannot be indexed without a prefix
