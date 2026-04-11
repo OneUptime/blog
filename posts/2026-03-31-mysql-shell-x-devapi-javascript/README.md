@@ -19,7 +19,7 @@ MySQL Shell is an advanced command-line client for MySQL that supports three int
 sudo apt-get install mysql-shell
 
 # macOS
-brew install mysql-shell
+brew install --cask mysql-shell
 
 # Check version
 mysqlsh --version
@@ -41,33 +41,33 @@ Switch to JavaScript mode if not already active:
 
 ```javascript
 // List databases
-session.getSchemas().then(schemas => schemas.forEach(s => console.log(s.getName())));
+session.getSchemas().forEach(s => print(s.getName()));
 
 // Get a schema
-const db = session.getSchema('mydb');
+var db = session.getSchema('mydb');
 
 // List collections and tables
-db.getCollections().then(cols => cols.forEach(c => console.log('Collection:', c.getName())));
-db.getTables().then(tables => tables.forEach(t => console.log('Table:', t.getName())));
+db.getCollections().forEach(c => print('Collection: ' + c.getName()));
+db.getTables().forEach(t => print('Table: ' + t.getName()));
 ```
 
 ## Working with Collections in JavaScript Mode
 
 ```javascript
-const col = db.getCollection('products');
+var col = db.getCollection('products');
 
 // Add documents
-await col.add({ name: 'Widget', price: 9.99, inStock: true }).execute();
+col.add({ name: 'Widget', price: 9.99, inStock: true }).execute();
 
 // Find and display
-const result = await col.find('inStock = true').sort(['price ASC']).execute();
+var result = col.find('inStock = true').sort(['price ASC']).execute();
 result.fetchAll().forEach(doc => print(JSON.stringify(doc)));
 
 // Modify
-await col.modify('name = "Widget"').set('price', 12.99).execute();
+col.modify('name = "Widget"').set('price', 12.99).execute();
 
 // Remove
-await col.remove('inStock = false').execute();
+col.remove('inStock = false').execute();
 ```
 
 ## Running SQL from JavaScript Mode
@@ -75,15 +75,15 @@ await col.remove('inStock = false').execute();
 You can execute raw SQL from within JavaScript mode using `session.sql()`:
 
 ```javascript
-const result = await session.sql('SELECT VERSION()').execute();
-console.log(result.fetchOne()[0]);
+var result = session.sql('SELECT VERSION()').execute();
+print(result.fetchOne()[0]);
 
 // Use a specific database
-await session.sql('USE mydb').execute();
+session.sql('USE mydb').execute();
 
 // Run a query and iterate rows
-const rows = await session.sql('SELECT id, name FROM customers LIMIT 5').execute();
-rows.fetchAll().forEach(row => console.log(row[0], row[1]));
+var rows = session.sql('SELECT id, name FROM customers LIMIT 5').execute();
+rows.fetchAll().forEach(row => print(row[0] + ' ' + row[1]));
 ```
 
 ## Switching Between Modes
@@ -103,9 +103,9 @@ db.getName()
 Create a file `setup.js`:
 
 ```javascript
-const schema = session.getSchema('mydb');
-const orders = schema.getCollection('orders');
-await orders.add({ orderId: 1001, total: 55.00, status: 'new' }).execute();
+var schema = session.getSchema('mydb');
+var orders = schema.getCollection('orders');
+orders.add({ orderId: 1001, total: 55.00, status: 'new' }).execute();
 print('Order inserted');
 ```
 
@@ -119,9 +119,9 @@ mysqlsh --uri mysqlx://root:secret@127.0.0.1:33060 --file setup.js
 
 ```javascript
 // Script: report.js
-const db = session.getSchema('mydb');
-const result = await db.getCollection('orders').find('status = "pending"').execute();
-const pending = result.fetchAll();
+var db = session.getSchema('mydb');
+var result = db.getCollection('orders').find('status = "pending"').execute();
+var pending = result.fetchAll();
 print('Pending orders: ' + pending.length);
 ```
 
