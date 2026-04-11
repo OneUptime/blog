@@ -146,24 +146,33 @@ CREATE TABLE inventory (
 
 INSERT INTO inventory (product_id, stock_count) VALUES (101, 100);
 
--- Strict mode prevents going below 0
+-- UNSIGNED prevents going below 0
 UPDATE inventory
 SET stock_count = stock_count - 200
 WHERE product_id = 101;
 -- ERROR 1690 (22003): BIGINT UNSIGNED value is out of range
--- in strict mode this raises an error
+-- The unsigned subtraction produces an out-of-range result, raising an error
 ```
 
-## UNSIGNED with DECIMAL and FLOAT
+## UNSIGNED with DECIMAL and FLOAT (Deprecated)
 
-`UNSIGNED` also works with `DECIMAL` and `FLOAT`:
+`UNSIGNED` works with `DECIMAL` and `FLOAT`, but this usage is **deprecated as of MySQL 8.0.17** and will be removed in a future version. Use a `CHECK` constraint instead:
 
 ```sql
+-- Deprecated approach (MySQL < 8.0.17)
+CREATE TABLE product_prices_old (
+    product_id  INT UNSIGNED NOT NULL PRIMARY KEY,
+    cost        DECIMAL(10, 2) UNSIGNED NOT NULL,
+    price       DECIMAL(10, 2) UNSIGNED NOT NULL,
+    weight_kg   FLOAT UNSIGNED
+);
+
+-- Recommended approach (MySQL 8.0.16+)
 CREATE TABLE product_prices (
     product_id  INT UNSIGNED NOT NULL PRIMARY KEY,
-    cost        DECIMAL(10, 2) UNSIGNED NOT NULL,  -- always positive
-    price       DECIMAL(10, 2) UNSIGNED NOT NULL,
-    weight_kg   FLOAT UNSIGNED                      -- never negative
+    cost        DECIMAL(10, 2) NOT NULL CHECK (cost >= 0),
+    price       DECIMAL(10, 2) NOT NULL CHECK (price >= 0),
+    weight_kg   FLOAT CHECK (weight_kg >= 0)
 );
 ```
 
@@ -172,8 +181,8 @@ CREATE TABLE product_prices (
 ```sql
 -- Subtraction can underflow with UNSIGNED
 SELECT CAST(5 AS UNSIGNED) - CAST(10 AS UNSIGNED);
--- In strict mode: ERROR
--- Without strict mode: wraps to a large unsigned number (unsafe)
+-- ERROR 1690: BIGINT UNSIGNED value is out of range
+-- Enable NO_UNSIGNED_SUBTRACTION to allow signed results instead
 
 -- Safe pattern: check before subtracting
 UPDATE inventory
@@ -187,7 +196,7 @@ WHERE product_id = 101
 - Use `INT UNSIGNED` for primary keys and foreign keys to double the positive range at no extra storage cost.
 - Use `BIGINT UNSIGNED` for counters (views, clicks, downloads) that may grow into the billions.
 - Always match the type and signedness of a foreign key column to its referenced primary key.
-- Use `UNSIGNED` on `DECIMAL` and `FLOAT` for price, weight, and other naturally positive quantities.
+- For `DECIMAL` and `FLOAT` columns, use `CHECK` constraints instead of `UNSIGNED` (deprecated since MySQL 8.0.17).
 - Guard against underflow in `UPDATE` statements by checking the current value before subtracting.
 - Be aware that arithmetic mixing signed and unsigned integers can produce unexpected results; cast explicitly.
 
