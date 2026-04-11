@@ -27,7 +27,7 @@ graph TD
 ## Syntax
 
 ```redis
-FT.SPELLCHECK index query [DISTANCE distance] [TERMS INCLUDE|EXCLUDE dict [dict ...]] [DIALECT dialect]
+FT.SPELLCHECK index query [DISTANCE distance] [TERMS INCLUDE|EXCLUDE dictionary] [DIALECT dialect]
 ```
 
 - `index` - the RediSearch index name
@@ -71,22 +71,17 @@ FT.SPELLCHECK articles "reedis performnce"
 
 Each entry contains the misspelled term and an array of (score, suggestion) pairs. Higher scores indicate more frequent matches in the index.
 
-### Correctly Spelled Term Returns Empty Suggestions
+### Correctly Spelled Terms Return Empty Result
 
 ```redis
 FT.SPELLCHECK articles "redis performance"
 ```
 
 ```text
-1) 1) "TERM"
-   2) "redis"
-   3) (empty array)
-2) 1) "TERM"
-   2) "performance"
-   3) (empty array)
+(empty array)
 ```
 
-Empty suggestion arrays mean the term exists in the index and is correctly spelled.
+When all terms in the query exist in the index, FT.SPELLCHECK returns an empty result. Only misspelled terms appear in the response.
 
 ### Increase Distance for More Suggestions
 
@@ -113,7 +108,7 @@ FT.DICTADD mydict "elasticsearch" "opensearch" "solr" "whoosh"
 FT.SPELLCHECK articles "elasticseerch" TERMS INCLUDE mydict
 ```
 
-Terms in an included dictionary are treated as valid words and will appear as suggestions.
+Terms in an included dictionary are added as suggestion candidates with a score of 0, regardless of whether they appear in the index.
 
 ### Exclude Terms from Spell Check
 
@@ -160,7 +155,7 @@ FT.SEARCH articles "redis caching" LIMIT 0 10
 
 ## Scoring Explained
 
-The score returned with each suggestion is proportional to how frequently the suggested term appears in the indexed documents. A score of `0.5` means 50% of documents containing that term were considered. Higher scores indicate more prevalent terms in your index.
+The score returned with each suggestion is calculated by dividing the number of documents containing the suggested term by the total number of documents in the index. A score of `0.5` means the suggested term appears in 50% of all documents in the index. Higher scores indicate more prevalent terms in your index.
 
 ## Limitations
 
