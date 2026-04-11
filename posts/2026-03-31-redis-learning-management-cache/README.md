@@ -26,7 +26,6 @@ Learning management systems (LMS) experience highly uneven traffic: load spikes 
 import redis
 import json
 import time
-import hashlib
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
