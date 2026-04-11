@@ -27,9 +27,11 @@ SHOW PLUGINS WHERE Name = 'mysqlx';
 Expected output:
 
 ```text
-Name    | Status | Type       | Library     | License
-mysqlx  | ACTIVE | DAEMON     | mysqlx.so   | GPL
+Name    | Status | Type       | Library | License
+mysqlx  | ACTIVE | DAEMON     | NULL    | GPL
 ```
+
+Note: In MySQL 8.0+, the X Plugin is built into the server binary, so the Library column shows `NULL`. In MySQL 5.7, it was a loadable plugin (`mysqlx.so`).
 
 ## Checking the X Protocol Port
 
@@ -42,15 +44,9 @@ Variable_name | Value
 mysqlx_port   | 33060
 ```
 
-## Enabling or Installing the Plugin Manually
+## Enabling the Plugin Manually
 
-If the plugin is not active:
-
-```sql
-INSTALL PLUGIN mysqlx SONAME 'mysqlx.so';
-```
-
-Or add to `/etc/mysql/my.cnf` and restart:
+In MySQL 8.0+, the X Plugin is built-in and enabled by default. If it has been disabled, re-enable it by adding the following to `/etc/mysql/my.cnf` and restarting:
 
 ```text
 [mysqld]
@@ -137,12 +133,12 @@ If the X Protocol is not needed:
 mysqlx=OFF
 ```
 
-Or:
+Or pass the `--mysqlx=0` flag when starting the server:
 
-```sql
-UNINSTALL PLUGIN mysqlx;
+```bash
+mysqld --mysqlx=0
 ```
 
 ## Summary
 
-The MySQL X Protocol provides a modern, efficient communication layer for the X DevAPI on port 33060. Enable it by default on MySQL 8.0, verify with `SHOW PLUGINS`, and connect using `mysqlx://` URIs from MySQL Shell or supported language connectors. Monitor connection metrics via `SHOW STATUS LIKE 'Mysqlx%'` and restrict the bind address to localhost if remote X Protocol access is not needed.
+The MySQL X Protocol provides a modern, efficient communication layer for the X DevAPI on port 33060. It is enabled by default on MySQL 8.0. Verify with `SHOW PLUGINS`, and connect using `mysqlx://` URIs from MySQL Shell or supported language connectors. Monitor connection metrics via `SHOW STATUS LIKE 'Mysqlx%'` and restrict the bind address to localhost if remote X Protocol access is not needed.
