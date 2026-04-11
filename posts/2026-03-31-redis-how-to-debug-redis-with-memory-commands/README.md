@@ -18,7 +18,7 @@ Redis 4.0+ provides a suite of MEMORY subcommands for deep memory introspection:
 | `MEMORY DOCTOR` | Diagnose memory issues |
 | `MEMORY STATS` | Detailed memory statistics |
 | `MEMORY MALLOC-STATS` | Raw allocator statistics |
-| `MEMORY PURGE` | Force memory defragmentation |
+| `MEMORY PURGE` | Release unused memory to the OS |
 
 ## MEMORY USAGE - Inspecting Individual Keys
 
@@ -117,13 +117,14 @@ redis-cli MEMORY STATS
 ```python
 stats = r.memory_stats()
 important_fields = {
-    'used_memory': 'Memory used by data',
-    'used_memory_rss': 'RSS memory (OS-reported)',
-    'used_memory_peak': 'Peak memory usage',
-    'used_memory_overhead': 'Overhead (not data)',
-    'mem_fragmentation_ratio': 'Fragmentation ratio',
-    'allocator_frag_ratio': 'Allocator fragmentation',
-    'rss_overhead_ratio': 'RSS overhead ratio',
+    'total.allocated': 'Total memory allocated',
+    'peak.allocated': 'Peak memory allocated',
+    'startup.allocated': 'Startup memory allocated',
+    'overhead.total': 'Total overhead',
+    'dataset.bytes': 'Dataset size',
+    'allocator-fragmentation.ratio': 'Allocator fragmentation ratio',
+    'rss-overhead.ratio': 'RSS overhead ratio',
+    'fragmentation': 'Overall fragmentation ratio',
 }
 
 for field, description in important_fields.items():
@@ -156,7 +157,7 @@ mem_fragmentation_ratio:1.92
 ## Triggering Memory Defragmentation
 
 ```bash
-# Trigger active defragmentation manually (Redis 4.0+)
+# Release unused memory to the OS (Redis 4.0+, jemalloc only)
 redis-cli MEMORY PURGE
 
 # Enable active defragmentation automatically
