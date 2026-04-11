@@ -64,7 +64,7 @@ Use it when you need:
 - Consistency with recurring events that have an `ENDS` clause
 
 ```sql
--- Recurring event that ends after 6 months - keep definition for review
+-- Recurring event that ends after 1 year - keep definition for review
 CREATE EVENT evt_quarterly_report
 ON SCHEDULE EVERY 3 MONTH
 STARTS '2026-04-01 01:00:00'
