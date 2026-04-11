@@ -129,8 +129,9 @@ By default, Debezium creates one topic per table named `prefix.database.table`. 
 ```json
 {
   "transforms": "route",
-  "transforms.route.type": "org.apache.kafka.connect.transforms.ReplaceField$Value",
-  "transforms.route.topic": "myapp-events"
+  "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+  "transforms.route.regex": "myapp\\.myapp\\.(.*)",
+  "transforms.route.replacement": "myapp-events"
 }
 ```
 
