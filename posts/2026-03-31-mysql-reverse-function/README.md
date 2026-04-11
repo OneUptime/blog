@@ -110,12 +110,12 @@ SELECT REVERSE('Hello World');  -- 'dlroW olleH'
 ```sql
 -- Create a mirrored string
 SELECT CONCAT(name, REVERSE(name)) AS mirrored FROM products LIMIT 5;
--- 'Widget' -> 'WidgetteGdiW'
+-- 'Widget' -> 'WidgettegdiW'
 ```
 
 ## Reversing domain names for hierarchical sorting
 
-Reversed domain names allow sorting by TLD, then second-level domain:
+Reversed domain names allow grouping by TLD when sorted:
 
 ```sql
 SELECT
@@ -123,7 +123,8 @@ SELECT
     REVERSE(domain) AS reversed_domain
 FROM domains
 ORDER BY REVERSE(domain);
--- com.example.api, com.example.www, com.google.www, io.github.user
+-- .com domains sort together (e.g. www.google.com, api.example.com)
+-- .io domains sort together (e.g. user.github.io)
 ```
 
 ## Multibyte character support
