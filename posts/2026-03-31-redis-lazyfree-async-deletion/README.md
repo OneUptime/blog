@@ -96,22 +96,27 @@ Use Redis's built-in latency monitoring to observe the impact of large deletions
 ```redis
 CONFIG SET latency-monitor-threshold 5
 LATENCY LATEST
-# event     latest    all-time   avg
-# command    2ms       150ms      4ms
+# 1) 1) "command"
+#    2) (integer) 1712000000
+#    3) (integer) 2
+#    4) (integer) 150
 
 # After enabling lazyfree-lazy-user-del yes:
 LATENCY LATEST
-# command    1ms       3ms        1ms
+# 1) 1) "command"
+#    2) (integer) 1712000060
+#    3) (integer) 1
+#    4) (integer) 3
 ```
 
 ## Background Thread Monitoring
 
 ```redis
-INFO memory
+INFO stats
 # lazyfree_pending_objects:0
 ```
 
-`lazyfree_pending_objects` shows how many objects are waiting to be freed by the background thread. Under normal conditions this should stay near 0.
+`lazyfree_pending_objects` (reported in `INFO stats`) shows how many objects are waiting to be freed by the background thread. Under normal conditions this should stay near 0.
 
 ## When Lazyfree Matters Most
 
@@ -139,4 +144,4 @@ replica-lazy-flush yes
 
 ## Summary
 
-Redis lazyfree settings delegate expensive memory reclamation from large key deletions, expirations, and evictions to a background thread. Enable `lazyfree-lazy-user-del`, `lazyfree-lazy-eviction`, `lazyfree-lazy-expire`, and `lazyfree-lazy-server-del` to prevent latency spikes in production. Monitor `lazyfree_pending_objects` in `INFO memory` to confirm the background thread is keeping up.
+Redis lazyfree settings delegate expensive memory reclamation from large key deletions, expirations, and evictions to a background thread. Enable `lazyfree-lazy-user-del`, `lazyfree-lazy-eviction`, `lazyfree-lazy-expire`, and `lazyfree-lazy-server-del` to prevent latency spikes in production. Monitor `lazyfree_pending_objects` in `INFO stats` to confirm the background thread is keeping up.
