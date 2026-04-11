@@ -68,9 +68,9 @@ ACL CAT read
 ```
 
 ```text
- 1) "getdel"
+ 1) "get"
  2) "substr"
- 3) "sunionstore"
+ 3) "srandmember"
  4) "georadiusbymember_ro"
  5) "lpos"
  6) "smembers"
@@ -101,7 +101,7 @@ ACL CAT admin
  5) "config"
  6) "cluster"
  7) "info"
- 8) "flushdb"
+ 8) "save"
  9) "monitor"
 10) "bgsave"
 ...
@@ -152,12 +152,12 @@ You can search across all categories to find where a specific command appears:
 
 ```redis
 # Check which categories contain FLUSHDB
-ACL CAT admin
 ACL CAT dangerous
 ACL CAT keyspace
+ACL CAT write
 ```
 
-A command can appear in multiple categories. For example, `FLUSHDB` appears in both `admin` and `dangerous`.
+A command can appear in multiple categories. For example, `FLUSHDB` appears in `dangerous`, `keyspace`, and `write`.
 
 ## Summary
 
