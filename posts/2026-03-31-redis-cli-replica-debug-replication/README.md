@@ -101,20 +101,20 @@ If you see the command on the primary but not on `--replica`, the replication st
 
 ### Partial Sync vs Full Sync
 
-After a reconnect, watch for:
+Note that `redis-cli --replica` always sends the `SYNC` command, which triggers a full synchronization every time. After connecting, you will always see:
 
 ```text
 SYNC with master, discarding 10485760 bytes of bulk transfer...
 ```
 
-A large byte count indicates a full sync (expensive). A small count means partial resync.
+The byte count reflects the size of the RDB dump (i.e., the dataset size), not the sync type. To check whether actual replicas are performing partial or full resyncs, inspect the replica logs or use `INFO replication` on the replica and look for `master_sync_in_progress` and `master_link_status`.
 
 ## Security Consideration
 
-Running `--replica` requires the user to have `REPLICATION` privilege or `SYNC` command access in the ACL configuration:
+Running `--replica` requires the user to have permission to execute the `SYNC` command. In Redis ACL, `SYNC` and `PSYNC` belong to the `@admin` category. You can grant the minimum required permissions explicitly:
 
 ```bash
-redis-cli ACL SETUSER replication-debug on >password ~* &* +@replication
+redis-cli ACL SETUSER replication-debug on >password +sync +psync +replconf +ping
 ```
 
 ## Summary
