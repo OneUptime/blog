@@ -25,7 +25,7 @@ The core difference: MemoryDB stores data durably in a multi-AZ transaction log 
 | Durability | Best-effort (AOF optional) | Fully durable (multi-AZ log) |
 | Data loss on failover | Possible (seconds to minutes) | None (zero RPO) |
 | Failover time | 1-2 minutes | Under 10 seconds |
-| Redis compatibility | Partial (no modules) | Full Redis 7+ API |
+| Redis compatibility | Standard Redis API | Full Redis 7+ API |
 | Cost | Lower | Higher (1.5-2x) |
 | Scaling | Cluster mode + reads | Cluster mode + reads |
 
@@ -87,7 +87,7 @@ elasticache_client = redis.Redis(
     host='my-cluster.abc123.0001.use1.cache.amazonaws.com',
     port=6379,
     ssl=True,
-    ssl_cert_reqs=None  # ElastiCache uses self-signed cert
+    ssl_cert_reqs=None  # Disables cert verification; for production, use a proper CA bundle
 )
 
 # MemoryDB - always uses cluster mode endpoint
@@ -194,7 +194,7 @@ Is cost a major constraint and cache-miss latency acceptable?
   YES -> ElastiCache
 
 Do you need Redis modules (RediSearch, RedisJSON, etc.)?
-  YES -> MemoryDB (full module support)
+  YES -> Neither service supports modules; consider Redis Cloud or self-hosted Redis Stack
 ```
 
 ## Summary
