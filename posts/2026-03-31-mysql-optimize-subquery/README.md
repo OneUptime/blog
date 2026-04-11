@@ -38,10 +38,10 @@ SELECT o.id, o.total,
   (SELECT name FROM customers WHERE id = o.customer_id) AS cname
 FROM orders o;
 
--- After: JOIN (fast)
+-- After: LEFT JOIN (fast, preserves rows with no matching customer)
 SELECT o.id, o.total, c.name AS cname
 FROM orders o
-JOIN customers c ON o.customer_id = c.id;
+LEFT JOIN customers c ON o.customer_id = c.id;
 ```
 
 The JOIN executes the customer lookup once per match using the index, not once per order row.
