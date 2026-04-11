@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MySQL, Magento, Database
 
-Description: Set up and tune MySQL for Magento 2, covering database creation, env.php configuration, split database patterns, and InnoDB tuning.
+Description: Set up and tune MySQL for Magento 2, covering database creation, env.php configuration, log table maintenance, and InnoDB tuning.
 
 ---
 
@@ -12,7 +12,7 @@ Magento 2 is a MySQL-intensive application. A typical production store with a mo
 
 ## Prerequisites
 
-Magento 2 requires MySQL 8.0 (or MariaDB 10.4+). Ensure the following PHP extensions are enabled:
+Magento 2 requires MySQL 8.0 (or MariaDB 10.6+). Ensure the following PHP extensions are enabled:
 
 ```bash
 php -m | grep -E "pdo_mysql|mysqli"
@@ -99,11 +99,7 @@ TRUNCATE TABLE report_event;
 TRUNCATE TABLE customer_visitor;
 ```
 
-Or use the built-in cleanup command:
-
-```bash
-php bin/magento log:clean --days 30
-```
+Or configure automatic log cleaning via the Admin Panel at Stores > Configuration > Advanced > System > Log Cleaning, and set the retention period (e.g., 30 days). Magento's cron will handle the cleanup automatically.
 
 ## Summary
 
