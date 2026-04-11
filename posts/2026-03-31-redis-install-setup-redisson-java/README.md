@@ -53,6 +53,8 @@ public class RedissonSetup {
 ## Verify with a Basic Operation
 
 ```java
+import org.redisson.api.RBucket;
+
 public class Main {
     public static void main(String[] args) {
         RedissonClient client = RedissonSetup.createClient();
