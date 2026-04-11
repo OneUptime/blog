@@ -25,8 +25,8 @@ Description: Learn how to use Percona's pt-online-schema-change to alter large M
 apt-get install percona-toolkit     # Debian/Ubuntu
 yum install percona-toolkit         # RHEL/CentOS
 
-# Or via CPAN
-cpan Percona::Toolkit
+# Or download directly from Percona
+# https://www.percona.com/downloads/percona-toolkit/
 ```
 
 ## Basic Usage
@@ -36,10 +36,9 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=users \
     --alter="ADD COLUMN phone VARCHAR(20) NULL" \
-    --execute
+    --execute \
+    D=myapp,t=users
 ```
 
 Remove `--execute` and add `--dry-run` to preview without making changes.
@@ -51,10 +50,9 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=orders \
     --alter="ADD INDEX idx_status_created (status, created_at)" \
-    --execute
+    --execute \
+    D=myapp,t=orders
 ```
 
 ## Changing a Column Type
@@ -64,12 +62,11 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=products \
     --alter="MODIFY COLUMN description MEDIUMTEXT NOT NULL" \
     --chunk-size=1000 \
     --sleep=0.01 \
-    --execute
+    --execute \
+    D=myapp,t=products
 ```
 
 `--chunk-size` controls rows per chunk. `--sleep` adds a delay between chunks to reduce replication lag.
@@ -81,12 +78,11 @@ pt-online-schema-change \
     --host=127.0.0.1 \
     --user=appuser \
     --password=secret \
-    --database=myapp \
-    --table=events \
     --alter="ADD COLUMN processed TINYINT NOT NULL DEFAULT 0" \
     --max-lag=1 \
     --check-interval=5 \
-    --execute
+    --execute \
+    D=myapp,t=events
 ```
 
 `--max-lag=1` pauses the copy if replication lag exceeds 1 second.
@@ -103,8 +99,8 @@ pt-osc does not work when the table has:
 pt-online-schema-change \
     --alter-foreign-keys-method=rebuild_constraints \
     --alter="ADD COLUMN weight DECIMAL(8,3) NULL" \
-    --database=myapp --table=products \
-    --execute
+    --execute \
+    D=myapp,t=products
 ```
 
 ## Dry Run First
@@ -112,9 +108,8 @@ pt-online-schema-change \
 ```bash
 pt-online-schema-change \
     --dry-run \
-    --database=myapp \
-    --table=users \
-    --alter="ADD COLUMN last_login DATETIME NULL"
+    --alter="ADD COLUMN last_login DATETIME NULL" \
+    D=myapp,t=users
 ```
 
 ## Summary
