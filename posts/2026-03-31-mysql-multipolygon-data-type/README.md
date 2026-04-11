@@ -16,7 +16,7 @@ Description: Learn how to store and query collections of geographic areas using 
 graph TD
     A[MULTIPOLYGON] --> B["Collection of POLYGON values"]
     B --> C["Polygons must not overlap"]
-    B --> D["May share boundary edges or points"]
+    B --> D["May touch at boundary points"]
     A --> E["ST_Area - total area of all polygons"]
     A --> F["ST_NumGeometries - count polygons"]
     A --> G["ST_GeometryN - get nth polygon"]
@@ -65,8 +65,8 @@ INSERT INTO territories (entity_name, territory) VALUES
     'Metro Delivery Co - NYC Zones',
     ST_GeomFromText(
         'MULTIPOLYGON(
-            ((-74.020 40.700, -73.970 40.700, -73.970 40.730, -74.020 40.730, -74.020 40.700)),
-            ((-73.990 40.750, -73.950 40.750, -73.950 40.780, -73.990 40.780, -73.990 40.750))
+            ((40.700 -74.020, 40.700 -73.970, 40.730 -73.970, 40.730 -74.020, 40.700 -74.020)),
+            ((40.750 -73.990, 40.750 -73.950, 40.780 -73.950, 40.780 -73.990, 40.750 -73.990))
         )',
         4326
     )
@@ -75,9 +75,9 @@ INSERT INTO territories (entity_name, territory) VALUES
     'Island State Example',
     ST_GeomFromText(
         'MULTIPOLYGON(
-            ((-74.050 40.680, -74.010 40.680, -74.010 40.710, -74.050 40.710, -74.050 40.680)),
-            ((-73.800 40.750, -73.760 40.750, -73.760 40.780, -73.800 40.780, -73.800 40.750)),
-            ((-73.900 40.820, -73.860 40.820, -73.860 40.850, -73.900 40.850, -73.900 40.820))
+            ((40.680 -74.050, 40.680 -74.010, 40.710 -74.010, 40.710 -74.050, 40.680 -74.050)),
+            ((40.750 -73.800, 40.750 -73.760, 40.780 -73.760, 40.780 -73.800, 40.750 -73.800)),
+            ((40.820 -73.900, 40.820 -73.860, 40.850 -73.860, 40.850 -73.900, 40.820 -73.900))
         )',
         4326
     )
@@ -90,24 +90,24 @@ INSERT INTO territories (entity_name, territory) VALUES
 SELECT
     entity_name,
     ST_NumGeometries(territory)          AS polygon_count,
-    ROUND(ST_Area(territory), 8)         AS total_area_sq_degrees,
+    ROUND(ST_Area(territory) / 1000000, 2) AS total_area_sq_km,
     ST_AsText(ST_Centroid(territory))    AS centroid
 FROM territories;
 ```
 
 ```text
-+------------------------------+---------------+-----------------------+-------------------------------+
-| entity_name                  | polygon_count | total_area_sq_degrees | centroid                      |
-+------------------------------+---------------+-----------------------+-------------------------------+
-| Metro Delivery Co - NYC Zones| 2             |          0.00300000   | POINT(-73.9875 40.7475)       |
-| Island State Example         | 3             |          0.00360000   | POINT(-73.86 40.76)           |
-+------------------------------+---------------+-----------------------+-------------------------------+
++------------------------------+---------------+------------------+-------------------------------+
+| entity_name                  | polygon_count | total_area_sq_km | centroid                      |
++------------------------------+---------------+------------------+-------------------------------+
+| Metro Delivery Co - NYC Zones| 2             |            25.37 | POINT(40.74 -73.98)           |
+| Island State Example         | 3             |            33.81 | POINT(40.77 -73.90)           |
++------------------------------+---------------+------------------+-------------------------------+
 ```
 
 ### Check If a Point Falls Inside Any Polygon in the Collection
 
 ```sql
-SET @test_point = ST_GeomFromText('POINT(-74.000 40.715)', 4326);
+SET @test_point = ST_GeomFromText('POINT(40.715 -74.000)', 4326);
 
 SELECT entity_name
 FROM territories
@@ -137,7 +137,7 @@ WHERE entity_name = 'Metro Delivery Co - NYC Zones';
 +------------------------------+-----------------------------------------------+-----------------------------------------------+
 | entity_name                  | polygon_1                                     | polygon_2                                     |
 +------------------------------+-----------------------------------------------+-----------------------------------------------+
-| Metro Delivery Co - NYC Zones| POLYGON((-74.02 40.7,-73.97 40.7,...))        | POLYGON((-73.99 40.75,-73.95 40.75,...))       |
+| Metro Delivery Co - NYC Zones| POLYGON((40.7 -74.02,40.7 -73.97,...))        | POLYGON((40.75 -73.99,40.75 -73.95,...))       |
 +------------------------------+-----------------------------------------------+-----------------------------------------------+
 ```
 
@@ -145,7 +145,7 @@ WHERE entity_name = 'Metro Delivery Co - NYC Zones';
 
 ```sql
 SET @search_region = ST_GeomFromText(
-    'POLYGON((-74.060 40.670, -73.940 40.670, -73.940 40.730, -74.060 40.730, -74.060 40.670))',
+    'POLYGON((40.670 -74.060, 40.670 -73.940, 40.730 -73.940, 40.730 -74.060, 40.670 -74.060))',
     4326
 );
 
@@ -174,22 +174,22 @@ WITH RECURSIVE nums AS (
 SELECT
     t.entity_name,
     nums.n                                       AS polygon_index,
-    ROUND(ST_Area(ST_GeometryN(t.territory, nums.n)), 8) AS area_sq_degrees
+    ROUND(ST_Area(ST_GeometryN(t.territory, nums.n)) / 1000000, 2) AS area_sq_km
 FROM territories t
 JOIN nums ON nums.n <= ST_NumGeometries(t.territory)
 ORDER BY t.entity_name, nums.n;
 ```
 
 ```text
-+------------------------------+---------------+-----------------+
-| entity_name                  | polygon_index | area_sq_degrees |
-+------------------------------+---------------+-----------------+
-| Island State Example         | 1             |      0.00120000 |
-| Island State Example         | 2             |      0.00120000 |
-| Island State Example         | 3             |      0.00120000 |
-| Metro Delivery Co - NYC Zones| 1             |      0.00150000 |
-| Metro Delivery Co - NYC Zones| 2             |      0.00150000 |
-+------------------------------+---------------+-----------------+
++------------------------------+---------------+------------+
+| entity_name                  | polygon_index | area_sq_km |
++------------------------------+---------------+------------+
+| Island State Example         | 1             |      11.28 |
+| Island State Example         | 2             |      11.27 |
+| Island State Example         | 3             |      11.26 |
+| Metro Delivery Co - NYC Zones| 1             |      14.10 |
+| Metro Delivery Co - NYC Zones| 2             |      11.27 |
++------------------------------+---------------+------------+
 ```
 
 ## Best Practices
@@ -202,4 +202,4 @@ ORDER BY t.entity_name, nums.n;
 
 ## Summary
 
-`MULTIPOLYGON` stores a set of non-overlapping `POLYGON` values as a single geometry. Insert with `ST_GeomFromText('MULTIPOLYGON(((...)), ((...))', srid)`. Use `ST_NumGeometries` to count polygons, `ST_GeometryN` to access individual polygons, `ST_Area` for total combined area, and `ST_Within` or `ST_Intersects` for spatial containment and overlap queries. Spatial indexes accelerate queries across large datasets.
+`MULTIPOLYGON` stores a set of non-overlapping `POLYGON` values as a single geometry. Insert with `ST_GeomFromText('MULTIPOLYGON(((...)), ((...)))', srid)`. Use `ST_NumGeometries` to count polygons, `ST_GeometryN` to access individual polygons, `ST_Area` for total combined area, and `ST_Within` or `ST_Intersects` for spatial containment and overlap queries. Spatial indexes accelerate queries across large datasets.
