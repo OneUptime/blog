@@ -66,7 +66,7 @@ CREATE INDEX idx_orders_product_id  ON orders (product_id);
 CREATE INDEX idx_order_items_order  ON order_items (order_id);
 ```
 
-Primary keys are automatically indexed. Foreign keys are not automatically indexed in MySQL - you must create them manually.
+Primary keys are automatically indexed. When you define a `FOREIGN KEY` constraint, InnoDB automatically creates an index on the foreign key columns if one does not already exist. However, many schemas omit explicit foreign key constraints (especially at scale), so you should verify that every column used in a JOIN `ON` clause has an index.
 
 ## Step 3: Filter early with WHERE
 
@@ -152,7 +152,7 @@ INNER JOIN orders o ON c.customer_id = o.customer_id;
 
 ## Step 9: Use join_buffer_size for non-indexed joins
 
-When a join cannot use an index (block nested loop algorithm), MySQL uses the join buffer. Increasing `join_buffer_size` can help:
+When a join cannot use an index, MySQL uses the join buffer. In MySQL 8.0.20+, this uses the hash join algorithm; earlier versions use Block Nested Loop (BNL). Increasing `join_buffer_size` can help in both cases:
 
 ```sql
 -- Session level
@@ -161,7 +161,8 @@ SET SESSION join_buffer_size = 4 * 1024 * 1024;  -- 4 MB
 -- Confirm the algorithm
 EXPLAIN
 SELECT ...
--- Look for "Using join buffer (Block Nested Loop)" in Extra
+-- Look for "Using join buffer (hash join)" in Extra (MySQL 8.0.20+)
+-- or "Using join buffer (Block Nested Loop)" in earlier versions
 ```
 
 The long-term fix is always to add the missing index.
