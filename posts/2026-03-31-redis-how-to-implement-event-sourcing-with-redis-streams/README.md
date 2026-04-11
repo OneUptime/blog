@@ -104,10 +104,10 @@ console.log(orderState);
 Consumer groups allow multiple service instances to process events without duplicate processing.
 
 ```bash
-# Create a consumer group starting from the beginning of the stream
+# Create a consumer group that only reads new messages from now on
 XGROUP CREATE orders order-processor $ MKSTREAM
 
-# Or start from the beginning
+# Or start from the beginning of the stream
 XGROUP CREATE orders order-processor 0
 ```
 
