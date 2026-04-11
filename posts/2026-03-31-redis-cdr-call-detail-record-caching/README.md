@@ -22,7 +22,6 @@ Call Detail Records (CDRs) are generated for every call, SMS, and data session i
 import redis
 import json
 import time
-import hashlib
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -41,7 +40,7 @@ def cache_cdr(cdr: dict):
     call_ts = int(cdr["start_time"])
     cdr_id = cdr["id"]
 
-    # Store CDR in hash
+    # Store CDR as JSON string with TTL
     r.setex(f"{CDR_PREFIX}:{cdr_id}", CDR_TTL, json.dumps(cdr))
 
     # Add to subscriber's call list sorted set (score = timestamp)
@@ -68,7 +67,7 @@ def cache_cdr(cdr: dict):
 ```python
 def get_recent_calls(subscriber_id: str, limit: int = 50) -> list:
     # Get most recent CDR IDs from sorted set
-    cdr_ids = r.zrange(f"{CDR_PREFIX}:sub:{subscriber_id}", -limit, -1, rev=True)
+    cdr_ids = r.zrange(f"{CDR_PREFIX}:sub:{subscriber_id}", 0, limit - 1, rev=True)
 
     if not cdr_ids:
         return []
