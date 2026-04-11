@@ -16,7 +16,7 @@ DragonflyDB supports most Redis commands but has some limitations:
 
 ```bash
 # Check which Redis commands you use
-redis-cli COMMAND STATS | sort -t: -k2 -rn | head -20
+redis-cli INFO commandstats | sort -t= -k2 -rn | head -20
 
 # DragonflyDB known limitations (check current docs):
 # - Some OBJECT subcommands differ
