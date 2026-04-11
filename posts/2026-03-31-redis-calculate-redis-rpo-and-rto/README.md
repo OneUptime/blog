@@ -109,7 +109,7 @@ If Sentinel is not available, RTO includes RDB load time:
 # Estimate load time based on RDB size
 RDB_SIZE_MB=$(du -m /var/lib/redis/dump.rdb | cut -f1)
 # Redis loads approximately 1 GB in 3-5 seconds
-LOAD_TIME_SEC=$(echo "$RDB_SIZE_MB / 1024 * 4" | bc)
+LOAD_TIME_SEC=$(echo "$RDB_SIZE_MB * 4 / 1024" | bc)
 echo "Estimated RDB load time: ${LOAD_TIME_SEC}s"
 ```
 
