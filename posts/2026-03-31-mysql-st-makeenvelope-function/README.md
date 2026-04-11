@@ -12,7 +12,7 @@ Description: Learn how to use MySQL's ST_MakeEnvelope() function to create a rec
 
 `ST_MakeEnvelope(pt1, pt2)` constructs a rectangular polygon from two corner points. This is the most convenient way to define a bounding box for spatial range queries - for example, finding all points within a visible map viewport or a rectangular search area.
 
-It was introduced in MySQL 8.0.22 as a simpler alternative to manually constructing bounding box polygons.
+It was introduced in MySQL 5.7.6 as a simpler alternative to manually constructing bounding box polygons.
 
 ## Basic Syntax
 
@@ -20,7 +20,7 @@ It was introduced in MySQL 8.0.22 as a simpler alternative to manually construct
 ST_MakeEnvelope(point1, point2)
 ```
 
-Both arguments must be `POINT` geometries with the same SRID. Returns a `POLYGON` with five points forming the rectangle.
+Both arguments must be `POINT` geometries with the same SRID. The function only supports Cartesian spatial reference systems (such as SRID 0); geographic SRIDs like 4326 (WGS 84) are not supported and will raise an `ER_NOT_IMPLEMENTED_FOR_GEOGRAPHIC_SRS` error. Returns a `POLYGON` with five points forming the rectangle (or a `POINT` if both points are equal, or a `LINESTRING` if they are collinear).
 
 ## Creating a Simple Bounding Box
 
@@ -41,39 +41,36 @@ SELECT ST_AsText(
 +------------------------------------------+
 ```
 
-## Practical Example: Map Viewport Query
+## Practical Example: Spatial Range Query
 
-A map application needs to find all points within the current viewport (defined by the southwest and northeast corners):
+Find all points of interest within a rectangular region using Cartesian coordinates:
 
 ```sql
 CREATE TABLE pois (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(100),
-  location POINT NOT NULL SRID 4326,
+  location POINT NOT NULL SRID 0,
   SPATIAL INDEX (location)
 );
 
 INSERT INTO pois (name, location) VALUES
-  ('Central Park', ST_GeomFromText('POINT(40.7851 -73.9683)', 4326)),
-  ('Times Square', ST_GeomFromText('POINT(40.7580 -73.9855)', 4326)),
-  ('Brooklyn Bridge', ST_GeomFromText('POINT(40.7061 -73.9969)', 4326));
+  ('Warehouse A', ST_GeomFromText('POINT(50 80)', 0)),
+  ('Warehouse B', ST_GeomFromText('POINT(150 200)', 0)),
+  ('Warehouse C', ST_GeomFromText('POINT(300 400)', 0));
 
--- Find POIs within a map viewport
-SET @sw_lat = 40.70;
-SET @sw_lon = -74.01;
-SET @ne_lat = 40.80;
-SET @ne_lon = -73.96;
-
+-- Find POIs within a rectangular search area
 SELECT name
 FROM pois
 WHERE ST_Within(
   location,
   ST_MakeEnvelope(
-    ST_GeomFromText(CONCAT('POINT(', @sw_lat, ' ', @sw_lon, ')'), 4326),
-    ST_GeomFromText(CONCAT('POINT(', @ne_lat, ' ', @ne_lon, ')'), 4326)
+    ST_GeomFromText('POINT(0 0)', 0),
+    ST_GeomFromText('POINT(200 250)', 0)
   )
 );
 ```
+
+This returns Warehouse A and Warehouse B, which fall inside the bounding box.
 
 ## Using ST_MakeEnvelope with MBRContains
 
@@ -84,8 +81,8 @@ SELECT name
 FROM pois
 WHERE MBRContains(
   ST_MakeEnvelope(
-    ST_GeomFromText('POINT(40.70 -74.01)', 4326),
-    ST_GeomFromText('POINT(40.80 -73.96)', 4326)
+    ST_GeomFromText('POINT(0 0)', 0),
+    ST_GeomFromText('POINT(200 250)', 0)
   ),
   location
 );
@@ -110,18 +107,24 @@ ST_MakeEnvelope(
 
 Both produce identical results, but `ST_MakeEnvelope()` is cleaner and less error-prone.
 
-## SRID Requirement
+## SRID Requirements
 
-Both points must share the same SRID:
+Both points must share the same SRID, and it must be a Cartesian SRS (not a geographic SRS like 4326):
 
 ```sql
 -- This raises an error: SRID mismatch
 SELECT ST_MakeEnvelope(
   ST_GeomFromText('POINT(0 0)', 0),
+  ST_GeomFromText('POINT(10 5)', 2154)
+);
+
+-- This raises an error: geographic SRS not supported
+SELECT ST_MakeEnvelope(
+  ST_GeomFromText('POINT(0 0)', 4326),
   ST_GeomFromText('POINT(10 5)', 4326)
 );
 ```
 
 ## Summary
 
-`ST_MakeEnvelope()` creates a rectangular bounding box polygon from two corner points. It is the most readable and concise way to define spatial search rectangles in MySQL. Use it with `ST_Within()` for point-in-rectangle queries or with `MBRContains()` to leverage the spatial R-tree index for high-performance viewport and bounding box searches.
+`ST_MakeEnvelope()` creates a rectangular bounding box polygon from two corner points using Cartesian coordinates (SRID 0 or a projected SRS). It is the most readable and concise way to define spatial search rectangles in MySQL. Use it with `ST_Within()` for point-in-rectangle queries or with `MBRContains()` to leverage the spatial R-tree index for high-performance bounding box searches. Note that it does not support geographic SRIDs like 4326.
