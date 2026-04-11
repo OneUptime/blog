@@ -162,7 +162,7 @@ FT.AGGREGATE idx:orders "@status:{shipped}"
 
 ```python
 import redis
-from redis.commands.search.aggregation import AggregateRequest
+from redis.commands.search.aggregation import AggregateRequest, Desc
 from redis.commands.search.reducers import sum as rsum, count
 
 r = redis.Redis()
@@ -170,7 +170,7 @@ r = redis.Redis()
 req = (
     AggregateRequest("*")
     .group_by("@city", count().alias("orders"), rsum("@total").alias("revenue"))
-    .sort_by("@revenue", asc=False)
+    .sort_by(Desc("@revenue"))
     .limit(0, 10)
 )
 
