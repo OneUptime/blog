@@ -41,7 +41,7 @@ Restart MaxScale after editing the configuration:
 sudo systemctl restart maxscale
 ```
 
-Log lines are written to `/var/log/maxscale/qla.log` and include the timestamp, session ID, and full SQL text.
+Log lines are written to `/var/log/maxscale/qla.unified` and include the timestamp, session ID, and full SQL text.
 
 ## Using the Regex Filter to Rewrite Queries
 
@@ -59,7 +59,7 @@ Add it to the service filter chain:
 
 ```text
 [read-write-service]
-filters=regex-filter,qla-filter
+filters=regex-filter | qla-filter
 ```
 
 ## Throttle Filter for Rate Limiting
@@ -71,8 +71,9 @@ The `throttlefilter` limits how many queries per second a single user session ca
 type=filter
 module=throttlefilter
 max_qps=500
-throttling_duration=2000
-queue_size=50
+throttling_duration=2000ms
+sampling_duration=250ms
+continuous_duration=2000ms
 ```
 
 ## Masking Sensitive Data with the Masking Filter
@@ -91,13 +92,11 @@ rules=/etc/maxscale/masking_rules.json
   "rules": [
     {
       "replace": {
-        "column": "card_number",
-        "function": "replace",
-        "value": "XXXX-XXXX-XXXX-XXXX"
+        "column": "card_number"
       },
-      "with": {},
-      "applies_to": [],
-      "exempted": []
+      "with": {
+        "value": "XXXX-XXXX-XXXX-XXXX"
+      }
     }
   ]
 }
